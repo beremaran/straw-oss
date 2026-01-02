@@ -30,11 +30,11 @@ echo "  Image:      $IMAGE_NAME:$TAG_VERSION"
 
 # Build Docker image
 docker build \
-    --build-arg TARGET_BINARY=$BINARY_NAME \
-    --build-arg VERSION=$VERSION \
-    --build-arg COMMIT=$COMMIT \
-    --build-arg BUILD_TIME=$BUILD_TIME \
-    -t $IMAGE_NAME:$TAG_VERSION \
+    --build-arg TARGET_BINARY="$BINARY_NAME" \
+    --build-arg VERSION="$VERSION" \
+    --build-arg COMMIT="$COMMIT" \
+    --build-arg BUILD_TIME="$BUILD_TIME" \
+    -t "$IMAGE_NAME:$TAG_VERSION" \
     -f Dockerfile .
 
 echo "Build complete: $IMAGE_NAME:$TAG_VERSION"
