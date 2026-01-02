@@ -297,7 +297,7 @@ func (c *Consumer) processTask(ctx context.Context, body []byte) error {
 	bytesSent := req.EstimateWireSize()
 	metrics.BytesSent.Add(float64(bytesSent))
 
-	var bytesReceived int
+	var bytesReceived uint64
 	if resp != nil {
 		bytesReceived = resp.EstimateWireSize()
 		metrics.BytesReceived.Add(float64(bytesReceived))
