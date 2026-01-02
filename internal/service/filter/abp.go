@@ -110,7 +110,7 @@ func (m *ABPMatcher) LoadList(ctx context.Context, listName string, listURL stri
 	if err != nil {
 		return fmt.Errorf("failed to fetch list %s: %w", listName, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("unexpected status code %d for list %s", resp.StatusCode, listName)
@@ -154,7 +154,7 @@ func (m *ABPMatcher) parseAndStore(listName string, reader io.Reader) error {
 		}
 
 		if rule != nil {
-			matcher.AddRule(rule, lineNum)
+			_ = matcher.AddRule(rule, lineNum)
 		}
 	}
 

@@ -38,12 +38,6 @@ func (m *mockDialer) dial(ctx context.Context, network, addr, fingerprint string
 	return client, nil
 }
 
-func (m *mockDialer) callCount() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return len(m.calls)
-}
-
 func TestDefaultPoolConfig(t *testing.T) {
 	cfg := DefaultPoolConfig()
 

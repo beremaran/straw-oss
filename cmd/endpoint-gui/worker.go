@@ -156,8 +156,8 @@ func (w *Worker) Start(configPath string) error {
 	if err := mqBroker.Connect(); err != nil {
 		cancel()
 		w.running = false
-		httpClient.Close()
-		pooledTransport.Close()
+		_ = httpClient.Close()
+		_ = pooledTransport.Close()
 		return fmt.Errorf("failed to connect to message broker: %w", err)
 	}
 	w.logger.Info("connected to message broker")
@@ -239,9 +239,9 @@ func (w *Worker) Start(configPath string) error {
 	go func() {
 		<-ctx.Done()
 		w.logger.Info("context cancelled, cleaning up resources...")
-		mqBroker.Close()
-		httpClient.Close()
-		pooledTransport.Close()
+		_ = mqBroker.Close()
+		_ = httpClient.Close()
+		_ = pooledTransport.Close()
 		w.logger.Info("resources closed")
 	}()
 

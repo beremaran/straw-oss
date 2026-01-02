@@ -77,14 +77,6 @@ func (m *mockBroker) BindQueue(ctx context.Context, queue, exchange, routingKey 
 	return nil
 }
 
-// deliverMessage simulates delivering a message to the subscribed handler.
-func (m *mockBroker) deliverMessage(ctx context.Context, body []byte) error {
-	if m.subscribeHandler != nil {
-		return m.subscribeHandler(ctx, body)
-	}
-	return nil
-}
-
 func (m *mockBroker) IsConnected() bool {
 	return true
 }

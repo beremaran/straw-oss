@@ -93,15 +93,15 @@ func (b *RabbitMQBroker) connect() error {
 	// Create Management Channel
 	mgmtCh, err := conn.Channel()
 	if err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return fmt.Errorf("failed to open mgmt channel: %w", err)
 	}
 
 	// Create Publisher Channel
 	pubCh, err := conn.Channel()
 	if err != nil {
-		mgmtCh.Close()
-		conn.Close()
+		_ = mgmtCh.Close()
+		_ = conn.Close()
 		return fmt.Errorf("failed to open pub channel: %w", err)
 	}
 
@@ -361,7 +361,7 @@ func (b *RabbitMQBroker) Subscribe(ctx context.Context, queue string, handler Ha
 	go func() {
 		// Close the channel when the context is cancelled or consumer exits,
 		// cleaning up resources on the broker.
-		defer ch.Close()
+		defer func() { _ = ch.Close() }()
 
 		tracer := otel.Tracer(instrumentationName)
 
@@ -388,9 +388,9 @@ func (b *RabbitMQBroker) Subscribe(ctx context.Context, queue string, handler Ha
 				if err := instrumentedHandler(msCtx, d.Body); err != nil {
 					span.RecordError(err)
 					// Nack on error
-					d.Nack(false, false)
+					_ = d.Nack(false, false)
 				} else {
-					d.Ack(false)
+					_ = d.Ack(false)
 				}
 				span.End()
 			}
@@ -445,7 +445,7 @@ func (b *RabbitMQBroker) SubscribeTemporary(ctx context.Context, queue string, h
 	}
 
 	go func() {
-		defer ch.Close()
+		defer func() { _ = ch.Close() }()
 		tracer := otel.Tracer(instrumentationName)
 
 		for {
@@ -502,7 +502,7 @@ func (b *RabbitMQBroker) ConsumeOnce(ctx context.Context, queue string, timeout 
 	if err != nil {
 		return nil, fmt.Errorf("failed to open consumer channel: %w", err)
 	}
-	defer ch.Close()
+	defer func() { _ = ch.Close() }()
 
 	// Declare temporary queue (exclusive, auto-delete)
 	q, err := ch.QueueDeclare(
@@ -576,7 +576,7 @@ func (b *RabbitMQBroker) QueueDepth(ctx context.Context, name string) (int, erro
 		b.mgmtChannel = ch
 	}
 
-	q, err := b.mgmtChannel.QueueInspect(name)
+	q, err := b.mgmtChannel.QueueInspect(name) //nolint:staticcheck // QueueInspect is deprecated but still works
 	if err != nil {
 		return 0, err
 	}

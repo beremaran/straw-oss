@@ -156,6 +156,14 @@ func (m *MockBroker) DeclareExchange(ctx context.Context, name, kind string) err
 func (m *MockBroker) BindQueue(ctx context.Context, queue, exchange, key string) error { return nil }
 func (m *MockBroker) DeclareQueue(ctx context.Context, name string) error              { return nil }
 
+func (m *MockBroker) IsConnected() bool {
+	return true
+}
+
+func (m *MockBroker) QueueDepth(ctx context.Context, name string) (int, error) {
+	return 0, nil
+}
+
 // --- Helper to hash password ---
 func hashPassword(t *testing.T, password string) string {
 	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)

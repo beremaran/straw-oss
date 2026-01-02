@@ -85,7 +85,7 @@ func readResponseBody(resp *fhttp.Response, maxSize int64) ([]byte, error) {
 				// If gzip reader creation fails, body might already be decompressed
 				return rawBody, nil
 			}
-			defer gzReader.Close()
+			defer func() { _ = gzReader.Close() }()
 			decompressed, err := io.ReadAll(gzReader)
 			if err != nil {
 				// Decompression failed, return raw body (might already be decompressed)

@@ -296,18 +296,18 @@ func setEnvVars(t *testing.T, vars map[string]string) {
 		"ENDPOINT_ID", "ENDPOINT_TAGS", "CONCURRENCY_LIMIT", "SELF_UPDATE_URL",
 	}
 	for _, v := range allVars {
-		os.Unsetenv(v)
+		_ = os.Unsetenv(v)
 	}
 
 	// Set the provided vars
 	for k, v := range vars {
-		os.Setenv(k, v)
+		_ = os.Setenv(k, v)
 	}
 
 	// Cleanup after test
 	t.Cleanup(func() {
 		for k := range vars {
-			os.Unsetenv(k)
+			_ = os.Unsetenv(k)
 		}
 	})
 }

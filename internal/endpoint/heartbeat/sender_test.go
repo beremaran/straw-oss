@@ -65,6 +65,14 @@ func (m *mockBroker) BindQueue(ctx context.Context, queue, exchange, routingKey 
 	return nil
 }
 
+func (m *mockBroker) IsConnected() bool {
+	return true
+}
+
+func (m *mockBroker) QueueDepth(ctx context.Context, name string) (int, error) {
+	return 0, nil
+}
+
 func (m *mockBroker) getMessages() []publishedMsg {
 	m.mu.Lock()
 	defer m.mu.Unlock()

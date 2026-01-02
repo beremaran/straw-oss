@@ -25,10 +25,9 @@ var (
 
 // Installer handles downloading and installing binary updates.
 type Installer struct {
-	httpClient  *http.Client
-	httpTimeout int64 // in seconds, for progress calculation
-	logger      *slog.Logger
-	binaryPath  string // path to current binary (auto-detected if empty)
+	httpClient *http.Client
+	logger     *slog.Logger
+	binaryPath string // path to current binary (auto-detected if empty)
 
 	// Callbacks for progress reporting
 	onProgress func(downloaded, total int64)
@@ -100,20 +99,20 @@ func (i *Installer) Install(ctx context.Context, manifest *VersionManifest) erro
 	if binaryPath == "" {
 		binaryPath, err = os.Executable()
 		if err != nil {
-			os.Remove(tmpPath)
+			_ = os.Remove(tmpPath)
 			return fmt.Errorf("%w: failed to get executable path: %v", ErrInstallFailed, err)
 		}
 		// Resolve symlinks
 		binaryPath, err = filepath.EvalSymlinks(binaryPath)
 		if err != nil {
-			os.Remove(tmpPath)
+			_ = os.Remove(tmpPath)
 			return fmt.Errorf("%w: failed to resolve symlinks: %v", ErrInstallFailed, err)
 		}
 	}
 
 	// Perform atomic replacement
 	if err := i.atomicReplace(tmpPath, binaryPath); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return err
 	}
 
@@ -144,9 +143,9 @@ func (i *Installer) DownloadAndVerify(ctx context.Context, manifest *VersionMani
 	// Ensure cleanup on error
 	success := false
 	defer func() {
-		tmpFile.Close()
+		_ = tmpFile.Close()
 		if !success {
-			os.Remove(tmpPath)
+			_ = os.Remove(tmpPath)
 		}
 	}()
 
@@ -160,7 +159,7 @@ func (i *Installer) DownloadAndVerify(ctx context.Context, manifest *VersionMani
 	if err != nil {
 		return "", fmt.Errorf("%w: HTTP request failed: %v", ErrDownloadFailed, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("%w: unexpected status code: %d", ErrDownloadFailed, resp.StatusCode)
@@ -216,7 +215,7 @@ func (i *Installer) atomicReplace(srcPath, dstPath string) error {
 	if runtime.GOOS == "windows" {
 		// Windows: rename current binary to .old, then rename new to current
 		oldPath := dstPath + ".old"
-		os.Remove(oldPath) // Remove any existing .old file
+		_ = os.Remove(oldPath) // Remove any existing .old file
 
 		if err := os.Rename(dstPath, oldPath); err != nil {
 			return fmt.Errorf("%w: failed to backup current binary: %v", ErrInstallFailed, err)
@@ -224,12 +223,12 @@ func (i *Installer) atomicReplace(srcPath, dstPath string) error {
 
 		if err := os.Rename(srcPath, dstPath); err != nil {
 			// Try to restore
-			os.Rename(oldPath, dstPath)
+			_ = os.Rename(oldPath, dstPath)
 			return fmt.Errorf("%w: failed to install new binary: %v", ErrInstallFailed, err)
 		}
 
 		// Clean up old binary (may fail on Windows, that's ok)
-		os.Remove(oldPath)
+		_ = os.Remove(oldPath)
 	} else {
 		// Unix: atomic rename
 		if err := os.Rename(srcPath, dstPath); err != nil {
