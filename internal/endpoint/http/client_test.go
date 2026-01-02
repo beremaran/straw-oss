@@ -17,7 +17,7 @@ type mockTransportProvider struct {
 	transport *fhttp.Transport
 }
 
-func (m *mockTransportProvider) GetTransport(host string, preset fingerprint.FingerprintPreset) *fhttp.Transport {
+func (m *mockTransportProvider) GetTransport(host string, preset fingerprint.Preset) *fhttp.Transport {
 	if m.transport != nil {
 		return m.transport
 	}

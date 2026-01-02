@@ -16,7 +16,7 @@ var ErrCacheMiss = errors.New("cache miss")
 func (c *Client) Get(ctx context.Context, key string, v interface{}) error {
 	val, err := c.Client.Get(ctx, key).Bytes()
 	if err != nil {
-		if err == redis.Nil {
+		if errors.Is(err, redis.Nil) {
 			return ErrCacheMiss
 		}
 		return err

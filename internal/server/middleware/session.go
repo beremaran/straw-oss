@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"errors"
 	"strconv"
 
 	"github.com/kwilabs/straw-proxy-server/internal/domain"
@@ -64,7 +65,7 @@ func SessionMiddleware(service *session.Service) echo.MiddlewareFunc {
 					}
 				} else {
 					// Session ID sent but not found/expired
-					if err == domain.ErrSessionExpired {
+					if errors.Is(err, domain.ErrSessionExpired) {
 						// Return 410 or just ignore and create new?
 						// Design 5.2 Error Codes: SESSION_EXPIRED -> 410.
 						// "Requested session no longer exists".

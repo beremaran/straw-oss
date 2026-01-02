@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/modules/nats"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
-	"github.com/testcontainers/testcontainers-go/modules/rabbitmq"
 	"github.com/testcontainers/testcontainers-go/modules/redis"
 	"github.com/testcontainers/testcontainers-go/wait"
 
@@ -118,44 +118,43 @@ func (c *RedisContainer) Terminate(ctx context.Context) error {
 	return nil
 }
 
-// RabbitMQContainer wraps a RabbitMQ testcontainer.
-type RabbitMQContainer struct {
-	container *rabbitmq.RabbitMQContainer
+// RabbitMQContainer support removed.
+
+// NatsContainer wraps a NATS testcontainer.
+type NatsContainer struct {
+	container *nats.NATSContainer
 	url       string
 }
 
-// NewRabbitMQContainer creates and starts a new RabbitMQ testcontainer.
-func NewRabbitMQContainer(ctx context.Context) (*RabbitMQContainer, error) {
-	container, err := rabbitmq.Run(ctx,
-		"rabbitmq:4-alpine",
-		testcontainers.WithWaitStrategy(
-			wait.ForLog("started TCP listener").
-				WithStartupTimeout(60*time.Second),
-		),
+// NewNatsContainer creates and starts a new NATS testcontainer.
+func NewNatsContainer(ctx context.Context) (*NatsContainer, error) {
+	container, err := nats.Run(ctx,
+		"nats:latest",
+		testcontainers.WithCmd("-js"), // Enable JetStream
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to start rabbitmq container: %w", err)
+		return nil, fmt.Errorf("failed to start nats container: %w", err)
 	}
 
-	url, err := container.AmqpURL(ctx)
+	url, err := container.ConnectionString(ctx)
 	if err != nil {
 		_ = container.Terminate(ctx)
-		return nil, fmt.Errorf("failed to get rabbitmq url: %w", err)
+		return nil, fmt.Errorf("failed to get nats connection string: %w", err)
 	}
 
-	return &RabbitMQContainer{
+	return &NatsContainer{
 		container: container,
 		url:       url,
 	}, nil
 }
 
-// URL returns the RabbitMQ AMQP URL.
-func (c *RabbitMQContainer) URL() string {
+// URL returns the NATS URL.
+func (c *NatsContainer) URL() string {
 	return c.url
 }
 
 // Terminate stops and removes the container.
-func (c *RabbitMQContainer) Terminate(ctx context.Context) error {
+func (c *NatsContainer) Terminate(ctx context.Context) error {
 	if c.container != nil {
 		return c.container.Terminate(ctx)
 	}

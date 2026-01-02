@@ -29,8 +29,8 @@ type VersionManifest struct {
 	SHA256 string `json:"sha256"`
 }
 
-// UpdateResult contains the result of an update check.
-type UpdateResult struct {
+// Result contains the result of an update check.
+type Result struct {
 	// UpdateAvailable indicates whether a newer version is available.
 	UpdateAvailable bool
 
@@ -47,7 +47,7 @@ type UpdateResult struct {
 	Checksum string
 }
 
-// UpdateCallback is called when an update is available.
+// Callback is called when an update is available.
 // The callback receives the update result and should return true if the
 // update should be applied, or false to skip it.
-type UpdateCallback func(result *UpdateResult) bool
+type Callback func(result *Result) bool

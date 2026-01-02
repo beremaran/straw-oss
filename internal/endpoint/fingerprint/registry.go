@@ -20,9 +20,9 @@ type HTTP2Settings struct {
 	MaxHeaderListSize    uint32
 }
 
-// FingerprintPreset represents a complete browser fingerprint profile.
+// Preset represents a complete browser fingerprint profile.
 // It includes TLS, HTTP/2, and header characteristics for accurate browser impersonation.
-type FingerprintPreset struct {
+type Preset struct {
 	// ID is the unique identifier for this preset (e.g., "chrome-133")
 	ID string
 
@@ -60,22 +60,22 @@ type FingerprintPreset struct {
 	LastUpdated time.Time
 }
 
-// FingerprintRegistry provides thread-safe storage and retrieval of fingerprint presets.
-type FingerprintRegistry struct {
-	presets map[string]FingerprintPreset
+// Registry provides thread-safe storage and retrieval of fingerprint presets.
+type Registry struct {
+	presets map[string]Preset
 	mu      sync.RWMutex
 }
 
 // NewRegistry creates a new empty fingerprint registry.
-func NewRegistry() *FingerprintRegistry {
-	return &FingerprintRegistry{
-		presets: make(map[string]FingerprintPreset),
+func NewRegistry() *Registry {
+	return &Registry{
+		presets: make(map[string]Preset),
 	}
 }
 
 // Get retrieves a fingerprint preset by its ID.
 // Returns the preset and true if found, or zero value and false if not found.
-func (r *FingerprintRegistry) Get(presetID string) (FingerprintPreset, bool) {
+func (r *Registry) Get(presetID string) (Preset, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -85,7 +85,7 @@ func (r *FingerprintRegistry) Get(presetID string) (FingerprintPreset, bool) {
 
 // Register adds a new fingerprint preset to the registry.
 // Returns an error if a preset with the same ID already exists.
-func (r *FingerprintRegistry) Register(preset FingerprintPreset) error {
+func (r *Registry) Register(preset Preset) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -99,14 +99,14 @@ func (r *FingerprintRegistry) Register(preset FingerprintPreset) error {
 
 // MustRegister registers a preset and panics on error.
 // This is intended for registering built-in presets at initialization.
-func (r *FingerprintRegistry) MustRegister(preset FingerprintPreset) {
+func (r *Registry) MustRegister(preset Preset) {
 	if err := r.Register(preset); err != nil {
 		panic(err)
 	}
 }
 
 // List returns a slice of all registered preset IDs.
-func (r *FingerprintRegistry) List() []string {
+func (r *Registry) List() []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -118,7 +118,7 @@ func (r *FingerprintRegistry) List() []string {
 }
 
 // Count returns the number of registered presets.
-func (r *FingerprintRegistry) Count() int {
+func (r *Registry) Count() int {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -135,7 +135,7 @@ func (e *DuplicatePresetError) Error() string {
 }
 
 // defaultRegistry is the global registry instance with built-in presets.
-var defaultRegistry *FingerprintRegistry
+var defaultRegistry *Registry
 
 func init() {
 	defaultRegistry = NewRegistry()
@@ -143,12 +143,12 @@ func init() {
 }
 
 // DefaultRegistry returns the global registry with built-in presets.
-func DefaultRegistry() *FingerprintRegistry {
+func DefaultRegistry() *Registry {
 	return defaultRegistry
 }
 
 // Get retrieves a preset from the default registry.
-func Get(presetID string) (FingerprintPreset, bool) {
+func Get(presetID string) (Preset, bool) {
 	return defaultRegistry.Get(presetID)
 }
 

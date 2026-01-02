@@ -33,7 +33,7 @@ func TestChecker_NewWithOptions(t *testing.T) {
 	c := NewChecker("http://example.com/manifest.json", "v2.0.0",
 		WithCheckInterval(customInterval),
 		WithHTTPTimeout(10*time.Second),
-		WithUpdateCallback(func(*UpdateResult) bool {
+		WithUpdateCallback(func(*Result) bool {
 			callbackCalled = true
 			return true
 		}),
@@ -48,7 +48,7 @@ func TestChecker_NewWithOptions(t *testing.T) {
 	}
 
 	// Test callback is set
-	c.callback(&UpdateResult{})
+	c.callback(&Result{})
 	if !callbackCalled {
 		t.Error("expected callback to be called")
 	}

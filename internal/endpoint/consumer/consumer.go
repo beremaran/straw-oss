@@ -5,6 +5,7 @@ package consumer
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -236,7 +237,8 @@ func (c *Consumer) processTask(ctx context.Context, body []byte) error {
 			"error", err,
 		)
 		// Check if it's a validation error to extract the code
-		if valErr, ok := err.(*protocol.ValidationError); ok {
+		var valErr *protocol.ValidationError
+		if errors.As(err, &valErr) {
 			return &TaskError{
 				Code:    valErr.Code,
 				Message: valErr.Message,
@@ -295,7 +297,7 @@ func (c *Consumer) processTask(ctx context.Context, body []byte) error {
 	bytesSent := req.EstimateWireSize()
 	metrics.BytesSent.Add(float64(bytesSent))
 
-	var bytesReceived uint64
+	var bytesReceived int
 	if resp != nil {
 		bytesReceived = resp.EstimateWireSize()
 		metrics.BytesReceived.Add(float64(bytesReceived))
@@ -304,7 +306,7 @@ func (c *Consumer) processTask(ctx context.Context, body []byte) error {
 	// Notify stats callback
 	if c.onTaskCompleted != nil {
 		var latency time.Duration
-		if resp != nil && resp.Timing != nil {
+		if resp.Timing != nil {
 			latency = resp.Timing.Total
 		}
 
@@ -314,7 +316,7 @@ func (c *Consumer) processTask(ctx context.Context, body []byte) error {
 			BytesSent:     bytesSent,
 			BytesReceived: bytesReceived,
 			Latency:       latency,
-			HasError:      resp != nil && resp.Error != nil,
+			HasError:      resp.Error != nil,
 		})
 	}
 

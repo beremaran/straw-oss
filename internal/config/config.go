@@ -16,9 +16,11 @@ type CoreConfig struct {
 	PostgresDSN   string `mapstructure:"postgres_dsn"`    // PostgreSQL connection string
 	DBAutoMigrate bool   `mapstructure:"db_auto_migrate"` // Automatically run migrations on startup
 	RedisAddr     string `mapstructure:"redis_addr"`      // Redis address (host:port)
-	RabbitMQURL   string `mapstructure:"rabbitmq_url"`    // RabbitMQ connection URL
-	LogLevel      string `mapstructure:"log_level"`       // Logging level (debug, info, warn, error)
-	LogFormat     string `mapstructure:"log_format"`      // Log format (json, text)
+	// RabbitMQURL   string `mapstructure:"rabbitmq_url"`    // RabbitMQ connection URL -- DEPRECATED
+	NatsURL   string `mapstructure:"nats_url"`   // NATS connection URL
+	NatsToken string `mapstructure:"nats_token"` // NATS authentication token
+	LogLevel  string `mapstructure:"log_level"`  // Logging level (debug, info, warn, error)
+	LogFormat string `mapstructure:"log_format"` // Log format (json, text)
 }
 
 // SecurityConfig contains security-related settings.
@@ -141,6 +143,8 @@ func setDefaults(v *viper.Viper) {
 	// Core defaults
 	v.SetDefault("redis_addr", "localhost:6379")
 	v.SetDefault("db_auto_migrate", false)
+	v.SetDefault("nats_url", "nats://localhost:4222")
+	v.SetDefault("nats_token", "")
 	v.SetDefault("log_level", "info")
 	v.SetDefault("log_format", "json")
 
@@ -180,7 +184,8 @@ func bindEnvVars(v *viper.Viper) {
 		"postgres_dsn",
 		"db_auto_migrate",
 		"redis_addr",
-		"rabbitmq_url",
+		"nats_url",
+		"nats_token",
 		"log_level",
 		"log_format",
 		"hmac_secret",
@@ -219,8 +224,8 @@ func validateServerConfig(cfg *ServerConfig) error {
 	if cfg.Core.PostgresDSN == "" {
 		errs = append(errs, "POSTGRES_DSN is required")
 	}
-	if cfg.Core.RabbitMQURL == "" {
-		errs = append(errs, "RABBITMQ_URL is required")
+	if cfg.Core.NatsURL == "" {
+		errs = append(errs, "NATS_URL is required")
 	}
 	if cfg.Security.HMACSecret == "" {
 		errs = append(errs, "HMAC_SECRET is required")
@@ -239,8 +244,8 @@ func validateEndpointConfig(cfg *EndpointConfig) error {
 	if cfg.ID == "" {
 		errs = append(errs, "ENDPOINT_ID is required")
 	}
-	if cfg.Core.RabbitMQURL == "" {
-		errs = append(errs, "RABBITMQ_URL is required")
+	if cfg.Core.NatsURL == "" {
+		errs = append(errs, "NATS_URL is required")
 	}
 	if cfg.Security.HMACSecret == "" {
 		errs = append(errs, "HMAC_SECRET is required")

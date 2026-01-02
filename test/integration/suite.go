@@ -2,6 +2,7 @@ package integration
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -14,7 +15,7 @@ import (
 type TestSuite struct {
 	Postgres *PostgresContainer
 	Redis    *RedisContainer
-	RabbitMQ *RabbitMQContainer
+	Nats     *NatsContainer
 
 	mu sync.Mutex
 }
@@ -53,7 +54,7 @@ func SetupSuite(ctx context.Context) (*TestSuite, error) {
 
 	// Start containers in parallel for faster setup
 	var wg sync.WaitGroup
-	var pgErr, redisErr, rabbitErr error
+	var pgErr, redisErr, natsErr error
 
 	wg.Add(3)
 
@@ -78,19 +79,19 @@ func SetupSuite(ctx context.Context) (*TestSuite, error) {
 	go func() {
 		defer wg.Done()
 		var err error
-		s.RabbitMQ, err = NewRabbitMQContainer(ctx)
+		s.Nats, err = NewNatsContainer(ctx)
 		if err != nil {
-			rabbitErr = fmt.Errorf("rabbitmq: %w", err)
+			natsErr = fmt.Errorf("nats: %w", err)
 		}
 	}()
 
 	wg.Wait()
 
 	// Check for errors
-	if pgErr != nil || redisErr != nil || rabbitErr != nil {
+	if pgErr != nil || redisErr != nil || natsErr != nil {
 		// Cleanup any started containers
 		s.Teardown(ctx)
-		return nil, fmt.Errorf("failed to start containers: postgres=%v, redis=%v, rabbitmq=%v", pgErr, redisErr, rabbitErr)
+		return nil, fmt.Errorf("failed to start containers: postgres=%v, redis=%v, nats=%v", pgErr, redisErr, natsErr)
 	}
 
 	// Run database migrations
@@ -102,7 +103,7 @@ func SetupSuite(ctx context.Context) (*TestSuite, error) {
 	log.Printf("Test suite initialized successfully")
 	log.Printf("  PostgreSQL: %s", s.Postgres.DSN())
 	log.Printf("  Redis: %s", s.Redis.Addr())
-	log.Printf("  RabbitMQ: %s", s.RabbitMQ.URL())
+	log.Printf("  NATS: %s", s.Nats.URL())
 
 	return s, nil
 }
@@ -124,9 +125,9 @@ func (s *TestSuite) Teardown(ctx context.Context) {
 		}
 	}
 
-	if s.RabbitMQ != nil {
-		if err := s.RabbitMQ.Terminate(ctx); err != nil {
-			log.Printf("Warning: failed to terminate rabbitmq: %v", err)
+	if s.Nats != nil {
+		if err := s.Nats.Terminate(ctx); err != nil {
+			log.Printf("Warning: failed to terminate nats: %v", err)
 		}
 	}
 
@@ -167,12 +168,12 @@ func (s *TestSuite) RedisAddr() string {
 	return s.Redis.Addr()
 }
 
-// RabbitMQURL returns the RabbitMQ AMQP URL.
-func (s *TestSuite) RabbitMQURL() string {
-	if s.RabbitMQ == nil {
+// NatsURL returns the NATS URL.
+func (s *TestSuite) NatsURL() string {
+	if s.Nats == nil {
 		return ""
 	}
-	return s.RabbitMQ.URL()
+	return s.Nats.URL()
 }
 
 // TestMain provides a standard TestMain implementation for integration tests.
@@ -182,6 +183,15 @@ func (s *TestSuite) RabbitMQURL() string {
 //	    integration.RunTestMain(m)
 //	}
 func RunTestMain(m *testing.M) {
+	// Parse flags to check for -short
+	flag.Parse()
+
+	// Skip integration tests in short mode (unit tests only)
+	if testing.Short() {
+		log.Println("Skipping integration tests in short mode")
+		os.Exit(0)
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 

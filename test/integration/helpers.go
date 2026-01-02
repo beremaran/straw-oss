@@ -23,12 +23,12 @@ import (
 )
 
 // NewTestServerConfig creates a ServerConfig with container connection strings.
-func NewTestServerConfig(postgresDSN, redisAddr, rabbitmqURL string) *config.ServerConfig {
+func NewTestServerConfig(postgresDSN, redisAddr, natsURL string) *config.ServerConfig {
 	return &config.ServerConfig{
 		Core: config.CoreConfig{
 			PostgresDSN: postgresDSN,
 			RedisAddr:   redisAddr,
-			RabbitMQURL: rabbitmqURL,
+			NatsURL:     natsURL,
 			LogLevel:    "debug",
 			LogFormat:   "json",
 		},
@@ -48,12 +48,12 @@ func NewTestServerConfig(postgresDSN, redisAddr, rabbitmqURL string) *config.Ser
 }
 
 // NewTestEndpointConfig creates an EndpointConfig with container connection strings.
-func NewTestEndpointConfig(postgresDSN, redisAddr, rabbitmqURL string) *config.EndpointConfig {
+func NewTestEndpointConfig(postgresDSN, redisAddr, natsURL string) *config.EndpointConfig {
 	return &config.EndpointConfig{
 		Core: config.CoreConfig{
 			PostgresDSN: postgresDSN,
 			RedisAddr:   redisAddr,
-			RabbitMQURL: rabbitmqURL,
+			NatsURL:     natsURL,
 			LogLevel:    "debug",
 			LogFormat:   "json",
 		},

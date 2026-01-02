@@ -55,7 +55,7 @@ func TestSecurity_BodyLimit(t *testing.T) {
 	// but we can test the middleware logic by creating a server instance or separate test
 	// Actually, Server.New() registers the middleware.
 
-	s := server.New(cfg, &auth.AuthService{}, &session.Service{}, &router.Matcher{}, &ratelimit.RateLimiter{}, &filter.Service{}, &orchestrator.RetryExecutor{})
+	s := server.New(cfg, &auth.Service{}, &session.Service{}, &router.Matcher{}, &ratelimit.RateLimiter{}, &filter.Service{}, &orchestrator.RetryExecutor{})
 
 	// Create a large request
 	largeBody := strings.Repeat("A", 100)

@@ -5,6 +5,7 @@ package http
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http/httptrace"
@@ -30,12 +31,12 @@ const DefaultMaxBodySize = 10 * 1024 * 1024
 
 // TransportProvider defines the interface for obtaining a transport for a specific host and fingerprint.
 type TransportProvider interface {
-	GetTransport(host string, preset fingerprint.FingerprintPreset) *fhttp.Transport
+	GetTransport(host string, preset fingerprint.Preset) *fhttp.Transport
 }
 
 // Client wraps fhttp.Client with fingerprint integration and proper header ordering.
 type Client struct {
-	registry          *fingerprint.FingerprintRegistry
+	registry          *fingerprint.Registry
 	transportProvider TransportProvider
 	defaultTimeout    time.Duration
 	maxBodySize       int64
@@ -67,7 +68,7 @@ func WithEndpointID(id string) ClientOption {
 }
 
 // NewClient creates a new HTTP client with fingerprint integration.
-func NewClient(registry *fingerprint.FingerprintRegistry, transportProvider TransportProvider, opts ...ClientOption) *Client {
+func NewClient(registry *fingerprint.Registry, transportProvider TransportProvider, opts ...ClientOption) *Client {
 	c := &Client{
 		registry:          registry,
 		transportProvider: transportProvider,
@@ -212,7 +213,8 @@ func isRetryableError(err error) bool {
 	}
 
 	// Check for network errors
-	if netErr, ok := err.(net.Error); ok {
+	var netErr net.Error
+	if errors.As(err, &netErr) {
 		return netErr.Timeout() || netErr.Temporary()
 	}
 

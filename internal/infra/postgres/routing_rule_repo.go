@@ -222,7 +222,7 @@ func (r *RoutingRuleRepository) GetRuleByID(ctx context.Context, id string) (*do
 		)
 	})
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil // Not found
 		}
 		return nil, fmt.Errorf("failed to get routing rule %s: %w", id, err)

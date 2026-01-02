@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -323,12 +324,12 @@ func TestInstaller_ContextCancellation(t *testing.T) {
 
 // Helper functions to check error types
 func isChecksumMismatch(err error) bool {
-	return err != nil && (err == ErrChecksumMismatch ||
+	return err != nil && (errors.Is(err, ErrChecksumMismatch) ||
 		(len(err.Error()) > 0 && err.Error()[:len("checksum mismatch")] == "checksum mismatch"))
 }
 
 func isDownloadFailed(err error) bool {
-	return err != nil && (err == ErrDownloadFailed ||
+	return err != nil && (errors.Is(err, ErrDownloadFailed) ||
 		(len(err.Error()) > 0 && err.Error()[:len("download failed")] == "download failed"))
 }
 
@@ -338,7 +339,9 @@ func TestInstaller_Install(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func(path string) {
+		_ = os.RemoveAll(path)
+	}(tmpDir)
 
 	// Create a "current binary"
 	currentBinary := filepath.Join(tmpDir, "app")

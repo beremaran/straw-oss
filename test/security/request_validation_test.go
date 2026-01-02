@@ -31,7 +31,7 @@ func TestRequestValidation_SecurityScenarios(t *testing.T) {
 	defer cancel()
 
 	// 1. Setup Server Components
-	serverConf := integration.NewTestServerConfig(s.PostgresDSN(), s.RedisAddr(), s.RabbitMQURL())
+	serverConf := integration.NewTestServerConfig(s.PostgresDSN(), s.RedisAddr(), s.NatsURL())
 
 	authRepo := integration.NewTestAuthRepo(t, s.PostgresDSN())
 	rlRedis := integration.NewTestRedisClient(t, s.RedisAddr())
@@ -46,16 +46,16 @@ func TestRequestValidation_SecurityScenarios(t *testing.T) {
 	require.NoError(t, err)
 	rateLimiter := ratelimit.NewRateLimiter(rlRedis)
 	filterService := filter.NewService(nil)
-	rabbitmq := broker.NewRabbitMQBroker(broker.Addrs(s.RabbitMQURL()))
-	err = rabbitmq.Connect()
+	natsBroker := broker.NewNatsBroker(broker.Addrs(s.NatsURL()))
+	err = natsBroker.Connect()
 	require.NoError(t, err)
-	defer rabbitmq.Close()
+	defer natsBroker.Close()
 	cb := circuitbreaker.New(circuitbreaker.Config{})
 	selector := &dummySelector{}
-	pub := orchestrator.NewPublisher(rabbitmq, selector, []byte("secret"), cb)
-	sub := orchestrator.NewConsumer(rabbitmq)
+	pub := orchestrator.NewPublisher(natsBroker, selector, []byte("secret"), cb)
+	sub := orchestrator.NewConsumer(natsBroker)
 	poolMgr := &dummyPoolManager{}
-	executor := orchestrator.NewRetryExecutor(pub, sub, poolMgr, rabbitmq, []byte("secret"))
+	executor := orchestrator.NewRetryExecutor(pub, sub, poolMgr, natsBroker, []byte("secret"))
 
 	srv := server.New(*serverConf, authService, sessionService, matcher, rateLimiter, filterService, executor)
 

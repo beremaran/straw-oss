@@ -3,6 +3,7 @@ package consumer
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -90,7 +91,7 @@ type mockTransportProvider struct {
 	transport *fhttp.Transport
 }
 
-func (m *mockTransportProvider) GetTransport(host string, preset fingerprint.FingerprintPreset) *fhttp.Transport {
+func (m *mockTransportProvider) GetTransport(host string, preset fingerprint.Preset) *fhttp.Transport {
 	if m.transport != nil {
 		return m.transport
 	}
@@ -194,7 +195,8 @@ func TestConsumer_InvalidSignature(t *testing.T) {
 		t.Fatal("expected error for invalid signature, got nil")
 	}
 
-	taskErr, ok := err.(*TaskError)
+	var taskErr *TaskError
+	ok := errors.As(err, &taskErr)
 	if !ok {
 		t.Fatalf("expected TaskError, got %T", err)
 	}
@@ -243,7 +245,8 @@ func TestConsumer_ReplayAttack(t *testing.T) {
 		t.Fatal("expected error for old timestamp, got nil")
 	}
 
-	taskErr, ok := err.(*TaskError)
+	var taskErr *TaskError
+	ok := errors.As(err, &taskErr)
 	if !ok {
 		t.Fatalf("expected TaskError, got %T", err)
 	}
@@ -293,11 +296,11 @@ func TestConsumer_ConcurrencyLimit(t *testing.T) {
 
 			// Track max concurrent
 			for {
-				max := atomic.LoadInt32(&maxConcurrent)
-				if current <= max {
+				theMaximum := atomic.LoadInt32(&maxConcurrent)
+				if current <= theMaximum {
 					break
 				}
-				if atomic.CompareAndSwapInt32(&maxConcurrent, max, current) {
+				if atomic.CompareAndSwapInt32(&maxConcurrent, theMaximum, current) {
 					break
 				}
 			}
@@ -334,7 +337,8 @@ func TestConsumer_InvalidJSON(t *testing.T) {
 		t.Fatal("expected error for invalid JSON, got nil")
 	}
 
-	taskErr, ok := err.(*TaskError)
+	var taskErr *TaskError
+	ok := errors.As(err, &taskErr)
 	if !ok {
 		t.Fatalf("expected TaskError, got %T", err)
 	}

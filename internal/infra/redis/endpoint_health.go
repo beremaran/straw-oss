@@ -4,6 +4,7 @@ package redis
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -129,7 +130,7 @@ func (s *EndpointHealthStore) GetHealth(ctx context.Context, endpointID string) 
 	key := healthKey(endpointID)
 	data, err := s.client.Client.Get(ctx, key).Bytes()
 	if err != nil {
-		if err == redis.Nil {
+		if errors.Is(err, redis.Nil) {
 			return nil, ErrCacheMiss
 		}
 		return nil, fmt.Errorf("failed to get health: %w", err)

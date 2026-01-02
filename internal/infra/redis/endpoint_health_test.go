@@ -2,6 +2,7 @@ package redis
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 )
@@ -56,7 +57,7 @@ func TestEndpointHealthStore_GetHealth_NotFound(t *testing.T) {
 	ctx := context.Background()
 
 	_, err := store.GetHealth(ctx, "nonexistent-endpoint")
-	if err != ErrCacheMiss {
+	if !errors.Is(err, ErrCacheMiss) {
 		t.Errorf("expected ErrCacheMiss, got %v", err)
 	}
 }
@@ -208,7 +209,7 @@ func TestEndpointHealthStore_DeleteHealth(t *testing.T) {
 
 	// Verify it's gone
 	_, err = store.GetHealth(ctx, "ep-to-delete")
-	if err != ErrCacheMiss {
+	if !errors.Is(err, ErrCacheMiss) {
 		t.Errorf("expected ErrCacheMiss after delete, got %v", err)
 	}
 

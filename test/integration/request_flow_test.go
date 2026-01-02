@@ -34,7 +34,7 @@ type testServerContext struct {
 	Server        *server.Server
 	ServerURL     string
 	httpServer    *httptest.Server
-	Broker        *broker.RabbitMQBroker
+	Broker        *broker.NatsBroker
 	MockEndpoint  *MockEndpoint
 	MockTarget    *MockTargetServer
 	HealthService *endpoint.HealthService
@@ -51,22 +51,27 @@ func setupTestServer(t *testing.T, suite *TestSuite) *testServerContext {
 	suite.CleanupForTest(t)
 
 	// Connect to infrastructure
-	broker := broker.NewRabbitMQBroker(broker.Addrs(suite.RabbitMQURL()))
+	broker := broker.NewNatsBroker(broker.Addrs(suite.NatsURL()))
 	err := broker.Connect()
-	require.NoError(t, err, "failed to connect to RabbitMQ")
+	require.NoError(t, err, "failed to connect to NATS")
 
 	// Declare the heartbeats logic
-	err = broker.DeclareExchange(ctx, "heartbeats", "topic")
+	// In NATS initialization we use DeclareExchange to create Streams.
+	// "heartbeats" -> fanout behavior
+	err = broker.DeclareExchange(ctx, "heartbeats", "fanout")
 	require.NoError(t, err, "failed to declare heartbeats exchange")
 
 	err = broker.DeclareQueue(ctx, "heartbeats")
 	require.NoError(t, err, "failed to declare heartbeats queue")
 
-	err = broker.BindQueue(ctx, "heartbeats", "heartbeats", "#")
+	err = broker.BindQueue(ctx, "heartbeats", "heartbeats", "")
 	require.NoError(t, err, "failed to bind heartbeats queue")
 
-	err = broker.DeclareExchange(ctx, "tasks", "topic")
+	err = broker.DeclareExchange(ctx, "tasks", "direct")
 	require.NoError(t, err, "failed to declare tasks exchange")
+
+	err = broker.DeclareExchange(ctx, "results", "topic")
+	require.NoError(t, err, "failed to declare results exchange")
 
 	redisClient, err := infraredis.NewClient(suite.RedisAddr(), nil)
 	require.NoError(t, err, "failed to connect to Redis")
@@ -102,6 +107,10 @@ func setupTestServer(t *testing.T, suite *TestSuite) *testServerContext {
 	// Declare and bind the shared results queue for the RetryExecutor
 	err = broker.DeclareQueue(ctx, orchestrator.SharedResultQueue)
 	require.NoError(t, err, "failed to declare shared results queue")
+
+	// Bind shared results queue to simulate direct-to-queue (using queue name as subject due to empty exchange publish)
+	err = broker.BindQueue(ctx, orchestrator.SharedResultQueue, "", orchestrator.SharedResultQueue)
+	require.NoError(t, err, "failed to bind shared results queue")
 
 	// Start the shared result queue consumer (required for response dispatching)
 	err = executor.Start(ctx)

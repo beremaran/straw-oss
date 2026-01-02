@@ -7,14 +7,14 @@ import (
 )
 
 func TestDomainError_Error(t *testing.T) {
-	err := &DomainError{
+	err := &StrawError{
 		Code:    "TEST_ERROR",
 		Message: "This is a test error",
 	}
 
 	want := "TEST_ERROR: This is a test error"
 	if got := err.Error(); got != want {
-		t.Errorf("DomainError.Error() = %q, want %q", got, want)
+		t.Errorf("StrawError.Error() = %q, want %q", got, want)
 	}
 }
 
@@ -42,11 +42,11 @@ func TestIsDomainError(t *testing.T) {
 	regularErr := &struct{ error }{}
 
 	if !IsDomainError(domainErr) {
-		t.Error("IsDomainError() returned false for DomainError")
+		t.Error("IsDomainError() returned false for StrawError")
 	}
 
 	if IsDomainError(regularErr) {
-		t.Error("IsDomainError() returned true for non-DomainError")
+		t.Error("IsDomainError() returned true for non-StrawError")
 	}
 }
 
@@ -55,7 +55,7 @@ func TestAsDomainError(t *testing.T) {
 
 	de, ok := AsDomainError(domainErr)
 	if !ok {
-		t.Error("AsDomainError() returned false for DomainError")
+		t.Error("AsDomainError() returned false for StrawError")
 	}
 	if de.Code != protocol.ErrCodeRateLimitExceeded {
 		t.Errorf("AsDomainError() Code = %s, want %s", de.Code, protocol.ErrCodeRateLimitExceeded)
@@ -94,7 +94,7 @@ func TestNewUpstreamError(t *testing.T) {
 }
 
 func TestPredefinedErrors(t *testing.T) {
-	errors := []*DomainError{
+	errors := []*StrawError{
 		ErrAuthInvalid,
 		ErrAuthForbidden,
 		ErrRateLimitExceeded,
@@ -109,13 +109,13 @@ func TestPredefinedErrors(t *testing.T) {
 
 	for _, err := range errors {
 		if err.Code == "" {
-			t.Errorf("DomainError has empty Code: %+v", err)
+			t.Errorf("StrawError has empty Code: %+v", err)
 		}
 		if err.Message == "" {
-			t.Errorf("DomainError has empty Message: %+v", err)
+			t.Errorf("StrawError has empty Message: %+v", err)
 		}
 		if err.HTTPCode == 0 {
-			t.Errorf("DomainError has zero HTTPCode: %+v", err)
+			t.Errorf("StrawError has zero HTTPCode: %+v", err)
 		}
 	}
 }

@@ -1,7 +1,7 @@
 package filter
 
-// FilterRequest represents the request data needed for filtering decisions.
-type FilterRequest struct {
+// Request represents the request data needed for filtering decisions.
+type Request struct {
 	// URL is the full request URL.
 	URL string
 
@@ -16,8 +16,8 @@ type FilterRequest struct {
 }
 
 // NewFilterRequest creates a new FilterRequest.
-func NewFilterRequest(url, host, contentType, method string) *FilterRequest {
-	return &FilterRequest{
+func NewFilterRequest(url, host, contentType, method string) *Request {
+	return &Request{
 		URL:         url,
 		Host:        host,
 		ContentType: contentType,

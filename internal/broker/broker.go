@@ -2,7 +2,13 @@ package broker
 
 import (
 	"context"
+	"errors"
 	"time"
+)
+
+var (
+	// ErrTimeout is returned when an operation times out.
+	ErrTimeout = errors.New("timeout")
 )
 
 // Handler is a function that handles incoming messages.

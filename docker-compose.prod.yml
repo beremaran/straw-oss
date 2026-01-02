@@ -62,21 +62,17 @@ services:
       - straw-prod-net
     restart: unless-stopped
 
-  rabbitmq:
-    image: rabbitmq:3.13-management-alpine
-    container_name: straw-rabbitmq-prod
-    environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-straw}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-straw_secure_rabbit_password}
+  nats:
+    image: nats:latest
+    container_name: straw-nats-prod
     ports:
-      - "5672:5672"
-      - "15672:15672"
-    volumes:
-      - rabbitmq-prod-data:/var/lib/rabbitmq
+      - "4222:4222"
+      - "8222:8222"
+    command: "-js -auth ${NATS_TOKEN:-dev-token}"
     healthcheck:
-      test: [ "CMD", "rabbitmq-diagnostics", "-q", "ping" ]
-      interval: 10s
-      timeout: 10s
+      test: [ "CMD", "nats", "server", "check", "connection" ]
+      interval: 5s
+      timeout: 5s
       retries: 5
     deploy:
       resources:
@@ -104,7 +100,8 @@ services:
       POSTGRES_DSN: postgres://${POSTGRES_USER:-straw}:${POSTGRES_PASSWORD:-straw_secure_password}@postgres:5432/${POSTGRES_DB:-straw}?sslmode=disable
       REDIS_ADDR: redis:6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-straw_secure_redis_password}
-      RABBITMQ_URL: amqp://${RABBITMQ_USER:-straw}:${RABBITMQ_PASSWORD:-straw_secure_rabbit_password}@rabbitmq:5672/
+      NATS_URL: nats://nats:4222
+      NATS_TOKEN: ${NATS_TOKEN:-dev-token}
       HMAC_SECRET: ${HMAC_SECRET:-change_this_to_a_secure_random_string_in_production}
       LOG_LEVEL: info
       LOG_FORMAT: json
@@ -118,7 +115,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      rabbitmq:
+      nats:
         condition: service_healthy
     deploy:
       resources:
@@ -145,14 +142,15 @@ services:
     environment:
       ENDPOINT_ID: endpoint-prod-001
       ENDPOINT_TAGS: type:datacenter,region:us-east
-      RABBITMQ_URL: amqp://${RABBITMQ_USER:-straw}:${RABBITMQ_PASSWORD:-straw_secure_rabbit_password}@rabbitmq:5672/
+      NATS_URL: nats://nats:4222
+      NATS_TOKEN: ${NATS_TOKEN:-dev-token}
       HMAC_SECRET: ${HMAC_SECRET:-change_this_to_a_secure_random_string_in_production}
       LOG_LEVEL: info
       LOG_FORMAT: json
       CONCURRENCY_LIMIT: 200
       OTEL_SDK_DISABLED: "true"
     depends_on:
-      rabbitmq:
+      nats:
         condition: service_healthy
     deploy:
       resources:
@@ -174,7 +172,8 @@ services:
 volumes:
   postgres-prod-data:
   redis-prod-data:
-  rabbitmq-prod-data:
+  # Note: NATS JetStream data is ephemeral in this setup; no volume mount is configured for the nats service.
+  # If persistence is needed, configure a volume mount for JetStream storage.
 
 
 networks:

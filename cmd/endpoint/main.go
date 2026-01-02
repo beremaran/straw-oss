@@ -107,9 +107,9 @@ func run() error {
 	defer func() { _ = httpClient.Close() }()
 
 	// broker
-	mqBroker := broker.NewRabbitMQBroker(
-		broker.Addrs(cfg.Core.RabbitMQURL),
-		broker.PrefetchCount(cfg.ConcurrencyLimit), // Prefetch matches concurrency limit
+	mqBroker := broker.NewNatsBroker(
+		broker.Addrs(cfg.Core.NatsURL),
+		broker.Token(cfg.Core.NatsToken),
 	)
 
 	if err := mqBroker.Connect(); err != nil {
@@ -148,7 +148,7 @@ func run() error {
 			"dev", // current version
 			update.WithCheckInterval(cfg.SelfUpdateInterval),
 			update.WithCheckerLogger(logger.WithGroup("update")),
-			update.WithUpdateCallback(func(r *update.UpdateResult) bool {
+			update.WithUpdateCallback(func(r *update.Result) bool {
 				logger.Info("starting auto-update", "new_version", r.NewVersion)
 
 				// Create a separate context for update to ensure it completes even if main ctx is cancelled

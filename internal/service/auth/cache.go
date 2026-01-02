@@ -10,22 +10,22 @@ import (
 	"github.com/kwilabs/straw-proxy-server/internal/infra/redis"
 )
 
-// AuthCache handles caching of API keys.
-type AuthCache struct {
+// Cache handles caching of API keys.
+type Cache struct {
 	client *redis.Client
 	ttl    time.Duration
 }
 
 // NewAuthCache creates a new AuthCache.
-func NewAuthCache(client *redis.Client, ttl time.Duration) *AuthCache {
-	return &AuthCache{
+func NewAuthCache(client *redis.Client, ttl time.Duration) *Cache {
+	return &Cache{
 		client: client,
 		ttl:    ttl,
 	}
 }
 
 // GetKey retrieves a cached API key by the hash of the raw key.
-func (c *AuthCache) GetKey(ctx context.Context, keyHash string) (*domain.ApiKey, error) {
+func (c *Cache) GetKey(ctx context.Context, keyHash string) (*domain.ApiKey, error) {
 	key := fmt.Sprintf("auth:valid:%s", keyHash)
 	var apiKey domain.ApiKey
 
@@ -41,14 +41,14 @@ func (c *AuthCache) GetKey(ctx context.Context, keyHash string) (*domain.ApiKey,
 }
 
 // SetKey caches a validated API key using the hash of the raw key.
-func (c *AuthCache) SetKey(ctx context.Context, keyHash string, apiKey *domain.ApiKey) error {
+func (c *Cache) SetKey(ctx context.Context, keyHash string, apiKey *domain.ApiKey) error {
 	key := fmt.Sprintf("auth:valid:%s", keyHash)
 	return c.client.Set(ctx, key, apiKey, c.ttl)
 }
 
 // InvalidateKey removes a cached API key by the hash of the raw key.
 // This is called when a key is revoked or its status changes.
-func (c *AuthCache) InvalidateKey(ctx context.Context, keyHash string) error {
+func (c *Cache) InvalidateKey(ctx context.Context, keyHash string) error {
 	key := fmt.Sprintf("auth:valid:%s", keyHash)
 	return c.client.Delete(ctx, key)
 }

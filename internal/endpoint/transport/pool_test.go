@@ -103,7 +103,7 @@ func TestPooledTransport_GetTransport_Reuse(t *testing.T) {
 	pt := NewPooledTransport(cfg, dialer.dial)
 	defer pt.Close()
 
-	preset := fingerprint.FingerprintPreset{ID: "chrome-133"}
+	preset := fingerprint.Preset{ID: "chrome-133"}
 
 	// Get transport for same host+fingerprint multiple times
 	t1 := pt.GetTransport("example.com:443", preset)
@@ -128,8 +128,8 @@ func TestPooledTransport_FingerprintIsolation(t *testing.T) {
 	pt := NewPooledTransport(cfg, dialer.dial)
 	defer pt.Close()
 
-	preset1 := fingerprint.FingerprintPreset{ID: "chrome-133"}
-	preset2 := fingerprint.FingerprintPreset{ID: "firefox-133"}
+	preset1 := fingerprint.Preset{ID: "chrome-133"}
+	preset2 := fingerprint.Preset{ID: "firefox-133"}
 
 	// Same host, different fingerprints
 	t1 := pt.GetTransport("example.com:443", preset1)
@@ -153,7 +153,7 @@ func TestPooledTransport_HostIsolation(t *testing.T) {
 	pt := NewPooledTransport(cfg, dialer.dial)
 	defer pt.Close()
 
-	preset := fingerprint.FingerprintPreset{ID: "chrome-133"}
+	preset := fingerprint.Preset{ID: "chrome-133"}
 
 	// Different hosts, same fingerprint
 	t1 := pt.GetTransport("example.com:443", preset)
@@ -177,7 +177,7 @@ func TestPooledTransport_LRUEviction(t *testing.T) {
 	pt := NewPooledTransport(cfg, dialer.dial)
 	defer pt.Close()
 
-	preset := fingerprint.FingerprintPreset{ID: "chrome-133"}
+	preset := fingerprint.Preset{ID: "chrome-133"}
 
 	// Add 3 pools (at capacity)
 	_ = pt.GetTransport("host1.com:443", preset)
@@ -227,7 +227,7 @@ func TestPooledTransport_ConcurrentAccess(t *testing.T) {
 			defer wg.Done()
 			for j := 0; j < iterations; j++ {
 				host := "host.com:443"
-				preset := fingerprint.FingerprintPreset{ID: "chrome-133"}
+				preset := fingerprint.Preset{ID: "chrome-133"}
 				_ = pt.GetTransport(host, preset)
 			}
 		}(i)
@@ -258,7 +258,7 @@ func TestPooledTransport_ConcurrentDifferentHosts(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 			host := fmt.Sprintf("host%c.com:443", 'A'+id) // Using Sprintf for safe dynamic string
-			preset := fingerprint.FingerprintPreset{ID: "chrome-133"}
+			preset := fingerprint.Preset{ID: "chrome-133"}
 			_ = pt.GetTransport(host, preset)
 		}(i)
 	}
@@ -278,7 +278,7 @@ func TestPooledTransport_Close(t *testing.T) {
 
 	pt := NewPooledTransport(cfg, dialer.dial)
 
-	preset := fingerprint.FingerprintPreset{ID: "chrome-133"}
+	preset := fingerprint.Preset{ID: "chrome-133"}
 
 	// Add some pools
 	_ = pt.GetTransport("host1.com:443", preset)
@@ -304,7 +304,7 @@ func TestPooledTransport_StaleEviction(t *testing.T) {
 	pt := NewPooledTransport(cfg, dialer.dial)
 	defer pt.Close()
 
-	preset := fingerprint.FingerprintPreset{ID: "chrome-133"}
+	preset := fingerprint.Preset{ID: "chrome-133"}
 
 	// Add a pool
 	_ = pt.GetTransport("stale.com:443", preset)
