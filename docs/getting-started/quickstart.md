@@ -56,7 +56,11 @@ Now we need a worker to actually perform the requests. In a real deployment, thi
 Open **another terminal tab** and run:
 
 ```bash
+# Option A: Command Line Interface
 go run cmd/endpoint/main.go
+
+# Option B: Graphical Interface (Requires Linux GUI dependencies)
+go run cmd/endpoint-gui/*.go
 ```
 
 ✅ **Success**: You should see logs like `Connected to broker` and `Waiting for messages`.

@@ -54,11 +54,15 @@ docker-build-endpoint:
 	@./scripts/build-docker.sh endpoint
 
 # Build targets
-build:
+build: build-gui
 	@echo "Building server..."
 	go build -o bin/relay-server ./cmd/relay-server
 	@echo "Building endpoint..."
 	go build -o bin/endpoint ./cmd/endpoint
+
+build-gui:
+	@echo "Building endpoint-gui..."
+	go build -o bin/endpoint-gui ./cmd/endpoint-gui
 
 test:
 	go test -race -v ./...

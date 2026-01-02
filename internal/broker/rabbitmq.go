@@ -549,6 +549,40 @@ func (b *RabbitMQBroker) ConsumeOnce(ctx context.Context, queue string, timeout 
 	}
 }
 
+// IsConnected returns true if the broker is currently connected.
+func (b *RabbitMQBroker) IsConnected() bool {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return b.isConnected
+}
+
+// QueueDepth returns the number of messages currently in the queue.
+func (b *RabbitMQBroker) QueueDepth(ctx context.Context, name string) (int, error) {
+	b.mu.RLock()
+	if !b.isConnected {
+		b.mu.RUnlock()
+		return 0, errors.New("broker not connected")
+	}
+	b.mu.RUnlock()
+
+	b.mgmtMu.Lock()
+	defer b.mgmtMu.Unlock()
+
+	if b.mgmtChannel == nil || b.mgmtChannel.IsClosed() {
+		ch, err := b.conn.Channel()
+		if err != nil {
+			return 0, fmt.Errorf("failed to reopen mgmt channel: %w", err)
+		}
+		b.mgmtChannel = ch
+	}
+
+	q, err := b.mgmtChannel.QueueInspect(name)
+	if err != nil {
+		return 0, err
+	}
+	return q.Messages, nil
+}
+
 // Close closes the connection.
 func (b *RabbitMQBroker) Close() error {
 	b.mu.Lock()

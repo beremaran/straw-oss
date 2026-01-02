@@ -85,6 +85,14 @@ func (m *mockBroker) deliverMessage(ctx context.Context, body []byte) error {
 	return nil
 }
 
+func (m *mockBroker) IsConnected() bool {
+	return true
+}
+
+func (m *mockBroker) QueueDepth(ctx context.Context, name string) (int, error) {
+	return 0, nil
+}
+
 // mockTransportProvider implements endpointhttp.TransportProvider
 type mockTransportProvider struct {
 	transport *fhttp.Transport

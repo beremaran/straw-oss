@@ -47,6 +47,19 @@ type Consumer struct {
 
 	// Logger
 	logger *slog.Logger
+
+	// Stats callback
+	onTaskCompleted func(TaskResult)
+}
+
+// TaskResult contains the results of a processed task.
+type TaskResult struct {
+	RequestID     string
+	StatusCode    int
+	BytesSent     uint64
+	BytesReceived uint64
+	Latency       time.Duration
+	HasError      bool
 }
 
 // Option is a functional option for configuring the Consumer.
@@ -82,6 +95,13 @@ func WithResultHandler(h func(ctx context.Context, resp *protocol.Response, repl
 func WithLogger(logger *slog.Logger) Option {
 	return func(c *Consumer) {
 		c.logger = logger
+	}
+}
+
+// WithStatsCallback sets the callback for task completion statistics.
+func WithStatsCallback(h func(TaskResult)) Option {
+	return func(c *Consumer) {
+		c.onTaskCompleted = h
 	}
 }
 
@@ -228,11 +248,10 @@ func (c *Consumer) processTask(ctx context.Context, body []byte) error {
 		}
 	}
 
-	c.logger.Debug("processing task",
+	c.logger.Info("processing task",
 		"request_id", req.ID,
 		"method", req.Method,
 		"url", req.URL,
-		"fingerprint", req.Fingerprint,
 	)
 
 	// Execute the HTTP request
@@ -258,7 +277,7 @@ func (c *Consumer) processTask(ctx context.Context, body []byte) error {
 	// Set endpoint ID on response
 	resp.EndpointID = c.endpointID
 
-	c.logger.Debug("task completed",
+	c.logger.Info("task completed",
 		"request_id", req.ID,
 		"status_code", resp.StatusCode,
 		"has_error", resp.Error != nil,
@@ -271,6 +290,33 @@ func (c *Consumer) processTask(ctx context.Context, body []byte) error {
 		metrics.TasksFailed.WithLabelValues(resp.Error.Code).Inc()
 	}
 	metrics.TasksProcessed.WithLabelValues(status).Inc()
+
+	// Track bandwidth
+	bytesSent := req.EstimateWireSize()
+	metrics.BytesSent.Add(float64(bytesSent))
+
+	var bytesReceived uint64
+	if resp != nil {
+		bytesReceived = resp.EstimateWireSize()
+		metrics.BytesReceived.Add(float64(bytesReceived))
+	}
+
+	// Notify stats callback
+	if c.onTaskCompleted != nil {
+		var latency time.Duration
+		if resp != nil && resp.Timing != nil {
+			latency = resp.Timing.Total
+		}
+
+		c.onTaskCompleted(TaskResult{
+			RequestID:     req.ID,
+			StatusCode:    resp.StatusCode,
+			BytesSent:     bytesSent,
+			BytesReceived: bytesReceived,
+			Latency:       latency,
+			HasError:      resp != nil && resp.Error != nil,
+		})
+	}
 
 	// Publish result if handler is configured
 	if c.resultHandler != nil {

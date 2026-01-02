@@ -52,11 +52,20 @@ Start the Relay Server:
 go run cmd/relay-server/main.go
 ```
 
-Start a Worker Endpoint:
-
-```bash
+Start a Worker Endpoint (CLI):
+bash
 go run cmd/endpoint/main.go
+
 ```
+
+Start a Worker Endpoint (GUI):
+```bash
+go run cmd/endpoint-gui/*.go
+```
+
+> [!TIP]
+> **GUI Build Dependencies (Linux)**: To build or run the GUI version on Linux, you need the following packages:
+> `libx11-dev libxcursor-dev libxrandr-dev libxinerama-dev libxi-dev libgl1-mesa-dev libxxf86vm-dev`
 
 👉 **[Read the Full Quick Start Guide](docs/getting-started/quickstart.md)**
 
