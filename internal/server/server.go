@@ -29,6 +29,20 @@ type Server struct {
 	rateLimiter    *ratelimit.RateLimiter
 	filterService  *filter.Service
 	orchestrator   *orchestrator.RetryExecutor
+
+	// Testing options
+	allowPrivateIPs bool // Allow localhost/private IPs (for testing only)
+}
+
+// ServerOption is a functional option for configuring the Server.
+type ServerOption func(*Server)
+
+// WithAllowPrivateIPs allows URLs that resolve to private IPs.
+// WARNING: Only use for testing. This disables SSRF protection.
+func WithAllowPrivateIPs() ServerOption {
+	return func(s *Server) {
+		s.allowPrivateIPs = true
+	}
 }
 
 // New creates a new Server instance.
@@ -40,6 +54,7 @@ func New(
 	rateLimiter *ratelimit.RateLimiter,
 	filterService *filter.Service,
 	orchestrator *orchestrator.RetryExecutor,
+	opts ...ServerOption,
 ) *Server {
 	e := echo.New()
 
@@ -70,6 +85,11 @@ func New(
 		orchestrator:   orchestrator,
 	}
 
+	// Apply options
+	for _, opt := range opts {
+		opt(s)
+	}
+
 	s.registerRoutes()
 
 	return s
@@ -89,13 +109,19 @@ func (s *Server) registerRoutes() {
 	v1.Use(authMiddleware)
 	v1.Use(mw.SessionMiddleware(s.sessionService))
 
-	// Relay Handler
+	// Relay Handler configuration
+	var relayOpts []handlers.RelayHandlerOption
+	if s.allowPrivateIPs {
+		relayOpts = append(relayOpts, handlers.WithAllowPrivateIPs())
+	}
+
 	relayHandler := handlers.NewRelayHandler(
 		s.matcher,
 		s.filterService,
 		s.orchestrator,
 		s.rateLimiter,
 		s.sessionService,
+		relayOpts...,
 	)
 
 	v1.POST("/request", relayHandler.Handle)

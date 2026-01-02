@@ -63,6 +63,7 @@ services:
       HMAC_SECRET: dev-secret-key-for-testing-only-change-in-production
       LOG_LEVEL: info
       LOG_FORMAT: json
+      DB_AUTO_MIGRATE: "true"
       METRICS_ENABLED: false
       OTEL_SDK_DISABLED: "true"
     ports:

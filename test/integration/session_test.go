@@ -231,11 +231,11 @@ func TestSession_Expiration(t *testing.T) {
 
 	ep1 := NewMockEndpoint(tc.Broker, MockEndpointConfig{EndpointID: "ep1", Tags: []string{"type:expiry"}, Secret: []byte(testHMACSecret)})
 	ep1.SetResponse(&MockEndpointResponse{StatusCode: 200})
-	ep1.Start(ctx)
+	require.NoError(t, ep1.Start(ctx), "failed to start mock endpoint")
 	defer ep1.Stop()
 
 	CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{ID: "ep1", Tags: []string{"type:expiry"}, IsHealthy: true})
-	tc.WaitForEndpoint(ctx, "ep1")
+	require.NoError(t, tc.WaitForEndpoint(ctx, "ep1"), "failed to wait for endpoint health")
 
 	CreateTestRoutingRule(ctx, suite.PostgresDSN(), "Expiry Rule", 100, []string{"type:expiry"}, []string{}, "", 0, 0, "", []TestEndpointPool{{Tier: 1, Endpoints: []string{"ep1"}}})
 	tc.Server.GetMatcher().LoadRules(ctx)
@@ -243,7 +243,9 @@ func TestSession_Expiration(t *testing.T) {
 	client := NewHTTPTestClient(tc.ServerURL, apiKey.RawKey)
 
 	// Create Session
-	resp, _ := client.SendRequest(ctx, &ProxyRequest{URL: "http://x.com", Method: "GET", Tags: []string{"type:expiry"}})
+	resp, err := client.SendRequest(ctx, &ProxyRequest{URL: "http://x.com", Method: "GET", Tags: []string{"type:expiry"}})
+	require.NoError(t, err, "failed to create session")
+	require.NotNil(t, resp, "response should not be nil")
 	sessionID := resp.Headers.Get(middleware.HeaderSessionID)
 	require.NotEmpty(t, sessionID)
 

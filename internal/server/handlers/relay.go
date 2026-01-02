@@ -31,6 +31,18 @@ type RelayHandler struct {
 	responseBuilder *orchestrator.ResponseBuilder
 	rateLimiter     *ratelimit.RateLimiter
 	sessionService  *session.Service
+	allowPrivateIPs bool // Allow localhost/private IPs (for testing only)
+}
+
+// RelayHandlerOption is a functional option for RelayHandler.
+type RelayHandlerOption func(*RelayHandler)
+
+// WithAllowPrivateIPs allows URLs that resolve to private IPs.
+// WARNING: Only use for testing. This disables SSRF protection.
+func WithAllowPrivateIPs() RelayHandlerOption {
+	return func(h *RelayHandler) {
+		h.allowPrivateIPs = true
+	}
 }
 
 // NewRelayHandler creates a new RelayHandler.
@@ -40,8 +52,9 @@ func NewRelayHandler(
 	executor *orchestrator.RetryExecutor,
 	rateLimiter *ratelimit.RateLimiter,
 	sessionService *session.Service,
+	opts ...RelayHandlerOption,
 ) *RelayHandler {
-	return &RelayHandler{
+	h := &RelayHandler{
 		matcher:         matcher,
 		filter:          filter,
 		executor:        executor,
@@ -50,6 +63,10 @@ func NewRelayHandler(
 		tagParser:       router.NewTagParser(),
 		responseBuilder: orchestrator.NewResponseBuilder(),
 	}
+	for _, opt := range opts {
+		opt(h)
+	}
+	return h
 }
 
 // Handle processes an incoming proxy request.
@@ -75,7 +92,11 @@ func (h *RelayHandler) Handle(c echo.Context) error {
 	}
 
 	// Validate URL (SSRF Protection)
-	if err := validator.ValidateTargetURL(req.URL); err != nil {
+	validationOpts := []validator.ValidationOption{}
+	if h.allowPrivateIPs {
+		validationOpts = append(validationOpts, validator.WithAllowPrivateIPs())
+	}
+	if err := validator.ValidateTargetURL(req.URL, validationOpts...); err != nil {
 		slog.WarnContext(ctx, "target url validation failed", "url", req.URL, "error", err)
 		return echo.NewHTTPError(http.StatusForbidden, fmt.Sprintf("invalid target url: %v", err))
 	}

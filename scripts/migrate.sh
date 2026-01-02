@@ -7,7 +7,7 @@ set -euo pipefail
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-MIGRATIONS_DIR="${PROJECT_ROOT}/migrations"
+MIGRATIONS_DIR="${PROJECT_ROOT}/internal/infra/postgres/migrations"
 
 # Load environment variables if .env file exists
 if [[ -f "${PROJECT_ROOT}/.env" ]]; then

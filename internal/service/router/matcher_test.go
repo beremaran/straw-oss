@@ -162,7 +162,9 @@ func TestMatcher_StartAutoRefresh(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	expectedRules := []domain.RoutingRule{{ID: "rule-1"}}
+	expectedRules := []domain.RoutingRule{
+		{ID: "rule-1", RequiredTags: []string{"target:test"}},
+	}
 	cache := &mockCache{version: 1, rules: expectedRules}
 	repo := &mockRepo{}
 	matcher := NewMatcher(repo, cache)
@@ -173,8 +175,10 @@ func TestMatcher_StartAutoRefresh(t *testing.T) {
 	// Wait for at least one refresh
 	time.Sleep(50 * time.Millisecond)
 
-	// Rules should still be loaded
-	assert.Equal(t, expectedRules, matcher.rules)
+	// Rules should still be loaded - use Match to access rules safely (avoid race)
+	matched := matcher.Match([]domain.Tag{{Key: "target", Value: "test"}})
+	assert.NotNil(t, matched)
+	assert.Equal(t, "rule-1", matched.ID)
 }
 
 func TestMatcher_loadFromDB(t *testing.T) {

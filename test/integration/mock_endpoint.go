@@ -126,6 +126,24 @@ func (m *MockEndpoint) Start(ctx context.Context) error {
 	m.wg.Add(1)
 	go func() {
 		defer m.wg.Done()
+
+		// Ensure queue exists and is bound to tasks exchange
+		// We do this in the goroutine or before? Subscription is typically blocking?
+		// Subscribe is non-blocking (returns error or nil).
+		// But Subscribe in broker/rabbitmq.go spawns a goroutine.
+		// So we should do declared/bind here before Subscribe.
+		// Note: broker methods use locks, so it's safe.
+
+		if err := m.broker.DeclareQueue(ctx, m.config.QueueName); err != nil {
+			m.logger.Error("failed to declare queue", "error", err)
+			return
+		}
+
+		if err := m.broker.BindQueue(ctx, m.config.QueueName, "tasks", m.config.QueueName); err != nil {
+			m.logger.Error("failed to bind queue", "error", err)
+			return
+		}
+
 		err := m.broker.Subscribe(ctx, m.config.QueueName, m.handleMessage)
 		if err != nil && ctx.Err() == nil {
 			m.logger.Error("mock endpoint subscription error", "error", err)
@@ -240,10 +258,13 @@ func (m *MockEndpoint) handleMessage(ctx context.Context, body []byte) error {
 	resp := m.buildResponse(ctx, req)
 
 	// Publish response to the response queue
-	respQueueName := fmt.Sprintf("results.%s", req.ID)
+	respQueueName := req.ReplyTo
+	if respQueueName == "" {
+		respQueueName = fmt.Sprintf("results.%s", req.ID)
+	}
 
 	// Convert to result message format that matches orchestrator expectations
-	resultMsg := resp.ToResultMessage(m.config.EndpointID, "")
+	resultMsg := resp.ToResultMessage(m.config.EndpointID, "", req.ID)
 
 	respBody, err := json.Marshal(resultMsg)
 	if err != nil {
@@ -363,6 +384,7 @@ func (m *MockEndpoint) forwardRequest(ctx context.Context, req *protocol.Request
 
 // ResultMessage matches the format expected by the orchestrator consumer.
 type MockResultMessage struct {
+	RequestID      string               `json:"request_id"`
 	StatusCode     int                  `json:"status_code"`
 	Headers        protocol.HeaderMap   `json:"headers"`
 	CompressedBody []byte               `json:"body"`
@@ -374,8 +396,9 @@ type MockResultMessage struct {
 }
 
 // MarshalJSON custom marshals the response for the broker.
-func (r *MockEndpointResponse) ToResultMessage(endpointID, sessionID string) *MockResultMessage {
+func (r *MockEndpointResponse) ToResultMessage(endpointID, sessionID, requestID string) *MockResultMessage {
 	return &MockResultMessage{
+		RequestID:      requestID,
 		StatusCode:     r.StatusCode,
 		Headers:        r.Headers,
 		CompressedBody: r.Body,

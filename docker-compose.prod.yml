@@ -108,6 +108,7 @@ services:
       HMAC_SECRET: ${HMAC_SECRET:-change_this_to_a_secure_random_string_in_production}
       LOG_LEVEL: info
       LOG_FORMAT: json
+      DB_AUTO_MIGRATE: ${DB_AUTO_MIGRATE:-false}
       METRICS_ENABLED: "true"
       OTEL_SDK_DISABLED: "true" # Enable if OTEL collector is available
     ports:

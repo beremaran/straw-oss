@@ -4,7 +4,6 @@ package integration
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"time"
 
 	"github.com/testcontainers/testcontainers-go"
@@ -56,13 +55,9 @@ func (c *PostgresContainer) DSN() string {
 	return c.dsn
 }
 
-// RunMigrations runs database migrations from the project's migrations directory.
-func (c *PostgresContainer) RunMigrations(migrationsPath string) error {
-	absPath, err := filepath.Abs(migrationsPath)
-	if err != nil {
-		return fmt.Errorf("failed to get absolute path for migrations: %w", err)
-	}
-	return pginfra.RunMigrations(c.dsn, absPath)
+// RunMigrations runs database migrations using the project's embedded migrations.
+func (c *PostgresContainer) RunMigrations() error {
+	return pginfra.RunEmbeddedMigrations(c.dsn)
 }
 
 // Terminate stops and removes the container.

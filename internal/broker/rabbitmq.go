@@ -23,13 +23,19 @@ const (
 // RabbitMQBroker implements MessageBroker using RabbitMQ.
 type RabbitMQBroker struct {
 	conn            *amqp.Connection
-	channel         *amqp.Channel
 	opts            Options
 	mu              sync.RWMutex
 	isConnected     bool
 	notifyConnClose chan *amqp.Error
 	done            chan struct{}
 	breaker         *circuitbreaker.CircuitBreaker
+
+	// Channels
+	mgmtChannel *amqp.Channel // For topology operations
+	mgmtMu      sync.Mutex
+
+	pubChannel *amqp.Channel // For publishing
+	pubMu      sync.Mutex
 }
 
 // WithCircuitBreaker sets the circuit breaker for the broker.
@@ -84,14 +90,24 @@ func (b *RabbitMQBroker) connect() error {
 		return fmt.Errorf("failed to connect to rabbitmq: %w", err)
 	}
 
-	ch, err := conn.Channel()
+	// Create Management Channel
+	mgmtCh, err := conn.Channel()
 	if err != nil {
 		conn.Close()
-		return fmt.Errorf("failed to open channel: %w", err)
+		return fmt.Errorf("failed to open mgmt channel: %w", err)
+	}
+
+	// Create Publisher Channel
+	pubCh, err := conn.Channel()
+	if err != nil {
+		mgmtCh.Close()
+		conn.Close()
+		return fmt.Errorf("failed to open pub channel: %w", err)
 	}
 
 	b.conn = conn
-	b.channel = ch
+	b.mgmtChannel = mgmtCh
+	b.pubChannel = pubCh
 	b.isConnected = true
 	b.notifyConnClose = make(chan *amqp.Error, 1)
 	b.conn.NotifyClose(b.notifyConnClose)
@@ -136,16 +152,27 @@ func (b *RabbitMQBroker) handleReconnect(notifyClose <-chan *amqp.Error) {
 }
 
 // DeclareExchange declares an exchange with the given name and kind.
+// DeclareExchange declares an exchange with the given name and kind.
 func (b *RabbitMQBroker) DeclareExchange(ctx context.Context, name, kind string) error {
 	b.mu.RLock()
 	if !b.isConnected {
 		b.mu.RUnlock()
 		return errors.New("broker not connected")
 	}
-	ch := b.channel
 	b.mu.RUnlock()
 
-	return ch.ExchangeDeclare(
+	b.mgmtMu.Lock()
+	defer b.mgmtMu.Unlock()
+
+	if b.mgmtChannel == nil || b.mgmtChannel.IsClosed() {
+		ch, err := b.conn.Channel()
+		if err != nil {
+			return fmt.Errorf("failed to reopen mgmt channel: %w", err)
+		}
+		b.mgmtChannel = ch
+	}
+
+	return b.mgmtChannel.ExchangeDeclare(
 		name,  // name
 		kind,  // kind
 		true,  // durable
@@ -157,16 +184,27 @@ func (b *RabbitMQBroker) DeclareExchange(ctx context.Context, name, kind string)
 }
 
 // DeclareQueue declares a queue with the given name.
+// DeclareQueue declares a queue with the given name.
 func (b *RabbitMQBroker) DeclareQueue(ctx context.Context, name string) error {
 	b.mu.RLock()
 	if !b.isConnected {
 		b.mu.RUnlock()
 		return errors.New("broker not connected")
 	}
-	ch := b.channel
 	b.mu.RUnlock()
 
-	_, err := ch.QueueDeclare(
+	b.mgmtMu.Lock()
+	defer b.mgmtMu.Unlock()
+
+	if b.mgmtChannel == nil || b.mgmtChannel.IsClosed() {
+		ch, err := b.conn.Channel()
+		if err != nil {
+			return fmt.Errorf("failed to reopen mgmt channel: %w", err)
+		}
+		b.mgmtChannel = ch
+	}
+
+	_, err := b.mgmtChannel.QueueDeclare(
 		name,  // name
 		true,  // durable
 		false, // delete when unused
@@ -178,16 +216,27 @@ func (b *RabbitMQBroker) DeclareQueue(ctx context.Context, name string) error {
 }
 
 // BindQueue binds a queue to an exchange with the given routing key.
+// BindQueue binds a queue to an exchange with the given routing key.
 func (b *RabbitMQBroker) BindQueue(ctx context.Context, queue, exchange, routingKey string) error {
 	b.mu.RLock()
 	if !b.isConnected {
 		b.mu.RUnlock()
 		return errors.New("broker not connected")
 	}
-	ch := b.channel
 	b.mu.RUnlock()
 
-	return ch.QueueBind(
+	b.mgmtMu.Lock()
+	defer b.mgmtMu.Unlock()
+
+	if b.mgmtChannel == nil || b.mgmtChannel.IsClosed() {
+		ch, err := b.conn.Channel()
+		if err != nil {
+			return fmt.Errorf("failed to reopen mgmt channel: %w", err)
+		}
+		b.mgmtChannel = ch
+	}
+
+	return b.mgmtChannel.QueueBind(
 		queue,      // queue name
 		routingKey, // routing key
 		exchange,   // exchange
@@ -203,7 +252,6 @@ func (b *RabbitMQBroker) Publish(ctx context.Context, exchange, routingKey strin
 		b.mu.RUnlock()
 		return errors.New("broker not connected")
 	}
-	ch := b.channel
 	b.mu.RUnlock()
 
 	publishFn := func() error {
@@ -222,7 +270,19 @@ func (b *RabbitMQBroker) Publish(ctx context.Context, exchange, routingKey strin
 		headers := amqp.Table{}
 		Inject(ctx, headers)
 
-		return ch.PublishWithContext(ctx,
+		b.pubMu.Lock()
+		defer b.pubMu.Unlock()
+
+		if b.pubChannel == nil || b.pubChannel.IsClosed() {
+			// Try to reopen
+			ch, err := b.conn.Channel()
+			if err != nil {
+				return fmt.Errorf("failed to reopen pub channel: %w", err)
+			}
+			b.pubChannel = ch
+		}
+
+		err := b.pubChannel.PublishWithContext(ctx,
 			exchange,   // exchange
 			routingKey, // routing key
 			false,      // mandatory
@@ -232,6 +292,8 @@ func (b *RabbitMQBroker) Publish(ctx context.Context, exchange, routingKey strin
 				ContentType: "application/json", // Default to JSON, maybe make configurable
 				Body:        body,
 			})
+
+		return err
 	}
 
 	if b.breaker != nil {
@@ -247,8 +309,14 @@ func (b *RabbitMQBroker) Subscribe(ctx context.Context, queue string, handler Ha
 		b.mu.RUnlock()
 		return errors.New("broker not connected")
 	}
-	ch := b.channel
+	conn := b.conn
 	b.mu.RUnlock()
+
+	// Create dedicated channel for this subscription
+	ch, err := conn.Channel()
+	if err != nil {
+		return fmt.Errorf("failed to open consumer channel: %w", err)
+	}
 
 	q, err := ch.QueueDeclare(
 		queue, // name
@@ -259,12 +327,14 @@ func (b *RabbitMQBroker) Subscribe(ctx context.Context, queue string, handler Ha
 		nil,   // arguments
 	)
 	if err != nil {
+		_ = ch.Close()
 		return fmt.Errorf("failed to declare queue: %w", err)
 	}
 
 	// Set QoS prefetch if configured
 	if b.opts.PrefetchCount > 0 {
 		if err := ch.Qos(b.opts.PrefetchCount, 0, false); err != nil {
+			_ = ch.Close()
 			return fmt.Errorf("failed to set QoS: %w", err)
 		}
 	}
@@ -279,6 +349,7 @@ func (b *RabbitMQBroker) Subscribe(ctx context.Context, queue string, handler Ha
 		nil,    // args
 	)
 	if err != nil {
+		_ = ch.Close()
 		return err
 	}
 
@@ -288,31 +359,41 @@ func (b *RabbitMQBroker) Subscribe(ctx context.Context, queue string, handler Ha
 	}
 
 	go func() {
+		// Close the channel when the context is cancelled or consumer exits,
+		// cleaning up resources on the broker.
+		defer ch.Close()
+
 		tracer := otel.Tracer(instrumentationName)
 
-		for d := range msgs {
-			// Extract context
-			ctx := Extract(context.Background(), d.Headers)
-			ctx, span := tracer.Start(ctx, "mq.consume",
-				trace.WithSpanKind(trace.SpanKindConsumer),
-				trace.WithAttributes(
-					semconv.MessagingSystem("rabbitmq"),
-					semconv.MessagingDestinationName(queue),
-					semconv.MessagingOperationProcess,
-				),
-			)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case d, ok := <-msgs:
+				if !ok {
+					return // Channel closed
+				}
 
-			if err := instrumentedHandler(ctx, d.Body); err != nil {
-				span.RecordError(err)
-				// Nack on error
-				// Requeue can be true or false depending on policy.
-				// For now, let's say false to avoid poison loops, or maybe dead-letter.
-				// Let's default to false for now.
-				d.Nack(false, false)
-			} else {
-				d.Ack(false)
+				// Extract context
+				msCtx := Extract(context.Background(), d.Headers)
+				msCtx, span := tracer.Start(msCtx, "mq.consume",
+					trace.WithSpanKind(trace.SpanKindConsumer),
+					trace.WithAttributes(
+						semconv.MessagingSystem("rabbitmq"),
+						semconv.MessagingDestinationName(queue),
+						semconv.MessagingOperationProcess,
+					),
+				)
+
+				if err := instrumentedHandler(msCtx, d.Body); err != nil {
+					span.RecordError(err)
+					// Nack on error
+					d.Nack(false, false)
+				} else {
+					d.Ack(false)
+				}
+				span.End()
 			}
-			span.End()
 		}
 	}()
 
@@ -327,8 +408,14 @@ func (b *RabbitMQBroker) SubscribeTemporary(ctx context.Context, queue string, h
 		b.mu.RUnlock()
 		return errors.New("broker not connected")
 	}
-	ch := b.channel
+	conn := b.conn
 	b.mu.RUnlock()
+
+	// Create dedicated channel
+	ch, err := conn.Channel()
+	if err != nil {
+		return fmt.Errorf("failed to open consumer channel: %w", err)
+	}
 
 	q, err := ch.QueueDeclare(
 		queue, // name
@@ -339,6 +426,7 @@ func (b *RabbitMQBroker) SubscribeTemporary(ctx context.Context, queue string, h
 		nil,   // arguments
 	)
 	if err != nil {
+		_ = ch.Close()
 		return fmt.Errorf("failed to declare temporary queue: %w", err)
 	}
 
@@ -352,31 +440,42 @@ func (b *RabbitMQBroker) SubscribeTemporary(ctx context.Context, queue string, h
 		nil,    // args
 	)
 	if err != nil {
+		_ = ch.Close()
 		return err
 	}
 
 	go func() {
+		defer ch.Close()
 		tracer := otel.Tracer(instrumentationName)
 
-		for d := range msgs {
-			// Extract context
-			ctx := Extract(context.Background(), d.Headers)
-			ctx, span := tracer.Start(ctx, "mq.consume_temp",
-				trace.WithSpanKind(trace.SpanKindConsumer),
-				trace.WithAttributes(
-					semconv.MessagingSystem("rabbitmq"),
-					semconv.MessagingDestinationName(queue),
-					semconv.MessagingOperationProcess,
-					attribute.Bool("messaging.temp_queue", true),
-				),
-			)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case d, ok := <-msgs:
+				if !ok {
+					return
+				}
 
-			if err := handler(ctx, d.Body); err != nil {
-				span.RecordError(err)
-				// For temporary/RPC queues, nack behavior depends on needs.
-				// If auto-ack is true, we don't need to do anything.
+				// Extract context
+				msCtx := Extract(context.Background(), d.Headers)
+				msCtx, span := tracer.Start(msCtx, "mq.consume_temp",
+					trace.WithSpanKind(trace.SpanKindConsumer),
+					trace.WithAttributes(
+						semconv.MessagingSystem("rabbitmq"),
+						semconv.MessagingDestinationName(queue),
+						semconv.MessagingOperationProcess,
+						attribute.Bool("messaging.temp_queue", true),
+					),
+				)
+
+				if err := handler(msCtx, d.Body); err != nil {
+					span.RecordError(err)
+					// For temporary/RPC queues, nack behavior depends on needs.
+					// If auto-ack is true, we don't need to do anything.
+				}
+				span.End()
 			}
-			span.End()
 		}
 	}()
 
@@ -395,8 +494,15 @@ func (b *RabbitMQBroker) ConsumeOnce(ctx context.Context, queue string, timeout 
 		b.mu.RUnlock()
 		return nil, errors.New("broker not connected")
 	}
-	ch := b.channel
+	conn := b.conn
 	b.mu.RUnlock()
+
+	// Create dedicated channel
+	ch, err := conn.Channel()
+	if err != nil {
+		return nil, fmt.Errorf("failed to open consumer channel: %w", err)
+	}
+	defer ch.Close()
 
 	// Declare temporary queue (exclusive, auto-delete)
 	q, err := ch.QueueDeclare(
@@ -453,9 +559,21 @@ func (b *RabbitMQBroker) Close() error {
 	}
 
 	close(b.done)
-	if err := b.channel.Close(); err != nil {
-		return err
+
+	// Close management channel
+	b.mgmtMu.Lock()
+	if b.mgmtChannel != nil {
+		_ = b.mgmtChannel.Close()
 	}
+	b.mgmtMu.Unlock()
+
+	// Close publisher channel
+	b.pubMu.Lock()
+	if b.pubChannel != nil {
+		_ = b.pubChannel.Close()
+	}
+	b.pubMu.Unlock()
+
 	if err := b.conn.Close(); err != nil {
 		return err
 	}
