@@ -38,6 +38,12 @@ type MessageBroker interface {
 	// before the timeout expires.
 	ConsumeOnce(ctx context.Context, queue string, timeout time.Duration) ([]byte, error)
 
+	// IsConnected returns true if the broker is currently connected.
+	IsConnected() bool
+
+	// QueueDepth returns the number of messages currently in the queue.
+	QueueDepth(ctx context.Context, name string) (int, error)
+
 	// Close closes the broker connection.
 	Close() error
 }

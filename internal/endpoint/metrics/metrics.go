@@ -76,4 +76,20 @@ var (
 		},
 		[]string{"reason"},
 	)
+
+	// BytesSent tracks the total number of bytes sent to upstream targets.
+	BytesSent = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "endpoint_bytes_sent_total",
+			Help: "Total bytes sent to upstream (request body)",
+		},
+	)
+
+	// BytesReceived tracks the total number of bytes received from upstream targets.
+	BytesReceived = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "endpoint_bytes_received_total",
+			Help: "Total bytes received from upstream (response body)",
+		},
+	)
 )

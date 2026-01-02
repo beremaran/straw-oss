@@ -15,7 +15,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.25.5'
           cache: false
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v6
@@ -30,7 +30,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.25.5'
       - name: Test
         run: go test -race -v ./...
 
@@ -42,9 +42,49 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.25.5'
       - name: Build
         run: make build
+
+  build-gui:
+    name: Build GUI (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.5'
+      
+      - name: Install dependencies (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1-mesa-dev xorg-dev libxkbcommon-dev
+
+      - name: Build GUI (Linux/MacOS)
+        if: matrix.os != 'windows-latest'
+        run: |
+          export CGO_ENABLED=1
+          make build-gui
+
+      - name: Build GUI (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          $env:CGO_ENABLED = "1"
+          go build -ldflags="-H=windowsgui" -o bin/endpoint-gui.exe ./cmd/endpoint-gui
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: endpoint-gui-${{ matrix.os }}
+          path: |
+            bin/endpoint-gui
+            bin/endpoint-gui.exe
+          if-no-files-found: ignore
 
   docker-build:
     name: Docker Build
@@ -80,7 +120,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.25.5'
           cache: false
       - name: Install govulncheck
         run: go install golang.org/x/vuln/cmd/govulncheck@latest
@@ -105,7 +145,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.25.5'
           cache: true
       - name: Verify modules
         run: go mod verify

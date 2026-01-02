@@ -42,6 +42,26 @@ type Request struct {
 	ReplyTo string `json:"reply_to,omitempty"`
 }
 
+// EstimateWireSize returns the approximate size of the HTTP request in bytes.
+// It includes the method, URL, headers, and body.
+func (r *Request) EstimateWireSize() uint64 {
+	// Request line: Method + " " + URL + " HTTP/1.1\r\n"
+	size := uint64(len(r.Method) + len(r.URL) + 12)
+
+	for _, h := range r.Headers {
+		// Header: Key + ": " + Value + "\r\n"
+		size += uint64(len(h.Key) + len(h.Value) + 4)
+	}
+
+	// End of headers: "\r\n"
+	size += 2
+
+	// Body
+	size += uint64(len(r.Body))
+
+	return size
+}
+
 // Response represents the result of a proxied request from an Endpoint.
 type Response struct {
 	// RequestID correlates this response to the original request.
@@ -67,6 +87,27 @@ type Response struct {
 
 	// SessionID if a session was created or used.
 	SessionID string `json:"session_id,omitempty"`
+}
+
+// EstimateWireSize returns the approximate size of the HTTP response in bytes.
+// It includes the status line, headers, and body.
+func (r *Response) EstimateWireSize() uint64 {
+	// Status line: "HTTP/1.1 " + 3 chars status + " " + StatusText + "\r\n"
+	// We estimate status line as ~15 bytes (e.g. "HTTP/1.1 200 OK\r\n")
+	size := uint64(15)
+
+	for _, h := range r.Headers {
+		// Header: Key + ": " + Value + "\r\n"
+		size += uint64(len(h.Key) + len(h.Value) + 4)
+	}
+
+	// End of headers: "\r\n"
+	size += 2
+
+	// Body
+	size += uint64(len(r.Body))
+
+	return size
 }
 
 // HeaderMap is an ordered list of HTTP headers.

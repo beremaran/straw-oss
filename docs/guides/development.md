@@ -17,15 +17,20 @@ We follow a standard Go project layout:
 
 **Prerequisite**: Ensure you are in the root directory of the project.
 
-### 1. Environment Configuration
-
-Copy the example environment file:
-
 ```bash
 cp .env.example .env
 ```
 
-### 2. Start Infrastructure
+### 2. GUI Build Dependencies (Linux)
+
+If you plan to build or run the graphical version of the endpoint (`endpoint-gui`) on Linux, you must install the following development libraries:
+
+```bash
+# Example for Debian/Ubuntu
+sudo apt-get install libx11-dev libxcursor-dev libxrandr-dev libxinerama-dev libxi-dev libgl1-mesa-dev libxxf86vm-dev
+```
+
+### 3. Start Infrastructure
 
 Spin up Postgres, Redis, and RabbitMQ:
 
