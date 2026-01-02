@@ -107,7 +107,7 @@ func main() {
 		slog.Error("Failed to connect to Redis", "error", err)
 		os.Exit(1)
 	}
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	// 4. Initialize Services
 	apiKeyRepo := postgres.NewApiKeyRepository(pgClient)
@@ -150,7 +150,7 @@ func main() {
 		slog.Error("Failed to connect to message broker", "error", err)
 		os.Exit(1)
 	}
-	defer rabbitBroker.Close()
+	defer func() { _ = rabbitBroker.Close() }()
 
 	// Declare required exchanges before endpoints can connect
 	// These exchanges must exist for endpoints to successfully publish/consume messages

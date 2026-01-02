@@ -75,7 +75,7 @@ func main() {
 		fmt.Printf("❌ TLS dial failed: %v\n", err)
 		os.Exit(1)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	fmt.Println("✅ TLS handshake successful")
 
 	// Send raw HTTP/1.1 request (simpler than dealing with HTTP/2 complexity)
@@ -98,7 +98,7 @@ func main() {
 		runWithHTTP2(ctx, preset, userAgent)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	processResponse(resp)
 }
@@ -132,7 +132,7 @@ func runWithHTTP2(ctx context.Context, preset, userAgent string) {
 		fmt.Printf("❌ HTTP/2 request failed: %v\n", err)
 		os.Exit(1)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	processResponse(resp)
 }

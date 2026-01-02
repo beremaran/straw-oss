@@ -55,7 +55,6 @@ func WithHandshakeTimeout(d time.Duration) DialOption {
 // sessionCache provides TLS session resumption support.
 var (
 	sessionCache     = utls.NewLRUClientSessionCache(1000)
-	sessionCacheMu   sync.RWMutex
 	sessionCacheInit sync.Once
 )
 

@@ -16,7 +16,6 @@ import (
 type consumeOnceMockBroker struct {
 	response    []byte
 	responseErr error
-	timeout     time.Duration
 
 	// For tracking calls
 	calledQueue   string
@@ -59,6 +58,14 @@ func (m *consumeOnceMockBroker) DeclareQueue(ctx context.Context, name string) e
 
 func (m *consumeOnceMockBroker) BindQueue(ctx context.Context, queue, exchange, routingKey string) error {
 	return nil
+}
+
+func (m *consumeOnceMockBroker) IsConnected() bool {
+	return true
+}
+
+func (m *consumeOnceMockBroker) QueueDepth(ctx context.Context, name string) (int, error) {
+	return 0, nil
 }
 
 func TestConsumer_New(t *testing.T) {

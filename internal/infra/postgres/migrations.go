@@ -18,7 +18,7 @@ func RunMigrations(dsn string, migrationsDir string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open db for migrations: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if err := db.Ping(); err != nil {
 		return fmt.Errorf("failed to connect to db for migrations: %w", err)

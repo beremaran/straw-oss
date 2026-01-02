@@ -95,7 +95,7 @@ func run() error {
 	pooledTransport := endpointtransport.NewPooledTransport(poolConfig, func(ctx context.Context, network, addr, fp string) (net.Conn, error) {
 		return endpointtls.Dial(ctx, network, addr, fp)
 	})
-	defer pooledTransport.Close()
+	defer func() { _ = pooledTransport.Close() }()
 
 	// http client
 	httpClient := endpointhttp.NewClient(
@@ -104,7 +104,7 @@ func run() error {
 		endpointhttp.WithEndpointID(cfg.ID),
 		endpointhttp.WithDefaultTimeout(30*time.Second), // sane default
 	)
-	defer httpClient.Close()
+	defer func() { _ = httpClient.Close() }()
 
 	// broker
 	mqBroker := broker.NewRabbitMQBroker(
@@ -115,7 +115,7 @@ func run() error {
 	if err := mqBroker.Connect(); err != nil {
 		return fmt.Errorf("failed to connect to message broker: %w", err)
 	}
-	defer mqBroker.Close()
+	defer func() { _ = mqBroker.Close() }()
 	logger.Info("connected to message broker")
 
 	// heartbeat sender
@@ -281,7 +281,7 @@ func setupHealthHandler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
+		_, _ = w.Write([]byte("ok"))
 	})
 	// Metrics handler
 	mux.Handle("/metrics", metrics.Handler())

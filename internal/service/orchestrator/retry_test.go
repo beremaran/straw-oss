@@ -67,6 +67,14 @@ func (m *retryMockBroker) BindQueue(ctx context.Context, queue, exchange, routin
 	return nil
 }
 
+func (m *retryMockBroker) IsConnected() bool {
+	return true
+}
+
+func (m *retryMockBroker) QueueDepth(ctx context.Context, name string) (int, error) {
+	return 0, nil
+}
+
 type mockPoolManager struct {
 	endpoints   map[int][]string
 	poolConfigs map[int]*domain.EndpointPool
@@ -101,14 +109,6 @@ func (m *mockPoolManager) GetEndpointFromPool(ctx context.Context, rule *domain.
 
 func (m *mockPoolManager) GetPoolConfig(rule *domain.RoutingRule, poolTier int) *domain.EndpointPool {
 	return m.poolConfigs[poolTier]
-}
-
-func (m *mockPoolManager) addEndpoint(poolTier int, endpointID string) {
-	m.endpoints[poolTier] = append(m.endpoints[poolTier], endpointID)
-}
-
-func (m *mockPoolManager) setPoolConfig(poolTier int, config *domain.EndpointPool) {
-	m.poolConfigs[poolTier] = config
 }
 
 func TestRetryExecutor_getPoolTiers(t *testing.T) {
@@ -398,27 +398,5 @@ func TestWithBackoffConfig(t *testing.T) {
 
 	if executor.backoffFactor != 3.0 {
 		t.Errorf("expected backoffFactor 3.0, got %v", executor.backoffFactor)
-	}
-}
-
-// Helper functions for creating test results
-
-func createSuccessResult(endpointID string) *ResultMessage {
-	return &ResultMessage{
-		RequestID:      "req-1",
-		EndpointID:     endpointID,
-		StatusCode:     200,
-		Headers:        protocol.HeaderMap{{Key: "Content-Type", Value: "application/json"}},
-		CompressedBody: []byte(`{"success": true}`),
-		BodyCompressed: false,
-	}
-}
-
-func createFailureResult(statusCode int) *ResultMessage {
-	return &ResultMessage{
-		RequestID:      "req-1",
-		StatusCode:     statusCode,
-		CompressedBody: []byte(`{}`),
-		BodyCompressed: false,
 	}
 }

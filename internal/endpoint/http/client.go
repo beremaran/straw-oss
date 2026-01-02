@@ -172,7 +172,7 @@ func (c *Client) Do(ctx context.Context, req *protocol.Request) (*protocol.Respo
 			},
 		}, nil
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	timing.Total = time.Since(startTime)
 

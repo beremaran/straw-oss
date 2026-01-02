@@ -348,6 +348,14 @@ func (m *mockBroker) Close() error {
 	return nil
 }
 
+func (m *mockBroker) IsConnected() bool {
+	return true
+}
+
+func (m *mockBroker) QueueDepth(ctx context.Context, name string) (int, error) {
+	return 0, nil
+}
+
 // TestWithQueue tests the WithQueue option function.
 func TestWithQueue(t *testing.T) {
 	store := newMockHealthStore()
