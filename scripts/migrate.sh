@@ -12,10 +12,12 @@ MIGRATIONS_DIR="${PROJECT_ROOT}/internal/infra/postgres/migrations"
 # Load environment variables if .env file exists
 if [[ -f "${PROJECT_ROOT}/.env" ]]; then
     set -a
+    # shellcheck source=/dev/null
     source "${PROJECT_ROOT}/.env"
     set +a
 elif [[ -f "${PROJECT_ROOT}/.env.local" ]]; then
     set -a
+    # shellcheck source=/dev/null
     source "${PROJECT_ROOT}/.env.local"
     set +a
 fi
