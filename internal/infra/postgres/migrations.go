@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	_ "github.com/jackc/pgx/v5/stdlib" // Register pgx driver for database/sql
+	"github.com/kwilabs/straw-proxy-server/internal/infra/postgres/migrations"
 	"github.com/pressly/goose/v3"
 )
 
@@ -34,6 +35,11 @@ func RunMigrations(dsn string, migrationsDir string) error {
 	}
 
 	return nil
+}
+
+// RunEmbeddedMigrations runs database migrations using the embedded filesystem.
+func RunEmbeddedMigrations(dsn string) error {
+	return RunMigrationsWithFS(dsn, migrations.FS, ".")
 }
 
 // RunMigrationsWithFS runs database migrations from an embed.FS.

@@ -3,7 +3,6 @@ package integration
 import (
 	"context"
 	"database/sql"
-	"os"
 	"testing"
 	"time"
 
@@ -250,11 +249,4 @@ func TestWaitForHealthy(t *testing.T) {
 		}, 50*time.Millisecond, 10*time.Second)
 		assert.Error(t, err)
 	})
-}
-
-// Verify that the migrations path detection works
-func TestMigrationsPathDetection(t *testing.T) {
-	path := getMigrationsPath()
-	_, err := os.Stat(path)
-	assert.NoError(t, err, "migrations path should exist: %s", path)
 }

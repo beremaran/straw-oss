@@ -94,9 +94,7 @@ func SetupSuite(ctx context.Context) (*TestSuite, error) {
 	}
 
 	// Run database migrations
-	// Migrations path is relative to the project root
-	migrationsPath := getMigrationsPath()
-	if err := s.Postgres.RunMigrations(migrationsPath); err != nil {
+	if err := s.Postgres.RunMigrations(); err != nil {
 		s.Teardown(ctx)
 		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}
@@ -177,30 +175,6 @@ func (s *TestSuite) RabbitMQURL() string {
 	return s.RabbitMQ.URL()
 }
 
-// getMigrationsPath returns the path to the migrations directory.
-// It tries to find the migrations directory relative to the test file location.
-func getMigrationsPath() string {
-	// When running tests, the working directory is typically the package directory
-	// We need to navigate to the project root to find migrations
-
-	// Try common relative paths
-	paths := []string{
-		"../../migrations",    // From test/integration
-		"../../../migrations", // From a deeper test subdirectory
-		"migrations",          // From project root
-		"./migrations",        // Explicit current directory
-	}
-
-	for _, p := range paths {
-		if _, err := os.Stat(p); err == nil {
-			return p
-		}
-	}
-
-	// Default fallback
-	return "../../migrations"
-}
-
 // TestMain provides a standard TestMain implementation for integration tests.
 // Usage in your _test.go file:
 //
@@ -212,11 +186,14 @@ func RunTestMain(m *testing.M) {
 	defer cancel()
 
 	// Setup
-	var err error
-	suite, err = SetupSuite(ctx)
-	if err != nil {
-		log.Fatalf("Failed to setup test suite: %v", err)
-	}
+	// Setup
+	suiteOnce.Do(func() {
+		var err error
+		suite, err = SetupSuite(ctx)
+		if err != nil {
+			log.Fatalf("Failed to setup test suite: %v", err)
+		}
+	})
 
 	// Run tests
 	code := m.Run()

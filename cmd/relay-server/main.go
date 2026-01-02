@@ -91,6 +91,16 @@ func main() {
 	}
 	defer pgClient.Close()
 
+	// 3. Run Migrations if enabled
+	if cfg.Core.DBAutoMigrate {
+		slog.Info("Applying pending migrations...")
+		if err := postgres.RunEmbeddedMigrations(cfg.Core.PostgresDSN); err != nil {
+			slog.Error("Failed to run migrations", "error", err)
+			os.Exit(1)
+		}
+		slog.Info("Migrations applied successfully!")
+	}
+
 	// Redis
 	redisClient, err := redis.NewClient(cfg.Core.RedisAddr, redisBreaker)
 	if err != nil {

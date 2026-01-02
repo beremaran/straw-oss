@@ -23,7 +23,8 @@ func TestNewServer(t *testing.T) {
 
 func TestServerUseMiddleware(t *testing.T) {
 	cfg := config.ServerConfig{
-		HTTPPort: 0,
+		HTTPPort:    0,
+		MaxBodySize: "10M",
 	}
 	srv := New(cfg, nil, nil, nil, nil, nil, nil)
 	// Check if middleware are registered by checking the routes or just ensuring no panic
@@ -34,7 +35,8 @@ func TestServerUseMiddleware(t *testing.T) {
 
 func TestServerHealthRoutes(t *testing.T) {
 	cfg := config.ServerConfig{
-		HTTPPort: 0,
+		HTTPPort:    0,
+		MaxBodySize: "10M",
 	}
 	srv := New(cfg, nil, nil, nil, nil, nil, nil)
 

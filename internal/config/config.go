@@ -13,11 +13,12 @@ import (
 
 // CoreConfig contains core infrastructure settings shared by Server and Endpoint.
 type CoreConfig struct {
-	PostgresDSN string `mapstructure:"postgres_dsn"` // PostgreSQL connection string
-	RedisAddr   string `mapstructure:"redis_addr"`   // Redis address (host:port)
-	RabbitMQURL string `mapstructure:"rabbitmq_url"` // RabbitMQ connection URL
-	LogLevel    string `mapstructure:"log_level"`    // Logging level (debug, info, warn, error)
-	LogFormat   string `mapstructure:"log_format"`   // Log format (json, text)
+	PostgresDSN   string `mapstructure:"postgres_dsn"`    // PostgreSQL connection string
+	DBAutoMigrate bool   `mapstructure:"db_auto_migrate"` // Automatically run migrations on startup
+	RedisAddr     string `mapstructure:"redis_addr"`      // Redis address (host:port)
+	RabbitMQURL   string `mapstructure:"rabbitmq_url"`    // RabbitMQ connection URL
+	LogLevel      string `mapstructure:"log_level"`       // Logging level (debug, info, warn, error)
+	LogFormat     string `mapstructure:"log_format"`      // Log format (json, text)
 }
 
 // SecurityConfig contains security-related settings.
@@ -139,6 +140,7 @@ func LoadEndpointConfig(configPath string) (*EndpointConfig, error) {
 func setDefaults(v *viper.Viper) {
 	// Core defaults
 	v.SetDefault("redis_addr", "localhost:6379")
+	v.SetDefault("db_auto_migrate", false)
 	v.SetDefault("log_level", "info")
 	v.SetDefault("log_format", "json")
 
@@ -176,6 +178,7 @@ func bindEnvVars(v *viper.Viper) {
 	// Explicit bindings for clarity and to ensure proper mapping
 	envBindings := []string{
 		"postgres_dsn",
+		"db_auto_migrate",
 		"redis_addr",
 		"rabbitmq_url",
 		"log_level",

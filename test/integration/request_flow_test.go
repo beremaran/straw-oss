@@ -65,6 +65,9 @@ func setupTestServer(t *testing.T, suite *TestSuite) *testServerContext {
 	err = broker.BindQueue(ctx, "heartbeats", "heartbeats", "#")
 	require.NoError(t, err, "failed to bind heartbeats queue")
 
+	err = broker.DeclareExchange(ctx, "tasks", "topic")
+	require.NoError(t, err, "failed to declare tasks exchange")
+
 	redisClient, err := infraredis.NewClient(suite.RedisAddr(), nil)
 	require.NoError(t, err, "failed to connect to Redis")
 
@@ -96,6 +99,14 @@ func setupTestServer(t *testing.T, suite *TestSuite) *testServerContext {
 	consumer := orchestrator.NewConsumer(broker)
 	executor := orchestrator.NewRetryExecutor(publisher, consumer, selector, broker, []byte(testHMACSecret))
 
+	// Declare and bind the shared results queue for the RetryExecutor
+	err = broker.DeclareQueue(ctx, orchestrator.SharedResultQueue)
+	require.NoError(t, err, "failed to declare shared results queue")
+
+	// Start the shared result queue consumer (required for response dispatching)
+	err = executor.Start(ctx)
+	require.NoError(t, err, "failed to start retry executor")
+
 	// Start health service to consume heartbeats and register endpoints
 	healthService := endpoint.NewHealthService(broker, healthStore)
 	err = healthService.Start(ctx)
@@ -115,7 +126,7 @@ func setupTestServer(t *testing.T, suite *TestSuite) *testServerContext {
 		MaxBodySize:   "10M",
 	}
 
-	// Create server
+	// Create server - allow private IPs for integration tests (mock targets run on localhost)
 	srv := server.New(
 		serverConfig,
 		authService,
@@ -124,6 +135,7 @@ func setupTestServer(t *testing.T, suite *TestSuite) *testServerContext {
 		rateLimiter,
 		filterService,
 		executor,
+		server.WithAllowPrivateIPs(),
 	)
 
 	// Start the server in a test HTTP server
