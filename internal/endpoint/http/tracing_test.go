@@ -25,7 +25,7 @@ type MockTransportProvider struct {
 	mock.Mock
 }
 
-func (m *MockTransportProvider) GetTransport(host string, preset fingerprint.FingerprintPreset) *fhttp.Transport {
+func (m *MockTransportProvider) GetTransport(host string, preset fingerprint.Preset) *fhttp.Transport {
 	args := m.Called(host, preset)
 	if t, ok := args.Get(0).(*fhttp.Transport); ok {
 		return t

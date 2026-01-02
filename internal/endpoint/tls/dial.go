@@ -6,6 +6,7 @@ package tls
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"net"
 	"sync"
 	"time"
@@ -167,7 +168,7 @@ func Dial(ctx context.Context, network, addr string, fingerprint string, opts ..
 // classifyHandshakeError categorizes the handshake error into a specific error type.
 func classifyHandshakeError(addr string, err error) error {
 	// Check for context errors first
-	if err == context.DeadlineExceeded || err == context.Canceled {
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 		return &HandshakeError{
 			Addr: addr,
 			Err:  ErrHandshakeTimeout,

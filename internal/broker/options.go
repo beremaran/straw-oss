@@ -10,6 +10,7 @@ import (
 // Options contains configuration for the broker.
 type Options struct {
 	Addrs          []string
+	Token          string
 	Secure         bool
 	TLSConfig      *tls.Config
 	ReconnectWait  time.Duration
@@ -24,6 +25,13 @@ type Option func(*Options)
 func Addrs(addrs ...string) Option {
 	return func(o *Options) {
 		o.Addrs = addrs
+	}
+}
+
+// Token sets the authentication token.
+func Token(t string) Option {
+	return func(o *Options) {
+		o.Token = t
 	}
 }
 

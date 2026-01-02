@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -90,7 +91,8 @@ func TestBuildRequest_InvalidURL(t *testing.T) {
 		t.Error("expected error for invalid URL")
 	}
 
-	clientErr, ok := err.(*ClientError)
+	var clientErr *ClientError
+	ok := errors.As(err, &clientErr)
 	if !ok {
 		t.Errorf("expected ClientError, got %T", err)
 	} else if clientErr.Code != "INVALID_URL" {

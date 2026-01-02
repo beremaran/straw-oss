@@ -66,7 +66,7 @@ func NewPooledTransport(config PoolConfig, dialTLS DialTLSFunc) *PooledTransport
 // GetTransport returns a transport for the given host and fingerprint preset.
 // If a matching transport exists, it's returned and marked as recently used.
 // Otherwise, a new transport is created (potentially evicting the oldest if at limit).
-func (pt *PooledTransport) GetTransport(host string, preset fingerprint.FingerprintPreset) *fhttp.Transport {
+func (pt *PooledTransport) GetTransport(host string, preset fingerprint.Preset) *fhttp.Transport {
 	key := pt.makeKey(host, preset.ID)
 
 	// Fast path: check if pool exists
@@ -114,7 +114,7 @@ func (pt *PooledTransport) GetTransport(host string, preset fingerprint.Fingerpr
 // This uses http2.Transport directly because fhttp.Transport's automatic HTTP/2
 // detection doesn't work with custom TLS dialers (utls) - it expects *tls.Conn
 // but utls returns *utls.UConn.
-func (pt *PooledTransport) createTransport(host string, preset fingerprint.FingerprintPreset) *fhttp.Transport {
+func (pt *PooledTransport) createTransport(host string, preset fingerprint.Preset) *fhttp.Transport {
 	// Create an HTTP/2 transport that uses our custom TLS dialer
 	h2Transport := &http2.Transport{
 		DialTLS: func(network, addr string, cfg *tls.Config) (net.Conn, error) {

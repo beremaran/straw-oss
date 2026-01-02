@@ -10,18 +10,18 @@ import (
 	"github.com/kwilabs/straw-proxy-server/internal/domain"
 )
 
-// FilterType represents the type of filter that matched.
-type FilterType string
+// Type represents the type of filter that matched.
+type Type string
 
 const (
-	FilterTypeContentType FilterType = "content-type"
-	FilterTypeURLPattern  FilterType = "url-pattern"
-	FilterTypeDomain      FilterType = "domain"
-	FilterTypeABP         FilterType = "abp"
+	TypeContentType Type = "content-type"
+	TypeURLPattern  Type = "url-pattern"
+	TypeDomain      Type = "domain"
+	TypeABP         Type = "abp"
 )
 
-// FilterResult represents the result of a filter evaluation.
-type FilterResult struct {
+// Result represents the result of a filter evaluation.
+type Result struct {
 	// Blocked indicates whether the request should be blocked.
 	Blocked bool
 
@@ -30,7 +30,7 @@ type FilterResult struct {
 	Reason string
 
 	// FilterType identifies which filter caused the block.
-	FilterType FilterType
+	FilterType Type
 }
 
 // Service handles request filtering for bandwidth optimization.
@@ -47,10 +47,10 @@ func NewService(abpMatcher *ABPMatcher) *Service {
 
 // ShouldBlock evaluates whether a request should be blocked based on the provided filters.
 // Returns a FilterResult indicating whether the request is blocked and why.
-func (s *Service) ShouldBlock(ctx context.Context, req *FilterRequest, filter *domain.RequestFilter) (*FilterResult, error) {
+func (s *Service) ShouldBlock(ctx context.Context, req *Request, filter *domain.RequestFilter) (*Result, error) {
 	// No filter configured means nothing is blocked
 	if filter == nil {
-		return &FilterResult{Blocked: false}, nil
+		return &Result{Blocked: false}, nil
 	}
 
 	// Check content-type blocking
@@ -75,13 +75,13 @@ func (s *Service) ShouldBlock(ctx context.Context, req *FilterRequest, filter *d
 		}
 	}
 
-	return &FilterResult{Blocked: false}, nil
+	return &Result{Blocked: false}, nil
 }
 
 // checkContentType checks if the request's expected content-type matches any blocked patterns.
-func (s *Service) checkContentType(req *FilterRequest, patterns []string) *FilterResult {
+func (s *Service) checkContentType(req *Request, patterns []string) *Result {
 	if req.ContentType == "" || len(patterns) == 0 {
-		return &FilterResult{Blocked: false}
+		return &Result{Blocked: false}
 	}
 
 	// Normalize content-type (remove params like charset)
@@ -91,41 +91,41 @@ func (s *Service) checkContentType(req *FilterRequest, patterns []string) *Filte
 	for _, pattern := range patterns {
 		pattern = strings.ToLower(strings.TrimSpace(pattern))
 		if matchGlob(contentType, pattern) {
-			return &FilterResult{
+			return &Result{
 				Blocked:    true,
 				Reason:     fmt.Sprintf("content-type:%s", pattern),
-				FilterType: FilterTypeContentType,
+				FilterType: TypeContentType,
 			}
 		}
 	}
 
-	return &FilterResult{Blocked: false}
+	return &Result{Blocked: false}
 }
 
 // checkURLPatterns checks if the request URL matches any blocked patterns.
-func (s *Service) checkURLPatterns(req *FilterRequest, patterns []string) *FilterResult {
+func (s *Service) checkURLPatterns(req *Request, patterns []string) *Result {
 	if req.URL == "" || len(patterns) == 0 {
-		return &FilterResult{Blocked: false}
+		return &Result{Blocked: false}
 	}
 
 	for _, pattern := range patterns {
 		pattern = strings.TrimSpace(pattern)
 		if matchURLPattern(req.URL, pattern) {
-			return &FilterResult{
+			return &Result{
 				Blocked:    true,
 				Reason:     fmt.Sprintf("url-pattern:%s", pattern),
-				FilterType: FilterTypeURLPattern,
+				FilterType: TypeURLPattern,
 			}
 		}
 	}
 
-	return &FilterResult{Blocked: false}
+	return &Result{Blocked: false}
 }
 
 // checkDomains checks if the request host matches any blocked domains.
-func (s *Service) checkDomains(req *FilterRequest, domains []string) *FilterResult {
+func (s *Service) checkDomains(req *Request, domains []string) *Result {
 	if req.Host == "" || len(domains) == 0 {
-		return &FilterResult{Blocked: false}
+		return &Result{Blocked: false}
 	}
 
 	host := strings.ToLower(req.Host)
@@ -134,24 +134,24 @@ func (s *Service) checkDomains(req *FilterRequest, domains []string) *FilterResu
 		host = host[:idx]
 	}
 
-	for _, domain := range domains {
-		domain = strings.ToLower(strings.TrimSpace(domain))
-		if matchDomain(host, domain) {
-			return &FilterResult{
+	for _, domain_ := range domains {
+		domain_ = strings.ToLower(strings.TrimSpace(domain_))
+		if matchDomain(host, domain_) {
+			return &Result{
 				Blocked:    true,
-				Reason:     fmt.Sprintf("domain:%s", domain),
-				FilterType: FilterTypeDomain,
+				Reason:     fmt.Sprintf("domain_:%s", domain_),
+				FilterType: TypeDomain,
 			}
 		}
 	}
 
-	return &FilterResult{Blocked: false}
+	return &Result{Blocked: false}
 }
 
 // checkABP checks if the request URL matches any ABP rules.
-func (s *Service) checkABP(req *FilterRequest, lists []string) *FilterResult {
+func (s *Service) checkABP(req *Request, lists []string) *Result {
 	if req.URL == "" || s.abpMatcher == nil {
-		return &FilterResult{Blocked: false}
+		return &Result{Blocked: false}
 	}
 
 	// Default to common lists if none specified
@@ -160,14 +160,14 @@ func (s *Service) checkABP(req *FilterRequest, lists []string) *FilterResult {
 	}
 
 	if blocked, rule := s.abpMatcher.Match(req.URL, lists); blocked {
-		return &FilterResult{
+		return &Result{
 			Blocked:    true,
 			Reason:     fmt.Sprintf("abp:%s", rule),
-			FilterType: FilterTypeABP,
+			FilterType: TypeABP,
 		}
 	}
 
-	return &FilterResult{Blocked: false}
+	return &Result{Blocked: false}
 }
 
 // matchGlob performs glob-style pattern matching.

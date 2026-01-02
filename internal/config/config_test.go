@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"testing"
 )
@@ -9,7 +10,7 @@ func TestLoadServerConfig_Defaults(t *testing.T) {
 	// Set required env vars
 	setEnvVars(t, map[string]string{
 		"POSTGRES_DSN": "postgres://localhost/test",
-		"RABBITMQ_URL": "amqp://localhost:5672",
+		"NATS_URL":     "nats://localhost:4222",
 		"HMAC_SECRET":  "test-secret",
 	})
 
@@ -45,7 +46,7 @@ func TestLoadServerConfig_Defaults(t *testing.T) {
 func TestLoadServerConfig_EnvOverride(t *testing.T) {
 	setEnvVars(t, map[string]string{
 		"POSTGRES_DSN": "postgres://custom/db",
-		"RABBITMQ_URL": "amqp://custom:5672",
+		"NATS_URL":     "nats://custom:4222",
 		"HMAC_SECRET":  "custom-secret",
 		"REDIS_ADDR":   "redis.example.com:6380",
 		"LOG_LEVEL":    "debug",
@@ -84,24 +85,16 @@ func TestLoadServerConfig_MissingRequired(t *testing.T) {
 		{
 			name: "missing POSTGRES_DSN",
 			envVars: map[string]string{
-				"RABBITMQ_URL": "amqp://localhost:5672",
-				"HMAC_SECRET":  "secret",
+				"NATS_URL":    "nats://localhost:4222",
+				"HMAC_SECRET": "secret",
 			},
 			wantErr: "POSTGRES_DSN is required",
-		},
-		{
-			name: "missing RABBITMQ_URL",
-			envVars: map[string]string{
-				"POSTGRES_DSN": "postgres://localhost/test",
-				"HMAC_SECRET":  "secret",
-			},
-			wantErr: "RABBITMQ_URL is required",
 		},
 		{
 			name: "missing HMAC_SECRET",
 			envVars: map[string]string{
 				"POSTGRES_DSN": "postgres://localhost/test",
-				"RABBITMQ_URL": "amqp://localhost:5672",
+				"NATS_URL":     "nats://localhost:4222",
 			},
 			wantErr: "HMAC_SECRET is required",
 		},
@@ -116,7 +109,8 @@ func TestLoadServerConfig_MissingRequired(t *testing.T) {
 				t.Fatal("LoadServerConfig() expected error, got nil")
 			}
 
-			validationErr, ok := err.(*ValidationError)
+			var validationErr *ValidationError
+			ok := errors.As(err, &validationErr)
 			if !ok {
 				t.Fatalf("expected ValidationError, got %T", err)
 			}
@@ -137,9 +131,9 @@ func TestLoadServerConfig_MissingRequired(t *testing.T) {
 
 func TestLoadEndpointConfig_Defaults(t *testing.T) {
 	setEnvVars(t, map[string]string{
-		"ENDPOINT_ID":  "endpoint-001",
-		"RABBITMQ_URL": "amqp://localhost:5672",
-		"HMAC_SECRET":  "test-secret",
+		"ENDPOINT_ID": "endpoint-001",
+		"NATS_URL":    "nats://localhost:4222",
+		"HMAC_SECRET": "test-secret",
 	})
 
 	cfg, err := LoadEndpointConfig("")
@@ -158,7 +152,7 @@ func TestLoadEndpointConfig_Defaults(t *testing.T) {
 func TestLoadEndpointConfig_TagsParsing(t *testing.T) {
 	setEnvVars(t, map[string]string{
 		"ENDPOINT_ID":   "endpoint-001",
-		"RABBITMQ_URL":  "amqp://localhost:5672",
+		"NATS_URL":      "nats://localhost:4222",
 		"HMAC_SECRET":   "test-secret",
 		"ENDPOINT_TAGS": "type:residential, region:us, capability:stealth",
 	})
@@ -188,18 +182,10 @@ func TestLoadEndpointConfig_MissingRequired(t *testing.T) {
 		{
 			name: "missing ENDPOINT_ID",
 			envVars: map[string]string{
-				"RABBITMQ_URL": "amqp://localhost:5672",
-				"HMAC_SECRET":  "secret",
-			},
-			wantErr: "ENDPOINT_ID is required",
-		},
-		{
-			name: "missing RABBITMQ_URL",
-			envVars: map[string]string{
-				"ENDPOINT_ID": "endpoint-001",
+				"NATS_URL":    "nats://localhost:4222",
 				"HMAC_SECRET": "secret",
 			},
-			wantErr: "RABBITMQ_URL is required",
+			wantErr: "ENDPOINT_ID is required",
 		},
 	}
 
@@ -212,7 +198,8 @@ func TestLoadEndpointConfig_MissingRequired(t *testing.T) {
 				t.Fatal("LoadEndpointConfig() expected error, got nil")
 			}
 
-			validationErr, ok := err.(*ValidationError)
+			var validationErr *ValidationError
+			ok := errors.As(err, &validationErr)
 			if !ok {
 				t.Fatalf("expected ValidationError, got %T", err)
 			}
@@ -289,7 +276,7 @@ func setEnvVars(t *testing.T, vars map[string]string) {
 
 	// Clear all config-related env vars first
 	allVars := []string{
-		"POSTGRES_DSN", "REDIS_ADDR", "RABBITMQ_URL", "LOG_LEVEL", "LOG_FORMAT",
+		"POSTGRES_DSN", "REDIS_ADDR", "NATS_URL", "LOG_LEVEL", "LOG_FORMAT",
 		"HMAC_SECRET", "TLS_CERT_FILE", "TLS_KEY_FILE", "VAULT_ADDR",
 		"OTEL_EXPORTER_OTLP_ENDPOINT", "METRICS_ENABLED", "METRICS_PORT",
 		"HTTP_PORT", "ADMIN_PORT", "SHUTDOWN_TIMEOUT", "ADMIN_API_KEY",

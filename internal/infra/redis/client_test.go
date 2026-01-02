@@ -2,6 +2,7 @@ package redis_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"testing"
 	"time"
@@ -50,7 +51,7 @@ func TestRedisIntegration(t *testing.T) {
 	}
 
 	err = client.Get(ctx, key, &result)
-	if err != redis.ErrCacheMiss {
+	if !errors.Is(err, redis.ErrCacheMiss) {
 		t.Errorf("Expected ErrCacheMiss, got %v", err)
 	}
 }

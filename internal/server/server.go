@@ -23,7 +23,7 @@ import (
 type Server struct {
 	echo           *echo.Echo
 	conf           config.ServerConfig
-	authService    *auth.AuthService
+	authService    *auth.Service
 	sessionService *session.Service
 	matcher        *router.Matcher
 	rateLimiter    *ratelimit.RateLimiter
@@ -34,12 +34,12 @@ type Server struct {
 	allowPrivateIPs bool // Allow localhost/private IPs (for testing only)
 }
 
-// ServerOption is a functional option for configuring the Server.
-type ServerOption func(*Server)
+// Option is a functional option for configuring the Server.
+type Option func(*Server)
 
 // WithAllowPrivateIPs allows URLs that resolve to private IPs.
 // WARNING: Only use for testing. This disables SSRF protection.
-func WithAllowPrivateIPs() ServerOption {
+func WithAllowPrivateIPs() Option {
 	return func(s *Server) {
 		s.allowPrivateIPs = true
 	}
@@ -48,13 +48,13 @@ func WithAllowPrivateIPs() ServerOption {
 // New creates a new Server instance.
 func New(
 	conf config.ServerConfig,
-	authService *auth.AuthService,
+	authService *auth.Service,
 	sessionService *session.Service,
 	matcher *router.Matcher,
 	rateLimiter *ratelimit.RateLimiter,
 	filterService *filter.Service,
 	orchestrator *orchestrator.RetryExecutor,
-	opts ...ServerOption,
+	opts ...Option,
 ) *Server {
 	e := echo.New()
 

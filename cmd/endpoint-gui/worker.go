@@ -148,9 +148,9 @@ func (w *Worker) Start(configPath string) error {
 	)
 
 	// broker
-	mqBroker := broker.NewRabbitMQBroker(
-		broker.Addrs(cfg.Core.RabbitMQURL),
-		broker.PrefetchCount(cfg.ConcurrencyLimit),
+	mqBroker := broker.NewNatsBroker(
+		broker.Addrs(cfg.Core.NatsURL),
+		broker.Token(cfg.Core.NatsToken),
 	)
 
 	if err := mqBroker.Connect(); err != nil {
@@ -190,7 +190,7 @@ func (w *Worker) Start(configPath string) error {
 			"dev",
 			update.WithCheckInterval(cfg.SelfUpdateInterval),
 			update.WithCheckerLogger(w.logger.WithGroup("update")),
-			update.WithUpdateCallback(func(r *update.UpdateResult) bool {
+			update.WithUpdateCallback(func(r *update.Result) bool {
 				w.logger.Info("starting auto-update", "new_version", r.NewVersion)
 				// Simplified update logic for GUI - maybe just warn?
 				// For now, keep it same as CLI but logging to GUI.

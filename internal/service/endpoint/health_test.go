@@ -3,6 +3,7 @@ package endpoint
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"testing"
 	"time"
@@ -256,7 +257,7 @@ func TestHealthService_IsHealthyEndpoint_NotFound(t *testing.T) {
 	ctx := context.Background()
 
 	_, err := service.IsEndpointHealthy(ctx, "nonexistent")
-	if err != redis.ErrCacheMiss {
+	if !errors.Is(err, redis.ErrCacheMiss) {
 		t.Errorf("expected ErrCacheMiss, got %v", err)
 	}
 }
@@ -272,7 +273,7 @@ func TestHealthService_HandleHeartbeat_Draining(t *testing.T) {
 	endpointID := "draining-endpoint"
 
 	// Mark endpoint as draining
-	store.SetDraining(ctx, endpointID, true)
+	_ = store.SetDraining(ctx, endpointID, true)
 
 	// Send heartbeat
 	msg := HeartbeatMessage{
@@ -339,6 +340,14 @@ func (m *mockBroker) BindQueue(ctx context.Context, queue, exchange, routingKey 
 	return nil
 }
 
+func (m *mockBroker) IsConnected() bool {
+	return true
+}
+
+func (m *mockBroker) QueueDepth(ctx context.Context, name string) (int, error) {
+	return 0, nil
+}
+
 func (m *mockBroker) ConsumeOnce(ctx context.Context, queue string, timeout time.Duration) ([]byte, error) {
 	return nil, nil
 }
@@ -346,14 +355,6 @@ func (m *mockBroker) ConsumeOnce(ctx context.Context, queue string, timeout time
 func (m *mockBroker) Close() error {
 	m.closed = true
 	return nil
-}
-
-func (m *mockBroker) IsConnected() bool {
-	return true
-}
-
-func (m *mockBroker) QueueDepth(ctx context.Context, name string) (int, error) {
-	return 0, nil
 }
 
 // TestWithQueue tests the WithQueue option function.

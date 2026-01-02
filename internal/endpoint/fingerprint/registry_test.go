@@ -21,7 +21,7 @@ func TestNewRegistry(t *testing.T) {
 func TestRegistry_Register(t *testing.T) {
 	r := NewRegistry()
 
-	preset := FingerprintPreset{
+	preset := Preset{
 		ID:             "test-preset",
 		TLSClientHello: utls.HelloGolang,
 		UserAgent:      "Test/1.0",
@@ -41,7 +41,7 @@ func TestRegistry_Register(t *testing.T) {
 func TestRegistry_RegisterDuplicate(t *testing.T) {
 	r := NewRegistry()
 
-	preset := FingerprintPreset{
+	preset := Preset{
 		ID:             "test-preset",
 		TLSClientHello: utls.HelloGolang,
 	}
@@ -70,7 +70,7 @@ func TestRegistry_RegisterDuplicate(t *testing.T) {
 func TestRegistry_Get(t *testing.T) {
 	r := NewRegistry()
 
-	preset := FingerprintPreset{
+	preset := Preset{
 		ID:             "chrome-test",
 		TLSClientHello: utls.HelloChrome_133,
 		UserAgent:      "Chrome Test",
@@ -104,7 +104,7 @@ func TestRegistry_GetUnknown(t *testing.T) {
 func TestRegistry_List(t *testing.T) {
 	r := NewRegistry()
 
-	presets := []FingerprintPreset{
+	presets := []Preset{
 		{ID: "preset-a", TLSClientHello: utls.HelloGolang},
 		{ID: "preset-b", TLSClientHello: utls.HelloGolang},
 		{ID: "preset-c", TLSClientHello: utls.HelloGolang},
@@ -137,7 +137,7 @@ func TestRegistry_ConcurrentAccess(t *testing.T) {
 
 	// Register some initial presets
 	for i := 0; i < 10; i++ {
-		preset := FingerprintPreset{
+		preset := Preset{
 			ID:             "initial-" + string(rune('a'+i)),
 			TLSClientHello: utls.HelloGolang,
 		}
@@ -290,7 +290,7 @@ func TestPackageLevelFunctions(t *testing.T) {
 func TestMustRegister_Panic(t *testing.T) {
 	r := NewRegistry()
 
-	preset := FingerprintPreset{
+	preset := Preset{
 		ID:             "panic-test",
 		TLSClientHello: utls.HelloGolang,
 	}

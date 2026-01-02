@@ -18,8 +18,8 @@ import (
 // Per design doc Section 7.3, endpoints send heartbeats every 10 seconds.
 const DefaultInterval = domain.DefaultHeartbeatInterval
 
-// HeartbeatMessage is the wire format for heartbeat messages.
-type HeartbeatMessage struct {
+// Message is the wire format for heartbeat messages.
+type Message struct {
 	// EndpointID is the unique identifier for this endpoint.
 	EndpointID string `json:"endpoint_id"`
 
@@ -188,7 +188,7 @@ func (s *Sender) run(ctx context.Context) {
 
 // sendHeartbeat sends a single heartbeat message.
 func (s *Sender) sendHeartbeat(ctx context.Context) {
-	msg := HeartbeatMessage{
+	msg := Message{
 		EndpointID:  s.endpointID,
 		Timestamp:   time.Now().Unix(),
 		Version:     s.version,

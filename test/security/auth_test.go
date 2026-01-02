@@ -32,7 +32,7 @@ func TestAuthentication_SecurityScenarios(t *testing.T) {
 	defer cancel()
 
 	// 1. Setup Server Components
-	serverConf := integration.NewTestServerConfig(s.PostgresDSN(), s.RedisAddr(), s.RabbitMQURL())
+	serverConf := integration.NewTestServerConfig(s.PostgresDSN(), s.RedisAddr(), s.NatsURL())
 
 	authRepo := integration.NewTestAuthRepo(t, s.PostgresDSN())
 
@@ -53,20 +53,20 @@ func TestAuthentication_SecurityScenarios(t *testing.T) {
 
 	filterService := filter.NewService(nil)
 
-	rabbitmq := broker.NewRabbitMQBroker(broker.Addrs(s.RabbitMQURL()))
-	err = rabbitmq.Connect()
+	natsBroker := broker.NewNatsBroker(broker.Addrs(s.NatsURL()))
+	err = natsBroker.Connect()
 	require.NoError(t, err)
-	defer rabbitmq.Close()
+	defer natsBroker.Close()
 
 	cb := circuitbreaker.New(circuitbreaker.Config{})
 	selector := &dummySelector{}
 
-	pub := orchestrator.NewPublisher(rabbitmq, selector, []byte("test-hmac-secret-for-integration-tests"), cb)
-	sub := orchestrator.NewConsumer(rabbitmq)
+	pub := orchestrator.NewPublisher(natsBroker, selector, []byte("test-hmac-secret-for-integration-tests"), cb)
+	sub := orchestrator.NewConsumer(natsBroker)
 
 	poolMgr := &dummyPoolManager{}
 
-	executor := orchestrator.NewRetryExecutor(pub, sub, poolMgr, rabbitmq, []byte("test-hmac-secret-for-integration-tests"))
+	executor := orchestrator.NewRetryExecutor(pub, sub, poolMgr, natsBroker, []byte("test-hmac-secret-for-integration-tests"))
 
 	srv := server.New(*serverConf, authService, sessionService, matcher, rateLimiter, filterService, executor)
 

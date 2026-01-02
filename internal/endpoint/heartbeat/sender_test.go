@@ -174,7 +174,7 @@ func TestSender_HeartbeatMessageFormat(t *testing.T) {
 	}
 
 	// Unmarshal and verify message content
-	var hb HeartbeatMessage
+	var hb Message
 	if err := json.Unmarshal(msg.Body, &hb); err != nil {
 		t.Fatalf("failed to unmarshal heartbeat: %v", err)
 	}
@@ -317,7 +317,7 @@ func TestSender_ActiveTasksCallback(t *testing.T) {
 	}
 
 	// First heartbeat should have 10 active tasks
-	var hb1 HeartbeatMessage
+	var hb1 Message
 	if err := json.Unmarshal(msgs[0].Body, &hb1); err != nil {
 		t.Fatalf("failed to unmarshal first heartbeat: %v", err)
 	}
@@ -326,7 +326,7 @@ func TestSender_ActiveTasksCallback(t *testing.T) {
 	}
 
 	// Second heartbeat should have 20 active tasks
-	var hb2 HeartbeatMessage
+	var hb2 Message
 	if err := json.Unmarshal(msgs[1].Body, &hb2); err != nil {
 		t.Fatalf("failed to unmarshal second heartbeat: %v", err)
 	}

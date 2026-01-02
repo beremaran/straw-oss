@@ -121,7 +121,7 @@ func TestService_ContentTypeBlocking(t *testing.T) {
 			assert.NoError(t, err)
 			assert.Equal(t, tt.wantBlocked, result.Blocked)
 			if tt.wantBlocked {
-				assert.Equal(t, FilterTypeContentType, result.FilterType)
+				assert.Equal(t, TypeContentType, result.FilterType)
 				assert.Contains(t, result.Reason, "content-type:")
 			}
 		})
@@ -191,7 +191,7 @@ func TestService_URLPatternBlocking(t *testing.T) {
 			assert.NoError(t, err)
 			assert.Equal(t, tt.wantBlocked, result.Blocked)
 			if tt.wantBlocked {
-				assert.Equal(t, FilterTypeURLPattern, result.FilterType)
+				assert.Equal(t, TypeURLPattern, result.FilterType)
 				assert.Contains(t, result.Reason, "url-pattern:")
 			}
 		})
@@ -269,7 +269,7 @@ func TestService_DomainBlocking(t *testing.T) {
 			assert.NoError(t, err)
 			assert.Equal(t, tt.wantBlocked, result.Blocked)
 			if tt.wantBlocked {
-				assert.Equal(t, FilterTypeDomain, result.FilterType)
+				assert.Equal(t, TypeDomain, result.FilterType)
 				assert.Contains(t, result.Reason, "domain:")
 			}
 		})
@@ -291,7 +291,7 @@ func TestService_CombinedFilters(t *testing.T) {
 		assert.NoError(t, err)
 		assert.True(t, result.Blocked)
 		// Content-type is checked first
-		assert.Equal(t, FilterTypeContentType, result.FilterType)
+		assert.Equal(t, TypeContentType, result.FilterType)
 	})
 
 	t.Run("URL pattern checked after content-type", func(t *testing.T) {
@@ -305,7 +305,7 @@ func TestService_CombinedFilters(t *testing.T) {
 
 		assert.NoError(t, err)
 		assert.True(t, result.Blocked)
-		assert.Equal(t, FilterTypeURLPattern, result.FilterType)
+		assert.Equal(t, TypeURLPattern, result.FilterType)
 	})
 
 	t.Run("domain checked after URL pattern", func(t *testing.T) {
@@ -320,7 +320,7 @@ func TestService_CombinedFilters(t *testing.T) {
 
 		assert.NoError(t, err)
 		assert.True(t, result.Blocked)
-		assert.Equal(t, FilterTypeDomain, result.FilterType)
+		assert.Equal(t, TypeDomain, result.FilterType)
 	})
 }
 

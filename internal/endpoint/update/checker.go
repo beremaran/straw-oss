@@ -21,7 +21,7 @@ type Checker struct {
 	interval       time.Duration
 	httpTimeout    time.Duration
 	logger         *slog.Logger
-	callback       UpdateCallback
+	callback       Callback
 	httpClient     *http.Client
 
 	// Lifecycle management
@@ -60,7 +60,7 @@ func WithCheckerLogger(logger *slog.Logger) CheckerOption {
 }
 
 // WithUpdateCallback sets the callback for when an update is available.
-func WithUpdateCallback(cb UpdateCallback) CheckerOption {
+func WithUpdateCallback(cb Callback) CheckerOption {
 	return func(c *Checker) {
 		c.callback = cb
 	}
@@ -82,7 +82,7 @@ func NewChecker(updateURL, currentVersion string, opts ...CheckerOption) *Checke
 		interval:       DefaultCheckInterval,
 		httpTimeout:    DefaultHTTPTimeout,
 		logger:         slog.Default(),
-		callback:       func(*UpdateResult) bool { return true },
+		callback:       func(*Result) bool { return true },
 	}
 
 	for _, opt := range opts {
@@ -153,7 +153,7 @@ func (c *Checker) Stop() {
 
 // CheckNow performs an immediate update check.
 // This can be called independently of the periodic checking.
-func (c *Checker) CheckNow(ctx context.Context) (*UpdateResult, error) {
+func (c *Checker) CheckNow(ctx context.Context) (*Result, error) {
 	manifest, err := c.fetchManifest(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch manifest: %w", err)
@@ -162,7 +162,7 @@ func (c *Checker) CheckNow(ctx context.Context) (*UpdateResult, error) {
 	newVersion := normalizeVersion(manifest.Version)
 	updateAvailable := semver.Compare(newVersion, c.currentVersion) > 0
 
-	return &UpdateResult{
+	return &Result{
 		UpdateAvailable: updateAvailable,
 		CurrentVersion:  c.currentVersion,
 		NewVersion:      manifest.Version,

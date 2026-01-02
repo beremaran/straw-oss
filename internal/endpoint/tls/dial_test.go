@@ -98,12 +98,9 @@ func TestDial_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Dial failed: %v", err)
 	}
-	defer conn.Close()
-
-	// Verify we got a connection
-	if conn == nil {
-		t.Fatal("expected non-nil connection")
-	}
+	defer func(conn net.Conn) {
+		_ = conn.Close()
+	}(conn)
 }
 
 func TestDial_UnknownFingerprint(t *testing.T) {

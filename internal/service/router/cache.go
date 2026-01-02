@@ -3,6 +3,7 @@ package router
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -54,7 +55,7 @@ func (c *RuleCache) GetRulesVersion(ctx context.Context) (int64, error) {
 
 	val, err := c.client.Get(ctx, RulesVersionKey).Int64()
 	if err != nil {
-		if err == redis.Nil {
+		if errors.Is(err, redis.Nil) {
 			return 0, nil // No version set
 		}
 		return 0, fmt.Errorf("failed to get rules version: %w", err)
@@ -74,7 +75,7 @@ func (c *RuleCache) GetRulesByVersion(ctx context.Context, version int64) ([]dom
 	key := fmt.Sprintf("%s%d", ActiveRulesKeyPrefix, version)
 	data, err := c.client.Get(ctx, key).Bytes()
 	if err != nil {
-		if err == redis.Nil {
+		if errors.Is(err, redis.Nil) {
 			if metrics.CacheMisses != nil {
 				metrics.CacheMisses.WithLabelValues("rules").Inc()
 			}

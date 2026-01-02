@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
@@ -27,7 +28,7 @@ func AuthMiddleware(validator auth.Validator) echo.MiddlewareFunc {
 			// 2. Validate Key
 			apiKey, err := validator.ValidateKey(c.Request().Context(), key)
 			if err != nil {
-				if err == auth.ErrInvalidKey || err == auth.ErrInvalidKeyFormat {
+				if errors.Is(err, auth.ErrInvalidKey) || errors.Is(err, auth.ErrInvalidKeyFormat) {
 					return echo.NewHTTPError(http.StatusUnauthorized, "invalid api key")
 				}
 				// Internal error

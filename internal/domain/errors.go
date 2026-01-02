@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -34,8 +35,8 @@ type ErrorDetail struct {
 	TraceID string `json:"trace_id,omitempty"`
 }
 
-// DomainError is a domain-specific error that implements the error interface.
-type DomainError struct {
+// StrawError is a domain-specific error that implements the error interface.
+type StrawError struct {
 	Code      string
 	Message   string
 	Retryable bool
@@ -43,12 +44,12 @@ type DomainError struct {
 }
 
 // Error implements the error interface.
-func (e *DomainError) Error() string {
+func (e *StrawError) Error() string {
 	return fmt.Sprintf("%s: %s", e.Code, e.Message)
 }
 
 // ToResponse converts the error to an ErrorResponse for API responses.
-func (e *DomainError) ToResponse(requestID, traceID string) ErrorResponse {
+func (e *StrawError) ToResponse(requestID, traceID string) ErrorResponse {
 	return ErrorResponse{
 		Error: ErrorDetail{
 			Code:      e.Code,
@@ -62,56 +63,56 @@ func (e *DomainError) ToResponse(requestID, traceID string) ErrorResponse {
 
 // Common domain errors using codes from pkg/protocol.
 var (
-	ErrAuthInvalid = &DomainError{
+	ErrAuthInvalid = &StrawError{
 		Code:      protocol.ErrCodeAuthInvalid,
 		Message:   "Invalid or missing API key",
 		Retryable: false,
 		HTTPCode:  http.StatusUnauthorized,
 	}
 
-	ErrAuthForbidden = &DomainError{
+	ErrAuthForbidden = &StrawError{
 		Code:      protocol.ErrCodeAuthForbidden,
 		Message:   "API key lacks permission for requested tags",
 		Retryable: false,
 		HTTPCode:  http.StatusForbidden,
 	}
 
-	ErrRateLimitExceeded = &DomainError{
+	ErrRateLimitExceeded = &StrawError{
 		Code:      protocol.ErrCodeRateLimitExceeded,
 		Message:   "Rate limit exceeded",
 		Retryable: true,
 		HTTPCode:  http.StatusTooManyRequests,
 	}
 
-	ErrNoEndpointsAvailable = &DomainError{
+	ErrNoEndpointsAvailable = &StrawError{
 		Code:      protocol.ErrCodeNoEndpointsAvailable,
 		Message:   "No healthy endpoints available for the requested tags",
 		Retryable: true,
 		HTTPCode:  http.StatusServiceUnavailable,
 	}
 
-	ErrEndpointTimeout = &DomainError{
+	ErrEndpointTimeout = &StrawError{
 		Code:      protocol.ErrCodeEndpointTimeout,
 		Message:   "Endpoint did not respond in time",
 		Retryable: true,
 		HTTPCode:  http.StatusGatewayTimeout,
 	}
 
-	ErrUpstreamError = &DomainError{
+	ErrUpstreamError = &StrawError{
 		Code:      protocol.ErrCodeUpstreamError,
 		Message:   "Target website returned an error",
 		Retryable: false,
 		HTTPCode:  http.StatusBadGateway,
 	}
 
-	ErrSessionExpired = &DomainError{
+	ErrSessionExpired = &StrawError{
 		Code:      protocol.ErrCodeSessionExpired,
 		Message:   "Session has expired or does not exist",
 		Retryable: false,
 		HTTPCode:  http.StatusGone,
 	}
 
-	ErrInternalError = &DomainError{
+	ErrInternalError = &StrawError{
 		Code:      protocol.ErrCodeInternalError,
 		Message:   "Internal server error",
 		Retryable: true,
@@ -120,7 +121,7 @@ var (
 )
 
 // ErrSessionMigrationLimit is returned when a session exceeds the max migration count.
-var ErrSessionMigrationLimit = &DomainError{
+var ErrSessionMigrationLimit = &StrawError{
 	Code:      "SESSION_MIGRATION_LIMIT",
 	Message:   "Session has exceeded maximum migration attempts",
 	Retryable: false,
@@ -128,7 +129,7 @@ var ErrSessionMigrationLimit = &DomainError{
 }
 
 // ErrNoMatchingRule is returned when no routing rule matches the request tags.
-var ErrNoMatchingRule = &DomainError{
+var ErrNoMatchingRule = &StrawError{
 	Code:      "NO_MATCHING_RULE",
 	Message:   "No routing rule matches the provided tags",
 	Retryable: false,
@@ -136,8 +137,8 @@ var ErrNoMatchingRule = &DomainError{
 }
 
 // NewRateLimitError creates a rate limit error with retry-after information.
-func NewRateLimitError(quotaKey string, retryAfterSeconds int) *DomainError {
-	return &DomainError{
+func NewRateLimitError(quotaKey string, retryAfterSeconds int) *StrawError {
+	return &StrawError{
 		Code:      protocol.ErrCodeRateLimitExceeded,
 		Message:   fmt.Sprintf("Rate limit exceeded for quota key '%s'", quotaKey),
 		Retryable: true,
@@ -146,8 +147,8 @@ func NewRateLimitError(quotaKey string, retryAfterSeconds int) *DomainError {
 }
 
 // NewUpstreamError creates an upstream error with the target status code.
-func NewUpstreamError(targetStatus int, message string) *DomainError {
-	return &DomainError{
+func NewUpstreamError(targetStatus int, message string) *StrawError {
+	return &StrawError{
 		Code:      protocol.ErrCodeUpstreamError,
 		Message:   message,
 		Retryable: targetStatus >= 500,
@@ -155,14 +156,16 @@ func NewUpstreamError(targetStatus int, message string) *DomainError {
 	}
 }
 
-// IsDomainError checks if an error is a DomainError.
+// IsDomainError checks if an error is a StrawError.
 func IsDomainError(err error) bool {
-	_, ok := err.(*DomainError)
+	var strawError *StrawError
+	ok := errors.As(err, &strawError)
 	return ok
 }
 
-// AsDomainError converts an error to a DomainError if possible.
-func AsDomainError(err error) (*DomainError, bool) {
-	de, ok := err.(*DomainError)
+// AsDomainError converts an error to a StrawError if possible.
+func AsDomainError(err error) (*StrawError, bool) {
+	var de *StrawError
+	ok := errors.As(err, &de)
 	return de, ok
 }

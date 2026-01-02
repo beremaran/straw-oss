@@ -41,11 +41,11 @@ func (s *SimpleEndpointSelector) GetEndpointFromPool(ctx context.Context, rule *
 		requiredTags = rule.RequiredTags
 	} else {
 		if poolTier > 1 {
-			// If we are looking for a non-primary pool and it's not configured, return error
+			// If we are looking for a non-primary pool, and it's not configured, return error
 			// unless we decide implicit pools exist (e.g. same tags, different subset).
 			// For now, strict: must be configured.
 			// However, the rule might not have *any* pools defined, implying just one default pool.
-			if len(rule.EndpointPools) == 0 && poolTier > 1 {
+			if len(rule.EndpointPools) == 0 {
 				return "", fmt.Errorf("pool tier %d not configured", poolTier)
 			}
 		}

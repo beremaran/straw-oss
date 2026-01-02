@@ -33,21 +33,16 @@ services:
     networks:
       - straw-net
 
-  rabbitmq:
-    image: rabbitmq:3.13-management-alpine
-    container_name: straw-rabbitmq
-    environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
+  nats:
+    image: nats:latest
     ports:
-      - "5672:5672"
-      - "15672:15672"
-    volumes:
-      - rabbitmq-data:/var/lib/rabbitmq
+      - "4222:4222"
+      - "8222:8222"
+    command: "-js -auth s3cr3t"
     healthcheck:
-      test: [ "CMD", "rabbitmq-diagnostics", "-q", "ping" ]
-      interval: 10s
-      timeout: 10s
+      test: [ "CMD", "nats", "server", "check", "connection" ]
+      interval: 5s
+      timeout: 5s
       retries: 5
     networks:
       - straw-net
@@ -59,7 +54,8 @@ services:
     environment:
       POSTGRES_DSN: postgres://straw:straw@postgres:5432/straw?sslmode=disable
       REDIS_ADDR: redis:6379
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      NATS_URL: nats://nats:4222
+      NATS_TOKEN: s3cr3t
       HMAC_SECRET: dev-secret-key-for-testing-only-change-in-production
       LOG_LEVEL: info
       LOG_FORMAT: json
@@ -71,7 +67,7 @@ services:
     depends_on:
       - postgres
       - redis
-      - rabbitmq
+      - nats
     networks:
       - straw-net
     restart: unless-stopped
@@ -84,14 +80,15 @@ services:
     environment:
       ENDPOINT_ID: endpoint-load-test-001
       ENDPOINT_TAGS: type:datacenter,region:us
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      NATS_URL: nats://nats:4222
+      NATS_TOKEN: s3cr3t
       HMAC_SECRET: dev-secret-key-for-testing-only-change-in-production
       LOG_LEVEL: info
       LOG_FORMAT: json
       CONCURRENCY_LIMIT: 100
       OTEL_SDK_DISABLED: "true"
     depends_on:
-      - rabbitmq
+      - nats
     networks:
       - straw-net
     restart: unless-stopped
@@ -104,14 +101,15 @@ services:
     environment:
       ENDPOINT_ID: endpoint-load-test-002
       ENDPOINT_TAGS: type:datacenter,region:us
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      NATS_URL: nats://nats:4222
+      NATS_TOKEN: s3cr3t
       HMAC_SECRET: dev-secret-key-for-testing-only-change-in-production
       LOG_LEVEL: info
       LOG_FORMAT: json
       CONCURRENCY_LIMIT: 100
       OTEL_SDK_DISABLED: "true"
     depends_on:
-      - rabbitmq
+      - nats
     networks:
       - straw-net
     restart: unless-stopped
@@ -124,14 +122,15 @@ services:
     environment:
       ENDPOINT_ID: endpoint-load-test-003
       ENDPOINT_TAGS: type:datacenter,region:us
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      NATS_URL: nats://nats:4222
+      NATS_TOKEN: s3cr3t
       HMAC_SECRET: dev-secret-key-for-testing-only-change-in-production
       LOG_LEVEL: info
       LOG_FORMAT: json
       CONCURRENCY_LIMIT: 100
       OTEL_SDK_DISABLED: "true"
     depends_on:
-      - rabbitmq
+      - nats
     networks:
       - straw-net
     restart: unless-stopped
@@ -148,7 +147,6 @@ services:
 volumes:
   postgres-data:
   redis-data:
-  rabbitmq-data:
 
 
 networks:

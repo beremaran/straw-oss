@@ -351,9 +351,12 @@ func ShowConfigDialog(app fyne.App, parent fyne.Window, savePath string, done fu
 		idEntry.SetText(uuid.New().String())
 	}
 
-	rabbitEntry := widget.NewEntry()
-	rabbitEntry.SetText(viper.GetString("rabbitmq_url"))
-	rabbitEntry.SetPlaceHolder("amqp://guest:guest@localhost:5672/")
+	natsEntry := widget.NewEntry()
+	natsEntry.SetText(viper.GetString("nats_url"))
+	natsEntry.SetPlaceHolder("nats://localhost:4222")
+
+	tokenEntry := widget.NewPasswordEntry()
+	tokenEntry.SetText(viper.GetString("nats_token"))
 
 	secretEntry := widget.NewPasswordEntry()
 	secretEntry.SetText(viper.GetString("hmac_secret"))
@@ -361,18 +364,20 @@ func ShowConfigDialog(app fyne.App, parent fyne.Window, savePath string, done fu
 	form := &widget.Form{
 		Items: []*widget.FormItem{
 			{Text: "Endpoint ID", Widget: idEntry},
-			{Text: "RabbitMQ URL", Widget: rabbitEntry},
+			{Text: "NATS URL", Widget: natsEntry},
+			{Text: "NATS Token", Widget: tokenEntry},
 			{Text: "HMAC Secret", Widget: secretEntry},
 		},
 		OnSubmit: func() {
-			if idEntry.Text == "" || rabbitEntry.Text == "" || secretEntry.Text == "" {
-				dialog.ShowError(fmt.Errorf("endpoint ID, RabbitMQ URL, and HMAC Secret are all required"), win)
+			if idEntry.Text == "" || natsEntry.Text == "" || secretEntry.Text == "" {
+				dialog.ShowError(fmt.Errorf("endpoint ID, NATS URL, and HMAC Secret are required"), win)
 				return
 			}
 
 			// Save Config
 			viper.Set("endpoint_id", idEntry.Text)
-			viper.Set("rabbitmq_url", rabbitEntry.Text)
+			viper.Set("nats_url", natsEntry.Text)
+			viper.Set("nats_token", tokenEntry.Text)
 			viper.Set("hmac_secret", secretEntry.Text)
 
 			// Defaults (only if not set)

@@ -7,7 +7,7 @@ import (
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
-	amqp "github.com/rabbitmq/amqp091-go"
+	"github.com/nats-io/nats.go"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -46,14 +46,12 @@ func TestContainerSetup(t *testing.T) {
 		assert.NoError(t, err, "should ping Redis")
 	})
 
-	t.Run("RabbitMQ is accessible", func(t *testing.T) {
-		conn, err := amqp.Dial(suite.RabbitMQURL())
-		require.NoError(t, err, "should connect to RabbitMQ")
-		defer conn.Close()
+	t.Run("NATS is accessible", func(t *testing.T) {
+		nc, err := nats.Connect(suite.NatsURL())
+		require.NoError(t, err, "should connect to NATS")
+		defer nc.Close()
 
-		ch, err := conn.Channel()
-		require.NoError(t, err, "should open RabbitMQ channel")
-		defer ch.Close()
+		require.True(t, nc.IsConnected(), "should be connected")
 	})
 }
 
@@ -188,18 +186,18 @@ func TestConfigHelpers(t *testing.T) {
 	suite := GetSuite(t)
 
 	t.Run("NewTestServerConfig", func(t *testing.T) {
-		cfg := NewTestServerConfig(suite.PostgresDSN(), suite.RedisAddr(), suite.RabbitMQURL())
+		cfg := NewTestServerConfig(suite.PostgresDSN(), suite.RedisAddr(), suite.NatsURL())
 		assert.Equal(t, suite.PostgresDSN(), cfg.Core.PostgresDSN)
 		assert.Equal(t, suite.RedisAddr(), cfg.Core.RedisAddr)
-		assert.Equal(t, suite.RabbitMQURL(), cfg.Core.RabbitMQURL)
+		assert.Equal(t, suite.NatsURL(), cfg.Core.NatsURL)
 		assert.Equal(t, "debug", cfg.Core.LogLevel)
 	})
 
 	t.Run("NewTestEndpointConfig", func(t *testing.T) {
-		cfg := NewTestEndpointConfig(suite.PostgresDSN(), suite.RedisAddr(), suite.RabbitMQURL())
+		cfg := NewTestEndpointConfig(suite.PostgresDSN(), suite.RedisAddr(), suite.NatsURL())
 		assert.Equal(t, suite.PostgresDSN(), cfg.Core.PostgresDSN)
 		assert.Equal(t, suite.RedisAddr(), cfg.Core.RedisAddr)
-		assert.Equal(t, suite.RabbitMQURL(), cfg.Core.RabbitMQURL)
+		assert.Equal(t, suite.NatsURL(), cfg.Core.NatsURL)
 		assert.Equal(t, "test-endpoint-1", cfg.ID)
 	})
 }

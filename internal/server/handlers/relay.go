@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -256,7 +257,7 @@ func (h *RelayHandler) Handle(c echo.Context) error {
 			// Perform migration
 			updatedSession, err := h.sessionService.MigrateSession(ctx, currentSession.ID, result.Response.EndpointID)
 			if err != nil {
-				if err == domain.ErrSessionMigrationLimit {
+				if errors.Is(err, domain.ErrSessionMigrationLimit) {
 					slog.WarnContext(ctx, "session migration limit reached", "session_id", currentSession.ID)
 					// We don't fail the request, but we might want to notify client
 				} else {

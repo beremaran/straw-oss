@@ -14,7 +14,7 @@ import (
 )
 
 // BuildRequest converts a protocol.Request to an fhttp.Request with proper header ordering.
-func BuildRequest(ctx context.Context, req *protocol.Request, preset fingerprint.FingerprintPreset) (*fhttp.Request, error) {
+func BuildRequest(ctx context.Context, req *protocol.Request, preset fingerprint.Preset) (*fhttp.Request, error) {
 	// Parse URL
 	parsedURL, err := url.Parse(req.URL)
 	if err != nil {
@@ -119,7 +119,7 @@ func applyHeaderOrder(req *fhttp.Request, order []string) {
 }
 
 // applyFingerprintHeaders applies browser-specific headers from the fingerprint preset.
-func applyFingerprintHeaders(req *fhttp.Request, preset fingerprint.FingerprintPreset) {
+func applyFingerprintHeaders(req *fhttp.Request, preset fingerprint.Preset) {
 	// Set User-Agent if not already set and preset has one
 	if req.Header.Get("User-Agent") == "" && preset.UserAgent != "" {
 		req.Header.Set("User-Agent", preset.UserAgent)

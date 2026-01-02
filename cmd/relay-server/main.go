@@ -137,59 +137,61 @@ func main() {
 	endpointHealthStore := redis.NewEndpointHealthStore(redisClient)
 	endpointSelector := orchestrator.NewSimpleEndpointSelector(endpointHealthStore)
 
-	// Message Broker for Orchestrator
-	// We reuse the same broker settings but ideally should be same instance if supported or separate connection.
 	// Here creating a shared broker instance earlier would be better.
 	// Let's create the broker connection HERE instead of later for Admin.
 
-	rabbitBroker := broker.NewRabbitMQBroker(
-		broker.Addrs(cfg.Core.RabbitMQURL),
-		broker.WithCircuitBreaker(rabbitBreaker),
+	// NATS Broker
+	// We use the NatsURL from config.
+	// CircuitBreaker option is ignored by NatsBroker for now as NATS has built-in reconnection logic,
+	// but we can pass it if we implement wrap logic later.
+	natsBroker := broker.NewNatsBroker(
+		broker.Addrs(cfg.Core.NatsURL),
+		broker.Token(cfg.Core.NatsToken),
 	)
-	if err := rabbitBroker.Connect(); err != nil {
+	if err := natsBroker.Connect(); err != nil {
 		slog.Error("Failed to connect to message broker", "error", err)
 		os.Exit(1)
 	}
-	defer func() { _ = rabbitBroker.Close() }()
+	defer func() { _ = natsBroker.Close() }()
 
 	// Declare required exchanges before endpoints can connect
 	// These exchanges must exist for endpoints to successfully publish/consume messages
-	if err := rabbitBroker.DeclareExchange(ctx, "heartbeats", "fanout"); err != nil {
+	if err := natsBroker.DeclareExchange(ctx, "heartbeats", "fanout"); err != nil {
 		slog.Error("Failed to declare heartbeats exchange", "error", err)
 		os.Exit(1)
 	}
-	if err := rabbitBroker.DeclareExchange(ctx, "tasks", "direct"); err != nil {
+	if err := natsBroker.DeclareExchange(ctx, "tasks", "direct"); err != nil {
 		slog.Error("Failed to declare tasks exchange", "error", err)
 		os.Exit(1)
 	}
-	if err := rabbitBroker.DeclareExchange(ctx, "results", "direct"); err != nil {
+	if err := natsBroker.DeclareExchange(ctx, "results", "direct"); err != nil {
 		slog.Error("Failed to declare results exchange", "error", err)
 		os.Exit(1)
 	}
-	slog.Info("RabbitMQ exchanges declared successfully", "exchanges", []string{"heartbeats", "tasks", "results"})
+	slog.Info("NATS streams declared successfully", "streams", []string{"heartbeats", "tasks", "results"})
 
 	// Declare heartbeats queue before binding it
-	if err := rabbitBroker.DeclareQueue(ctx, "heartbeats"); err != nil {
+	if err := natsBroker.DeclareQueue(ctx, "heartbeats"); err != nil {
 		slog.Error("Failed to declare heartbeats queue", "error", err)
 		os.Exit(1)
 	}
 
 	// Bind heartbeats queue to heartbeats exchange
 	// For fanout exchanges, routing key is ignored (empty string)
-	if err := rabbitBroker.BindQueue(ctx, "heartbeats", "heartbeats", ""); err != nil {
+	if err := natsBroker.BindQueue(ctx, "heartbeats", "heartbeats", ""); err != nil {
 		slog.Error("Failed to bind heartbeats queue to exchange", "error", err)
 		os.Exit(1)
 	}
-	slog.Info("RabbitMQ heartbeats queue bound to exchange")
+	slog.Info("NATS heartbeats consumer bound to stream")
 
-	publisher := orchestrator.NewPublisher(rabbitBroker, endpointSelector, []byte(cfg.Security.HMACSecret), rabbitBreaker)
-	consumer := orchestrator.NewConsumer(rabbitBroker)
+	publisher := orchestrator.NewPublisher(natsBroker, endpointSelector, []byte(cfg.Security.HMACSecret), rabbitBreaker)
+	consumer := orchestrator.NewConsumer(natsBroker)
 
 	retryExecutor := orchestrator.NewRetryExecutor(
 		publisher,
 		consumer,
 		endpointSelector, // SimpleEndpointSelector implements PoolManager
-		rabbitBroker,
+		natsBroker,
 		[]byte(cfg.Security.HMACSecret),
 	)
 
@@ -211,14 +213,14 @@ func main() {
 
 	// 6. Initialize Admin Server Dependencies
 	// Health Service
-	healthService := endpoint.NewHealthService(rabbitBroker, endpointHealthStore)
+	healthService := endpoint.NewHealthService(natsBroker, endpointHealthStore)
 	if err := healthService.Start(ctx); err != nil {
 		slog.Warn("Failed to start health service", "error", err)
 	}
 	defer healthService.Stop()
 
 	// Admin Server
-	adminSrv := admin.New(*cfg, pgClient, redisClient, healthService, rabbitBroker)
+	adminSrv := admin.New(*cfg, pgClient, redisClient, healthService, natsBroker)
 
 	// 7. Start Servers
 	go func() {

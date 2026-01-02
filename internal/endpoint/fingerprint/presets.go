@@ -7,7 +7,7 @@ import (
 )
 
 // registerBuiltinPresets registers all built-in browser fingerprint presets.
-func registerBuiltinPresets(r *FingerprintRegistry) {
+func registerBuiltinPresets(r *Registry) {
 	// Chrome presets
 	registerChromePresets(r)
 
@@ -34,9 +34,9 @@ var (
 )
 
 // registerChromePresets registers Chrome browser fingerprint presets.
-func registerChromePresets(r *FingerprintRegistry) {
+func registerChromePresets(r *Registry) {
 	// Chrome 133 - Current stable
-	r.MustRegister(FingerprintPreset{
+	r.MustRegister(Preset{
 		ID:             "chrome-133",
 		TLSClientHello: utls.HelloChrome_133,
 		HTTP2Settings: &HTTP2Settings{
@@ -74,7 +74,7 @@ func registerChromePresets(r *FingerprintRegistry) {
 	})
 
 	// Chrome 131 - Previous version
-	r.MustRegister(FingerprintPreset{
+	r.MustRegister(Preset{
 		ID:             "chrome-131",
 		TLSClientHello: utls.HelloChrome_131,
 		HTTP2Settings: &HTTP2Settings{
@@ -112,7 +112,7 @@ func registerChromePresets(r *FingerprintRegistry) {
 	})
 
 	// Chrome 129 - Older version
-	r.MustRegister(FingerprintPreset{
+	r.MustRegister(Preset{
 		ID:             "chrome-129",
 		TLSClientHello: utls.HelloChrome_120,
 		HTTP2Settings: &HTTP2Settings{
@@ -151,9 +151,9 @@ func registerChromePresets(r *FingerprintRegistry) {
 }
 
 // registerFirefoxPresets registers Firefox browser fingerprint presets.
-func registerFirefoxPresets(r *FingerprintRegistry) {
+func registerFirefoxPresets(r *Registry) {
 	// Firefox 133 - Current stable
-	r.MustRegister(FingerprintPreset{
+	r.MustRegister(Preset{
 		ID:             "firefox-133",
 		TLSClientHello: utls.HelloFirefox_120, // Using available Firefox preset
 		HTTP2Settings: &HTTP2Settings{
@@ -188,7 +188,7 @@ func registerFirefoxPresets(r *FingerprintRegistry) {
 	})
 
 	// Firefox 120 - Previous version
-	r.MustRegister(FingerprintPreset{
+	r.MustRegister(Preset{
 		ID:             "firefox-120",
 		TLSClientHello: utls.HelloFirefox_120,
 		HTTP2Settings: &HTTP2Settings{
@@ -224,9 +224,9 @@ func registerFirefoxPresets(r *FingerprintRegistry) {
 }
 
 // registerSafariPresets registers Safari browser fingerprint presets.
-func registerSafariPresets(r *FingerprintRegistry) {
+func registerSafariPresets(r *Registry) {
 	// Safari 18 - macOS/iOS current stable
-	r.MustRegister(FingerprintPreset{
+	r.MustRegister(Preset{
 		ID:             "safari-18",
 		TLSClientHello: utls.HelloSafari_Auto,
 		HTTP2Settings: &HTTP2Settings{
@@ -259,7 +259,7 @@ func registerSafariPresets(r *FingerprintRegistry) {
 	})
 
 	// Safari 17 - Previous version
-	r.MustRegister(FingerprintPreset{
+	r.MustRegister(Preset{
 		ID:             "safari-17",
 		TLSClientHello: utls.HelloSafari_16_0,
 		HTTP2Settings: &HTTP2Settings{
@@ -293,9 +293,9 @@ func registerSafariPresets(r *FingerprintRegistry) {
 }
 
 // registerEdgePresets registers Microsoft Edge browser fingerprint presets.
-func registerEdgePresets(r *FingerprintRegistry) {
+func registerEdgePresets(r *Registry) {
 	// Edge 130 - Current stable (based on Chromium)
-	r.MustRegister(FingerprintPreset{
+	r.MustRegister(Preset{
 		ID:             "edge-130",
 		TLSClientHello: utls.HelloEdge_Auto,
 		HTTP2Settings: &HTTP2Settings{
@@ -333,7 +333,7 @@ func registerEdgePresets(r *FingerprintRegistry) {
 	})
 
 	// Edge 106 - Earlier version
-	r.MustRegister(FingerprintPreset{
+	r.MustRegister(Preset{
 		ID:             "edge-106",
 		TLSClientHello: utls.HelloEdge_106,
 		HTTP2Settings: &HTTP2Settings{

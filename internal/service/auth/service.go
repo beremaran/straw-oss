@@ -16,15 +16,15 @@ var (
 	ErrInvalidKeyFormat = errors.New("invalid api key format (expected ID:Secret)")
 )
 
-// AuthService handles authentication logic.
-type AuthService struct {
+// Service handles authentication logic.
+type Service struct {
 	repo  domain.ApiKeyRepository
 	cache KeyCache
 }
 
 // NewAuthService creates a new AuthService.
-func NewAuthService(repo domain.ApiKeyRepository, cache KeyCache) *AuthService {
-	return &AuthService{
+func NewAuthService(repo domain.ApiKeyRepository, cache KeyCache) *Service {
+	return &Service{
 		repo:  repo,
 		cache: cache,
 	}
@@ -33,7 +33,7 @@ func NewAuthService(repo domain.ApiKeyRepository, cache KeyCache) *AuthService {
 // ValidateKey validates a raw API key.
 // It checks the cache first, then the database.
 // Expected format: "ID:Secret"
-func (s *AuthService) ValidateKey(ctx context.Context, rawKey string) (*domain.ApiKey, error) {
+func (s *Service) ValidateKey(ctx context.Context, rawKey string) (*domain.ApiKey, error) {
 	// 1. Check Cache (SHA256 of raw key)
 	hashedKey := sha256Hash(rawKey)
 	if cachedKey, err := s.cache.GetKey(ctx, hashedKey); err == nil && cachedKey != nil {
@@ -81,7 +81,7 @@ func (s *AuthService) ValidateKey(ctx context.Context, rawKey string) (*domain.A
 
 // InvalidateKey removes a cached API key by its raw key hash.
 // This should be called when a key is revoked or its status changes.
-func (s *AuthService) InvalidateKey(ctx context.Context, rawKey string) error {
+func (s *Service) InvalidateKey(ctx context.Context, rawKey string) error {
 	hashedKey := sha256Hash(rawKey)
 	return s.cache.InvalidateKey(ctx, hashedKey)
 }
@@ -90,7 +90,7 @@ func (s *AuthService) InvalidateKey(ctx context.Context, rawKey string) error {
 // This is useful when a key is revoked via the admin API.
 // Note: Since we cache by the hash of the raw key, we can't directly invalidate by ID.
 // The caller should invalidate by raw key if available, or clear all cache entries.
-func (s *AuthService) InvalidateKeyByID(ctx context.Context, keyID string) error {
+func (s *Service) InvalidateKeyByID(ctx context.Context, keyID string) error {
 	// Since we cache by hash of raw key, we can't directly invalidate by ID.
 	// This is a limitation of the current caching strategy.
 	// In a production system, we might want to maintain a mapping from ID to hashes.
