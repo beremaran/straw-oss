@@ -1,0 +1,181 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: straw-postgres-prod
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-straw}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-straw_secure_password}
+      POSTGRES_DB: ${POSTGRES_DB:-straw}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-prod-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-straw} -d ${POSTGRES_DB:-straw}" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.2'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - straw-prod-net
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: straw-redis-prod
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-straw_secure_redis_password}
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-prod-data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-straw_secure_redis_password}", "ping" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - straw-prod-net
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: straw-rabbitmq-prod
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-straw}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-straw_secure_rabbit_password}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq-prod-data:/var/lib/rabbitmq
+    healthcheck:
+      test: [ "CMD", "rabbitmq-diagnostics", "-q", "ping" ]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.2'
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - straw-prod-net
+    restart: unless-stopped
+
+  relay-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: straw-relay-server-prod
+    environment:
+      POSTGRES_DSN: postgres://${POSTGRES_USER:-straw}:${POSTGRES_PASSWORD:-straw_secure_password}@postgres:5432/${POSTGRES_DB:-straw}?sslmode=disable
+      REDIS_ADDR: redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-straw_secure_redis_password}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-straw}:${RABBITMQ_PASSWORD:-straw_secure_rabbit_password}@rabbitmq:5672/
+      HMAC_SECRET: ${HMAC_SECRET:-change_this_to_a_secure_random_string_in_production}
+      LOG_LEVEL: info
+      LOG_FORMAT: json
+      METRICS_ENABLED: "true"
+      OTEL_SDK_DISABLED: "true" # Enable if OTEL collector is available
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - straw-prod-net
+    restart: unless-stopped
+
+  endpoint-1:
+    build:
+      context: .
+      dockerfile: Dockerfile.endpoint
+    container_name: straw-endpoint-prod-1
+    environment:
+      ENDPOINT_ID: endpoint-prod-001
+      ENDPOINT_TAGS: type:datacenter,region:us-east
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-straw}:${RABBITMQ_PASSWORD:-straw_secure_rabbit_password}@rabbitmq:5672/
+      HMAC_SECRET: ${HMAC_SECRET:-change_this_to_a_secure_random_string_in_production}
+      LOG_LEVEL: info
+      LOG_FORMAT: json
+      CONCURRENCY_LIMIT: 200
+      OTEL_SDK_DISABLED: "true"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - straw-prod-net
+    restart: unless-stopped
+
+volumes:
+  postgres-prod-data:
+  redis-prod-data:
+  rabbitmq-prod-data:
+
+
+networks:
+  straw-prod-net:
+    driver: bridge

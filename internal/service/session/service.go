@@ -1,0 +1,97 @@
+package session
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
+
+	"github.com/kwilabs/straw-proxy-server/internal/domain"
+)
+
+// Service handles session lifecycle management.
+type Service struct {
+	store Store
+}
+
+// NewService creates a new session service.
+func NewService(store Store) *Service {
+	return &Service{
+		store: store,
+	}
+}
+
+// CreateSession creates a new session and saves it to the store.
+func (s *Service) CreateSession(ctx context.Context, endpointID string, ruleID string, tags []string) (*domain.Session, error) {
+	id, err := generateRandomID(16) // 16 bytes = 32 hex chars
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate session id: %w", err)
+	}
+
+	session := domain.NewSession(id, endpointID, ruleID, tags)
+
+	// Save with default TTL
+	if err := s.store.Save(ctx, session, domain.DefaultSessionTTL); err != nil {
+		return nil, err
+	}
+
+	return session, nil
+}
+
+// GetSession retrieves a session by ID.
+func (s *Service) GetSession(ctx context.Context, id string) (*domain.Session, error) {
+	session, err := s.store.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check expiry (though Redis TTL handles implicit expiry, business logic might have stricter rules or lazy expiration)
+	if session.IsExpired(domain.DefaultSessionTTL) {
+		// Attempt to cleanup if expired but still in store
+		_ = s.store.Delete(ctx, id)
+		return nil, domain.ErrSessionExpired
+	}
+
+	return session, nil
+}
+
+// TouchSession extends the session's lifespan.
+func (s *Service) TouchSession(ctx context.Context, id string) error {
+	return s.store.Touch(ctx, id, domain.DefaultSessionTTL) // Reset TTL to full window
+}
+
+// MigrateSession updates the session with a new endpoint ID effectively performing a migration.
+func (s *Service) MigrateSession(ctx context.Context, id string, newEndpointID string) (*domain.Session, error) {
+	// We need to fetch, update, and save.
+	// Optimistic locking is handled by the simple overwriting for now since session is usually owned by one request chain.
+	// In high concurrency, we might want Lua scripts, but for now this is fine.
+
+	session, err := s.GetSession(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	if !session.Migrate(newEndpointID) {
+		return nil, domain.ErrSessionMigrationLimit
+	}
+
+	// Save updated session
+	if err := s.store.Save(ctx, session, domain.DefaultSessionTTL); err != nil {
+		return nil, err
+	}
+
+	return session, nil
+}
+
+// EndSession deletes a session.
+func (s *Service) EndSession(ctx context.Context, id string) error {
+	return s.store.Delete(ctx, id)
+}
+
+func generateRandomID(bytes int) (string, error) {
+	b := make([]byte, bytes)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
+}

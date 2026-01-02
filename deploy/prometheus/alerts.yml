@@ -1,0 +1,191 @@
+groups:
+  - name: straw-proxy-alerts
+    rules:
+      # HighErrorRate: >5% 5xx responses over 5 minutes
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum(rate(relay_requests_total{status=~"5.."}[5m]))
+            /
+            sum(rate(relay_requests_total[5m]))
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          service: straw-proxy
+        annotations:
+          summary: "High error rate detected (>5% 5xx responses)"
+          description: "The Straw Proxy relay server is returning more than 5% 5xx errors over the last 5 minutes. Current error rate: {{ $value | humanizePercentage }}"
+          runbook_url: "https://docs.kwilabs.io/runbooks/high-error-rate"
+
+      # HighLatency: p99 latency > 5s
+      - alert: HighLatencyWarning
+        expr: |
+          histogram_quantile(0.99, sum(rate(relay_request_duration_seconds_bucket[5m])) by (le))
+          > 3
+        for: 5m
+        labels:
+          severity: warning
+          service: straw-proxy
+        annotations:
+          summary: "Elevated request latency (p99 > 3s)"
+          description: "The p99 request latency for the Straw Proxy relay server is above 3 seconds. Current p99: {{ $value | humanizeDuration }}"
+          runbook_url: "https://docs.kwilabs.io/runbooks/high-latency"
+
+      - alert: HighLatencyCritical
+        expr: |
+          histogram_quantile(0.99, sum(rate(relay_request_duration_seconds_bucket[5m])) by (le))
+          > 5
+        for: 5m
+        labels:
+          severity: critical
+          service: straw-proxy
+        annotations:
+          summary: "Critical request latency (p99 > 5s)"
+          description: "The p99 request latency for the Straw Proxy relay server is critically high (>5s). Current p99: {{ $value | humanizeDuration }}"
+          runbook_url: "https://docs.kwilabs.io/runbooks/high-latency"
+
+      # NoHealthyEndpoints: All endpoints are down
+      - alert: NoHealthyEndpoints
+        expr: |
+          count(endpoint_tasks_in_flight >= 0) == 0
+          or
+          absent(endpoint_tasks_in_flight)
+        for: 1m
+        labels:
+          severity: critical
+          service: straw-proxy
+        annotations:
+          summary: "No healthy endpoints available"
+          description: "There are no healthy Straw Proxy endpoints available to process requests. All requests will fail with 503 errors."
+          runbook_url: "https://docs.kwilabs.io/runbooks/no-healthy-endpoints"
+
+      # CacheMissSpike: Cache hit ratio drops below 50%
+      - alert: CacheMissSpike
+        expr: |
+          (
+            sum(rate(relay_cache_hits_total[5m]))
+            /
+            (sum(rate(relay_cache_hits_total[5m])) + sum(rate(relay_cache_misses_total[5m])))
+          ) < 0.5
+        for: 5m
+        labels:
+          severity: warning
+          service: straw-proxy
+        annotations:
+          summary: "Cache hit ratio too low (<50%)"
+          description: "The cache hit ratio for the Straw Proxy relay server has dropped below 50%. This may indicate cache invalidation issues or increased unique traffic patterns. Current hit ratio: {{ $value | humanizePercentage }}"
+          runbook_url: "https://docs.kwilabs.io/runbooks/cache-miss-spike"
+
+      # RabbitMQQueueBacklog: Queue depth exceeds threshold
+      - alert: RabbitMQQueueBacklog
+        expr: relay_queue_depth > 1000
+        for: 5m
+        labels:
+          severity: warning
+          service: straw-proxy
+        annotations:
+          summary: "RabbitMQ queue backlog detected"
+          description: "The queue '{{ $labels.queue_name }}' has more than 1000 pending messages for over 5 minutes. This indicates endpoints are not processing tasks fast enough. Current depth: {{ $value }}"
+          runbook_url: "https://docs.kwilabs.io/runbooks/queue-backlog"
+
+      - alert: RabbitMQQueueBacklogCritical
+        expr: relay_queue_depth > 5000
+        for: 5m
+        labels:
+          severity: critical
+          service: straw-proxy
+        annotations:
+          summary: "Critical RabbitMQ queue backlog"
+          description: "The queue '{{ $labels.queue_name }}' has more than 5000 pending messages. Immediate attention required. Current depth: {{ $value }}"
+          runbook_url: "https://docs.kwilabs.io/runbooks/queue-backlog"
+
+      # EndpointUnhealthy: Endpoint stopped sending heartbeats
+      - alert: EndpointUnhealthy
+        expr: |
+          time() - endpoint_heartbeats_sent_total > 60
+          or
+          (
+            increase(endpoint_heartbeats_sent_total[1m]) == 0
+            and
+            endpoint_heartbeats_sent_total > 0
+          )
+        for: 1m
+        labels:
+          severity: warning
+          service: straw-proxy
+        annotations:
+          summary: "Endpoint is unhealthy (no heartbeat)"
+          description: "An endpoint instance has not sent a heartbeat in the last 60 seconds. It may be experiencing issues or has crashed."
+          runbook_url: "https://docs.kwilabs.io/runbooks/endpoint-unhealthy"
+
+  - name: straw-endpoint-alerts
+    rules:
+      # Endpoint upstream request failures
+      - alert: HighUpstreamErrorRate
+        expr: |
+          (
+            sum(rate(endpoint_upstream_duration_seconds_count{status=~"5.."}[5m])) by (target_domain)
+            /
+            sum(rate(endpoint_upstream_duration_seconds_count[5m])) by (target_domain)
+          ) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: straw-endpoint
+        annotations:
+          summary: "High upstream error rate for {{ $labels.target_domain }}"
+          description: "The endpoint is experiencing >10% error rate when connecting to {{ $labels.target_domain }}. This may indicate the target is blocking requests or experiencing issues."
+          runbook_url: "https://docs.kwilabs.io/runbooks/upstream-errors"
+
+      # Connection pool exhaustion
+      - alert: ConnectionPoolExhausted
+        expr: endpoint_connections_pooled > 900
+        for: 5m
+        labels:
+          severity: warning
+          service: straw-endpoint
+        annotations:
+          summary: "Connection pool nearly exhausted"
+          description: "The endpoint connection pool for {{ $labels.target_host }} has {{ $value }} active connections. Pool limit may be reached soon."
+          runbook_url: "https://docs.kwilabs.io/runbooks/connection-pool"
+
+  - name: straw-infrastructure-alerts
+    rules:
+      # High memory usage
+      - alert: HighMemoryUsage
+        expr: |
+          (go_memstats_alloc_bytes / go_memstats_sys_bytes) > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          service: straw-proxy
+        annotations:
+          summary: "High memory usage detected"
+          description: "{{ $labels.job }} is using more than 90% of allocated system memory. Consider scaling or investigating memory leaks."
+          runbook_url: "https://docs.kwilabs.io/runbooks/high-memory"
+
+      # High goroutine count
+      - alert: HighGoroutineCount
+        expr: go_goroutines > 10000
+        for: 5m
+        labels:
+          severity: warning
+          service: straw-proxy
+        annotations:
+          summary: "High goroutine count detected"
+          description: "{{ $labels.job }} has {{ $value }} active goroutines. This may indicate a goroutine leak."
+          runbook_url: "https://docs.kwilabs.io/runbooks/goroutine-leak"
+
+      # Rate limit exceeded frequently
+      - alert: FrequentRateLimiting
+        expr: |
+          sum(rate(relay_rate_limit_exceeded_total[5m])) by (quota_key) > 10
+        for: 5m
+        labels:
+          severity: warning
+          service: straw-proxy
+        annotations:
+          summary: "Frequent rate limiting for quota key: {{ $labels.quota_key }}"
+          description: "The quota key '{{ $labels.quota_key }}' is being rate limited more than 10 times per second. Consider adjusting limits or investigating traffic patterns."
+          runbook_url: "https://docs.kwilabs.io/runbooks/rate-limiting"

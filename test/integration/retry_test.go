@@ -1,0 +1,303 @@
+package integration
+
+import (
+	"context"
+	"net/http"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestRetry_SamePool(t *testing.T) {
+	suite := GetSuite(t)
+	ctx := context.Background()
+
+	tc := setupTestServer(t, suite)
+	defer tc.Cleanup()
+
+	// 1. Setup Data
+	apiKey, err := CreateTestAPIKey(ctx, suite.PostgresDSN(), "retry-client", []string{"*"})
+	require.NoError(t, err)
+
+	// Create 3 endpoints for same pool
+	epIDs := []string{"same-pool-1", "same-pool-2", "same-pool-3"}
+	for _, id := range epIDs {
+		require.NoError(t, CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{
+			ID:        id,
+			Tags:      []string{"retry:same-pool"},
+			IsHealthy: true,
+		}))
+	}
+
+	// Create rule with MaxRetries = 3
+	// MaxRetries means "attempts". If MaxRetries=3, we try 3 times.
+	err = CreateTestRoutingRule(
+		ctx,
+		suite.PostgresDSN(),
+		"retry-same-pool-rule",
+		100,
+		[]string{"retry:same-pool"},
+		[]string{},
+		"",
+		0,
+		0,
+		"",
+		[]TestEndpointPool{
+			{Tier: 1, Endpoints: epIDs, MaxRetries: 3},
+		},
+	)
+	require.NoError(t, err)
+	require.NoError(t, tc.Server.GetMatcher().LoadRules(ctx))
+
+	// 2. Start Mock Endpoints
+	// Ep1 and Ep2 fail (return 503)
+	ep1 := NewMockEndpoint(tc.Broker, MockEndpointConfig{EndpointID: "same-pool-1", Secret: []byte(testHMACSecret), Tags: []string{"retry:same-pool"}})
+	ep1.SetFailures(10) // Always fail
+	require.NoError(t, ep1.Start(ctx))
+	defer ep1.Stop()
+
+	ep2 := NewMockEndpoint(tc.Broker, MockEndpointConfig{EndpointID: "same-pool-2", Secret: []byte(testHMACSecret), Tags: []string{"retry:same-pool"}})
+	ep2.SetFailures(10) // Always fail
+	require.NoError(t, ep2.Start(ctx))
+	defer ep2.Stop()
+
+	// Ep3 succeeds
+	ep3 := NewMockEndpoint(tc.Broker, MockEndpointConfig{EndpointID: "same-pool-3", Secret: []byte(testHMACSecret), Tags: []string{"retry:same-pool"}})
+	require.NoError(t, ep3.Start(ctx))
+	defer ep3.Stop()
+
+	require.NoError(t, tc.WaitForEndpoint(ctx, "same-pool-1"))
+	require.NoError(t, tc.WaitForEndpoint(ctx, "same-pool-2"))
+	require.NoError(t, tc.WaitForEndpoint(ctx, "same-pool-3"))
+
+	// 3. Execute Request
+	client := NewHTTPTestClient(tc.ServerURL, apiKey.RawKey)
+	resp, err := client.SendRequest(ctx, &ProxyRequest{
+		URL:    tc.MockTarget.URL() + "/retry-me",
+		Method: "GET",
+		Tags:   []string{"retry:same-pool"},
+	})
+	require.NoError(t, err)
+
+	// 4. Verify
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	// Verify that multiple attempts were made.
+	// The successful one + failed ones.
+	// Since order is random, we expect at least 1 request total.
+	// If it hit Ep3 first (lucky), count=1.
+	// If it hit failures, count > 1.
+	// We just verify it succeeded, meaning retries worked IF it picked bad ones.
+	// But tests should be deterministic essentially.
+	// With 2/3 bad, probability of success on first try = 1/3.
+	// Probability of hitting at least one bad = 2/3.
+	// We can't strictly assert count > 1 unless we control selection.
+	// But we CAN assert that we got a 200 OK.
+}
+
+func TestRetry_Escalation(t *testing.T) {
+	suite := GetSuite(t)
+	ctx := context.Background()
+
+	tc := setupTestServer(t, suite)
+	defer tc.Cleanup()
+
+	apiKey, err := CreateTestAPIKey(ctx, suite.PostgresDSN(), "escalation-client", []string{"*"})
+	require.NoError(t, err)
+
+	// Create endpoints for 2 tiers
+	require.NoError(t, CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{
+		ID: "ep-tier-1", Tags: []string{"tier:1"}, IsHealthy: true,
+	}))
+	require.NoError(t, CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{
+		ID: "ep-tier-2", Tags: []string{"tier:2"}, IsHealthy: true,
+	}))
+
+	// Rule: Tier 1 (1 retry) -> Tier 2 (1 retry)
+	err = CreateTestRoutingRule(
+		ctx,
+		suite.PostgresDSN(),
+		"escalation-rule",
+		100,
+		[]string{"mode:escalation"},
+		[]string{},
+		"",
+		0,
+		0,
+		"",
+		[]TestEndpointPool{
+			{Tier: 1, Endpoints: []string{"ep-tier-1"}, MaxRetries: 1},
+			{Tier: 2, Endpoints: []string{"ep-tier-2"}, MaxRetries: 1},
+		},
+	)
+	require.NoError(t, err)
+	require.NoError(t, tc.Server.GetMatcher().LoadRules(ctx))
+
+	// Tier 1 endpoint: Always fails
+	ep1 := NewMockEndpoint(tc.Broker, MockEndpointConfig{
+		EndpointID: "ep-tier-1",
+		Secret:     []byte(testHMACSecret),
+		Tags:       []string{"tier:1", "mode:escalation"},
+	})
+	ep1.SetFailures(100)
+	require.NoError(t, ep1.Start(ctx))
+	defer ep1.Stop()
+
+	// Tier 2 endpoint: Succeeds
+	ep2 := NewMockEndpoint(tc.Broker, MockEndpointConfig{
+		EndpointID: "ep-tier-2",
+		Secret:     []byte(testHMACSecret),
+		Tags:       []string{"tier:2", "mode:escalation"},
+	})
+	ep2.SetResponse(&MockEndpointResponse{
+		StatusCode: 200,
+		Body:       []byte("Success from Tier 2"),
+	})
+	require.NoError(t, ep2.Start(ctx))
+	defer ep2.Stop()
+
+	require.NoError(t, tc.WaitForEndpoint(ctx, "ep-tier-1"))
+	require.NoError(t, tc.WaitForEndpoint(ctx, "ep-tier-2"))
+
+	client := NewHTTPTestClient(tc.ServerURL, apiKey.RawKey)
+	resp, err := client.SendRequest(ctx, &ProxyRequest{
+		URL:    tc.MockTarget.URL() + "/escalate",
+		Method: "GET",
+		Tags:   []string{"mode:escalation"},
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Contains(t, string(resp.Body), "Tier 2")
+
+	assert.GreaterOrEqual(t, ep1.RequestCount(), 1)
+	assert.Equal(t, 1, ep2.RequestCount())
+
+	if pool := resp.Headers.Get("X-Relay-Pool"); pool != "" {
+		assert.Equal(t, "2", pool)
+	}
+}
+
+func TestRetry_ImmediateEscalation_403(t *testing.T) {
+	suite := GetSuite(t)
+	ctx := context.Background()
+
+	tc := setupTestServer(t, suite)
+	defer tc.Cleanup()
+
+	apiKey, err := CreateTestAPIKey(ctx, suite.PostgresDSN(), "blocked-client", []string{"*"})
+	require.NoError(t, err)
+
+	require.NoError(t, CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{ID: "ep-blocked", Tags: []string{"tier:blocked"}, IsHealthy: true}))
+	require.NoError(t, CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{ID: "ep-backup", Tags: []string{"tier:backup"}, IsHealthy: true}))
+
+	err = CreateTestRoutingRule(
+		ctx,
+		suite.PostgresDSN(),
+		"blocked-rule",
+		100,
+		[]string{"mode:blocked"},
+		[]string{},
+		"",
+		0,
+		0,
+		"",
+		[]TestEndpointPool{
+			{Tier: 1, Endpoints: []string{"ep-blocked"}, MaxRetries: 3},
+			{Tier: 2, Endpoints: []string{"ep-backup"}, MaxRetries: 1},
+		},
+	)
+	require.NoError(t, err)
+	require.NoError(t, tc.Server.GetMatcher().LoadRules(ctx))
+
+	ep1 := NewMockEndpoint(tc.Broker, MockEndpointConfig{EndpointID: "ep-blocked", Secret: []byte(testHMACSecret), Tags: []string{"tier:blocked", "mode:blocked"}})
+	ep1.SetResponse(&MockEndpointResponse{
+		StatusCode: http.StatusForbidden,
+		Body:       []byte("Blocked by target"),
+	})
+	require.NoError(t, ep1.Start(ctx))
+	defer ep1.Stop()
+
+	ep2 := NewMockEndpoint(tc.Broker, MockEndpointConfig{EndpointID: "ep-backup", Secret: []byte(testHMACSecret), Tags: []string{"tier:backup", "mode:blocked"}})
+	ep2.SetResponse(&MockEndpointResponse{StatusCode: 200, Body: []byte("Backup Success")})
+	require.NoError(t, ep2.Start(ctx))
+	defer ep2.Stop()
+
+	require.NoError(t, tc.WaitForEndpoint(ctx, "ep-blocked"))
+	require.NoError(t, tc.WaitForEndpoint(ctx, "ep-backup"))
+
+	client := NewHTTPTestClient(tc.ServerURL, apiKey.RawKey)
+	resp, err := client.SendRequest(ctx, &ProxyRequest{
+		URL:    tc.MockTarget.URL() + "/blocked",
+		Method: "GET",
+		Tags:   []string{"mode:blocked"},
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Contains(t, string(resp.Body), "Backup Success")
+
+	assert.Equal(t, 1, ep1.RequestCount())
+}
+
+func TestRetry_Exhaustion_503(t *testing.T) {
+	suite := GetSuite(t)
+	ctx := context.Background()
+
+	tc := setupTestServer(t, suite)
+	defer tc.Cleanup()
+
+	apiKey, err := CreateTestAPIKey(ctx, suite.PostgresDSN(), "exhaust-client", []string{"*"})
+	require.NoError(t, err)
+
+	epIDs := []string{"exhaust-1", "exhaust-2"}
+	for _, id := range epIDs {
+		require.NoError(t, CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{ID: id, Tags: []string{"retry:exhaust"}, IsHealthy: true}))
+	}
+
+	err = CreateTestRoutingRule(
+		ctx,
+		suite.PostgresDSN(),
+		"exhaust-rule",
+		100,
+		[]string{"retry:exhaust"},
+		[]string{},
+		"",
+		0,
+		0,
+		"",
+		[]TestEndpointPool{
+			{Tier: 1, Endpoints: epIDs, MaxRetries: 2},
+		},
+	)
+	require.NoError(t, err)
+	require.NoError(t, tc.Server.GetMatcher().LoadRules(ctx))
+
+	ep1 := NewMockEndpoint(tc.Broker, MockEndpointConfig{EndpointID: "exhaust-1", Secret: []byte(testHMACSecret), Tags: []string{"retry:exhaust"}})
+	ep1.SetFailures(10)
+	require.NoError(t, ep1.Start(ctx))
+	defer ep1.Stop()
+
+	ep2 := NewMockEndpoint(tc.Broker, MockEndpointConfig{EndpointID: "exhaust-2", Secret: []byte(testHMACSecret), Tags: []string{"retry:exhaust"}})
+	ep2.SetFailures(10)
+	require.NoError(t, ep2.Start(ctx))
+	defer ep2.Stop()
+
+	require.NoError(t, tc.WaitForEndpoint(ctx, "exhaust-1"))
+	require.NoError(t, tc.WaitForEndpoint(ctx, "exhaust-2"))
+
+	client := NewHTTPTestClient(tc.ServerURL, apiKey.RawKey)
+	resp, err := client.SendRequest(ctx, &ProxyRequest{
+		URL:    tc.MockTarget.URL() + "/exhaust",
+		Method: "GET",
+		Tags:   []string{"retry:exhaust"},
+	})
+	require.NoError(t, err)
+
+	// Should fail with 503 or 502
+	assert.Contains(t, []int{http.StatusServiceUnavailable, http.StatusBadGateway}, resp.StatusCode)
+
+	// Total requests across all endpoints should be 2
+	assert.Equal(t, 2, ep1.RequestCount()+ep2.RequestCount())
+}

@@ -1,0 +1,155 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: straw-postgres
+    environment:
+      POSTGRES_USER: straw
+      POSTGRES_PASSWORD: straw
+      POSTGRES_DB: straw
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U straw -d straw" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - straw-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: straw-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - straw-net
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: straw-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: [ "CMD", "rabbitmq-diagnostics", "-q", "ping" ]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    networks:
+      - straw-net
+  relay-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: straw-relay-server
+    environment:
+      POSTGRES_DSN: postgres://straw:straw@postgres:5432/straw?sslmode=disable
+      REDIS_ADDR: redis:6379
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      HMAC_SECRET: dev-secret-key-for-testing-only-change-in-production
+      LOG_LEVEL: info
+      LOG_FORMAT: json
+      METRICS_ENABLED: false
+      OTEL_SDK_DISABLED: "true"
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+    networks:
+      - straw-net
+    restart: unless-stopped
+
+  endpoint-1:
+    build:
+      context: .
+      dockerfile: Dockerfile.endpoint
+    container_name: straw-endpoint-1
+    environment:
+      ENDPOINT_ID: endpoint-load-test-001
+      ENDPOINT_TAGS: type:datacenter,region:us
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      HMAC_SECRET: dev-secret-key-for-testing-only-change-in-production
+      LOG_LEVEL: info
+      LOG_FORMAT: json
+      CONCURRENCY_LIMIT: 100
+      OTEL_SDK_DISABLED: "true"
+    depends_on:
+      - rabbitmq
+    networks:
+      - straw-net
+    restart: unless-stopped
+
+  endpoint-2:
+    build:
+      context: .
+      dockerfile: Dockerfile.endpoint
+    container_name: straw-endpoint-2
+    environment:
+      ENDPOINT_ID: endpoint-load-test-002
+      ENDPOINT_TAGS: type:datacenter,region:us
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      HMAC_SECRET: dev-secret-key-for-testing-only-change-in-production
+      LOG_LEVEL: info
+      LOG_FORMAT: json
+      CONCURRENCY_LIMIT: 100
+      OTEL_SDK_DISABLED: "true"
+    depends_on:
+      - rabbitmq
+    networks:
+      - straw-net
+    restart: unless-stopped
+
+  endpoint-3:
+    build:
+      context: .
+      dockerfile: Dockerfile.endpoint
+    container_name: straw-endpoint-3
+    environment:
+      ENDPOINT_ID: endpoint-load-test-003
+      ENDPOINT_TAGS: type:datacenter,region:us
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      HMAC_SECRET: dev-secret-key-for-testing-only-change-in-production
+      LOG_LEVEL: info
+      LOG_FORMAT: json
+      CONCURRENCY_LIMIT: 100
+      OTEL_SDK_DISABLED: "true"
+    depends_on:
+      - rabbitmq
+    networks:
+      - straw-net
+    restart: unless-stopped
+
+  mock-target:
+    image: traefik/whoami
+    container_name: straw-mock-target
+    ports:
+      - "8081:80"
+    networks:
+      - straw-net
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  redis-data:
+  rabbitmq-data:
+
+
+networks:
+  straw-net:
+    driver: bridge

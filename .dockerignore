@@ -1,0 +1,9 @@
+vendor
+.git
+.env
+tmp
+bin
+.idea
+.vscode
+coverage.out
+.DS_Store
