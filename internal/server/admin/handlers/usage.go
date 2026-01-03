@@ -17,10 +17,19 @@ func NewUsageHandler(repo domain.UsageRepository) *UsageHandler {
 }
 
 // HandleGetUsageSummary returns usage summaries for the given time range.
-// Query Params:
-// - start: YYYY-MM-DD
-// - end: YYYY-MM-DD
-// - api_key_id: Optional string
+//
+//	@Summary		Get Usage Summary
+//	@Description	Returns daily usage summaries for the specified time range
+//	@Tags			usage
+//	@Produce		json
+//	@Param			start			query		string	false	"Start date (YYYY-MM-DD, default: 30 days ago)"
+//	@Param			end				query		string	false	"End date (YYYY-MM-DD, default: today)"
+//	@Param			api_key_id		query		string	false	"Filter by API key ID"
+//	@Success		200				{object}	UsageSummaryResponse	"Usage summaries"
+//	@Failure		400				{object}	map[string]string		"Invalid date format"
+//	@Failure		500				{object}	map[string]string		"Internal server error"
+//	@Security		AdminKeyAuth
+//	@Router			/usage/summary [get]
 func (h *UsageHandler) HandleGetUsageSummary(c echo.Context) error {
 	var start, end time.Time
 	var err error
@@ -54,15 +63,27 @@ func (h *UsageHandler) HandleGetUsageSummary(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to fetch usage summaries"})
 	}
 
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"data":  summaries,
-		"start": start.Format(layout),
-		"end":   end.Format(layout),
+	return c.JSON(http.StatusOK, UsageSummaryResponse{
+		Data:  summaries,
+		Start: start.Format(layout),
+		End:   end.Format(layout),
 	})
 }
 
 // HandleGetBillingEstimate returns a simple cost estimate.
-// This is a placeholder logic for now.
+//
+//	@Summary		Get Billing Estimate
+//	@Description	Returns estimated billing cost for the specified time range
+//	@Tags			usage
+//	@Produce		json
+//	@Param			start			query		string	false	"Start date (YYYY-MM-DD, default: start of month)"
+//	@Param			end				query		string	false	"End date (YYYY-MM-DD, default: today)"
+//	@Param			api_key_id		query		string	false	"Filter by API key ID"
+//	@Success		200				{object}	BillingEstimateResponse	"Billing estimate"
+//	@Failure		400				{object}	map[string]string		"Invalid date format"
+//	@Failure		500				{object}	map[string]string		"Internal server error"
+//	@Security		AdminKeyAuth
+//	@Router			/billing/estimate [get]
 func (h *UsageHandler) HandleGetBillingEstimate(c echo.Context) error {
 	// Re-use fetching logic
 	// In a real system, we might have a dedicated billing service.
@@ -110,11 +131,11 @@ func (h *UsageHandler) HandleGetBillingEstimate(c echo.Context) error {
 	// This should be configurable.
 	estimatedUSD := totalCost * 0.0001
 
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"total_cost_units": totalCost,
-		"estimated_usd":    estimatedUSD,
-		"currency":         "USD",
-		"start":            start.Format(layout),
-		"end":              end.Format(layout),
+	return c.JSON(http.StatusOK, BillingEstimateResponse{
+		TotalCostUnits: totalCost,
+		EstimatedUSD:   estimatedUSD,
+		Currency:       "USD",
+		Start:          start.Format(layout),
+		End:            end.Format(layout),
 	})
 }

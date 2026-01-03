@@ -139,7 +139,7 @@ func (s *Service) checkDomains(req *Request, domains []string) *Result {
 		if matchDomain(host, domain_) {
 			return &Result{
 				Blocked:    true,
-				Reason:     fmt.Sprintf("domain_:%s", domain_),
+				Reason:     fmt.Sprintf("domain:%s", domain_),
 				FilterType: TypeDomain,
 			}
 		}

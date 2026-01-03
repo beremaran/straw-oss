@@ -41,6 +41,7 @@ func NewNatsBroker(opts ...Option) *NatsBroker {
 	b := &NatsBroker{
 		url:      url,
 		bindings: make(map[string][]string),
+		opts:     opts,
 	}
 	return b
 }

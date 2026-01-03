@@ -38,7 +38,7 @@ services:
     ports:
       - "4222:4222"
       - "8222:8222"
-    command: "-js -auth s3cr3t"
+    command: "--jetstream --auth s3cr3t"
     healthcheck:
       test: [ "CMD", "nats", "server", "check", "connection" ]
       interval: 5s
@@ -93,47 +93,47 @@ services:
       - straw-net
     restart: unless-stopped
 
-  endpoint-2:
-    build:
-      context: .
-      dockerfile: Dockerfile.endpoint
-    container_name: straw-endpoint-2
-    environment:
-      ENDPOINT_ID: endpoint-load-test-002
-      ENDPOINT_TAGS: type:datacenter,region:us
-      NATS_URL: nats://nats:4222
-      NATS_TOKEN: s3cr3t
-      HMAC_SECRET: dev-secret-key-for-testing-only-change-in-production
-      LOG_LEVEL: info
-      LOG_FORMAT: json
-      CONCURRENCY_LIMIT: 100
-      OTEL_SDK_DISABLED: "true"
-    depends_on:
-      - nats
-    networks:
-      - straw-net
-    restart: unless-stopped
+  # endpoint-2:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.endpoint
+  #   container_name: straw-endpoint-2
+  #   environment:
+  #     ENDPOINT_ID: endpoint-load-test-002
+  #     ENDPOINT_TAGS: type:datacenter,region:us
+  #     NATS_URL: nats://nats:4222
+  #     NATS_TOKEN: s3cr3t
+  #     HMAC_SECRET: dev-secret-key-for-testing-only-change-in-production
+  #     LOG_LEVEL: info
+  #     LOG_FORMAT: json
+  #     CONCURRENCY_LIMIT: 100
+  #     OTEL_SDK_DISABLED: "true"
+  #   depends_on:
+  #     - nats
+  #   networks:
+  #     - straw-net
+  #   restart: unless-stopped
 
-  endpoint-3:
-    build:
-      context: .
-      dockerfile: Dockerfile.endpoint
-    container_name: straw-endpoint-3
-    environment:
-      ENDPOINT_ID: endpoint-load-test-003
-      ENDPOINT_TAGS: type:datacenter,region:us
-      NATS_URL: nats://nats:4222
-      NATS_TOKEN: s3cr3t
-      HMAC_SECRET: dev-secret-key-for-testing-only-change-in-production
-      LOG_LEVEL: info
-      LOG_FORMAT: json
-      CONCURRENCY_LIMIT: 100
-      OTEL_SDK_DISABLED: "true"
-    depends_on:
-      - nats
-    networks:
-      - straw-net
-    restart: unless-stopped
+  # endpoint-3:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.endpoint
+  #   container_name: straw-endpoint-3
+  #   environment:
+  #     ENDPOINT_ID: endpoint-load-test-003
+  #     ENDPOINT_TAGS: type:datacenter,region:us
+  #     NATS_URL: nats://nats:4222
+  #     NATS_TOKEN: s3cr3t
+  #     HMAC_SECRET: dev-secret-key-for-testing-only-change-in-production
+  #     LOG_LEVEL: info
+  #     LOG_FORMAT: json
+  #     CONCURRENCY_LIMIT: 100
+  #     OTEL_SDK_DISABLED: "true"
+  #   depends_on:
+  #     - nats
+  #   networks:
+  #     - straw-net
+  #   restart: unless-stopped
 
   mock-target:
     image: traefik/whoami

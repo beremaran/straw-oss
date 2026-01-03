@@ -16,8 +16,16 @@ func NewCacheHandler(redisClient *redis.Client) *CacheHandler {
 }
 
 // HandleClearCache clears keys matching a pattern.
-// Query Param: pattern (default: "*")
-// Usage: POST /admin/cache/clear?pattern=auth:*
+//
+//	@Summary		Clear Cache
+//	@Description	Clears Redis cache keys matching the specified pattern
+//	@Tags			cache
+//	@Produce		json
+//	@Param			pattern	query		string	false	"Key pattern to match (default: *)"
+//	@Success		200		{object}	ClearCacheResponse	"Deletion result"
+//	@Failure		500		{object}	map[string]string		"Internal server error"
+//	@Security		AdminKeyAuth
+//	@Router			/cache/clear [post]
 func (h *CacheHandler) HandleClearCache(c echo.Context) error {
 	pattern := c.QueryParam("pattern")
 	if pattern == "" {
@@ -56,14 +64,23 @@ func (h *CacheHandler) HandleClearCache(c echo.Context) error {
 		count += len(keys)
 	}
 
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"message": "cache cleared",
-		"pattern": pattern,
-		"deleted": count,
+	return c.JSON(http.StatusOK, ClearCacheResponse{
+		Message: "cache cleared",
+		Pattern: pattern,
+		Deleted: count,
 	})
 }
 
 // HandleGetCacheStats returns Redis memory stats.
+//
+//	@Summary		Get Cache Stats
+//	@Description	Returns Redis server information and memory statistics
+//	@Tags			cache
+//	@Produce		json
+//	@Success		200	{object}	CacheStatsResponse	"Redis info"
+//	@Failure		500	{object}	map[string]string	"Internal server error"
+//	@Security		AdminKeyAuth
+//	@Router			/cache/stats [get]
 func (h *CacheHandler) HandleGetCacheStats(c echo.Context) error {
 	ctx := c.Request().Context()
 	info, err := h.redisClient.Client.Info(ctx).Result()
@@ -71,7 +88,7 @@ func (h *CacheHandler) HandleGetCacheStats(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to get redis info"})
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{
-		"info": info,
+	return c.JSON(http.StatusOK, CacheStatsResponse{
+		Info: info,
 	})
 }

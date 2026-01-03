@@ -1,0 +1,1174 @@
+basePath: /
+definitions:
+  echo.HTTPError:
+    properties:
+      message: {}
+    type: object
+  github_com_kwilabs_straw-proxy-server_internal_domain.ABConfig:
+    properties:
+      strategy:
+        description: |-
+          Strategy determines how variants are selected.
+          Valid values: "random", "round_robin", "weighted"
+        type: string
+      variants:
+        description: Variants are the different fingerprint options to test.
+        items:
+          $ref: '#/definitions/github_com_kwilabs_straw-proxy-server_internal_domain.ABVariant'
+        type: array
+    type: object
+  github_com_kwilabs_straw-proxy-server_internal_domain.ABVariant:
+    properties:
+      fingerprint:
+        description: Fingerprint is the TLS fingerprint preset ID.
+        type: string
+      weight:
+        description: Weight is the percentage weight for weighted selection (0-100).
+        type: integer
+    type: object
+  github_com_kwilabs_straw-proxy-server_internal_domain.ApiKey:
+    properties:
+      created_at:
+        description: CreatedAt is when the key was created.
+        type: string
+      expires_at:
+        description: ExpiresAt is when the key expires (optional).
+        type: string
+      id:
+        description: ID is the unique identifier for this API key.
+        type: string
+      is_active:
+        description: IsActive indicates whether this key is currently active.
+        type: boolean
+      key_hash:
+        description: |-
+          KeyHash is the bcrypt hash of the API key.
+          The actual key is only shown once during creation.
+        type: string
+      name:
+        description: Name is a human-readable name for the key.
+        type: string
+      rate_limit_override:
+        description: |-
+          RateLimitOverride allows per-key rate limit customization.
+          If set, overrides the routing rule's rate limit.
+        type: integer
+      scopes:
+        description: |-
+          Scopes define which tag patterns this key can access.
+          Supports wildcards, e.g., ["target:*", "type:search"]
+        items:
+          type: string
+        type: array
+    type: object
+  github_com_kwilabs_straw-proxy-server_internal_domain.ConfigMap:
+    additionalProperties: true
+    type: object
+  github_com_kwilabs_straw-proxy-server_internal_domain.EndpointPool:
+    properties:
+      endpoints:
+        description: Endpoints are endpoint IDs or tag selectors for this pool.
+        items:
+          type: string
+        type: array
+      max_retries:
+        description: MaxRetries is the maximum retry attempts within this pool before
+          escalating.
+        type: integer
+      tier:
+        description: Tier is the priority of this pool (1 = Primary, 2 = Secondary,
+          etc.).
+        type: integer
+    type: object
+  github_com_kwilabs_straw-proxy-server_internal_domain.FingerprintPreset:
+    properties:
+      config:
+        allOf:
+        - $ref: '#/definitions/github_com_kwilabs_straw-proxy-server_internal_domain.ConfigMap'
+        description: |-
+          Config is the detailed configuration of the fingerprint.
+          This mirrors the structure expected by the fingerprinting engine.
+      created_at:
+        description: CreatedAt is when the preset was created.
+        type: string
+      id:
+        description: ID is the unique identifier for this preset (e.g., "chrome-130").
+        type: string
+      name:
+        description: Name is a human-readable name for the preset.
+        type: string
+      updated_at:
+        description: UpdatedAt is when the preset was last modified.
+        type: string
+    type: object
+  github_com_kwilabs_straw-proxy-server_internal_domain.RequestFilter:
+    properties:
+      adblock_lists:
+        description: |-
+          AdblockLists specifies which blocklists to use.
+          Example: ["easylist", "easyprivacy"]
+        items:
+          type: string
+        type: array
+      block_content_types:
+        description: |-
+          BlockContentTypes blocks responses by Content-Type.
+          Example: ["image/*", "font/*", "video/*"]
+        items:
+          type: string
+        type: array
+      block_domains:
+        description: BlockDomains blocks requests to specific domains.
+        items:
+          type: string
+        type: array
+      block_url_patterns:
+        description: |-
+          BlockURLPatterns blocks requests matching URL patterns (glob/regex).
+          Example: ["*.google-analytics.com", "*/ads/*"]
+        items:
+          type: string
+        type: array
+      enable_adblock:
+        description: EnableAdblock enables EasyList-style ad blocking.
+        type: boolean
+    type: object
+  github_com_kwilabs_straw-proxy-server_internal_domain.RoutingRule:
+    properties:
+      allow_insecure_tls:
+        description: AllowInsecureTLS allows skipping TLS certificate verification
+          for targets.
+        type: boolean
+      allowed_endpoint_types:
+        description: |-
+          AllowedEndpointTypes specifies which endpoint types can handle these requests.
+          Example: ["residential", "mobile"]
+        items:
+          type: string
+        type: array
+      created_at:
+        description: CreatedAt is when the rule was created.
+        type: string
+      endpoint_pools:
+        description: EndpointPools defines tiered endpoint fallback pools.
+        items:
+          $ref: '#/definitions/github_com_kwilabs_straw-proxy-server_internal_domain.EndpointPool'
+        type: array
+      excluded_tags:
+        description: ExcludedTags are tags that a request must NOT have to match this
+          rule (NOT logic).
+        items:
+          type: string
+        type: array
+      fingerprint_ab_test:
+        allOf:
+        - $ref: '#/definitions/github_com_kwilabs_straw-proxy-server_internal_domain.ABConfig'
+        description: FingerprintABTest allows A/B testing different fingerprints.
+      fingerprint_preset:
+        description: |-
+          FingerprintPreset specifies the default browser TLS fingerprint to use.
+          Example: "chrome-130"
+        type: string
+      hard_timeout:
+        allOf:
+        - $ref: '#/definitions/time.Duration'
+        description: HardTimeout is the maximum time allowed for a request to complete.
+      id:
+        description: ID is the unique identifier for this rule.
+        type: string
+      is_active:
+        description: IsActive indicates whether this rule is currently active.
+        type: boolean
+      name:
+        description: Name is a human-readable name for the rule.
+        type: string
+      pinned_cert_hash:
+        description: PinnedCertHash for certificate pinning (optional).
+        type: string
+      priority:
+        description: Priority determines rule precedence. Higher priority rules are
+          evaluated first.
+        type: integer
+      quota_key:
+        description: QuotaKey is the key used for rate limit bucketing (e.g., "target:amazon").
+        type: string
+      rate_limit_per_minute:
+        description: RateLimitPerMinute is the maximum requests per minute for this
+          rule's quota key.
+        type: integer
+      rate_limit_per_second:
+        description: RateLimitPerSecond is the maximum requests per second for this
+          rule's quota key.
+        type: integer
+      request_filters:
+        allOf:
+        - $ref: '#/definitions/github_com_kwilabs_straw-proxy-server_internal_domain.RequestFilter'
+        description: RequestFilters defines bandwidth optimization filters.
+      required_endpoint_caps:
+        description: |-
+          RequiredEndpointCaps are capability tags that endpoints must have.
+          Example: ["capability:stealth"]
+        items:
+          type: string
+        type: array
+      required_tags:
+        description: RequiredTags are the tags that a request MUST have to match this
+          rule (AND logic).
+        items:
+          type: string
+        type: array
+      updated_at:
+        description: UpdatedAt is when the rule was last modified.
+        type: string
+      version:
+        description: Version for optimistic locking on updates.
+        type: integer
+    type: object
+  github_com_kwilabs_straw-proxy-server_internal_domain.UsageSummary:
+    properties:
+      breakdown:
+        additionalProperties:
+          format: int64
+          type: integer
+        type: object
+      cost_units:
+        type: number
+      date:
+        type: string
+      total_bytes:
+        type: integer
+      total_requests:
+        type: integer
+    type: object
+  github_com_kwilabs_straw-proxy-server_pkg_protocol.ErrorInfo:
+    properties:
+      code:
+        description: Code is a machine-readable error code (e.g., "UPSTREAM_ERROR").
+        type: string
+      message:
+        description: Message is a human-readable error description.
+        type: string
+      retry_after:
+        allOf:
+        - $ref: '#/definitions/time.Duration'
+        description: RetryAfter suggests how long to wait before retrying (optional).
+      retryable:
+        description: Retryable indicates whether the client should retry the request.
+        type: boolean
+    type: object
+  github_com_kwilabs_straw-proxy-server_pkg_protocol.Header:
+    properties:
+      key:
+        type: string
+      value:
+        type: string
+    type: object
+  github_com_kwilabs_straw-proxy-server_pkg_protocol.Request:
+    properties:
+      body:
+        description: Body contains the request body (for POST, PUT, etc.).
+        items:
+          type: integer
+        type: array
+      fingerprint:
+        description: Fingerprint specifies which browser TLS fingerprint preset to
+          use.
+        type: string
+      headers:
+        description: Headers contains the HTTP headers to send.
+        items:
+          $ref: '#/definitions/github_com_kwilabs_straw-proxy-server_pkg_protocol.Header'
+        type: array
+      id:
+        description: ID is a unique identifier for this request (used for correlation).
+        type: string
+      method:
+        description: Method is the HTTP method (GET, POST, etc.).
+        type: string
+      reply_to:
+        description: |-
+          ReplyTo specifies the queue name to send the response to.
+          If empty, the endpoint generates a default result queue name.
+        type: string
+      session_id:
+        description: SessionID links this request to a sticky session (optional).
+        type: string
+      timeout:
+        allOf:
+        - $ref: '#/definitions/time.Duration'
+        description: Timeout specifies how long the Endpoint should wait for a response.
+      trace_id:
+        description: TraceID for distributed tracing (OpenTelemetry).
+        type: string
+      url:
+        description: URL is the target URL to fetch.
+        type: string
+    type: object
+  github_com_kwilabs_straw-proxy-server_pkg_protocol.Response:
+    properties:
+      body:
+        description: Body contains the response body.
+        items:
+          type: integer
+        type: array
+      endpoint_id:
+        description: EndpointID identifies which endpoint handled this request.
+        type: string
+      error:
+        allOf:
+        - $ref: '#/definitions/github_com_kwilabs_straw-proxy-server_pkg_protocol.ErrorInfo'
+        description: Error contains error details if the request failed.
+      headers:
+        description: Headers contains the HTTP response headers.
+        items:
+          $ref: '#/definitions/github_com_kwilabs_straw-proxy-server_pkg_protocol.Header'
+        type: array
+      request_id:
+        description: RequestID correlates this response to the original request.
+        type: string
+      session_id:
+        description: SessionID if a session was created or used.
+        type: string
+      status_code:
+        description: StatusCode is the HTTP status code received from the target.
+        type: integer
+      timing:
+        allOf:
+        - $ref: '#/definitions/github_com_kwilabs_straw-proxy-server_pkg_protocol.TimingInfo'
+        description: Timing contains request timing details for observability.
+    type: object
+  github_com_kwilabs_straw-proxy-server_pkg_protocol.TimingInfo:
+    properties:
+      dns_lookup:
+        allOf:
+        - $ref: '#/definitions/time.Duration'
+        description: DNSLookup is the time spent resolving DNS.
+      first_byte:
+        allOf:
+        - $ref: '#/definitions/time.Duration'
+        description: FirstByte is the time until the first response byte was received.
+      tcp_connect:
+        allOf:
+        - $ref: '#/definitions/time.Duration'
+        description: TCPConnect is the time spent establishing TCP connection.
+      tls_handshake:
+        allOf:
+        - $ref: '#/definitions/time.Duration'
+        description: TLSHandshake is the time spent on TLS negotiation.
+      total:
+        allOf:
+        - $ref: '#/definitions/time.Duration'
+        description: Total is the total request duration.
+    type: object
+  internal_server_admin_handlers.BillingEstimateResponse:
+    properties:
+      currency:
+        type: string
+      end:
+        type: string
+      estimated_usd:
+        type: number
+      start:
+        type: string
+      total_cost_units:
+        type: number
+    type: object
+  internal_server_admin_handlers.CacheStatsResponse:
+    properties:
+      info:
+        type: string
+    type: object
+  internal_server_admin_handlers.ClearCacheResponse:
+    properties:
+      deleted:
+        type: integer
+      message:
+        type: string
+      pattern:
+        type: string
+    type: object
+  internal_server_admin_handlers.CreateApiKeyResponse:
+    properties:
+      created_at:
+        description: CreatedAt is when the key was created.
+        type: string
+      expires_at:
+        description: ExpiresAt is when the key expires (optional).
+        type: string
+      id:
+        description: ID is the unique identifier for this API key.
+        type: string
+      is_active:
+        description: IsActive indicates whether this key is currently active.
+        type: boolean
+      key_hash:
+        description: |-
+          KeyHash is the bcrypt hash of the API key.
+          The actual key is only shown once during creation.
+        type: string
+      name:
+        description: Name is a human-readable name for the key.
+        type: string
+      rate_limit_override:
+        description: |-
+          RateLimitOverride allows per-key rate limit customization.
+          If set, overrides the routing rule's rate limit.
+        type: integer
+      raw_key:
+        type: string
+      scopes:
+        description: |-
+          Scopes define which tag patterns this key can access.
+          Supports wildcards, e.g., ["target:*", "type:search"]
+        items:
+          type: string
+        type: array
+    type: object
+  internal_server_admin_handlers.EndpointHealthResponse:
+    properties:
+      active_tasks:
+        type: integer
+      endpoint_id:
+        type: string
+      last_seen:
+        type: string
+      state:
+        type: string
+      tags:
+        items:
+          type: string
+        type: array
+      version:
+        type: string
+    type: object
+  internal_server_admin_handlers.ListApiKeysResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/github_com_kwilabs_straw-proxy-server_internal_domain.ApiKey'
+        type: array
+      limit:
+        type: integer
+      page:
+        type: integer
+      total:
+        type: integer
+    type: object
+  internal_server_admin_handlers.UsageSummaryResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/github_com_kwilabs_straw-proxy-server_internal_domain.UsageSummary'
+        type: array
+      end:
+        description: YYYY-MM-DD
+        type: string
+      start:
+        description: YYYY-MM-DD
+        type: string
+    type: object
+  time.Duration:
+    enum:
+    - -9223372036854775808
+    - 9223372036854775807
+    - 1
+    - 1000
+    - 1000000
+    - 1000000000
+    - 60000000000
+    - 3600000000000
+    format: int64
+    type: integer
+    x-enum-varnames:
+    - minDuration
+    - maxDuration
+    - Nanosecond
+    - Microsecond
+    - Millisecond
+    - Second
+    - Minute
+    - Hour
+host: localhost:8080
+info:
+  contact:
+    name: Straw Proxy Support
+    url: https://github.com/kwilabs/straw-proxy-server
+  description: |-
+    HTTP relay proxy with fingerprinting and routing capabilities.
+    This API allows clients to proxy HTTP requests through distributed endpoints.
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  title: Straw Proxy Relay Server API
+  version: "1.0"
+paths:
+  /api-keys:
+    get:
+      consumes:
+      - application/json
+      description: Returns paginated list of all API keys (without raw key values)
+      parameters:
+      - description: 'Page number (default: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Items per page (default: 20, max: 100)'
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Paginated list of API keys
+          schema:
+            $ref: '#/definitions/internal_server_admin_handlers.ListApiKeysResponse'
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - AdminKeyAuth: []
+      summary: List API Keys
+      tags:
+      - api-keys
+    post:
+      consumes:
+      - application/json
+      description: Creates a new API key. The raw key is returned only once in the
+        response.
+      parameters:
+      - description: API key creation request
+        in: body
+        name: request
+        required: true
+        schema:
+          properties:
+            name:
+              type: string
+            rate_limit_override:
+              type: integer
+            scopes:
+              items:
+                type: string
+              type: array
+          type: object
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created API key with raw key
+          schema:
+            $ref: '#/definitions/internal_server_admin_handlers.CreateApiKeyResponse'
+        "400":
+          description: Invalid request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - AdminKeyAuth: []
+      summary: Create API Key
+      tags:
+      - api-keys
+  /api-keys/{id}:
+    delete:
+      description: Revokes an API key by ID, preventing further use
+      parameters:
+      - description: API Key ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: API key revoked successfully
+        "400":
+          description: ID required
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - AdminKeyAuth: []
+      summary: Revoke API Key
+      tags:
+      - api-keys
+  /billing/estimate:
+    get:
+      description: Returns estimated billing cost for the specified time range
+      parameters:
+      - description: 'Start date (YYYY-MM-DD, default: start of month)'
+        in: query
+        name: start
+        type: string
+      - description: 'End date (YYYY-MM-DD, default: today)'
+        in: query
+        name: end
+        type: string
+      - description: Filter by API key ID
+        in: query
+        name: api_key_id
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Billing estimate
+          schema:
+            $ref: '#/definitions/internal_server_admin_handlers.BillingEstimateResponse'
+        "400":
+          description: Invalid date format
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - AdminKeyAuth: []
+      summary: Get Billing Estimate
+      tags:
+      - usage
+  /cache/clear:
+    post:
+      description: Clears Redis cache keys matching the specified pattern
+      parameters:
+      - description: 'Key pattern to match (default: *)'
+        in: query
+        name: pattern
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Deletion result
+          schema:
+            $ref: '#/definitions/internal_server_admin_handlers.ClearCacheResponse'
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - AdminKeyAuth: []
+      summary: Clear Cache
+      tags:
+      - cache
+  /cache/stats:
+    get:
+      description: Returns Redis server information and memory statistics
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Redis info
+          schema:
+            $ref: '#/definitions/internal_server_admin_handlers.CacheStatsResponse'
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - AdminKeyAuth: []
+      summary: Get Cache Stats
+      tags:
+      - cache
+  /endpoints:
+    get:
+      description: Returns all registered proxy endpoints with their health status
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of endpoints
+          schema:
+            items:
+              $ref: '#/definitions/internal_server_admin_handlers.EndpointHealthResponse'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - AdminKeyAuth: []
+      summary: List Endpoints
+      tags:
+      - endpoints
+  /endpoints/{id}/drain:
+    post:
+      description: Marks an endpoint as draining, preventing new requests from being
+        routed to it
+      parameters:
+      - description: Endpoint ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: Endpoint marked for draining
+        "400":
+          description: ID required
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - AdminKeyAuth: []
+      summary: Drain Endpoint
+      tags:
+      - endpoints
+  /fingerprints:
+    get:
+      description: Returns all available fingerprint presets for TLS fingerprinting
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of presets
+          schema:
+            items:
+              $ref: '#/definitions/github_com_kwilabs_straw-proxy-server_internal_domain.FingerprintPreset'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - AdminKeyAuth: []
+      summary: List Fingerprint Presets
+      tags:
+      - fingerprints
+    post:
+      consumes:
+      - application/json
+      description: Creates a new fingerprint preset or updates an existing one
+      parameters:
+      - description: Fingerprint preset
+        in: body
+        name: preset
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_kwilabs_straw-proxy-server_internal_domain.FingerprintPreset'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Created or updated preset
+          schema:
+            $ref: '#/definitions/github_com_kwilabs_straw-proxy-server_internal_domain.FingerprintPreset'
+        "400":
+          description: Invalid request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - AdminKeyAuth: []
+      summary: Create or Update Fingerprint Preset
+      tags:
+      - fingerprints
+  /fingerprints/broadcast:
+    post:
+      description: Sends all fingerprint presets to all connected endpoints via message
+        broker
+      responses:
+        "200":
+          description: Presets broadcast successfully
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - AdminKeyAuth: []
+      summary: Broadcast Fingerprint Presets
+      tags:
+      - fingerprints
+  /healthz:
+    get:
+      description: Returns OK if the server is running
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+      summary: Health Check
+      tags:
+      - health
+  /readyz:
+    get:
+      description: Returns OK if the server is ready to accept traffic
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+      summary: Readiness Check
+      tags:
+      - health
+  /rules:
+    get:
+      consumes:
+      - application/json
+      description: Returns paginated list of all routing rules
+      parameters:
+      - description: 'Page number (default: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Items per page (default: 20, max: 100)'
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Paginated list of routing rules
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - AdminKeyAuth: []
+      summary: List Routing Rules
+      tags:
+      - routing-rules
+    post:
+      consumes:
+      - application/json
+      description: Creates a new routing rule for request matching
+      parameters:
+      - description: Routing rule to create
+        in: body
+        name: rule
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_kwilabs_straw-proxy-server_internal_domain.RoutingRule'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created routing rule
+          schema:
+            $ref: '#/definitions/github_com_kwilabs_straw-proxy-server_internal_domain.RoutingRule'
+        "400":
+          description: Invalid request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - AdminKeyAuth: []
+      summary: Create Routing Rule
+      tags:
+      - routing-rules
+  /rules/{id}:
+    delete:
+      description: Deletes a routing rule by ID
+      parameters:
+      - description: Routing Rule ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: Rule deleted successfully
+        "400":
+          description: ID required
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - AdminKeyAuth: []
+      summary: Delete Routing Rule
+      tags:
+      - routing-rules
+    get:
+      description: Returns a specific routing rule by ID
+      parameters:
+      - description: Routing Rule ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Routing rule
+          schema:
+            $ref: '#/definitions/github_com_kwilabs_straw-proxy-server_internal_domain.RoutingRule'
+        "400":
+          description: ID required
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Rule not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - AdminKeyAuth: []
+      summary: Get Routing Rule
+      tags:
+      - routing-rules
+    put:
+      consumes:
+      - application/json
+      description: Updates an existing routing rule by ID
+      parameters:
+      - description: Routing Rule ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Updated routing rule
+        in: body
+        name: rule
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_kwilabs_straw-proxy-server_internal_domain.RoutingRule'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Updated routing rule
+          schema:
+            $ref: '#/definitions/github_com_kwilabs_straw-proxy-server_internal_domain.RoutingRule'
+        "400":
+          description: Invalid request or ID mismatch
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - AdminKeyAuth: []
+      summary: Update Routing Rule
+      tags:
+      - routing-rules
+  /usage/summary:
+    get:
+      description: Returns daily usage summaries for the specified time range
+      parameters:
+      - description: 'Start date (YYYY-MM-DD, default: 30 days ago)'
+        in: query
+        name: start
+        type: string
+      - description: 'End date (YYYY-MM-DD, default: today)'
+        in: query
+        name: end
+        type: string
+      - description: Filter by API key ID
+        in: query
+        name: api_key_id
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Usage summaries
+          schema:
+            $ref: '#/definitions/internal_server_admin_handlers.UsageSummaryResponse'
+        "400":
+          description: Invalid date format
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - AdminKeyAuth: []
+      summary: Get Usage Summary
+      tags:
+      - usage
+  /v1/request:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Proxies an HTTP request through a matched endpoint based on routing rules.
+        The request is validated, filtered, rate-limited, and executed through the endpoint pool.
+      parameters:
+      - description: HTTP request to proxy
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_kwilabs_straw-proxy-server_pkg_protocol.Request'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successful proxy response
+          schema:
+            $ref: '#/definitions/github_com_kwilabs_straw-proxy-server_pkg_protocol.Response'
+        "400":
+          description: Invalid request body or URL
+          schema:
+            $ref: '#/definitions/echo.HTTPError'
+        "401":
+          description: Authentication required
+          schema:
+            $ref: '#/definitions/echo.HTTPError'
+        "403":
+          description: Request blocked by filter or scope
+          schema:
+            $ref: '#/definitions/echo.HTTPError'
+        "404":
+          description: No matching routing rule found
+          schema:
+            $ref: '#/definitions/echo.HTTPError'
+        "429":
+          description: Rate limit exceeded
+          schema:
+            $ref: '#/definitions/echo.HTTPError'
+        "502":
+          description: Upstream execution failed
+          schema:
+            $ref: '#/definitions/echo.HTTPError'
+      security:
+      - ApiKeyAuth: []
+      summary: Relay HTTP Request
+      tags:
+      - relay
+  /v2/request:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Proxies an HTTP request through a matched endpoint based on routing rules.
+        The request is validated, filtered, rate-limited, and executed through the endpoint pool.
+      parameters:
+      - description: HTTP request to proxy
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_kwilabs_straw-proxy-server_pkg_protocol.Request'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successful proxy response
+          schema:
+            $ref: '#/definitions/github_com_kwilabs_straw-proxy-server_pkg_protocol.Response'
+        "400":
+          description: Invalid request body or URL
+          schema:
+            $ref: '#/definitions/echo.HTTPError'
+        "401":
+          description: Authentication required
+          schema:
+            $ref: '#/definitions/echo.HTTPError'
+        "403":
+          description: Request blocked by filter or scope
+          schema:
+            $ref: '#/definitions/echo.HTTPError'
+        "404":
+          description: No matching routing rule found
+          schema:
+            $ref: '#/definitions/echo.HTTPError'
+        "429":
+          description: Rate limit exceeded
+          schema:
+            $ref: '#/definitions/echo.HTTPError'
+        "502":
+          description: Upstream execution failed
+          schema:
+            $ref: '#/definitions/echo.HTTPError'
+      security:
+      - ApiKeyAuth: []
+      summary: Relay HTTP Request
+      tags:
+      - relay
+securityDefinitions:
+  ApiKeyAuth:
+    description: API key for authentication
+    in: header
+    name: X-API-Key
+    type: apiKey
+swagger: "2.0"

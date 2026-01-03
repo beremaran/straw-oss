@@ -19,6 +19,15 @@ func NewFingerprintHandler(repo domain.FingerprintRepository, broker broker.Mess
 }
 
 // HandleListPresets returns all fingerprint presets
+//
+//	@Summary		List Fingerprint Presets
+//	@Description	Returns all available fingerprint presets for TLS fingerprinting
+//	@Tags			fingerprints
+//	@Produce		json
+//	@Success		200	{array}		domain.FingerprintPreset	"List of presets"
+//	@Failure		500	{object}	map[string]string			"Internal server error"
+//	@Security		AdminKeyAuth
+//	@Router			/fingerprints [get]
 func (h *FingerprintHandler) HandleListPresets(c echo.Context) error {
 	presets, err := h.repo.ListPresets(c.Request().Context())
 	if err != nil {
@@ -28,6 +37,18 @@ func (h *FingerprintHandler) HandleListPresets(c echo.Context) error {
 }
 
 // HandleCreatePreset creates or updates a preset
+//
+//	@Summary		Create or Update Fingerprint Preset
+//	@Description	Creates a new fingerprint preset or updates an existing one
+//	@Tags			fingerprints
+//	@Accept			json
+//	@Produce		json
+//	@Param			preset	body		domain.FingerprintPreset	true	"Fingerprint preset"
+//	@Success		200		{object}	domain.FingerprintPreset	"Created or updated preset"
+//	@Failure		400		{object}	map[string]string			"Invalid request"
+//	@Failure		500		{object}	map[string]string			"Internal server error"
+//	@Security		AdminKeyAuth
+//	@Router			/fingerprints [post]
 func (h *FingerprintHandler) HandleCreatePreset(c echo.Context) error {
 	var preset domain.FingerprintPreset
 	if err := c.Bind(&preset); err != nil {
@@ -58,6 +79,14 @@ func (h *FingerprintHandler) HandleCreatePreset(c echo.Context) error {
 }
 
 // HandleBroadcastPresets sends all presets to endpoints via fanout
+//
+//	@Summary		Broadcast Fingerprint Presets
+//	@Description	Sends all fingerprint presets to all connected endpoints via message broker
+//	@Tags			fingerprints
+//	@Success		200	"Presets broadcast successfully"
+//	@Failure		500	{object}	map[string]string	"Internal server error"
+//	@Security		AdminKeyAuth
+//	@Router			/fingerprints/broadcast [post]
 func (h *FingerprintHandler) HandleBroadcastPresets(c echo.Context) error {
 	presets, err := h.repo.ListPresets(c.Request().Context())
 	if err != nil {

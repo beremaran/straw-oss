@@ -17,6 +17,10 @@ import (
 	"github.com/kwilabs/straw-proxy-server/internal/service/session"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	echoSwagger "github.com/swaggo/echo-swagger"
+
+	// Swagger docs import
+	_ "github.com/kwilabs/straw-proxy-server/docs/relay"
 )
 
 // Server represents the HTTP server.
@@ -101,6 +105,9 @@ func (s *Server) registerRoutes() {
 	s.echo.GET("/healthz", s.healthCheck)
 	s.echo.GET("/readyz", s.readyCheck)
 
+	// Swagger UI
+	s.echo.GET("/swagger/*", echoSwagger.EchoWrapHandler(echoSwagger.InstanceName("relay")))
+
 	// API Groups
 	// Apply Auth Middleware to protected routes
 	authMiddleware := mw.AuthMiddleware(s.authService)
@@ -135,11 +142,25 @@ func (s *Server) registerRoutes() {
 }
 
 // healthCheck returns safe 200 OK.
+//
+//	@Summary		Health Check
+//	@Description	Returns OK if the server is running
+//	@Tags			health
+//	@Produce		plain
+//	@Success		200	{string}	string	"OK"
+//	@Router			/healthz [get]
 func (s *Server) healthCheck(c echo.Context) error {
 	return c.String(http.StatusOK, "OK")
 }
 
 // readyCheck returns safe 200 OK.
+//
+//	@Summary		Readiness Check
+//	@Description	Returns OK if the server is ready to accept traffic
+//	@Tags			health
+//	@Produce		plain
+//	@Success		200	{string}	string	"OK"
+//	@Router			/readyz [get]
 func (s *Server) readyCheck(c echo.Context) error {
 	return c.String(http.StatusOK, "OK")
 }
