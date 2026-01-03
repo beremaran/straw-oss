@@ -21,7 +21,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libgl1-mesa-dev xorg-dev libxkbcommon-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
       - name: Unit Tests
-        run: go test -race -v -short ./...
+        run: go list ./... | grep -v /test/integration | xargs go test -race -v -short
 
   integration-tests:
     name: Integration Tests
