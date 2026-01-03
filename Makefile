@@ -20,6 +20,8 @@ help:
 	@echo "  make docker-build         Build all docker images"
 	@echo "  make docker-build-server  Build server docker image"
 	@echo "  make docker-build-endpoint Build endpoint docker image"
+	@echo "  make security    Run security checks (govulncheck)"
+	@echo "  make verify-mod  Verify go modules"
 	@echo ""
 	@echo "Database Migrations:"
 	@echo "  make migrate-up          Apply pending migrations"
@@ -67,10 +69,16 @@ build-gui:
 test: test-unit test-integration
 
 test-unit:
-	go list ./... | grep -v /test/integration | xargs go test -race -v
+	go list ./... | grep -v /test/integration | xargs go test -race -v -short
 
 test-integration:
-	go test -race -v ./test/integration/...
+	go test -race -v -timeout 10m ./test/integration/...
+
+security:
+	govulncheck ./...
+
+verify-mod:
+	go mod verify
 
 lint:
 	golangci-lint run ./...
