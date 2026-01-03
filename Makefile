@@ -64,8 +64,13 @@ build-gui:
 	@echo "Building endpoint-gui..."
 	go build -o bin/endpoint-gui ./cmd/endpoint-gui
 
-test:
-	go test -race -v ./...
+test: test-unit test-integration
+
+test-unit:
+	go list ./... | grep -v /test/integration | xargs go test -race -v
+
+test-integration:
+	go test -race -v ./test/integration/...
 
 lint:
 	golangci-lint run ./...
