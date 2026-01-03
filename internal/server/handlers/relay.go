@@ -71,6 +71,24 @@ func NewRelayHandler(
 }
 
 // Handle processes an incoming proxy request.
+//
+//	@Summary		Relay HTTP Request
+//	@Description	Proxies an HTTP request through a matched endpoint based on routing rules.
+//	@Description	The request is validated, filtered, rate-limited, and executed through the endpoint pool.
+//	@Tags			relay
+//	@Accept			json
+//	@Produce		json
+//	@Param			request	body		protocol.Request	true	"HTTP request to proxy"
+//	@Success		200		{object}	protocol.Response	"Successful proxy response"
+//	@Failure		400		{object}	echo.HTTPError		"Invalid request body or URL"
+//	@Failure		401		{object}	echo.HTTPError		"Authentication required"
+//	@Failure		403		{object}	echo.HTTPError		"Request blocked by filter or scope"
+//	@Failure		404		{object}	echo.HTTPError		"No matching routing rule found"
+//	@Failure		429		{object}	echo.HTTPError		"Rate limit exceeded"
+//	@Failure		502		{object}	echo.HTTPError		"Upstream execution failed"
+//	@Security		ApiKeyAuth
+//	@Router			/v1/request [post]
+//	@Router			/v2/request [post]
 func (h *RelayHandler) Handle(c echo.Context) error {
 	ctx := c.Request().Context()
 

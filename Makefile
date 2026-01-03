@@ -86,3 +86,9 @@ migrate-create:
 	@./scripts/migrate.sh create $(name)
 
 
+
+swagger:
+	@echo "Generating Relay Server Swagger docs..."
+	~/go/bin/swag init -g cmd/relay-server/main.go -o docs/relay --parseDependency --parseInternal --instanceName relay
+	@echo "Generating Admin Server Swagger docs..."
+	~/go/bin/swag init -g internal/server/admin/doc.go -o docs/admin --parseDependency --parseInternal --instanceName admin

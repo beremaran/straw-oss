@@ -16,15 +16,46 @@ func NewEndpointHandler(healthService *endpoint.HealthService) *EndpointHandler 
 }
 
 // HandleListEndpoints lists all known endpoints
+//
+//	@Summary		List Endpoints
+//	@Description	Returns all registered proxy endpoints with their health status
+//	@Tags			endpoints
+//	@Produce		json
+//	@Success		200	{array}		EndpointHealthResponse	"List of endpoints"
+//	@Failure		500	{object}	map[string]string		"Internal server error"
+//	@Security		AdminKeyAuth
+//	@Router			/endpoints [get]
 func (h *EndpointHandler) HandleListEndpoints(c echo.Context) error {
 	endpoints, err := h.healthService.ListAllEndpoints(c.Request().Context())
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to list endpoints"})
 	}
-	return c.JSON(http.StatusOK, endpoints)
+	response := make([]EndpointHealthResponse, len(endpoints))
+	for i, e := range endpoints {
+		response[i] = EndpointHealthResponse{
+			EndpointID:  e.EndpointID,
+			State:       e.State,
+			Tags:        e.Tags,
+			Version:     e.Version,
+			ActiveTasks: e.ActiveTasks,
+			LastSeen:    e.LastSeen,
+		}
+	}
+
+	return c.JSON(http.StatusOK, response)
 }
 
 // HandleDrainEndpoint marks an endpoint as draining
+//
+//	@Summary		Drain Endpoint
+//	@Description	Marks an endpoint as draining, preventing new requests from being routed to it
+//	@Tags			endpoints
+//	@Param			id	path		string	true	"Endpoint ID"
+//	@Success		200	"Endpoint marked for draining"
+//	@Failure		400	{object}	map[string]string	"ID required"
+//	@Failure		500	{object}	map[string]string	"Internal server error"
+//	@Security		AdminKeyAuth
+//	@Router			/endpoints/{id}/drain [post]
 func (h *EndpointHandler) HandleDrainEndpoint(c echo.Context) error {
 	id := c.Param("id")
 	if id == "" {

@@ -1,4 +1,23 @@
 // Package main is the entry point for the relay server.
+//
+//	@title						Straw Proxy Relay Server API
+//	@version					1.0
+//	@description				HTTP relay proxy with fingerprinting and routing capabilities.
+//	@description				This API allows clients to proxy HTTP requests through distributed endpoints.
+//
+//	@contact.name				Straw Proxy Support
+//	@contact.url				https://github.com/kwilabs/straw-proxy-server
+//
+//	@license.name				MIT
+//	@license.url				https://opensource.org/licenses/MIT
+//
+//	@host						localhost:8080
+//	@BasePath					/
+//
+//	@securityDefinitions.apikey	ApiKeyAuth
+//	@in							header
+//	@name						X-API-Key
+//	@description				API key for authentication
 package main
 
 import (
@@ -183,6 +202,19 @@ func main() {
 		os.Exit(1)
 	}
 	slog.Info("NATS heartbeats consumer bound to stream")
+
+	// Declare result queue before binding it
+	if err := natsBroker.DeclareQueue(ctx, orchestrator.SharedResultQueue); err != nil {
+		slog.Error("Failed to declare result queue", "error", err)
+		os.Exit(1)
+	}
+
+	// Bind result queue to results exchange
+	if err := natsBroker.BindQueue(ctx, orchestrator.SharedResultQueue, "results", orchestrator.SharedResultQueue); err != nil {
+		slog.Error("Failed to bind result queue to exchange", "error", err)
+		os.Exit(1)
+	}
+	slog.Info("NATS result consumer bound to stream")
 
 	publisher := orchestrator.NewPublisher(natsBroker, endpointSelector, []byte(cfg.Security.HMACSecret), rabbitBreaker)
 	consumer := orchestrator.NewConsumer(natsBroker)

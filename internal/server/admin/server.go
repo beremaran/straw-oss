@@ -16,6 +16,10 @@ import (
 	"github.com/kwilabs/straw-proxy-server/internal/service/router"
 	"github.com/labstack/echo/v4"
 	echoMiddleware "github.com/labstack/echo/v4/middleware"
+	echoSwagger "github.com/swaggo/echo-swagger"
+
+	// Swagger docs import
+	_ "github.com/kwilabs/straw-proxy-server/docs/admin"
 )
 
 // Server represents the Admin HTTP server.
@@ -70,6 +74,9 @@ func (s *Server) setupBroker() {
 func (s *Server) registerRoutes() {
 	// Health Checks - Public
 	s.echo.GET("/healthz", s.healthCheck)
+
+	// Swagger UI
+	s.echo.GET("/swagger/*", echoSwagger.EchoWrapHandler(echoSwagger.InstanceName("admin")))
 
 	// Admin API - Protected
 	adminGroup := s.echo.Group("/admin")
