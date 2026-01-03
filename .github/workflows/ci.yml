@@ -21,7 +21,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libgl1-mesa-dev xorg-dev libxkbcommon-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
       - name: Unit Tests
-        run: go list ./... | grep -v /test/integration | xargs go test -race -v -short
+        run: make test-unit
 
   integration-tests:
     name: Integration Tests
@@ -47,7 +47,7 @@ jobs:
           docker pull redis:7-alpine
           docker pull nats:latest
       - name: Integration Tests
-        run: go test -race -v -timeout 10m ./test/integration/...
+        run: make test-integration
 
   build:
     name: Build
@@ -148,7 +148,7 @@ jobs:
       - name: Install govulncheck
         run: go install golang.org/x/vuln/cmd/govulncheck@latest
       - name: Run govulncheck
-        run: govulncheck ./...
+        run: make security
 
   scripts:
     name: Shell Scripts
@@ -171,4 +171,4 @@ jobs:
           go-version: '1.25.5'
           cache: true
       - name: Verify modules
-        run: go mod verify
+        run: make verify-mod
