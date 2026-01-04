@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/kwilabs/straw-proxy-server/internal/infra/redis"
+	"github.com/kwilabs/straw-proxy-server/internal/server/dto"
 	"github.com/labstack/echo/v4"
 )
 
@@ -22,7 +23,7 @@ func NewCacheHandler(redisClient *redis.Client) *CacheHandler {
 //	@Tags			cache
 //	@Produce		json
 //	@Param			pattern	query		string	false	"Key pattern to match (default: *)"
-//	@Success		200		{object}	ClearCacheResponse	"Deletion result"
+//	@Success		200		{object}	dto.ClearCacheResponse	"Deletion result"
 //	@Failure		500		{object}	map[string]string		"Internal server error"
 //	@Security		AdminKeyAuth
 //	@Router			/cache/clear [post]
@@ -64,7 +65,7 @@ func (h *CacheHandler) HandleClearCache(c echo.Context) error {
 		count += len(keys)
 	}
 
-	return c.JSON(http.StatusOK, ClearCacheResponse{
+	return c.JSON(http.StatusOK, dto.ClearCacheResponse{
 		Message: "cache cleared",
 		Pattern: pattern,
 		Deleted: count,
@@ -77,7 +78,7 @@ func (h *CacheHandler) HandleClearCache(c echo.Context) error {
 //	@Description	Returns Redis server information and memory statistics
 //	@Tags			cache
 //	@Produce		json
-//	@Success		200	{object}	CacheStatsResponse	"Redis info"
+//	@Success		200	{object}	dto.CacheStatsResponse	"Redis info"
 //	@Failure		500	{object}	map[string]string	"Internal server error"
 //	@Security		AdminKeyAuth
 //	@Router			/cache/stats [get]
@@ -88,7 +89,7 @@ func (h *CacheHandler) HandleGetCacheStats(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to get redis info"})
 	}
 
-	return c.JSON(http.StatusOK, CacheStatsResponse{
+	return c.JSON(http.StatusOK, dto.CacheStatsResponse{
 		Info: info,
 	})
 }

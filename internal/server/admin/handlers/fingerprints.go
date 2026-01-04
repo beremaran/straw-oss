@@ -6,6 +6,7 @@ import (
 
 	"github.com/kwilabs/straw-proxy-server/internal/broker"
 	"github.com/kwilabs/straw-proxy-server/internal/domain"
+	"github.com/kwilabs/straw-proxy-server/internal/server/dto"
 	"github.com/labstack/echo/v4"
 )
 
@@ -24,8 +25,8 @@ func NewFingerprintHandler(repo domain.FingerprintRepository, broker broker.Mess
 //	@Description	Returns all available fingerprint presets for TLS fingerprinting
 //	@Tags			fingerprints
 //	@Produce		json
-//	@Success		200	{array}		domain.FingerprintPreset	"List of presets"
-//	@Failure		500	{object}	map[string]string			"Internal server error"
+//	@Success		200	{array}		dto.FingerprintResponse	"List of presets"
+//	@Failure		500	{object}	map[string]string		"Internal server error"
 //	@Security		AdminKeyAuth
 //	@Router			/fingerprints [get]
 func (h *FingerprintHandler) HandleListPresets(c echo.Context) error {
@@ -33,7 +34,7 @@ func (h *FingerprintHandler) HandleListPresets(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to list presets"})
 	}
-	return c.JSON(http.StatusOK, presets)
+	return c.JSON(http.StatusOK, dto.FromFingerprintPresets(presets))
 }
 
 // HandleCreatePreset creates or updates a preset
@@ -43,21 +44,23 @@ func (h *FingerprintHandler) HandleListPresets(c echo.Context) error {
 //	@Tags			fingerprints
 //	@Accept			json
 //	@Produce		json
-//	@Param			preset	body		domain.FingerprintPreset	true	"Fingerprint preset"
-//	@Success		200		{object}	domain.FingerprintPreset	"Created or updated preset"
-//	@Failure		400		{object}	map[string]string			"Invalid request"
-//	@Failure		500		{object}	map[string]string			"Internal server error"
+//	@Param			preset	body		dto.CreateFingerprintRequest	true	"Fingerprint preset"
+//	@Success		200		{object}	dto.FingerprintResponse	"Created or updated preset"
+//	@Failure		400		{object}	map[string]string		"Invalid request"
+//	@Failure		500		{object}	map[string]string		"Internal server error"
 //	@Security		AdminKeyAuth
 //	@Router			/fingerprints [post]
 func (h *FingerprintHandler) HandleCreatePreset(c echo.Context) error {
-	var preset domain.FingerprintPreset
-	if err := c.Bind(&preset); err != nil {
+	var req dto.CreateFingerprintRequest
+	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
 
-	if preset.ID == "" || preset.Name == "" {
+	if req.ID == "" || req.Name == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "id and name are required"})
 	}
+
+	preset := req.ToDomain()
 
 	// Check availability
 	existing, err := h.repo.GetPreset(c.Request().Context(), preset.ID)
@@ -66,16 +69,16 @@ func (h *FingerprintHandler) HandleCreatePreset(c echo.Context) error {
 	}
 
 	if existing != nil {
-		if err := h.repo.UpdatePreset(c.Request().Context(), &preset); err != nil {
+		if err := h.repo.UpdatePreset(c.Request().Context(), preset); err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to update preset"})
 		}
 	} else {
-		if err := h.repo.CreatePreset(c.Request().Context(), &preset); err != nil {
+		if err := h.repo.CreatePreset(c.Request().Context(), preset); err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to create preset"})
 		}
 	}
 
-	return c.JSON(http.StatusOK, preset)
+	return c.JSON(http.StatusOK, dto.FromFingerprintPreset(preset))
 }
 
 // HandleBroadcastPresets sends all presets to endpoints via fanout
@@ -93,7 +96,10 @@ func (h *FingerprintHandler) HandleBroadcastPresets(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to list presets"})
 	}
 
-	body, err := json.Marshal(presets)
+	// Convert to DTOs for broadcast
+	presetsDTO := dto.FromFingerprintPresets(presets)
+
+	body, err := json.Marshal(presetsDTO)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to marshal presets"})
 	}

@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 
+	"github.com/kwilabs/straw-proxy-server/internal/server/dto"
 	"github.com/kwilabs/straw-proxy-server/internal/service/endpoint"
 	"github.com/labstack/echo/v4"
 )
@@ -21,7 +22,7 @@ func NewEndpointHandler(healthService *endpoint.HealthService) *EndpointHandler 
 //	@Description	Returns all registered proxy endpoints with their health status
 //	@Tags			endpoints
 //	@Produce		json
-//	@Success		200	{array}		EndpointHealthResponse	"List of endpoints"
+//	@Success		200	{array}		dto.EndpointHealthResponse	"List of endpoints"
 //	@Failure		500	{object}	map[string]string		"Internal server error"
 //	@Security		AdminKeyAuth
 //	@Router			/endpoints [get]
@@ -30,15 +31,15 @@ func (h *EndpointHandler) HandleListEndpoints(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to list endpoints"})
 	}
-	response := make([]EndpointHealthResponse, len(endpoints))
+	response := make([]dto.EndpointHealthResponse, len(endpoints))
 	for i, e := range endpoints {
-		response[i] = EndpointHealthResponse{
+		response[i] = dto.EndpointHealthResponse{
 			EndpointID:  e.EndpointID,
 			State:       e.State,
 			Tags:        e.Tags,
 			Version:     e.Version,
 			ActiveTasks: e.ActiveTasks,
-			LastSeen:    e.LastSeen,
+			LastSeen:    e.LastSeen.Format("2006-01-02T15:04:05Z07:00"),
 		}
 	}
 
