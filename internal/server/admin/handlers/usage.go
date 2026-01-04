@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/kwilabs/straw-proxy-server/internal/domain"
+	"github.com/kwilabs/straw-proxy-server/internal/server/dto"
 	"github.com/labstack/echo/v4"
 )
 
@@ -25,7 +26,7 @@ func NewUsageHandler(repo domain.UsageRepository) *UsageHandler {
 //	@Param			start			query		string	false	"Start date (YYYY-MM-DD, default: 30 days ago)"
 //	@Param			end				query		string	false	"End date (YYYY-MM-DD, default: today)"
 //	@Param			api_key_id		query		string	false	"Filter by API key ID"
-//	@Success		200				{object}	UsageSummaryResponse	"Usage summaries"
+//	@Success		200				{object}	dto.UsageSummaryResponse	"Usage summaries"
 //	@Failure		400				{object}	map[string]string		"Invalid date format"
 //	@Failure		500				{object}	map[string]string		"Internal server error"
 //	@Security		AdminKeyAuth
@@ -63,8 +64,8 @@ func (h *UsageHandler) HandleGetUsageSummary(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to fetch usage summaries"})
 	}
 
-	return c.JSON(http.StatusOK, UsageSummaryResponse{
-		Data:  summaries,
+	return c.JSON(http.StatusOK, dto.UsageSummaryResponse{
+		Data:  dto.FromUsageSummaries(summaries),
 		Start: start.Format(layout),
 		End:   end.Format(layout),
 	})
@@ -79,7 +80,7 @@ func (h *UsageHandler) HandleGetUsageSummary(c echo.Context) error {
 //	@Param			start			query		string	false	"Start date (YYYY-MM-DD, default: start of month)"
 //	@Param			end				query		string	false	"End date (YYYY-MM-DD, default: today)"
 //	@Param			api_key_id		query		string	false	"Filter by API key ID"
-//	@Success		200				{object}	BillingEstimateResponse	"Billing estimate"
+//	@Success		200				{object}	dto.BillingEstimateResponse	"Billing estimate"
 //	@Failure		400				{object}	map[string]string		"Invalid date format"
 //	@Failure		500				{object}	map[string]string		"Internal server error"
 //	@Security		AdminKeyAuth
@@ -131,7 +132,7 @@ func (h *UsageHandler) HandleGetBillingEstimate(c echo.Context) error {
 	// This should be configurable.
 	estimatedUSD := totalCost * 0.0001
 
-	return c.JSON(http.StatusOK, BillingEstimateResponse{
+	return c.JSON(http.StatusOK, dto.BillingEstimateResponse{
 		TotalCostUnits: totalCost,
 		EstimatedUSD:   estimatedUSD,
 		Currency:       "USD",

@@ -58,7 +58,7 @@ const docTemplateadmin = `{
                     "200": {
                         "description": "Paginated list of API keys",
                         "schema": {
-                            "$ref": "#/definitions/internal_server_admin_handlers.ListApiKeysResponse"
+                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_server_dto.ListApiKeysResponse"
                         }
                     },
                     "500": {
@@ -96,21 +96,7 @@ const docTemplateadmin = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "type": "object",
-                            "properties": {
-                                "name": {
-                                    "type": "string"
-                                },
-                                "rate_limit_override": {
-                                    "type": "integer"
-                                },
-                                "scopes": {
-                                    "type": "array",
-                                    "items": {
-                                        "type": "string"
-                                    }
-                                }
-                            }
+                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_server_dto.CreateApiKeyRequest"
                         }
                     }
                 ],
@@ -118,7 +104,7 @@ const docTemplateadmin = `{
                     "201": {
                         "description": "Created API key with raw key",
                         "schema": {
-                            "$ref": "#/definitions/internal_server_admin_handlers.CreateApiKeyResponse"
+                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_server_dto.CreateApiKeyResponse"
                         }
                     },
                     "400": {
@@ -227,7 +213,7 @@ const docTemplateadmin = `{
                     "200": {
                         "description": "Billing estimate",
                         "schema": {
-                            "$ref": "#/definitions/internal_server_admin_handlers.BillingEstimateResponse"
+                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_server_dto.BillingEstimateResponse"
                         }
                     },
                     "400": {
@@ -278,7 +264,7 @@ const docTemplateadmin = `{
                     "200": {
                         "description": "Deletion result",
                         "schema": {
-                            "$ref": "#/definitions/internal_server_admin_handlers.ClearCacheResponse"
+                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_server_dto.ClearCacheResponse"
                         }
                     },
                     "500": {
@@ -312,7 +298,7 @@ const docTemplateadmin = `{
                     "200": {
                         "description": "Redis info",
                         "schema": {
-                            "$ref": "#/definitions/internal_server_admin_handlers.CacheStatsResponse"
+                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_server_dto.CacheStatsResponse"
                         }
                     },
                     "500": {
@@ -348,7 +334,7 @@ const docTemplateadmin = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/internal_server_admin_handlers.EndpointHealthResponse"
+                                "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_server_dto.EndpointHealthResponse"
                             }
                         }
                     },
@@ -431,7 +417,7 @@ const docTemplateadmin = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_domain.FingerprintPreset"
+                                "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_server_dto.FingerprintResponse"
                             }
                         }
                     },
@@ -470,7 +456,7 @@ const docTemplateadmin = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_domain.FingerprintPreset"
+                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_server_dto.CreateFingerprintRequest"
                         }
                     }
                 ],
@@ -478,7 +464,7 @@ const docTemplateadmin = `{
                     "200": {
                         "description": "Created or updated preset",
                         "schema": {
-                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_domain.FingerprintPreset"
+                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_server_dto.FingerprintResponse"
                         }
                     },
                     "400": {
@@ -606,8 +592,7 @@ const docTemplateadmin = `{
                     "200": {
                         "description": "Paginated list of routing rules",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_server_dto.ListRoutingRulesResponse"
                         }
                     },
                     "500": {
@@ -645,7 +630,7 @@ const docTemplateadmin = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_domain.RoutingRule"
+                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_server_dto.CreateRoutingRuleRequest"
                         }
                     }
                 ],
@@ -653,7 +638,7 @@ const docTemplateadmin = `{
                     "201": {
                         "description": "Created routing rule",
                         "schema": {
-                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_domain.RoutingRule"
+                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_server_dto.RoutingRuleResponse"
                         }
                     },
                     "400": {
@@ -705,7 +690,7 @@ const docTemplateadmin = `{
                     "200": {
                         "description": "Routing rule",
                         "schema": {
-                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_domain.RoutingRule"
+                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_server_dto.RoutingRuleResponse"
                         }
                     },
                     "400": {
@@ -768,7 +753,7 @@ const docTemplateadmin = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_domain.RoutingRule"
+                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_server_dto.UpdateRoutingRuleRequest"
                         }
                     }
                 ],
@@ -776,7 +761,7 @@ const docTemplateadmin = `{
                     "200": {
                         "description": "Updated routing rule",
                         "schema": {
-                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_domain.RoutingRule"
+                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_server_dto.RoutingRuleResponse"
                         }
                     },
                     "400": {
@@ -883,7 +868,7 @@ const docTemplateadmin = `{
                     "200": {
                         "description": "Usage summaries",
                         "schema": {
-                            "$ref": "#/definitions/internal_server_admin_handlers.UsageSummaryResponse"
+                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_server_dto.UsageSummaryResponse"
                         }
                     },
                     "400": {
@@ -932,7 +917,7 @@ const docTemplateadmin = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_pkg_protocol.Request"
+                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_server_dto.RelayRequest"
                         }
                     }
                 ],
@@ -940,7 +925,7 @@ const docTemplateadmin = `{
                     "200": {
                         "description": "Successful proxy response",
                         "schema": {
-                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_pkg_protocol.Response"
+                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_server_dto.RelayResponse"
                         }
                     },
                     "400": {
@@ -1007,7 +992,7 @@ const docTemplateadmin = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_pkg_protocol.Request"
+                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_server_dto.RelayRequest"
                         }
                     }
                 ],
@@ -1015,7 +1000,7 @@ const docTemplateadmin = `{
                     "200": {
                         "description": "Successful proxy response",
                         "schema": {
-                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_pkg_protocol.Response"
+                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_server_dto.RelayResponse"
                         }
                     },
                     "400": {
@@ -1065,610 +1050,401 @@ const docTemplateadmin = `{
                 "message": {}
             }
         },
-        "github_com_kwilabs_straw-proxy-server_internal_domain.ABConfig": {
+        "github_com_kwilabs_straw-proxy-server_internal_server_dto.ABConfigDTO": {
             "type": "object",
             "properties": {
                 "strategy": {
-                    "description": "Strategy determines how variants are selected.\nValid values: \"random\", \"round_robin\", \"weighted\"",
+                    "description": "Strategy determines how variants are selected (random, round_robin, weighted)",
                     "type": "string"
                 },
                 "variants": {
-                    "description": "Variants are the different fingerprint options to test.",
+                    "description": "Variants are the different fingerprint options to test",
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_domain.ABVariant"
+                        "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_server_dto.ABVariantDTO"
                     }
                 }
             }
         },
-        "github_com_kwilabs_straw-proxy-server_internal_domain.ABVariant": {
+        "github_com_kwilabs_straw-proxy-server_internal_server_dto.ABVariantDTO": {
             "type": "object",
             "properties": {
                 "fingerprint": {
-                    "description": "Fingerprint is the TLS fingerprint preset ID.",
+                    "description": "Fingerprint is the TLS fingerprint preset ID",
                     "type": "string"
                 },
                 "weight": {
-                    "description": "Weight is the percentage weight for weighted selection (0-100).",
+                    "description": "Weight is the percentage weight for weighted selection (0-100)",
                     "type": "integer"
                 }
             }
         },
-        "github_com_kwilabs_straw-proxy-server_internal_domain.ApiKey": {
+        "github_com_kwilabs_straw-proxy-server_internal_server_dto.ApiKeyResponse": {
+            "description": "API key data returned by the API (excludes token hash)",
             "type": "object",
             "properties": {
                 "created_at": {
-                    "description": "CreatedAt is when the key was created.",
+                    "description": "CreatedAt is when the key was created",
                     "type": "string"
                 },
                 "expires_at": {
-                    "description": "ExpiresAt is when the key expires (optional).",
+                    "description": "ExpiresAt is when the key expires (optional)",
                     "type": "string"
                 },
                 "id": {
-                    "description": "ID is the unique identifier for this API key.",
+                    "description": "ID is the unique identifier for this API key",
                     "type": "string"
                 },
                 "is_active": {
-                    "description": "IsActive indicates whether this key is currently active.",
+                    "description": "IsActive indicates whether this key is currently active",
                     "type": "boolean"
                 },
                 "name": {
-                    "description": "Name is a human-readable name for the key.",
+                    "description": "Name is a human-readable name for the key",
                     "type": "string"
                 },
                 "rate_limit_override": {
-                    "description": "RateLimitOverride allows per-key rate limit customization.\nIf set, overrides the routing rule's rate limit.",
+                    "description": "RateLimitOverride allows per-key rate limit customization",
                     "type": "integer"
                 },
                 "scopes": {
-                    "description": "Scopes define which tag patterns this key can access.\nSupports wildcards, e.g., [\"target:*\", \"type:search\"]",
+                    "description": "Scopes define which tag patterns this key can access",
                     "type": "array",
                     "items": {
                         "type": "string"
                     }
+                }
+            }
+        },
+        "github_com_kwilabs_straw-proxy-server_internal_server_dto.BillingEstimateResponse": {
+            "description": "Response containing billing estimate for a date range",
+            "type": "object",
+            "properties": {
+                "currency": {
+                    "description": "Currency is the currency code (e.g., \"USD\")",
+                    "type": "string"
                 },
-                "token_hash": {
-                    "description": "TokenHash is the SHA256 hash of the Bearer token.\nThe actual token is only shown once during creation.",
+                "end": {
+                    "description": "End date in YYYY-MM-DD format",
+                    "type": "string"
+                },
+                "estimated_usd": {
+                    "description": "EstimatedUSD is the estimated cost in USD",
+                    "type": "number"
+                },
+                "start": {
+                    "description": "Start date in YYYY-MM-DD format",
+                    "type": "string"
+                },
+                "total_cost_units": {
+                    "description": "TotalCostUnits is the sum of all cost units",
+                    "type": "number"
+                }
+            }
+        },
+        "github_com_kwilabs_straw-proxy-server_internal_server_dto.CacheStatsResponse": {
+            "description": "Response containing Redis cache statistics",
+            "type": "object",
+            "properties": {
+                "info": {
+                    "description": "Info contains Redis server information",
                     "type": "string"
                 }
             }
         },
-        "github_com_kwilabs_straw-proxy-server_internal_domain.ConfigMap": {
-            "type": "object",
-            "additionalProperties": true
-        },
-        "github_com_kwilabs_straw-proxy-server_internal_domain.EndpointPool": {
+        "github_com_kwilabs_straw-proxy-server_internal_server_dto.ClearCacheResponse": {
+            "description": "Response after clearing cache keys",
             "type": "object",
             "properties": {
-                "endpoints": {
-                    "description": "Endpoints are endpoint IDs or tag selectors for this pool.",
+                "deleted": {
+                    "description": "Deleted is the number of keys removed",
+                    "type": "integer"
+                },
+                "message": {
+                    "description": "Message describes what was done",
+                    "type": "string"
+                },
+                "pattern": {
+                    "description": "Pattern is the key pattern that was matched",
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_kwilabs_straw-proxy-server_internal_server_dto.CreateApiKeyRequest": {
+            "description": "Request body for creating a new API key",
+            "type": "object",
+            "required": [
+                "name"
+            ],
+            "properties": {
+                "name": {
+                    "description": "Name is a human-readable name for the key (required)",
+                    "type": "string"
+                },
+                "rate_limit_override": {
+                    "description": "RateLimitOverride allows per-key rate limit customization",
+                    "type": "integer"
+                },
+                "scopes": {
+                    "description": "Scopes define which tag patterns this key can access",
                     "type": "array",
                     "items": {
                         "type": "string"
                     }
-                },
-                "max_retries": {
-                    "description": "MaxRetries is the maximum retry attempts within this pool before escalating.",
-                    "type": "integer"
-                },
-                "tier": {
-                    "description": "Tier is the priority of this pool (1 = Primary, 2 = Secondary, etc.).",
-                    "type": "integer"
                 }
             }
         },
-        "github_com_kwilabs_straw-proxy-server_internal_domain.FingerprintPreset": {
+        "github_com_kwilabs_straw-proxy-server_internal_server_dto.CreateApiKeyResponse": {
+            "description": "Response after creating an API key, includes raw key value",
             "type": "object",
             "properties": {
-                "config": {
-                    "description": "Config is the detailed configuration of the fingerprint.\nThis mirrors the structure expected by the fingerprinting engine.",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_domain.ConfigMap"
-                        }
-                    ]
-                },
                 "created_at": {
-                    "description": "CreatedAt is when the preset was created.",
+                    "description": "CreatedAt is when the key was created",
+                    "type": "string"
+                },
+                "expires_at": {
+                    "description": "ExpiresAt is when the key expires (optional)",
                     "type": "string"
                 },
                 "id": {
-                    "description": "ID is the unique identifier for this preset (e.g., \"chrome-130\").",
+                    "description": "ID is the unique identifier for this API key",
+                    "type": "string"
+                },
+                "is_active": {
+                    "description": "IsActive indicates whether this key is currently active",
+                    "type": "boolean"
+                },
+                "name": {
+                    "description": "Name is a human-readable name for the key",
+                    "type": "string"
+                },
+                "rate_limit_override": {
+                    "description": "RateLimitOverride allows per-key rate limit customization",
+                    "type": "integer"
+                },
+                "raw_key": {
+                    "description": "RawKey is the plain-text API key (only shown once during creation)",
+                    "type": "string"
+                },
+                "scopes": {
+                    "description": "Scopes define which tag patterns this key can access",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "github_com_kwilabs_straw-proxy-server_internal_server_dto.CreateFingerprintRequest": {
+            "description": "Request body for creating or updating a fingerprint preset",
+            "type": "object",
+            "required": [
+                "id",
+                "name"
+            ],
+            "properties": {
+                "config": {
+                    "description": "Config is the detailed configuration of the fingerprint",
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "id": {
+                    "description": "ID is the unique identifier for this preset (required)",
                     "type": "string"
                 },
                 "name": {
-                    "description": "Name is a human-readable name for the preset.",
-                    "type": "string"
-                },
-                "updated_at": {
-                    "description": "UpdatedAt is when the preset was last modified.",
+                    "description": "Name is a human-readable name for the preset (required)",
                     "type": "string"
                 }
             }
         },
-        "github_com_kwilabs_straw-proxy-server_internal_domain.RequestFilter": {
+        "github_com_kwilabs_straw-proxy-server_internal_server_dto.CreateRoutingRuleRequest": {
+            "description": "Request body for creating a new routing rule",
             "type": "object",
-            "properties": {
-                "adblock_lists": {
-                    "description": "AdblockLists specifies which blocklists to use.\nExample: [\"easylist\", \"easyprivacy\"]",
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "block_content_types": {
-                    "description": "BlockContentTypes blocks responses by Content-Type.\nExample: [\"image/*\", \"font/*\", \"video/*\"]",
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "block_domains": {
-                    "description": "BlockDomains blocks requests to specific domains.",
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "block_url_patterns": {
-                    "description": "BlockURLPatterns blocks requests matching URL patterns (glob/regex).\nExample: [\"*.google-analytics.com\", \"*/ads/*\"]",
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "enable_adblock": {
-                    "description": "EnableAdblock enables EasyList-style ad blocking.",
-                    "type": "boolean"
-                }
-            }
-        },
-        "github_com_kwilabs_straw-proxy-server_internal_domain.RoutingRule": {
-            "type": "object",
+            "required": [
+                "name"
+            ],
             "properties": {
                 "allow_insecure_tls": {
-                    "description": "AllowInsecureTLS allows skipping TLS certificate verification for targets.",
+                    "description": "AllowInsecureTLS allows skipping TLS certificate verification",
                     "type": "boolean"
                 },
                 "allowed_endpoint_types": {
-                    "description": "AllowedEndpointTypes specifies which endpoint types can handle these requests.\nExample: [\"residential\", \"mobile\"]",
+                    "description": "AllowedEndpointTypes specifies which endpoint types can handle requests",
                     "type": "array",
                     "items": {
                         "type": "string"
                     }
                 },
-                "created_at": {
-                    "description": "CreatedAt is when the rule was created.",
-                    "type": "string"
-                },
                 "endpoint_pools": {
-                    "description": "EndpointPools defines tiered endpoint fallback pools.",
+                    "description": "EndpointPools defines tiered endpoint fallback pools",
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_domain.EndpointPool"
+                        "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_server_dto.EndpointPoolDTO"
                     }
                 },
                 "excluded_tags": {
-                    "description": "ExcludedTags are tags that a request must NOT have to match this rule (NOT logic).",
+                    "description": "ExcludedTags are tags that a request must NOT have to match this rule",
                     "type": "array",
                     "items": {
                         "type": "string"
                     }
                 },
                 "fingerprint_ab_test": {
-                    "description": "FingerprintABTest allows A/B testing different fingerprints.",
+                    "description": "FingerprintABTest allows A/B testing different fingerprints",
                     "allOf": [
                         {
-                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_domain.ABConfig"
+                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_server_dto.ABConfigDTO"
                         }
                     ]
                 },
                 "fingerprint_preset": {
-                    "description": "FingerprintPreset specifies the default browser TLS fingerprint to use.\nExample: \"chrome-130\"",
+                    "description": "FingerprintPreset specifies the default browser TLS fingerprint",
                     "type": "string"
                 },
                 "hard_timeout": {
-                    "description": "HardTimeout is the maximum time allowed for a request to complete.",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/time.Duration"
-                        }
-                    ]
-                },
-                "id": {
-                    "description": "ID is the unique identifier for this rule.",
+                    "description": "HardTimeout is the maximum time allowed for a request (e.g., \"30s\")",
                     "type": "string"
                 },
                 "is_active": {
-                    "description": "IsActive indicates whether this rule is currently active.",
+                    "description": "IsActive indicates whether this rule is currently active",
                     "type": "boolean"
                 },
                 "name": {
-                    "description": "Name is a human-readable name for the rule.",
+                    "description": "Name is a human-readable name for the rule (required)",
                     "type": "string"
                 },
                 "pinned_cert_hash": {
-                    "description": "PinnedCertHash for certificate pinning (optional).",
+                    "description": "PinnedCertHash for certificate pinning",
                     "type": "string"
                 },
                 "priority": {
-                    "description": "Priority determines rule precedence. Higher priority rules are evaluated first.",
+                    "description": "Priority determines rule precedence (higher = evaluated first)",
                     "type": "integer"
                 },
                 "quota_key": {
-                    "description": "QuotaKey is the key used for rate limit bucketing (e.g., \"target:amazon\").",
+                    "description": "QuotaKey is the key used for rate limit bucketing",
                     "type": "string"
                 },
                 "rate_limit_per_minute": {
-                    "description": "RateLimitPerMinute is the maximum requests per minute for this rule's quota key.",
+                    "description": "RateLimitPerMinute is the maximum requests per minute",
                     "type": "integer"
                 },
                 "rate_limit_per_second": {
-                    "description": "RateLimitPerSecond is the maximum requests per second for this rule's quota key.",
+                    "description": "RateLimitPerSecond is the maximum requests per second",
                     "type": "integer"
                 },
                 "request_filters": {
-                    "description": "RequestFilters defines bandwidth optimization filters.",
+                    "description": "RequestFilters defines bandwidth optimization filters",
                     "allOf": [
                         {
-                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_domain.RequestFilter"
+                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_server_dto.RequestFilterDTO"
                         }
                     ]
                 },
                 "required_endpoint_caps": {
-                    "description": "RequiredEndpointCaps are capability tags that endpoints must have.\nExample: [\"capability:stealth\"]",
+                    "description": "RequiredEndpointCaps are capability tags that endpoints must have",
                     "type": "array",
                     "items": {
                         "type": "string"
                     }
                 },
                 "required_tags": {
-                    "description": "RequiredTags are the tags that a request MUST have to match this rule (AND logic).",
+                    "description": "RequiredTags are the tags that a request MUST have to match this rule",
                     "type": "array",
                     "items": {
                         "type": "string"
                     }
-                },
-                "updated_at": {
-                    "description": "UpdatedAt is when the rule was last modified.",
-                    "type": "string"
-                },
-                "version": {
-                    "description": "Version for optimistic locking on updates.",
-                    "type": "integer"
                 }
             }
         },
-        "github_com_kwilabs_straw-proxy-server_internal_domain.UsageSummary": {
-            "type": "object",
-            "properties": {
-                "breakdown": {
-                    "type": "object",
-                    "additionalProperties": {
-                        "type": "integer",
-                        "format": "int64"
-                    }
-                },
-                "cost_units": {
-                    "type": "number"
-                },
-                "date": {
-                    "type": "string"
-                },
-                "total_bytes": {
-                    "type": "integer"
-                },
-                "total_requests": {
-                    "type": "integer"
-                }
-            }
-        },
-        "github_com_kwilabs_straw-proxy-server_pkg_protocol.ErrorInfo": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "description": "Code is a machine-readable error code (e.g., \"UPSTREAM_ERROR\").",
-                    "type": "string"
-                },
-                "message": {
-                    "description": "Message is a human-readable error description.",
-                    "type": "string"
-                },
-                "retry_after": {
-                    "description": "RetryAfter suggests how long to wait before retrying (optional).",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/time.Duration"
-                        }
-                    ]
-                },
-                "retryable": {
-                    "description": "Retryable indicates whether the client should retry the request.",
-                    "type": "boolean"
-                }
-            }
-        },
-        "github_com_kwilabs_straw-proxy-server_pkg_protocol.Header": {
-            "type": "object",
-            "properties": {
-                "key": {
-                    "type": "string"
-                },
-                "value": {
-                    "type": "string"
-                }
-            }
-        },
-        "github_com_kwilabs_straw-proxy-server_pkg_protocol.Request": {
-            "type": "object",
-            "properties": {
-                "body": {
-                    "description": "Body contains the request body (for POST, PUT, etc.).",
-                    "type": "array",
-                    "items": {
-                        "type": "integer"
-                    }
-                },
-                "fingerprint": {
-                    "description": "Fingerprint specifies which browser TLS fingerprint preset to use.",
-                    "type": "string"
-                },
-                "headers": {
-                    "description": "Headers contains the HTTP headers to send.",
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_pkg_protocol.Header"
-                    }
-                },
-                "id": {
-                    "description": "ID is a unique identifier for this request (used for correlation).",
-                    "type": "string"
-                },
-                "method": {
-                    "description": "Method is the HTTP method (GET, POST, etc.).",
-                    "type": "string"
-                },
-                "reply_to": {
-                    "description": "ReplyTo specifies the queue name to send the response to.\nIf empty, the endpoint generates a default result queue name.",
-                    "type": "string"
-                },
-                "session_id": {
-                    "description": "SessionID links this request to a sticky session (optional).",
-                    "type": "string"
-                },
-                "timeout": {
-                    "description": "Timeout specifies how long the Endpoint should wait for a response.",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/time.Duration"
-                        }
-                    ]
-                },
-                "trace_id": {
-                    "description": "TraceID for distributed tracing (OpenTelemetry).",
-                    "type": "string"
-                },
-                "url": {
-                    "description": "URL is the target URL to fetch.",
-                    "type": "string"
-                }
-            }
-        },
-        "github_com_kwilabs_straw-proxy-server_pkg_protocol.Response": {
-            "type": "object",
-            "properties": {
-                "body": {
-                    "description": "Body contains the response body.",
-                    "type": "array",
-                    "items": {
-                        "type": "integer"
-                    }
-                },
-                "endpoint_id": {
-                    "description": "EndpointID identifies which endpoint handled this request.",
-                    "type": "string"
-                },
-                "error": {
-                    "description": "Error contains error details if the request failed.",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_pkg_protocol.ErrorInfo"
-                        }
-                    ]
-                },
-                "headers": {
-                    "description": "Headers contains the HTTP response headers.",
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_pkg_protocol.Header"
-                    }
-                },
-                "request_id": {
-                    "description": "RequestID correlates this response to the original request.",
-                    "type": "string"
-                },
-                "session_id": {
-                    "description": "SessionID if a session was created or used.",
-                    "type": "string"
-                },
-                "status_code": {
-                    "description": "StatusCode is the HTTP status code received from the target.",
-                    "type": "integer"
-                },
-                "timing": {
-                    "description": "Timing contains request timing details for observability.",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_pkg_protocol.TimingInfo"
-                        }
-                    ]
-                }
-            }
-        },
-        "github_com_kwilabs_straw-proxy-server_pkg_protocol.TimingInfo": {
-            "type": "object",
-            "properties": {
-                "dns_lookup": {
-                    "description": "DNSLookup is the time spent resolving DNS.",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/time.Duration"
-                        }
-                    ]
-                },
-                "first_byte": {
-                    "description": "FirstByte is the time until the first response byte was received.",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/time.Duration"
-                        }
-                    ]
-                },
-                "tcp_connect": {
-                    "description": "TCPConnect is the time spent establishing TCP connection.",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/time.Duration"
-                        }
-                    ]
-                },
-                "tls_handshake": {
-                    "description": "TLSHandshake is the time spent on TLS negotiation.",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/time.Duration"
-                        }
-                    ]
-                },
-                "total": {
-                    "description": "Total is the total request duration.",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/time.Duration"
-                        }
-                    ]
-                }
-            }
-        },
-        "internal_server_admin_handlers.BillingEstimateResponse": {
-            "type": "object",
-            "properties": {
-                "currency": {
-                    "type": "string"
-                },
-                "end": {
-                    "type": "string"
-                },
-                "estimated_usd": {
-                    "type": "number"
-                },
-                "start": {
-                    "type": "string"
-                },
-                "total_cost_units": {
-                    "type": "number"
-                }
-            }
-        },
-        "internal_server_admin_handlers.CacheStatsResponse": {
-            "type": "object",
-            "properties": {
-                "info": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_server_admin_handlers.ClearCacheResponse": {
-            "type": "object",
-            "properties": {
-                "deleted": {
-                    "type": "integer"
-                },
-                "message": {
-                    "type": "string"
-                },
-                "pattern": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_server_admin_handlers.CreateApiKeyResponse": {
-            "type": "object",
-            "properties": {
-                "created_at": {
-                    "description": "CreatedAt is when the key was created.",
-                    "type": "string"
-                },
-                "expires_at": {
-                    "description": "ExpiresAt is when the key expires (optional).",
-                    "type": "string"
-                },
-                "id": {
-                    "description": "ID is the unique identifier for this API key.",
-                    "type": "string"
-                },
-                "is_active": {
-                    "description": "IsActive indicates whether this key is currently active.",
-                    "type": "boolean"
-                },
-                "name": {
-                    "description": "Name is a human-readable name for the key.",
-                    "type": "string"
-                },
-                "rate_limit_override": {
-                    "description": "RateLimitOverride allows per-key rate limit customization.\nIf set, overrides the routing rule's rate limit.",
-                    "type": "integer"
-                },
-                "raw_key": {
-                    "type": "string"
-                },
-                "scopes": {
-                    "description": "Scopes define which tag patterns this key can access.\nSupports wildcards, e.g., [\"target:*\", \"type:search\"]",
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "token_hash": {
-                    "description": "TokenHash is the SHA256 hash of the Bearer token.\nThe actual token is only shown once during creation.",
-                    "type": "string"
-                }
-            }
-        },
-        "internal_server_admin_handlers.EndpointHealthResponse": {
+        "github_com_kwilabs_straw-proxy-server_internal_server_dto.EndpointHealthResponse": {
+            "description": "Health information for a registered endpoint",
             "type": "object",
             "properties": {
                 "active_tasks": {
+                    "description": "ActiveTasks is the number of in-flight requests",
                     "type": "integer"
                 },
                 "endpoint_id": {
+                    "description": "EndpointID is the unique identifier",
                     "type": "string"
                 },
                 "last_seen": {
+                    "description": "LastSeen is when the endpoint last reported in",
                     "type": "string"
                 },
                 "state": {
+                    "description": "State is the current health state",
                     "type": "string"
                 },
                 "tags": {
+                    "description": "Tags are the endpoint's capability tags",
                     "type": "array",
                     "items": {
                         "type": "string"
                     }
                 },
                 "version": {
+                    "description": "Version is the endpoint software version",
                     "type": "string"
                 }
             }
         },
-        "internal_server_admin_handlers.ListApiKeysResponse": {
+        "github_com_kwilabs_straw-proxy-server_internal_server_dto.EndpointPoolDTO": {
+            "type": "object",
+            "properties": {
+                "endpoints": {
+                    "description": "Endpoints are endpoint IDs or tag selectors for this pool",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "max_retries": {
+                    "description": "MaxRetries is the maximum retry attempts within this pool",
+                    "type": "integer"
+                },
+                "tier": {
+                    "description": "Tier is the priority of this pool (1 = Primary, 2 = Secondary, etc.)",
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_kwilabs_straw-proxy-server_internal_server_dto.FingerprintResponse": {
+            "description": "Fingerprint preset data returned by the API",
+            "type": "object",
+            "properties": {
+                "config": {
+                    "description": "Config is the detailed configuration of the fingerprint",
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "created_at": {
+                    "description": "CreatedAt is when the preset was created",
+                    "type": "string"
+                },
+                "id": {
+                    "description": "ID is the unique identifier for this preset",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "Name is a human-readable name for the preset",
+                    "type": "string"
+                },
+                "updated_at": {
+                    "description": "UpdatedAt is when the preset was last modified",
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_kwilabs_straw-proxy-server_internal_server_dto.ListApiKeysResponse": {
             "type": "object",
             "properties": {
                 "data": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_domain.ApiKey"
+                        "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_server_dto.ApiKeyResponse"
                     }
                 },
                 "limit": {
@@ -1682,48 +1458,466 @@ const docTemplateadmin = `{
                 }
             }
         },
-        "internal_server_admin_handlers.UsageSummaryResponse": {
+        "github_com_kwilabs_straw-proxy-server_internal_server_dto.ListRoutingRulesResponse": {
             "type": "object",
             "properties": {
                 "data": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_domain.UsageSummary"
+                        "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_server_dto.RoutingRuleResponse"
                     }
                 },
-                "end": {
-                    "description": "YYYY-MM-DD",
+                "limit": {
+                    "type": "integer"
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_kwilabs_straw-proxy-server_internal_server_dto.RelayMetaDTO": {
+            "type": "object",
+            "properties": {
+                "endpoint_id": {
                     "type": "string"
                 },
-                "start": {
-                    "description": "YYYY-MM-DD",
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "pool": {
+                    "type": "string"
+                },
+                "retries": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_kwilabs_straw-proxy-server_internal_server_dto.RelayRequest": {
+            "description": "HTTP request to be proxied through the relay",
+            "type": "object",
+            "required": [
+                "url"
+            ],
+            "properties": {
+                "body": {
+                    "description": "Body is the request body",
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "headers": {
+                    "description": "Headers are the HTTP headers to send",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "id": {
+                    "description": "ID is an optional client-provided request ID for correlation",
+                    "type": "string"
+                },
+                "method": {
+                    "description": "Method is the HTTP method (defaults to GET)",
+                    "type": "string"
+                },
+                "session_id": {
+                    "description": "SessionID for sticky session affinity",
+                    "type": "string"
+                },
+                "timeout": {
+                    "description": "Timeout is the request timeout (e.g., \"30s\")",
+                    "type": "string"
+                },
+                "trace_id": {
+                    "description": "TraceID for distributed tracing",
+                    "type": "string"
+                },
+                "url": {
+                    "description": "URL is the target URL to proxy (required)",
                     "type": "string"
                 }
             }
         },
-        "time.Duration": {
-            "type": "integer",
-            "format": "int64",
-            "enum": [
-                -9223372036854775808,
-                9223372036854775807,
-                1,
-                1000,
-                1000000,
-                1000000000,
-                60000000000,
-                3600000000000
+        "github_com_kwilabs_straw-proxy-server_internal_server_dto.RelayResponse": {
+            "description": "Response from a proxied HTTP request",
+            "type": "object",
+            "properties": {
+                "body": {
+                    "description": "Body is the response body",
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "headers": {
+                    "description": "Headers from the target response",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "meta": {
+                    "description": "Meta contains relay metadata",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_server_dto.RelayMetaDTO"
+                        }
+                    ]
+                },
+                "request_id": {
+                    "description": "RequestID correlates to the original request",
+                    "type": "string"
+                },
+                "session_id": {
+                    "description": "SessionID if a session was created or used",
+                    "type": "string"
+                },
+                "status_code": {
+                    "description": "StatusCode is the HTTP status from the target",
+                    "type": "integer"
+                },
+                "timing": {
+                    "description": "Timing contains request timing breakdown",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_server_dto.TimingDTO"
+                        }
+                    ]
+                }
+            }
+        },
+        "github_com_kwilabs_straw-proxy-server_internal_server_dto.RequestFilterDTO": {
+            "type": "object",
+            "properties": {
+                "adblock_lists": {
+                    "description": "AdblockLists specifies which blocklists to use",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "block_content_types": {
+                    "description": "BlockContentTypes blocks responses by Content-Type",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "block_domains": {
+                    "description": "BlockDomains blocks requests to specific domains",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "block_url_patterns": {
+                    "description": "BlockURLPatterns blocks requests matching URL patterns",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "enable_adblock": {
+                    "description": "EnableAdblock enables EasyList-style ad blocking",
+                    "type": "boolean"
+                }
+            }
+        },
+        "github_com_kwilabs_straw-proxy-server_internal_server_dto.RoutingRuleResponse": {
+            "description": "Routing rule data returned by the API",
+            "type": "object",
+            "properties": {
+                "allow_insecure_tls": {
+                    "description": "AllowInsecureTLS allows skipping TLS certificate verification",
+                    "type": "boolean"
+                },
+                "allowed_endpoint_types": {
+                    "description": "AllowedEndpointTypes specifies which endpoint types can handle requests",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "created_at": {
+                    "description": "CreatedAt is when the rule was created",
+                    "type": "string"
+                },
+                "endpoint_pools": {
+                    "description": "EndpointPools defines tiered endpoint fallback pools",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_server_dto.EndpointPoolDTO"
+                    }
+                },
+                "excluded_tags": {
+                    "description": "ExcludedTags are tags that a request must NOT have to match this rule",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "fingerprint_ab_test": {
+                    "description": "FingerprintABTest allows A/B testing different fingerprints",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_server_dto.ABConfigDTO"
+                        }
+                    ]
+                },
+                "fingerprint_preset": {
+                    "description": "FingerprintPreset specifies the default browser TLS fingerprint",
+                    "type": "string"
+                },
+                "hard_timeout": {
+                    "description": "HardTimeout is the maximum time allowed for a request",
+                    "type": "string"
+                },
+                "id": {
+                    "description": "ID is the unique identifier for this rule",
+                    "type": "string"
+                },
+                "is_active": {
+                    "description": "IsActive indicates whether this rule is currently active",
+                    "type": "boolean"
+                },
+                "name": {
+                    "description": "Name is a human-readable name for the rule",
+                    "type": "string"
+                },
+                "pinned_cert_hash": {
+                    "description": "PinnedCertHash for certificate pinning",
+                    "type": "string"
+                },
+                "priority": {
+                    "description": "Priority determines rule precedence",
+                    "type": "integer"
+                },
+                "quota_key": {
+                    "description": "QuotaKey is the key used for rate limit bucketing",
+                    "type": "string"
+                },
+                "rate_limit_per_minute": {
+                    "description": "RateLimitPerMinute is the maximum requests per minute",
+                    "type": "integer"
+                },
+                "rate_limit_per_second": {
+                    "description": "RateLimitPerSecond is the maximum requests per second",
+                    "type": "integer"
+                },
+                "request_filters": {
+                    "description": "RequestFilters defines bandwidth optimization filters",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_server_dto.RequestFilterDTO"
+                        }
+                    ]
+                },
+                "required_endpoint_caps": {
+                    "description": "RequiredEndpointCaps are capability tags that endpoints must have",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "required_tags": {
+                    "description": "RequiredTags are the tags that a request MUST have to match this rule",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "updated_at": {
+                    "description": "UpdatedAt is when the rule was last modified",
+                    "type": "string"
+                },
+                "version": {
+                    "description": "Version for optimistic locking on updates",
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_kwilabs_straw-proxy-server_internal_server_dto.TimingDTO": {
+            "type": "object",
+            "properties": {
+                "dns_lookup": {
+                    "type": "string"
+                },
+                "first_byte": {
+                    "type": "string"
+                },
+                "tcp_connect": {
+                    "type": "string"
+                },
+                "tls_handshake": {
+                    "type": "string"
+                },
+                "total": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_kwilabs_straw-proxy-server_internal_server_dto.UpdateRoutingRuleRequest": {
+            "description": "Request body for updating an existing routing rule",
+            "type": "object",
+            "required": [
+                "name",
+                "version"
             ],
-            "x-enum-varnames": [
-                "minDuration",
-                "maxDuration",
-                "Nanosecond",
-                "Microsecond",
-                "Millisecond",
-                "Second",
-                "Minute",
-                "Hour"
-            ]
+            "properties": {
+                "allow_insecure_tls": {
+                    "description": "AllowInsecureTLS allows skipping TLS certificate verification",
+                    "type": "boolean"
+                },
+                "allowed_endpoint_types": {
+                    "description": "AllowedEndpointTypes specifies which endpoint types can handle requests",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "endpoint_pools": {
+                    "description": "EndpointPools defines tiered endpoint fallback pools",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_server_dto.EndpointPoolDTO"
+                    }
+                },
+                "excluded_tags": {
+                    "description": "ExcludedTags are tags that a request must NOT have to match this rule",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "fingerprint_ab_test": {
+                    "description": "FingerprintABTest allows A/B testing different fingerprints",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_server_dto.ABConfigDTO"
+                        }
+                    ]
+                },
+                "fingerprint_preset": {
+                    "description": "FingerprintPreset specifies the default browser TLS fingerprint",
+                    "type": "string"
+                },
+                "hard_timeout": {
+                    "description": "HardTimeout is the maximum time allowed for a request (e.g., \"30s\")",
+                    "type": "string"
+                },
+                "is_active": {
+                    "description": "IsActive indicates whether this rule is currently active",
+                    "type": "boolean"
+                },
+                "name": {
+                    "description": "Name is a human-readable name for the rule (required)",
+                    "type": "string"
+                },
+                "pinned_cert_hash": {
+                    "description": "PinnedCertHash for certificate pinning",
+                    "type": "string"
+                },
+                "priority": {
+                    "description": "Priority determines rule precedence (higher = evaluated first)",
+                    "type": "integer"
+                },
+                "quota_key": {
+                    "description": "QuotaKey is the key used for rate limit bucketing",
+                    "type": "string"
+                },
+                "rate_limit_per_minute": {
+                    "description": "RateLimitPerMinute is the maximum requests per minute",
+                    "type": "integer"
+                },
+                "rate_limit_per_second": {
+                    "description": "RateLimitPerSecond is the maximum requests per second",
+                    "type": "integer"
+                },
+                "request_filters": {
+                    "description": "RequestFilters defines bandwidth optimization filters",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_server_dto.RequestFilterDTO"
+                        }
+                    ]
+                },
+                "required_endpoint_caps": {
+                    "description": "RequiredEndpointCaps are capability tags that endpoints must have",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "required_tags": {
+                    "description": "RequiredTags are the tags that a request MUST have to match this rule",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "version": {
+                    "description": "Version for optimistic locking (required for updates)",
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_kwilabs_straw-proxy-server_internal_server_dto.UsageSummaryDTO": {
+            "description": "Daily usage summary",
+            "type": "object",
+            "properties": {
+                "breakdown": {
+                    "description": "Breakdown contains per-endpoint or per-rule breakdown",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer",
+                        "format": "int64"
+                    }
+                },
+                "cost_units": {
+                    "description": "CostUnits is the calculated cost units",
+                    "type": "number"
+                },
+                "date": {
+                    "description": "Date in YYYY-MM-DD format",
+                    "type": "string"
+                },
+                "total_bytes": {
+                    "description": "TotalBytes is the total data transferred",
+                    "type": "integer"
+                },
+                "total_requests": {
+                    "description": "TotalRequests is the number of requests made",
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_kwilabs_straw-proxy-server_internal_server_dto.UsageSummaryResponse": {
+            "description": "Response containing usage summary data for a date range",
+            "type": "object",
+            "properties": {
+                "data": {
+                    "description": "Data contains the daily usage summaries",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_kwilabs_straw-proxy-server_internal_server_dto.UsageSummaryDTO"
+                    }
+                },
+                "end": {
+                    "description": "End date in YYYY-MM-DD format",
+                    "type": "string"
+                },
+                "start": {
+                    "description": "Start date in YYYY-MM-DD format",
+                    "type": "string"
+                }
+            }
         }
     },
     "securityDefinitions": {

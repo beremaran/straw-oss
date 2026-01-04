@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/kwilabs/straw-proxy-server/internal/domain"
+	"github.com/kwilabs/straw-proxy-server/internal/server/dto"
 	"github.com/labstack/echo/v4"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -29,7 +30,7 @@ func NewApiKeyHandler(repo domain.ApiKeyRepository) *ApiKeyHandler {
 //	@Produce		json
 //	@Param			page	query		int	false	"Page number (default: 1)"
 //	@Param			limit	query		int	false	"Items per page (default: 20, max: 100)"
-//	@Success		200		{object}	ListApiKeysResponse	"Paginated list of API keys"
+//	@Success		200		{object}	dto.ListApiKeysResponse	"Paginated list of API keys"
 //	@Failure		500		{object}	map[string]string		"Internal server error"
 //	@Security		AdminKeyAuth
 //	@Router			/api-keys [get]
@@ -49,8 +50,8 @@ func (h *ApiKeyHandler) HandleListApiKeys(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to list api keys"})
 	}
 
-	return c.JSON(http.StatusOK, ListApiKeysResponse{
-		Data:  keys,
+	return c.JSON(http.StatusOK, dto.ListApiKeysResponse{
+		Data:  dto.FromApiKeys(keys),
 		Total: total,
 		Page:  page,
 		Limit: limit,
@@ -64,20 +65,14 @@ func (h *ApiKeyHandler) HandleListApiKeys(c echo.Context) error {
 //	@Tags			api-keys
 //	@Accept			json
 //	@Produce		json
-//	@Param			request	body		object{name=string,scopes=[]string,rate_limit_override=int}	true	"API key creation request"
-//	@Success		201		{object}	CreateApiKeyResponse	"Created API key with raw key"
+//	@Param			request	body		dto.CreateApiKeyRequest	true	"API key creation request"
+//	@Success		201		{object}	dto.CreateApiKeyResponse	"Created API key with raw key"
 //	@Failure		400		{object}	map[string]string	"Invalid request"
 //	@Failure		500		{object}	map[string]string	"Internal server error"
 //	@Security		AdminKeyAuth
 //	@Router			/api-keys [post]
 func (h *ApiKeyHandler) HandleCreateApiKey(c echo.Context) error {
-	type createRequest struct {
-		Name              string   `json:"name"`
-		Scopes            []string `json:"scopes"`
-		RateLimitOverride *int     `json:"rate_limit_override"`
-	}
-
-	var req createRequest
+	var req dto.CreateApiKeyRequest
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
@@ -106,10 +101,11 @@ func (h *ApiKeyHandler) HandleCreateApiKey(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to create api key"})
 	}
 
-	// Return the raw key ONLY ONCE
-	return c.JSON(http.StatusCreated, CreateApiKeyResponse{
-		ApiKey: apiKey,
-		RawKey: rawKey,
+	// Return the raw key ONLY ONCE - use DTO to avoid leaking TokenHash
+	apiKeyResp := dto.FromApiKey(apiKey)
+	return c.JSON(http.StatusCreated, dto.CreateApiKeyResponse{
+		ApiKeyResponse: *apiKeyResp,
+		RawKey:         rawKey,
 	})
 }
 

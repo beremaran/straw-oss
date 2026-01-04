@@ -9,15 +9,16 @@ import (
 	"time"
 
 	"github.com/kwilabs/straw-proxy-server/internal/domain"
+	"github.com/kwilabs/straw-proxy-server/internal/server/dto"
 	"github.com/kwilabs/straw-proxy-server/internal/server/middleware"
 	"github.com/kwilabs/straw-proxy-server/internal/service/filter"
 	"github.com/kwilabs/straw-proxy-server/internal/service/orchestrator"
 	"github.com/kwilabs/straw-proxy-server/internal/service/ratelimit"
 	"github.com/kwilabs/straw-proxy-server/internal/service/router"
 	"github.com/kwilabs/straw-proxy-server/internal/service/session"
+	"github.com/kwilabs/straw-proxy-server/pkg/protocol"
 	"github.com/kwilabs/straw-proxy-server/pkg/validator"
 
-	"github.com/kwilabs/straw-proxy-server/pkg/protocol"
 	"github.com/labstack/echo/v4"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -78,8 +79,8 @@ func NewRelayHandler(
 //	@Tags			relay
 //	@Accept			json
 //	@Produce		json
-//	@Param			request	body		protocol.Request	true	"HTTP request to proxy"
-//	@Success		200		{object}	protocol.Response	"Successful proxy response"
+//	@Param			request	body		dto.RelayRequest	true	"HTTP request to proxy"
+//	@Success		200		{object}	dto.RelayResponse	"Successful proxy response"
 //	@Failure		400		{object}	echo.HTTPError		"Invalid request body or URL"
 //	@Failure		401		{object}	echo.HTTPError		"Authentication required"
 //	@Failure		403		{object}	echo.HTTPError		"Request blocked by filter or scope"
@@ -92,10 +93,16 @@ func NewRelayHandler(
 func (h *RelayHandler) Handle(c echo.Context) error {
 	ctx := c.Request().Context()
 
-	// 1. Parse incoming request body
-	var req protocol.Request
-	if err := c.Bind(&req); err != nil {
+	// 1. Parse incoming request body using DTO
+	var reqDTO dto.RelayRequest
+	if err := c.Bind(&reqDTO); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body").SetInternal(err)
+	}
+
+	// Convert DTO to protocol.Request
+	req, err := reqDTO.ToProtocolRequest()
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
 	// Validate basic fields
@@ -256,7 +263,7 @@ func (h *RelayHandler) Handle(c echo.Context) error {
 		}
 	}
 
-	result, err := h.executor.Execute(ctx, &req, rule, sessionID, preferredEndpointID)
+	result, err := h.executor.Execute(ctx, req, rule, sessionID, preferredEndpointID)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadGateway, "execution failed").SetInternal(err)
 	}

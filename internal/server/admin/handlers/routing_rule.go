@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/kwilabs/straw-proxy-server/internal/domain"
+	"github.com/kwilabs/straw-proxy-server/internal/server/dto"
 	"github.com/labstack/echo/v4"
 )
 
@@ -36,7 +37,7 @@ func NewRoutingRuleHandler(repo domain.RoutingRuleRepository, versionMgr RuleVer
 //	@Produce		json
 //	@Param			page	query		int	false	"Page number (default: 1)"
 //	@Param			limit	query		int	false	"Items per page (default: 20, max: 100)"
-//	@Success		200		{object}	map[string]interface{}	"Paginated list of routing rules"
+//	@Success		200		{object}	dto.ListRoutingRulesResponse	"Paginated list of routing rules"
 //	@Failure		500		{object}	map[string]string		"Internal server error"
 //	@Security		AdminKeyAuth
 //	@Router			/rules [get]
@@ -56,11 +57,11 @@ func (h *RoutingRuleHandler) HandleListRoutingRules(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to list routing rules"})
 	}
 
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"data":  rules,
-		"total": total,
-		"page":  page,
-		"limit": limit,
+	return c.JSON(http.StatusOK, dto.ListRoutingRulesResponse{
+		Data:  dto.FromRoutingRules(rules),
+		Total: total,
+		Page:  page,
+		Limit: limit,
 	})
 }
 
@@ -71,7 +72,7 @@ func (h *RoutingRuleHandler) HandleListRoutingRules(c echo.Context) error {
 //	@Tags			routing-rules
 //	@Produce		json
 //	@Param			id	path		string	true	"Routing Rule ID"
-//	@Success		200	{object}	domain.RoutingRule	"Routing rule"
+//	@Success		200	{object}	dto.RoutingRuleResponse	"Routing rule"
 //	@Failure		400	{object}	map[string]string	"ID required"
 //	@Failure		404	{object}	map[string]string	"Rule not found"
 //	@Failure		500	{object}	map[string]string	"Internal server error"
@@ -91,7 +92,7 @@ func (h *RoutingRuleHandler) HandleGetRoutingRule(c echo.Context) error {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "routing rule not found"})
 	}
 
-	return c.JSON(http.StatusOK, rule)
+	return c.JSON(http.StatusOK, dto.FromRoutingRule(rule))
 }
 
 // HandleCreateRoutingRule creates a new routing rule
@@ -101,20 +102,25 @@ func (h *RoutingRuleHandler) HandleGetRoutingRule(c echo.Context) error {
 //	@Tags			routing-rules
 //	@Accept			json
 //	@Produce		json
-//	@Param			rule	body		domain.RoutingRule	true	"Routing rule to create"
-//	@Success		201		{object}	domain.RoutingRule	"Created routing rule"
+//	@Param			rule	body		dto.CreateRoutingRuleRequest	true	"Routing rule to create"
+//	@Success		201		{object}	dto.RoutingRuleResponse	"Created routing rule"
 //	@Failure		400		{object}	map[string]string	"Invalid request"
 //	@Failure		500		{object}	map[string]string	"Internal server error"
 //	@Security		AdminKeyAuth
 //	@Router			/rules [post]
 func (h *RoutingRuleHandler) HandleCreateRoutingRule(c echo.Context) error {
-	var rule domain.RoutingRule
-	if err := c.Bind(&rule); err != nil {
+	var req dto.CreateRoutingRuleRequest
+	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
 
-	if rule.Name == "" {
+	if req.Name == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "name is required"})
+	}
+
+	rule, err := req.ToDomain()
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
 	rule.ID = uuid.New().String()
@@ -122,14 +128,14 @@ func (h *RoutingRuleHandler) HandleCreateRoutingRule(c echo.Context) error {
 	rule.UpdatedAt = time.Now()
 	rule.Version = 1
 
-	if err := h.repo.CreateRule(c.Request().Context(), &rule); err != nil {
+	if err := h.repo.CreateRule(c.Request().Context(), rule); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to create routing rule"})
 	}
 
 	// Invalidate Cache
 	_, _ = h.versionMgr.IncrementRulesVersion(c.Request().Context())
 
-	return c.JSON(http.StatusCreated, rule)
+	return c.JSON(http.StatusCreated, dto.FromRoutingRule(rule))
 }
 
 // HandleUpdateRoutingRule updates an existing routing rule
@@ -140,8 +146,8 @@ func (h *RoutingRuleHandler) HandleCreateRoutingRule(c echo.Context) error {
 //	@Accept			json
 //	@Produce		json
 //	@Param			id		path		string				true	"Routing Rule ID"
-//	@Param			rule	body		domain.RoutingRule	true	"Updated routing rule"
-//	@Success		200		{object}	domain.RoutingRule	"Updated routing rule"
+//	@Param			rule	body		dto.UpdateRoutingRuleRequest	true	"Updated routing rule"
+//	@Success		200		{object}	dto.RoutingRuleResponse	"Updated routing rule"
 //	@Failure		400		{object}	map[string]string	"Invalid request or ID mismatch"
 //	@Failure		500		{object}	map[string]string	"Internal server error"
 //	@Security		AdminKeyAuth
@@ -152,28 +158,21 @@ func (h *RoutingRuleHandler) HandleUpdateRoutingRule(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "id is required"})
 	}
 
-	// We need the existing rule to check version if enforcing optimistic locking strictly,
-	// but the repo UpdateRule handles version checking.
-	// However, we need to bind the incoming data.
-
-	// Better pattern: fetch existing, apply updates, save.
-	// Or trust the client to send the full object including version.
-	// Let's assume the client sends the full object or we merge it.
-	// For simplicity in this iteration, we expect the client to send the updated state.
-	// But we must ensure ID matches.
-
-	var rule domain.RoutingRule
-	if err := c.Bind(&rule); err != nil {
+	var req dto.UpdateRoutingRuleRequest
+	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
 
-	if rule.ID != "" && rule.ID != id {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "id mismatch"})
+	rule, err := req.ToDomain()
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
+
 	rule.ID = id
 	rule.UpdatedAt = time.Now()
+	rule.Version = req.Version
 
-	err := h.repo.UpdateRule(c.Request().Context(), &rule)
+	err = h.repo.UpdateRule(c.Request().Context(), rule)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
@@ -181,7 +180,7 @@ func (h *RoutingRuleHandler) HandleUpdateRoutingRule(c echo.Context) error {
 	// Invalidate Cache
 	_, _ = h.versionMgr.IncrementRulesVersion(c.Request().Context())
 
-	return c.JSON(http.StatusOK, rule)
+	return c.JSON(http.StatusOK, dto.FromRoutingRule(rule))
 }
 
 // HandleDeleteRoutingRule deletes a routing rule
