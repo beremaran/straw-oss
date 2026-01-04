@@ -56,12 +56,12 @@ func TestAuthenticationFlows(t *testing.T) {
 	})
 
 	// Setup Mock Endpoint
-	tc.MockEndpoint = NewMockEndpoint(tc.Broker, MockEndpointConfig{
+	tc.ReplaceMockEndpoint(NewMockEndpoint(tc.Broker, MockEndpointConfig{
 		EndpointID: "test-endpoint-1",
 		Secret:     []byte(testHMACSecret),
 		TargetURL:  tc.MockTarget.URL(),
 		Tags:       []string{"target:auth_test", "target:scope_test", "target:rate_limit_test"},
-	})
+	}))
 	require.NoError(t, tc.MockEndpoint.Start(ctx))
 	require.NoError(t, tc.WaitForEndpoint(ctx, "test-endpoint-1"))
 
