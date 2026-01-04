@@ -17,7 +17,7 @@ export const HEADERS = {
 // Helper to generate a random request payload
 export function generatePayload() {
     return JSON.stringify({
-        url: 'http://mock-target',
+        url: 'http://mock-target:80',  // Docker network DNS name - endpoints can reach this
         method: 'GET',
         headers: {
             'User-Agent': 'k6-load-test',

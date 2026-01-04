@@ -1,7 +1,6 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: straw-postgres
     environment:
       POSTGRES_USER: straw
       POSTGRES_PASSWORD: straw
@@ -20,7 +19,6 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: straw-redis
     ports:
       - "6379:6379"
     volumes:
@@ -50,7 +48,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: straw-relay-server
     environment:
       POSTGRES_DSN: postgres://straw:straw@postgres:5432/straw?sslmode=disable
       REDIS_ADDR: redis:6379
@@ -62,6 +59,7 @@ services:
       DB_AUTO_MIGRATE: "true"
       METRICS_ENABLED: false
       OTEL_SDK_DISABLED: "true"
+      ALLOW_PRIVATE_IPS: "true" # Enable for load testing with local targets
     ports:
       - "8080:8080"
     depends_on:
@@ -76,7 +74,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.endpoint
-    container_name: straw-endpoint-1
     environment:
       ENDPOINT_ID: endpoint-load-test-001
       ENDPOINT_TAGS: type:datacenter,region:us
@@ -97,7 +94,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.endpoint
-    container_name: straw-endpoint-2
     environment:
       ENDPOINT_ID: endpoint-load-test-002
       ENDPOINT_TAGS: type:datacenter,region:us
@@ -118,7 +114,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.endpoint
-    container_name: straw-endpoint-3
     environment:
       ENDPOINT_ID: endpoint-load-test-003
       ENDPOINT_TAGS: type:datacenter,region:us
@@ -137,7 +132,6 @@ services:
 
   mock-target:
     image: traefik/whoami
-    container_name: straw-mock-target
     ports:
       - "8081:80"
     networks:
