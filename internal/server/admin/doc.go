@@ -16,6 +16,6 @@
 //
 //	@securityDefinitions.apikey	AdminKeyAuth
 //	@in							header
-//	@name						X-Admin-Key
-//	@description				Admin API key for authentication
+//	@name						Authorization
+//	@description				Bearer token authentication (format: "Bearer <token>")
 package admin

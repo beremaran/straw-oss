@@ -1167,8 +1167,8 @@ paths:
       - relay
 securityDefinitions:
   ApiKeyAuth:
-    description: API key for authentication
+    description: 'Bearer token authentication (format: "Bearer <token>")'
     in: header
-    name: X-API-Key
+    name: Authorization
     type: apiKey
 swagger: "2.0"

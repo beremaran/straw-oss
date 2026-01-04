@@ -1167,8 +1167,8 @@ paths:
       - relay
 securityDefinitions:
   AdminKeyAuth:
-    description: Admin API key for authentication
+    description: 'Bearer token authentication (format: "Bearer <token>")'
     in: header
-    name: X-Admin-Key
+    name: Authorization
     type: apiKey
 swagger: "2.0"

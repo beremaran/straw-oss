@@ -1728,9 +1728,9 @@ const docTemplateadmin = `{
     },
     "securityDefinitions": {
         "AdminKeyAuth": {
-            "description": "Admin API key for authentication",
+            "description": "Bearer token authentication (format: \"Bearer \u003ctoken\u003e\")",
             "type": "apiKey",
-            "name": "X-Admin-Key",
+            "name": "Authorization",
             "in": "header"
         }
     }
