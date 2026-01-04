@@ -1728,9 +1728,9 @@ const docTemplaterelay = `{
     },
     "securityDefinitions": {
         "ApiKeyAuth": {
-            "description": "API key for authentication",
+            "description": "Bearer token authentication (format: \"Bearer \u003ctoken\u003e\")",
             "type": "apiKey",
-            "name": "X-API-Key",
+            "name": "Authorization",
             "in": "header"
         }
     }

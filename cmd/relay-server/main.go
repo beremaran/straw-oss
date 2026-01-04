@@ -16,8 +16,8 @@
 //
 //	@securityDefinitions.apikey	ApiKeyAuth
 //	@in							header
-//	@name						X-API-Key
-//	@description				API key for authentication
+//	@name						Authorization
+//	@description				Bearer token authentication (format: "Bearer <token>")
 package main
 
 import (
