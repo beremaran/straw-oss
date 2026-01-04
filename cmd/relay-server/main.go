@@ -242,7 +242,12 @@ func main() {
 	matcher.StartAutoRefresh(ctx, 1*time.Minute)
 
 	// 5. Initialize Server
-	srv := server.New(*cfg, authService, sessionService, matcher, rateLimiter, filterService, retryExecutor)
+	var serverOpts []server.Option
+	if cfg.AllowPrivateIPs {
+		slog.Warn("Private IP validation disabled - SSRF protection bypassed (testing mode)")
+		serverOpts = append(serverOpts, server.WithAllowPrivateIPs())
+	}
+	srv := server.New(*cfg, authService, sessionService, matcher, rateLimiter, filterService, retryExecutor, serverOpts...)
 
 	// 6. Initialize Admin Server Dependencies
 	// Health Service

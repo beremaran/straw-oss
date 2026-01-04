@@ -51,6 +51,9 @@ type ServerConfig struct {
 	AdminAPIKey     string        `mapstructure:"admin_api_key"`    // Admin API authentication key
 	ResultTimeout   time.Duration `mapstructure:"result_timeout"`   // Timeout for waiting on endpoint results (default: 30s)
 	MaxBodySize     string        `mapstructure:"max_body_size"`    // Max request body size (default: 2M)
+
+	// Testing options
+	AllowPrivateIPs bool `mapstructure:"allow_private_ips"` // Allow localhost/private IPs (for testing only)
 }
 
 // EndpointConfig is the configuration for the Endpoint Worker (The Muscle).
@@ -210,6 +213,7 @@ func bindEnvVars(v *viper.Viper) {
 		"idle_conns_per_host",
 		"idle_conn_timeout",
 		"max_body_size",
+		"allow_private_ips",
 	}
 
 	for _, key := range envBindings {
