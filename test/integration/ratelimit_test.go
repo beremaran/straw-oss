@@ -299,12 +299,12 @@ func TestRateLimit_QuotaIsolation(t *testing.T) {
 	require.NoError(t, tc.Server.GetMatcher().LoadRules(ctx))
 
 	// Re-create mock endpoint with tags to match rules
-	tc.MockEndpoint = NewMockEndpoint(tc.Broker, MockEndpointConfig{
+	tc.ReplaceMockEndpoint(NewMockEndpoint(tc.Broker, MockEndpointConfig{
 		EndpointID: "test-endpoint-1",
 		Secret:     []byte(testHMACSecret),
 		TargetURL:  tc.MockTarget.URL(),
 		Tags:       []string{"type:test", "pool:a", "pool:b"},
-	})
+	}))
 
 	err = tc.MockEndpoint.Start(ctx)
 	require.NoError(t, err)

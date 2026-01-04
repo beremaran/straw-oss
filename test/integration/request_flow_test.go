@@ -42,6 +42,15 @@ type testServerContext struct {
 	Cleanup       func()
 }
 
+// ReplaceMockEndpoint stops the current MockEndpoint and replaces it with a new one.
+// This should be used when a test needs a MockEndpoint with different configuration.
+func (tc *testServerContext) ReplaceMockEndpoint(newEndpoint *MockEndpoint) {
+	if tc.MockEndpoint != nil {
+		tc.MockEndpoint.Stop()
+	}
+	tc.MockEndpoint = newEndpoint
+}
+
 // setupTestServer creates a fully wired server for E2E testing.
 func setupTestServer(t *testing.T, suite *TestSuite) *testServerContext {
 	t.Helper()
@@ -161,16 +170,8 @@ func setupTestServer(t *testing.T, suite *TestSuite) *testServerContext {
 		Tags:       []string{"type:test"}, // Tags must match routing rule requirements
 	})
 
-	cleanup := func() {
-		healthService.Stop()
-		mockEndpoint.Stop()
-		mockTarget.Close()
-		testServer.Close()
-		broker.Close()
-		redisClient.Close()
-	}
-
-	return &testServerContext{
+	// Create struct first so cleanup can reference tc.MockEndpoint
+	tc := &testServerContext{
 		Server:        srv,
 		ServerURL:     testServer.URL,
 		httpServer:    testServer,
@@ -179,8 +180,21 @@ func setupTestServer(t *testing.T, suite *TestSuite) *testServerContext {
 		MockTarget:    mockTarget,
 		HealthService: healthService,
 		HealthStore:   healthStore,
-		Cleanup:       cleanup,
 	}
+
+	// Cleanup uses tc.MockEndpoint so that if a test replaces it, the new one gets stopped
+	tc.Cleanup = func() {
+		healthService.Stop()
+		if tc.MockEndpoint != nil {
+			tc.MockEndpoint.Stop()
+		}
+		mockTarget.Close()
+		testServer.Close()
+		broker.Close()
+		redisClient.Close()
+	}
+
+	return tc
 }
 
 // WaitForEndpoint waits for an endpoint to become healthy.
@@ -333,12 +347,12 @@ func TestRequestFlow_WithTags(t *testing.T) {
 	require.NoError(t, tc.Server.GetMatcher().LoadRules(ctx))
 
 	// Re-create mock endpoint with amazon tag to ensure heartbeats match the rule
-	tc.MockEndpoint = NewMockEndpoint(tc.Broker, MockEndpointConfig{
+	tc.ReplaceMockEndpoint(NewMockEndpoint(tc.Broker, MockEndpointConfig{
 		EndpointID: "test-endpoint-1",
 		Secret:     []byte(testHMACSecret),
 		TargetURL:  tc.MockTarget.URL(),
 		Tags:       []string{"type:test", "target:amazon"},
-	})
+	}))
 
 	err = tc.MockEndpoint.Start(ctx)
 	require.NoError(t, err)
