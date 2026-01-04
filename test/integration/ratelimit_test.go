@@ -176,7 +176,8 @@ func TestRateLimit_Headers(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Create rule with Limit 10/sec
+	// Create rule with Limit 10/min (using per-minute to avoid race conditions in CI
+	// where the 1-second window can reset during test execution)
 	err = CreateTestRoutingRule(
 		ctx,
 		suite.PostgresDSN(),
@@ -185,8 +186,8 @@ func TestRateLimit_Headers(t *testing.T) {
 		[]string{},
 		[]string{},
 		"quota-headers",
-		10,
 		0,
+		10,
 		"",
 		[]TestEndpointPool{
 			{Tier: 1, Endpoints: []string{"test-endpoint-1"}, MaxRetries: 1},

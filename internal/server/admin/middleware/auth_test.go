@@ -17,22 +17,32 @@ func TestKeyAuth(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		headerKey  string
+		authHeader string
 		wantStatus int
 	}{
 		{
-			name:       "valid key",
-			headerKey:  "secret-key",
+			name:       "valid bearer token",
+			authHeader: "Bearer secret-key",
 			wantStatus: http.StatusOK,
 		},
 		{
-			name:       "invalid key",
-			headerKey:  "wrong-key",
+			name:       "invalid bearer token",
+			authHeader: "Bearer wrong-key",
 			wantStatus: http.StatusUnauthorized,
 		},
 		{
-			name:       "missing key",
-			headerKey:  "",
+			name:       "missing authorization header",
+			authHeader: "",
+			wantStatus: http.StatusUnauthorized,
+		},
+		{
+			name:       "wrong auth type",
+			authHeader: "Basic abc123",
+			wantStatus: http.StatusUnauthorized,
+		},
+		{
+			name:       "bearer without token",
+			authHeader: "Bearer ",
 			wantStatus: http.StatusUnauthorized,
 		},
 	}
@@ -40,8 +50,8 @@ func TestKeyAuth(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
-			if tt.headerKey != "" {
-				req.Header.Set("X-Admin-Key", tt.headerKey)
+			if tt.authHeader != "" {
+				req.Header.Set("Authorization", tt.authHeader)
 			}
 			rec := httptest.NewRecorder()
 			c := e.NewContext(req, rec)

@@ -9,7 +9,6 @@ import (
 	"github.com/kwilabs/straw-proxy-server/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"golang.org/x/crypto/bcrypt"
 )
 
 type MockRepo struct {
@@ -18,6 +17,14 @@ type MockRepo struct {
 
 func (m *MockRepo) GetByID(ctx context.Context, id string) (*domain.ApiKey, error) {
 	args := m.Called(ctx, id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.ApiKey), args.Error(1)
+}
+
+func (m *MockRepo) GetByTokenHash(ctx context.Context, tokenHash string) (*domain.ApiKey, error) {
+	args := m.Called(ctx, tokenHash)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -71,29 +78,27 @@ func TestAuthService_ValidateKey(t *testing.T) {
 	service := NewAuthService(mockRepo, mockCache)
 	ctx := context.Background()
 
-	// Helpers
-	keyID := "test-id"
-	keySecret := "test-secret"
-	rawKey := keyID + ":" + keySecret
-	hashedSecret, _ := bcrypt.GenerateFromPassword([]byte(keySecret), bcrypt.DefaultCost)
+	// Test token - any string is valid now, we just hash it
+	testToken := "test-bearer-token-12345"
+	testTokenHash := sha256Hash(testToken)
 
 	validApiKey := &domain.ApiKey{
-		ID:       keyID,
-		KeyHash:  string(hashedSecret),
-		IsActive: true,
+		ID:        "key-id-123",
+		TokenHash: testTokenHash,
+		IsActive:  true,
 	}
 
-	t.Run("Valid Key - Cache Miss - DB Hit", func(t *testing.T) {
+	t.Run("Valid Token - Cache Miss - DB Hit", func(t *testing.T) {
 		// Expect cache check
-		mockCache.On("GetKey", ctx, mock.AnythingOfType("string")).Return(nil, nil).Once()
+		mockCache.On("GetKey", ctx, testTokenHash).Return(nil, nil).Once()
 
-		// Expect DB check
-		mockRepo.On("GetByID", ctx, keyID).Return(validApiKey, nil).Once()
+		// Expect DB check by token hash
+		mockRepo.On("GetByTokenHash", ctx, testTokenHash).Return(validApiKey, nil).Once()
 
 		// Expect cache set
-		mockCache.On("SetKey", ctx, mock.AnythingOfType("string"), validApiKey).Return(nil).Once()
+		mockCache.On("SetKey", ctx, testTokenHash, validApiKey).Return(nil).Once()
 
-		key, err := service.ValidateKey(ctx, rawKey)
+		key, err := service.ValidateKey(ctx, testToken)
 		assert.NoError(t, err)
 		assert.Equal(t, validApiKey, key)
 
@@ -101,144 +106,153 @@ func TestAuthService_ValidateKey(t *testing.T) {
 		mockRepo.AssertExpectations(t)
 	})
 
-	t.Run("Valid Key - Cache Hit", func(t *testing.T) {
+	t.Run("Valid Token - Cache Hit", func(t *testing.T) {
 		// Expect cache check - Hit
-		mockCache.On("GetKey", ctx, mock.AnythingOfType("string")).Return(validApiKey, nil).Once()
+		mockCache.On("GetKey", ctx, testTokenHash).Return(validApiKey, nil).Once()
 
-		key, err := service.ValidateKey(ctx, rawKey)
+		key, err := service.ValidateKey(ctx, testToken)
 		assert.NoError(t, err)
 		assert.Equal(t, validApiKey, key)
 
 		mockCache.AssertExpectations(t)
 	})
 
-	t.Run("Invalid Key Format", func(t *testing.T) {
-		mockCache.On("GetKey", ctx, mock.AnythingOfType("string")).Return(nil, nil).Once()
+	t.Run("Token Not Found in DB", func(t *testing.T) {
+		unknownToken := "unknown-token-xyz"
+		unknownHash := sha256Hash(unknownToken)
 
-		key, err := service.ValidateKey(ctx, "invalid-format")
-		assert.ErrorIs(t, err, ErrInvalidKeyFormat)
-		assert.Nil(t, key)
-	})
+		mockCache.On("GetKey", ctx, unknownHash).Return(nil, nil).Once()
+		mockRepo.On("GetByTokenHash", ctx, unknownHash).Return(nil, nil).Once()
 
-	t.Run("Invalid Secret", func(t *testing.T) {
-		mockCache.On("GetKey", ctx, mock.AnythingOfType("string")).Return(nil, nil).Once()
-		mockRepo.On("GetByID", ctx, keyID).Return(validApiKey, nil).Once()
-		// No cache set
-
-		badKey := keyID + ":wrong-secret"
-		key, err := service.ValidateKey(ctx, badKey)
+		key, err := service.ValidateKey(ctx, unknownToken)
 		assert.ErrorIs(t, err, ErrInvalidKey)
 		assert.Nil(t, key)
 	})
 
 	t.Run("Inactive Key", func(t *testing.T) {
-		inactiveKey := &domain.ApiKey{ID: keyID, KeyHash: string(hashedSecret), IsActive: false}
+		inactiveToken := "inactive-token"
+		inactiveHash := sha256Hash(inactiveToken)
+		inactiveKey := &domain.ApiKey{ID: "key-id", TokenHash: inactiveHash, IsActive: false}
 
-		mockCache.On("GetKey", ctx, mock.AnythingOfType("string")).Return(nil, nil).Once()
-		mockRepo.On("GetByID", ctx, keyID).Return(inactiveKey, nil).Once()
+		mockCache.On("GetKey", ctx, inactiveHash).Return(nil, nil).Once()
+		mockRepo.On("GetByTokenHash", ctx, inactiveHash).Return(inactiveKey, nil).Once()
 
-		key, err := service.ValidateKey(ctx, rawKey)
+		key, err := service.ValidateKey(ctx, inactiveToken)
 		assert.ErrorIs(t, err, ErrInvalidKey)
 		assert.Nil(t, key)
 	})
 
 	t.Run("DB Error", func(t *testing.T) {
-		mockCache.On("GetKey", ctx, mock.AnythingOfType("string")).Return(nil, nil).Once()
-		mockRepo.On("GetByID", ctx, keyID).Return(nil, errors.New("db error")).Once()
+		errorToken := "error-causing-token"
+		errorHash := sha256Hash(errorToken)
 
-		key, err := service.ValidateKey(ctx, rawKey)
+		mockCache.On("GetKey", ctx, errorHash).Return(nil, nil).Once()
+		mockRepo.On("GetByTokenHash", ctx, errorHash).Return(nil, errors.New("db error")).Once()
+
+		key, err := service.ValidateKey(ctx, errorToken)
 		assert.Error(t, err)
 		assert.Nil(t, key)
 	})
 
 	t.Run("Cache Set Error", func(t *testing.T) {
+		cacheErrorToken := "cache-error-token"
+		cacheErrorHash := sha256Hash(cacheErrorToken)
+		cacheErrorKey := &domain.ApiKey{ID: "key-id", TokenHash: cacheErrorHash, IsActive: true}
+
 		// Expect cache check
-		mockCache.On("GetKey", ctx, mock.AnythingOfType("string")).Return(nil, nil).Once()
+		mockCache.On("GetKey", ctx, cacheErrorHash).Return(nil, nil).Once()
 
 		// Expect DB check
-		mockRepo.On("GetByID", ctx, keyID).Return(validApiKey, nil).Once()
+		mockRepo.On("GetByTokenHash", ctx, cacheErrorHash).Return(cacheErrorKey, nil).Once()
 
 		// Expect cache set - Error
-		mockCache.On("SetKey", ctx, mock.AnythingOfType("string"), validApiKey).Return(errors.New("cache error")).Once()
+		mockCache.On("SetKey", ctx, cacheErrorHash, cacheErrorKey).Return(errors.New("cache error")).Once()
 
-		key, err := service.ValidateKey(ctx, rawKey)
+		key, err := service.ValidateKey(ctx, cacheErrorToken)
 		assert.NoError(t, err) // Should not fail request
-		assert.Equal(t, validApiKey, key)
+		assert.Equal(t, cacheErrorKey, key)
 
 		mockCache.AssertExpectations(t)
 		mockRepo.AssertExpectations(t)
 	})
 
 	t.Run("Expired Key", func(t *testing.T) {
+		expiredToken := "expired-token"
+		expiredHash := sha256Hash(expiredToken)
 		pastTime := time.Now().Add(-1 * time.Hour)
 		expiredKey := &domain.ApiKey{
-			ID:        keyID,
-			KeyHash:   string(hashedSecret),
+			ID:        "key-id",
+			TokenHash: expiredHash,
 			IsActive:  true,
 			ExpiresAt: &pastTime,
 		}
 
-		mockCache.On("GetKey", ctx, mock.AnythingOfType("string")).Return(nil, nil).Once()
-		mockRepo.On("GetByID", ctx, keyID).Return(expiredKey, nil).Once()
+		mockCache.On("GetKey", ctx, expiredHash).Return(nil, nil).Once()
+		mockRepo.On("GetByTokenHash", ctx, expiredHash).Return(expiredKey, nil).Once()
 
-		key, err := service.ValidateKey(ctx, rawKey)
+		key, err := service.ValidateKey(ctx, expiredToken)
 		assert.ErrorIs(t, err, ErrInvalidKey)
 		assert.Nil(t, key)
 	})
 
 	t.Run("Cache Hit with Invalid Cached Key (Expired)", func(t *testing.T) {
+		expiredCacheToken := "expired-cache-token"
+		expiredCacheHash := sha256Hash(expiredCacheToken)
 		pastTime := time.Now().Add(-1 * time.Hour)
 		expiredCachedKey := &domain.ApiKey{
-			ID:        keyID,
-			KeyHash:   string(hashedSecret),
+			ID:        "key-id",
+			TokenHash: expiredCacheHash,
 			IsActive:  true,
 			ExpiresAt: &pastTime,
 		}
+		freshKey := &domain.ApiKey{
+			ID:        "key-id",
+			TokenHash: expiredCacheHash,
+			IsActive:  true,
+		}
 
 		// Cache returns an expired key
-		mockCache.On("GetKey", ctx, mock.AnythingOfType("string")).Return(expiredCachedKey, nil).Once()
+		mockCache.On("GetKey", ctx, expiredCacheHash).Return(expiredCachedKey, nil).Once()
 		// Should re-check DB
-		mockRepo.On("GetByID", ctx, keyID).Return(validApiKey, nil).Once()
+		mockRepo.On("GetByTokenHash", ctx, expiredCacheHash).Return(freshKey, nil).Once()
 		// Should update cache
-		mockCache.On("SetKey", ctx, mock.AnythingOfType("string"), validApiKey).Return(nil).Once()
+		mockCache.On("SetKey", ctx, expiredCacheHash, freshKey).Return(nil).Once()
 
-		key, err := service.ValidateKey(ctx, rawKey)
+		key, err := service.ValidateKey(ctx, expiredCacheToken)
 		assert.NoError(t, err)
-		assert.Equal(t, validApiKey, key)
+		assert.Equal(t, freshKey, key)
 
 		mockCache.AssertExpectations(t)
 		mockRepo.AssertExpectations(t)
 	})
 
 	t.Run("Cache Hit with Invalid Cached Key (Inactive)", func(t *testing.T) {
+		inactiveCacheToken := "inactive-cache-token"
+		inactiveCacheHash := sha256Hash(inactiveCacheToken)
 		inactiveCachedKey := &domain.ApiKey{
-			ID:       keyID,
-			KeyHash:  string(hashedSecret),
-			IsActive: false,
+			ID:        "key-id",
+			TokenHash: inactiveCacheHash,
+			IsActive:  false,
+		}
+		freshKey := &domain.ApiKey{
+			ID:        "key-id",
+			TokenHash: inactiveCacheHash,
+			IsActive:  true,
 		}
 
 		// Cache returns an inactive key
-		mockCache.On("GetKey", ctx, mock.AnythingOfType("string")).Return(inactiveCachedKey, nil).Once()
+		mockCache.On("GetKey", ctx, inactiveCacheHash).Return(inactiveCachedKey, nil).Once()
 		// Should re-check DB
-		mockRepo.On("GetByID", ctx, keyID).Return(validApiKey, nil).Once()
+		mockRepo.On("GetByTokenHash", ctx, inactiveCacheHash).Return(freshKey, nil).Once()
 		// Should update cache
-		mockCache.On("SetKey", ctx, mock.AnythingOfType("string"), validApiKey).Return(nil).Once()
+		mockCache.On("SetKey", ctx, inactiveCacheHash, freshKey).Return(nil).Once()
 
-		key, err := service.ValidateKey(ctx, rawKey)
+		key, err := service.ValidateKey(ctx, inactiveCacheToken)
 		assert.NoError(t, err)
-		assert.Equal(t, validApiKey, key)
+		assert.Equal(t, freshKey, key)
 
 		mockCache.AssertExpectations(t)
 		mockRepo.AssertExpectations(t)
-	})
-
-	t.Run("Key Not Found in DB", func(t *testing.T) {
-		mockCache.On("GetKey", ctx, mock.AnythingOfType("string")).Return(nil, nil).Once()
-		mockRepo.On("GetByID", ctx, keyID).Return(nil, nil).Once()
-
-		key, err := service.ValidateKey(ctx, rawKey)
-		assert.ErrorIs(t, err, ErrInvalidKey)
-		assert.Nil(t, key)
 	})
 }
 
@@ -248,20 +262,22 @@ func TestAuthService_InvalidateKey(t *testing.T) {
 	service := NewAuthService(mockRepo, mockCache)
 	ctx := context.Background()
 
-	t.Run("Successfully Invalidate Key", func(t *testing.T) {
-		rawKey := "test-id:test-secret"
-		mockCache.On("InvalidateKey", ctx, mock.AnythingOfType("string")).Return(nil).Once()
+	t.Run("Successfully Invalidate Token", func(t *testing.T) {
+		rawToken := "some-token"
+		tokenHash := sha256Hash(rawToken)
+		mockCache.On("InvalidateKey", ctx, tokenHash).Return(nil).Once()
 
-		err := service.InvalidateKey(ctx, rawKey)
+		err := service.InvalidateKey(ctx, rawToken)
 		assert.NoError(t, err)
 		mockCache.AssertExpectations(t)
 	})
 
 	t.Run("Cache Error During Invalidation", func(t *testing.T) {
-		rawKey := "test-id:test-secret"
-		mockCache.On("InvalidateKey", ctx, mock.AnythingOfType("string")).Return(errors.New("cache error")).Once()
+		rawToken := "error-token"
+		tokenHash := sha256Hash(rawToken)
+		mockCache.On("InvalidateKey", ctx, tokenHash).Return(errors.New("cache error")).Once()
 
-		err := service.InvalidateKey(ctx, rawKey)
+		err := service.InvalidateKey(ctx, rawToken)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "cache error")
 		mockCache.AssertExpectations(t)

@@ -38,6 +38,14 @@ func (m *MockApiKeyRepo) Revoke(ctx context.Context, id string) error {
 	return args.Error(0)
 }
 
+func (m *MockApiKeyRepo) GetByTokenHash(ctx context.Context, tokenHash string) (*domain.ApiKey, error) {
+	args := m.Called(ctx, tokenHash)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.ApiKey), args.Error(1)
+}
+
 // MockRoutingRuleRepo is a mock implementation of domain.RoutingRuleRepository
 type MockRoutingRuleRepo struct {
 	mock.Mock

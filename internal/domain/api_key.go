@@ -11,9 +11,9 @@ type ApiKey struct {
 	// ID is the unique identifier for this API key.
 	ID string `json:"id"`
 
-	// KeyHash is the bcrypt hash of the API key.
-	// The actual key is only shown once during creation.
-	KeyHash string `json:"key_hash"`
+	// TokenHash is the SHA256 hash of the Bearer token.
+	// The actual token is only shown once during creation.
+	TokenHash string `json:"token_hash"`
 
 	// Name is a human-readable name for the key.
 	Name string `json:"name"`
@@ -101,10 +101,10 @@ func matchScope(scope, tag string) bool {
 }
 
 // NewApiKey creates a new API key with the given parameters.
-func NewApiKey(id, keyHash, name string, scopes []string) *ApiKey {
+func NewApiKey(id, tokenHash, name string, scopes []string) *ApiKey {
 	return &ApiKey{
 		ID:        id,
-		KeyHash:   keyHash,
+		TokenHash: tokenHash,
 		Name:      name,
 		Scopes:    scopes,
 		IsActive:  true,
@@ -115,6 +115,7 @@ func NewApiKey(id, keyHash, name string, scopes []string) *ApiKey {
 // ApiKeyRepository defines the interface for API key storage.
 type ApiKeyRepository interface {
 	GetByID(ctx context.Context, id string) (*ApiKey, error)
+	GetByTokenHash(ctx context.Context, tokenHash string) (*ApiKey, error)
 	Create(ctx context.Context, key *ApiKey) error
 	List(ctx context.Context, limit, offset int) ([]ApiKey, int, error)
 	Revoke(ctx context.Context, id string) error

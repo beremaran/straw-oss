@@ -32,7 +32,7 @@ func TestServer_AuthProtection(t *testing.T) {
 	}
 	s := New(cfg, nil, nil, nil, nil)
 
-	// Attempt to access a protected route
+	// Attempt to access a protected route without auth
 	// We request a path under /admin
 	req := httptest.NewRequest(http.MethodGet, "/admin/some-resource", nil)
 	rec := httptest.NewRecorder()
@@ -40,9 +40,9 @@ func TestServer_AuthProtection(t *testing.T) {
 
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 
-	// With valid key
+	// With valid Bearer token
 	req = httptest.NewRequest(http.MethodGet, "/admin/some-resource", nil)
-	req.Header.Set("X-Admin-Key", "admin-secret")
+	req.Header.Set("Authorization", "Bearer admin-secret")
 	rec = httptest.NewRecorder()
 	s.echo.ServeHTTP(rec, req)
 

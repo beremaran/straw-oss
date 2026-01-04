@@ -34,7 +34,7 @@ func TestAuthCache_KeyOperations(t *testing.T) {
 	keyHash := "some-hash"
 	apiKey := &domain.ApiKey{
 		ID:      "test-id",
-		KeyHash: "test-hash",
+		TokenHash: "test-hash",
 		Scopes:  []string{"read"},
 	}
 
@@ -63,7 +63,7 @@ func TestAuthCache_TTLExpiration(t *testing.T) {
 	keyHash := "ttl-hash"
 	apiKey := &domain.ApiKey{
 		ID:      "test-id",
-		KeyHash: "test-hash",
+		TokenHash: "test-hash",
 		Scopes:  []string{"read"},
 	}
 
@@ -93,7 +93,7 @@ func TestAuthCache_InvalidateKey(t *testing.T) {
 	keyHash := "invalidate-hash"
 	apiKey := &domain.ApiKey{
 		ID:      "test-id",
-		KeyHash: "test-hash",
+		TokenHash: "test-hash",
 		Scopes:  []string{"read"},
 	}
 
@@ -134,12 +134,12 @@ func TestAuthCache_OverwriteExistingKey(t *testing.T) {
 	keyHash := "overwrite-hash"
 	oldKey := &domain.ApiKey{
 		ID:      "old-id",
-		KeyHash: "old-hash",
+		TokenHash: "old-hash",
 		Scopes:  []string{"read"},
 	}
 	newKey := &domain.ApiKey{
 		ID:      "new-id",
-		KeyHash: "new-hash",
+		TokenHash: "new-hash",
 		Scopes:  []string{"write"},
 	}
 
@@ -169,9 +169,9 @@ func TestAuthCache_MultipleKeys(t *testing.T) {
 	ctx := context.Background()
 
 	keys := map[string]*domain.ApiKey{
-		"hash1": {ID: "key1", KeyHash: "hash1", Scopes: []string{"read"}},
-		"hash2": {ID: "key2", KeyHash: "hash2", Scopes: []string{"write"}},
-		"hash3": {ID: "key3", KeyHash: "hash3", Scopes: []string{"admin"}},
+		"hash1": {ID: "key1", TokenHash: "hash1", Scopes: []string{"read"}},
+		"hash2": {ID: "key2", TokenHash: "hash2", Scopes: []string{"write"}},
+		"hash3": {ID: "key3", TokenHash: "hash3", Scopes: []string{"admin"}},
 	}
 
 	// Set all keys
