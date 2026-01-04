@@ -3,13 +3,13 @@ import { check } from 'k6';
 
 // Configurable via environment variables
 export const BASE_URL = __ENV.TARGET_URL || 'http://localhost:8080';
-// Load test API key: UUID (from migration) : secret
-// The migration 008 creates an API key with ID '9d78136e-308b-49fd-967f-e62b9b91f1d8' and secret 'load-test-secret'
-export const API_KEY = __ENV.API_KEY || '9d78136e-308b-49fd-967f-e62b9b91f1d8:load-test-secret';
+// Load test API key token (from seed.sql)
+// Token: load-test-token-67890
+export const API_TOKEN = __ENV.API_TOKEN || 'load-test-token-67890';
 
 // Common headers
 export const HEADERS = {
-    'X-API-Key': API_KEY,
+    'Authorization': `Bearer ${API_TOKEN}`,
     'Content-Type': 'application/json',
     'X-Relay-Tags': 'type:datacenter,region:us',
 };
