@@ -70,6 +70,7 @@ usage() {
     echo "  create NAME     Create a new migration file"
     echo "  redo            Roll back and re-apply the last migration"
     echo "  reset           Roll back all migrations and re-apply"
+    echo "  seed            Seed development data from scripts/seed.sql"
     echo "  version         Show current migration version"
     echo ""
     echo "Environment Variables:"
@@ -134,6 +135,10 @@ main() {
             run_goose down-to 0
             run_goose up
             log_info "Migrations reset successfully!"
+            ;;
+        seed)
+            log_info "Seeding development data..."
+            go run "${PROJECT_ROOT}/cmd/seed/main.go"
             ;;
         version)
             run_goose version

@@ -22,7 +22,7 @@ func NewApiKeyRepository(client *Client) *ApiKeyRepository {
 // GetByID retrieves an API key by its ID.
 func (r *ApiKeyRepository) GetByID(ctx context.Context, id string) (*domain.ApiKey, error) {
 	query := `
-		SELECT id, key_hash, name, scopes, rate_limit_override, is_active, created_at, expires_at
+		SELECT id, token_hash, name, scopes, rate_limit_override, is_active, created_at, expires_at
 		FROM api_keys
 		WHERE id = $1
 	`
@@ -31,7 +31,7 @@ func (r *ApiKeyRepository) GetByID(ctx context.Context, id string) (*domain.ApiK
 	err := r.client.Execute(func() error {
 		return r.client.Pool.QueryRow(ctx, query, id).Scan(
 			&k.ID,
-			&k.KeyHash,
+			&k.TokenHash,
 			&k.Name,
 			&k.Scopes,
 			&k.RateLimitOverride,
@@ -51,11 +51,43 @@ func (r *ApiKeyRepository) GetByID(ctx context.Context, id string) (*domain.ApiK
 	return &k, nil
 }
 
+// GetByTokenHash retrieves an API key by its token hash.
+func (r *ApiKeyRepository) GetByTokenHash(ctx context.Context, tokenHash string) (*domain.ApiKey, error) {
+	query := `
+		SELECT id, token_hash, name, scopes, rate_limit_override, is_active, created_at, expires_at
+		FROM api_keys
+		WHERE token_hash = $1
+	`
+
+	var k domain.ApiKey
+	err := r.client.Execute(func() error {
+		return r.client.Pool.QueryRow(ctx, query, tokenHash).Scan(
+			&k.ID,
+			&k.TokenHash,
+			&k.Name,
+			&k.Scopes,
+			&k.RateLimitOverride,
+			&k.IsActive,
+			&k.CreatedAt,
+			&k.ExpiresAt,
+		)
+	})
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil // Not found
+		}
+		return nil, fmt.Errorf("failed to get api key by token hash: %w", err)
+	}
+
+	return &k, nil
+}
+
 // Create stores a new API key in the database.
 func (r *ApiKeyRepository) Create(ctx context.Context, key *domain.ApiKey) error {
 	query := `
 		INSERT INTO api_keys (
-			id, key_hash, name, scopes, rate_limit_override, 
+			id, token_hash, name, scopes, rate_limit_override, 
 			is_active, created_at, expires_at
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7, $8
@@ -65,7 +97,7 @@ func (r *ApiKeyRepository) Create(ctx context.Context, key *domain.ApiKey) error
 	err := r.client.Execute(func() error {
 		_, err := r.client.Pool.Exec(ctx, query,
 			key.ID,
-			key.KeyHash,
+			key.TokenHash,
 			key.Name,
 			key.Scopes,
 			key.RateLimitOverride,
@@ -95,7 +127,7 @@ func (r *ApiKeyRepository) List(ctx context.Context, limit, offset int) ([]domai
 
 	// Get keys
 	query := `
-		SELECT id, key_hash, name, scopes, rate_limit_override, is_active, created_at, expires_at
+		SELECT id, token_hash, name, scopes, rate_limit_override, is_active, created_at, expires_at
 		FROM api_keys
 		ORDER BY created_at DESC
 		LIMIT $1 OFFSET $2
@@ -112,7 +144,7 @@ func (r *ApiKeyRepository) List(ctx context.Context, limit, offset int) ([]domai
 		var k domain.ApiKey
 		if err := rows.Scan(
 			&k.ID,
-			&k.KeyHash,
+			&k.TokenHash,
 			&k.Name,
 			&k.Scopes,
 			&k.RateLimitOverride,

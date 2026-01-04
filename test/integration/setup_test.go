@@ -106,7 +106,7 @@ func TestDatabaseCleanup(t *testing.T) {
 
 	// Insert test data
 	_, err = db.ExecContext(ctx, `
-		INSERT INTO api_keys (id, name, key_hash, scopes, is_active)
+		INSERT INTO api_keys (id, name, token_hash, scopes, is_active)
 		VALUES ('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', 'Test Key', 'hash123', '[]', true)
 	`)
 	require.NoError(t, err, "should insert test data")
@@ -142,7 +142,7 @@ func TestParallelTestIsolation(t *testing.T) {
 
 		ctx := context.Background()
 		_, err = db.ExecContext(ctx, `
-			INSERT INTO api_keys (id, name, key_hash, scopes, is_active)
+			INSERT INTO api_keys (id, name, token_hash, scopes, is_active)
 			VALUES ('b1eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', 'Parallel Test 1', 'hash1', '[]', true)
 		`)
 		require.NoError(t, err)
@@ -166,7 +166,7 @@ func TestParallelTestIsolation(t *testing.T) {
 
 		ctx := context.Background()
 		_, err = db.ExecContext(ctx, `
-			INSERT INTO api_keys (id, name, key_hash, scopes, is_active)
+			INSERT INTO api_keys (id, name, token_hash, scopes, is_active)
 			VALUES ('c2eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', 'Parallel Test 2', 'hash2', '[]', true)
 		`)
 		require.NoError(t, err)

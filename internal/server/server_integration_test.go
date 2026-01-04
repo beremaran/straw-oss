@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -20,7 +22,6 @@ import (
 	"github.com/kwilabs/straw-proxy-server/pkg/protocol"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"golang.org/x/crypto/bcrypt"
 )
 
 // --- Mocks ---
@@ -31,6 +32,13 @@ type MockApiKeyRepo struct {
 
 func (m *MockApiKeyRepo) GetByID(ctx context.Context, id string) (*domain.ApiKey, error) {
 	args := m.Called(ctx, id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.ApiKey), args.Error(1)
+}
+func (m *MockApiKeyRepo) GetByTokenHash(ctx context.Context, tokenHash string) (*domain.ApiKey, error) {
+	args := m.Called(ctx, tokenHash)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -158,13 +166,10 @@ func (m *MockBroker) DeclareQueue(ctx context.Context, name string) error       
 func (m *MockBroker) IsConnected() bool                                                { return true }
 func (m *MockBroker) QueueDepth(ctx context.Context, name string) (int, error)         { return 0, nil }
 
-// --- Helper to hash password ---
-func hashPassword(t *testing.T, password string) string {
-	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return string(bytes)
+// --- Helper to hash token ---
+func sha256Hash(s string) string {
+	hash := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(hash[:])
 }
 
 // --- Tests ---
@@ -181,22 +186,19 @@ func TestServer_RelayRequest_Success(t *testing.T) {
 	mockSelector := new(MockEndpointSelector)
 
 	// 2. Setup Data
-	apiKeyID := "test-key"
-	apiSecret := "test-secret"
-	apiKeyHash := hashPassword(t, apiSecret)
+	bearerToken := "test-bearer-token-12345"
+	tokenHash := sha256Hash(bearerToken)
 
 	apiKey := &domain.ApiKey{
-		ID:       apiKeyID,
-		KeyHash:  apiKeyHash,
-		IsActive: true,
+		ID:        "test-key-id",
+		TokenHash: tokenHash,
+		IsActive:  true,
 	}
 
-	rawKey := apiKeyID + ":" + apiSecret
-
 	// Prepare mocks for Auth
-	mockKeyCache.On("GetKey", mock.Anything, mock.Anything).Return((*domain.ApiKey)(nil), nil)
-	mockKeyRepo.On("GetByID", mock.Anything, apiKeyID).Return(apiKey, nil)
-	mockKeyCache.On("SetKey", mock.Anything, mock.Anything, apiKey).Return(nil)
+	mockKeyCache.On("GetKey", mock.Anything, tokenHash).Return((*domain.ApiKey)(nil), nil)
+	mockKeyRepo.On("GetByTokenHash", mock.Anything, tokenHash).Return(apiKey, nil)
+	mockKeyCache.On("SetKey", mock.Anything, tokenHash, apiKey).Return(nil)
 
 	// Prepare mocks for Matcher
 	mockRuleCache.On("GetRulesVersion", mock.Anything).Return(int64(0), nil)
@@ -280,7 +282,7 @@ func TestServer_RelayRequest_Success(t *testing.T) {
 	reqBody := `{"url": "http://example.com", "method": "GET"}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/request", strings.NewReader(reqBody))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-API-Key", rawKey)
+	req.Header.Set("Authorization", "Bearer "+bearerToken)
 
 	rec := httptest.NewRecorder()
 

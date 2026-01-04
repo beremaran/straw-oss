@@ -2,7 +2,9 @@ package integration
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"net/http"
 	"testing"
 	"time"
@@ -101,21 +103,21 @@ func TestAuthenticationFlows(t *testing.T) {
 	t.Run("Expired API Key", func(t *testing.T) {
 		// Create key manually with expiry in the past
 		keyID := uuid.New().String()
-		secret := "expired_secret"
-		hash, _ := hashPassword(secret)
+		token := "expired-token-" + uuid.New().String()
+		tokenHashBytes := sha256.Sum256([]byte(token))
+		tokenHash := hex.EncodeToString(tokenHashBytes[:])
 
 		db, err := sql.Open("pgx", suite.PostgresDSN())
 		require.NoError(t, err)
 		defer db.Close()
 
 		_, err = db.ExecContext(ctx, `
-			INSERT INTO api_keys (id, name, key_hash, scopes, is_active, created_at, expires_at)
+			INSERT INTO api_keys (id, name, token_hash, scopes, is_active, created_at, expires_at)
 			VALUES ($1, $2, $3, '[]', true, NOW() - INTERVAL '2 days', NOW() - INTERVAL '1 day')
-		`, keyID, "expired-user", hash)
+		`, keyID, "expired-user", tokenHash)
 		require.NoError(t, err)
 
-		rawKey := keyID + ":" + secret
-		client := NewHTTPTestClient(tc.ServerURL, rawKey)
+		client := NewHTTPTestClient(tc.ServerURL, token)
 		resp, err := client.SendRequest(ctx, &ProxyRequest{
 			URL:  tc.MockTarget.URL(),
 			Tags: []string{"target:auth_test"},
@@ -199,21 +201,21 @@ func TestAuthenticationFlows(t *testing.T) {
 		// 2. Premium Key -> Override Limit 10 RPS
 		// Create premium key manually to set override
 		keyID := uuid.New().String()
-		secret := "premium_secret"
-		hash, _ := hashPassword(secret)
+		premiumToken := "premium-token-" + uuid.New().String()
+		tokenHashBytes := sha256.Sum256([]byte(premiumToken))
+		tokenHash := hex.EncodeToString(tokenHashBytes[:])
 
 		db, err := sql.Open("pgx", suite.PostgresDSN())
 		require.NoError(t, err)
 		defer db.Close()
 
 		_, err = db.ExecContext(ctx, `
-			INSERT INTO api_keys (id, name, key_hash, scopes, rate_limit_override, is_active, created_at)
+			INSERT INTO api_keys (id, name, token_hash, scopes, rate_limit_override, is_active, created_at)
 			VALUES ($1, $2, $3, '[]', 10, true, NOW())
-		`, keyID, "premium-user", hash)
+		`, keyID, "premium-user", tokenHash)
 		require.NoError(t, err)
 
-		premiumKey := keyID + ":" + secret
-		clientPrem := NewHTTPTestClient(tc.ServerURL, premiumKey)
+		clientPrem := NewHTTPTestClient(tc.ServerURL, premiumToken)
 
 		// Wait 1s to clear previous limits just in case quota is shared (it shouldn't be for different keys)
 		time.Sleep(1100 * time.Millisecond)

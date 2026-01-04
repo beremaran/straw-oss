@@ -1,13 +1,12 @@
--- +goose Up
--- +goose StatementBegin
 -- Seed data for development environment
--- This migration is optional and should only run in dev/test environments
+-- This script should be run manually or as part of a development setup process
 
 -- Default cost multipliers for endpoint types
 INSERT INTO cost_multipliers (endpoint_tag, multiplier, description, is_active) VALUES
     ('type:datacenter', 1.00, 'Datacenter proxies - base cost', true),
     ('type:residential', 10.00, 'Residential proxies - 10x base cost', true),
-    ('type:mobile', 15.00, 'Mobile proxies - 15x base cost', true);
+    ('type:mobile', 15.00, 'Mobile proxies - 15x base cost', true)
+ON CONFLICT (endpoint_tag) DO NOTHING;
 
 -- Sample routing rules for testing
 INSERT INTO routing_rules (name, priority, required_tags, excluded_tags, config, is_active) VALUES
@@ -18,8 +17,8 @@ INSERT INTO routing_rules (name, priority, required_tags, excluded_tags, config,
         '[]'::jsonb,
         '{
             "hard_timeout": 30000000000,
-            "rate_limit_per_minute": 60,
-            "rate_limit_per_second": 5,
+            "rate_limit_per_minute": 120000,
+            "rate_limit_per_second": 2000,
             "allowed_endpoint_types": ["datacenter", "residential"],
             "fingerprint_preset": "chrome-130",
             "quota_key": "default"
@@ -56,34 +55,37 @@ INSERT INTO routing_rules (name, priority, required_tags, excluded_tags, config,
             "quota_key": "target:google"
         }'::jsonb,
         true
-    );
+    )
+ON CONFLICT (name) DO NOTHING;
 
--- Sample API key for testing (hash of 'test-api-key-dev-only')
--- WARNING: Only use this in development! Generate real keys for production.
-INSERT INTO api_keys (name, key_hash, scopes, rate_limit_override, is_active) VALUES
+-- Sample API key for development testing
+-- Token: dev-test-token-12345
+-- Use with: Authorization: Bearer dev-test-token-12345
+INSERT INTO api_keys (name, token_hash, scopes, rate_limit_override, is_active) VALUES
     (
         'Development Test Key',
-        -- This is bcrypt hash of 'test-api-key-dev-only'
-        '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy',
+        -- SHA256('dev-test-token-12345')
+        'c6f458907e1575186d7d48e3b5862be5db8429dda3b2792d5d26c1e4912f8162',
         '["*"]'::jsonb,
         1000,
         true
-    );
+    )
+ON CONFLICT (name) DO NOTHING;
 
 -- Load test API key for k6 load testing
--- ID: 9d78136e-308b-49fd-967f-e62b9b91f1d8
--- Secret: load-test-secret
--- Format for use: 9d78136e-308b-49fd-967f-e62b9b91f1d8:load-test-secret
-INSERT INTO api_keys (id, name, key_hash, scopes, rate_limit_override, is_active) VALUES
+-- Token: load-test-token-67890
+-- Use with: Authorization: Bearer load-test-token-67890
+INSERT INTO api_keys (id, name, token_hash, scopes, rate_limit_override, is_active) VALUES
     (
         '9d78136e-308b-49fd-967f-e62b9b91f1d8',
         'Load Test Key',
-        -- This is bcrypt hash of 'load-test-secret'
-        '$2a$10$u3phQLkQ6/WX6N2L6Ba8Ie8OWtexbw54NzVJJQ8gYGYs5gZjB.QVi',
+        -- SHA256('load-test-token-67890')
+        '50063e8d7406d15bfc0b2718b6f2de06ecc93b7fb252c28ecda6524cdcb38182',
         '["*"]'::jsonb,
         10000,
         true
-    );
+    )
+ON CONFLICT (id) DO NOTHING;
 
 -- Sample endpoints for testing
 INSERT INTO endpoints (id, tags, last_heartbeat, is_healthy, metadata) VALUES
@@ -107,14 +109,5 @@ INSERT INTO endpoints (id, tags, last_heartbeat, is_healthy, metadata) VALUES
         now(),
         true,
         '{"version": "1.0.0", "ip": "127.0.0.1"}'::jsonb
-    );
--- +goose StatementEnd
-
--- +goose Down
--- +goose StatementBegin
--- Clean up seed data (in reverse order due to foreign keys)
-DELETE FROM endpoints WHERE id LIKE 'endpoint-load-test-%';
-DELETE FROM api_keys WHERE name IN ('Development Test Key', 'Load Test Key');
-DELETE FROM routing_rules WHERE name IN ('Default Rule', 'Amazon Rule', 'Google Search Rule');
-DELETE FROM cost_multipliers WHERE endpoint_tag IN ('type:datacenter', 'type:residential', 'type:mobile');
--- +goose StatementEnd
+    )
+ON CONFLICT (id) DO NOTHING;

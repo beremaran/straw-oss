@@ -2,6 +2,8 @@ package security
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -19,7 +21,6 @@ import (
 	"github.com/kwilabs/straw-proxy-server/test/integration"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/crypto/bcrypt"
 )
 
 // TestAuthentication_SecurityScenarios covers security-specific auth tests.
@@ -71,10 +72,10 @@ func TestAuthentication_SecurityScenarios(t *testing.T) {
 	srv := server.New(*serverConf, authService, sessionService, matcher, rateLimiter, filterService, executor)
 
 	// Helper
-	sendRequest := func(method, url, apiKey string) *httptest.ResponseRecorder {
+	sendRequest := func(method, url, apiToken string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(method, url, nil)
-		if apiKey != "" {
-			req.Header.Set("X-API-Key", apiKey)
+		if apiToken != "" {
+			req.Header.Set("Authorization", "Bearer "+apiToken)
 		}
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
@@ -119,23 +120,22 @@ func TestAuthentication_SecurityScenarios(t *testing.T) {
 		rec := sendRequest("POST", "/v1/request", key.RawKey)
 		assert.NotEqual(t, http.StatusUnauthorized, rec.Code)
 
-		// 2. Rotate Key (Update Hash in DB)
-		newSecret := "new_secret_value_123"
-		newHashBytes, _ := bcrypt.GenerateFromPassword([]byte(newSecret), bcrypt.DefaultCost)
-		newHash := string(newHashBytes)
+		// 2. Rotate Key (Update Hash in DB with new token)
+		newToken := "new-rotated-token-value"
+		newHashBytes := sha256.Sum256([]byte(newToken))
+		newHash := hex.EncodeToString(newHashBytes[:])
 
-		integration.ExecuteSQL(t, s.PostgresDSN(), "UPDATE api_keys SET key_hash = $1 WHERE id = $2", newHash, key.ID)
+		integration.ExecuteSQL(t, s.PostgresDSN(), "UPDATE api_keys SET token_hash = $1 WHERE id = $2", newHash, key.ID)
 
 		// 3. Invalidate cache
 		authService.InvalidateKey(ctx, key.RawKey)
 
 		// 4. Old Key should fail
 		rec = sendRequest("POST", "/v1/request", key.RawKey)
-		assert.Equal(t, http.StatusUnauthorized, rec.Code, "Old key should fail after rotation")
+		assert.Equal(t, http.StatusUnauthorized, rec.Code, "Old token should fail after rotation")
 
-		// 5. New Key should work
-		newRawKey := key.ID + ":" + newSecret
-		rec = sendRequest("POST", "/v1/request", newRawKey)
-		assert.NotEqual(t, http.StatusUnauthorized, rec.Code, "New key should work")
+		// 5. New Token should work
+		rec = sendRequest("POST", "/v1/request", newToken)
+		assert.NotEqual(t, http.StatusUnauthorized, rec.Code, "New token should work")
 	})
 }

@@ -29,6 +29,7 @@ help:
 	@echo "  make migrate-reset       Reset database (rollback all + up)"
 	@echo "  make migrate-status      Show migration status"
 	@echo "  make migrate-create name=N Create new migration file"
+	@echo "  make seed                Seed development data"
 	@echo ""
 
 # Development stack targets
@@ -97,6 +98,9 @@ migrate-status:
 migrate-create:
 	@if [ -z "$(name)" ]; then echo "Error: name argument required. Usage: make migrate-create name=my_migration"; exit 1; fi
 	@./scripts/migrate.sh create $(name)
+
+seed:
+	@./scripts/migrate.sh seed
 
 
 

@@ -4,10 +4,10 @@ Security is a primary design concern for the Straw Proxy Server. The system empl
 
 ## Client Authentication
 
-Clients authenticate using API Keys.
+Clients authenticate using Bearer tokens.
 
-* **Method**: `X-API-Key` header or `Authorization: Bearer <token>`.
-* **Storage**: Keys are securely hashed using **bcrypt** before storage in PostgreSQL.
+* **Method**: `Authorization: Bearer <token>` header.
+* **Storage**: Tokens are securely hashed using **SHA256** before storage in PostgreSQL.
 * **Scopes**: Keys can be restricted to specific tags (e.g., a key can be limited to `target:amazon` only).
 
 ## Internal Security

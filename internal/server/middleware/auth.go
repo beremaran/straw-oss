@@ -10,29 +10,28 @@ import (
 )
 
 const (
-	HeaderXAPIKey       = "X-API-Key"
 	HeaderAuthorization = "Authorization"
 	ContextKeyAPIKey    = "api_key"
 )
 
-// AuthMiddleware creates a middleware that validates API keys.
+// AuthMiddleware creates a middleware that validates API keys using Bearer tokens.
 func AuthMiddleware(validator auth.Validator) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			// 1. Extract Key
-			key := extractKey(c.Request())
-			if key == "" {
-				return echo.NewHTTPError(http.StatusUnauthorized, "missing api key")
+			// 1. Extract Token from Bearer header
+			token := extractBearerToken(c.Request())
+			if token == "" {
+				return echo.NewHTTPError(http.StatusUnauthorized, "missing bearer token")
 			}
 
-			// 2. Validate Key
-			apiKey, err := validator.ValidateKey(c.Request().Context(), key)
+			// 2. Validate Token
+			apiKey, err := validator.ValidateKey(c.Request().Context(), token)
 			if err != nil {
-				if errors.Is(err, auth.ErrInvalidKey) || errors.Is(err, auth.ErrInvalidKeyFormat) {
-					return echo.NewHTTPError(http.StatusUnauthorized, "invalid api key")
+				if errors.Is(err, auth.ErrInvalidKey) {
+					return echo.NewHTTPError(http.StatusUnauthorized, "invalid bearer token")
 				}
 				// Internal error
-				c.Logger().Errorf("failed to validate api key: %v", err)
+				c.Logger().Errorf("failed to validate bearer token: %v", err)
 				return echo.NewHTTPError(http.StatusInternalServerError, "internal auth error")
 			}
 
@@ -45,18 +44,11 @@ func AuthMiddleware(validator auth.Validator) echo.MiddlewareFunc {
 	}
 }
 
-func extractKey(r *http.Request) string {
-	// Try X-API-Key first
-	if key := r.Header.Get(HeaderXAPIKey); key != "" {
-		return key
-	}
-
-	// Try Authorization: Bearer <key>
+func extractBearerToken(r *http.Request) string {
 	authHeader := r.Header.Get(HeaderAuthorization)
 	if strings.HasPrefix(authHeader, "Bearer ") {
 		return strings.TrimPrefix(authHeader, "Bearer ")
 	}
-
 	return ""
 }
 

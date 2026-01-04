@@ -36,7 +36,7 @@ func TestAuthMiddleware(t *testing.T) {
 		return c.String(http.StatusOK, "success")
 	})
 
-	t.Run("Missing Key", func(t *testing.T) {
+	t.Run("Missing Bearer Token", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
@@ -46,41 +46,27 @@ func TestAuthMiddleware(t *testing.T) {
 		httpErr, ok := err.(*echo.HTTPError)
 		assert.True(t, ok)
 		assert.Equal(t, http.StatusUnauthorized, httpErr.Code)
+		assert.Contains(t, httpErr.Message, "missing bearer token")
 	})
 
-	t.Run("Invalid Key", func(t *testing.T) {
+	t.Run("Invalid Bearer Token", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		req.Header.Set("X-API-Key", "invalid")
+		req.Header.Set("Authorization", "Bearer invalid-token")
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 
-		mockValidator.On("ValidateKey", mock.Anything, "invalid").Return(nil, auth.ErrInvalidKey).Once()
+		mockValidator.On("ValidateKey", mock.Anything, "invalid-token").Return(nil, auth.ErrInvalidKey).Once()
 
 		err := handler(c)
 		assert.Error(t, err)
 		httpErr, ok := err.(*echo.HTTPError)
 		assert.True(t, ok)
 		assert.Equal(t, http.StatusUnauthorized, httpErr.Code)
+		assert.Contains(t, httpErr.Message, "invalid bearer token")
 		mockValidator.AssertExpectations(t)
 	})
 
-	t.Run("Valid Key X-API-Key", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		req.Header.Set("X-API-Key", "valid")
-		rec := httptest.NewRecorder()
-		c := e.NewContext(req, rec)
-
-		validApiKey := &domain.ApiKey{ID: "test"}
-		mockValidator.On("ValidateKey", mock.Anything, "valid").Return(validApiKey, nil).Once()
-
-		err := handler(c)
-		assert.NoError(t, err)
-		assert.Equal(t, http.StatusOK, rec.Code)
-		assert.Equal(t, validApiKey, c.Get(ContextKeyAPIKey))
-		mockValidator.AssertExpectations(t)
-	})
-
-	t.Run("Valid Key Bearer", func(t *testing.T) {
+	t.Run("Valid Bearer Token", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		req.Header.Set("Authorization", "Bearer valid-token")
 		rec := httptest.NewRecorder()
@@ -91,16 +77,31 @@ func TestAuthMiddleware(t *testing.T) {
 
 		err := handler(c)
 		assert.NoError(t, err)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Equal(t, validApiKey, c.Get(ContextKeyAPIKey))
 		mockValidator.AssertExpectations(t)
+	})
+
+	t.Run("Invalid Authorization Header Format", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.Header.Set("Authorization", "Basic abc123") // Wrong auth type
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		err := handler(c)
+		assert.Error(t, err)
+		httpErr, ok := err.(*echo.HTTPError)
+		assert.True(t, ok)
+		assert.Equal(t, http.StatusUnauthorized, httpErr.Code)
 	})
 
 	t.Run("Internal Error", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		req.Header.Set("X-API-Key", "error")
+		req.Header.Set("Authorization", "Bearer error-token")
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 
-		mockValidator.On("ValidateKey", mock.Anything, "error").Return(nil, errors.New("db down")).Once()
+		mockValidator.On("ValidateKey", mock.Anything, "error-token").Return(nil, errors.New("db down")).Once()
 
 		err := handler(c)
 		assert.Error(t, err)

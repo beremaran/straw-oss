@@ -66,7 +66,7 @@ func TestRequestValidation_SecurityScenarios(t *testing.T) {
 	// Helper
 	sendRequest := func(method, url string, body string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(method, url, strings.NewReader(body))
-		req.Header.Set("X-API-Key", key.RawKey)
+		req.Header.Set("Authorization", "Bearer "+key.RawKey)
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 		srv.GetEcho().ServeHTTP(rec, req)

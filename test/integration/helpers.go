@@ -3,7 +3,9 @@ package integration
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -19,7 +21,6 @@ import (
 	"github.com/kwilabs/straw-proxy-server/internal/infra/postgres"
 	"github.com/kwilabs/straw-proxy-server/internal/infra/redis"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/crypto/bcrypt"
 )
 
 // NewTestServerConfig creates a ServerConfig with container connection strings.
@@ -133,17 +134,18 @@ func WaitForHealthy(ctx context.Context, healthCheck func() error, interval, tim
 	return fmt.Errorf("health check timed out after %v", timeout)
 }
 
-// TestAPIKey holds test API key data including the raw secret.
+// TestAPIKey holds test API key data including the raw token.
 type TestAPIKey struct {
-	ID       string
-	Secret   string
-	RawKey   string // Format: "id:secret"
-	KeyHash  string
-	Scopes   []string
-	IsActive bool
+	ID        string
+	Token     string // The raw Bearer token
+	RawKey    string // Same as Token (for backwards compatibility)
+	TokenHash string
+	Scopes    []string
+	IsActive  bool
 }
 
 // CreateTestAPIKey creates an API key in the database and returns the credentials.
+// The returned RawKey/Token should be used as the Bearer token.
 func CreateTestAPIKey(ctx context.Context, dsn string, name string, scopes []string) (*TestAPIKey, error) {
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
@@ -152,14 +154,11 @@ func CreateTestAPIKey(ctx context.Context, dsn string, name string, scopes []str
 	defer db.Close()
 
 	id := uuid.New().String()
-	secret := fmt.Sprintf("secret_%d", time.Now().UnixNano())
-	rawKey := id + ":" + secret
+	// Generate a simple UUID token
+	token := uuid.New().String()
 
-	// Hash the secret with bcrypt
-	hash, err := hashPassword(secret)
-	if err != nil {
-		return nil, fmt.Errorf("failed to hash password: %w", err)
-	}
+	// Hash the token with SHA256
+	tokenHash := sha256Hash(token)
 
 	// Handle wildcard "*" by converting to empty array for no scope restrictions
 	// The validation logic expects tags in key:value or key=value format, not "*"
@@ -172,20 +171,20 @@ func CreateTestAPIKey(ctx context.Context, dsn string, name string, scopes []str
 	}
 
 	_, err = db.ExecContext(ctx, `
-		INSERT INTO api_keys (id, name, key_hash, scopes, is_active)
+		INSERT INTO api_keys (id, name, token_hash, scopes, is_active)
 		VALUES ($1, $2, $3, $4, true)
-	`, id, name, hash, scopesJSON)
+	`, id, name, tokenHash, scopesJSON)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create API key: %w", err)
 	}
 
 	return &TestAPIKey{
-		ID:       id,
-		Secret:   secret,
-		RawKey:   rawKey,
-		KeyHash:  hash,
-		Scopes:   scopes,
-		IsActive: true,
+		ID:        id,
+		Token:     token,
+		RawKey:    token, // For backwards compatibility
+		TokenHash: tokenHash,
+		Scopes:    scopes,
+		IsActive:  true,
 	}, nil
 }
 
@@ -328,13 +327,10 @@ func CreateTestEndpoint(ctx context.Context, dsn string, endpoint *TestEndpoint)
 	return nil
 }
 
-// hashPassword hashes a password using bcrypt.
-func hashPassword(password string) (string, error) {
-	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		return "", err
-	}
-	return string(bytes), nil
+// sha256Hash creates a SHA256 hash of the input string.
+func sha256Hash(s string) string {
+	hash := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(hash[:])
 }
 
 // HTTPTestClient is a helper for making authenticated HTTP requests.
@@ -407,7 +403,7 @@ func (c *HTTPTestClient) SendRequest(ctx context.Context, req *ProxyRequest) (*P
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("X-API-Key", c.APIKey)
+	httpReq.Header.Set("Authorization", "Bearer "+c.APIKey)
 	if len(req.Tags) > 0 {
 		httpReq.Header.Set("X-Relay-Tags", strings.Join(req.Tags, ","))
 	}
