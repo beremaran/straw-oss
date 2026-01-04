@@ -1113,10 +1113,6 @@ const docTemplateadmin = `{
                     "description": "IsActive indicates whether this key is currently active.",
                     "type": "boolean"
                 },
-                "key_hash": {
-                    "description": "KeyHash is the bcrypt hash of the API key.\nThe actual key is only shown once during creation.",
-                    "type": "string"
-                },
                 "name": {
                     "description": "Name is a human-readable name for the key.",
                     "type": "string"
@@ -1131,6 +1127,10 @@ const docTemplateadmin = `{
                     "items": {
                         "type": "string"
                     }
+                },
+                "token_hash": {
+                    "description": "TokenHash is the SHA256 hash of the Bearer token.\nThe actual token is only shown once during creation.",
+                    "type": "string"
                 }
             }
         },
@@ -1612,10 +1612,6 @@ const docTemplateadmin = `{
                     "description": "IsActive indicates whether this key is currently active.",
                     "type": "boolean"
                 },
-                "key_hash": {
-                    "description": "KeyHash is the bcrypt hash of the API key.\nThe actual key is only shown once during creation.",
-                    "type": "string"
-                },
                 "name": {
                     "description": "Name is a human-readable name for the key.",
                     "type": "string"
@@ -1633,6 +1629,10 @@ const docTemplateadmin = `{
                     "items": {
                         "type": "string"
                     }
+                },
+                "token_hash": {
+                    "description": "TokenHash is the SHA256 hash of the Bearer token.\nThe actual token is only shown once during creation.",
+                    "type": "string"
                 }
             }
         },

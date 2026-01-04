@@ -40,11 +40,6 @@ definitions:
       is_active:
         description: IsActive indicates whether this key is currently active.
         type: boolean
-      key_hash:
-        description: |-
-          KeyHash is the bcrypt hash of the API key.
-          The actual key is only shown once during creation.
-        type: string
       name:
         description: Name is a human-readable name for the key.
         type: string
@@ -60,6 +55,11 @@ definitions:
         items:
           type: string
         type: array
+      token_hash:
+        description: |-
+          TokenHash is the SHA256 hash of the Bearer token.
+          The actual token is only shown once during creation.
+        type: string
     type: object
   github_com_kwilabs_straw-proxy-server_internal_domain.ConfigMap:
     additionalProperties: true
@@ -401,11 +401,6 @@ definitions:
       is_active:
         description: IsActive indicates whether this key is currently active.
         type: boolean
-      key_hash:
-        description: |-
-          KeyHash is the bcrypt hash of the API key.
-          The actual key is only shown once during creation.
-        type: string
       name:
         description: Name is a human-readable name for the key.
         type: string
@@ -423,6 +418,11 @@ definitions:
         items:
           type: string
         type: array
+      token_hash:
+        description: |-
+          TokenHash is the SHA256 hash of the Bearer token.
+          The actual token is only shown once during creation.
+        type: string
     type: object
   internal_server_admin_handlers.EndpointHealthResponse:
     properties:
