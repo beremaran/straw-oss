@@ -210,7 +210,8 @@ func main() {
 	}
 
 	// Bind result queue to results exchange
-	if err := natsBroker.BindQueue(ctx, orchestrator.SharedResultQueue, "results", orchestrator.SharedResultQueue); err != nil {
+	// Use empty exchange because the endpoint publishes directly to the subject "results.relay-server"
+	if err := natsBroker.BindQueue(ctx, orchestrator.SharedResultQueue, "", orchestrator.SharedResultQueue); err != nil {
 		slog.Error("Failed to bind result queue to exchange", "error", err)
 		os.Exit(1)
 	}
