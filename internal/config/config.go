@@ -13,9 +13,11 @@ import (
 
 // CoreConfig contains core infrastructure settings shared by Server and Endpoint.
 type CoreConfig struct {
-	PostgresDSN   string `mapstructure:"postgres_dsn"`    // PostgreSQL connection string
-	DBAutoMigrate bool   `mapstructure:"db_auto_migrate"` // Automatically run migrations on startup
-	RedisAddr     string `mapstructure:"redis_addr"`      // Redis address (host:port)
+	PostgresDSN       string `mapstructure:"postgres_dsn"`         // PostgreSQL connection string
+	DBAutoMigrate     bool   `mapstructure:"db_auto_migrate"`      // Automatically run migrations on startup
+	RedisAddr         string `mapstructure:"redis_addr"`           // Redis address (host:port)
+	RedisPoolSize     int    `mapstructure:"redis_pool_size"`      // Max number of socket connections
+	RedisMinIdleConns int    `mapstructure:"redis_min_idle_conns"` // Min number of idle connections
 	// RabbitMQURL   string `mapstructure:"rabbitmq_url"`    // RabbitMQ connection URL -- DEPRECATED
 	NatsURL   string `mapstructure:"nats_url"`   // NATS connection URL
 	NatsToken string `mapstructure:"nats_token"` // NATS authentication token
@@ -146,6 +148,8 @@ func LoadEndpointConfig(configPath string) (*EndpointConfig, error) {
 func setDefaults(v *viper.Viper) {
 	// Core defaults
 	v.SetDefault("redis_addr", "localhost:6379")
+	v.SetDefault("redis_pool_size", 100)
+	v.SetDefault("redis_min_idle_conns", 10)
 	v.SetDefault("db_auto_migrate", false)
 	v.SetDefault("nats_url", "nats://localhost:4222")
 	v.SetDefault("nats_token", "")
@@ -189,6 +193,8 @@ func bindEnvVars(v *viper.Viper) {
 		"postgres_dsn",
 		"db_auto_migrate",
 		"redis_addr",
+		"redis_pool_size",
+		"redis_min_idle_conns",
 		"nats_url",
 		"nats_token",
 		"log_level",

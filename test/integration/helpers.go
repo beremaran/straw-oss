@@ -433,7 +433,10 @@ func (c *HTTPTestClient) SendRequest(ctx context.Context, req *ProxyRequest) (*P
 
 // NewTestRedisClient creates a new Redis client for testing.
 func NewTestRedisClient(t testing.TB, addr string) *redis.Client {
-	client, err := redis.NewClient(addr, nil)
+	cfg := config.CoreConfig{
+		RedisAddr: addr,
+	}
+	client, err := redis.NewClient(cfg, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		client.Close()

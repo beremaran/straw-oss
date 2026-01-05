@@ -121,7 +121,7 @@ func main() {
 	}
 
 	// Redis
-	redisClient, err := redis.NewClient(cfg.Core.RedisAddr, redisBreaker)
+	redisClient, err := redis.NewClient(cfg.Core, redisBreaker)
 	if err != nil {
 		slog.Error("Failed to connect to Redis", "error", err)
 		os.Exit(1)

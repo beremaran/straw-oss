@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/kwilabs/straw-proxy-server/internal/config"
 	"github.com/kwilabs/straw-proxy-server/internal/infra/circuitbreaker"
 	"github.com/redis/go-redis/v9"
 )
@@ -16,11 +17,13 @@ type Client struct {
 }
 
 // NewClient creates a new Redis client.
-func NewClient(addr string, breaker *circuitbreaker.CircuitBreaker) (*Client, error) {
+func NewClient(cfg config.CoreConfig, breaker *circuitbreaker.CircuitBreaker) (*Client, error) {
 	opts := &redis.Options{
-		Addr:     addr,
-		Password: "", // no password set
-		DB:       0,  // use default DB
+		Addr:         cfg.RedisAddr,
+		Password:     "", // no password set
+		DB:           0,  // use default DB
+		PoolSize:     cfg.RedisPoolSize,
+		MinIdleConns: cfg.RedisMinIdleConns,
 	}
 
 	client := redis.NewClient(opts)
