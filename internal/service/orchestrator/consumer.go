@@ -110,8 +110,9 @@ func (c *Consumer) WaitForResult(ctx context.Context, resultQueue string) (*Resu
 	}
 
 	// Parse the result message
-	var result ResultMessage
-	if err := json.Unmarshal(body, &result); err != nil {
+	result := AcquireResultMessage()
+	if err := json.Unmarshal(body, result); err != nil {
+		ReleaseResultMessage(result)
 		return nil, fmt.Errorf("failed to unmarshal result: %w", err)
 	}
 
@@ -142,7 +143,7 @@ func (c *Consumer) WaitForResult(ctx context.Context, resultQueue string) (*Resu
 		}
 	}
 
-	return &result, nil
+	return result, nil
 }
 
 // ToResponse converts a ResultMessage to a protocol.Response.
