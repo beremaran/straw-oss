@@ -40,6 +40,14 @@ type Request struct {
 	// ReplyTo specifies the queue name to send the response to.
 	// If empty, the endpoint generates a default result queue name.
 	ReplyTo string `json:"reply_to,omitempty"`
+
+	// StreamResponse indicates the caller wants the response streamed
+	// rather than fully buffered. Useful for large file downloads.
+	StreamResponse bool `json:"stream_response,omitempty"`
+
+	// MaxResponseSize limits response body size in bytes (0 = use default).
+	// When set, overrides the endpoint's default max body size.
+	MaxResponseSize int64 `json:"max_response_size,omitempty"`
 }
 
 // EstimateWireSize returns the approximate size of the HTTP request in bytes.
@@ -87,6 +95,10 @@ type Response struct {
 
 	// SessionID if a session was created or used.
 	SessionID string `json:"session_id,omitempty"`
+
+	// IsStreaming indicates this is a streaming response where
+	// the body will be delivered separately (not in this payload).
+	IsStreaming bool `json:"is_streaming,omitempty"`
 }
 
 // EstimateWireSize returns the approximate size of the HTTP response in bytes.

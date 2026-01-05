@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -26,7 +27,10 @@ func (m *MockExecer) Exec(ctx context.Context, sql string, arguments ...any) (pg
 func TestAuditLog(t *testing.T) {
 	e := echo.New()
 	mockDB := new(MockExecer)
-	mw := AuditLog(mockDB)
+	// Create AuditLogger with the mock
+	auditLogger := NewAuditLogger(mockDB, 10, 1)
+	defer auditLogger.Stop()
+	mw := AuditLog(auditLogger)
 
 	// Mock DB expectation
 	mockDB.On("Exec", mock.Anything, mock.MatchedBy(func(sql string) bool {
@@ -44,7 +48,7 @@ func TestAuditLog(t *testing.T) {
 	err := h(c)
 	assert.NoError(t, err)
 
-	// Wait a bit for async goroutine
+	// Wait a bit for async worker
 	time.Sleep(100 * time.Millisecond)
 
 	mockDB.AssertExpectations(t)
@@ -53,7 +57,10 @@ func TestAuditLog(t *testing.T) {
 func TestAuditLog_SkipGet(t *testing.T) {
 	e := echo.New()
 	mockDB := new(MockExecer)
-	mw := AuditLog(mockDB)
+	// Create AuditLogger with the mock
+	auditLogger := NewAuditLogger(mockDB, 10, 1)
+	defer auditLogger.Stop()
+	mw := AuditLog(auditLogger)
 
 	req := httptest.NewRequest(http.MethodGet, "/test", nil)
 	rec := httptest.NewRecorder()
@@ -68,4 +75,44 @@ func TestAuditLog_SkipGet(t *testing.T) {
 
 	// Should NOT call Exec
 	mockDB.AssertNotCalled(t, "Exec")
+}
+
+func TestAuditLogger_BufferFull(t *testing.T) {
+	mockDB := new(MockExecer)
+	// Create AuditLogger with very small buffer size and no workers
+	auditLogger := &AuditLogger{
+		db:      mockDB,
+		entries: make(chan AuditEntry, 1), // Very small buffer
+		logger:  slog.Default(),           // Need to initialize logger
+	}
+
+	// Fill the buffer
+	entry := AuditEntry{
+		Timestamp: time.Now(),
+		Method:    "POST",
+		Path:      "/test",
+	}
+
+	// First should succeed
+	ok := auditLogger.Log(entry)
+	assert.True(t, ok)
+
+	// Second should fail (buffer full)
+	ok = auditLogger.Log(entry)
+	assert.False(t, ok)
+}
+
+func TestAuditLogger_Closed(t *testing.T) {
+	mockDB := new(MockExecer)
+	auditLogger := NewAuditLogger(mockDB, 10, 1)
+	auditLogger.Stop()
+
+	// Should fail after close
+	entry := AuditEntry{
+		Timestamp: time.Now(),
+		Method:    "POST",
+		Path:      "/test",
+	}
+	ok := auditLogger.Log(entry)
+	assert.False(t, ok)
 }

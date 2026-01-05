@@ -1,0 +1,37 @@
+# Docker Compose Override for Development/Profiling
+#
+# This file exposes pprof/metrics endpoints for debugging.
+# Ports are mapped to avoid conflicts:
+#   - relay-server: 9200
+#   - endpoint-1:   9201
+#   - endpoint-2:   9202
+#   - endpoint-3:   9203
+#
+# Usage:
+#   docker compose up -d --build
+#
+# Access pprof:
+#   curl http://localhost:9200/debug/pprof/       # relay-server
+#   curl http://localhost:9201/debug/pprof/       # endpoint-1
+#   curl http://localhost:9202/debug/pprof/       # endpoint-2
+#   curl http://localhost:9203/debug/pprof/       # endpoint-3
+
+services:
+  relay-server:
+    environment:
+      METRICS_ENABLED: "true" # Enable metrics server (includes pprof)
+    ports:
+      - "8080:8080" # API (already in base)
+      - "9200:9090" # pprof/metrics
+
+  endpoint-1:
+    ports:
+      - "9201:9090" # pprof/metrics
+
+  endpoint-2:
+    ports:
+      - "9202:9090" # pprof/metrics
+
+  endpoint-3:
+    ports:
+      - "9203:9090" # pprof/metrics

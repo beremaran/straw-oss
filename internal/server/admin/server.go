@@ -81,12 +81,10 @@ func (s *Server) registerRoutes() {
 	// Admin API - Protected
 	adminGroup := s.echo.Group("/admin")
 	adminGroup.Use(middleware.KeyAuth(s.conf))
-	// AuditLog requires Execer interface, *pgxpool.Pool satisfies it.
-	// AuditLog requires Execer interface, *postgres.Client (wrapped pool) satisfies it?
-	// AuditLog likely expects *pgxpool.Pool or internal interface.
-	// Let's pass s.client.Pool for now if AuditLog uses pool directly.
+	// AuditLog requires *AuditLogger, create one from the pool
 	if s.client != nil && s.client.Pool != nil {
-		adminGroup.Use(middleware.AuditLog(s.client.Pool))
+		auditLogger := middleware.NewAuditLogger(s.client.Pool, 0, 0) // use defaults
+		adminGroup.Use(middleware.AuditLog(auditLogger))
 	}
 
 	// Repositories

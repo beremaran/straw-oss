@@ -112,9 +112,17 @@ func (s *Server) registerRoutes() {
 	// Apply Auth Middleware to protected routes
 	authMiddleware := mw.AuthMiddleware(s.authService)
 
+	// Concurrency limiter for relay requests
+	concurrencyLimit := s.conf.MaxConcurrentRequests
+	if concurrencyLimit <= 0 {
+		concurrencyLimit = 50 // Default fallback
+	}
+	concurrencyLimiter := mw.ConcurrencyLimiter(concurrencyLimit)
+
 	v1 := s.echo.Group("/v1")
 	v1.Use(authMiddleware)
 	v1.Use(mw.SessionMiddleware(s.sessionService))
+	v1.Use(concurrencyLimiter)
 
 	// Relay Handler configuration
 	var relayOpts []handlers.RelayHandlerOption
@@ -136,6 +144,7 @@ func (s *Server) registerRoutes() {
 	v2 := s.echo.Group("/v2")
 	v2.Use(authMiddleware)
 	v2.Use(mw.SessionMiddleware(s.sessionService))
+	v2.Use(concurrencyLimiter)
 
 	// V2 Relay Handler (same for now)
 	v2.POST("/request", relayHandler.Handle)

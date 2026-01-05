@@ -26,14 +26,16 @@ func (r *RelayRequest) ToProtocolRequest() (*protocol.Request, error) {
 	}
 
 	return &protocol.Request{
-		ID:        r.ID,
-		Method:    r.Method,
-		URL:       r.URL,
-		Headers:   headers,
-		Body:      r.Body,
-		Timeout:   timeout,
-		SessionID: r.SessionID,
-		TraceID:   r.TraceID,
+		ID:              r.ID,
+		Method:          r.Method,
+		URL:             r.URL,
+		Headers:         headers,
+		Body:            r.Body,
+		Timeout:         timeout,
+		SessionID:       r.SessionID,
+		TraceID:         r.TraceID,
+		StreamResponse:  r.StreamResponse,
+		MaxResponseSize: r.MaxResponseSize,
 	}, nil
 }
 
@@ -56,13 +58,14 @@ func FromProtocolResponse(resp *protocol.Response, meta *RelayMetaDTO) *RelayRes
 	}
 
 	return &RelayResponse{
-		RequestID:  resp.RequestID,
-		StatusCode: resp.StatusCode,
-		Headers:    headers,
-		Body:       resp.Body,
-		SessionID:  resp.SessionID,
-		Timing:     timing,
-		Meta:       meta,
+		RequestID:   resp.RequestID,
+		StatusCode:  resp.StatusCode,
+		Headers:     headers,
+		Body:        resp.Body,
+		SessionID:   resp.SessionID,
+		Timing:      timing,
+		Meta:        meta,
+		IsStreaming: resp.IsStreaming,
 	}
 }
 

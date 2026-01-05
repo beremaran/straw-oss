@@ -45,7 +45,7 @@ func (m *retryMockBroker) Publish(ctx context.Context, exchange, routingKey stri
 	return nil
 }
 
-func (m *retryMockBroker) Subscribe(ctx context.Context, queue string, handler broker.Handler) error {
+func (m *retryMockBroker) Subscribe(ctx context.Context, queue string, handler broker.Handler, opts ...broker.SubscribeOption) error {
 	return nil
 }
 

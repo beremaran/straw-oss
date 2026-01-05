@@ -26,7 +26,7 @@ func (m *consumeOnceMockBroker) Publish(ctx context.Context, exchange, routingKe
 	return nil
 }
 
-func (m *consumeOnceMockBroker) Subscribe(ctx context.Context, queue string, handler broker.Handler) error {
+func (m *consumeOnceMockBroker) Subscribe(ctx context.Context, queue string, handler broker.Handler, opts ...broker.SubscribeOption) error {
 	return nil
 }
 

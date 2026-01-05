@@ -21,7 +21,8 @@ import (
 const DefaultMaxTaskAge = 60 * time.Second
 
 // DefaultConcurrencyLimit is the default number of concurrent tasks.
-const DefaultConcurrencyLimit = 100
+// Reduced from 100 for better resource usage under load.
+const DefaultConcurrencyLimit = 25
 
 // Consumer consumes tasks from RabbitMQ and executes HTTP requests.
 type Consumer struct {
@@ -164,7 +165,7 @@ func (c *Consumer) Start(ctx context.Context) error {
 	)
 
 	// Subscribe to the task queue
-	err := c.broker.Subscribe(c.ctx, c.queueName, c.handleMessage)
+	err := c.broker.Subscribe(c.ctx, c.queueName, c.handleMessage, broker.WithMaxAckPending(c.concurrencyLimit))
 	if err != nil {
 		return err
 	}
@@ -188,6 +189,9 @@ func (c *Consumer) Stop() {
 
 // handleMessage is the broker handler for incoming messages.
 func (c *Consumer) handleMessage(ctx context.Context, body []byte) error {
+	metrics.TasksQueued.Inc()
+	defer metrics.TasksQueued.Dec()
+
 	// Acquire semaphore slot for concurrency control
 	select {
 	case c.semaphore <- struct{}{}:

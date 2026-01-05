@@ -356,3 +356,135 @@ func TestShouldEscalatePool(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildResponseWithOptions_StreamingResponse(t *testing.T) {
+	body := []byte("Large file content that should not be buffered")
+	resp := &fhttp.Response{
+		StatusCode: 200,
+		Header: fhttp.Header{
+			"Content-Type":   []string{"application/octet-stream"},
+			"Content-Length": []string{"1000000000"},
+		},
+		Body: nopCloser{bytes.NewReader(body)},
+	}
+
+	timing := protocol.TimingInfo{Total: 50}
+	opts := ResponseOptions{
+		MaxBodySize:    DefaultMaxBodySize,
+		StreamResponse: true,
+	}
+
+	protoResp, err := BuildResponseWithOptions("req-stream", resp, timing, opts, "endpoint-1", "session-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify streaming response properties
+	if !protoResp.IsStreaming {
+		t.Error("expected IsStreaming to be true")
+	}
+
+	if protoResp.Body != nil {
+		t.Error("expected body to be nil for streaming response")
+	}
+
+	if protoResp.StatusCode != 200 {
+		t.Errorf("expected status 200, got %d", protoResp.StatusCode)
+	}
+
+	if protoResp.Headers.Get("Content-Type") != "application/octet-stream" {
+		t.Errorf("expected Content-Type 'application/octet-stream', got %s", protoResp.Headers.Get("Content-Type"))
+	}
+
+	if protoResp.EndpointID != "endpoint-1" {
+		t.Errorf("expected endpoint ID endpoint-1, got %s", protoResp.EndpointID)
+	}
+
+	if protoResp.SessionID != "session-1" {
+		t.Errorf("expected session ID session-1, got %s", protoResp.SessionID)
+	}
+}
+
+func TestBuildResponseWithOptions_BufferedResponse(t *testing.T) {
+	body := []byte("Normal content to buffer")
+	resp := &fhttp.Response{
+		StatusCode: 200,
+		Header: fhttp.Header{
+			"Content-Type": []string{"text/plain"},
+		},
+		Body: nopCloser{bytes.NewReader(body)},
+	}
+
+	timing := protocol.TimingInfo{Total: 50}
+	opts := ResponseOptions{
+		MaxBodySize:    DefaultMaxBodySize,
+		StreamResponse: false,
+	}
+
+	protoResp, err := BuildResponseWithOptions("req-buffered", resp, timing, opts, "", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify buffered response properties
+	if protoResp.IsStreaming {
+		t.Error("expected IsStreaming to be false")
+	}
+
+	if string(protoResp.Body) != "Normal content to buffer" {
+		t.Errorf("expected body 'Normal content to buffer', got %s", string(protoResp.Body))
+	}
+}
+
+func TestBuildResponseWithOptions_CustomMaxBodySize(t *testing.T) {
+	// Create a body larger than our custom max size
+	customMaxSize := int64(10)
+	largeBody := bytes.Repeat([]byte("x"), 50)
+
+	resp := &fhttp.Response{
+		StatusCode: 200,
+		Header:     fhttp.Header{},
+		Body:       nopCloser{bytes.NewReader(largeBody)},
+	}
+
+	timing := protocol.TimingInfo{Total: 50}
+	opts := ResponseOptions{
+		MaxBodySize:    customMaxSize,
+		StreamResponse: false,
+	}
+
+	protoResp, err := BuildResponseWithOptions("req-custom-size", resp, timing, opts, "", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Body should be truncated to custom max size
+	if int64(len(protoResp.Body)) != customMaxSize {
+		t.Errorf("expected body to be truncated to %d bytes, got %d", customMaxSize, len(protoResp.Body))
+	}
+}
+
+func TestBuildResponseWithOptions_DefaultMaxBodySize(t *testing.T) {
+	body := []byte("Small content")
+	resp := &fhttp.Response{
+		StatusCode: 200,
+		Header:     fhttp.Header{},
+		Body:       nopCloser{bytes.NewReader(body)},
+	}
+
+	timing := protocol.TimingInfo{Total: 50}
+	opts := ResponseOptions{
+		MaxBodySize:    0, // Should use default
+		StreamResponse: false,
+	}
+
+	protoResp, err := BuildResponseWithOptions("req-default-size", resp, timing, opts, "", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Body should be fully read with default max size
+	if string(protoResp.Body) != "Small content" {
+		t.Errorf("expected body 'Small content', got %s", string(protoResp.Body))
+	}
+}
