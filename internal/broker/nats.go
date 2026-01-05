@@ -147,8 +147,17 @@ func (b *NatsBroker) Subscribe(ctx context.Context, queue string, handler Handle
 			return fmt.Errorf("no stream found for subject %s", subject)
 		}
 
+		// Determine Durable name
+		var durableName string
+		if subOpts.Durable != nil {
+			durableName = *subOpts.Durable
+		} else {
+			// Default: Queue name as Durable name (sanitized)
+			durableName = strings.ReplaceAll(queue, ".", "_")
+		}
+
 		consumerConfig := jetstream.ConsumerConfig{
-			Durable:       strings.ReplaceAll(queue, ".", "_"), // Sanitize: dots not allowed in Durable names
+			Durable:       durableName,
 			FilterSubject: subject,
 			DeliverPolicy: jetstream.DeliverNewPolicy,
 			AckPolicy:     jetstream.AckExplicitPolicy,
@@ -171,31 +180,23 @@ func (b *NatsBroker) Subscribe(ctx context.Context, queue string, handler Handle
 
 		// NOTE: The interface `Subscribe` maps well to `Consume`.
 		// But `Consume` blocks or returns a Context.
-		iter, err := cons.Messages(jetstream.PullMaxMessages(1))
+		// Use Consume for efficient, high-throughput message processing.
+		// NATS library handles prefetching and batching automatically.
+		cc, err := cons.Consume(func(msg jetstream.Msg) {
+			if err := handler(ctx, msg.Data()); err != nil {
+				_ = msg.Nak()
+			} else {
+				_ = msg.Ack()
+			}
+		})
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to start consumer for %s: %w", queue, err)
 		}
 
+		// Manage consumer lifecycle with context
 		go func() {
-			defer iter.Stop()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				default:
-					msg, err := iter.Next()
-					if err != nil {
-						// Handle close/stop (includes context cancellation)
-						return
-					}
-
-					if err := handler(ctx, msg.Data()); err != nil {
-						_ = msg.Nak()
-					} else {
-						_ = msg.Ack()
-					}
-				}
-			}
+			<-ctx.Done()
+			cc.Stop()
 		}()
 	}
 	return nil
