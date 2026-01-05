@@ -83,3 +83,22 @@ func UnmarshalSignedTask(data []byte) (*SignedTask, error) {
 	}
 	return &task, nil
 }
+
+// UnmarshalRequestTo unmarshals JSON data into the provided Request object.
+func UnmarshalRequestTo(data []byte, req *Request) error {
+	return UnmarshalJSON(data, req)
+}
+
+// UnmarshalResponseTo unmarshals JSON data into the provided Response object.
+func UnmarshalResponseTo(data []byte, resp *Response) error {
+	return UnmarshalJSON(data, resp)
+}
+
+// UnmarshalCompressedTo decompresses and unmarshals into the provided value.
+func UnmarshalCompressedTo(data []byte, v any) error {
+	jsonData, err := Decompress(data)
+	if err != nil {
+		return fmt.Errorf("failed to decompress: %w", err)
+	}
+	return UnmarshalJSON(jsonData, v)
+}

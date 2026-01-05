@@ -267,6 +267,11 @@ func (h *RelayHandler) Handle(c echo.Context) error {
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadGateway, "execution failed").SetInternal(err)
 	}
+	defer func() {
+		if result.Response != nil {
+			orchestrator.ReleaseResultMessage(result.Response)
+		}
+	}()
 
 	// 5a. Handle Session Migration
 	// If we had a preferred endpoint (sticky session) but the result used a different endpoint,

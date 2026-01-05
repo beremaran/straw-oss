@@ -168,25 +168,11 @@ func (r *RetryExecutor) handleResult(ctx context.Context, body []byte) error {
 
 	// Dispatch to the correct channel
 	// We need the correlation ID (RequestID) to find the channel
-	// Assuming RequestID is available in ResultMessage (it's not explicitly in struct usually, but in logic)
-	// We need to rely on `RequestID` being passed back in headers or body.
-	// Looking at ResultMessage struct in `consumer_test.go` or `endpoint/worker.go`?
-	// The `protocol.Result` has RequestID? No, `response_builder.go` implies result message structure.
-	// In `retry.go` before refactor, we used per-request queue, so any message in queue belonged to that request.
-	// Now with shared queue, we MUST identify the request.
-	// Let's assume protocol.Result or the JSON body has `request_id`.
-	// Wait, `ResultMessage` struct is not defined in this file. It is likely in `consumer.go` or `package`.
-	// Let's check `parseResult` usage. It unmarshals to `ResultMessage`.
-	// If `ResultMessage` doesn't have RequestID, we have a problem.
-	// We need to ensure `ResultMessage` has `request_id`.
-	// ...Checking implicit assumptions...
-	// We will add RequestID to the struct unmarshal target if missing or check if it exists.
-
-	// Assuming ResultMessage has RequestID for now.
 	requestID := res.RequestID
 	if requestID == "" {
 		// Try to fallback or log error
 		r.logger.Warn("received result without request_id")
+		ReleaseResultMessage(res)
 		return nil
 	}
 
@@ -194,6 +180,7 @@ func (r *RetryExecutor) handleResult(ctx context.Context, body []byte) error {
 	if !ok {
 		// Channel not found, maybe request timed out and gave up
 		r.logger.Debug("received result for unknown or timed-out request", "request_id", requestID)
+		ReleaseResultMessage(res)
 		return nil
 	}
 
@@ -204,6 +191,7 @@ func (r *RetryExecutor) handleResult(ctx context.Context, body []byte) error {
 	case ch <- res:
 	default:
 		r.logger.Warn("result channel full", "request_id", requestID)
+		ReleaseResultMessage(res)
 	}
 
 	return nil
@@ -294,6 +282,9 @@ func (r *RetryExecutor) Execute(
 			result.AttemptErrors = append(result.AttemptErrors, attemptErr)
 			result.TotalRetries++
 			excludedEndpoints = append(excludedEndpoints, endpointID)
+
+			// Release the failed response
+			ReleaseResultMessage(response)
 		} else {
 			// Internal error executing
 			r.logger.WarnContext(ctx, "sticky endpoint execution error", "error", err)
@@ -396,6 +387,7 @@ func (r *RetryExecutor) Execute(
 					"pool", poolTier,
 					"failure", failure.String(),
 				)
+				ReleaseResultMessage(response)
 				break // Break inner loop to escalate to next pool
 			}
 
@@ -407,6 +399,9 @@ func (r *RetryExecutor) Execute(
 				result.FinalPool = poolTier
 				return result, nil
 			}
+
+			// Retry - release the failed response
+			ReleaseResultMessage(response)
 
 			// Apply backoff if needed
 			if failure.RequiresBackoff() && attempt < maxRetries {
@@ -487,6 +482,7 @@ func (r *RetryExecutor) executeAttempt(
 					"current_endpoint", endpointID,
 					"result_endpoint", result.EndpointID,
 				)
+				ReleaseResultMessage(result) // Stale result, drop it
 				continue
 			}
 
@@ -498,13 +494,12 @@ func (r *RetryExecutor) executeAttempt(
 
 // parseResult parses a result message from raw bytes.
 func (r *RetryExecutor) parseResult(body []byte) (*ResultMessage, error) {
-	// The result is already parsed by the consumer
-	// This is a placeholder for any additional parsing if needed
-	var result ResultMessage
-	if err := json.Unmarshal(body, &result); err != nil {
+	result := AcquireResultMessage()
+	if err := json.Unmarshal(body, result); err != nil {
+		ReleaseResultMessage(result)
 		return nil, fmt.Errorf("failed to unmarshal result: %w", err)
 	}
-	return &result, nil
+	return result, nil
 }
 
 // getPoolTiers returns the available pool tiers for a rule, sorted by priority.
