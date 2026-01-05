@@ -153,7 +153,9 @@ func (r *RetryExecutor) Start(ctx context.Context) error {
 	// Assuming the queue is durable and shared by all relay server instances (or one queue per instance if we want unique routing).
 	// For simplicity in load test fix, we use one shared queue.
 	// Use manual Consume not SubscribeTemporary as we want it persistent.
-	return r.broker.Subscribe(ctx, SharedResultQueue, r.handleResult)
+	// But use Transient (Ephemeral) consumer so we don't process stale results from previous runs/restarts.
+	// Also increase max ack pending to handle bursts.
+	return r.broker.Subscribe(ctx, SharedResultQueue, r.handleResult, broker.WithTransient(), broker.WithMaxAckPending(5000))
 }
 
 // handleResult processes incoming result messages and dispatches them to the correct waiting channel.

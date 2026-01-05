@@ -18,6 +18,7 @@ type Handler func(ctx context.Context, body []byte) error
 // SubscribeOptions contains configuration for a subscription.
 type SubscribeOptions struct {
 	MaxAckPending int
+	Durable       *string // Pointer to distinguish between unset (default logic) and empty (transient)
 }
 
 // SubscribeOption is a functional option for configuring a subscription.
@@ -28,6 +29,22 @@ type SubscribeOption func(*SubscribeOptions)
 func WithMaxAckPending(max int) SubscribeOption {
 	return func(o *SubscribeOptions) {
 		o.MaxAckPending = max
+	}
+}
+
+// WithTransient forces the subscription to be non-durable (ephemeral).
+// This is useful for consumers that don't need history across restarts (e.g. RPC results).
+func WithTransient() SubscribeOption {
+	return func(o *SubscribeOptions) {
+		empty := ""
+		o.Durable = &empty
+	}
+}
+
+// WithDurableName sets a specific durable name for the consumer.
+func WithDurableName(name string) SubscribeOption {
+	return func(o *SubscribeOptions) {
+		o.Durable = &name
 	}
 }
 
