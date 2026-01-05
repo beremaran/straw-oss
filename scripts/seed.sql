@@ -18,8 +18,8 @@ INSERT INTO routing_rules (id, name, priority, required_tags, excluded_tags, con
         '[]'::jsonb,
         '{
             "hard_timeout": 30000000000,
-            "rate_limit_per_minute": 5000000,
-            "rate_limit_per_second": 100000,
+            "rate_limit_per_minute": 10000000,
+            "rate_limit_per_second": 10000000,
             "allowed_endpoint_types": ["datacenter", "residential"],
             "fingerprint_preset": "chrome-130",
             "quota_key": "default"
@@ -34,8 +34,8 @@ INSERT INTO routing_rules (id, name, priority, required_tags, excluded_tags, con
         '[]'::jsonb,
         '{
             "hard_timeout": 45000000000,
-            "rate_limit_per_minute": 30,
-            "rate_limit_per_second": 2,
+            "rate_limit_per_minute": 10000000,
+            "rate_limit_per_second": 10000000,
             "allowed_endpoint_types": ["residential"],
             "required_endpoint_caps": ["capability:stealth"],
             "fingerprint_preset": "chrome-130",
@@ -51,8 +51,8 @@ INSERT INTO routing_rules (id, name, priority, required_tags, excluded_tags, con
         '[]'::jsonb,
         '{
             "hard_timeout": 20000000000,
-            "rate_limit_per_minute": 20,
-            "rate_limit_per_second": 1,
+            "rate_limit_per_minute": 10000000,
+            "rate_limit_per_second": 10000000,
             "allowed_endpoint_types": ["residential", "mobile"],
             "fingerprint_preset": "chrome-130",
             "quota_key": "target:google"
@@ -71,7 +71,7 @@ INSERT INTO api_keys (id, name, token_hash, scopes, rate_limit_override, is_acti
         -- SHA256('dev-test-token-12345')
         'c6f458907e1575186d7d48e3b5862be5db8429dda3b2792d5d26c1e4912f8162',
         '["*"]'::jsonb,
-        5000000,
+        10000000,
         true
     )
 ON CONFLICT (id) DO NOTHING;
@@ -86,7 +86,7 @@ INSERT INTO api_keys (id, name, token_hash, scopes, rate_limit_override, is_acti
         -- SHA256('load-test-token-67890')
         '50063e8d7406d15bfc0b2718b6f2de06ecc93b7fb252c28ecda6524cdcb38182',
         '["*"]'::jsonb,
-        5000000,
+        10000000,
         true
     )
 ON CONFLICT (id) DO NOTHING;
