@@ -1,9 +1,58 @@
-vendor
+# Git
 .git
-.env
-tmp
-bin
-.idea
-.vscode
+.gitignore
+
+# Go
+vendor/
+/bin/
+# Ignore all binaries
+**/relay-server
+**/endpoint
+*.exe
+*.test
+*.prof
+*.out
 coverage.out
+
+# Environment and Secrets
+.env
+.env.*
+!.env.example
+
+# IDEs and Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
 .DS_Store
+
+# Logs
+*.log
+/test_integration.log
+/test_run.log
+/test_run_v2.log
+
+# Docker
+docker-compose*.yml
+Dockerfile*
+.dockerignore
+
+# Build and CI artifacts
+/tmp/
+/dist/
+/coverage/
+/repomix-output.xml
+
+# Project specific (not needed for binary build)
+/docs/
+/scripts/
+/test/
+/deploy/
+/.github/
+/Makefile
+/README.md
+/LICENSE
+/CONTRIBUTING.md
+/mkdocs.yml
+/migrations/
