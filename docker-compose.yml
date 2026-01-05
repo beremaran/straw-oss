@@ -59,6 +59,7 @@ services:
       DB_AUTO_MIGRATE: "true"
       METRICS_ENABLED: false
       OTEL_SDK_DISABLED: "true"
+      MAX_CONCURRENT_REQUESTS: 5000
       ALLOW_PRIVATE_IPS: "true" # Enable for load testing with local targets
     ports:
       - "8080:8080"
@@ -82,7 +83,7 @@ services:
       HMAC_SECRET: dev-secret-key-for-testing-only-change-in-production
       LOG_LEVEL: info
       LOG_FORMAT: json
-      CONCURRENCY_LIMIT: 100
+      CONCURRENCY_LIMIT: 1000
       OTEL_SDK_DISABLED: "true"
     depends_on:
       - nats
@@ -102,7 +103,7 @@ services:
       HMAC_SECRET: dev-secret-key-for-testing-only-change-in-production
       LOG_LEVEL: info
       LOG_FORMAT: json
-      CONCURRENCY_LIMIT: 100
+      CONCURRENCY_LIMIT: 1000
       OTEL_SDK_DISABLED: "true"
     depends_on:
       - nats
@@ -122,7 +123,7 @@ services:
       HMAC_SECRET: dev-secret-key-for-testing-only-change-in-production
       LOG_LEVEL: info
       LOG_FORMAT: json
-      CONCURRENCY_LIMIT: 100
+      CONCURRENCY_LIMIT: 1000
       OTEL_SDK_DISABLED: "true"
     depends_on:
       - nats
