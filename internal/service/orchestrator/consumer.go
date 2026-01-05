@@ -15,7 +15,7 @@ import (
 )
 
 // ResultMessage is the wire format for result messages from endpoints.
-// The Body field is LZMA compressed to reduce message size.
+// The Body field is Zstd compressed to reduce message size.
 // This matches the format sent by the endpoint's publisher.
 type ResultMessage struct {
 	// RequestID correlates this response to the original request.
@@ -33,10 +33,10 @@ type ResultMessage struct {
 	// Headers contains the HTTP response headers.
 	Headers protocol.HeaderMap `json:"headers"`
 
-	// CompressedBody contains the LZMA compressed response body.
+	// CompressedBody contains the Zstd compressed response body.
 	CompressedBody []byte `json:"body,omitempty"`
 
-	// BodyCompressed indicates if the body is LZMA compressed.
+	// BodyCompressed indicates if the body is compressed.
 	BodyCompressed bool `json:"body_compressed"`
 
 	// Error contains error details if the request failed.

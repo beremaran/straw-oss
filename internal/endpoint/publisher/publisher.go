@@ -54,7 +54,7 @@ func New(b broker.MessageBroker, opts ...Option) *Publisher {
 }
 
 // Publish publishes a response result to the broker.
-// The response is serialized to JSON with the body LZMA compressed.
+// The response is serialized to JSON with the body Zstd compressed.
 // It publishes to a queue named "results.{request_id}" for correlation,
 // OR to the specified replyTo queue if provided.
 func (p *Publisher) Publish(ctx context.Context, resp *protocol.Response, replyTo string) error {
@@ -95,7 +95,7 @@ func (p *Publisher) Publish(ctx context.Context, resp *protocol.Response, replyT
 }
 
 // ResultMessage is the wire format for result messages.
-// The Body field is LZMA compressed to reduce message size.
+// The Body field is Zstd compressed to reduce message size.
 type ResultMessage struct {
 	// RequestID correlates this response to the original request.
 	RequestID string `json:"request_id"`
@@ -112,10 +112,10 @@ type ResultMessage struct {
 	// Headers contains the HTTP response headers.
 	Headers protocol.HeaderMap `json:"headers"`
 
-	// CompressedBody contains the LZMA compressed response body.
+	// CompressedBody contains the Zstd compressed response body.
 	CompressedBody []byte `json:"body,omitempty"`
 
-	// BodyCompressed indicates if the body is LZMA compressed.
+	// BodyCompressed indicates if the body is compressed.
 	BodyCompressed bool `json:"body_compressed"`
 
 	// Error contains error details if the request failed.

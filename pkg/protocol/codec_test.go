@@ -130,7 +130,7 @@ func TestCompressDecompress_RoundTrip_JSONLike(t *testing.T) {
 }
 
 func TestDecompress_CorruptedData(t *testing.T) {
-	_, err := Decompress([]byte("not valid lzma data"))
+	_, err := Decompress([]byte("not valid zstd data"))
 	if err == nil {
 		t.Error("expected error for corrupted data, got nil")
 	}
