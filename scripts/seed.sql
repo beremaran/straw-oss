@@ -1,6 +1,8 @@
 -- Seed data for development environment
 -- This script should be run manually or as part of a development setup process
 
+TRUNCATE TABLE cost_multipliers, routing_rules, api_keys, endpoints RESTART IDENTITY CASCADE;
+
 -- Default cost multipliers for endpoint types
 INSERT INTO cost_multipliers (endpoint_tag, multiplier, description, is_active) VALUES
     ('type:datacenter', 1.00, 'Datacenter proxies - base cost', true),
