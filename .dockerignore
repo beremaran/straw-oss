@@ -5,9 +5,10 @@
 # Go
 vendor/
 /bin/
-# Ignore all binaries
-**/relay-server
-**/endpoint
+# Ignore all binaries (only if they are files, but dockerignore uses glob)
+# Better to ignore them by specific paths if they are known to be built in root
+/relay-server
+/endpoint
 *.exe
 *.test
 *.prof
@@ -45,7 +46,8 @@ Dockerfile*
 /repomix-output.xml
 
 # Project specific (not needed for binary build)
-/docs/
+# /docs/ is NOT ignored because it contains Swagger Go files
+docs/**/*.md
 /scripts/
 /test/
 /deploy/

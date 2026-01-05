@@ -24,14 +24,6 @@ services:
       - "8080:8080" # API (already in base)
       - "9200:9090" # pprof/metrics
 
-  endpoint-1:
+  endpoint:
     ports:
       - "9201:9090" # pprof/metrics
-
-  endpoint-2:
-    ports:
-      - "9202:9090" # pprof/metrics
-
-  endpoint-3:
-    ports:
-      - "9203:9090" # pprof/metrics

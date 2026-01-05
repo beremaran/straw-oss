@@ -71,52 +71,12 @@ services:
       - straw-net
     restart: unless-stopped
 
-  endpoint-1:
+  endpoint:
     build:
       context: .
       dockerfile: Dockerfile.endpoint
     environment:
       ENDPOINT_ID: endpoint-load-test-001
-      ENDPOINT_TAGS: type:datacenter,region:us
-      NATS_URL: nats://nats:4222
-      NATS_TOKEN: s3cr3t
-      HMAC_SECRET: dev-secret-key-for-testing-only-change-in-production
-      LOG_LEVEL: info
-      LOG_FORMAT: json
-      CONCURRENCY_LIMIT: 1000
-      OTEL_SDK_DISABLED: "true"
-    depends_on:
-      - nats
-    networks:
-      - straw-net
-    restart: unless-stopped
-
-  endpoint-2:
-    build:
-      context: .
-      dockerfile: Dockerfile.endpoint
-    environment:
-      ENDPOINT_ID: endpoint-load-test-002
-      ENDPOINT_TAGS: type:datacenter,region:us
-      NATS_URL: nats://nats:4222
-      NATS_TOKEN: s3cr3t
-      HMAC_SECRET: dev-secret-key-for-testing-only-change-in-production
-      LOG_LEVEL: info
-      LOG_FORMAT: json
-      CONCURRENCY_LIMIT: 1000
-      OTEL_SDK_DISABLED: "true"
-    depends_on:
-      - nats
-    networks:
-      - straw-net
-    restart: unless-stopped
-
-  endpoint-3:
-    build:
-      context: .
-      dockerfile: Dockerfile.endpoint
-    environment:
-      ENDPOINT_ID: endpoint-load-test-003
       ENDPOINT_TAGS: type:datacenter,region:us
       NATS_URL: nats://nats:4222
       NATS_TOKEN: s3cr3t
