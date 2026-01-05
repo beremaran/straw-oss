@@ -317,7 +317,7 @@ func (m *mockBroker) Publish(_ context.Context, exchange, routingKey string, bod
 	return nil
 }
 
-func (m *mockBroker) Subscribe(ctx context.Context, queue string, handler broker.Handler) error {
+func (m *mockBroker) Subscribe(ctx context.Context, queue string, handler broker.Handler, opts ...broker.SubscribeOption) error {
 	m.subscribeCalled = true
 	m.subscribeQueue = queue
 	m.subscribeHandler = handler

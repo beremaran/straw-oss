@@ -109,12 +109,18 @@ func (b *NatsBroker) Publish(ctx context.Context, exchange, routingKey string, b
 }
 
 // Subscribe subscribes to a queue group for the subjects bound to the queue.
-func (b *NatsBroker) Subscribe(ctx context.Context, queue string, handler Handler) error {
+func (b *NatsBroker) Subscribe(ctx context.Context, queue string, handler Handler, opts ...SubscribeOption) error {
 	b.mu.RLock()
 	subjects, ok := b.bindings[queue]
 	b.mu.RUnlock()
 	if !ok || len(subjects) == 0 {
 		return fmt.Errorf("no bindings found for queue %s", queue)
+	}
+
+	// Parse options
+	subOpts := SubscribeOptions{}
+	for _, o := range opts {
+		o(&subOpts)
 	}
 
 	for _, subject := range subjects {
@@ -146,8 +152,7 @@ func (b *NatsBroker) Subscribe(ctx context.Context, queue string, handler Handle
 			FilterSubject: subject,
 			DeliverPolicy: jetstream.DeliverNewPolicy,
 			AckPolicy:     jetstream.AckExplicitPolicy,
-			// DeliverSubject? If we use Pull Consumer we don't set it.
-			// But for Queue Group push consumer behavior, we assume queue group?
+			MaxAckPending: subOpts.MaxAckPending,
 		}
 
 		// Nats.go new JS API prefers Pull consumers for workers.

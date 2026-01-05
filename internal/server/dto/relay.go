@@ -27,6 +27,13 @@ type RelayRequest struct {
 
 	// TraceID for distributed tracing
 	TraceID string `json:"trace_id,omitempty"`
+
+	// StreamResponse requests streaming response instead of buffered.
+	// Useful for large file downloads to avoid memory issues.
+	StreamResponse bool `json:"stream_response,omitempty"`
+
+	// MaxResponseSize limits response body size in bytes (0 = use default)
+	MaxResponseSize int64 `json:"max_response_size,omitempty"`
 }
 
 // RelayResponse is the API response from a proxied request.
@@ -53,6 +60,9 @@ type RelayResponse struct {
 
 	// Meta contains relay metadata
 	Meta *RelayMetaDTO `json:"meta,omitempty"`
+
+	// IsStreaming indicates body will be delivered via streaming endpoint
+	IsStreaming bool `json:"is_streaming,omitempty"`
 }
 
 // TimingDTO contains request timing details

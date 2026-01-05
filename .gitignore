@@ -1,5 +1,6 @@
 temp_build/
 *tmp*/
+**/*repomix*
 
 # Created by https://www.toptal.com/developers/gitignore/api/macos,linux,windows,jetbrains+all,visualstudio,visualstudiocode,eclipse,android,androidstudio,python,kotlin,java
 # Edit at https://www.toptal.com/developers/gitignore?templates=macos,linux,windows,jetbrains+all,visualstudio,visualstudiocode,eclipse,android,androidstudio,python,kotlin,java

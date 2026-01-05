@@ -279,6 +279,8 @@ func main() {
 		metrics.Init()
 		mux := http.NewServeMux()
 		mux.Handle("/metrics", metrics.Handler())
+		// pprof handlers for runtime profiling
+		metrics.RegisterPprof(mux)
 
 		metricsSrv = &http.Server{
 			Addr:    fmt.Sprintf(":%d", cfg.Observability.MetricsPort),

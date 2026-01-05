@@ -15,15 +15,31 @@ var (
 // It returns an error if processing fails, which may trigger a retry/nack.
 type Handler func(ctx context.Context, body []byte) error
 
+// SubscribeOptions contains configuration for a subscription.
+type SubscribeOptions struct {
+	MaxAckPending int
+}
+
+// SubscribeOption is a functional option for configuring a subscription.
+type SubscribeOption func(*SubscribeOptions)
+
+// WithMaxAckPending sets the maximum number of pending acknowledgments.
+// This is used for backpressure control.
+func WithMaxAckPending(max int) SubscribeOption {
+	return func(o *SubscribeOptions) {
+		o.MaxAckPending = max
+	}
+}
+
 // MessageBroker defines the interface for a message broker.
 type MessageBroker interface {
-	// Publish publishes a message to a specific topic/exchange with a routing key.
+	// Publish publishes a specific message to a topic/exchange with a routing key.
 	// The ctx can be used to control the timeout of the publish operation.
 	Publish(ctx context.Context, exchange, routingKey string, body []byte) error
 
 	// Subscribe subscribes to a queue and invokes the handler for each message.
 	// The ctx controls the lifecycle of the subscription. cancellation stops it.
-	Subscribe(ctx context.Context, queue string, handler Handler) error
+	Subscribe(ctx context.Context, queue string, handler Handler, opts ...SubscribeOption) error
 
 	// SubscribeTemporary creates a temporary (exclusive, auto-delete, non-durable) queue
 	// and subscribes to it. This is useful for RPC response queues.

@@ -42,7 +42,7 @@ func (m *mockBroker) Publish(ctx context.Context, exchange, routingKey string, b
 	return nil
 }
 
-func (m *mockBroker) Subscribe(ctx context.Context, queue string, handler broker.Handler) error {
+func (m *mockBroker) Subscribe(ctx context.Context, queue string, handler broker.Handler, opts ...broker.SubscribeOption) error {
 	m.subscribeQueue = queue
 	m.subscribeHandler = handler
 	// Block until context is done

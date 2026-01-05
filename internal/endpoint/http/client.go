@@ -182,8 +182,16 @@ func (c *Client) Do(ctx context.Context, req *protocol.Request) (*protocol.Respo
 		semconv.HTTPResponseStatusCodeKey.Int(resp.StatusCode),
 	)
 
-	// Build protocol response
-	protocolResp, err := BuildResponse(req.ID, resp, timing, c.maxBodySize, c.endpointID, req.SessionID)
+	// Build protocol response with streaming options from request
+	opts := ResponseOptions{
+		MaxBodySize:    c.maxBodySize,
+		StreamResponse: req.StreamResponse,
+	}
+	// Override max body size if request specifies one
+	if req.MaxResponseSize > 0 {
+		opts.MaxBodySize = req.MaxResponseSize
+	}
+	protocolResp, err := BuildResponseWithOptions(req.ID, resp, timing, opts, c.endpointID, req.SessionID)
 
 	// Record metrics
 	status := "unknown"

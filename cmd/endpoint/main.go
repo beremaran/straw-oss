@@ -285,5 +285,7 @@ func setupHealthHandler() http.Handler {
 	})
 	// Metrics handler
 	mux.Handle("/metrics", metrics.Handler())
+	// pprof handlers for runtime profiling
+	metrics.RegisterPprof(mux)
 	return mux
 }

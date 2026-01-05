@@ -34,7 +34,7 @@ type CircuitBreaker struct {
 	failureThreshold uint
 	resetTimeout     time.Duration
 
-	mu          sync.Mutex
+	mu          sync.RWMutex
 	state       State
 	failures    uint
 	lastFailure time.Time
@@ -77,25 +77,32 @@ func (cb *CircuitBreaker) Execute(fn func() error) error {
 // Allow checks if a request can be executed.
 // If the state is Open, it checks if the reset timeout has passed to switch to Half-Open.
 func (cb *CircuitBreaker) Allow() bool {
-	cb.mu.Lock()
-	defer cb.mu.Unlock()
+	cb.mu.RLock()
+	state := cb.state
+	lastFailure := cb.lastFailure
+	cb.mu.RUnlock()
 
-	switch cb.state {
+	switch state {
 	case StateClosed:
 		return true
+	case StateHalfOpen:
+		return true
 	case StateOpen:
-		if time.Since(cb.lastFailure) > cb.resetTimeout {
-			cb.state = StateHalfOpen
+		if time.Since(lastFailure) > cb.resetTimeout {
+			cb.mu.Lock()
+			defer cb.mu.Unlock()
+
+			if cb.state == StateOpen {
+				if time.Since(cb.lastFailure) > cb.resetTimeout {
+					cb.state = StateHalfOpen
+					return true
+				}
+				return false
+			}
+			// If state changed to HalfOpen (by another goroutine) or Closed, allow.
 			return true
 		}
 		return false
-	case StateHalfOpen:
-		// In Half-Open, strictly one request at a time is usually allowed by simple logic,
-		// or we trust the caller to be serial or allow concurrent implementation details.
-		// For a simple implementation, we allow it, but if it fails it will go back to Open immediately.
-		// A more complex implementation might limit to 1 concurrent request.
-		// For now, we return true. The first failure will close it again.
-		return true
 	}
 	return false
 }
@@ -139,7 +146,7 @@ func (cb *CircuitBreaker) ReportFailure() {
 
 // State returns the current state of the circuit breaker.
 func (cb *CircuitBreaker) State() State {
-	cb.mu.Lock()
-	defer cb.mu.Unlock()
+	cb.mu.RLock()
+	defer cb.mu.RUnlock()
 	return cb.state
 }

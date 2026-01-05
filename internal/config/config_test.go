@@ -141,8 +141,8 @@ func TestLoadEndpointConfig_Defaults(t *testing.T) {
 		t.Fatalf("LoadEndpointConfig() error = %v", err)
 	}
 
-	if cfg.ConcurrencyLimit != 100 {
-		t.Errorf("ConcurrencyLimit = %v, want 100", cfg.ConcurrencyLimit)
+	if cfg.ConcurrencyLimit != 25 {
+		t.Errorf("ConcurrencyLimit = %v, want 25", cfg.ConcurrencyLimit)
 	}
 	if cfg.ID != "endpoint-001" {
 		t.Errorf("ID = %v, want endpoint-001", cfg.ID)

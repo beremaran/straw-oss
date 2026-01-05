@@ -92,4 +92,20 @@ var (
 			Help: "Total bytes received from upstream (response body)",
 		},
 	)
+
+	// TasksQueued tracks the number of tasks in the local queue (waiting for semaphore).
+	TasksQueued = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "endpoint_tasks_queued",
+			Help: "Number of tasks waiting in local queue",
+		},
+	)
+
+	// TasksRejected tracks the number of tasks rejected due to capacity.
+	TasksRejected = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "endpoint_tasks_rejected_total",
+			Help: "Total number of tasks rejected due to capacity",
+		},
+	)
 )

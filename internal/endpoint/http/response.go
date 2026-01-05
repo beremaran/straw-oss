@@ -50,6 +50,57 @@ func BuildResponse(
 	}, nil
 }
 
+// ResponseOptions configures response building behavior.
+type ResponseOptions struct {
+	// MaxBodySize limits response body size (0 = use default).
+	MaxBodySize int64
+	// StreamResponse indicates body should not be buffered.
+	StreamResponse bool
+}
+
+// BuildResponseWithOptions converts an fhttp.Response to a protocol.Response with custom options.
+func BuildResponseWithOptions(
+	requestID string,
+	resp *fhttp.Response,
+	timing protocol.TimingInfo,
+	opts ResponseOptions,
+	endpointID string,
+	sessionID string,
+) (*protocol.Response, error) {
+	if opts.StreamResponse {
+		return buildStreamingResponse(requestID, resp, timing, endpointID, sessionID)
+	}
+
+	maxSize := opts.MaxBodySize
+	if maxSize <= 0 {
+		maxSize = DefaultMaxBodySize
+	}
+	return BuildResponse(requestID, resp, timing, maxSize, endpointID, sessionID)
+}
+
+// buildStreamingResponse creates a response with metadata only (no body).
+// The actual body will be delivered via a separate streaming mechanism.
+func buildStreamingResponse(
+	requestID string,
+	resp *fhttp.Response,
+	timing protocol.TimingInfo,
+	endpointID string,
+	sessionID string,
+) (*protocol.Response, error) {
+	// For streaming, we don't read the body at all
+	// The caller is responsible for handling resp.Body
+	return &protocol.Response{
+		RequestID:   requestID,
+		StatusCode:  resp.StatusCode,
+		Headers:     HeadersToProtocol(resp.Header),
+		IsStreaming: true,
+		EndpointID:  endpointID,
+		SessionID:   sessionID,
+		Timing:      &timing,
+		// Body is nil - indicates streaming delivery
+	}, nil
+}
+
 // readResponseBody reads and decompresses the response body.
 // It handles the case where the HTTP/2 transport may have already decompressed
 // the body transparently (while leaving the Content-Encoding header intact).

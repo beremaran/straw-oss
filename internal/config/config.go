@@ -45,12 +45,13 @@ type ServerConfig struct {
 	Observability ObservabilityConfig `mapstructure:",squash"`
 
 	// Server-specific settings
-	HTTPPort        int           `mapstructure:"http_port"`        // HTTP server port
-	AdminPort       int           `mapstructure:"admin_port"`       // Admin API port
-	ShutdownTimeout time.Duration `mapstructure:"shutdown_timeout"` // Graceful shutdown timeout
-	AdminAPIKey     string        `mapstructure:"admin_api_key"`    // Admin API authentication key
-	ResultTimeout   time.Duration `mapstructure:"result_timeout"`   // Timeout for waiting on endpoint results (default: 30s)
-	MaxBodySize     string        `mapstructure:"max_body_size"`    // Max request body size (default: 2M)
+	HTTPPort              int           `mapstructure:"http_port"`               // HTTP server port
+	AdminPort             int           `mapstructure:"admin_port"`              // Admin API port
+	ShutdownTimeout       time.Duration `mapstructure:"shutdown_timeout"`        // Graceful shutdown timeout
+	AdminAPIKey           string        `mapstructure:"admin_api_key"`           // Admin API authentication key
+	ResultTimeout         time.Duration `mapstructure:"result_timeout"`          // Timeout for waiting on endpoint results (default: 30s)
+	MaxBodySize           string        `mapstructure:"max_body_size"`           // Max request body size (default: 2M)
+	MaxConcurrentRequests int           `mapstructure:"max_concurrent_requests"` // Max concurrent relay requests (default: 50)
 
 	// Testing options
 	AllowPrivateIPs bool `mapstructure:"allow_private_ips"` // Allow localhost/private IPs (for testing only)
@@ -163,11 +164,12 @@ func setServerDefaults(v *viper.Viper) {
 	v.SetDefault("shutdown_timeout", 30*time.Second)
 	v.SetDefault("result_timeout", 30*time.Second) // Default timeout for waiting on endpoint results
 	v.SetDefault("max_body_size", "2M")
+	v.SetDefault("max_concurrent_requests", 50) // Default relay server concurrency limit
 }
 
 // setEndpointDefaults sets endpoint-specific default values.
 func setEndpointDefaults(v *viper.Viper) {
-	v.SetDefault("concurrency_limit", 100)
+	v.SetDefault("concurrency_limit", 25) // Reduced from 100 for better resource usage
 	// Connection pool defaults per design doc Section 2.3
 	v.SetDefault("max_pool_hosts", 1000)
 	v.SetDefault("idle_conns_per_host", 10)
@@ -213,6 +215,7 @@ func bindEnvVars(v *viper.Viper) {
 		"idle_conns_per_host",
 		"idle_conn_timeout",
 		"max_body_size",
+		"max_concurrent_requests",
 		"allow_private_ips",
 	}
 

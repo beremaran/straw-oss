@@ -58,7 +58,7 @@ func (m *mockBroker) Publish(ctx context.Context, exchange, routingKey string, b
 	args := m.Called(ctx, exchange, routingKey, body)
 	return args.Error(0)
 }
-func (m *mockBroker) Subscribe(ctx context.Context, queue string, handler broker.Handler) error {
+func (m *mockBroker) Subscribe(ctx context.Context, queue string, handler broker.Handler, opts ...broker.SubscribeOption) error {
 	return nil
 }
 func (m *mockBroker) SubscribeTemporary(ctx context.Context, queue string, handler broker.Handler) error {

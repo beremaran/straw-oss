@@ -108,6 +108,54 @@ func TestFromProtocolResponse(t *testing.T) {
 		assert.Nil(t, result.Timing)
 		assert.Nil(t, result.Meta)
 	})
+
+	t.Run("streaming response", func(t *testing.T) {
+		resp := &protocol.Response{
+			RequestID:   "req-stream",
+			StatusCode:  200,
+			IsStreaming: true,
+			Headers: protocol.HeaderMap{
+				{Key: "Content-Type", Value: "application/octet-stream"},
+			},
+		}
+
+		result := FromProtocolResponse(resp, nil)
+
+		assert.Equal(t, "req-stream", result.RequestID)
+		assert.Equal(t, 200, result.StatusCode)
+		assert.True(t, result.IsStreaming)
+		assert.Nil(t, result.Body)
+	})
+}
+
+func TestRelayRequest_ToProtocolRequest_StreamingFields(t *testing.T) {
+	t.Run("with streaming options", func(t *testing.T) {
+		dto := &RelayRequest{
+			ID:              "test-stream",
+			URL:             "https://example.com/large-file",
+			StreamResponse:  true,
+			MaxResponseSize: 50 * 1024 * 1024, // 50MB
+		}
+
+		result, err := dto.ToProtocolRequest()
+		require.NoError(t, err)
+
+		assert.Equal(t, "test-stream", result.ID)
+		assert.True(t, result.StreamResponse)
+		assert.Equal(t, int64(50*1024*1024), result.MaxResponseSize)
+	})
+
+	t.Run("without streaming options", func(t *testing.T) {
+		dto := &RelayRequest{
+			URL: "https://example.com/small-file",
+		}
+
+		result, err := dto.ToProtocolRequest()
+		require.NoError(t, err)
+
+		assert.False(t, result.StreamResponse)
+		assert.Equal(t, int64(0), result.MaxResponseSize)
+	})
 }
 
 func TestCreateRoutingRuleRequest_ToDomain(t *testing.T) {
