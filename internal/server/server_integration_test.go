@@ -144,8 +144,8 @@ func (m *MockBroker) Consume(ctx context.Context, queue string, handler broker.H
 	args := m.Called(ctx, queue, handler)
 	return args.Error(0)
 }
-func (m *MockBroker) Subscribe(ctx context.Context, queue string, handler broker.Handler) error {
-	args := m.Called(ctx, queue, handler)
+func (m *MockBroker) Subscribe(ctx context.Context, queue string, handler broker.Handler, opts ...broker.SubscribeOption) error {
+	args := m.Called(ctx, queue, handler, opts)
 	return args.Error(0)
 }
 func (m *MockBroker) SubscribeTemporary(ctx context.Context, queue string, handler broker.Handler) error {
@@ -228,7 +228,7 @@ func TestServer_RelayRequest_Success(t *testing.T) {
 	mockBroker.On("Subscribe", mock.Anything, orchestrator.SharedResultQueue, mock.MatchedBy(func(h broker.Handler) bool {
 		sharedQueueHandler = h
 		return true
-	})).Return(nil)
+	}), mock.Anything).Return(nil)
 
 	// Mock Broker Publish - capture request ID from the published task to send response
 	var capturedRequestID string

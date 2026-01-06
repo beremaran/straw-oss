@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kwilabs/straw-proxy-server/internal/config"
 	"github.com/kwilabs/straw-proxy-server/internal/infra/redis"
 	"github.com/kwilabs/straw-proxy-server/internal/server/middleware"
 	"github.com/stretchr/testify/assert"
@@ -250,7 +251,7 @@ func TestSession_Expiration(t *testing.T) {
 	require.NotEmpty(t, sessionID)
 
 	// Manually delete session from Redis to simulate expiration
-	redisClient, err := redis.NewClient(suite.RedisAddr(), nil)
+	redisClient, err := redis.NewClient(config.CoreConfig{RedisAddr: suite.RedisAddr()}, nil)
 	require.NoError(t, err)
 	defer redisClient.Close()
 
