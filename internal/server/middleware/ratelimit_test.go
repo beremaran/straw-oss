@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/kwilabs/straw-proxy-server/internal/config"
 	"github.com/kwilabs/straw-proxy-server/internal/domain"
 	"github.com/kwilabs/straw-proxy-server/internal/infra/redis"
 	"github.com/kwilabs/straw-proxy-server/internal/server/middleware"
@@ -65,7 +66,7 @@ func TestRateLimitMiddleware(t *testing.T) {
 	require.NoError(t, err)
 	defer s.Close()
 
-	client, err := redis.NewClient(s.Addr(), nil)
+	client, err := redis.NewClient(config.CoreConfig{RedisAddr: s.Addr()}, nil)
 	require.NoError(t, err)
 	defer client.Close()
 

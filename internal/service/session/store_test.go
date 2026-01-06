@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/kwilabs/straw-proxy-server/internal/config"
 	"github.com/kwilabs/straw-proxy-server/internal/domain"
 	"github.com/kwilabs/straw-proxy-server/internal/infra/redis"
 	"github.com/kwilabs/straw-proxy-server/internal/service/session"
@@ -18,7 +19,7 @@ func TestRedisStore(t *testing.T) {
 	require.NoError(t, err)
 	defer mr.Close()
 
-	client, err := redis.NewClient(mr.Addr(), nil)
+	client, err := redis.NewClient(config.CoreConfig{RedisAddr: mr.Addr()}, nil)
 	require.NoError(t, err)
 	defer client.Close()
 
@@ -73,7 +74,7 @@ func TestRedisStore_SaveWithRedisError(t *testing.T) {
 	mr, err := miniredis.Run()
 	require.NoError(t, err)
 
-	client, err := redis.NewClient(mr.Addr(), nil)
+	client, err := redis.NewClient(config.CoreConfig{RedisAddr: mr.Addr()}, nil)
 	require.NoError(t, err)
 	defer client.Close()
 
@@ -95,7 +96,7 @@ func TestRedisStore_GetWithInvalidData(t *testing.T) {
 	require.NoError(t, err)
 	defer mr.Close()
 
-	client, err := redis.NewClient(mr.Addr(), nil)
+	client, err := redis.NewClient(config.CoreConfig{RedisAddr: mr.Addr()}, nil)
 	require.NoError(t, err)
 	defer client.Close()
 
@@ -116,7 +117,7 @@ func TestRedisStore_GetWithRedisError(t *testing.T) {
 	mr, err := miniredis.Run()
 	require.NoError(t, err)
 
-	client, err := redis.NewClient(mr.Addr(), nil)
+	client, err := redis.NewClient(config.CoreConfig{RedisAddr: mr.Addr()}, nil)
 	require.NoError(t, err)
 	defer client.Close()
 
@@ -135,7 +136,7 @@ func TestRedisStore_DeleteWithRedisError(t *testing.T) {
 	mr, err := miniredis.Run()
 	require.NoError(t, err)
 
-	client, err := redis.NewClient(mr.Addr(), nil)
+	client, err := redis.NewClient(config.CoreConfig{RedisAddr: mr.Addr()}, nil)
 	require.NoError(t, err)
 	defer client.Close()
 
@@ -154,7 +155,7 @@ func TestRedisStore_TouchWithRedisError(t *testing.T) {
 	mr, err := miniredis.Run()
 	require.NoError(t, err)
 
-	client, err := redis.NewClient(mr.Addr(), nil)
+	client, err := redis.NewClient(config.CoreConfig{RedisAddr: mr.Addr()}, nil)
 	require.NoError(t, err)
 	defer client.Close()
 
@@ -174,7 +175,7 @@ func TestRedisStore_TouchNonExistent(t *testing.T) {
 	require.NoError(t, err)
 	defer mr.Close()
 
-	client, err := redis.NewClient(mr.Addr(), nil)
+	client, err := redis.NewClient(config.CoreConfig{RedisAddr: mr.Addr()}, nil)
 	require.NoError(t, err)
 	defer client.Close()
 
@@ -191,7 +192,7 @@ func TestRedisStore_SaveAllFields(t *testing.T) {
 	require.NoError(t, err)
 	defer mr.Close()
 
-	client, err := redis.NewClient(mr.Addr(), nil)
+	client, err := redis.NewClient(config.CoreConfig{RedisAddr: mr.Addr()}, nil)
 	require.NoError(t, err)
 	defer client.Close()
 
@@ -222,7 +223,7 @@ func TestRedisStore_SaveAndVerifyTTL(t *testing.T) {
 	require.NoError(t, err)
 	defer mr.Close()
 
-	client, err := redis.NewClient(mr.Addr(), nil)
+	client, err := redis.NewClient(config.CoreConfig{RedisAddr: mr.Addr()}, nil)
 	require.NoError(t, err)
 	defer client.Close()
 
