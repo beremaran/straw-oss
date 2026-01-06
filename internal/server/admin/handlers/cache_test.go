@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/kwilabs/straw-proxy-server/internal/config"
 	"github.com/kwilabs/straw-proxy-server/internal/infra/redis"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
@@ -19,7 +20,7 @@ func TestCacheHandler_HandleClearCache(t *testing.T) {
 	assert.NoError(t, err)
 	defer mr.Close()
 
-	client, err := redis.NewClient(mr.Addr(), nil)
+	client, err := redis.NewClient(config.CoreConfig{RedisAddr: mr.Addr()}, nil)
 	assert.NoError(t, err)
 
 	h := NewCacheHandler(client)
@@ -53,7 +54,7 @@ func TestCacheHandler_HandleGetCacheStats(t *testing.T) {
 	assert.NoError(t, err)
 	defer mr.Close()
 
-	client, err := redis.NewClient(mr.Addr(), nil)
+	client, err := redis.NewClient(config.CoreConfig{RedisAddr: mr.Addr()}, nil)
 	assert.NoError(t, err)
 
 	h := NewCacheHandler(client)

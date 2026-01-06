@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/kwilabs/straw-proxy-server/internal/config"
 )
 
 func TestEndpointHealthStore_UpdateAndGetHealth(t *testing.T) {
@@ -307,7 +309,7 @@ func TestMatchesTags(t *testing.T) {
 func setupTestRedis(t *testing.T) (*Client, func()) {
 	t.Helper()
 
-	client, err := NewClient("localhost:6379", nil)
+	client, err := NewClient(config.CoreConfig{RedisAddr: "localhost:6379"}, nil)
 	if err != nil {
 		t.Skipf("Redis not available: %v", err)
 	}

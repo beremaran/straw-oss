@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kwilabs/straw-proxy-server/internal/config"
 	"github.com/kwilabs/straw-proxy-server/internal/infra/redis"
 )
 
@@ -16,7 +17,7 @@ func TestRedisIntegration(t *testing.T) {
 		addr = "localhost:6379"
 	}
 
-	client, err := redis.NewClient(addr, nil)
+	client, err := redis.NewClient(config.CoreConfig{RedisAddr: addr}, nil)
 	if err != nil {
 		t.Skipf("Skipping integration test: %v", err)
 	}
