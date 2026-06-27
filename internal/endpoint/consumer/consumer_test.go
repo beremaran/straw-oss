@@ -9,15 +9,14 @@ import (
 	"testing"
 	"time"
 
-	fhttp "github.com/useflyent/fhttp"
+	fhttp "github.com/bogdanfinn/fhttp"
 
-	"github.com/kwilabs/straw-proxy-server/internal/broker"
-	"github.com/kwilabs/straw-proxy-server/internal/endpoint/fingerprint"
-	endpointhttp "github.com/kwilabs/straw-proxy-server/internal/endpoint/http"
-	"github.com/kwilabs/straw-proxy-server/pkg/protocol"
+	"github.com/beremaran/straw/internal/broker"
+	"github.com/beremaran/straw/internal/endpoint/fingerprint"
+	endpointhttp "github.com/beremaran/straw/internal/endpoint/http"
+	"github.com/beremaran/straw/pkg/protocol"
 )
 
-// mockBroker implements broker.MessageBroker for testing.
 type mockBroker struct {
 	subscribeQueue   string
 	subscribeHandler broker.Handler
@@ -45,7 +44,7 @@ func (m *mockBroker) Publish(ctx context.Context, exchange, routingKey string, b
 func (m *mockBroker) Subscribe(ctx context.Context, queue string, handler broker.Handler, opts ...broker.SubscribeOption) error {
 	m.subscribeQueue = queue
 	m.subscribeHandler = handler
-	// Block until context is done
+
 	<-ctx.Done()
 	return nil
 }
@@ -53,7 +52,7 @@ func (m *mockBroker) Subscribe(ctx context.Context, queue string, handler broker
 func (m *mockBroker) SubscribeTemporary(ctx context.Context, queue string, handler broker.Handler) error {
 	m.subscribeQueue = queue
 	m.subscribeHandler = handler
-	// Block until context is done
+
 	<-ctx.Done()
 	return nil
 }
@@ -86,7 +85,6 @@ func (m *mockBroker) QueueDepth(ctx context.Context, name string) (int, error) {
 	return 0, nil
 }
 
-// mockTransportProvider implements endpointhttp.TransportProvider
 type mockTransportProvider struct {
 	transport *fhttp.Transport
 }
@@ -170,14 +168,12 @@ func TestConsumer_InvalidSignature(t *testing.T) {
 	c := New(mb, httpClient, secret, "test-endpoint")
 	c.ctx = context.Background()
 
-	// Create a task with wrong signature
 	req := &protocol.Request{
 		ID:     "test-req-1",
 		Method: "GET",
 		URL:    "https://example.com",
 	}
 
-	// Create signed task with different secret
 	wrongSecret := []byte("wrong-secret")
 	signedTask, err := protocol.NewSignedTask(req, wrongSecret)
 	if err != nil {
@@ -189,7 +185,6 @@ func TestConsumer_InvalidSignature(t *testing.T) {
 		t.Fatalf("failed to marshal signed task: %v", err)
 	}
 
-	// Process should fail with signature error
 	err = c.processTask(context.Background(), body)
 	if err == nil {
 		t.Fatal("expected error for invalid signature, got nil")
@@ -213,13 +208,11 @@ func TestConsumer_ReplayAttack(t *testing.T) {
 	httpClient := endpointhttp.NewClient(registry, provider)
 	secret := []byte("test-secret")
 
-	// Create consumer with very short max task age
 	c := New(mb, httpClient, secret, "test-endpoint",
 		WithMaxTaskAge(1*time.Millisecond),
 	)
 	c.ctx = context.Background()
 
-	// Create a valid signed task
 	req := &protocol.Request{
 		ID:     "test-req-1",
 		Method: "GET",
@@ -231,7 +224,6 @@ func TestConsumer_ReplayAttack(t *testing.T) {
 		t.Fatalf("failed to create signed task: %v", err)
 	}
 
-	// Wait for task to become "old"
 	time.Sleep(10 * time.Millisecond)
 
 	body, err := json.Marshal(signedTask)
@@ -239,7 +231,6 @@ func TestConsumer_ReplayAttack(t *testing.T) {
 		t.Fatalf("failed to marshal signed task: %v", err)
 	}
 
-	// Process should fail with replay attack error
 	err = c.processTask(context.Background(), body)
 	if err == nil {
 		t.Fatal("expected error for old timestamp, got nil")
@@ -263,17 +254,14 @@ func TestConsumer_ConcurrencyLimit(t *testing.T) {
 	httpClient := endpointhttp.NewClient(registry, provider)
 	secret := []byte("test-secret")
 
-	// Set concurrency limit to 2
 	c := New(mb, httpClient, secret, "test-endpoint",
 		WithConcurrencyLimit(2),
 	)
 
-	// Track concurrent tasks
 	var currentConcurrent int32
 	var maxConcurrent int32
 	var wg sync.WaitGroup
 
-	// Start consumer in background
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -281,20 +269,16 @@ func TestConsumer_ConcurrencyLimit(t *testing.T) {
 		_ = c.Start(ctx)
 	}()
 
-	// Wait for consumer to start
 	time.Sleep(50 * time.Millisecond)
 
-	// Deliver 5 tasks that will block
 	for i := 0; i < 5; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 
-			// Acquire semaphore ourselves to test
 			c.semaphore <- struct{}{}
 			current := atomic.AddInt32(&currentConcurrent, 1)
 
-			// Track max concurrent
 			for {
 				theMaximum := atomic.LoadInt32(&maxConcurrent)
 				if current <= theMaximum {
@@ -305,7 +289,6 @@ func TestConsumer_ConcurrencyLimit(t *testing.T) {
 				}
 			}
 
-			// Simulate some work
 			time.Sleep(10 * time.Millisecond)
 
 			atomic.AddInt32(&currentConcurrent, -1)
@@ -315,7 +298,6 @@ func TestConsumer_ConcurrencyLimit(t *testing.T) {
 
 	wg.Wait()
 
-	// Max concurrent should not exceed the limit
 	if maxConcurrent > 2 {
 		t.Errorf("expected max concurrent <= 2, got %d", maxConcurrent)
 	}
@@ -331,7 +313,6 @@ func TestConsumer_InvalidJSON(t *testing.T) {
 	c := New(mb, httpClient, secret, "test-endpoint")
 	c.ctx = context.Background()
 
-	// Process invalid JSON
 	err := c.processTask(context.Background(), []byte("not json"))
 	if err == nil {
 		t.Fatal("expected error for invalid JSON, got nil")
@@ -366,11 +347,10 @@ func TestConsumer_ResultHandler(t *testing.T) {
 	)
 	c.ctx = context.Background()
 
-	// Create a valid signed task (will fail on HTTP request but that's OK)
 	req := &protocol.Request{
 		ID:     "test-req-1",
 		Method: "GET",
-		URL:    "https://httpbin.org/get", // This will fail but we just want to test handler
+		URL:    "https://httpbin.org/get",
 	}
 
 	signedTask, err := protocol.NewSignedTask(req, secret)
@@ -383,13 +363,11 @@ func TestConsumer_ResultHandler(t *testing.T) {
 		t.Fatalf("failed to marshal signed task: %v", err)
 	}
 
-	// Process the task
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	_ = c.processTask(ctx, body)
 
-	// Check that result handler was called
 	if receivedResponse == nil {
 		t.Fatal("expected result handler to be called")
 	}

@@ -47,7 +47,6 @@ func TestChecker_NewWithOptions(t *testing.T) {
 		t.Errorf("expected timeout 10s, got %v", c.httpTimeout)
 	}
 
-	// Test callback is set
 	c.callback(&Result{})
 	if !callbackCalled {
 		t.Error("expected callback to be called")
@@ -131,7 +130,6 @@ func TestChecker_CheckNow_OlderVersion(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// Current version is newer than server
 	c := NewChecker(server.URL, "2.0.0")
 
 	result, err := c.CheckNow(context.Background())
@@ -186,11 +184,11 @@ func TestChecker_CheckNow_MissingFields(t *testing.T) {
 }
 
 func TestChecker_CheckNow_NetworkError(t *testing.T) {
-	// Use a server that immediately closes
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		panic("intentional panic to close connection")
 	}))
-	server.Close() // Close immediately
+	server.Close()
 
 	c := NewChecker(server.URL, "1.0.0")
 
@@ -232,14 +230,11 @@ func TestChecker_PeriodicChecking(t *testing.T) {
 		WithCheckInterval(50*time.Millisecond),
 	)
 
-	// Override the initial delay for testing by starting and waiting
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	c.Start(ctx)
 
-	// Wait for periodic checks (initial delay is 10s, so we test with manual checks)
-	// The checker has a 10s initial delay, so we'll just verify it's running
 	time.Sleep(50 * time.Millisecond)
 
 	if !c.IsRunning() {
@@ -275,14 +270,12 @@ func TestChecker_GracefulShutdown(t *testing.T) {
 		t.Error("expected checker to be running")
 	}
 
-	// Stop should block until fully stopped
 	c.Stop()
 
 	if c.IsRunning() {
 		t.Error("expected checker to not be running after Stop")
 	}
 
-	// Double stop should be safe
 	c.Stop()
 }
 
@@ -303,7 +296,7 @@ func TestChecker_DoubleStartIsSafe(t *testing.T) {
 
 	ctx := context.Background()
 	c.Start(ctx)
-	c.Start(ctx) // Should be no-op
+	c.Start(ctx)
 
 	c.Stop()
 
@@ -330,13 +323,10 @@ func TestChecker_ContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	c.Start(ctx)
 
-	// Cancel context
 	cancel()
 
-	// Give it time to stop
 	time.Sleep(50 * time.Millisecond)
 
-	// Stop should be safe after context cancel
 	c.Stop()
 
 	if c.IsRunning() {

@@ -1,5 +1,3 @@
-// Package orchestrator provides task orchestration for the Relay Server.
-// This file implements the retry executor with tiered pool fallback logic.
 package orchestrator
 
 import (
@@ -11,78 +9,55 @@ import (
 	"sync"
 	"time"
 
+	"github.com/beremaran/straw/internal/broker"
+	"github.com/beremaran/straw/internal/domain"
+	"github.com/beremaran/straw/pkg/protocol"
 	"github.com/google/uuid"
-	"github.com/kwilabs/straw-proxy-server/internal/broker"
-	"github.com/kwilabs/straw-proxy-server/internal/domain"
-	"github.com/kwilabs/straw-proxy-server/pkg/protocol"
 )
 
-// Default retry configuration values.
 const (
 	DefaultMaxRetries      = 2
 	DefaultBaseBackoff     = 100 * time.Millisecond
 	DefaultMaxBackoff      = 5 * time.Second
 	DefaultBackoffFactor   = 2.0
-	DefaultLastExitRetries = 1 // Last resort pool gets only 1 attempt
+	DefaultLastExitRetries = 1
 	SharedResultQueue      = "results.relay-server"
 )
 
-// AttemptError records a single failed attempt for debugging.
-// This is included in the X-Relay-Attempt-Errors header.
 type AttemptError struct {
-	// Pool tier where the failure occurred (1 = Primary, 2 = Secondary, etc.)
 	Pool int `json:"pool"`
 
-	// Attempt number within the pool (1-based)
 	Attempt int `json:"attempt"`
 
-	// EndpointID that failed
 	EndpointID string `json:"endpoint_id"`
 
-	// Failure classification
 	Failure FailureType `json:"failure"`
 
-	// FailureString is the string representation of the failure type
 	FailureString string `json:"failure_type"`
 
-	// Message is a human-readable error message
 	Message string `json:"message"`
 
-	// Duration of the failed attempt
 	Duration time.Duration `json:"duration"`
 }
 
-// RetryResult encapsulates the outcome of a retry-enabled execution.
 type RetryResult struct {
-	// Success indicates whether the request ultimately succeeded
 	Success bool
 
-	// Response is the final result (may be an error response if Success is false)
 	Response *ResultMessage
 
-	// FinalPool is the pool tier that handled the request (0 if all failed)
 	FinalPool int
 
-	// TotalRetries is the total number of retry attempts across all pools
 	TotalRetries int
 
-	// AttemptErrors records all failed attempts for debugging
 	AttemptErrors []AttemptError
 }
 
-// PoolManager provides endpoint selection from tiered pools.
 type PoolManager interface {
-	// GetEndpointFromPool selects an endpoint from the specified pool tier.
-	// The exclude parameter lists endpoint IDs that should not be selected (already failed).
 	GetEndpointFromPool(ctx context.Context, rule *domain.RoutingRule, poolTier int, exclude []string) (string, error)
 
-	// GetPoolConfig returns the configuration for the specified pool tier.
-	// Returns nil if the pool tier doesn't exist.
 	GetPoolConfig(rule *domain.RoutingRule, poolTier int) *domain.EndpointPool
 }
 
-// RetryExecutor handles task execution with retry and pool fallback logic.
-// It implements Section 8.2 of the design document.
 type RetryExecutor struct {
 	publisher   *Publisher
 	consumer    *Consumer
@@ -91,26 +66,21 @@ type RetryExecutor struct {
 	hmacSecret  []byte
 	logger      *slog.Logger
 
-	// Response dispatching
-	responseChans sync.Map // map[string]chan *ResultMessage (requestID -> channel)
+	responseChans sync.Map
 
-	// Configuration
 	baseBackoff   time.Duration
 	maxBackoff    time.Duration
 	backoffFactor float64
 }
 
-// RetryExecutorOption is a functional option for configuring the RetryExecutor.
 type RetryExecutorOption func(*RetryExecutor)
 
-// WithRetryLogger sets the logger for the retry executor.
 func WithRetryLogger(logger *slog.Logger) RetryExecutorOption {
 	return func(r *RetryExecutor) {
 		r.logger = logger
 	}
 }
 
-// WithBackoffConfig sets the backoff configuration.
 func WithBackoffConfig(base, max time.Duration, factor float64) RetryExecutorOption {
 	return func(r *RetryExecutor) {
 		r.baseBackoff = base
@@ -119,7 +89,6 @@ func WithBackoffConfig(base, max time.Duration, factor float64) RetryExecutorOpt
 	}
 }
 
-// NewRetryExecutor creates a new RetryExecutor.
 func NewRetryExecutor(
 	publisher *Publisher,
 	consumer *Consumer,
@@ -147,30 +116,21 @@ func NewRetryExecutor(
 	return r
 }
 
-// Start initializes the result consumer.
 func (r *RetryExecutor) Start(ctx context.Context) error {
-	// Subscribe to the shared results queue
-	// Assuming the queue is durable and shared by all relay server instances (or one queue per instance if we want unique routing).
-	// For simplicity in load test fix, we use one shared queue.
-	// Use manual Consume not SubscribeTemporary as we want it persistent.
-	// But use Transient (Ephemeral) consumer so we don't process stale results from previous runs/restarts.
-	// Also increase max ack pending to handle bursts.
+
 	return r.broker.Subscribe(ctx, SharedResultQueue, r.handleResult, broker.WithTransient(), broker.WithMaxAckPending(5000))
 }
 
-// handleResult processes incoming result messages and dispatches them to the correct waiting channel.
 func (r *RetryExecutor) handleResult(ctx context.Context, body []byte) error {
 	res, err := r.parseResult(body)
 	if err != nil {
 		r.logger.Error("failed to parse result message", "error", err)
-		return nil // Don't retry malformed messages
+		return nil
 	}
 
-	// Dispatch to the correct channel
-	// We need the correlation ID (RequestID) to find the channel
 	requestID := res.RequestID
 	if requestID == "" {
-		// Try to fallback or log error
+
 		r.logger.Warn("received result without request_id")
 		ReleaseResultMessage(res)
 		return nil
@@ -178,7 +138,7 @@ func (r *RetryExecutor) handleResult(ctx context.Context, body []byte) error {
 
 	val, ok := r.responseChans.Load(requestID)
 	if !ok {
-		// Channel not found, maybe request timed out and gave up
+
 		r.logger.Debug("received result for unknown or timed-out request", "request_id", requestID)
 		ReleaseResultMessage(res)
 		return nil
@@ -186,7 +146,6 @@ func (r *RetryExecutor) handleResult(ctx context.Context, body []byte) error {
 
 	ch := val.(chan *ResultMessage)
 
-	// Non-blocking send
 	select {
 	case ch <- res:
 	default:
@@ -197,13 +156,6 @@ func (r *RetryExecutor) handleResult(ctx context.Context, body []byte) error {
 	return nil
 }
 
-// Execute runs the request with retry and pool escalation logic.
-// It follows the tiered retry strategy from Section 8.2:
-//  1. Try Primary Pool (up to MaxRetries)
-//  2. On failure → Try Secondary Pool (up to MaxRetries)
-//  3. On failure → Try Tertiary Pool (up to MaxRetries)
-//  4. On failure → Try LastExit Pool (single attempt)
-//  5. On failure → Return error
 func (r *RetryExecutor) Execute(
 	ctx context.Context,
 	req *protocol.Request,
@@ -215,10 +167,9 @@ func (r *RetryExecutor) Execute(
 		AttemptErrors: make([]AttemptError, 0),
 	}
 
-	// Determine available pools
 	pools := r.getPoolTiers(rule)
 	if len(pools) == 0 {
-		// No explicit pools defined, use default single pool
+
 		pools = []int{1}
 	}
 
@@ -228,27 +179,22 @@ func (r *RetryExecutor) Execute(
 		"rule_id", rule.ID,
 	)
 
-	// Ensure Request ID exists
 	if req.ID == "" {
 		req.ID = uuid.New().String()
 	}
 
-	// Create and register result channel
-	resultCh := make(chan *ResultMessage, 1) // Buffer 1 is enough for the final result
+	resultCh := make(chan *ResultMessage, 1)
 	r.responseChans.Store(req.ID, resultCh)
 	defer r.responseChans.Delete(req.ID)
 
-	// Track excluded endpoints (ones that have already failed)
 	var excludedEndpoints []string
 
-	// 1. Try Preferred Endpoint (Sticky Session)
 	if preferredEndpointID != "" {
 		r.logger.DebugContext(ctx, "attempting sticky session endpoint",
 			"request_id", req.ID,
 			"endpoint_id", preferredEndpointID,
 		)
 
-		// Use pool 1 for reporting purposes for sticky attempts (or 0)
 		attemptPoolTier := 1
 
 		response, endpointID, err := r.executeAttempt(ctx, req, rule, attemptPoolTier, excludedEndpoints, sessionID, resultCh, preferredEndpointID)
@@ -256,14 +202,13 @@ func (r *RetryExecutor) Execute(
 		if err == nil {
 			failure := ClassifyFailure(response)
 			if failure == FailureNone {
-				// Success
+
 				result.Success = true
 				result.Response = response
 				result.FinalPool = attemptPoolTier
 				return result, nil
 			}
 
-			// Failed - record and continue to normal pool selection
 			r.logger.InfoContext(ctx, "sticky endpoint failed, falling back to pools",
 				"request_id", req.ID,
 				"endpoint_id", endpointID,
@@ -277,16 +222,15 @@ func (r *RetryExecutor) Execute(
 				Failure:       failure,
 				FailureString: failure.String(),
 				Message:       r.getFailureMessage(response),
-				Duration:      0, // We could track duration if needed
+				Duration:      0,
 			}
 			result.AttemptErrors = append(result.AttemptErrors, attemptErr)
 			result.TotalRetries++
 			excludedEndpoints = append(excludedEndpoints, endpointID)
 
-			// Release the failed response
 			ReleaseResultMessage(response)
 		} else {
-			// Internal error executing
+
 			r.logger.WarnContext(ctx, "sticky endpoint execution error", "error", err)
 			excludedEndpoints = append(excludedEndpoints, preferredEndpointID)
 		}
@@ -297,19 +241,18 @@ func (r *RetryExecutor) Execute(
 		maxRetries := r.getMaxRetries(poolConfig, poolTier)
 
 		for attempt := 1; attempt <= maxRetries; attempt++ {
-			// Check context cancellation
+
 			if ctx.Err() != nil {
 				return result, ctx.Err()
 			}
 
 			attemptStart := time.Now()
 
-			// Execute single attempt
 			response, endpointID, err := r.executeAttempt(ctx, req, rule, poolTier, excludedEndpoints, sessionID, resultCh, "")
 			attemptDuration := time.Since(attemptStart)
 
 			if err != nil {
-				// Failed to execute (no response received)
+
 				attemptErr := AttemptError{
 					Pool:          poolTier,
 					Attempt:       attempt,
@@ -333,15 +276,13 @@ func (r *RetryExecutor) Execute(
 					"error", err,
 				)
 
-				// Continue to next attempt or pool
 				continue
 			}
 
-			// Classify the failure (if any)
 			failure := ClassifyFailure(response)
 
 			if failure == FailureNone {
-				// Success!
+
 				result.Success = true
 				result.Response = response
 				result.FinalPool = poolTier
@@ -357,7 +298,6 @@ func (r *RetryExecutor) Execute(
 				return result, nil
 			}
 
-			// Record the failure
 			attemptErr := AttemptError{
 				Pool:          poolTier,
 				Attempt:       attempt,
@@ -380,7 +320,6 @@ func (r *RetryExecutor) Execute(
 				"status_code", response.StatusCode,
 			)
 
-			// Check for immediate escalation (e.g., 403/captcha)
 			if failure.ShouldEscalate() {
 				r.logger.InfoContext(ctx, "immediate escalation triggered",
 					"request_id", req.ID,
@@ -388,22 +327,18 @@ func (r *RetryExecutor) Execute(
 					"failure", failure.String(),
 				)
 				ReleaseResultMessage(response)
-				break // Break inner loop to escalate to next pool
+				break
 			}
 
-			// Check if we should retry within this pool
 			if !failure.ShouldRetry() {
-				// Non-retryable failure, but not escalation-worthy
-				// Return the response as-is
+
 				result.Response = response
 				result.FinalPool = poolTier
 				return result, nil
 			}
 
-			// Retry - release the failed response
 			ReleaseResultMessage(response)
 
-			// Apply backoff if needed
 			if failure.RequiresBackoff() && attempt < maxRetries {
 				backoff := r.calculateBackoff(attempt)
 				r.logger.DebugContext(ctx, "applying backoff before retry",
@@ -419,14 +354,12 @@ func (r *RetryExecutor) Execute(
 			}
 		}
 
-		// Pool exhausted, move to next pool
 		r.logger.InfoContext(ctx, "pool exhausted, escalating",
 			"request_id", req.ID,
 			"pool", poolTier,
 		)
 	}
 
-	// All pools exhausted
 	r.logger.WarnContext(ctx, "all pools exhausted",
 		"request_id", req.ID,
 		"total_retries", result.TotalRetries,
@@ -435,7 +368,6 @@ func (r *RetryExecutor) Execute(
 	return result, nil
 }
 
-// executeAttempt executes a single attempt. If specificEndpointID is provided, it skips pool selection.
 func (r *RetryExecutor) executeAttempt(
 	ctx context.Context,
 	req *protocol.Request,
@@ -452,37 +384,30 @@ func (r *RetryExecutor) executeAttempt(
 	if specificEndpointID != "" {
 		endpointID = specificEndpointID
 	} else {
-		// Select endpoint from pool
+
 		endpointID, err = r.poolManager.GetEndpointFromPool(ctx, rule, poolTier, excludedEndpoints)
 		if err != nil {
 			return nil, "", fmt.Errorf("failed to select endpoint from pool %d: %w", poolTier, err)
 		}
 	}
 
-	// Publish the task - pass expected shared reply queue name
 	_, err = r.publisher.Publish(ctx, req, rule, sessionID, endpointID, SharedResultQueue)
 	if err != nil {
 		return nil, endpointID, fmt.Errorf("failed to publish task: %w", err)
 	}
 
-	// Wait for result
-	// The resultCh might receive results from previous failed attempts or the current one.
 	for {
 		select {
 		case <-ctx.Done():
 			return nil, endpointID, ctx.Err()
 		case result := <-resultCh:
-			// If the result has an EndpointID, verify it matches our current attempt
-			// to avoid processing stale responses from previous retries.
-			// However, if we receive a SUCCESS from a previous attempt that arrived late,
-			// we should arguably accept it. But for safety and correctness of the retry logic,
-			// we stick to the current attempt.
+
 			if result.EndpointID != "" && result.EndpointID != endpointID {
 				r.logger.DebugContext(ctx, "ignoring stale result from previous attempt",
 					"current_endpoint", endpointID,
 					"result_endpoint", result.EndpointID,
 				)
-				ReleaseResultMessage(result) // Stale result, drop it
+				ReleaseResultMessage(result)
 				continue
 			}
 
@@ -492,7 +417,6 @@ func (r *RetryExecutor) executeAttempt(
 	}
 }
 
-// parseResult parses a result message from raw bytes.
 func (r *RetryExecutor) parseResult(body []byte) (*ResultMessage, error) {
 	result := AcquireResultMessage()
 	if err := json.Unmarshal(body, result); err != nil {
@@ -502,7 +426,6 @@ func (r *RetryExecutor) parseResult(body []byte) (*ResultMessage, error) {
 	return result, nil
 }
 
-// getPoolTiers returns the available pool tiers for a rule, sorted by priority.
 func (r *RetryExecutor) getPoolTiers(rule *domain.RoutingRule) []int {
 	if len(rule.EndpointPools) == 0 {
 		return nil
@@ -513,7 +436,6 @@ func (r *RetryExecutor) getPoolTiers(rule *domain.RoutingRule) []int {
 		tiers = append(tiers, pool.Tier)
 	}
 
-	// Sort by tier (ascending)
 	for i := 0; i < len(tiers)-1; i++ {
 		for j := i + 1; j < len(tiers); j++ {
 			if tiers[i] > tiers[j] {
@@ -525,14 +447,11 @@ func (r *RetryExecutor) getPoolTiers(rule *domain.RoutingRule) []int {
 	return tiers
 }
 
-// getMaxRetries returns the max retries for a pool configuration.
 func (r *RetryExecutor) getMaxRetries(poolConfig *domain.EndpointPool, poolTier int) int {
 	if poolConfig != nil && poolConfig.MaxRetries > 0 {
 		return poolConfig.MaxRetries
 	}
 
-	// Default: higher tier pools get fewer retries
-	// Tier 4+ (LastExit) gets only 1 attempt
 	if poolTier >= 4 {
 		return DefaultLastExitRetries
 	}
@@ -540,7 +459,6 @@ func (r *RetryExecutor) getMaxRetries(poolConfig *domain.EndpointPool, poolTier 
 	return DefaultMaxRetries
 }
 
-// calculateBackoff calculates the backoff duration for a retry attempt.
 func (r *RetryExecutor) calculateBackoff(attempt int) time.Duration {
 	backoff := r.baseBackoff
 	for i := 1; i < attempt; i++ {
@@ -553,7 +471,6 @@ func (r *RetryExecutor) calculateBackoff(attempt int) time.Duration {
 	return backoff
 }
 
-// getFailureMessage extracts a failure message from the result.
 func (r *RetryExecutor) getFailureMessage(result *ResultMessage) string {
 	if result.Error != nil {
 		return result.Error.Message
@@ -561,8 +478,6 @@ func (r *RetryExecutor) getFailureMessage(result *ResultMessage) string {
 	return fmt.Sprintf("HTTP %d", result.StatusCode)
 }
 
-// ErrNoEndpointsAvailable is returned when no endpoints are available in any pool.
 var ErrNoEndpointsAvailable = errors.New("no endpoints available in any pool")
 
-// ErrAllPoolsExhausted is returned when all pools have been exhausted.
 var ErrAllPoolsExhausted = errors.New("all endpoint pools exhausted")

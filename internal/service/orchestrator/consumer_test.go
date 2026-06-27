@@ -8,16 +8,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kwilabs/straw-proxy-server/internal/broker"
-	"github.com/kwilabs/straw-proxy-server/pkg/protocol"
+	"github.com/beremaran/straw/internal/broker"
+	"github.com/beremaran/straw/pkg/protocol"
 )
 
-// consumeOnceMockBroker implements broker.MessageBroker for testing Consumer.
 type consumeOnceMockBroker struct {
 	response    []byte
 	responseErr error
 
-	// For tracking calls
 	calledQueue   string
 	calledTimeout time.Duration
 }
@@ -104,13 +102,13 @@ func TestConsumer_WithConsumerLogger(t *testing.T) {
 }
 
 func TestConsumer_WaitForResult_Success(t *testing.T) {
-	// Create a result message
+
 	result := ResultMessage{
 		RequestID:      "test-req-123",
 		EndpointID:     "endpoint-001",
 		StatusCode:     200,
 		Headers:        protocol.HeaderMap{{Key: "Content-Type", Value: "application/json"}},
-		CompressedBody: []byte(`{"success": true}`), // uncompressed for this test
+		CompressedBody: []byte(`{"success": true}`),
 		BodyCompressed: false,
 	}
 
@@ -163,14 +161,13 @@ func TestConsumer_WaitForResult_Timeout(t *testing.T) {
 }
 
 func TestConsumer_WaitForResult_Decompression(t *testing.T) {
-	// Create original body and compress it
+
 	originalBody := []byte(`{"message": "hello world", "status": "ok"}`)
 	compressedBody, err := protocol.Compress(originalBody)
 	if err != nil {
 		t.Fatalf("failed to compress body: %v", err)
 	}
 
-	// Create result with compressed body
 	result := ResultMessage{
 		RequestID:      "test-req-compressed",
 		StatusCode:     200,
@@ -193,7 +190,6 @@ func TestConsumer_WaitForResult_Decompression(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Body should be decompressed
 	if got.BodyCompressed {
 		t.Error("expected body to be decompressed (BodyCompressed = false)")
 	}
@@ -204,7 +200,7 @@ func TestConsumer_WaitForResult_Decompression(t *testing.T) {
 }
 
 func TestConsumer_WaitForResult_ErrorResponse(t *testing.T) {
-	// Create result with error
+
 	result := ResultMessage{
 		RequestID:  "test-req-error",
 		EndpointID: "endpoint-001",
@@ -300,7 +296,7 @@ func TestResultMessage_ToResponse(t *testing.T) {
 }
 
 func TestConsumer_WaitForResult_DecompressionError(t *testing.T) {
-	// Create invalid compressed data
+
 	result := ResultMessage{
 		RequestID:      "test-req-decomp-error",
 		StatusCode:     200,
@@ -323,9 +319,6 @@ func TestConsumer_WaitForResult_DecompressionError(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Should fall back to compressed data but marked as not compressed (as per implementation logic)
-	// This confirms the current behavior, though arguably it might be better to return error?
-	// The implementation suppresses error and returns raw bytes.
 	if got.BodyCompressed {
 		t.Error("expected BodyCompressed to be false after fallback")
 	}

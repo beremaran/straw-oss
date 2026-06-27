@@ -1,10 +1,10 @@
-# Contributing to Straw Proxy Server
+# Contributing to Straw Proxy
 
-Thank you for your interest in contributing to the Straw Proxy Server (V2) project at Kwilabs.
+Thank you for your interest in contributing to the Straw Proxy project.
 
 ## Development Workflow
 
-1. **Find a Task**: Look at `docs/tasks/` or the issue tracker for available tasks.
+1. **Find a Task**: Look at the issue tracker for available tasks.
 2. **Create a Branch**: Use a descriptive name for your branch.
     * Features: `feature/description`
     * Bugfixes: `bugfix/issue-number-description`

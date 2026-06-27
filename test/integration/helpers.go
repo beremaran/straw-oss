@@ -14,32 +14,36 @@ import (
 	"testing"
 	"time"
 
+	"github.com/beremaran/straw/internal/config"
+	"github.com/beremaran/straw/internal/domain"
+	"github.com/beremaran/straw/internal/infra/postgres"
+	"github.com/beremaran/straw/internal/infra/redis"
 	"github.com/google/uuid"
 	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/kwilabs/straw-proxy-server/internal/config"
-	"github.com/kwilabs/straw-proxy-server/internal/domain"
-	"github.com/kwilabs/straw-proxy-server/internal/infra/postgres"
-	"github.com/kwilabs/straw-proxy-server/internal/infra/redis"
 	"github.com/stretchr/testify/require"
 )
 
-// NewTestServerConfig creates a ServerConfig with container connection strings.
 func NewTestServerConfig(postgresDSN, redisAddr, natsURL string) *config.ServerConfig {
 	return &config.ServerConfig{
-		Core: config.CoreConfig{
-			PostgresDSN: postgresDSN,
-			RedisAddr:   redisAddr,
-			NatsURL:     natsURL,
-			LogLevel:    "debug",
-			LogFormat:   "json",
+		Database: config.DatabaseConfig{
+			DSN:         postgresDSN,
+			AutoMigrate: false,
+		},
+		Redis: config.RedisConfig{
+			Addr: redisAddr,
+		},
+		NATS: config.NATSConfig{
+			URL: natsURL,
 		},
 		Security: config.SecurityConfig{
 			HMACSecret: "test-hmac-secret-for-integration-tests",
 		},
 		Observability: config.ObservabilityConfig{
+			LogLevel:       "debug",
+			LogFormat:      "json",
 			MetricsEnabled: false,
 		},
-		HTTPPort:        0, // Use any available port
+		HTTPPort:        0,
 		AdminPort:       0,
 		ShutdownTimeout: 5 * time.Second,
 		ResultTimeout:   30 * time.Second,
@@ -48,20 +52,17 @@ func NewTestServerConfig(postgresDSN, redisAddr, natsURL string) *config.ServerC
 	}
 }
 
-// NewTestEndpointConfig creates an EndpointConfig with container connection strings.
 func NewTestEndpointConfig(postgresDSN, redisAddr, natsURL string) *config.EndpointConfig {
 	return &config.EndpointConfig{
-		Core: config.CoreConfig{
-			PostgresDSN: postgresDSN,
-			RedisAddr:   redisAddr,
-			NatsURL:     natsURL,
-			LogLevel:    "debug",
-			LogFormat:   "json",
+		NATS: config.NATSConfig{
+			URL: natsURL,
 		},
 		Security: config.SecurityConfig{
 			HMACSecret: "test-hmac-secret-for-integration-tests",
 		},
 		Observability: config.ObservabilityConfig{
+			LogLevel:       "debug",
+			LogFormat:      "json",
 			MetricsEnabled: false,
 		},
 		ID:               "test-endpoint-1",
@@ -73,8 +74,6 @@ func NewTestEndpointConfig(postgresDSN, redisAddr, natsURL string) *config.Endpo
 	}
 }
 
-// CleanDatabase truncates all application tables to ensure test isolation.
-// This is useful for per-test cleanup when sharing containers across tests.
 func CleanDatabase(ctx context.Context, dsn string) error {
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
@@ -82,7 +81,6 @@ func CleanDatabase(ctx context.Context, dsn string) error {
 	}
 	defer db.Close()
 
-	// Truncate tables in order respecting foreign key constraints
 	tables := []string{
 		"usage_daily_summary",
 		"usage_records",
@@ -96,11 +94,10 @@ func CleanDatabase(ctx context.Context, dsn string) error {
 	}
 
 	for _, table := range tables {
-		// Use CASCADE to handle any foreign key dependencies
+
 		query := fmt.Sprintf("TRUNCATE TABLE %s CASCADE", table)
 		if _, err := db.ExecContext(ctx, query); err != nil {
-			// Table might not exist if migrations haven't created it yet
-			// or if schema has changed - log and continue
+
 			continue
 		}
 	}
@@ -108,13 +105,10 @@ func CleanDatabase(ctx context.Context, dsn string) error {
 	return nil
 }
 
-// WithTimeout returns a context with the specified timeout.
-// Useful for wrapping test operations with a max execution time.
 func WithTimeout(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(parent, timeout)
 }
 
-// WaitForHealthy polls a health check function until it succeeds or times out.
 func WaitForHealthy(ctx context.Context, healthCheck func() error, interval, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 
@@ -127,25 +121,22 @@ func WaitForHealthy(ctx context.Context, healthCheck func() error, interval, tim
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-time.After(interval):
-			// Continue polling
+
 		}
 	}
 
 	return fmt.Errorf("health check timed out after %v", timeout)
 }
 
-// TestAPIKey holds test API key data including the raw token.
 type TestAPIKey struct {
 	ID        string
-	Token     string // The raw Bearer token
-	RawKey    string // Same as Token (for backwards compatibility)
+	Token     string
+	RawKey    string
 	TokenHash string
 	Scopes    []string
 	IsActive  bool
 }
 
-// CreateTestAPIKey creates an API key in the database and returns the credentials.
-// The returned RawKey/Token should be used as the Bearer token.
 func CreateTestAPIKey(ctx context.Context, dsn string, name string, scopes []string) (*TestAPIKey, error) {
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
@@ -154,14 +145,11 @@ func CreateTestAPIKey(ctx context.Context, dsn string, name string, scopes []str
 	defer db.Close()
 
 	id := uuid.New().String()
-	// Generate a simple UUID token
+
 	token := uuid.New().String()
 
-	// Hash the token with SHA256
 	tokenHash := sha256Hash(token)
 
-	// Handle wildcard "*" by converting to empty array for no scope restrictions
-	// The validation logic expects tags in key:value or key=value format, not "*"
 	if len(scopes) == 1 && scopes[0] == "*" {
 		scopes = []string{}
 	}
@@ -181,21 +169,19 @@ func CreateTestAPIKey(ctx context.Context, dsn string, name string, scopes []str
 	return &TestAPIKey{
 		ID:        id,
 		Token:     token,
-		RawKey:    token, // For backwards compatibility
+		RawKey:    token,
 		TokenHash: tokenHash,
 		Scopes:    scopes,
 		IsActive:  true,
 	}, nil
 }
 
-// TestEndpointPool defines an endpoint pool for testing.
 type TestEndpointPool struct {
 	Tier       int
 	Endpoints  []string
 	MaxRetries int
 }
 
-// CreateTestRoutingRule creates a routing rule in the database.
 func CreateTestRoutingRule(
 	ctx context.Context,
 	dsn string,
@@ -223,7 +209,6 @@ func CreateTestRoutingRule(
 		priority = 100
 	}
 
-	// Convert TestEndpointPool to domain.EndpointPool
 	domainPools := make([]domain.EndpointPool, len(endpointPools))
 	for i, p := range endpointPools {
 		domainPools[i] = domain.EndpointPool{
@@ -233,7 +218,6 @@ func CreateTestRoutingRule(
 		}
 	}
 
-	// Create the domain.RoutingRule struct
 	rule := domain.RoutingRule{
 		ID:                 id,
 		Name:               name,
@@ -251,13 +235,11 @@ func CreateTestRoutingRule(
 		UpdatedAt:          time.Now(),
 	}
 
-	// Marshal the full rule to config
 	configJSON, err := json.Marshal(rule)
 	if err != nil {
 		return fmt.Errorf("failed to marshal rule config: %w", err)
 	}
 
-	// Marshal tags
 	reqTagsJSON, err := json.Marshal(requiredTags)
 	if err != nil {
 		return fmt.Errorf("failed to marshal required tags: %w", err)
@@ -290,14 +272,12 @@ func CreateTestRoutingRule(
 	return nil
 }
 
-// TestEndpoint holds test endpoint data.
 type TestEndpoint struct {
 	ID        string
 	Tags      []string
 	IsHealthy bool
 }
 
-// CreateTestEndpoint creates an endpoint record in the database.
 func CreateTestEndpoint(ctx context.Context, dsn string, endpoint *TestEndpoint) error {
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
@@ -327,20 +307,17 @@ func CreateTestEndpoint(ctx context.Context, dsn string, endpoint *TestEndpoint)
 	return nil
 }
 
-// sha256Hash creates a SHA256 hash of the input string.
 func sha256Hash(s string) string {
 	hash := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(hash[:])
 }
 
-// HTTPTestClient is a helper for making authenticated HTTP requests.
 type HTTPTestClient struct {
 	BaseURL string
 	APIKey  string
 	Client  *http.Client
 }
 
-// NewHTTPTestClient creates a new HTTP test client.
 func NewHTTPTestClient(baseURL, apiKey string) *HTTPTestClient {
 	return &HTTPTestClient{
 		BaseURL: baseURL,
@@ -349,7 +326,6 @@ func NewHTTPTestClient(baseURL, apiKey string) *HTTPTestClient {
 	}
 }
 
-// ProxyRequest represents a request to send through the proxy.
 type ProxyRequest struct {
 	URL       string
 	Method    string
@@ -359,20 +335,17 @@ type ProxyRequest struct {
 	Tags      []string
 }
 
-// ProxyResponse represents the response from the proxy.
 type ProxyResponse struct {
 	StatusCode int
 	Headers    http.Header
 	Body       []byte
 }
 
-// SendRequest sends a request through the proxy.
 func (c *HTTPTestClient) SendRequest(ctx context.Context, req *ProxyRequest) (*ProxyResponse, error) {
 	if req.Method == "" {
 		req.Method = "GET"
 	}
 
-	// Build request body
 	payload := map[string]interface{}{
 		"url":    req.URL,
 		"method": req.Method,
@@ -396,7 +369,6 @@ func (c *HTTPTestClient) SendRequest(ctx context.Context, req *ProxyRequest) (*P
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	// Create HTTP request
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.BaseURL+"/v1/request", bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -411,14 +383,12 @@ func (c *HTTPTestClient) SendRequest(ctx context.Context, req *ProxyRequest) (*P
 		httpReq.Header.Set("X-Session-ID", req.SessionID)
 	}
 
-	// Send request
 	resp, err := c.Client.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
-	// Read body
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
@@ -431,10 +401,9 @@ func (c *HTTPTestClient) SendRequest(ctx context.Context, req *ProxyRequest) (*P
 	}, nil
 }
 
-// NewTestRedisClient creates a new Redis client for testing.
 func NewTestRedisClient(t testing.TB, addr string) *redis.Client {
-	cfg := config.CoreConfig{
-		RedisAddr: addr,
+	cfg := config.RedisConfig{
+		Addr: addr,
 	}
 	client, err := redis.NewClient(cfg, nil)
 	require.NoError(t, err)
@@ -444,7 +413,6 @@ func NewTestRedisClient(t testing.TB, addr string) *redis.Client {
 	return client
 }
 
-// NewTestAuthRepo creates a new ApiKeyRepository for testing.
 func NewTestAuthRepo(t testing.TB, dsn string) domain.ApiKeyRepository {
 	client, err := postgres.NewClient(context.Background(), dsn, nil)
 	require.NoError(t, err)
@@ -454,7 +422,6 @@ func NewTestAuthRepo(t testing.TB, dsn string) domain.ApiKeyRepository {
 	return postgres.NewApiKeyRepository(client)
 }
 
-// NewTestRuleRepo creates a new RoutingRuleRepository for testing.
 func NewTestRuleRepo(t testing.TB, dsn string) domain.RoutingRuleRepository {
 	client, err := postgres.NewClient(context.Background(), dsn, nil)
 	require.NoError(t, err)
@@ -464,7 +431,6 @@ func NewTestRuleRepo(t testing.TB, dsn string) domain.RoutingRuleRepository {
 	return postgres.NewRoutingRuleRepository(client)
 }
 
-// ExecuteSQL executes a raw SQL statement.
 func ExecuteSQL(t testing.TB, dsn string, query string, args ...interface{}) {
 	db, err := sql.Open("pgx", dsn)
 	require.NoError(t, err)

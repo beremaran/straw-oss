@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	fhttp "github.com/useflyent/fhttp"
+	fhttp "github.com/bogdanfinn/fhttp"
 
-	"github.com/kwilabs/straw-proxy-server/internal/endpoint/fingerprint"
-	"github.com/kwilabs/straw-proxy-server/pkg/protocol"
+	"github.com/beremaran/straw/internal/endpoint/fingerprint"
+	"github.com/beremaran/straw/pkg/protocol"
 )
 
 type mockTransportProvider struct {
@@ -108,7 +108,7 @@ func TestNewRequest_WithBody(t *testing.T) {
 }
 
 func TestClient_Do_MockServer(t *testing.T) {
-	// Create a mock HTTP server
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -117,9 +117,7 @@ func TestClient_Do_MockServer(t *testing.T) {
 	defer server.Close()
 
 	registry := fingerprint.DefaultRegistry()
-	// Mock provider that returns standard http transport adapter?
-	// The client uses fhttp.Client. Standard httptest server supports http1.1.
-	// fhttp should be compatible.
+
 	provider := &mockTransportProvider{}
 	client := NewClient(registry, provider, WithEndpointID("test-ep"))
 
@@ -164,7 +162,7 @@ func TestClient_Do_Error(t *testing.T) {
 	req := &protocol.Request{
 		ID:          "test-error",
 		Method:      "GET",
-		URL:         "http://localhost:1", // Non-existent port
+		URL:         "http://localhost:1",
 		Headers:     protocol.HeaderMap{},
 		Fingerprint: "chrome-133",
 	}
@@ -173,7 +171,7 @@ func TestClient_Do_Error(t *testing.T) {
 	defer cancel()
 
 	resp, err := client.Do(ctx, req)
-	// We should get a response with an error, not an error from Do()
+
 	if err != nil {
 		t.Fatalf("expected response with error field, got error: %v", err)
 	}
@@ -198,7 +196,6 @@ func TestClient_Do_FingerprintFallback(t *testing.T) {
 	provider := &mockTransportProvider{}
 	client := NewClient(registry, provider)
 
-	// Use a non-existent fingerprint
 	req := &protocol.Request{
 		ID:          "test-fallback",
 		Method:      "GET",
@@ -215,7 +212,6 @@ func TestClient_Do_FingerprintFallback(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Should succeed with fallback fingerprint
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected status 200, got %d", resp.StatusCode)
 	}

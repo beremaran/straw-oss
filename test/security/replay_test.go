@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kwilabs/straw-proxy-server/pkg/protocol"
+	"github.com/beremaran/straw/pkg/protocol"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -14,7 +14,6 @@ func TestReplayProtection_StaleTimestamp(t *testing.T) {
 	secret := []byte("test-secret-123")
 	maxAge := 1 * time.Minute
 
-	// Helper to create a task with a specific timestamp
 	createTask := func(ts int64) *protocol.SignedTask {
 		req := &protocol.Request{
 			URL:    "http://example.com",
@@ -45,7 +44,7 @@ func TestReplayProtection_StaleTimestamp(t *testing.T) {
 	})
 
 	t.Run("StaleTimestamp_TooOld", func(t *testing.T) {
-		// Create timestamp older than maxAge
+
 		ts := time.Now().Add(-maxAge - 10*time.Second).Unix()
 		task := createTask(ts)
 
@@ -53,7 +52,6 @@ func TestReplayProtection_StaleTimestamp(t *testing.T) {
 		require.Error(t, err)
 		require.Nil(t, req)
 
-		// Assert error code
 		var valErr *protocol.ValidationError
 		require.ErrorAs(t, err, &valErr)
 		assert.Equal(t, protocol.ErrCodeReplayAttack, valErr.Code)
@@ -61,9 +59,7 @@ func TestReplayProtection_StaleTimestamp(t *testing.T) {
 	})
 
 	t.Run("FutureTimestamp_ClockSkew", func(t *testing.T) {
-		// Create timestamp significantly in future (beyond maxAge allowance for skew)
-		// ValidateSignedTask treats age < 0 as positive age (magnitude).
-		// So if future > maxAge, it fails.
+
 		ts := time.Now().Add(maxAge + 10*time.Second).Unix()
 		task := createTask(ts)
 
@@ -80,8 +76,7 @@ func TestReplayProtection_StaleTimestamp(t *testing.T) {
 		ts := time.Now().Unix()
 		task := createTask(ts)
 
-		// Tamper with timestamp without resigning
-		task.Timestamp -= 100 // Request appears older (or just different)
+		task.Timestamp -= 100
 
 		req, err := protocol.ValidateSignedTask(task, secret, maxAge)
 		require.Error(t, err)
@@ -89,23 +84,14 @@ func TestReplayProtection_StaleTimestamp(t *testing.T) {
 
 		var valErr *protocol.ValidationError
 		require.ErrorAs(t, err, &valErr)
-		// Should fail signature check, NOT replay check first?
-		// Logic:
-		// 1. Check timestamp age.
-		//    Original TS: valid. Tampered TS: valid (just 100s ago or whatever).
-		//    Wait, 100s might be > maxAge (60s).
-		//    Let's reduce tamper amount to be within valid range but different.
-		//    e.g. 1 second different.
 
-		// Let's create specific case
 		ts = time.Now().Unix()
 		task = createTask(ts)
-		task.Timestamp -= 5 // 5 seconds ago, valid age
+		task.Timestamp -= 5
 
 		req, err = protocol.ValidateSignedTask(task, secret, maxAge)
 		require.Error(t, err)
 
-		// This should be signature invalid because signature covers timestamp
 		require.ErrorAs(t, err, &valErr)
 		assert.Equal(t, protocol.ErrCodeSignatureInvalid, valErr.Code)
 	})

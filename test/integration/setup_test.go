@@ -17,7 +17,6 @@ func TestMain(m *testing.M) {
 	RunTestMain(m)
 }
 
-// TestContainerSetup verifies that all containers are started and accessible.
 func TestContainerSetup(t *testing.T) {
 	suite := GetSuite(t)
 
@@ -55,7 +54,6 @@ func TestContainerSetup(t *testing.T) {
 	})
 }
 
-// TestDatabaseMigrations verifies that migrations were applied successfully.
 func TestDatabaseMigrations(t *testing.T) {
 	suite := GetSuite(t)
 
@@ -66,7 +64,6 @@ func TestDatabaseMigrations(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// Check that expected tables exist
 	expectedTables := []string{
 		"api_keys",
 		"routing_rules",
@@ -93,7 +90,6 @@ func TestDatabaseMigrations(t *testing.T) {
 	}
 }
 
-// TestDatabaseCleanup verifies that database cleanup works correctly.
 func TestDatabaseCleanup(t *testing.T) {
 	suite := GetSuite(t)
 
@@ -104,34 +100,28 @@ func TestDatabaseCleanup(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// Insert test data
 	_, err = db.ExecContext(ctx, `
 		INSERT INTO api_keys (id, name, token_hash, scopes, is_active)
 		VALUES ('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', 'Test Key', 'hash123', '[]', true)
 	`)
 	require.NoError(t, err, "should insert test data")
 
-	// Verify data exists
 	var count int
 	err = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM api_keys WHERE id = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'").Scan(&count)
 	require.NoError(t, err)
 	assert.Equal(t, 1, count, "should have inserted data")
 
-	// Clean database
 	err = CleanDatabase(ctx, suite.PostgresDSN())
 	require.NoError(t, err, "should clean database")
 
-	// Verify data is gone
 	err = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM api_keys WHERE id = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'").Scan(&count)
 	require.NoError(t, err)
 	assert.Equal(t, 0, count, "data should be cleaned up")
 }
 
-// TestParallelTestIsolation verifies that parallel tests don't interfere with each other.
 func TestParallelTestIsolation(t *testing.T) {
 	suite := GetSuite(t)
 
-	// These subtests run in parallel to verify isolation
 	t.Run("parallel_test_1", func(t *testing.T) {
 		t.Parallel()
 		suite.CleanupForTest(t)
@@ -147,7 +137,6 @@ func TestParallelTestIsolation(t *testing.T) {
 		`)
 		require.NoError(t, err)
 
-		// Small delay to allow other parallel tests to run
 		time.Sleep(100 * time.Millisecond)
 
 		var name string
@@ -171,7 +160,6 @@ func TestParallelTestIsolation(t *testing.T) {
 		`)
 		require.NoError(t, err)
 
-		// Small delay to allow other parallel tests to run
 		time.Sleep(100 * time.Millisecond)
 
 		var name string
@@ -181,28 +169,24 @@ func TestParallelTestIsolation(t *testing.T) {
 	})
 }
 
-// TestConfigHelpers verifies that config helper functions work correctly.
 func TestConfigHelpers(t *testing.T) {
 	suite := GetSuite(t)
 
 	t.Run("NewTestServerConfig", func(t *testing.T) {
 		cfg := NewTestServerConfig(suite.PostgresDSN(), suite.RedisAddr(), suite.NatsURL())
-		assert.Equal(t, suite.PostgresDSN(), cfg.Core.PostgresDSN)
-		assert.Equal(t, suite.RedisAddr(), cfg.Core.RedisAddr)
-		assert.Equal(t, suite.NatsURL(), cfg.Core.NatsURL)
-		assert.Equal(t, "debug", cfg.Core.LogLevel)
+		assert.Equal(t, suite.PostgresDSN(), cfg.Database.DSN)
+		assert.Equal(t, suite.RedisAddr(), cfg.Redis.Addr)
+		assert.Equal(t, suite.NatsURL(), cfg.NATS.URL)
+		assert.Equal(t, "debug", cfg.Observability.LogLevel)
 	})
 
 	t.Run("NewTestEndpointConfig", func(t *testing.T) {
 		cfg := NewTestEndpointConfig(suite.PostgresDSN(), suite.RedisAddr(), suite.NatsURL())
-		assert.Equal(t, suite.PostgresDSN(), cfg.Core.PostgresDSN)
-		assert.Equal(t, suite.RedisAddr(), cfg.Core.RedisAddr)
-		assert.Equal(t, suite.NatsURL(), cfg.Core.NatsURL)
+		assert.Equal(t, suite.NatsURL(), cfg.NATS.URL)
 		assert.Equal(t, "test-endpoint-1", cfg.ID)
 	})
 }
 
-// TestWaitForHealthy verifies the health check polling helper.
 func TestWaitForHealthy(t *testing.T) {
 	t.Run("succeeds when healthy immediately", func(t *testing.T) {
 		ctx := context.Background()

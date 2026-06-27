@@ -6,10 +6,10 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/beremaran/straw/internal/domain"
+	"github.com/beremaran/straw/internal/server/dto"
+	"github.com/beremaran/straw/internal/server/helper"
 	"github.com/google/uuid"
-	"github.com/kwilabs/straw-proxy-server/internal/domain"
-	"github.com/kwilabs/straw-proxy-server/internal/server/dto"
-	"github.com/labstack/echo/v4"
 )
 
 type RuleVersionManager interface {
@@ -28,36 +28,24 @@ func NewRoutingRuleHandler(repo domain.RoutingRuleRepository, versionMgr RuleVer
 	}
 }
 
-// HandleListRoutingRules lists all routing rules
-//
-//	@Summary		List Routing Rules
-//	@Description	Returns paginated list of all routing rules
-//	@Tags			routing-rules
-//	@Accept			json
-//	@Produce		json
-//	@Param			page	query		int	false	"Page number (default: 1)"
-//	@Param			limit	query		int	false	"Items per page (default: 20, max: 100)"
-//	@Success		200		{object}	dto.ListRoutingRulesResponse	"Paginated list of routing rules"
-//	@Failure		500		{object}	map[string]string		"Internal server error"
-//	@Security		AdminKeyAuth
-//	@Router			/rules [get]
-func (h *RoutingRuleHandler) HandleListRoutingRules(c echo.Context) error {
-	page, _ := strconv.Atoi(c.QueryParam("page"))
+func (h *RoutingRuleHandler) HandleListRoutingRules(w http.ResponseWriter, r *http.Request) {
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	if page < 1 {
 		page = 1
 	}
-	limit, _ := strconv.Atoi(c.QueryParam("limit"))
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	if limit < 1 || limit > 100 {
 		limit = 20
 	}
 	offset := (page - 1) * limit
 
-	rules, total, err := h.repo.ListRules(c.Request().Context(), limit, offset)
+	rules, total, err := h.repo.ListRules(r.Context(), limit, offset)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to list routing rules"})
+		helper.WriteError(w, http.StatusInternalServerError, "failed to list routing rules")
+		return
 	}
 
-	return c.JSON(http.StatusOK, dto.ListRoutingRulesResponse{
+	helper.WriteJSON(w, http.StatusOK, dto.ListRoutingRulesResponse{
 		Data:  dto.FromRoutingRules(rules),
 		Total: total,
 		Page:  page,
@@ -65,62 +53,42 @@ func (h *RoutingRuleHandler) HandleListRoutingRules(c echo.Context) error {
 	})
 }
 
-// HandleGetRoutingRule gets a specific routing rule
-//
-//	@Summary		Get Routing Rule
-//	@Description	Returns a specific routing rule by ID
-//	@Tags			routing-rules
-//	@Produce		json
-//	@Param			id	path		string	true	"Routing Rule ID"
-//	@Success		200	{object}	dto.RoutingRuleResponse	"Routing rule"
-//	@Failure		400	{object}	map[string]string	"ID required"
-//	@Failure		404	{object}	map[string]string	"Rule not found"
-//	@Failure		500	{object}	map[string]string	"Internal server error"
-//	@Security		AdminKeyAuth
-//	@Router			/rules/{id} [get]
-func (h *RoutingRuleHandler) HandleGetRoutingRule(c echo.Context) error {
-	id := c.Param("id")
+func (h *RoutingRuleHandler) HandleGetRoutingRule(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
 	if id == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "id is required"})
+		helper.WriteError(w, http.StatusBadRequest, "id is required")
+		return
 	}
 
-	rule, err := h.repo.GetRuleByID(c.Request().Context(), id)
+	rule, err := h.repo.GetRuleByID(r.Context(), id)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to get routing rule"})
+		helper.WriteError(w, http.StatusInternalServerError, "failed to get routing rule")
+		return
 	}
 	if rule == nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "routing rule not found"})
+		helper.WriteError(w, http.StatusNotFound, "routing rule not found")
+		return
 	}
 
-	return c.JSON(http.StatusOK, dto.FromRoutingRule(rule))
+	helper.WriteJSON(w, http.StatusOK, dto.FromRoutingRule(rule))
 }
 
-// HandleCreateRoutingRule creates a new routing rule
-//
-//	@Summary		Create Routing Rule
-//	@Description	Creates a new routing rule for request matching
-//	@Tags			routing-rules
-//	@Accept			json
-//	@Produce		json
-//	@Param			rule	body		dto.CreateRoutingRuleRequest	true	"Routing rule to create"
-//	@Success		201		{object}	dto.RoutingRuleResponse	"Created routing rule"
-//	@Failure		400		{object}	map[string]string	"Invalid request"
-//	@Failure		500		{object}	map[string]string	"Internal server error"
-//	@Security		AdminKeyAuth
-//	@Router			/rules [post]
-func (h *RoutingRuleHandler) HandleCreateRoutingRule(c echo.Context) error {
+func (h *RoutingRuleHandler) HandleCreateRoutingRule(w http.ResponseWriter, r *http.Request) {
 	var req dto.CreateRoutingRuleRequest
-	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	if err := helper.ReadJSON(r, &req); err != nil {
+		helper.WriteError(w, http.StatusBadRequest, "invalid request body")
+		return
 	}
 
 	if req.Name == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "name is required"})
+		helper.WriteError(w, http.StatusBadRequest, "name is required")
+		return
 	}
 
 	rule, err := req.ToDomain()
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		helper.WriteError(w, http.StatusBadRequest, err.Error())
+		return
 	}
 
 	rule.ID = uuid.New().String()
@@ -128,84 +96,63 @@ func (h *RoutingRuleHandler) HandleCreateRoutingRule(c echo.Context) error {
 	rule.UpdatedAt = time.Now()
 	rule.Version = 1
 
-	if err := h.repo.CreateRule(c.Request().Context(), rule); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to create routing rule"})
+	if err := h.repo.CreateRule(r.Context(), rule); err != nil {
+		helper.WriteError(w, http.StatusInternalServerError, "failed to create routing rule")
+		return
 	}
 
-	// Invalidate Cache
-	_, _ = h.versionMgr.IncrementRulesVersion(c.Request().Context())
+	_, _ = h.versionMgr.IncrementRulesVersion(r.Context())
 
-	return c.JSON(http.StatusCreated, dto.FromRoutingRule(rule))
+	helper.WriteJSON(w, http.StatusCreated, dto.FromRoutingRule(rule))
 }
 
-// HandleUpdateRoutingRule updates an existing routing rule
-//
-//	@Summary		Update Routing Rule
-//	@Description	Updates an existing routing rule by ID
-//	@Tags			routing-rules
-//	@Accept			json
-//	@Produce		json
-//	@Param			id		path		string				true	"Routing Rule ID"
-//	@Param			rule	body		dto.UpdateRoutingRuleRequest	true	"Updated routing rule"
-//	@Success		200		{object}	dto.RoutingRuleResponse	"Updated routing rule"
-//	@Failure		400		{object}	map[string]string	"Invalid request or ID mismatch"
-//	@Failure		500		{object}	map[string]string	"Internal server error"
-//	@Security		AdminKeyAuth
-//	@Router			/rules/{id} [put]
-func (h *RoutingRuleHandler) HandleUpdateRoutingRule(c echo.Context) error {
-	id := c.Param("id")
+func (h *RoutingRuleHandler) HandleUpdateRoutingRule(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
 	if id == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "id is required"})
+		helper.WriteError(w, http.StatusBadRequest, "id is required")
+		return
 	}
 
 	var req dto.UpdateRoutingRuleRequest
-	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	if err := helper.ReadJSON(r, &req); err != nil {
+		helper.WriteError(w, http.StatusBadRequest, "invalid request body")
+		return
 	}
 
 	rule, err := req.ToDomain()
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		helper.WriteError(w, http.StatusBadRequest, err.Error())
+		return
 	}
 
 	rule.ID = id
 	rule.UpdatedAt = time.Now()
 	rule.Version = req.Version
 
-	err = h.repo.UpdateRule(c.Request().Context(), rule)
+	err = h.repo.UpdateRule(r.Context(), rule)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		helper.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
 	}
 
-	// Invalidate Cache
-	_, _ = h.versionMgr.IncrementRulesVersion(c.Request().Context())
+	_, _ = h.versionMgr.IncrementRulesVersion(r.Context())
 
-	return c.JSON(http.StatusOK, dto.FromRoutingRule(rule))
+	helper.WriteJSON(w, http.StatusOK, dto.FromRoutingRule(rule))
 }
 
-// HandleDeleteRoutingRule deletes a routing rule
-//
-//	@Summary		Delete Routing Rule
-//	@Description	Deletes a routing rule by ID
-//	@Tags			routing-rules
-//	@Param			id	path		string	true	"Routing Rule ID"
-//	@Success		204	"Rule deleted successfully"
-//	@Failure		400	{object}	map[string]string	"ID required"
-//	@Failure		500	{object}	map[string]string	"Internal server error"
-//	@Security		AdminKeyAuth
-//	@Router			/rules/{id} [delete]
-func (h *RoutingRuleHandler) HandleDeleteRoutingRule(c echo.Context) error {
-	id := c.Param("id")
+func (h *RoutingRuleHandler) HandleDeleteRoutingRule(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
 	if id == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "id is required"})
+		helper.WriteError(w, http.StatusBadRequest, "id is required")
+		return
 	}
 
-	if err := h.repo.DeleteRule(c.Request().Context(), id); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to delete routing rule"})
+	if err := h.repo.DeleteRule(r.Context(), id); err != nil {
+		helper.WriteError(w, http.StatusInternalServerError, "failed to delete routing rule")
+		return
 	}
 
-	// Invalidate Cache
-	_, _ = h.versionMgr.IncrementRulesVersion(c.Request().Context())
+	_, _ = h.versionMgr.IncrementRulesVersion(r.Context())
 
-	return c.NoContent(http.StatusNoContent)
+	w.WriteHeader(http.StatusNoContent)
 }

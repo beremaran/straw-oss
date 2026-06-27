@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kwilabs/straw-proxy-server/internal/endpoint/fingerprint"
-	"github.com/kwilabs/straw-proxy-server/pkg/protocol"
+	"github.com/beremaran/straw/internal/endpoint/fingerprint"
+	"github.com/beremaran/straw/pkg/protocol"
 )
 
 func TestBuildRequest_Basic(t *testing.T) {
@@ -116,12 +116,10 @@ func TestBuildRequest_AppliesFingerprintHeaders(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Check that fingerprint-specific headers are set
 	if preset.UserAgent != "" && fhttpReq.Header.Get("User-Agent") != preset.UserAgent {
 		t.Errorf("expected User-Agent %q, got %q", preset.UserAgent, fhttpReq.Header.Get("User-Agent"))
 	}
 
-	// Check default browser headers
 	if fhttpReq.Header.Get("Accept") == "" {
 		t.Error("expected Accept header to be set")
 	}
@@ -154,7 +152,6 @@ func TestBuildRequest_DoesNotOverrideExistingHeaders(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Custom headers should not be overridden
 	if fhttpReq.Header.Get("User-Agent") != "Custom-Agent" {
 		t.Errorf("expected User-Agent 'Custom-Agent', got %q", fhttpReq.Header.Get("User-Agent"))
 	}
@@ -182,7 +179,6 @@ func TestBuildRequest_WithContext(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Verify context is attached
 	if fhttpReq.Context() != ctx {
 		t.Error("expected request to have the provided context")
 	}
@@ -210,7 +206,6 @@ func TestApplyHeaderOrder(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Verify HeaderOrderKey is set
 	if len(fhttpReq.Header) == 0 {
 		t.Error("expected headers to be set")
 	}
@@ -223,7 +218,6 @@ func TestHeadersToProtocol(t *testing.T) {
 
 	result := HeadersToProtocol(fhttpHeaders)
 
-	// Check that headers are converted
 	foundContentType := false
 	customCount := 0
 	for _, h := range result {

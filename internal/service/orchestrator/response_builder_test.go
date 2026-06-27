@@ -6,8 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kwilabs/straw-proxy-server/pkg/protocol"
-	"github.com/labstack/echo/v4"
+	"github.com/beremaran/straw/pkg/protocol"
 )
 
 func TestResponseBuilder_New(t *testing.T) {
@@ -23,10 +22,7 @@ func TestResponseBuilder_New(t *testing.T) {
 }
 
 func TestResponseBuilder_WriteResponse_Success(t *testing.T) {
-	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
 
 	rb := NewResponseBuilder()
 
@@ -46,22 +42,21 @@ func TestResponseBuilder_WriteResponse_Success(t *testing.T) {
 		EndpointID: "ep-001",
 	}
 
-	err := rb.WriteResponse(c, result, meta)
+	rec.Header().Set("X-Request-ID", "test-123")
+
+	err := rb.WriteResponse(rec, result, meta)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Check status code
 	if rec.Code != 200 {
 		t.Errorf("expected status code 200, got %d", rec.Code)
 	}
 
-	// Check headers were copied
 	if rec.Header().Get("X-Custom-Header") != "custom-value" {
 		t.Errorf("expected X-Custom-Header 'custom-value', got %q", rec.Header().Get("X-Custom-Header"))
 	}
 
-	// Check relay headers
 	if rec.Header().Get("X-Relay-Retries") != "2" {
 		t.Errorf("expected X-Relay-Retries '2', got %q", rec.Header().Get("X-Relay-Retries"))
 	}
@@ -76,10 +71,7 @@ func TestResponseBuilder_WriteResponse_Success(t *testing.T) {
 }
 
 func TestResponseBuilder_WriteResponse_FilteredHeaders(t *testing.T) {
-	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
 
 	rb := NewResponseBuilder()
 
@@ -88,19 +80,18 @@ func TestResponseBuilder_WriteResponse_FilteredHeaders(t *testing.T) {
 		StatusCode: 200,
 		Headers: protocol.HeaderMap{
 			{Key: "Content-Type", Value: "application/json"},
-			{Key: "Connection", Value: "keep-alive"},     // Should be filtered
-			{Key: "Transfer-Encoding", Value: "chunked"}, // Should be filtered
+			{Key: "Connection", Value: "keep-alive"},
+			{Key: "Transfer-Encoding", Value: "chunked"},
 			{Key: "X-Custom-Header", Value: "should-be-copied"},
 		},
 		CompressedBody: []byte(`{}`),
 	}
 
-	err := rb.WriteResponse(c, result, nil)
+	err := rb.WriteResponse(rec, result, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Check filtered headers are not present
 	if rec.Header().Get("Connection") != "" {
 		t.Error("Connection header should be filtered")
 	}
@@ -109,17 +100,13 @@ func TestResponseBuilder_WriteResponse_FilteredHeaders(t *testing.T) {
 		t.Error("Transfer-Encoding header should be filtered")
 	}
 
-	// Check non-filtered headers are present
 	if rec.Header().Get("X-Custom-Header") != "should-be-copied" {
 		t.Error("X-Custom-Header should be copied")
 	}
 }
 
 func TestResponseBuilder_WriteResponse_SessionHeaders(t *testing.T) {
-	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
 
 	rb := NewResponseBuilder()
 
@@ -135,7 +122,7 @@ func TestResponseBuilder_WriteResponse_SessionHeaders(t *testing.T) {
 		MigrateCount: 2,
 	}
 
-	err := rb.WriteResponse(c, result, meta)
+	err := rb.WriteResponse(rec, result, meta)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -154,10 +141,7 @@ func TestResponseBuilder_WriteResponse_SessionHeaders(t *testing.T) {
 }
 
 func TestResponseBuilder_WriteResponse_TimingHeader(t *testing.T) {
-	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
 
 	rb := NewResponseBuilder()
 
@@ -173,7 +157,7 @@ func TestResponseBuilder_WriteResponse_TimingHeader(t *testing.T) {
 		},
 	}
 
-	err := rb.WriteResponse(c, result, meta)
+	err := rb.WriteResponse(rec, result, meta)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -185,21 +169,17 @@ func TestResponseBuilder_WriteResponse_TimingHeader(t *testing.T) {
 }
 
 func TestResponseBuilder_WriteResponse_DefaultStatusCode(t *testing.T) {
-	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
 
 	rb := NewResponseBuilder()
 
-	// No status code set, should default to 200
 	result := &ResultMessage{
 		RequestID:      "test-123",
 		StatusCode:     0,
 		CompressedBody: []byte(`{}`),
 	}
 
-	err := rb.WriteResponse(c, result, nil)
+	err := rb.WriteResponse(rec, result, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -210,10 +190,7 @@ func TestResponseBuilder_WriteResponse_DefaultStatusCode(t *testing.T) {
 }
 
 func TestResponseBuilder_WriteResponse_ErrorResponse(t *testing.T) {
-	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
 
 	rb := NewResponseBuilder()
 
@@ -227,7 +204,7 @@ func TestResponseBuilder_WriteResponse_ErrorResponse(t *testing.T) {
 		},
 	}
 
-	err := rb.WriteResponse(c, result, nil)
+	err := rb.WriteResponse(rec, result, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -236,7 +213,6 @@ func TestResponseBuilder_WriteResponse_ErrorResponse(t *testing.T) {
 		t.Errorf("expected status code 502, got %d", rec.Code)
 	}
 
-	// Body should be JSON error
 	body := rec.Body.String()
 	if body == "" {
 		t.Error("expected error response body")
@@ -244,12 +220,9 @@ func TestResponseBuilder_WriteResponse_ErrorResponse(t *testing.T) {
 }
 
 func TestWriteTimeoutResponse(t *testing.T) {
-	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
 
-	err := WriteTimeoutResponse(c, "req-timeout-123")
+	err := WriteTimeoutResponse(rec, "req-timeout-123")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -355,7 +328,6 @@ func TestFormatAttemptErrors(t *testing.T) {
 		t.Fatalf("expected 2 summaries, got %d", len(summaries))
 	}
 
-	// Check first summary
 	if summaries[0].Pool != 1 {
 		t.Errorf("expected pool 1, got %d", summaries[0].Pool)
 	}
@@ -368,7 +340,7 @@ func TestFormatAttemptErrors(t *testing.T) {
 	if summaries[0].Failure != "timeout" {
 		t.Errorf("expected failure 'timeout', got %q", summaries[0].Failure)
 	}
-	// Message should be truncated to 50 chars
+
 	if len(summaries[0].Message) > 50 {
 		t.Errorf("message should be truncated to 50 chars, got %d", len(summaries[0].Message))
 	}
@@ -419,10 +391,7 @@ func TestFormatTiming(t *testing.T) {
 }
 
 func TestResponseBuilder_WriteResponse_RetryAfter(t *testing.T) {
-	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
 
 	rb := NewResponseBuilder()
 
@@ -437,18 +406,16 @@ func TestResponseBuilder_WriteResponse_RetryAfter(t *testing.T) {
 		},
 	}
 
-	err := rb.WriteResponse(c, result, nil)
+	err := rb.WriteResponse(rec, result, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Check Retry-After header
 	retryAfter := rec.Header().Get("Retry-After")
 	if retryAfter != "60" {
 		t.Errorf("expected Retry-After '60', got %q", retryAfter)
 	}
 
-	// Check response body contains retry_after_seconds
 	body := rec.Body.String()
 	if !contains(body, "retry_after_seconds") {
 		t.Error("expected response body to contain retry_after_seconds")
@@ -456,10 +423,7 @@ func TestResponseBuilder_WriteResponse_RetryAfter(t *testing.T) {
 }
 
 func TestResponseBuilder_WriteResponse_AttemptErrors(t *testing.T) {
-	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
 
 	rb := NewResponseBuilder()
 
@@ -490,12 +454,11 @@ func TestResponseBuilder_WriteResponse_AttemptErrors(t *testing.T) {
 		},
 	}
 
-	err := rb.WriteResponse(c, result, meta)
+	err := rb.WriteResponse(rec, result, meta)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Check X-Relay-Attempt-Errors header
 	attemptErrors := rec.Header().Get("X-Relay-Attempt-Errors")
 	if attemptErrors == "" {
 		t.Error("expected X-Relay-Attempt-Errors header to be set")
@@ -503,14 +466,10 @@ func TestResponseBuilder_WriteResponse_AttemptErrors(t *testing.T) {
 }
 
 func TestResponseBuilder_WriteResponse_DefaultStatusCodeWithError(t *testing.T) {
-	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
 
 	rb := NewResponseBuilder()
 
-	// No status code set, but has error - should default to 502
 	result := &ResultMessage{
 		RequestID:  "test-123",
 		StatusCode: 0,
@@ -521,7 +480,7 @@ func TestResponseBuilder_WriteResponse_DefaultStatusCodeWithError(t *testing.T) 
 		},
 	}
 
-	err := rb.WriteResponse(c, result, nil)
+	err := rb.WriteResponse(rec, result, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -532,10 +491,7 @@ func TestResponseBuilder_WriteResponse_DefaultStatusCodeWithError(t *testing.T) 
 }
 
 func TestResponseBuilder_WriteResponse_NilMetadata(t *testing.T) {
-	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
 
 	rb := NewResponseBuilder()
 
@@ -545,22 +501,18 @@ func TestResponseBuilder_WriteResponse_NilMetadata(t *testing.T) {
 		CompressedBody: []byte(`{"test": true}`),
 	}
 
-	err := rb.WriteResponse(c, result, nil)
+	err := rb.WriteResponse(rec, result, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Should not crash and should write response
 	if rec.Code != 200 {
 		t.Errorf("expected status code 200, got %d", rec.Code)
 	}
 }
 
 func TestResponseBuilder_WriteResponse_AllRelayHeaders(t *testing.T) {
-	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
 
 	rb := NewResponseBuilder()
 
@@ -570,7 +522,6 @@ func TestResponseBuilder_WriteResponse_AllRelayHeaders(t *testing.T) {
 		CompressedBody: []byte(`{}`),
 	}
 
-	// Include all relay metadata fields
 	meta := &RelayMetadata{
 		Retries:      3,
 		Pool:         "primary",
@@ -594,12 +545,11 @@ func TestResponseBuilder_WriteResponse_AllRelayHeaders(t *testing.T) {
 		},
 	}
 
-	err := rb.WriteResponse(c, result, meta)
+	err := rb.WriteResponse(rec, result, meta)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Verify all headers are set
 	if rec.Header().Get("X-Relay-Retries") != "3" {
 		t.Error("expected X-Relay-Retries header")
 	}
@@ -634,20 +584,17 @@ func TestResponseBuilder_WriteResponse_AllRelayHeaders(t *testing.T) {
 }
 
 func TestResponseBuilder_WriteResponse_EmptyBody(t *testing.T) {
-	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
 
 	rb := NewResponseBuilder()
 
 	result := &ResultMessage{
 		RequestID:      "test-123",
-		StatusCode:     204, // No content
+		StatusCode:     204,
 		CompressedBody: []byte{},
 	}
 
-	err := rb.WriteResponse(c, result, nil)
+	err := rb.WriteResponse(rec, result, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -662,10 +609,7 @@ func TestResponseBuilder_WriteResponse_EmptyBody(t *testing.T) {
 }
 
 func TestResponseBuilder_WriteResponse_ErrorWithoutRetryAfter(t *testing.T) {
-	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
 
 	rb := NewResponseBuilder()
 
@@ -676,28 +620,24 @@ func TestResponseBuilder_WriteResponse_ErrorWithoutRetryAfter(t *testing.T) {
 			Code:      protocol.ErrCodeUpstreamError,
 			Message:   "server error",
 			Retryable: true,
-			// No RetryAfter set
 		},
 	}
 
-	err := rb.WriteResponse(c, result, nil)
+	err := rb.WriteResponse(rec, result, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Retry-After header should not be set
 	if rec.Header().Get("Retry-After") != "" {
 		t.Error("expected no Retry-After header")
 	}
 
-	// Body should not contain retry_after_seconds
 	body := rec.Body.String()
 	if contains(body, "retry_after_seconds") {
 		t.Error("expected no retry_after_seconds in body")
 	}
 }
 
-// Helper function for string contains check
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
 		(len(s) > 0 && findSubstring(s, substr)))

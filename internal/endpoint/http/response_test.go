@@ -7,9 +7,9 @@ import (
 	"testing"
 
 	"github.com/andybalholm/brotli"
-	fhttp "github.com/useflyent/fhttp"
+	fhttp "github.com/bogdanfinn/fhttp"
 
-	"github.com/kwilabs/straw-proxy-server/pkg/protocol"
+	"github.com/beremaran/straw/pkg/protocol"
 )
 
 type nopCloser struct {
@@ -63,7 +63,7 @@ func TestBuildResponse_Basic(t *testing.T) {
 }
 
 func TestBuildResponse_GzipDecompression(t *testing.T) {
-	// Create gzipped content
+
 	var buf bytes.Buffer
 	gzWriter := gzip.NewWriter(&buf)
 	gzWriter.Write([]byte("Gzipped content"))
@@ -90,7 +90,7 @@ func TestBuildResponse_GzipDecompression(t *testing.T) {
 }
 
 func TestBuildResponse_BrotliDecompression(t *testing.T) {
-	// Create brotli-compressed content
+
 	var buf bytes.Buffer
 	brWriter := brotli.NewWriter(&buf)
 	brWriter.Write([]byte("Brotli content"))
@@ -178,7 +178,7 @@ func TestBuildResponse_NilBody(t *testing.T) {
 }
 
 func TestBuildResponse_LargeBody(t *testing.T) {
-	// Create a body larger than max size
+
 	maxSize := int64(100)
 	largeBody := bytes.Repeat([]byte("x"), 200)
 
@@ -194,7 +194,6 @@ func TestBuildResponse_LargeBody(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Body should be truncated to max size
 	if int64(len(protoResp.Body)) != maxSize {
 		t.Errorf("expected body to be truncated to %d bytes, got %d", maxSize, len(protoResp.Body))
 	}
@@ -218,7 +217,6 @@ func TestBuildResponse_HeadersPreserved(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Check that headers are preserved
 	if protoResp.Headers.Get("Content-Type") != "application/json" {
 		t.Errorf("expected Content-Type 'application/json', got %s", protoResp.Headers.Get("Content-Type"))
 	}
@@ -379,7 +377,6 @@ func TestBuildResponseWithOptions_StreamingResponse(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Verify streaming response properties
 	if !protoResp.IsStreaming {
 		t.Error("expected IsStreaming to be true")
 	}
@@ -426,7 +423,6 @@ func TestBuildResponseWithOptions_BufferedResponse(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Verify buffered response properties
 	if protoResp.IsStreaming {
 		t.Error("expected IsStreaming to be false")
 	}
@@ -437,7 +433,7 @@ func TestBuildResponseWithOptions_BufferedResponse(t *testing.T) {
 }
 
 func TestBuildResponseWithOptions_CustomMaxBodySize(t *testing.T) {
-	// Create a body larger than our custom max size
+
 	customMaxSize := int64(10)
 	largeBody := bytes.Repeat([]byte("x"), 50)
 
@@ -458,7 +454,6 @@ func TestBuildResponseWithOptions_CustomMaxBodySize(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Body should be truncated to custom max size
 	if int64(len(protoResp.Body)) != customMaxSize {
 		t.Errorf("expected body to be truncated to %d bytes, got %d", customMaxSize, len(protoResp.Body))
 	}
@@ -474,7 +469,7 @@ func TestBuildResponseWithOptions_DefaultMaxBodySize(t *testing.T) {
 
 	timing := protocol.TimingInfo{Total: 50}
 	opts := ResponseOptions{
-		MaxBodySize:    0, // Should use default
+		MaxBodySize:    0,
 		StreamResponse: false,
 	}
 
@@ -483,7 +478,6 @@ func TestBuildResponseWithOptions_DefaultMaxBodySize(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Body should be fully read with default max size
 	if string(protoResp.Body) != "Small content" {
 		t.Errorf("expected body 'Small content', got %s", string(protoResp.Body))
 	}

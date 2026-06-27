@@ -1,5 +1,3 @@
-// Package http provides an HTTP client wrapper for the Endpoint that integrates
-// TLS fingerprinting and proper header ordering using the fhttp library.
 package http
 
 import (
@@ -10,70 +8,68 @@ import (
 	"net"
 	"net/http/httptrace"
 	"net/url"
+	"sync"
 	"time"
 
-	fhttp "github.com/useflyent/fhttp"
+	fhttp "github.com/bogdanfinn/fhttp"
+	tls_client "github.com/bogdanfinn/tls-client"
+	"github.com/bogdanfinn/tls-client/profiles"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
 
-	"github.com/kwilabs/straw-proxy-server/internal/endpoint/fingerprint"
-	"github.com/kwilabs/straw-proxy-server/internal/endpoint/metrics"
-	"github.com/kwilabs/straw-proxy-server/pkg/protocol"
+	"github.com/beremaran/straw/internal/endpoint/fingerprint"
+	"github.com/beremaran/straw/internal/endpoint/metrics"
+	"github.com/beremaran/straw/pkg/protocol"
 )
 
-// DefaultTimeout is the default request timeout if not specified.
 const DefaultTimeout = 30 * time.Second
 
-// DefaultMaxBodySize is the maximum response body size (10MB).
 const DefaultMaxBodySize = 10 * 1024 * 1024
 
-// TransportProvider defines the interface for obtaining a transport for a specific host and fingerprint.
 type TransportProvider interface {
 	GetTransport(host string, preset fingerprint.Preset) *fhttp.Transport
 }
 
-// Client wraps fhttp.Client with fingerprint integration and proper header ordering.
 type Client struct {
 	registry          *fingerprint.Registry
 	transportProvider TransportProvider
 	defaultTimeout    time.Duration
 	maxBodySize       int64
 	endpointID        string
+
+	mu         sync.Mutex
+	tlsClients map[string]tls_client.HttpClient
 }
 
-// ClientOption is a functional option for configuring the Client.
 type ClientOption func(*Client)
 
-// WithDefaultTimeout sets the default request timeout.
 func WithDefaultTimeout(d time.Duration) ClientOption {
 	return func(c *Client) {
 		c.defaultTimeout = d
 	}
 }
 
-// WithMaxBodySize sets the maximum response body size.
 func WithMaxBodySize(size int64) ClientOption {
 	return func(c *Client) {
 		c.maxBodySize = size
 	}
 }
 
-// WithEndpointID sets the endpoint ID for response metadata.
 func WithEndpointID(id string) ClientOption {
 	return func(c *Client) {
 		c.endpointID = id
 	}
 }
 
-// NewClient creates a new HTTP client with fingerprint integration.
 func NewClient(registry *fingerprint.Registry, transportProvider TransportProvider, opts ...ClientOption) *Client {
 	c := &Client{
 		registry:          registry,
 		transportProvider: transportProvider,
 		defaultTimeout:    DefaultTimeout,
 		maxBodySize:       DefaultMaxBodySize,
+		tlsClients:        make(map[string]tls_client.HttpClient),
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -81,15 +77,68 @@ func NewClient(registry *fingerprint.Registry, transportProvider TransportProvid
 	return c
 }
 
-// Do executes an HTTP request with the specified fingerprint and returns the response.
+type dummyCookieJar struct{}
+
+func (d *dummyCookieJar) SetCookies(u *url.URL, cookies []*fhttp.Cookie) {}
+func (d *dummyCookieJar) Cookies(u *url.URL) []*fhttp.Cookie             { return nil }
+
+var presetProfiles = map[string]profiles.ClientProfile{
+	"chrome-133":  profiles.Chrome_133,
+	"chrome-131":  profiles.Chrome_131,
+	"chrome-129":  profiles.Chrome_120,
+	"firefox-133": profiles.Firefox_133,
+	"firefox-120": profiles.Firefox_120,
+	"safari-18":   profiles.Safari_IOS_18_0,
+	"safari-17":   profiles.Safari_IOS_17_0,
+	"edge-130":    profiles.Chrome_133,
+	"edge-106":    profiles.Chrome_106,
+}
+
+func mapPresetToProfile(presetID string) (profiles.ClientProfile, bool) {
+	profile, ok := presetProfiles[presetID]
+	if !ok {
+		return profiles.Chrome_133, false
+	}
+	return profile, true
+}
+
+func (c *Client) getTLSClient(presetID string, timeout time.Duration, dialContext func(ctx context.Context, network, addr string) (net.Conn, error)) (tls_client.HttpClient, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	key := fmt.Sprintf("%s_%s_%p", presetID, timeout, dialContext)
+	if client, ok := c.tlsClients[key]; ok {
+		return client, nil
+	}
+
+	profile, _ := mapPresetToProfile(presetID)
+
+	options := []tls_client.HttpClientOption{
+		tls_client.WithClientProfile(profile),
+		tls_client.WithTimeoutSeconds(int(timeout.Seconds())),
+		tls_client.WithCookieJar(&dummyCookieJar{}),
+	}
+
+	if dialContext != nil {
+		options = append(options, tls_client.WithDialContext(dialContext))
+	}
+
+	client, err := tls_client.NewHttpClient(tls_client.NewNoopLogger(), options...)
+	if err != nil {
+		return nil, err
+	}
+
+	c.tlsClients[key] = client
+	return client, nil
+}
+
 func (c *Client) Do(ctx context.Context, req *protocol.Request) (*protocol.Response, error) {
-	// Start tracing span
+
 	ctx, span := otel.Tracer("internal/endpoint/http").Start(ctx, "upstream.request")
 	defer span.End()
 
 	startTime := time.Now()
 
-	// Capture connection info
 	var reusedConn bool
 	traceCtx := httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
 		GotConn: func(info httptrace.GotConnInfo) {
@@ -97,19 +146,17 @@ func (c *Client) Do(ctx context.Context, req *protocol.Request) (*protocol.Respo
 		},
 	})
 
-	// Add initial attributes
 	span.SetAttributes(
 		semconv.HTTPRequestMethodKey.String(req.Method),
 		semconv.URLFullKey.String(req.URL),
 		attribute.String("endpoint.tls_fingerprint", req.Fingerprint),
 	)
 
-	// Get fingerprint preset
 	preset, ok := c.registry.Get(req.Fingerprint)
 	if ok {
 		metrics.TLSFingerprintUsed.WithLabelValues(req.Fingerprint).Inc()
 	} else {
-		// Fall back to default chrome preset if fingerprint not found
+
 		preset, ok = c.registry.Get("chrome-133")
 		if !ok {
 			err := &ClientError{
@@ -122,7 +169,6 @@ func (c *Client) Do(ctx context.Context, req *protocol.Request) (*protocol.Respo
 		}
 	}
 
-	// Build fhttp request
 	fhttpReq, err := BuildRequest(traceCtx, req, preset)
 	if err != nil {
 		span.RecordError(err)
@@ -130,30 +176,33 @@ func (c *Client) Do(ctx context.Context, req *protocol.Request) (*protocol.Respo
 		return nil, err
 	}
 
-	// Extract host for connection pooling
 	host := fhttpReq.URL.Host
 	if host == "" {
-		// Fallback if URL is incomplete but normally BuildRequest handles this
+
 		if u, err := url.Parse(req.URL); err == nil {
 			host = u.Host
 		}
 	}
 	span.SetAttributes(semconv.ServerAddressKey.String(host))
 
-	// Get transport via provider
-	transport := c.transportProvider.GetTransport(host, preset)
-
-	// Create client with transport
-	client := &fhttp.Client{
-		Transport: transport,
-		Timeout:   c.getTimeout(req),
+	var dialContext func(ctx context.Context, network, addr string) (net.Conn, error)
+	if c.transportProvider != nil {
+		if t := c.transportProvider.GetTransport(host, preset); t != nil {
+			dialContext = t.DialContext
+		}
 	}
 
-	// Execute request
+	timeout := c.getTimeout(req)
+	client, err := c.getTLSClient(preset.ID, timeout, dialContext)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "failed to get tls client: "+err.Error())
+		return nil, err
+	}
+
 	var timing protocol.TimingInfo
 	resp, err := client.Do(fhttpReq)
 
-	// Record connection reuse (captured by trace hook during Do)
 	span.SetAttributes(attribute.Bool("endpoint.connection_reused", reusedConn))
 
 	if err != nil {
@@ -177,23 +226,20 @@ func (c *Client) Do(ctx context.Context, req *protocol.Request) (*protocol.Respo
 
 	timing.Total = time.Since(startTime)
 
-	// Record response attributes
 	span.SetAttributes(
 		semconv.HTTPResponseStatusCodeKey.Int(resp.StatusCode),
 	)
 
-	// Build protocol response with streaming options from request
 	opts := ResponseOptions{
 		MaxBodySize:    c.maxBodySize,
 		StreamResponse: req.StreamResponse,
 	}
-	// Override max body size if request specifies one
+
 	if req.MaxResponseSize > 0 {
 		opts.MaxBodySize = req.MaxResponseSize
 	}
 	protocolResp, err := BuildResponseWithOptions(req.ID, resp, timing, opts, c.endpointID, req.SessionID)
 
-	// Record metrics
 	status := "unknown"
 	if err == nil {
 		status = fmt.Sprintf("%d", protocolResp.StatusCode)
@@ -206,7 +252,6 @@ func (c *Client) Do(ctx context.Context, req *protocol.Request) (*protocol.Respo
 	return protocolResp, err
 }
 
-// getTimeout returns the timeout for the request.
 func (c *Client) getTimeout(req *protocol.Request) time.Duration {
 	if req.Timeout > 0 {
 		return req.Timeout
@@ -214,13 +259,11 @@ func (c *Client) getTimeout(req *protocol.Request) time.Duration {
 	return c.defaultTimeout
 }
 
-// isRetryableError determines if an error is retryable.
 func isRetryableError(err error) bool {
 	if err == nil {
 		return false
 	}
 
-	// Check for network errors
 	var netErr net.Error
 	if errors.As(err, &netErr) {
 		return netErr.Timeout() || netErr.Temporary()
@@ -229,7 +272,6 @@ func isRetryableError(err error) bool {
 	return false
 }
 
-// ClientError represents an HTTP client error.
 type ClientError struct {
 	Code    string
 	Message string
@@ -239,15 +281,16 @@ func (e *ClientError) Error() string {
 	return e.Code + ": " + e.Message
 }
 
-// Close cleans up client resources.
-// Note: PooledTransport should be closed separately as it is injected.
 func (c *Client) Close() error {
-	// Nothing to close here anymore as transport is managed externally
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, client := range c.tlsClients {
+		client.CloseIdleConnections()
+	}
+	c.tlsClients = make(map[string]tls_client.HttpClient)
 	return nil
 }
 
-// NewRequest creates a new protocol.Request with the given parameters.
-// This is a convenience function for testing and simple use cases.
 func NewRequest(method, url string, body []byte) *protocol.Request {
 	return &protocol.Request{
 		ID:      generateRequestID(),
@@ -258,10 +301,8 @@ func NewRequest(method, url string, body []byte) *protocol.Request {
 	}
 }
 
-// generateRequestID generates a unique request ID.
 func generateRequestID() string {
 	return time.Now().Format("20060102150405.000000000")
 }
 
-// ensure bytes import is used
 var _ = bytes.Buffer{}

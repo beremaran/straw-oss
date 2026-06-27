@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/kwilabs/straw-proxy-server/internal/domain"
-	"github.com/kwilabs/straw-proxy-server/internal/infra/redis"
+	"github.com/beremaran/straw/internal/domain"
+	"github.com/beremaran/straw/internal/infra/redis"
 	goredis "github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -33,21 +33,18 @@ func TestAuthCache_KeyOperations(t *testing.T) {
 
 	keyHash := "some-hash"
 	apiKey := &domain.ApiKey{
-		ID:      "test-id",
+		ID:        "test-id",
 		TokenHash: "test-hash",
-		Scopes:  []string{"read"},
+		Scopes:    []string{"read"},
 	}
 
-	// Get - Miss
 	got, err := cache.GetKey(ctx, keyHash)
 	assert.NoError(t, err)
 	assert.Nil(t, got)
 
-	// Set
 	err = cache.SetKey(ctx, keyHash, apiKey)
 	assert.NoError(t, err)
 
-	// Get - Hit
 	got, err = cache.GetKey(ctx, keyHash)
 	assert.NoError(t, err)
 	assert.NotNil(t, got)
@@ -57,29 +54,25 @@ func TestAuthCache_KeyOperations(t *testing.T) {
 
 func TestAuthCache_TTLExpiration(t *testing.T) {
 	client, mr := newTestRedis(t)
-	cache := NewAuthCache(client, 100*time.Millisecond) // Short TTL for testing
+	cache := NewAuthCache(client, 100*time.Millisecond)
 	ctx := context.Background()
 
 	keyHash := "ttl-hash"
 	apiKey := &domain.ApiKey{
-		ID:      "test-id",
+		ID:        "test-id",
 		TokenHash: "test-hash",
-		Scopes:  []string{"read"},
+		Scopes:    []string{"read"},
 	}
 
-	// Set key
 	err := cache.SetKey(ctx, keyHash, apiKey)
 	assert.NoError(t, err)
 
-	// Get immediately - should be present
 	got, err := cache.GetKey(ctx, keyHash)
 	assert.NoError(t, err)
 	assert.NotNil(t, got)
 
-	// Fast forward time to expire the key
 	mr.FastForward(150 * time.Millisecond)
 
-	// Get after expiration - should be nil (cache miss)
 	got, err = cache.GetKey(ctx, keyHash)
 	assert.NoError(t, err)
 	assert.Nil(t, got)
@@ -92,25 +85,21 @@ func TestAuthCache_InvalidateKey(t *testing.T) {
 
 	keyHash := "invalidate-hash"
 	apiKey := &domain.ApiKey{
-		ID:      "test-id",
+		ID:        "test-id",
 		TokenHash: "test-hash",
-		Scopes:  []string{"read"},
+		Scopes:    []string{"read"},
 	}
 
-	// Set key
 	err := cache.SetKey(ctx, keyHash, apiKey)
 	assert.NoError(t, err)
 
-	// Verify it's there
 	got, err := cache.GetKey(ctx, keyHash)
 	assert.NoError(t, err)
 	assert.NotNil(t, got)
 
-	// Invalidate key
 	err = cache.InvalidateKey(ctx, keyHash)
 	assert.NoError(t, err)
 
-	// Verify it's gone
 	got, err = cache.GetKey(ctx, keyHash)
 	assert.NoError(t, err)
 	assert.Nil(t, got)
@@ -121,7 +110,6 @@ func TestAuthCache_InvalidateNonExistentKey(t *testing.T) {
 	cache := NewAuthCache(client, time.Minute)
 	ctx := context.Background()
 
-	// Try to invalidate a key that doesn't exist - should not error
 	err := cache.InvalidateKey(ctx, "nonexistent-hash")
 	assert.NoError(t, err)
 }
@@ -133,30 +121,26 @@ func TestAuthCache_OverwriteExistingKey(t *testing.T) {
 
 	keyHash := "overwrite-hash"
 	oldKey := &domain.ApiKey{
-		ID:      "old-id",
+		ID:        "old-id",
 		TokenHash: "old-hash",
-		Scopes:  []string{"read"},
+		Scopes:    []string{"read"},
 	}
 	newKey := &domain.ApiKey{
-		ID:      "new-id",
+		ID:        "new-id",
 		TokenHash: "new-hash",
-		Scopes:  []string{"write"},
+		Scopes:    []string{"write"},
 	}
 
-	// Set old key
 	err := cache.SetKey(ctx, keyHash, oldKey)
 	assert.NoError(t, err)
 
-	// Verify old key
 	got, err := cache.GetKey(ctx, keyHash)
 	assert.NoError(t, err)
 	assert.Equal(t, "old-id", got.ID)
 
-	// Overwrite with new key
 	err = cache.SetKey(ctx, keyHash, newKey)
 	assert.NoError(t, err)
 
-	// Verify new key
 	got, err = cache.GetKey(ctx, keyHash)
 	assert.NoError(t, err)
 	assert.Equal(t, "new-id", got.ID)
@@ -174,13 +158,11 @@ func TestAuthCache_MultipleKeys(t *testing.T) {
 		"hash3": {ID: "key3", TokenHash: "hash3", Scopes: []string{"admin"}},
 	}
 
-	// Set all keys
 	for hash, key := range keys {
 		err := cache.SetKey(ctx, hash, key)
 		assert.NoError(t, err)
 	}
 
-	// Get all keys
 	for hash, expectedKey := range keys {
 		got, err := cache.GetKey(ctx, hash)
 		assert.NoError(t, err)
@@ -189,11 +171,9 @@ func TestAuthCache_MultipleKeys(t *testing.T) {
 		assert.Equal(t, expectedKey.Scopes, got.Scopes)
 	}
 
-	// Invalidate one key
 	err := cache.InvalidateKey(ctx, "hash2")
 	assert.NoError(t, err)
 
-	// Verify hash2 is gone but others remain
 	got, err := cache.GetKey(ctx, "hash2")
 	assert.NoError(t, err)
 	assert.Nil(t, got)
@@ -209,10 +189,8 @@ func TestAuthCache_GetKey_Error(t *testing.T) {
 	cache := NewAuthCache(client, time.Minute)
 	ctx := context.Background()
 
-	// Close the miniredis to simulate a connection error
 	mr.Close()
 
-	// Try to get a key - should return an error
 	_, err := cache.GetKey(ctx, "some-hash")
 	assert.Error(t, err)
 }

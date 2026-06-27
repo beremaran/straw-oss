@@ -3,7 +3,7 @@ package router
 import (
 	"testing"
 
-	"github.com/kwilabs/straw-proxy-server/internal/domain"
+	"github.com/beremaran/straw/internal/domain"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -36,7 +36,6 @@ func TestFingerprintManager_SelectFingerprint(t *testing.T) {
 			},
 		}
 
-		// Run multiple times to ensure we get both eventually (probabilistic)
 		counts := make(map[string]int)
 		for i := 0; i < 100; i++ {
 			fp := fm.SelectFingerprint(rule)
@@ -68,7 +67,6 @@ func TestFingerprintManager_SelectFingerprint(t *testing.T) {
 			}
 		}
 
-		// Heavy should be dominating ~90%
 		assert.Greater(t, heavyCount, 800)
 	})
 
@@ -85,7 +83,6 @@ func TestFingerprintManager_SelectFingerprint(t *testing.T) {
 			},
 		}
 
-		// Sequence should be A -> B -> C -> A -> B ...
 		assert.Equal(t, "A", fm.SelectFingerprint(rule))
 		assert.Equal(t, "B", fm.SelectFingerprint(rule))
 		assert.Equal(t, "C", fm.SelectFingerprint(rule))
@@ -104,11 +101,9 @@ func TestFingerprintManager_SelectFingerprint(t *testing.T) {
 			},
 		}
 
-		// 100 goroutines, logic should assume total count matches
 		countA := 0
 		countB := 0
 
-		// Use a channel to collect results to avoid data race in test counting
 		results := make(chan string, 100)
 
 		for i := 0; i < 100; i++ {
@@ -141,7 +136,7 @@ func TestFingerprintManager_SelectFingerprint(t *testing.T) {
 				},
 			},
 		}
-		// Should fall back to random
+
 		counts := make(map[string]int)
 		for i := 0; i < 50; i++ {
 			fp := fm.SelectFingerprint(rule)

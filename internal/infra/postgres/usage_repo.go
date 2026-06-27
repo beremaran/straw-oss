@@ -6,23 +6,18 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/beremaran/straw/internal/domain"
 	"github.com/jackc/pgx/v5"
-	"github.com/kwilabs/straw-proxy-server/internal/domain"
 )
 
-// UsageRepository implements usage data access.
 type UsageRepository struct {
 	client *Client
 }
 
-// NewUsageRepository creates a new UsageRepository.
 func NewUsageRepository(client *Client) *UsageRepository {
 	return &UsageRepository{client: client}
 }
 
-// GetDailySummaries returns usage summaries for a given API key within a date range.
-// If apiKeyID is empty, it returns summaries for all API keys (aggregated by date? No, the requirement implies per key or specific key helper).
-// Let's implement filtering.
 func (r *UsageRepository) GetDailySummaries(ctx context.Context, apiKeyID string, start, end time.Time) ([]domain.UsageSummary, error) {
 	sql := `
 		SELECT date, total_requests, total_bytes, cost_units, breakdown
@@ -65,7 +60,7 @@ func (r *UsageRepository) GetDailySummaries(ctx context.Context, apiKeyID string
 		var breakdown map[string]int64
 		if len(breakdownRaw) > 0 {
 			if err := json.Unmarshal(breakdownRaw, &breakdown); err != nil {
-				// Log error but continue? Or fail? Let's fail safe returning empty map
+
 				breakdown = make(map[string]int64)
 			}
 		}

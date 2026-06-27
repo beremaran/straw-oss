@@ -46,7 +46,7 @@ func TestCompressDecompress_RoundTrip_SmallData(t *testing.T) {
 }
 
 func TestCompressDecompress_RoundTrip_LargeData(t *testing.T) {
-	// Create a large, repetitive dataset (compresses well)
+
 	original := []byte(strings.Repeat("The quick brown fox jumps over the lazy dog. ", 10000))
 
 	compressed, err := Compress(original)
@@ -64,7 +64,6 @@ func TestCompressDecompress_RoundTrip_LargeData(t *testing.T) {
 			len(original), len(decompressed))
 	}
 
-	// Verify compression actually reduced size
 	ratio := CompressionRatio(original, compressed)
 	t.Logf("Compression ratio: %.2f (original=%d, compressed=%d)",
 		ratio, len(original), len(compressed))
@@ -75,7 +74,7 @@ func TestCompressDecompress_RoundTrip_LargeData(t *testing.T) {
 }
 
 func TestCompressDecompress_RoundTrip_RandomData(t *testing.T) {
-	// Random data doesn't compress well but should still round-trip correctly
+
 	original := make([]byte, 1024)
 	_, err := rand.Read(original)
 	if err != nil {
@@ -98,7 +97,7 @@ func TestCompressDecompress_RoundTrip_RandomData(t *testing.T) {
 }
 
 func TestCompressDecompress_RoundTrip_JSONLike(t *testing.T) {
-	// Simulate JSON payload like what we'd actually compress
+
 	original := []byte(`{
 		"id": "req-12345",
 		"method": "GET",

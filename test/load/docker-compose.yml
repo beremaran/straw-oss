@@ -1,0 +1,122 @@
+services:
+  relay:
+    image: beremaran/straw:relay
+    environment:
+      POSTGRES_DSN: postgres://postgres:postgres@postgres:5432/straw?sslmode=disable
+      REDIS_ADDR: redis:6379
+      NATS_URL: nats://nats:4222
+      HMAC_SECRET: load-test-secret
+      DB_AUTO_MIGRATE: "true"
+      HTTP_PORT: "8080"
+      ADMIN_PORT: "8081"
+      ADMIN_API_KEY: admin-secret-token
+      LOG_LEVEL: debug
+      ALLOW_PRIVATE_IPS: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/healthz || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_started
+      redis:
+        condition: service_started
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: straw
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  nats:
+    image: nats:2-alpine
+    volumes:
+      - ./nats.conf:/etc/nats/nats.conf:ro
+    command: nats-server -c /etc/nats/nats.conf
+
+  redis:
+    image: redis:7-alpine
+
+  mock-target:
+    image: nginx:alpine
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+
+  endpoint-1:
+    image: beremaran/straw:endpoint
+    environment:
+      NATS_URL: nats://nats:4222
+      HMAC_SECRET: load-test-secret
+      ENDPOINT_ID: load-test-1
+      LOG_LEVEL: debug
+      ENDPOINT_TAGS: type:datacenter,region:us
+    restart: on-failure
+    depends_on:
+      nats:
+        condition: service_started
+      relay:
+        condition: service_healthy
+
+  endpoint-2:
+    image: beremaran/straw:endpoint
+    environment:
+      NATS_URL: nats://nats:4222
+      HMAC_SECRET: load-test-secret
+      ENDPOINT_ID: load-test-2
+      LOG_LEVEL: debug
+      ENDPOINT_TAGS: type:datacenter,region:us
+    restart: on-failure
+    depends_on:
+      nats:
+        condition: service_started
+      relay:
+        condition: service_healthy
+
+  endpoint-3:
+    image: beremaran/straw:endpoint
+    environment:
+      NATS_URL: nats://nats:4222
+      HMAC_SECRET: load-test-secret
+      ENDPOINT_ID: load-test-3
+      LOG_LEVEL: debug
+      ENDPOINT_TAGS: type:datacenter,region:us
+    restart: on-failure
+    depends_on:
+      nats:
+        condition: service_started
+      relay:
+        condition: service_healthy
+
+  endpoint-4:
+    image: beremaran/straw:endpoint
+    environment:
+      NATS_URL: nats://nats:4222
+      HMAC_SECRET: load-test-secret
+      ENDPOINT_ID: load-test-4
+      LOG_LEVEL: debug
+      ENDPOINT_TAGS: type:datacenter,region:us
+    restart: on-failure
+    depends_on:
+      nats:
+        condition: service_started
+      relay:
+        condition: service_healthy
+
+  k6:
+    image: grafana/k6:latest
+    volumes:
+      - ./script.js:/script.js:ro
+    environment:
+      BASE_URL: http://relay:8080
+    depends_on:
+      relay:
+        condition: service_healthy

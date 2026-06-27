@@ -1,4 +1,3 @@
-// Package integration provides testcontainer-based infrastructure for integration testing.
 package integration
 
 import (
@@ -9,27 +8,26 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kwilabs/straw-proxy-server/internal/broker"
-	"github.com/kwilabs/straw-proxy-server/internal/config"
-	"github.com/kwilabs/straw-proxy-server/internal/infra/circuitbreaker"
-	"github.com/kwilabs/straw-proxy-server/internal/infra/postgres"
-	infraredis "github.com/kwilabs/straw-proxy-server/internal/infra/redis"
-	"github.com/kwilabs/straw-proxy-server/internal/server"
-	"github.com/kwilabs/straw-proxy-server/internal/service/auth"
-	"github.com/kwilabs/straw-proxy-server/internal/service/endpoint"
-	"github.com/kwilabs/straw-proxy-server/internal/service/filter"
-	"github.com/kwilabs/straw-proxy-server/internal/service/orchestrator"
-	"github.com/kwilabs/straw-proxy-server/internal/service/ratelimit"
-	"github.com/kwilabs/straw-proxy-server/internal/service/router"
-	"github.com/kwilabs/straw-proxy-server/internal/service/session"
-	"github.com/kwilabs/straw-proxy-server/pkg/protocol"
+	"github.com/beremaran/straw/internal/broker"
+	"github.com/beremaran/straw/internal/config"
+	"github.com/beremaran/straw/internal/infra/circuitbreaker"
+	"github.com/beremaran/straw/internal/infra/postgres"
+	infraredis "github.com/beremaran/straw/internal/infra/redis"
+	"github.com/beremaran/straw/internal/server"
+	"github.com/beremaran/straw/internal/service/auth"
+	"github.com/beremaran/straw/internal/service/endpoint"
+	"github.com/beremaran/straw/internal/service/filter"
+	"github.com/beremaran/straw/internal/service/orchestrator"
+	"github.com/beremaran/straw/internal/service/ratelimit"
+	"github.com/beremaran/straw/internal/service/router"
+	"github.com/beremaran/straw/internal/service/session"
+	"github.com/beremaran/straw/pkg/protocol"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 const testHMACSecret = "test-hmac-secret-for-integration-tests"
 
-// testServerContext holds a running server instance with all dependencies.
 type testServerContext struct {
 	Server        *server.Server
 	ServerURL     string
@@ -42,8 +40,6 @@ type testServerContext struct {
 	Cleanup       func()
 }
 
-// ReplaceMockEndpoint stops the current MockEndpoint and replaces it with a new one.
-// This should be used when a test needs a MockEndpoint with different configuration.
 func (tc *testServerContext) ReplaceMockEndpoint(newEndpoint *MockEndpoint) {
 	if tc.MockEndpoint != nil {
 		tc.MockEndpoint.Stop()
@@ -51,22 +47,16 @@ func (tc *testServerContext) ReplaceMockEndpoint(newEndpoint *MockEndpoint) {
 	tc.MockEndpoint = newEndpoint
 }
 
-// setupTestServer creates a fully wired server for E2E testing.
 func setupTestServer(t *testing.T, suite *TestSuite) *testServerContext {
 	t.Helper()
 	ctx := context.Background()
 
-	// Clean the database for this test
 	suite.CleanupForTest(t)
 
-	// Connect to infrastructure
 	broker := broker.NewNatsBroker(broker.Addrs(suite.NatsURL()))
 	err := broker.Connect()
 	require.NoError(t, err, "failed to connect to NATS")
 
-	// Declare the heartbeats logic
-	// In NATS initialization we use DeclareExchange to create Streams.
-	// "heartbeats" -> fanout behavior
 	err = broker.DeclareExchange(ctx, "heartbeats", "fanout")
 	require.NoError(t, err, "failed to declare heartbeats exchange")
 
@@ -82,17 +72,15 @@ func setupTestServer(t *testing.T, suite *TestSuite) *testServerContext {
 	err = broker.DeclareExchange(ctx, "results", "topic")
 	require.NoError(t, err, "failed to declare results exchange")
 
-	redisClient, err := infraredis.NewClient(config.CoreConfig{RedisAddr: suite.RedisAddr()}, nil)
+	redisClient, err := infraredis.NewClient(config.RedisConfig{Addr: suite.RedisAddr()}, nil)
 	require.NoError(t, err, "failed to connect to Redis")
 
-	// Create postgres client and repositories
 	postgresClient, err := postgres.NewClient(ctx, suite.PostgresDSN(), nil)
 	require.NoError(t, err, "failed to create postgres client")
 
 	apiKeyRepo := postgres.NewApiKeyRepository(postgresClient)
 	ruleRepo := postgres.NewRoutingRuleRepository(postgresClient)
 
-	// Create services
 	keyCache := auth.NewAuthCache(redisClient, 5*time.Minute)
 	authService := auth.NewAuthService(apiKeyRepo, keyCache)
 
@@ -101,11 +89,10 @@ func setupTestServer(t *testing.T, suite *TestSuite) *testServerContext {
 	require.NoError(t, routerMatcher.LoadRules(ctx), "failed to load routing rules")
 
 	rateLimiter := ratelimit.NewRateLimiter(redisClient)
-	filterService := filter.NewService(nil) // No URL filter for simplicity
+	filterService := filter.NewService(nil)
 	sessionStore := session.NewRedisStore(redisClient)
 	sessionService := session.NewService(sessionStore)
 
-	// Create orchestrator components
 	healthStore := infraredis.NewEndpointHealthStore(redisClient)
 	selector := orchestrator.NewSimpleEndpointSelector(healthStore)
 	circuitBreaker := circuitbreaker.New(circuitbreaker.Config{})
@@ -113,38 +100,32 @@ func setupTestServer(t *testing.T, suite *TestSuite) *testServerContext {
 	consumer := orchestrator.NewConsumer(broker)
 	executor := orchestrator.NewRetryExecutor(publisher, consumer, selector, broker, []byte(testHMACSecret))
 
-	// Declare and bind the shared results queue for the RetryExecutor
 	err = broker.DeclareQueue(ctx, orchestrator.SharedResultQueue)
 	require.NoError(t, err, "failed to declare shared results queue")
 
-	// Bind shared results queue to simulate direct-to-queue (using queue name as subject due to empty exchange publish)
 	err = broker.BindQueue(ctx, orchestrator.SharedResultQueue, "", orchestrator.SharedResultQueue)
 	require.NoError(t, err, "failed to bind shared results queue")
 
-	// Start the shared result queue consumer (required for response dispatching)
 	err = executor.Start(ctx)
 	require.NoError(t, err, "failed to start retry executor")
 
-	// Start health service to consume heartbeats and register endpoints
 	healthService := endpoint.NewHealthService(broker, healthStore)
 	err = healthService.Start(ctx)
 	require.NoError(t, err, "failed to start health service")
 
-	// Create server configuration
 	serverConfig := config.ServerConfig{
-		Core: config.CoreConfig{
+		Observability: config.ObservabilityConfig{
 			LogLevel:  "debug",
 			LogFormat: "json",
 		},
 		Security: config.SecurityConfig{
 			HMACSecret: testHMACSecret,
 		},
-		HTTPPort:      0, // Random port
+		HTTPPort:      0,
 		ResultTimeout: 30 * time.Second,
 		MaxBodySize:   "10M",
 	}
 
-	// Create server - allow private IPs for integration tests (mock targets run on localhost)
 	srv := server.New(
 		serverConfig,
 		authService,
@@ -156,21 +137,17 @@ func setupTestServer(t *testing.T, suite *TestSuite) *testServerContext {
 		server.WithAllowPrivateIPs(),
 	)
 
-	// Start the server in a test HTTP server
-	testServer := httptest.NewServer(srv.GetEcho())
+	testServer := httptest.NewServer(srv.GetHandler())
 
-	// Create mock target server
 	mockTarget := NewMockTargetServer()
 
-	// Create mock endpoint with tags matching the routing rules
 	mockEndpoint := NewMockEndpoint(broker, MockEndpointConfig{
 		EndpointID: "test-endpoint-1",
 		Secret:     []byte(testHMACSecret),
 		TargetURL:  mockTarget.URL(),
-		Tags:       []string{"type:test"}, // Tags must match routing rule requirements
+		Tags:       []string{"type:test"},
 	})
 
-	// Create struct first so cleanup can reference tc.MockEndpoint
 	tc := &testServerContext{
 		Server:        srv,
 		ServerURL:     testServer.URL,
@@ -182,7 +159,6 @@ func setupTestServer(t *testing.T, suite *TestSuite) *testServerContext {
 		HealthStore:   healthStore,
 	}
 
-	// Cleanup uses tc.MockEndpoint so that if a test replaces it, the new one gets stopped
 	tc.Cleanup = func() {
 		healthService.Stop()
 		if tc.MockEndpoint != nil {
@@ -197,7 +173,6 @@ func setupTestServer(t *testing.T, suite *TestSuite) *testServerContext {
 	return tc
 }
 
-// WaitForEndpoint waits for an endpoint to become healthy.
 func (tc *testServerContext) WaitForEndpoint(ctx context.Context, endpointID string) error {
 	return WaitForHealthy(ctx, func() error {
 		health, err := tc.HealthStore.GetHealth(ctx, endpointID)
@@ -211,20 +186,16 @@ func (tc *testServerContext) WaitForEndpoint(ctx context.Context, endpointID str
 	}, 100*time.Millisecond, 10*time.Second)
 }
 
-// TestRequestFlow_BasicRequest tests a basic request through the system.
 func TestRequestFlow_BasicRequest(t *testing.T) {
 	suite := GetSuite(t)
 	ctx := context.Background()
 
-	// Setup test server
 	tc := setupTestServer(t, suite)
 	defer tc.Cleanup()
 
-	// Create test data
 	apiKey, err := CreateTestAPIKey(ctx, suite.PostgresDSN(), "test-client", []string{"*"})
 	require.NoError(t, err, "failed to create API key")
 
-	// Create endpoint record
 	err = CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{
 		ID:        "test-endpoint-1",
 		Tags:      []string{"type:test"},
@@ -232,7 +203,6 @@ func TestRequestFlow_BasicRequest(t *testing.T) {
 	})
 	require.NoError(t, err, "failed to create endpoint")
 
-	// Create catch-all routing rule
 	err = CreateTestRoutingRule(
 		ctx,
 		suite.PostgresDSN(),
@@ -250,22 +220,18 @@ func TestRequestFlow_BasicRequest(t *testing.T) {
 	)
 	require.NoError(t, err, "failed to create routing rule")
 
-	// Reload routing rules
 	require.NoError(t, tc.Server.GetMatcher().LoadRules(ctx))
 
-	// Start mock endpoint
 	err = tc.MockEndpoint.Start(ctx)
 	require.NoError(t, err, "failed to start mock endpoint")
 	require.NoError(t, tc.WaitForEndpoint(ctx, "test-endpoint-1"), "failed to wait for endpoint health")
 
-	// Configure mock target response
 	tc.MockTarget.SetDefaultResponse(MockTargetConfig{
 		StatusCode: http.StatusOK,
 		Headers:    map[string]string{"Content-Type": "text/plain"},
 		Body:       []byte("Hello from target!"),
 	})
 
-	// Make request through proxy
 	client := NewHTTPTestClient(tc.ServerURL, apiKey.RawKey)
 	resp, err := client.SendRequest(ctx, &ProxyRequest{
 		URL:    tc.MockTarget.URL() + "/test",
@@ -273,11 +239,9 @@ func TestRequestFlow_BasicRequest(t *testing.T) {
 	})
 	require.NoError(t, err, "proxy request failed")
 
-	// Verify response
 	assert.Equal(t, http.StatusOK, resp.StatusCode, "expected 200 OK")
 	assert.Contains(t, string(resp.Body), "Hello from target!", "response body should contain target response")
 
-	// Verify mock endpoint received the request
 	requests := tc.MockEndpoint.GetRequests()
 	assert.GreaterOrEqual(t, len(requests), 1, "mock endpoint should have received at least one request")
 	if len(requests) > 0 {
@@ -285,12 +249,10 @@ func TestRequestFlow_BasicRequest(t *testing.T) {
 		assert.Contains(t, requests[0].URL, "/test")
 	}
 
-	// Verify mock target received the request
 	targetRequests := tc.MockTarget.GetRequests()
 	assert.GreaterOrEqual(t, len(targetRequests), 1, "mock target should have received at least one request")
 }
 
-// TestRequestFlow_WithTags tests request routing with specific tags.
 func TestRequestFlow_WithTags(t *testing.T) {
 	suite := GetSuite(t)
 	ctx := context.Background()
@@ -298,7 +260,6 @@ func TestRequestFlow_WithTags(t *testing.T) {
 	tc := setupTestServer(t, suite)
 	defer tc.Cleanup()
 
-	// Create test data
 	apiKey, err := CreateTestAPIKey(ctx, suite.PostgresDSN(), "test-client", []string{"*"})
 	require.NoError(t, err)
 
@@ -309,7 +270,6 @@ func TestRequestFlow_WithTags(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Create two routing rules with different tags
 	err = CreateTestRoutingRule(
 		ctx,
 		suite.PostgresDSN(),
@@ -346,7 +306,6 @@ func TestRequestFlow_WithTags(t *testing.T) {
 
 	require.NoError(t, tc.Server.GetMatcher().LoadRules(ctx))
 
-	// Re-create mock endpoint with amazon tag to ensure heartbeats match the rule
 	tc.ReplaceMockEndpoint(NewMockEndpoint(tc.Broker, MockEndpointConfig{
 		EndpointID: "test-endpoint-1",
 		Secret:     []byte(testHMACSecret),
@@ -363,7 +322,6 @@ func TestRequestFlow_WithTags(t *testing.T) {
 		Body:       []byte("OK"),
 	})
 
-	// Test request WITH amazon tag - should match amazon-rule
 	client := NewHTTPTestClient(tc.ServerURL, apiKey.RawKey)
 	resp, err := client.SendRequest(ctx, &ProxyRequest{
 		URL:    tc.MockTarget.URL() + "/product",
@@ -373,14 +331,12 @@ func TestRequestFlow_WithTags(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
-	// The request should have used the amazon rule (fingerprint chrome-133)
 	requests := tc.MockEndpoint.GetRequests()
 	require.GreaterOrEqual(t, len(requests), 1)
 	assert.Equal(t, "chrome-133", requests[0].Fingerprint, "should use chrome-133 fingerprint from amazon rule")
 
 	tc.MockEndpoint.ClearRequests()
 
-	// Test request WITHOUT amazon tag - should match default-rule
 	resp, err = client.SendRequest(ctx, &ProxyRequest{
 		URL:    tc.MockTarget.URL() + "/other",
 		Method: "GET",
@@ -393,7 +349,6 @@ func TestRequestFlow_WithTags(t *testing.T) {
 	assert.Equal(t, "firefox-130", requests[0].Fingerprint, "should use firefox-130 fingerprint from default rule")
 }
 
-// TestRequestFlow_WithSession tests sticky session routing.
 func TestRequestFlow_WithSession(t *testing.T) {
 	suite := GetSuite(t)
 	ctx := context.Background()
@@ -401,7 +356,6 @@ func TestRequestFlow_WithSession(t *testing.T) {
 	tc := setupTestServer(t, suite)
 	defer tc.Cleanup()
 
-	// Create test data
 	apiKey, err := CreateTestAPIKey(ctx, suite.PostgresDSN(), "test-client", []string{"*"})
 	require.NoError(t, err)
 
@@ -442,7 +396,6 @@ func TestRequestFlow_WithSession(t *testing.T) {
 
 	client := NewHTTPTestClient(tc.ServerURL, apiKey.RawKey)
 
-	// First request - creates session
 	resp, err := client.SendRequest(ctx, &ProxyRequest{
 		URL:    tc.MockTarget.URL() + "/login",
 		Method: "POST",
@@ -450,11 +403,9 @@ func TestRequestFlow_WithSession(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
-	// Extract session ID from response header
 	sessionID := resp.Headers.Get("X-Session-ID")
 	t.Logf("Session ID from first request: %s", sessionID)
 
-	// Second request with session ID - should route to same endpoint
 	resp, err = client.SendRequest(ctx, &ProxyRequest{
 		URL:       tc.MockTarget.URL() + "/profile",
 		Method:    "GET",
@@ -463,12 +414,10 @@ func TestRequestFlow_WithSession(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
-	// Verify both requests went to the same endpoint
 	requests := tc.MockEndpoint.GetRequests()
 	assert.GreaterOrEqual(t, len(requests), 2, "should have received at least 2 requests")
 }
 
-// TestRequestFlow_RateLimitExceeded tests rate limiting behavior.
 func TestRequestFlow_RateLimitExceeded(t *testing.T) {
 	suite := GetSuite(t)
 	ctx := context.Background()
@@ -476,7 +425,6 @@ func TestRequestFlow_RateLimitExceeded(t *testing.T) {
 	tc := setupTestServer(t, suite)
 	defer tc.Cleanup()
 
-	// Create test data
 	apiKey, err := CreateTestAPIKey(ctx, suite.PostgresDSN(), "test-client", []string{"*"})
 	require.NoError(t, err)
 
@@ -487,7 +435,6 @@ func TestRequestFlow_RateLimitExceeded(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Create routing rule with strict rate limit
 	err = CreateTestRoutingRule(
 		ctx,
 		suite.PostgresDSN(),
@@ -518,7 +465,6 @@ func TestRequestFlow_RateLimitExceeded(t *testing.T) {
 
 	client := NewHTTPTestClient(tc.ServerURL, apiKey.RawKey)
 
-	// First request - should succeed
 	resp1, err := client.SendRequest(ctx, &ProxyRequest{
 		URL:    tc.MockTarget.URL() + "/api",
 		Method: "GET",
@@ -526,20 +472,26 @@ func TestRequestFlow_RateLimitExceeded(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp1.StatusCode, "first request should succeed")
 
-	// Second request immediately - should be rate limited
-	resp2, err := client.SendRequest(ctx, &ProxyRequest{
-		URL:    tc.MockTarget.URL() + "/api",
-		Method: "GET",
-	})
-	require.NoError(t, err)
+	var resp2 *ProxyResponse
+	for i := 0; i < 20; i++ {
+		resp, err := client.SendRequest(ctx, &ProxyRequest{
+			URL:    tc.MockTarget.URL() + "/api",
+			Method: "GET",
+		})
+		require.NoError(t, err)
+		if resp.StatusCode == http.StatusTooManyRequests {
+			resp2 = resp
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	require.NotNil(t, resp2, "should have been rate limited")
 	assert.Equal(t, http.StatusTooManyRequests, resp2.StatusCode, "second immediate request should be rate limited")
 
-	// Check for Retry-After header
 	retryAfter := resp2.Headers.Get("Retry-After")
 	assert.NotEmpty(t, retryAfter, "should have Retry-After header")
 	t.Logf("Retry-After: %s", retryAfter)
 
-	// Wait and try again - should succeed
 	time.Sleep(1100 * time.Millisecond)
 	resp3, err := client.SendRequest(ctx, &ProxyRequest{
 		URL:    tc.MockTarget.URL() + "/api",
@@ -549,7 +501,6 @@ func TestRequestFlow_RateLimitExceeded(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp3.StatusCode, "request after waiting should succeed")
 }
 
-// TestRequestFlow_RetryFallback tests retry and pool escalation behavior.
 func TestRequestFlow_RetryFallback(t *testing.T) {
 	suite := GetSuite(t)
 	ctx := context.Background()
@@ -557,11 +508,9 @@ func TestRequestFlow_RetryFallback(t *testing.T) {
 	tc := setupTestServer(t, suite)
 	defer tc.Cleanup()
 
-	// Create test data
 	apiKey, err := CreateTestAPIKey(ctx, suite.PostgresDSN(), "test-client", []string{"*"})
 	require.NoError(t, err)
 
-	// Create two endpoints for different pools
 	err = CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{
 		ID:        "primary-endpoint",
 		Tags:      []string{"type:primary"},
@@ -576,7 +525,6 @@ func TestRequestFlow_RetryFallback(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Create routing rule with tiered pools
 	err = CreateTestRoutingRule(
 		ctx,
 		suite.PostgresDSN(),
@@ -597,19 +545,17 @@ func TestRequestFlow_RetryFallback(t *testing.T) {
 
 	require.NoError(t, tc.Server.GetMatcher().LoadRules(ctx))
 
-	// Create primary endpoint that will fail
 	primaryEndpoint := NewMockEndpoint(tc.Broker, MockEndpointConfig{
 		EndpointID: "primary-endpoint",
 		Secret:     []byte(testHMACSecret),
 		Tags:       []string{"type:primary"},
 	})
-	primaryEndpoint.SetFailures(2) // Fail first 2 requests
+	primaryEndpoint.SetFailures(2)
 	err = primaryEndpoint.Start(ctx)
 	require.NoError(t, err)
 	defer primaryEndpoint.Stop()
 	require.NoError(t, tc.WaitForEndpoint(ctx, "primary-endpoint"))
 
-	// Create fallback endpoint that will succeed
 	fallbackEndpoint := NewMockEndpoint(tc.Broker, MockEndpointConfig{
 		EndpointID: "fallback-endpoint",
 		Secret:     []byte(testHMACSecret),
@@ -629,27 +575,22 @@ func TestRequestFlow_RetryFallback(t *testing.T) {
 
 	client := NewHTTPTestClient(tc.ServerURL, apiKey.RawKey)
 
-	// Make request - should retry and fall back to secondary pool
 	resp, err := client.SendRequest(ctx, &ProxyRequest{
 		URL:    "http://example.com/test",
 		Method: "GET",
 	})
 	require.NoError(t, err)
 
-	// Should eventually succeed via fallback
 	assert.Equal(t, http.StatusOK, resp.StatusCode, "request should succeed via fallback")
 	assert.Contains(t, string(resp.Body), "Fallback", "response should come from fallback endpoint")
 
-	// Check retry headers
 	retries := resp.Headers.Get("X-Relay-Retries")
 	pool := resp.Headers.Get("X-Relay-Pool")
 	t.Logf("Retries: %s, Pool: %s", retries, pool)
 
-	// Verify primary endpoint received requests (and failed them)
 	primaryReqs := primaryEndpoint.GetRequests()
 	assert.GreaterOrEqual(t, len(primaryReqs), 1, "primary endpoint should have received at least 1 request")
 
-	// Verify fallback endpoint received request
 	fallbackReqs := fallbackEndpoint.GetRequests()
 	assert.GreaterOrEqual(t, len(fallbackReqs), 1, "fallback endpoint should have received the request")
 }

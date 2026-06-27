@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/kwilabs/straw-proxy-server/internal/domain"
+	"github.com/beremaran/straw/internal/domain"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -290,7 +290,7 @@ func TestService_CombinedFilters(t *testing.T) {
 
 		assert.NoError(t, err)
 		assert.True(t, result.Blocked)
-		// Content-type is checked first
+
 		assert.Equal(t, TypeContentType, result.FilterType)
 	})
 
@@ -356,7 +356,7 @@ func TestMatchDomain(t *testing.T) {
 		{"sub.www.example.com", "example.com", true},
 		{"notexample.com", "example.com", false},
 		{"sub.example.com", "*.example.com", true},
-		{"example.com", "*.example.com", false}, // wildcard requires subdomain
+		{"example.com", "*.example.com", false},
 	}
 
 	for _, tt := range tests {

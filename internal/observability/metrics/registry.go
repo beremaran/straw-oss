@@ -15,19 +15,16 @@ var (
 	once     sync.Once
 )
 
-// Init initializes the global metrics registry.
 func Init() *prometheus.Registry {
 	once.Do(func() {
 		registry = prometheus.NewRegistry()
 
-		// Register standard Go runtime metrics
 		registry.MustRegister(collectors.NewGoCollector())
 		registry.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 	})
 	return registry
 }
 
-// GetRegistry returns the global metrics registry.
 func GetRegistry() *prometheus.Registry {
 	if registry == nil {
 		return Init()
@@ -35,14 +32,12 @@ func GetRegistry() *prometheus.Registry {
 	return registry
 }
 
-// Handler returns the HTTP handler for Prometheus metrics.
 func Handler() http.Handler {
 	return promhttp.HandlerFor(GetRegistry(), promhttp.HandlerOpts{
 		Registry: GetRegistry(),
 	})
 }
 
-// RegisterPprof adds pprof handlers to the given mux.
 func RegisterPprof(mux *http.ServeMux) {
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
 	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)

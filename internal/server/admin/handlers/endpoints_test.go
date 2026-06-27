@@ -7,13 +7,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/kwilabs/straw-proxy-server/internal/infra/redis"
-	"github.com/kwilabs/straw-proxy-server/internal/service/endpoint"
-	"github.com/labstack/echo/v4"
+	"github.com/beremaran/straw/internal/infra/redis"
+	"github.com/beremaran/straw/internal/service/endpoint"
 	"github.com/stretchr/testify/assert"
 )
 
-// mockHealthStore implements redis.HealthStore
 type mockHealthStore struct {
 	endpoints map[string]*redis.EndpointHealth
 	draining  map[string]bool
@@ -62,41 +60,32 @@ func (m *mockHealthStore) IsDraining(ctx context.Context, endpointID string) (bo
 }
 
 func TestEndpointHandler_List(t *testing.T) {
-	// Setup
+
 	store := &mockHealthStore{
 		endpoints: map[string]*redis.EndpointHealth{
 			"ep1": {EndpointID: "ep1", State: "healthy"},
 			"ep2": {EndpointID: "ep2", State: "unhealthy"},
 		},
 	}
-	// We need a real HealthService but with mock store.
-	// We can't use NewHealthService effectively because it requires real broker?
-	// NewHealthService(broker, store, opts...)
-	// But ListAllEndpoints only uses store.
 	healthService := endpoint.NewHealthService(nil, store)
 
 	h := NewEndpointHandler(healthService)
 
-	e := echo.New()
 	req := httptest.NewRequest(http.MethodGet, "/admin/endpoints", nil)
 	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
 
-	// Test
-	err := h.HandleListEndpoints(c)
+	h.HandleListEndpoints(rec, req)
 
-	// Verify
-	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
 
 	var endpoints []*redis.EndpointHealth
-	err = json.Unmarshal(rec.Body.Bytes(), &endpoints)
+	err := json.Unmarshal(rec.Body.Bytes(), &endpoints)
 	assert.NoError(t, err)
 	assert.Len(t, endpoints, 2)
 }
 
 func TestEndpointHandler_Drain(t *testing.T) {
-	// Setup
+
 	store := &mockHealthStore{
 		endpoints: map[string]*redis.EndpointHealth{
 			"ep1": {EndpointID: "ep1", State: "healthy"},
@@ -106,19 +95,12 @@ func TestEndpointHandler_Drain(t *testing.T) {
 	healthService := endpoint.NewHealthService(nil, store)
 	h := NewEndpointHandler(healthService)
 
-	e := echo.New()
 	req := httptest.NewRequest(http.MethodPost, "/admin/endpoints/ep1/drain", nil)
+	req.SetPathValue("id", "ep1")
 	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-	c.SetParamNames("id")
-	c.SetParamValues("ep1")
 
-	// Test
-	err := h.HandleDrainEndpoint(c)
+	h.HandleDrainEndpoint(rec, req)
 
-	// Verify
-	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
-
 	assert.True(t, store.draining["ep1"])
 }

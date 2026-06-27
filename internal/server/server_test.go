@@ -6,19 +6,19 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/kwilabs/straw-proxy-server/internal/config"
+	"github.com/beremaran/straw/internal/config"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestNewServer(t *testing.T) {
 	cfg := config.ServerConfig{
-		HTTPPort:    0, // Random port
+		HTTPPort:    0,
 		MaxBodySize: "10M",
 	}
 
 	srv := New(cfg, nil, nil, nil, nil, nil, nil)
 	assert.NotNil(t, srv)
-	assert.NotNil(t, srv.echo)
+	assert.NotNil(t, srv.mux)
 }
 
 func TestServerUseMiddleware(t *testing.T) {
@@ -27,9 +27,6 @@ func TestServerUseMiddleware(t *testing.T) {
 		MaxBodySize: "10M",
 	}
 	srv := New(cfg, nil, nil, nil, nil, nil, nil)
-	// Check if middleware are registered by checking the routes or just ensuring no panic
-	// Echo doesn't expose middleware list easily without reflection or private fields access in some versions
-	// But init shouldn't panic
 	assert.NotNil(t, srv)
 }
 
@@ -40,19 +37,16 @@ func TestServerHealthRoutes(t *testing.T) {
 	}
 	srv := New(cfg, nil, nil, nil, nil, nil, nil)
 
-	// Pre-create listener to avoid race when reading Addr()
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
 		t.Fatalf("failed to create listener: %v", err)
 	}
 
-	// Capture address before starting goroutine
 	addr := listener.Addr().String()
 	baseURL := "http://" + addr
 
-	// Start server in background
 	go func() {
-		_ = srv.echo.Server.Serve(listener)
+		_ = srv.server.Serve(listener)
 	}()
 	defer srv.Stop(context.Background())
 

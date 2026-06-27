@@ -1,0 +1,82 @@
+package middleware
+
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"runtime/debug"
+
+	"github.com/beremaran/straw/internal/server/helper"
+)
+
+func RequestID() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			reqID := r.Header.Get("X-Request-ID")
+			if reqID == "" {
+
+				bytes := make([]byte, 16)
+				if _, err := rand.Read(bytes); err == nil {
+					reqID = hex.EncodeToString(bytes)
+				} else {
+					reqID = fmt.Sprintf("req_%d", r.Context().Done())
+				}
+			}
+			w.Header().Set("X-Request-ID", reqID)
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+func Recover() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			defer func() {
+				if err := recover(); err != nil {
+					slog.ErrorContext(r.Context(), "panic recovered",
+						"error", err,
+						"stack", string(debug.Stack()),
+					)
+					helper.WriteError(w, http.StatusInternalServerError, "Internal Server Error")
+				}
+			}()
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+func CORS() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+			w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, X-Session-ID, X-Session-End")
+
+			if r.Method == "OPTIONS" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+func BodyLimit(maxBytes int64) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if maxBytes > 0 {
+				if r.ContentLength > maxBytes {
+					helper.WriteError(w, http.StatusRequestEntityTooLarge, "request body too large")
+					return
+				}
+				if r.Body != nil {
+					r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
+				}
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}

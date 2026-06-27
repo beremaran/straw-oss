@@ -6,7 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kwilabs/straw-proxy-server/internal/domain"
+	"github.com/alicebob/miniredis/v2"
+	"github.com/beremaran/straw/internal/domain"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -20,84 +22,71 @@ func (m *mockRepo) GetActiveRules(ctx context.Context) ([]domain.RoutingRule, er
 	return m.rules, m.err
 }
 
-type mockCache struct {
-	rules   []domain.RoutingRule
-	version int64
-	err     error
+func (m *mockRepo) CreateRule(ctx context.Context, rule *domain.RoutingRule) error { return nil }
+func (m *mockRepo) GetRuleByID(ctx context.Context, id string) (*domain.RoutingRule, error) {
+	return nil, nil
 }
-
-func (m *mockCache) GetRulesVersion(ctx context.Context) (int64, error) {
-	return m.version, m.err
-}
-
-func (m *mockCache) GetRulesByVersion(ctx context.Context, version int64) ([]domain.RoutingRule, error) {
-	if version == m.version {
-		return m.rules, m.err
-	}
-	return nil, nil // Miss
-}
-
-func (m *mockCache) SetRulesByVersion(ctx context.Context, version int64, rules []domain.RoutingRule) error {
-	m.version = version
-	m.rules = rules
-	return m.err
+func (m *mockRepo) UpdateRule(ctx context.Context, rule *domain.RoutingRule) error { return nil }
+func (m *mockRepo) DeleteRule(ctx context.Context, id string) error                { return nil }
+func (m *mockRepo) ListRules(ctx context.Context, limit, offset int) ([]domain.RoutingRule, int, error) {
+	return nil, 0, nil
 }
 
 func TestMatcher_LoadRules(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("Load from Cache", func(t *testing.T) {
-		expectedRules := []domain.RoutingRule{{ID: "rule-1"}}
-		cache := &mockCache{rules: expectedRules, version: 1}
+		client := newTestRedis(t)
+		cache := NewRuleCache(client, time.Minute)
 		repo := &mockRepo{}
+
+		expectedRules := []domain.RoutingRule{{ID: "rule-1"}}
+		_, err := cache.IncrementRulesVersion(ctx)
+		require.NoError(t, err)
+		err = cache.SetRulesByVersion(ctx, 1, expectedRules)
+		require.NoError(t, err)
+
 		matcher := NewMatcher(repo, cache)
 
-		err := matcher.LoadRules(ctx)
+		err = matcher.LoadRules(ctx)
 		assert.NoError(t, err)
 		assert.Equal(t, expectedRules, matcher.rules)
 		assert.Equal(t, int64(1), matcher.currentVersion)
 	})
 
 	t.Run("Load from Repo on Cache Miss", func(t *testing.T) {
+		client := newTestRedis(t)
+		cache := NewRuleCache(client, time.Minute)
+
 		expectedRules := []domain.RoutingRule{{ID: "rule-1"}}
-		cache := &mockCache{version: 0} // Miss (no version)
 		repo := &mockRepo{rules: expectedRules}
 		matcher := NewMatcher(repo, cache)
 
 		err := matcher.LoadRules(ctx)
 		assert.NoError(t, err)
 		assert.Equal(t, expectedRules, matcher.rules)
-
-		// Wait a bit for async cache update?
-		// Since we can't easily sync on the goroutine, checking cache.rules here might be flaky
-		// unless we modify SetActiveRules to notify or sleep.
-		// For now we assume logic is correct if LoadRules succeeds with repo rules.
 	})
 
 	t.Run("Cache Version Error - Fallback to DB", func(t *testing.T) {
+		mr, err := miniredis.Run()
+		require.NoError(t, err)
+		client := redisClientFromAddr(mr.Addr())
+		cache := NewRuleCache(client, time.Minute)
+
 		expectedRules := []domain.RoutingRule{{ID: "rule-db"}}
-		cache := &mockCache{version: 1, err: errors.New("cache error")}
 		repo := &mockRepo{rules: expectedRules}
 		matcher := NewMatcher(repo, cache)
 
-		err := matcher.LoadRules(ctx)
-		assert.NoError(t, err)
-		assert.Equal(t, expectedRules, matcher.rules)
-	})
+		mr.Close()
 
-	t.Run("Cache Get Error - Fallback to DB", func(t *testing.T) {
-		expectedRules := []domain.RoutingRule{{ID: "rule-db"}}
-		cache := &mockCache{version: 1, rules: nil, err: errors.New("get error")}
-		repo := &mockRepo{rules: expectedRules}
-		matcher := NewMatcher(repo, cache)
-
-		err := matcher.LoadRules(ctx)
+		err = matcher.LoadRules(ctx)
 		assert.NoError(t, err)
 		assert.Equal(t, expectedRules, matcher.rules)
 	})
 
 	t.Run("DB Error", func(t *testing.T) {
-		cache := &mockCache{version: 0}
+		client := newTestRedis(t)
+		cache := NewRuleCache(client, time.Minute)
 		repo := &mockRepo{err: errors.New("db error")}
 		matcher := NewMatcher(repo, cache)
 
@@ -107,17 +96,22 @@ func TestMatcher_LoadRules(t *testing.T) {
 	})
 
 	t.Run("Already Up To Date", func(t *testing.T) {
+		client := newTestRedis(t)
+		cache := NewRuleCache(client, time.Minute)
 		expectedRules := []domain.RoutingRule{{ID: "rule-1"}}
-		cache := &mockCache{version: 1, rules: expectedRules}
-		repo := &mockRepo{}
+		repo := &mockRepo{rules: expectedRules}
+
+		_, err := cache.IncrementRulesVersion(ctx)
+		require.NoError(t, err)
+		err = cache.SetRulesByVersion(ctx, 1, expectedRules)
+		require.NoError(t, err)
+
 		matcher := NewMatcher(repo, cache)
 
-		// First load
-		err := matcher.LoadRules(ctx)
+		err = matcher.LoadRules(ctx)
 		require.NoError(t, err)
 		assert.Equal(t, expectedRules, matcher.rules)
 
-		// Second load - should skip since version matches
 		err = matcher.LoadRules(ctx)
 		assert.NoError(t, err)
 		assert.Equal(t, expectedRules, matcher.rules)
@@ -126,20 +120,25 @@ func TestMatcher_LoadRules(t *testing.T) {
 
 func TestMatcher_GetStats(t *testing.T) {
 	ctx := context.Background()
+	client := newTestRedis(t)
+	cache := NewRuleCache(client, time.Minute)
 	expectedRules := []domain.RoutingRule{{ID: "rule-1"}}
-	cache := &mockCache{version: 1, rules: expectedRules}
-	repo := &mockRepo{}
+	repo := &mockRepo{rules: expectedRules}
+
+	_, err := cache.IncrementRulesVersion(ctx)
+	require.NoError(t, err)
+	err = cache.SetRulesByVersion(ctx, 1, expectedRules)
+	require.NoError(t, err)
+
 	matcher := NewMatcher(repo, cache)
 
-	// Load rules (should increment cache hit)
-	err := matcher.LoadRules(ctx)
+	err = matcher.LoadRules(ctx)
 	require.NoError(t, err)
 
 	hits, misses := matcher.GetStats()
 	assert.Equal(t, int64(1), hits)
 	assert.Equal(t, int64(0), misses)
 
-	// Load again with same version - should skip (no change to stats)
 	err = matcher.LoadRules(ctx)
 	require.NoError(t, err)
 
@@ -147,14 +146,13 @@ func TestMatcher_GetStats(t *testing.T) {
 	assert.Equal(t, int64(1), hits)
 	assert.Equal(t, int64(0), misses)
 
-	// Load with version 0 (cache miss scenario)
-	cache.version = 0
-	cache.rules = nil // Force cache miss
-	err = matcher.LoadRules(ctx)
+	cache2 := NewRuleCache(newTestRedis(t), time.Minute)
+	matcher2 := NewMatcher(repo, cache2)
+	err = matcher2.LoadRules(ctx)
 	require.NoError(t, err)
 
-	hits, misses = matcher.GetStats()
-	assert.Equal(t, int64(1), hits)
+	hits, misses = matcher2.GetStats()
+	assert.Equal(t, int64(0), hits)
 	assert.Equal(t, int64(1), misses)
 }
 
@@ -162,20 +160,23 @@ func TestMatcher_StartAutoRefresh(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	client := newTestRedis(t)
+	cache := NewRuleCache(client, time.Minute)
 	expectedRules := []domain.RoutingRule{
 		{ID: "rule-1", RequiredTags: []string{"target:test"}},
 	}
-	cache := &mockCache{version: 1, rules: expectedRules}
+	_, err := cache.IncrementRulesVersion(ctx)
+	require.NoError(t, err)
+	err = cache.SetRulesByVersion(ctx, 1, expectedRules)
+	require.NoError(t, err)
+
 	repo := &mockRepo{}
 	matcher := NewMatcher(repo, cache)
 
-	// Start auto refresh with short interval
 	matcher.StartAutoRefresh(ctx, 10*time.Millisecond)
 
-	// Wait for at least one refresh
 	time.Sleep(50 * time.Millisecond)
 
-	// Rules should still be loaded - use Match to access rules safely (avoid race)
 	matched := matcher.Match([]domain.Tag{{Key: "target", Value: "test"}})
 	assert.NotNil(t, matched)
 	assert.Equal(t, "rule-1", matched.ID)
@@ -185,8 +186,9 @@ func TestMatcher_loadFromDB(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("Successful Load", func(t *testing.T) {
+		client := newTestRedis(t)
+		cache := NewRuleCache(client, time.Minute)
 		expectedRules := []domain.RoutingRule{{ID: "rule-db"}}
-		cache := &mockCache{}
 		repo := &mockRepo{rules: expectedRules}
 		matcher := NewMatcher(repo, cache)
 
@@ -196,7 +198,8 @@ func TestMatcher_loadFromDB(t *testing.T) {
 	})
 
 	t.Run("DB Error", func(t *testing.T) {
-		cache := &mockCache{}
+		client := newTestRedis(t)
+		cache := NewRuleCache(client, time.Minute)
 		repo := &mockRepo{err: errors.New("db error")}
 		matcher := NewMatcher(repo, cache)
 
@@ -220,7 +223,7 @@ func TestMatcher_Match(t *testing.T) {
 		},
 		{
 			ID:           "rule-excluded",
-			Priority:     200, // Higher priority but excluded
+			Priority:     200,
 			RequiredTags: []string{"target:amazon"},
 			ExcludedTags: []string{"region:eu"},
 		},
@@ -233,7 +236,7 @@ func TestMatcher_Match(t *testing.T) {
 	tests := []struct {
 		name string
 		tags []domain.Tag
-		want string // ID of matched rule
+		want string
 	}{
 		{
 			name: "Match High Priority",
@@ -251,7 +254,7 @@ func TestMatcher_Match(t *testing.T) {
 				{Key: "target", Value: "amazon"},
 				{Key: "region", Value: "eu"},
 			},
-			want: "rule-high", // rule-excluded skipped, matches rule-high (Wait, rule-high requires target:amazon which is present. Does it have exclusions? No.)
+			want: "rule-high",
 		},
 		{
 			name: "No Match",
@@ -271,4 +274,11 @@ func TestMatcher_Match(t *testing.T) {
 			}
 		})
 	}
+}
+
+func redisClientFromAddr(addr string) *redis.Client {
+	rdb := redis.NewClient(&redis.Options{
+		Addr: addr,
+	})
+	return rdb
 }

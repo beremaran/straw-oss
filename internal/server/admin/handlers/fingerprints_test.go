@@ -9,14 +9,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kwilabs/straw-proxy-server/internal/broker"
-	"github.com/kwilabs/straw-proxy-server/internal/domain"
-	"github.com/labstack/echo/v4"
+	"github.com/beremaran/straw/internal/broker"
+	"github.com/beremaran/straw/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
 
-// MockFingerprintRepo
 type mockFingerprintRepo struct {
 	mock.Mock
 }
@@ -49,7 +47,6 @@ func (m *mockFingerprintRepo) DeletePreset(ctx context.Context, id string) error
 	return args.Error(0)
 }
 
-// MockBroker
 type mockBroker struct {
 	mock.Mock
 }
@@ -98,14 +95,11 @@ func TestFingerprintHandler_List(t *testing.T) {
 	}
 	repo.On("ListPresets", mock.Anything).Return(presets, nil)
 
-	e := echo.New()
 	req := httptest.NewRequest(http.MethodGet, "/admin/fingerprints", nil)
 	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
 
-	err := h.HandleListPresets(c)
+	h.HandleListPresets(rec, req)
 
-	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
 	repo.AssertExpectations(t)
 }
@@ -118,20 +112,17 @@ func TestFingerprintHandler_Create(t *testing.T) {
 	preset := domain.FingerprintPreset{ID: "p1", Name: "Preset 1", Config: domain.ConfigMap{"a": 1}}
 	body, _ := json.Marshal(preset)
 
-	repo.On("GetPreset", mock.Anything, "p1").Return((*domain.FingerprintPreset)(nil), nil) // Not found, so create
+	repo.On("GetPreset", mock.Anything, "p1").Return((*domain.FingerprintPreset)(nil), nil)
 	repo.On("CreatePreset", mock.Anything, mock.MatchedBy(func(p *domain.FingerprintPreset) bool {
 		return p.ID == "p1"
 	})).Return(nil)
 
-	e := echo.New()
 	req := httptest.NewRequest(http.MethodPost, "/admin/fingerprints", bytes.NewReader(body))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
 
-	err := h.HandleCreatePreset(c)
+	h.HandleCreatePreset(rec, req)
 
-	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
 	repo.AssertExpectations(t)
 }
@@ -145,14 +136,11 @@ func TestFingerprintHandler_Broadcast(t *testing.T) {
 	repo.On("ListPresets", mock.Anything).Return(presets, nil)
 	mb.On("Publish", mock.Anything, "fingerprint_broadcast", "", mock.Anything).Return(nil)
 
-	e := echo.New()
 	req := httptest.NewRequest(http.MethodPost, "/admin/fingerprints/broadcast", nil)
 	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
 
-	err := h.HandleBroadcastPresets(c)
+	h.HandleBroadcastPresets(rec, req)
 
-	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
 	repo.AssertExpectations(t)
 	mb.AssertExpectations(t)

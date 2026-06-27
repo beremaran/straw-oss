@@ -45,7 +45,6 @@ func TestInstaller_NewWithOptions(t *testing.T) {
 		t.Errorf("expected binary path '/custom/path', got %q", i.binaryPath)
 	}
 
-	// Test progress callback is set
 	if i.onProgress != nil {
 		i.onProgress(100, 1000)
 		if !progressCalled {
@@ -55,7 +54,7 @@ func TestInstaller_NewWithOptions(t *testing.T) {
 }
 
 func TestInstaller_DownloadAndVerify_Success(t *testing.T) {
-	// Create test binary content
+
 	binaryContent := []byte("#!/bin/bash\necho 'Hello World'")
 	hash := sha256.Sum256(binaryContent)
 	hashHex := hex.EncodeToString(hash[:])
@@ -80,7 +79,6 @@ func TestInstaller_DownloadAndVerify_Success(t *testing.T) {
 	}
 	defer os.Remove(tmpPath)
 
-	// Verify file exists and has correct content
 	content, err := os.ReadFile(tmpPath)
 	if err != nil {
 		t.Fatalf("failed to read temp file: %v", err)
@@ -90,7 +88,6 @@ func TestInstaller_DownloadAndVerify_Success(t *testing.T) {
 		t.Error("file content mismatch")
 	}
 
-	// Verify file is executable
 	info, err := os.Stat(tmpPath)
 	if err != nil {
 		t.Fatalf("failed to stat temp file: %v", err)
@@ -132,7 +129,7 @@ func TestInstaller_DownloadAndVerify_NetworkError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
-	server.Close() // Close immediately to cause network error
+	server.Close()
 
 	manifest := &VersionManifest{
 		Version: "2.0.0",
@@ -216,7 +213,7 @@ func TestInstaller_DownloadAndVerify_ProgressCallback(t *testing.T) {
 }
 
 func TestInstaller_DownloadAndVerify_LargeFile(t *testing.T) {
-	// Create a larger binary (1MB)
+
 	binaryContent := make([]byte, 1024*1024)
 	for i := range binaryContent {
 		binaryContent[i] = byte(i % 256)
@@ -244,7 +241,6 @@ func TestInstaller_DownloadAndVerify_LargeFile(t *testing.T) {
 	}
 	defer os.Remove(tmpPath)
 
-	// Verify file size
 	info, err := os.Stat(tmpPath)
 	if err != nil {
 		t.Fatalf("failed to stat temp file: %v", err)
@@ -256,21 +252,19 @@ func TestInstaller_DownloadAndVerify_LargeFile(t *testing.T) {
 }
 
 func TestInstaller_AtomicReplace(t *testing.T) {
-	// Create temp directory for test
+
 	tmpDir, err := os.MkdirTemp("", "installer-test-*")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
 	defer os.RemoveAll(tmpDir)
 
-	// Create source file
 	srcPath := filepath.Join(tmpDir, "source")
 	srcContent := []byte("new binary content")
 	if err := os.WriteFile(srcPath, srcContent, 0755); err != nil {
 		t.Fatalf("failed to write source file: %v", err)
 	}
 
-	// Create destination file
 	dstPath := filepath.Join(tmpDir, "destination")
 	dstContent := []byte("old binary content")
 	if err := os.WriteFile(dstPath, dstContent, 0755); err != nil {
@@ -283,7 +277,6 @@ func TestInstaller_AtomicReplace(t *testing.T) {
 		t.Fatalf("atomicReplace failed: %v", err)
 	}
 
-	// Verify destination has new content
 	content, err := os.ReadFile(dstPath)
 	if err != nil {
 		t.Fatalf("failed to read destination: %v", err)
@@ -296,11 +289,11 @@ func TestInstaller_AtomicReplace(t *testing.T) {
 
 func TestInstaller_ContextCancellation(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Simulate slow response
+
 		select {
 		case <-r.Context().Done():
 			return
-		case <-make(chan struct{}): // Block forever
+		case <-make(chan struct{}):
 		}
 	}))
 	defer server.Close()
@@ -314,7 +307,7 @@ func TestInstaller_ContextCancellation(t *testing.T) {
 	i := NewInstaller()
 
 	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // Cancel immediately
+	cancel()
 
 	_, err := i.DownloadAndVerify(ctx, manifest)
 	if err == nil {
@@ -322,7 +315,6 @@ func TestInstaller_ContextCancellation(t *testing.T) {
 	}
 }
 
-// Helper functions to check error types
 func isChecksumMismatch(err error) bool {
 	return err != nil && (errors.Is(err, ErrChecksumMismatch) ||
 		(len(err.Error()) > 0 && err.Error()[:len("checksum mismatch")] == "checksum mismatch"))
@@ -334,7 +326,7 @@ func isDownloadFailed(err error) bool {
 }
 
 func TestInstaller_Install(t *testing.T) {
-	// Create temp dir for the "current binary"
+
 	tmpDir, err := os.MkdirTemp("", "installer-install-test-*")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
@@ -343,18 +335,15 @@ func TestInstaller_Install(t *testing.T) {
 		_ = os.RemoveAll(path)
 	}(tmpDir)
 
-	// Create a "current binary"
 	currentBinary := filepath.Join(tmpDir, "app")
 	if err := os.WriteFile(currentBinary, []byte("old version"), 0755); err != nil {
 		t.Fatalf("failed to create current binary: %v", err)
 	}
 
-	// Prepare new binary content
 	newContent := []byte("new version")
 	hash := sha256.Sum256(newContent)
 	hashHex := hex.EncodeToString(hash[:])
 
-	// Mock server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write(newContent)
@@ -367,17 +356,14 @@ func TestInstaller_Install(t *testing.T) {
 		SHA256:  hashHex,
 	}
 
-	// Create installer targeting our temp binary
 	i := NewInstaller(
 		WithBinaryPath(currentBinary),
 	)
 
-	// Perform install
 	if err := i.Install(context.Background(), manifest); err != nil {
 		t.Fatalf("Install failed: %v", err)
 	}
 
-	// Verify the binary was replaced
 	content, err := os.ReadFile(currentBinary)
 	if err != nil {
 		t.Fatalf("failed to read binary after install: %v", err)

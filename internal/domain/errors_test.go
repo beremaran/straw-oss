@@ -3,7 +3,7 @@ package domain
 import (
 	"testing"
 
-	"github.com/kwilabs/straw-proxy-server/pkg/protocol"
+	"github.com/beremaran/straw/pkg/protocol"
 )
 
 func TestDomainError_Error(t *testing.T) {
@@ -34,31 +34,6 @@ func TestDomainError_ToResponse(t *testing.T) {
 	}
 	if resp.Error.Retryable != false {
 		t.Errorf("ToResponse() Retryable = %v, want false", resp.Error.Retryable)
-	}
-}
-
-func TestIsDomainError(t *testing.T) {
-	domainErr := ErrAuthInvalid
-	regularErr := &struct{ error }{}
-
-	if !IsDomainError(domainErr) {
-		t.Error("IsDomainError() returned false for StrawError")
-	}
-
-	if IsDomainError(regularErr) {
-		t.Error("IsDomainError() returned true for non-StrawError")
-	}
-}
-
-func TestAsDomainError(t *testing.T) {
-	domainErr := ErrRateLimitExceeded
-
-	de, ok := AsDomainError(domainErr)
-	if !ok {
-		t.Error("AsDomainError() returned false for StrawError")
-	}
-	if de.Code != protocol.ErrCodeRateLimitExceeded {
-		t.Errorf("AsDomainError() Code = %s, want %s", de.Code, protocol.ErrCodeRateLimitExceeded)
 	}
 }
 

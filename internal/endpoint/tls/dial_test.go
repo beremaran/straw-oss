@@ -12,9 +12,10 @@ import (
 	"net"
 	"testing"
 	"time"
+
+	"github.com/beremaran/straw/internal/endpoint/fingerprint"
 )
 
-// generateTestCert creates a self-signed certificate for testing.
 func generateTestCert() (tls.Certificate, error) {
 	priv, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -46,7 +47,6 @@ func generateTestCert() (tls.Certificate, error) {
 	}, nil
 }
 
-// startTestTLSServer starts a test TLS server and returns its address.
 func startTestTLSServer(t *testing.T) (string, func()) {
 	t.Helper()
 
@@ -69,12 +69,12 @@ func startTestTLSServer(t *testing.T) (string, func()) {
 		for {
 			conn, err := listener.Accept()
 			if err != nil {
-				return // Server closed
+				return
 			}
-			// Spawn goroutine to handle connection
+
 			go func(c net.Conn) {
 				defer c.Close()
-				// Read some data to complete the handshake
+
 				buf := make([]byte, 1024)
 				_, _ = c.Read(buf)
 			}(conn)
@@ -93,7 +93,6 @@ func TestDial_Success(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// Use InsecureSkipVerify since we're using a self-signed cert
 	conn, err := Dial(ctx, "tcp", addr, "chrome-133", WithInsecureSkipVerify(true))
 	if err != nil {
 		t.Fatalf("Dial failed: %v", err)
@@ -126,20 +125,19 @@ func TestDial_UnknownFingerprint(t *testing.T) {
 }
 
 func TestDial_ContextCancellation(t *testing.T) {
-	// Create an address that will take a while to connect (non-routable)
+
 	addr := "10.255.255.1:443"
 
 	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // Cancel immediately
+	cancel()
 
 	_, err := Dial(ctx, "tcp", addr, "chrome-133")
 	if err == nil {
 		t.Fatal("expected error for cancelled context")
 	}
 
-	// The dial should fail due to context cancellation
 	if !errors.Is(err, context.Canceled) {
-		// Also acceptable: DialError wrapping context.Canceled
+
 		var dialErr *DialError
 		if errors.As(err, &dialErr) {
 			if !errors.Is(dialErr.Err, context.Canceled) {
@@ -150,7 +148,7 @@ func TestDial_ContextCancellation(t *testing.T) {
 }
 
 func TestDial_ConnectionRefused(t *testing.T) {
-	// Use a port that's definitely not listening
+
 	addr := "127.0.0.1:1"
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -164,7 +162,7 @@ func TestDial_ConnectionRefused(t *testing.T) {
 	var dialErr *DialError
 	if !errors.As(err, &dialErr) {
 		t.Logf("got error type: %T, error: %v", err, err)
-		// Accept any error here since connection refused behavior varies
+
 	}
 }
 
@@ -201,99 +199,8 @@ func TestDial_WithHandshakeTimeout(t *testing.T) {
 	defer conn.Close()
 }
 
-func TestGetPreset(t *testing.T) {
-	tests := []struct {
-		name   string
-		wantOK bool
-	}{
-		{"chrome-133", true},
-		{"chrome-131", true},
-		{"chrome-120", true},
-		{"firefox-120", true},
-		{"safari-16", true},
-		{"edge-106", true},
-		{"auto", true},
-		{"randomized", true},
-		{"unknown", false},
-		{"", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, ok := GetPreset(tt.name)
-			if ok != tt.wantOK {
-				t.Errorf("GetPreset(%q) ok = %v, want %v", tt.name, ok, tt.wantOK)
-			}
-		})
-	}
-}
-
-func TestListPresets(t *testing.T) {
-	presets := ListPresets()
-
-	if len(presets) == 0 {
-		t.Fatal("expected at least one preset")
-	}
-
-	// Check that all returned presets are valid
-	for _, name := range presets {
-		if _, ok := GetPreset(name); !ok {
-			t.Errorf("ListPresets returned invalid preset: %q", name)
-		}
-	}
-
-	// Check for expected presets
-	expected := []string{"chrome-133", "firefox-120", "safari-16", "edge-106"}
-	for _, exp := range expected {
-		found := false
-		for _, name := range presets {
-			if name == exp {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Errorf("expected preset %q not found in list", exp)
-		}
-	}
-}
-
-func TestGetPresetInfo(t *testing.T) {
-	info, ok := GetPresetInfo("chrome-133")
-	if !ok {
-		t.Fatal("expected to find chrome-133 info")
-	}
-
-	if info.Browser != "Chrome" {
-		t.Errorf("expected browser 'Chrome', got %q", info.Browser)
-	}
-
-	if info.Version != "133" {
-		t.Errorf("expected version '133', got %q", info.Version)
-	}
-
-	if info.Deprecated {
-		t.Error("chrome-133 should not be deprecated")
-	}
-
-	// Test deprecated preset
-	deprecatedInfo, ok := GetPresetInfo("chrome-120")
-	if !ok {
-		t.Fatal("expected to find chrome-120 info")
-	}
-	if !deprecatedInfo.Deprecated {
-		t.Error("chrome-120 should be deprecated")
-	}
-
-	// Test unknown preset
-	_, ok = GetPresetInfo("unknown")
-	if ok {
-		t.Error("expected to not find unknown preset info")
-	}
-}
-
 func TestErrorTypes(t *testing.T) {
-	// Test FingerprintError
+
 	fpErr := &FingerprintError{
 		Fingerprint: "test-fp",
 		Err:         ErrUnknownFingerprint,
@@ -302,7 +209,6 @@ func TestErrorTypes(t *testing.T) {
 		t.Error("FingerprintError should unwrap to ErrUnknownFingerprint")
 	}
 
-	// Test CertificateError
 	certErr := &CertificateError{
 		Addr: "example.com:443",
 		Err:  errors.New("x509: certificate is not valid"),
@@ -311,7 +217,6 @@ func TestErrorTypes(t *testing.T) {
 		t.Error("CertificateError should be ErrCertificateValidation")
 	}
 
-	// Test ProtocolError
 	protoErr := &ProtocolError{
 		Addr: "example.com:443",
 		Err:  errors.New("ALPN negotiation failed"),
@@ -322,7 +227,7 @@ func TestErrorTypes(t *testing.T) {
 }
 
 func TestDial_AllPresets(t *testing.T) {
-	// Skip in short mode as this makes network connections
+
 	if testing.Short() {
 		t.Skip("skipping preset validation in short mode")
 	}
@@ -330,9 +235,9 @@ func TestDial_AllPresets(t *testing.T) {
 	addr, cleanup := startTestTLSServer(t)
 	defer cleanup()
 
-	for name := range Presets {
+	for _, name := range fingerprint.List() {
 		t.Run(name, func(t *testing.T) {
-			// Skip randomized preset as it may generate unsupported curves
+
 			if name == "randomized" {
 				t.Skip("randomized preset may generate unsupported curves")
 			}

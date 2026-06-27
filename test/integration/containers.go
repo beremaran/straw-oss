@@ -1,4 +1,3 @@
-// Package integration provides testcontainer-based infrastructure for integration testing.
 package integration
 
 import (
@@ -12,16 +11,14 @@ import (
 	"github.com/testcontainers/testcontainers-go/modules/redis"
 	"github.com/testcontainers/testcontainers-go/wait"
 
-	pginfra "github.com/kwilabs/straw-proxy-server/internal/infra/postgres"
+	pginfra "github.com/beremaran/straw/internal/infra/postgres"
 )
 
-// PostgresContainer wraps a PostgreSQL testcontainer.
 type PostgresContainer struct {
 	container *postgres.PostgresContainer
 	dsn       string
 }
 
-// NewPostgresContainer creates and starts a new PostgreSQL testcontainer.
 func NewPostgresContainer(ctx context.Context) (*PostgresContainer, error) {
 	container, err := postgres.Run(ctx,
 		"postgres:17-alpine",
@@ -50,17 +47,14 @@ func NewPostgresContainer(ctx context.Context) (*PostgresContainer, error) {
 	}, nil
 }
 
-// DSN returns the PostgreSQL connection string.
 func (c *PostgresContainer) DSN() string {
 	return c.dsn
 }
 
-// RunMigrations runs database migrations using the project's embedded migrations.
 func (c *PostgresContainer) RunMigrations() error {
 	return pginfra.RunEmbeddedMigrations(c.dsn)
 }
 
-// Terminate stops and removes the container.
 func (c *PostgresContainer) Terminate(ctx context.Context) error {
 	if c.container != nil {
 		return c.container.Terminate(ctx)
@@ -68,13 +62,11 @@ func (c *PostgresContainer) Terminate(ctx context.Context) error {
 	return nil
 }
 
-// RedisContainer wraps a Redis testcontainer.
 type RedisContainer struct {
 	container *redis.RedisContainer
 	addr      string
 }
 
-// NewRedisContainer creates and starts a new Redis testcontainer.
 func NewRedisContainer(ctx context.Context) (*RedisContainer, error) {
 	container, err := redis.Run(ctx,
 		"redis:7-alpine",
@@ -105,12 +97,10 @@ func NewRedisContainer(ctx context.Context) (*RedisContainer, error) {
 	}, nil
 }
 
-// Addr returns the Redis address (host:port).
 func (c *RedisContainer) Addr() string {
 	return c.addr
 }
 
-// Terminate stops and removes the container.
 func (c *RedisContainer) Terminate(ctx context.Context) error {
 	if c.container != nil {
 		return c.container.Terminate(ctx)
@@ -118,19 +108,15 @@ func (c *RedisContainer) Terminate(ctx context.Context) error {
 	return nil
 }
 
-// RabbitMQContainer support removed.
-
-// NatsContainer wraps a NATS testcontainer.
 type NatsContainer struct {
 	container *nats.NATSContainer
 	url       string
 }
 
-// NewNatsContainer creates and starts a new NATS testcontainer.
 func NewNatsContainer(ctx context.Context) (*NatsContainer, error) {
 	container, err := nats.Run(ctx,
 		"nats:latest",
-		testcontainers.WithCmd("-js"), // Enable JetStream
+		testcontainers.WithCmd("-js"),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start nats container: %w", err)
@@ -148,12 +134,10 @@ func NewNatsContainer(ctx context.Context) (*NatsContainer, error) {
 	}, nil
 }
 
-// URL returns the NATS URL.
 func (c *NatsContainer) URL() string {
 	return c.url
 }
 
-// Terminate stops and removes the container.
 func (c *NatsContainer) Terminate(ctx context.Context) error {
 	if c.container != nil {
 		return c.container.Terminate(ctx)

@@ -79,7 +79,6 @@ func TestRegistry_Get(t *testing.T) {
 
 	_ = r.Register(preset)
 
-	// Test successful get
 	got, ok := r.Get("chrome-test")
 	if !ok {
 		t.Fatal("expected preset to be found")
@@ -119,7 +118,6 @@ func TestRegistry_List(t *testing.T) {
 		t.Errorf("expected 3 presets in list, got %d", len(list))
 	}
 
-	// Check all presets are in the list
 	found := make(map[string]bool)
 	for _, id := range list {
 		found[id] = true
@@ -135,7 +133,6 @@ func TestRegistry_List(t *testing.T) {
 func TestRegistry_ConcurrentAccess(t *testing.T) {
 	r := NewRegistry()
 
-	// Register some initial presets
 	for i := 0; i < 10; i++ {
 		preset := Preset{
 			ID:             "initial-" + string(rune('a'+i)),
@@ -148,7 +145,6 @@ func TestRegistry_ConcurrentAccess(t *testing.T) {
 	const numGoroutines = 100
 	const opsPerGoroutine = 100
 
-	// Concurrent reads
 	for i := 0; i < numGoroutines; i++ {
 		wg.Add(1)
 		go func() {
@@ -162,7 +158,7 @@ func TestRegistry_ConcurrentAccess(t *testing.T) {
 	}
 
 	wg.Wait()
-	// If we get here without deadlock or panic, the test passes
+
 }
 
 func TestDefaultRegistry_BuiltInPresets(t *testing.T) {
@@ -172,7 +168,6 @@ func TestDefaultRegistry_BuiltInPresets(t *testing.T) {
 		t.Fatal("expected built-in presets to be registered")
 	}
 
-	// Check for expected built-in presets
 	expectedPresets := []string{
 		"chrome-133",
 		"chrome-131",
@@ -192,7 +187,6 @@ func TestDefaultRegistry_BuiltInPresets(t *testing.T) {
 			continue
 		}
 
-		// Verify required fields are populated
 		if preset.ID != presetID {
 			t.Errorf("preset %q: ID mismatch, got %q", presetID, preset.ID)
 		}
@@ -220,7 +214,6 @@ func TestPreset_ChromeClientHints(t *testing.T) {
 		t.Fatal("expected chrome-133 preset to exist")
 	}
 
-	// Chrome should have Sec-CH-UA headers
 	if preset.SecCHUA == "" {
 		t.Error("chrome preset should have SecCHUA")
 	}
@@ -238,7 +231,6 @@ func TestPreset_FirefoxNoClientHints(t *testing.T) {
 		t.Fatal("expected firefox-133 preset to exist")
 	}
 
-	// Firefox should NOT have Sec-CH-UA headers (they don't support it)
 	if preset.SecCHUA != "" {
 		t.Error("firefox preset should not have SecCHUA")
 	}
@@ -251,7 +243,7 @@ func TestPreset_FirefoxNoClientHints(t *testing.T) {
 }
 
 func TestPreset_DeprecatedFlag(t *testing.T) {
-	// chrome-129 should be deprecated
+
 	preset, ok := Get("chrome-129")
 	if !ok {
 		t.Fatal("expected chrome-129 preset to exist")
@@ -260,7 +252,6 @@ func TestPreset_DeprecatedFlag(t *testing.T) {
 		t.Error("chrome-129 should be marked as deprecated")
 	}
 
-	// chrome-133 should NOT be deprecated
 	preset, ok = Get("chrome-133")
 	if !ok {
 		t.Fatal("expected chrome-133 preset to exist")
@@ -271,7 +262,7 @@ func TestPreset_DeprecatedFlag(t *testing.T) {
 }
 
 func TestPackageLevelFunctions(t *testing.T) {
-	// Test Get
+
 	preset, ok := Get("chrome-133")
 	if !ok {
 		t.Error("Get should find chrome-133")
@@ -280,7 +271,6 @@ func TestPackageLevelFunctions(t *testing.T) {
 		t.Error("Get returned wrong preset")
 	}
 
-	// Test List
 	list := List()
 	if len(list) == 0 {
 		t.Error("List should return preset IDs")
@@ -295,10 +285,8 @@ func TestMustRegister_Panic(t *testing.T) {
 		TLSClientHello: utls.HelloGolang,
 	}
 
-	// First registration should succeed
 	r.MustRegister(preset)
 
-	// Second registration should panic
 	defer func() {
 		if recover() == nil {
 			t.Error("MustRegister should panic on duplicate registration")
@@ -319,7 +307,6 @@ func TestHTTP2Settings(t *testing.T) {
 		t.Fatal("HTTP2Settings should not be nil")
 	}
 
-	// Chrome typically uses these values
 	if settings.HeaderTableSize == 0 {
 		t.Error("HeaderTableSize should be set")
 	}

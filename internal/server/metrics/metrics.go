@@ -3,30 +3,28 @@ package metrics
 import (
 	"sync"
 
-	"github.com/kwilabs/straw-proxy-server/internal/observability/metrics"
+	"github.com/beremaran/straw/internal/observability/metrics"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
-	// RequestsTotal counts the total number of processed requests.
 	RequestsTotal *prometheus.CounterVec
-	// RequestDuration measures the duration of requests.
+
 	RequestDuration *prometheus.HistogramVec
-	// QueueDepth tracks the depth of the request queue (estimated).
+
 	QueueDepth *prometheus.GaugeVec
-	// CacheHits counts cache hits.
+
 	CacheHits *prometheus.CounterVec
-	// CacheMisses counts cache misses.
+
 	CacheMisses *prometheus.CounterVec
-	// ActiveSessions tracks the number of concurrent requests in flight.
+
 	ActiveSessions prometheus.Gauge
-	// RateLimitExceeded counts the number of rate limited requests.
+
 	RateLimitExceeded *prometheus.CounterVec
 
 	once sync.Once
 )
 
-// Init initializes the server metrics.
 func Init() {
 	once.Do(func() {
 		reg := metrics.GetRegistry()

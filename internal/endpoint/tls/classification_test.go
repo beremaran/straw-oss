@@ -10,7 +10,7 @@ func TestClassifyHandshakeError(t *testing.T) {
 	tests := []struct {
 		name     string
 		err      error
-		expected error // The error type it should be wrapped in
+		expected error
 	}{
 		{
 			name:     "Certificate Invalid",
@@ -40,7 +40,7 @@ func TestClassifyHandshakeError(t *testing.T) {
 		{
 			name:     "Generic Dial Error",
 			err:      errors.New("connection reset"),
-			expected: nil, // Should remain generic DialError
+			expected: nil,
 		},
 	}
 
@@ -54,12 +54,12 @@ func TestClassifyHandshakeError(t *testing.T) {
 					t.Errorf("classifyHandshakeError(%v) = %v; want %v", tt.err, classified, tt.expected)
 				}
 			} else {
-				// Should be just HandshakeError (not DialError, my bad assumption in previous code, checking dial.go it returns generic HandshakeError for fallback)
+
 				var hsErr *HandshakeError
 				if !errors.As(classified, &hsErr) {
 					t.Errorf("expected HandshakeError, got %T", classified)
 				}
-				// And NOT wrapped in specific types
+
 				if errors.Is(classified, ErrCertificateValidation) || errors.Is(classified, ErrProtocolNegotiation) {
 					t.Errorf("unexpected specific error type for %v", classified)
 				}
@@ -102,16 +102,8 @@ func TestIsProtocolError(t *testing.T) {
 		{"no application protocol", errors.New("tls: no application protocol"), true},
 		{"no cipher suite supported", errors.New("tls: no cipher suite supported"), true},
 		{"protocol version not supported", errors.New("tls: protocol version not supported"), true},
-		{"handshake failure", errors.New("tls: handshake failure"), true}, // "handshake" implies protocol usually
-		// Wait, looking at dial.go implementation of isProtocolError:
-		// contains(errStr, "protocol") || contains(errStr, "ALPN") || contains(errStr, "version") || contains(errStr, "cipher")
-		// "tls: handshake failure" does not contain these keywords? Let's check.
-		// It might fail this test if I assumed too much. Let's adjust expectations if needed.
-		// Actually "handshake failure" is generic. It might fall through unless it has "protocol" etc.
-		// "tls: internal error" - not in list.
-		// "oversized record" - not in list.
-		// So I should align test expectations with actual implementation.
-		// I'll keep the ones that definitely match:
+		{"handshake failure", errors.New("tls: handshake failure"), true},
+
 		{"protocol version not supported", errors.New("tls: protocol version not supported"), true},
 		{"ALPN error", errors.New("ALPN negotiation failed"), true},
 		{"Cipher suite error", errors.New("no cipher suite supported"), true},
@@ -125,27 +117,5 @@ func TestIsProtocolError(t *testing.T) {
 				t.Errorf("isProtocolError(%v) = %v, want %v", tt.err, got, tt.expected)
 			}
 		})
-	}
-}
-
-func TestContains(t *testing.T) {
-	if !contains("hello world", "world") {
-		t.Error("contains('hello world', 'world') = false, want true")
-	}
-	if contains("hello world", "foo") {
-		t.Error("contains('hello world', 'foo') = true, want false")
-	}
-}
-
-func TestFindSubstring(t *testing.T) {
-	s := "some complex error message"
-	if !findSubstring(s, "complex") {
-		t.Error("findSubstring(s, 'complex') = false, want true")
-	}
-	if findSubstring(s, "missing") {
-		t.Error("findSubstring(s, 'missing') = true, want false")
-	}
-	if findSubstring("", "anything") {
-		t.Error("findSubstring('', 'anything') = true, want false")
 	}
 }

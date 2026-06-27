@@ -2,112 +2,147 @@ package middleware
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
-	"github.com/kwilabs/straw-proxy-server/internal/domain"
-	"github.com/kwilabs/straw-proxy-server/internal/service/auth"
-	"github.com/labstack/echo/v4"
+	"github.com/alicebob/miniredis/v2"
+	"github.com/beremaran/straw/internal/domain"
+	"github.com/beremaran/straw/internal/infra/redis"
+	"github.com/beremaran/straw/internal/service/auth"
+	goredis "github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
 
-type MockValidator struct {
+type MockRepo struct {
 	mock.Mock
 }
 
-func (m *MockValidator) ValidateKey(ctx context.Context, rawKey string) (*domain.ApiKey, error) {
-	args := m.Called(ctx, rawKey)
+func (m *MockRepo) GetByID(ctx context.Context, id string) (*domain.ApiKey, error) {
+	args := m.Called(ctx, id)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*domain.ApiKey), args.Error(1)
 }
 
-func TestAuthMiddleware(t *testing.T) {
-	e := echo.New()
-	mockValidator := new(MockValidator)
-	mw := AuthMiddleware(mockValidator)
+func (m *MockRepo) GetByTokenHash(ctx context.Context, tokenHash string) (*domain.ApiKey, error) {
+	args := m.Called(ctx, tokenHash)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.ApiKey), args.Error(1)
+}
 
-	// dummy handler
-	handler := mw(func(c echo.Context) error {
-		return c.String(http.StatusOK, "success")
+func (m *MockRepo) Create(ctx context.Context, key *domain.ApiKey) error {
+	args := m.Called(ctx, key)
+	return args.Error(0)
+}
+
+func (m *MockRepo) List(ctx context.Context, limit, offset int) ([]domain.ApiKey, int, error) {
+	args := m.Called(ctx, limit, offset)
+	if args.Get(0) == nil {
+		return nil, 0, args.Error(2)
+	}
+	return args.Get(0).([]domain.ApiKey), args.Int(1), args.Error(2)
+}
+
+func (m *MockRepo) Revoke(ctx context.Context, id string) error {
+	args := m.Called(ctx, id)
+	return args.Error(0)
+}
+
+func sha256Hash(s string) string {
+	hash := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(hash[:])
+}
+
+func TestAuthMiddleware(t *testing.T) {
+	mr, err := miniredis.Run()
+	assert.NoError(t, err)
+	defer mr.Close()
+
+	rdb := goredis.NewClient(&goredis.Options{
+		Addr: mr.Addr(),
 	})
+	redisClient := &redis.Client{Client: rdb}
+	authCache := auth.NewAuthCache(redisClient, time.Minute)
+
+	mockRepo := new(MockRepo)
+	authService := auth.NewAuthService(mockRepo, authCache)
+	mw := AuthMiddleware(authService)
+
+	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		apiKey := GetAPIKey(r)
+		if apiKey != nil {
+
+			_, _ = w.Write([]byte("success"))
+		}
+	}))
 
 	t.Run("Missing Bearer Token", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		rec := httptest.NewRecorder()
-		c := e.NewContext(req, rec)
 
-		err := handler(c)
-		assert.Error(t, err)
-		httpErr, ok := err.(*echo.HTTPError)
-		assert.True(t, ok)
-		assert.Equal(t, http.StatusUnauthorized, httpErr.Code)
-		assert.Contains(t, httpErr.Message, "missing bearer token")
+		handler.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+		assert.Contains(t, rec.Body.String(), "missing bearer token")
 	})
 
 	t.Run("Invalid Bearer Token", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		req.Header.Set("Authorization", "Bearer invalid-token")
 		rec := httptest.NewRecorder()
-		c := e.NewContext(req, rec)
 
-		mockValidator.On("ValidateKey", mock.Anything, "invalid-token").Return(nil, auth.ErrInvalidKey).Once()
+		tokenHash := sha256Hash("invalid-token")
+		mockRepo.On("GetByTokenHash", mock.Anything, tokenHash).Return(nil, nil).Once()
 
-		err := handler(c)
-		assert.Error(t, err)
-		httpErr, ok := err.(*echo.HTTPError)
-		assert.True(t, ok)
-		assert.Equal(t, http.StatusUnauthorized, httpErr.Code)
-		assert.Contains(t, httpErr.Message, "invalid bearer token")
-		mockValidator.AssertExpectations(t)
+		handler.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+		assert.Contains(t, rec.Body.String(), "invalid bearer token")
+		mockRepo.AssertExpectations(t)
 	})
 
 	t.Run("Valid Bearer Token", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		req.Header.Set("Authorization", "Bearer valid-token")
 		rec := httptest.NewRecorder()
-		c := e.NewContext(req, rec)
 
-		validApiKey := &domain.ApiKey{ID: "test"}
-		mockValidator.On("ValidateKey", mock.Anything, "valid-token").Return(validApiKey, nil).Once()
+		tokenHash := sha256Hash("valid-token")
+		validApiKey := &domain.ApiKey{ID: "test", TokenHash: tokenHash, IsActive: true}
+		mockRepo.On("GetByTokenHash", mock.Anything, tokenHash).Return(validApiKey, nil).Once()
 
-		err := handler(c)
-		assert.NoError(t, err)
+		handler.ServeHTTP(rec, req)
 		assert.Equal(t, http.StatusOK, rec.Code)
-		assert.Equal(t, validApiKey, c.Get(ContextKeyAPIKey))
-		mockValidator.AssertExpectations(t)
+		assert.Equal(t, "success", rec.Body.String())
+		mockRepo.AssertExpectations(t)
 	})
 
 	t.Run("Invalid Authorization Header Format", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		req.Header.Set("Authorization", "Basic abc123") // Wrong auth type
+		req.Header.Set("Authorization", "Basic abc123")
 		rec := httptest.NewRecorder()
-		c := e.NewContext(req, rec)
 
-		err := handler(c)
-		assert.Error(t, err)
-		httpErr, ok := err.(*echo.HTTPError)
-		assert.True(t, ok)
-		assert.Equal(t, http.StatusUnauthorized, httpErr.Code)
+		handler.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
 	})
 
 	t.Run("Internal Error", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		req.Header.Set("Authorization", "Bearer error-token")
 		rec := httptest.NewRecorder()
-		c := e.NewContext(req, rec)
 
-		mockValidator.On("ValidateKey", mock.Anything, "error-token").Return(nil, errors.New("db down")).Once()
+		tokenHash := sha256Hash("error-token")
+		_ = authCache.InvalidateKey(context.Background(), tokenHash)
+		mockRepo.On("GetByTokenHash", mock.Anything, tokenHash).Return(nil, errors.New("db down")).Once()
 
-		err := handler(c)
-		assert.Error(t, err)
-		httpErr, ok := err.(*echo.HTTPError)
-		assert.True(t, ok)
-		assert.Equal(t, http.StatusInternalServerError, httpErr.Code)
-		mockValidator.AssertExpectations(t)
+		handler.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusInternalServerError, rec.Code)
+		mockRepo.AssertExpectations(t)
 	})
 }

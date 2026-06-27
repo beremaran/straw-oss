@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/kwilabs/straw-proxy-server/internal/domain"
+	"github.com/beremaran/straw/internal/domain"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -30,17 +30,14 @@ func TestRuleCache_RulesVersion(t *testing.T) {
 	cache := NewRuleCache(client, time.Minute)
 	ctx := context.Background()
 
-	// Initial get - 0
 	ver, err := cache.GetRulesVersion(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, int64(0), ver)
 
-	// Increment
 	newVer, err := cache.IncrementRulesVersion(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, int64(1), newVer)
 
-	// Get again
 	ver, err = cache.GetRulesVersion(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, int64(1), ver)
@@ -57,21 +54,17 @@ func TestRuleCache_RulesByVersion(t *testing.T) {
 		{ID: "rule2", Priority: 5},
 	}
 
-	// Cache miss
 	cachedRules, err := cache.GetRulesByVersion(ctx, version)
 	assert.NoError(t, err)
 	assert.Nil(t, cachedRules)
 
-	// Set
 	err = cache.SetRulesByVersion(ctx, version, rules)
 	assert.NoError(t, err)
 
-	// Cache hit
 	cachedRules, err = cache.GetRulesByVersion(ctx, version)
 	assert.NoError(t, err)
 	assert.Equal(t, rules, cachedRules)
 
-	// Verify internals
 	key := ActiveRulesKeyPrefix + "1"
 	val, err := client.Get(ctx, key).Bytes()
 	assert.NoError(t, err)
@@ -91,11 +84,9 @@ func TestRuleCache_Invalidate(t *testing.T) {
 	err := cache.SetRulesByVersion(ctx, version, rules)
 	require.NoError(t, err)
 
-	// Invalidate
 	err = cache.Invalidate(ctx, version)
 	assert.NoError(t, err)
 
-	// Should be gone
 	cachedRules, err := cache.GetRulesByVersion(ctx, version)
 	assert.NoError(t, err)
 	assert.Nil(t, cachedRules)
@@ -122,7 +113,7 @@ func TestRuleCache_ErrorCases(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("GetRulesVersion - Redis Error", func(t *testing.T) {
-		// Close the client to simulate error
+
 		client.Close()
 
 		ver, err := cache.GetRulesVersion(ctx)
@@ -132,7 +123,7 @@ func TestRuleCache_ErrorCases(t *testing.T) {
 	})
 
 	t.Run("GetRulesByVersion - Redis Error", func(t *testing.T) {
-		// Use a new client since we closed the previous one
+
 		newClient := newTestRedis(t)
 		newCache := NewRuleCache(newClient, time.Minute)
 		newClient.Close()
@@ -144,11 +135,7 @@ func TestRuleCache_ErrorCases(t *testing.T) {
 	})
 
 	t.Run("SetRulesByVersion - JSON Marshal Error", func(t *testing.T) {
-		// Create a rule that will fail JSON marshaling
-		// Since domain.RoutingRule should be marshallable, we need to test differently
-		// Actually, we can't easily create an unmarshallable struct, so let's skip this
-		// In real scenarios, this would require a custom type or circular reference
-		// Let's test the Redis error path instead
+
 		newClient := newTestRedis(t)
 		newCache := NewRuleCache(newClient, time.Minute)
 		newClient.Close()

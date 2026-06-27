@@ -5,30 +5,31 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/kwilabs/straw-proxy-server/internal/config"
-	"github.com/labstack/echo/v4"
+	"github.com/beremaran/straw/internal/config"
+	"github.com/beremaran/straw/internal/server/helper"
 )
 
-// KeyAuth returns a middleware that validates the Admin API Key using Bearer token.
-func KeyAuth(cfg config.ServerConfig) echo.MiddlewareFunc {
-	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			authHeader := c.Request().Header.Get("Authorization")
+func KeyAuth(cfg config.ServerConfig) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			authHeader := r.Header.Get("Authorization")
 			if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
-				return echo.NewHTTPError(http.StatusUnauthorized, "missing admin token")
+				helper.WriteError(w, http.StatusUnauthorized, "missing admin token")
+				return
 			}
 
 			receivedKey := strings.TrimPrefix(authHeader, "Bearer ")
 			if receivedKey == "" {
-				return echo.NewHTTPError(http.StatusUnauthorized, "missing admin token")
+				helper.WriteError(w, http.StatusUnauthorized, "missing admin token")
+				return
 			}
 
-			// Constant time comparison to prevent timing attacks
 			if subtle.ConstantTimeCompare([]byte(receivedKey), []byte(cfg.AdminAPIKey)) != 1 {
-				return echo.NewHTTPError(http.StatusUnauthorized, "invalid admin token")
+				helper.WriteError(w, http.StatusUnauthorized, "invalid admin token")
+				return
 			}
 
-			return next(c)
-		}
+			next.ServeHTTP(w, r)
+		})
 	}
 }

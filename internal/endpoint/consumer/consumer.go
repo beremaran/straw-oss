@@ -1,5 +1,3 @@
-// Package consumer provides a RabbitMQ task consumer for the Endpoint worker.
-// It receives tasks from the broker, validates signatures, and executes HTTP requests.
 package consumer
 
 import (
@@ -11,20 +9,16 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kwilabs/straw-proxy-server/internal/broker"
-	endpointhttp "github.com/kwilabs/straw-proxy-server/internal/endpoint/http"
-	"github.com/kwilabs/straw-proxy-server/internal/endpoint/metrics"
-	"github.com/kwilabs/straw-proxy-server/pkg/protocol"
+	"github.com/beremaran/straw/internal/broker"
+	endpointhttp "github.com/beremaran/straw/internal/endpoint/http"
+	"github.com/beremaran/straw/internal/endpoint/metrics"
+	"github.com/beremaran/straw/pkg/protocol"
 )
 
-// DefaultMaxTaskAge is the default maximum age for a task to be considered valid.
 const DefaultMaxTaskAge = 60 * time.Second
 
-// DefaultConcurrencyLimit is the default number of concurrent tasks.
-// Reduced from 100 for better resource usage under load.
 const DefaultConcurrencyLimit = 25
 
-// Consumer consumes tasks from RabbitMQ and executes HTTP requests.
 type Consumer struct {
 	broker     broker.MessageBroker
 	httpClient *endpointhttp.Client
@@ -32,29 +26,22 @@ type Consumer struct {
 	endpointID string
 	queueName  string
 
-	// Concurrency control
 	concurrencyLimit int
 	semaphore        chan struct{}
 
-	// Task validation
 	maxTaskAge time.Duration
 
-	// Lifecycle
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 
-	// Result handler (to be wired in task 2.6)
 	resultHandler func(ctx context.Context, resp *protocol.Response, replyTo string) error
 
-	// Logger
 	logger *slog.Logger
 
-	// Stats callback
 	onTaskCompleted func(TaskResult)
 }
 
-// TaskResult contains the results of a processed task.
 type TaskResult struct {
 	RequestID     string
 	StatusCode    int
@@ -64,10 +51,8 @@ type TaskResult struct {
 	HasError      bool
 }
 
-// Option is a functional option for configuring the Consumer.
 type Option func(*Consumer)
 
-// WithConcurrencyLimit sets the maximum number of concurrent tasks.
 func WithConcurrencyLimit(n int) Option {
 	return func(c *Consumer) {
 		if n > 0 {
@@ -76,7 +61,6 @@ func WithConcurrencyLimit(n int) Option {
 	}
 }
 
-// WithMaxTaskAge sets the maximum age for a task to be considered valid.
 func WithMaxTaskAge(d time.Duration) Option {
 	return func(c *Consumer) {
 		if d > 0 {
@@ -85,29 +69,24 @@ func WithMaxTaskAge(d time.Duration) Option {
 	}
 }
 
-// WithResultHandler sets the callback for publishing results.
-// This will be used by task 2.6 (Result Publisher).
 func WithResultHandler(h func(ctx context.Context, resp *protocol.Response, replyTo string) error) Option {
 	return func(c *Consumer) {
 		c.resultHandler = h
 	}
 }
 
-// WithLogger sets the logger for the consumer.
 func WithLogger(logger *slog.Logger) Option {
 	return func(c *Consumer) {
 		c.logger = logger
 	}
 }
 
-// WithStatsCallback sets the callback for task completion statistics.
 func WithStatsCallback(h func(TaskResult)) Option {
 	return func(c *Consumer) {
 		c.onTaskCompleted = h
 	}
 }
 
-// New creates a new Consumer.
 func New(
 	b broker.MessageBroker,
 	httpClient *endpointhttp.Client,
@@ -130,14 +109,11 @@ func New(
 		opt(c)
 	}
 
-	// Initialize semaphore for concurrency control
 	c.semaphore = make(chan struct{}, c.concurrencyLimit)
 
 	return c
 }
 
-// Start begins consuming tasks from the queue.
-// This method blocks until the context is cancelled or an error occurs.
 func (c *Consumer) Start(ctx context.Context) error {
 	c.ctx, c.cancel = context.WithCancel(ctx)
 
@@ -148,13 +124,10 @@ func (c *Consumer) Start(ctx context.Context) error {
 		"max_task_age", c.maxTaskAge,
 	)
 
-	// Declare the queue before binding
 	if err := c.broker.DeclareQueue(c.ctx, c.queueName); err != nil {
 		return fmt.Errorf("failed to declare task queue: %w", err)
 	}
 
-	// Bind the queue to the tasks exchange
-	// The relay server publishes to "tasks" exchange with routing key = queue name
 	if err := c.broker.BindQueue(c.ctx, c.queueName, "tasks", c.queueName); err != nil {
 		return fmt.Errorf("failed to bind task queue to exchange: %w", err)
 	}
@@ -164,38 +137,32 @@ func (c *Consumer) Start(ctx context.Context) error {
 		"routing_key", c.queueName,
 	)
 
-	// Subscribe to the task queue
 	err := c.broker.Subscribe(c.ctx, c.queueName, c.handleMessage, broker.WithMaxAckPending(c.concurrencyLimit))
 	if err != nil {
 		return err
 	}
 
-	// Wait for context cancellation
 	<-c.ctx.Done()
 
-	// Wait for in-flight tasks to complete
 	c.wg.Wait()
 
 	c.logger.Info("consumer stopped", "endpoint_id", c.endpointID)
 	return nil
 }
 
-// Stop gracefully stops the consumer.
 func (c *Consumer) Stop() {
 	if c.cancel != nil {
 		c.cancel()
 	}
 }
 
-// handleMessage is the broker handler for incoming messages.
 func (c *Consumer) handleMessage(ctx context.Context, body []byte) error {
 	metrics.TasksQueued.Inc()
 	defer metrics.TasksQueued.Dec()
 
-	// Acquire semaphore slot for concurrency control
 	select {
 	case c.semaphore <- struct{}{}:
-		// Got a slot
+
 	case <-ctx.Done():
 		return ctx.Err()
 	}
@@ -203,7 +170,7 @@ func (c *Consumer) handleMessage(ctx context.Context, body []byte) error {
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
-		defer func() { <-c.semaphore }() // Release semaphore slot
+		defer func() { <-c.semaphore }()
 
 		if err := c.processTask(ctx, body); err != nil {
 			c.logger.Error("failed to process task",
@@ -216,12 +183,10 @@ func (c *Consumer) handleMessage(ctx context.Context, body []byte) error {
 	return nil
 }
 
-// processTask processes a single task.
 func (c *Consumer) processTask(ctx context.Context, body []byte) error {
 	metrics.TasksInFlight.Inc()
 	defer metrics.TasksInFlight.Dec()
 
-	// Deserialize the signed task
 	var signedTask protocol.SignedTask
 	if err := json.Unmarshal(body, &signedTask); err != nil {
 		c.logger.Warn("failed to unmarshal signed task",
@@ -234,13 +199,12 @@ func (c *Consumer) processTask(ctx context.Context, body []byte) error {
 		}
 	}
 
-	// Validate signature and timestamp
 	req, err := protocol.ValidateSignedTask(&signedTask, c.secret, c.maxTaskAge)
 	if err != nil {
 		c.logger.Warn("task validation failed",
 			"error", err,
 		)
-		// Check if it's a validation error to extract the code
+
 		var valErr *protocol.ValidationError
 		if errors.As(err, &valErr) {
 			return &TaskError{
@@ -260,14 +224,13 @@ func (c *Consumer) processTask(ctx context.Context, body []byte) error {
 		"url", req.URL,
 	)
 
-	// Execute the HTTP request
 	resp, err := c.httpClient.Do(ctx, req)
 	if err != nil {
 		c.logger.Error("HTTP request failed",
 			"request_id", req.ID,
 			"error", err,
 		)
-		// Build error response
+
 		resp = &protocol.Response{
 			RequestID:  req.ID,
 			EndpointID: c.endpointID,
@@ -280,7 +243,6 @@ func (c *Consumer) processTask(ctx context.Context, body []byte) error {
 		}
 	}
 
-	// Set endpoint ID on response
 	resp.EndpointID = c.endpointID
 
 	c.logger.Info("task completed",
@@ -289,7 +251,6 @@ func (c *Consumer) processTask(ctx context.Context, body []byte) error {
 		"has_error", resp.Error != nil,
 	)
 
-	// Record task processed metric
 	status := "success"
 	if resp.Error != nil {
 		status = "failed"
@@ -297,7 +258,6 @@ func (c *Consumer) processTask(ctx context.Context, body []byte) error {
 	}
 	metrics.TasksProcessed.WithLabelValues(status).Inc()
 
-	// Track bandwidth
 	bytesSent := req.EstimateWireSize()
 	metrics.BytesSent.Add(float64(bytesSent))
 
@@ -307,7 +267,6 @@ func (c *Consumer) processTask(ctx context.Context, body []byte) error {
 		metrics.BytesReceived.Add(float64(bytesReceived))
 	}
 
-	// Notify stats callback
 	if c.onTaskCompleted != nil {
 		var latency time.Duration
 		if resp.Timing != nil {
@@ -324,7 +283,6 @@ func (c *Consumer) processTask(ctx context.Context, body []byte) error {
 		})
 	}
 
-	// Publish result if handler is configured
 	if c.resultHandler != nil {
 		if err := c.resultHandler(ctx, resp, req.ReplyTo); err != nil {
 			c.logger.Error("failed to publish result",
@@ -338,17 +296,14 @@ func (c *Consumer) processTask(ctx context.Context, body []byte) error {
 	return nil
 }
 
-// QueueName returns the queue name that this consumer subscribes to.
 func (c *Consumer) QueueName() string {
 	return c.queueName
 }
 
-// ConcurrencyLimit returns the current concurrency limit.
 func (c *Consumer) ConcurrencyLimit() int {
 	return c.concurrencyLimit
 }
 
-// TaskError represents an error during task processing.
 type TaskError struct {
 	Code    string
 	Message string

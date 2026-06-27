@@ -9,12 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kwilabs/straw-proxy-server/internal/broker"
-	"github.com/kwilabs/straw-proxy-server/internal/domain"
-	"github.com/kwilabs/straw-proxy-server/pkg/protocol"
+	"github.com/beremaran/straw/internal/broker"
+	"github.com/beremaran/straw/internal/domain"
+	"github.com/beremaran/straw/pkg/protocol"
 )
 
-// retryMockBroker handles message simulation for RetryExecutor tests.
 type retryMockBroker struct {
 	mu            sync.Mutex
 	subscriptions map[string]broker.Handler
@@ -35,7 +34,7 @@ func (m *retryMockBroker) Publish(ctx context.Context, exchange, routingKey stri
 
 	if respFunc != nil {
 		responseBody := respFunc(routingKey, body)
-		// Simulate async response
+
 		go func() {
 			if handler != nil {
 				handler(ctx, responseBody)
@@ -152,20 +151,17 @@ func TestRetryExecutor_getPoolTiers(t *testing.T) {
 func TestRetryExecutor_getMaxRetries(t *testing.T) {
 	executor := &RetryExecutor{}
 
-	// Test default when pool config is nil
 	maxRetries := executor.getMaxRetries(nil, 1)
 	if maxRetries != DefaultMaxRetries {
 		t.Errorf("expected default max retries %d, got %d", DefaultMaxRetries, maxRetries)
 	}
 
-	// Test pool config with custom max retries
 	poolConfig := &domain.EndpointPool{MaxRetries: 5}
 	maxRetries = executor.getMaxRetries(poolConfig, 1)
 	if maxRetries != 5 {
 		t.Errorf("expected max retries 5, got %d", maxRetries)
 	}
 
-	// Test last exit pool (tier >= 4) gets only 1 attempt
 	maxRetries = executor.getMaxRetries(nil, 4)
 	if maxRetries != DefaultLastExitRetries {
 		t.Errorf("expected last exit retries %d, got %d", DefaultLastExitRetries, maxRetries)
@@ -194,8 +190,8 @@ func TestRetryExecutor_calculateBackoff(t *testing.T) {
 		{4, 800 * time.Millisecond},
 		{5, 1600 * time.Millisecond},
 		{6, 3200 * time.Millisecond},
-		{7, 5000 * time.Millisecond}, // Should cap at maxBackoff (5s)
-		{8, 5000 * time.Millisecond}, // Capped
+		{7, 5000 * time.Millisecond},
+		{8, 5000 * time.Millisecond},
 	}
 
 	for _, tt := range tests {

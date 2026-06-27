@@ -6,8 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/kwilabs/straw-proxy-server/internal/server/middleware"
-	"github.com/labstack/echo/v4"
+	"github.com/beremaran/straw/internal/server/middleware"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
@@ -18,7 +17,7 @@ import (
 )
 
 func TestTracingMiddleware(t *testing.T) {
-	// Setup OpenTelemetry with InMemoryExporter
+
 	exporter := tracetest.NewInMemoryExporter()
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithSyncer(exporter),
@@ -26,23 +25,24 @@ func TestTracingMiddleware(t *testing.T) {
 	otel.SetTracerProvider(tp)
 	otel.SetTextMapPropagator(propagation.TraceContext{})
 
-	// Setup Echo
-	e := echo.New()
-	e.Use(middleware.TracingMiddleware("test-service"))
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /test", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+	mux.HandleFunc("GET /error", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("fail"))
+	})
 
-	e.GET("/test", func(c echo.Context) error {
-		return c.String(http.StatusOK, "ok")
-	})
-	e.GET("/error", func(c echo.Context) error {
-		return echo.NewHTTPError(http.StatusInternalServerError, "fail")
-	})
+	handler := middleware.TracingMiddleware("test-service")(mux)
 
 	t.Run("successful request creates span", func(t *testing.T) {
 		exporter.Reset()
 		req := httptest.NewRequest(http.MethodGet, "/test", nil)
 		rec := httptest.NewRecorder()
 
-		e.ServeHTTP(rec, req)
+		handler.ServeHTTP(rec, req)
 
 		assert.Equal(t, http.StatusOK, rec.Code)
 		assert.NotEmpty(t, rec.Header().Get("Trace-Id"), "Response should contain Trace-Id header")
@@ -67,25 +67,22 @@ func TestTracingMiddleware(t *testing.T) {
 	t.Run("propagates context from headers", func(t *testing.T) {
 		exporter.Reset()
 
-		// Create a parent span
 		ctx := context.Background()
 		tracer := tp.Tracer("test-client")
 		ctx, parentSpan := tracer.Start(ctx, "parent-request")
 
 		req := httptest.NewRequest(http.MethodGet, "/test", nil)
-		// Inject parent context into headers
+
 		otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
 
 		rec := httptest.NewRecorder()
-		e.ServeHTTP(rec, req)
+		handler.ServeHTTP(rec, req)
 
 		parentSpan.End()
 
 		spans := exporter.GetSpans()
-		require.Len(t, spans, 2) // parent + server span
+		require.Len(t, spans, 2)
 
-		// Find server span
-		// Find server span
 		var serverSpan tracetest.SpanStub
 		found := false
 		for _, s := range spans {
@@ -106,7 +103,7 @@ func TestTracingMiddleware(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/error", nil)
 		rec := httptest.NewRecorder()
 
-		e.ServeHTTP(rec, req)
+		handler.ServeHTTP(rec, req)
 
 		assert.Equal(t, http.StatusInternalServerError, rec.Code)
 
@@ -119,7 +116,6 @@ func TestTracingMiddleware(t *testing.T) {
 			attrs[string(kv.Key)] = kv.Value.Emit()
 		}
 		assert.Equal(t, "500", attrs["http.status_code"])
-		// Check that status is set to Error
 		assert.Equal(t, codes.Error, span.Status.Code)
 	})
 }

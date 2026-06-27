@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kwilabs/straw-proxy-server/internal/domain"
-	"github.com/kwilabs/straw-proxy-server/pkg/protocol"
+	"github.com/beremaran/straw/internal/domain"
+	"github.com/beremaran/straw/pkg/protocol"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -134,7 +134,7 @@ func TestRelayRequest_ToProtocolRequest_StreamingFields(t *testing.T) {
 			ID:              "test-stream",
 			URL:             "https://example.com/large-file",
 			StreamResponse:  true,
-			MaxResponseSize: 50 * 1024 * 1024, // 50MB
+			MaxResponseSize: 50 * 1024 * 1024,
 		}
 
 		result, err := dto.ToProtocolRequest()
@@ -270,7 +270,7 @@ func TestFromApiKey(t *testing.T) {
 
 		key := &domain.ApiKey{
 			ID:                "key-123",
-			TokenHash:         "secret-hash-should-not-leak", // This should NOT appear in response
+			TokenHash:         "secret-hash-should-not-leak",
 			Name:              "Test Key",
 			Scopes:            []string{"target:*"},
 			RateLimitOverride: &rateLimit,
@@ -343,7 +343,6 @@ func TestFromFingerprintPreset(t *testing.T) {
 	assert.Equal(t, "1.3", result.Config["tls_version"])
 	assert.Equal(t, now, result.CreatedAt)
 
-	// Test nil
 	assert.Nil(t, FromFingerprintPreset(nil))
 }
 
@@ -364,6 +363,5 @@ func TestFromUsageSummary(t *testing.T) {
 	assert.Equal(t, 10.5, result.CostUnits)
 	assert.Len(t, result.Breakdown, 2)
 
-	// Test nil
 	assert.Nil(t, FromUsageSummary(nil))
 }

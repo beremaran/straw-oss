@@ -8,8 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kwilabs/straw-proxy-server/internal/domain"
-	"github.com/labstack/echo/v4"
+	"github.com/beremaran/straw/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -24,29 +23,24 @@ func (m *MockUsageRepo) GetDailySummaries(ctx context.Context, apiKeyID string, 
 }
 
 func TestUsageHandler_HandleGetUsageSummary(t *testing.T) {
-	// Setup
-	e := echo.New()
 	mockRepo := new(MockUsageRepo)
 	h := NewUsageHandler(mockRepo)
 
 	t.Run("success", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/admin/usage/summary?start=2023-01-01&end=2023-01-02", nil)
 		rec := httptest.NewRecorder()
-		c := e.NewContext(req, rec)
 
 		summaries := []domain.UsageSummary{
 			{Date: "2023-01-01", TotalRequests: 100},
 		}
 
-		// Match any context, exact other args
 		mockRepo.On("GetDailySummaries", mock.Anything, "", mock.AnythingOfType("time.Time"), mock.AnythingOfType("time.Time")).Return(summaries, nil)
 
-		err := h.HandleGetUsageSummary(c)
-		assert.NoError(t, err)
+		h.HandleGetUsageSummary(rec, req)
 		assert.Equal(t, http.StatusOK, rec.Code)
 
 		var resp map[string]interface{}
-		json.Unmarshal(rec.Body.Bytes(), &resp)
+		_ = json.Unmarshal(rec.Body.Bytes(), &resp)
 		assert.NotEmpty(t, resp["data"])
 	})
 }
