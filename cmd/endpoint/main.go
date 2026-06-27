@@ -13,19 +13,19 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/kwilabs/straw-proxy-server/internal/broker"
-	"github.com/kwilabs/straw-proxy-server/internal/config"
-	"github.com/kwilabs/straw-proxy-server/internal/endpoint/consumer"
-	"github.com/kwilabs/straw-proxy-server/internal/endpoint/fingerprint"
-	"github.com/kwilabs/straw-proxy-server/internal/endpoint/heartbeat"
-	endpointhttp "github.com/kwilabs/straw-proxy-server/internal/endpoint/http"
-	"github.com/kwilabs/straw-proxy-server/internal/endpoint/publisher"
-	endpointtls "github.com/kwilabs/straw-proxy-server/internal/endpoint/tls"
-	endpointtransport "github.com/kwilabs/straw-proxy-server/internal/endpoint/transport"
-	"github.com/kwilabs/straw-proxy-server/internal/endpoint/update"
-	"github.com/kwilabs/straw-proxy-server/internal/observability/logging"
-	"github.com/kwilabs/straw-proxy-server/internal/observability/metrics"
-	"github.com/kwilabs/straw-proxy-server/internal/observability/tracing"
+	"github.com/beremaran/straw/internal/broker"
+	"github.com/beremaran/straw/internal/config"
+	"github.com/beremaran/straw/internal/endpoint/consumer"
+	"github.com/beremaran/straw/internal/endpoint/fingerprint"
+	"github.com/beremaran/straw/internal/endpoint/heartbeat"
+	endpointhttp "github.com/beremaran/straw/internal/endpoint/http"
+	"github.com/beremaran/straw/internal/endpoint/publisher"
+	endpointtls "github.com/beremaran/straw/internal/endpoint/tls"
+	endpointtransport "github.com/beremaran/straw/internal/endpoint/transport"
+	"github.com/beremaran/straw/internal/endpoint/update"
+	"github.com/beremaran/straw/internal/observability/logging"
+	"github.com/beremaran/straw/internal/observability/metrics"
+	"github.com/beremaran/straw/internal/observability/tracing"
 )
 
 func main() {
@@ -36,30 +36,27 @@ func main() {
 }
 
 func run() error {
-	// 1. Load Configuration
-	cfg, err := config.LoadEndpointConfig("")
+	cfg, err := config.LoadEndpointConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
-	// 2. Setup Logger
 	logger := logging.SetupLogger(logging.Config{
-		Level:   cfg.Core.LogLevel,
-		Format:  cfg.Core.LogFormat,
-		Service: "straw-endpoint",
-		Version: "dev", // TODO: Inject version
+		Level:   cfg.Observability.LogLevel,
+		Format:  cfg.Observability.LogFormat,
+		Service: "endpoint",
+		Version: "dev",
 	})
 
 	logger.Info("starting endpoint worker",
 		"endpoint_id", cfg.ID,
-		"version", "dev", // TODO: Inject version at build time
+		"version", "dev",
 		"concurrency_limit", cfg.ConcurrencyLimit,
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Handle OS signals for graceful shutdown
 	go func() {
 		sigChan := make(chan os.Signal, 1)
 		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
@@ -68,8 +65,7 @@ func run() error {
 		cancel()
 	}()
 
-	// Initialize OpenTelemetry
-	shutdownTracer, err := tracing.InitTracerProvider(ctx, "straw-endpoint", "dev") // TODO: Version injection
+	shutdownTracer, err := tracing.InitTracerProvider(ctx, "straw-endpoint", "dev")
 	if err != nil {
 		logger.Warn("failed to initialize tracer provider", "error", err)
 	} else {
@@ -80,13 +76,9 @@ func run() error {
 		}()
 	}
 
-	// 3. Initialize Components
-
-	// fingerprint registry (built-in presets match design doc)
 	registry := fingerprint.DefaultRegistry()
 	logger.Info("fingerprint registry initialized", "count", registry.Count())
 
-	// Connection Pool
 	poolConfig := endpointtransport.DefaultPoolConfig().
 		WithMaxPoolHosts(cfg.MaxPoolHosts).
 		WithIdleConnsPerHost(cfg.IdleConnsPerHost).
@@ -97,19 +89,17 @@ func run() error {
 	})
 	defer func() { _ = pooledTransport.Close() }()
 
-	// http client
 	httpClient := endpointhttp.NewClient(
 		registry,
 		pooledTransport,
 		endpointhttp.WithEndpointID(cfg.ID),
-		endpointhttp.WithDefaultTimeout(30*time.Second), // sane default
+		endpointhttp.WithDefaultTimeout(30*time.Second),
 	)
 	defer func() { _ = httpClient.Close() }()
 
-	// broker
 	mqBroker := broker.NewNatsBroker(
-		broker.Addrs(cfg.Core.NatsURL),
-		broker.Token(cfg.Core.NatsToken),
+		broker.Addrs(cfg.NATS.URL),
+		broker.Token(cfg.NATS.Token),
 	)
 
 	if err := mqBroker.Connect(); err != nil {
@@ -118,7 +108,6 @@ func run() error {
 	defer func() { _ = mqBroker.Close() }()
 	logger.Info("connected to message broker")
 
-	// heartbeat sender
 	hbSender := heartbeat.New(
 		mqBroker,
 		cfg.ID,
@@ -126,32 +115,27 @@ func run() error {
 		heartbeat.WithTags(cfg.Tags),
 		heartbeat.WithInterval(10*time.Second),
 		heartbeat.WithLogger(logger.WithGroup("heartbeat")),
-		// ActiveTasks callback will be wired to consumer
 	)
 
-	// Publisher
 	resultPublisher := publisher.New(
 		mqBroker,
 		publisher.WithLogger(logger.WithGroup("publisher")),
 	)
 
-	// self-update checker
 	var updateChecker *update.Checker
 	if cfg.SelfUpdateEnabled && cfg.SelfUpdateURL != "" {
-		// Initialize installer
 		installer := update.NewInstaller(
 			update.WithInstallerLogger(logger.WithGroup("installer")),
 		)
 
 		updateChecker = update.NewChecker(
 			cfg.SelfUpdateURL,
-			"dev", // current version
+			"dev",
 			update.WithCheckInterval(cfg.SelfUpdateInterval),
 			update.WithCheckerLogger(logger.WithGroup("update")),
 			update.WithUpdateCallback(func(r *update.Result) bool {
 				logger.Info("starting auto-update", "new_version", r.NewVersion)
 
-				// Create a separate context for update to ensure it completes even if main ctx is cancelled
 				updateCtx, msgCancel := context.WithTimeout(context.Background(), 5*time.Minute)
 				defer msgCancel()
 
@@ -164,7 +148,6 @@ func run() error {
 					return false
 				}
 
-				// Restart
 				logger.Info("update installed, restarting...")
 				if err := installer.ReplaceAndRestart(); err != nil {
 					logger.Error("failed to restart", "error", err)
@@ -175,7 +158,6 @@ func run() error {
 		)
 	}
 
-	// consumer
 	taskConsumer := consumer.New(
 		mqBroker,
 		httpClient,
@@ -186,17 +168,14 @@ func run() error {
 		consumer.WithResultHandler(resultPublisher.Handler()),
 	)
 
-	// 4. Start Background Services
 	var wg sync.WaitGroup
 
-	// Start Heartbeat
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		hbSender.Start(ctx)
 	}()
 
-	// Start Update Checker
 	if updateChecker != nil {
 		wg.Add(1)
 		go func() {
@@ -205,18 +184,15 @@ func run() error {
 		}()
 	}
 
-	// Start Consumer
-	// Consumer.Start blocks, so run in goroutine
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		if err := taskConsumer.Start(ctx); err != nil {
 			logger.Error("consumer stopped with error", "error", err)
-			cancel() // Stop everything else if consumer fails
+			cancel()
 		}
 	}()
 
-	// 5. Start Health Check Server
 	metrics.Init()
 	healthServer := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.Observability.MetricsPort),
@@ -232,35 +208,15 @@ func run() error {
 		}
 	}()
 
-	// Wait for shutdown signal (handled by ctx cancellation)
 	<-ctx.Done()
 	logger.Info("shutting down...")
 
-	// Graceful shutdown of health server
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
 	if err := healthServer.Shutdown(shutdownCtx); err != nil {
 		logger.Warn("health server shutdown error", "error", err)
 	}
 
-	// Stop components (Consumer.Start returns on ctx done, others have Stop methods)
-	// Consumer stops when ctx is cancelled (checked in Start implementation).
-	// Heartbeat stops when ctx is cancelled (checked in Start implementation which passes derived ctx to run).
-	// But explicit Stop calls are good practice if they have them.
-	// Consumer has Stop() which cancels its internal context.
-	// Heartbeat has Stop().
-	// UpdateChecker has Stop().
-	// However, we used the main `ctx` to run them, or passed `ctx` to their Start methods.
-	// Reading outlines:
-	// Consumer.Start(ctx) -> uses ctx.
-	// Heartbeat.Start(ctx) -> uses ctx.
-	// Checker.Start(ctx) -> uses ctx.
-	// So simply cancelling the main `ctx` (which we did at defer cancel() or triggering it) should stop them.
-	// We wait for them to finish.
-	// Actually we are waiting on wg.Wait().
-	// If `healthServer` is in generated goroutine, it needs to be stopped explicitly via Shutdown on ctx done, which we did.
-
-	// Wait for all background routines to exit
 	done := make(chan struct{})
 	go func() {
 		wg.Wait()
@@ -270,7 +226,7 @@ func run() error {
 	select {
 	case <-done:
 		logger.Info("shutdown complete")
-	case <-time.After(30 * time.Second): // Default shutdown timeout
+	case <-time.After(30 * time.Second):
 		logger.Warn("shutdown timed out, forcing exit")
 	}
 
@@ -283,9 +239,7 @@ func setupHealthHandler() http.Handler {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
-	// Metrics handler
 	mux.Handle("/metrics", metrics.Handler())
-	// pprof handlers for runtime profiling
 	metrics.RegisterPprof(mux)
 	return mux
 }

@@ -16,11 +16,9 @@ func TestRetry_SamePool(t *testing.T) {
 	tc := setupTestServer(t, suite)
 	defer tc.Cleanup()
 
-	// 1. Setup Data
 	apiKey, err := CreateTestAPIKey(ctx, suite.PostgresDSN(), "retry-client", []string{"*"})
 	require.NoError(t, err)
 
-	// Create 3 endpoints for same pool
 	epIDs := []string{"same-pool-1", "same-pool-2", "same-pool-3"}
 	for _, id := range epIDs {
 		require.NoError(t, CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{
@@ -30,8 +28,6 @@ func TestRetry_SamePool(t *testing.T) {
 		}))
 	}
 
-	// Create rule with MaxRetries = 3
-	// MaxRetries means "attempts". If MaxRetries=3, we try 3 times.
 	err = CreateTestRoutingRule(
 		ctx,
 		suite.PostgresDSN(),
@@ -50,19 +46,16 @@ func TestRetry_SamePool(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, tc.Server.GetMatcher().LoadRules(ctx))
 
-	// 2. Start Mock Endpoints
-	// Ep1 and Ep2 fail (return 503)
 	ep1 := NewMockEndpoint(tc.Broker, MockEndpointConfig{EndpointID: "same-pool-1", Secret: []byte(testHMACSecret), Tags: []string{"retry:same-pool"}})
-	ep1.SetFailures(10) // Always fail
+	ep1.SetFailures(10)
 	require.NoError(t, ep1.Start(ctx))
 	defer ep1.Stop()
 
 	ep2 := NewMockEndpoint(tc.Broker, MockEndpointConfig{EndpointID: "same-pool-2", Secret: []byte(testHMACSecret), Tags: []string{"retry:same-pool"}})
-	ep2.SetFailures(10) // Always fail
+	ep2.SetFailures(10)
 	require.NoError(t, ep2.Start(ctx))
 	defer ep2.Stop()
 
-	// Ep3 succeeds
 	ep3 := NewMockEndpoint(tc.Broker, MockEndpointConfig{EndpointID: "same-pool-3", Secret: []byte(testHMACSecret), Tags: []string{"retry:same-pool"}})
 	require.NoError(t, ep3.Start(ctx))
 	defer ep3.Stop()
@@ -71,7 +64,6 @@ func TestRetry_SamePool(t *testing.T) {
 	require.NoError(t, tc.WaitForEndpoint(ctx, "same-pool-2"))
 	require.NoError(t, tc.WaitForEndpoint(ctx, "same-pool-3"))
 
-	// 3. Execute Request
 	client := NewHTTPTestClient(tc.ServerURL, apiKey.RawKey)
 	resp, err := client.SendRequest(ctx, &ProxyRequest{
 		URL:    tc.MockTarget.URL() + "/retry-me",
@@ -80,20 +72,8 @@ func TestRetry_SamePool(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// 4. Verify
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
-	// Verify that multiple attempts were made.
-	// The successful one + failed ones.
-	// Since order is random, we expect at least 1 request total.
-	// If it hit Ep3 first (lucky), count=1.
-	// If it hit failures, count > 1.
-	// We just verify it succeeded, meaning retries worked IF it picked bad ones.
-	// But tests should be deterministic essentially.
-	// With 2/3 bad, probability of success on first try = 1/3.
-	// Probability of hitting at least one bad = 2/3.
-	// We can't strictly assert count > 1 unless we control selection.
-	// But we CAN assert that we got a 200 OK.
 }
 
 func TestRetry_Escalation(t *testing.T) {
@@ -106,7 +86,6 @@ func TestRetry_Escalation(t *testing.T) {
 	apiKey, err := CreateTestAPIKey(ctx, suite.PostgresDSN(), "escalation-client", []string{"*"})
 	require.NoError(t, err)
 
-	// Create endpoints for 2 tiers
 	require.NoError(t, CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{
 		ID: "ep-tier-1", Tags: []string{"tier:1"}, IsHealthy: true,
 	}))
@@ -114,7 +93,6 @@ func TestRetry_Escalation(t *testing.T) {
 		ID: "ep-tier-2", Tags: []string{"tier:2"}, IsHealthy: true,
 	}))
 
-	// Rule: Tier 1 (1 retry) -> Tier 2 (1 retry)
 	err = CreateTestRoutingRule(
 		ctx,
 		suite.PostgresDSN(),
@@ -134,7 +112,6 @@ func TestRetry_Escalation(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, tc.Server.GetMatcher().LoadRules(ctx))
 
-	// Tier 1 endpoint: Always fails
 	ep1 := NewMockEndpoint(tc.Broker, MockEndpointConfig{
 		EndpointID: "ep-tier-1",
 		Secret:     []byte(testHMACSecret),
@@ -144,7 +121,6 @@ func TestRetry_Escalation(t *testing.T) {
 	require.NoError(t, ep1.Start(ctx))
 	defer ep1.Stop()
 
-	// Tier 2 endpoint: Succeeds
 	ep2 := NewMockEndpoint(tc.Broker, MockEndpointConfig{
 		EndpointID: "ep-tier-2",
 		Secret:     []byte(testHMACSecret),
@@ -295,9 +271,7 @@ func TestRetry_Exhaustion_503(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Should fail with 503 or 502
 	assert.Contains(t, []int{http.StatusServiceUnavailable, http.StatusBadGateway}, resp.StatusCode)
 
-	// Total requests across all endpoints should be 2
 	assert.Equal(t, 2, ep1.RequestCount()+ep2.RequestCount())
 }

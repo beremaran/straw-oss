@@ -11,20 +11,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kwilabs/straw-proxy-server/internal/broker"
-	"github.com/kwilabs/straw-proxy-server/internal/config"
-	"github.com/kwilabs/straw-proxy-server/internal/domain"
-	"github.com/kwilabs/straw-proxy-server/internal/infra/circuitbreaker"
-	"github.com/kwilabs/straw-proxy-server/internal/service/auth"
-	"github.com/kwilabs/straw-proxy-server/internal/service/filter"
-	"github.com/kwilabs/straw-proxy-server/internal/service/orchestrator"
-	"github.com/kwilabs/straw-proxy-server/internal/service/router"
-	"github.com/kwilabs/straw-proxy-server/pkg/protocol"
+	"github.com/beremaran/straw/internal/broker"
+	"github.com/beremaran/straw/internal/config"
+	"github.com/beremaran/straw/internal/domain"
+	"github.com/beremaran/straw/internal/infra/circuitbreaker"
+	"github.com/beremaran/straw/internal/service/auth"
+	"github.com/beremaran/straw/internal/service/filter"
+	"github.com/beremaran/straw/internal/service/orchestrator"
+	"github.com/beremaran/straw/internal/service/router"
+	"github.com/beremaran/straw/pkg/protocol"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
-
-// --- Mocks ---
 
 type MockApiKeyRepo struct {
 	mock.Mock
@@ -166,17 +164,14 @@ func (m *MockBroker) DeclareQueue(ctx context.Context, name string) error       
 func (m *MockBroker) IsConnected() bool                                                { return true }
 func (m *MockBroker) QueueDepth(ctx context.Context, name string) (int, error)         { return 0, nil }
 
-// --- Helper to hash token ---
 func sha256Hash(s string) string {
 	hash := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(hash[:])
 }
 
-// --- Tests ---
-
 func TestServer_RelayRequest_Success(t *testing.T) {
 	t.Skip("Skipping: This test requires significant refactoring to work with the shared queue pattern. Integration tests in test/integration/ cover this functionality.")
-	// 1. Setup Mocks
+
 	mockKeyRepo := new(MockApiKeyRepo)
 	mockKeyCache := new(MockKeyCache)
 	mockRuleRepo := new(MockRuleRepo)
@@ -185,7 +180,6 @@ func TestServer_RelayRequest_Success(t *testing.T) {
 	mockPoolManager := new(MockPoolManager)
 	mockSelector := new(MockEndpointSelector)
 
-	// 2. Setup Data
 	bearerToken := "test-bearer-token-12345"
 	tokenHash := sha256Hash(bearerToken)
 
@@ -195,12 +189,10 @@ func TestServer_RelayRequest_Success(t *testing.T) {
 		IsActive:  true,
 	}
 
-	// Prepare mocks for Auth
 	mockKeyCache.On("GetKey", mock.Anything, tokenHash).Return((*domain.ApiKey)(nil), nil)
 	mockKeyRepo.On("GetByTokenHash", mock.Anything, tokenHash).Return(apiKey, nil)
 	mockKeyCache.On("SetKey", mock.Anything, tokenHash, apiKey).Return(nil)
 
-	// Prepare mocks for Matcher
 	mockRuleCache.On("GetRulesVersion", mock.Anything).Return(int64(0), nil)
 
 	rule := domain.RoutingRule{
@@ -214,33 +206,28 @@ func TestServer_RelayRequest_Success(t *testing.T) {
 	}
 	mockRuleRepo.On("GetActiveRules", mock.Anything).Return([]domain.RoutingRule{rule}, nil)
 
-	// Prepare mocks for Execution
 	mockPoolManager.On("GetEndpointFromPool", mock.Anything, mock.Anything, 1, mock.Anything).Return("ep-1", nil)
 	mockPoolManager.On("GetPoolConfig", mock.Anything, 1).Return(&rule.EndpointPools[0])
 
-	// Mock Selector
 	mockSelector.On("Select", mock.Anything, mock.Anything).Return("ep-1", nil)
 
-	// Track the result queue handler for shared queue pattern
 	var sharedQueueHandler broker.Handler
 
-	// Mock Broker Subscribe for SharedResultQueue - capture the handler
 	mockBroker.On("Subscribe", mock.Anything, orchestrator.SharedResultQueue, mock.MatchedBy(func(h broker.Handler) bool {
 		sharedQueueHandler = h
 		return true
 	}), mock.Anything).Return(nil)
 
-	// Mock Broker Publish - capture request ID from the published task to send response
 	var capturedRequestID string
 	mockBroker.On("Publish", mock.Anything, mock.Anything, mock.AnythingOfType("string"), mock.Anything).Run(func(args mock.Arguments) {
-		// Parse the published task to extract request ID
+
 		body := args.Get(3).([]byte)
 		var signedTask protocol.SignedTask
 		if err := json.Unmarshal(body, &signedTask); err != nil {
 			t.Logf("DEBUG: Failed to unmarshal signed task: %v", err)
 			return
 		}
-		// Use ValidateSignedTask to decompress and parse the request
+
 		req, err := protocol.ValidateSignedTask(&signedTask, []byte("secret"), time.Minute)
 		if err != nil {
 			t.Logf("DEBUG: Failed to validate signed task: %v", err)
@@ -250,12 +237,10 @@ func TestServer_RelayRequest_Success(t *testing.T) {
 		t.Logf("DEBUG: Captured request ID: %s", capturedRequestID)
 	}).Return(nil)
 
-	// Mock SubscribeTemporary if still called (legacy)
 	mockBroker.On("SubscribeTemporary", mock.Anything, mock.AnythingOfType("string"), mock.Anything).Return(nil).Maybe()
 
-	// 3. Construct Server
-	authSvc := auth.NewAuthService(mockKeyRepo, mockKeyCache)
-	matcher := router.NewMatcher(mockRuleRepo, mockRuleCache)
+	authSvc := auth.NewAuthService(mockKeyRepo, nil)
+	matcher := router.NewMatcher(mockRuleRepo, nil)
 	matcher.LoadRules(context.Background())
 
 	cb := circuitbreaker.New(circuitbreaker.Config{})
@@ -263,7 +248,6 @@ func TestServer_RelayRequest_Success(t *testing.T) {
 	sub := orchestrator.NewConsumer(mockBroker)
 	executor := orchestrator.NewRetryExecutor(pub, sub, mockPoolManager, mockBroker, []byte("secret"))
 
-	// Start the executor's shared queue consumer
 	ctx := context.Background()
 	err := executor.Start(ctx)
 	assert.NoError(t, err)
@@ -278,7 +262,6 @@ func TestServer_RelayRequest_Success(t *testing.T) {
 		executor,
 	)
 
-	// 4. Perform Request
 	reqBody := `{"url": "http://example.com", "method": "GET"}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/request", strings.NewReader(reqBody))
 	req.Header.Set("Content-Type", "application/json")
@@ -288,13 +271,12 @@ func TestServer_RelayRequest_Success(t *testing.T) {
 
 	done := make(chan bool)
 	go func() {
-		server.echo.ServeHTTP(rec, req)
+		server.server.Handler.ServeHTTP(rec, req)
 		done <- true
 	}()
 
-	// Wait for publish to happen and capture request ID with polling
 	var requestIDCaptured bool
-	for i := 0; i < 50; i++ { // Poll for up to 5 seconds
+	for i := 0; i < 50; i++ {
 		time.Sleep(100 * time.Millisecond)
 		if capturedRequestID != "" {
 			requestIDCaptured = true
@@ -303,7 +285,7 @@ func TestServer_RelayRequest_Success(t *testing.T) {
 	}
 
 	if sharedQueueHandler != nil && requestIDCaptured {
-		// Simulate Response via shared queue handler
+
 		result := orchestrator.ResultMessage{
 			RequestID:  capturedRequestID,
 			EndpointID: "ep-1",
@@ -328,6 +310,6 @@ func TestServer_RelayRequest_Success(t *testing.T) {
 	}
 
 	assert.Equal(t, http.StatusOK, rec.Code)
-	// Check headers
+
 	assert.Equal(t, "text/plain", rec.Header().Get("Content-Type"))
 }

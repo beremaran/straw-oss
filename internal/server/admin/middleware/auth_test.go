@@ -5,13 +5,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/kwilabs/straw-proxy-server/internal/config"
-	"github.com/labstack/echo/v4"
+	"github.com/beremaran/straw/internal/config"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestKeyAuth(t *testing.T) {
-	e := echo.New()
 	cfg := config.ServerConfig{AdminAPIKey: "secret-key"}
 	mw := KeyAuth(cfg)
 
@@ -54,24 +52,15 @@ func TestKeyAuth(t *testing.T) {
 				req.Header.Set("Authorization", tt.authHeader)
 			}
 			rec := httptest.NewRecorder()
-			c := e.NewContext(req, rec)
 
-			h := mw(func(c echo.Context) error {
-				return c.String(http.StatusOK, "test")
-			})
+			h := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte("test"))
+			}))
 
-			err := h(c)
-			if tt.wantStatus != http.StatusOK {
-				if assert.Error(t, err) {
-					he, ok := err.(*echo.HTTPError)
-					if assert.True(t, ok) {
-						assert.Equal(t, tt.wantStatus, he.Code)
-					}
-				}
-			} else {
-				assert.NoError(t, err)
-				assert.Equal(t, http.StatusOK, rec.Code)
-			}
+			h.ServeHTTP(rec, req)
+
+			assert.Equal(t, tt.wantStatus, rec.Code)
 		})
 	}
 }

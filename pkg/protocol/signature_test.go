@@ -103,7 +103,6 @@ func TestNewSignedTask_Success(t *testing.T) {
 		t.Error("timestamp should not be zero")
 	}
 
-	// Timestamp should be recent
 	age := time.Since(time.Unix(task.Timestamp, 0))
 	if age > time.Second {
 		t.Errorf("timestamp should be recent, got age: %v", age)
@@ -164,10 +163,8 @@ func TestValidateSignedTask_ExpiredTimestamp(t *testing.T) {
 		t.Fatalf("failed to create task: %v", err)
 	}
 
-	// Set timestamp to 2 minutes ago
 	task.Timestamp = time.Now().Add(-2 * time.Minute).Unix()
 
-	// Re-sign with the old timestamp
 	signatureData := append(task.Payload, []byte(string(rune(task.Timestamp)))...)
 	task.Signature = Sign(signatureData, secret)
 
@@ -176,7 +173,6 @@ func TestValidateSignedTask_ExpiredTimestamp(t *testing.T) {
 		t.Error("expected error for expired timestamp")
 	}
 
-	// Check it's the right error type
 	if validErr, ok := err.(*ValidationError); ok {
 		if validErr.Code != ErrCodeReplayAttack {
 			t.Errorf("expected REPLAY_ATTACK error, got: %s", validErr.Code)
@@ -197,7 +193,6 @@ func TestValidateSignedTask_InvalidSignature(t *testing.T) {
 		t.Fatalf("failed to create task: %v", err)
 	}
 
-	// Tamper with the signature
 	task.Signature = "tampered-signature"
 
 	_, err = ValidateSignedTask(task, secret, DefaultMaxTaskAge)
@@ -205,7 +200,6 @@ func TestValidateSignedTask_InvalidSignature(t *testing.T) {
 		t.Error("expected error for invalid signature")
 	}
 
-	// Check it's the right error type
 	if validErr, ok := err.(*ValidationError); ok {
 		if validErr.Code != ErrCodeSignatureInvalid {
 			t.Errorf("expected SIGNATURE_INVALID error, got: %s", validErr.Code)
@@ -244,7 +238,6 @@ func TestValidateSignedTask_TamperedPayload(t *testing.T) {
 		t.Fatalf("failed to create task: %v", err)
 	}
 
-	// Tamper with payload
 	task.Payload = []byte("tampered-payload")
 
 	_, err = ValidateSignedTask(task, secret, DefaultMaxTaskAge)

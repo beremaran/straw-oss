@@ -1,111 +1,36 @@
-# Straw Proxy Server Makefile
+.PHONY: docker server endpoint build all test load-test security format lint clean
 
-.PHONY: help dev-up dev-down dev-reset dev-logs dev-ps build test lint docker-build docker-build-server docker-build-endpoint
+docker:
+	docker build -t beremaran/straw:base -f .docker/base.Dockerfile .
+	docker build -t beremaran/straw:relay -f .docker/Dockerfile --build-arg BINARY_NAME=relay .
+	docker build -t beremaran/straw:endpoint -f .docker/Dockerfile --build-arg BINARY_NAME=endpoint .
 
-# Default target
-help:
-	@echo "Straw Proxy Server - Development Commands"
-	@echo ""
-	@echo "Development Stack:"
-	@echo "  make dev-up      Start development stack (PostgreSQL, Redis, RabbitMQ)"
-	@echo "  make dev-down    Stop development stack"
-	@echo "  make dev-reset   Reset all data and restart"
-	@echo "  make dev-logs    Tail logs from all services"
-	@echo "  make dev-ps      Show service status"
-	@echo ""
-	@echo "Build & Test:"
-	@echo "  make build       Build all binaries"
-	@echo "  make test        Run all tests"
-	@echo "  make lint        Run linters"
-	@echo "  make docker-build         Build all docker images"
-	@echo "  make docker-build-server  Build server docker image"
-	@echo "  make docker-build-endpoint Build endpoint docker image"
-	@echo "  make security    Run security checks (govulncheck)"
-	@echo "  make verify-mod  Verify go modules"
-	@echo ""
-	@echo "Database Migrations:"
-	@echo "  make migrate-up          Apply pending migrations"
-	@echo "  make migrate-down        Rollback last migration"
-	@echo "  make migrate-reset       Reset database (rollback all + up)"
-	@echo "  make migrate-status      Show migration status"
-	@echo "  make migrate-create name=N Create new migration file"
-	@echo "  make seed                Seed development data"
-	@echo ""
+server:
+	CGO_ENABLED=0 go build -ldflags "-w -s" -o bin/relay ./cmd/relay-server
 
-# Development stack targets
-dev-up:
-	@./scripts/dev-up.sh
+endpoint:
+	CGO_ENABLED=0 go build -ldflags "-w -s" -o bin/endpoint ./cmd/endpoint
 
-dev-down:
-	@./scripts/dev-down.sh
+build: server endpoint
 
-dev-reset:
-	@./scripts/dev-reset.sh --force
+all: build test docker
 
-dev-logs:
-	docker compose logs -f
+test:
+	go test -race ./...
 
-dev-ps:
-	docker compose ps
-
-docker-build: docker-build-server docker-build-endpoint
-
-docker-build-server:
-	@./scripts/build-docker.sh server
-
-docker-build-endpoint:
-	@./scripts/build-docker.sh endpoint
-
-# Build targets
-build: build-gui
-	@echo "Building server..."
-	go build -o bin/relay-server ./cmd/relay-server
-	@echo "Building endpoint..."
-	go build -o bin/endpoint ./cmd/endpoint
-
-build-gui:
-	@echo "Building endpoint-gui..."
-	go build -o bin/endpoint-gui ./cmd/endpoint-gui
-
-test: test-unit test-integration
-
-test-unit:
-	go list ./... | grep -v /test/integration | xargs go test -race -v -short
-
-test-integration:
-	go test -race -v -timeout 10m ./test/integration/...
+load-test: docker
+	@./scripts/run-load-test.sh
 
 security:
+	@./scripts/install-govulncheck.sh
 	govulncheck ./...
 
-verify-mod:
-	go mod verify
+format:
+	gofmt -w ./
 
 lint:
+	@./scripts/install-golangci-lint.sh
 	golangci-lint run ./...
-migrate-up:
-	@./scripts/migrate.sh up
 
-migrate-down:
-	@./scripts/migrate.sh down
-
-migrate-reset:
-	@./scripts/migrate.sh reset
-
-migrate-status:
-	@./scripts/migrate.sh status
-
-migrate-create:
-	@if [ -z "$(name)" ]; then echo "Error: name argument required. Usage: make migrate-create name=my_migration"; exit 1; fi
-	@./scripts/migrate.sh create $(name)
-
-seed:
-	@./scripts/migrate.sh seed
-
-
-
-swagger:
-	@echo "Generating Relay Server Swagger docs..."
-	~/go/bin/swag init -g cmd/relay-server/main.go -o docs/relay --parseDependency --parseInternal --instanceName relay
-	@echo "Generating Admin Server Swagger docs..."
-	~/go/bin/swag init -g internal/server/admin/doc.go -o docs/admin --parseDependency --parseInternal --instanceName admin
+clean:
+	rm -rf bin/

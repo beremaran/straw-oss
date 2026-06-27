@@ -5,21 +5,18 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/beremaran/straw/internal/domain"
 	"github.com/jackc/pgx/v5"
-	"github.com/kwilabs/straw-proxy-server/internal/domain"
 )
 
-// ApiKeyRepository implements the storage for API keys.
 type ApiKeyRepository struct {
 	client *Client
 }
 
-// NewApiKeyRepository creates a new ApiKeyRepository.
 func NewApiKeyRepository(client *Client) *ApiKeyRepository {
 	return &ApiKeyRepository{client: client}
 }
 
-// GetByID retrieves an API key by its ID.
 func (r *ApiKeyRepository) GetByID(ctx context.Context, id string) (*domain.ApiKey, error) {
 	query := `
 		SELECT id, token_hash, name, scopes, rate_limit_override, is_active, created_at, expires_at
@@ -43,7 +40,7 @@ func (r *ApiKeyRepository) GetByID(ctx context.Context, id string) (*domain.ApiK
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, nil // Not found
+			return nil, nil
 		}
 		return nil, fmt.Errorf("failed to get api key by id: %w", err)
 	}
@@ -51,7 +48,6 @@ func (r *ApiKeyRepository) GetByID(ctx context.Context, id string) (*domain.ApiK
 	return &k, nil
 }
 
-// GetByTokenHash retrieves an API key by its token hash.
 func (r *ApiKeyRepository) GetByTokenHash(ctx context.Context, tokenHash string) (*domain.ApiKey, error) {
 	query := `
 		SELECT id, token_hash, name, scopes, rate_limit_override, is_active, created_at, expires_at
@@ -75,7 +71,7 @@ func (r *ApiKeyRepository) GetByTokenHash(ctx context.Context, tokenHash string)
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, nil // Not found
+			return nil, nil
 		}
 		return nil, fmt.Errorf("failed to get api key by token hash: %w", err)
 	}
@@ -83,7 +79,6 @@ func (r *ApiKeyRepository) GetByTokenHash(ctx context.Context, tokenHash string)
 	return &k, nil
 }
 
-// Create stores a new API key in the database.
 func (r *ApiKeyRepository) Create(ctx context.Context, key *domain.ApiKey) error {
 	query := `
 		INSERT INTO api_keys (
@@ -115,9 +110,8 @@ func (r *ApiKeyRepository) Create(ctx context.Context, key *domain.ApiKey) error
 	return nil
 }
 
-// List retrieves a paginated list of API keys.
 func (r *ApiKeyRepository) List(ctx context.Context, limit, offset int) ([]domain.ApiKey, int, error) {
-	// Get total count
+
 	var total int
 	countQuery := `SELECT COUNT(*) FROM api_keys`
 	err := r.client.Pool.QueryRow(ctx, countQuery).Scan(&total)
@@ -125,7 +119,6 @@ func (r *ApiKeyRepository) List(ctx context.Context, limit, offset int) ([]domai
 		return nil, 0, fmt.Errorf("failed to count api keys: %w", err)
 	}
 
-	// Get keys
 	query := `
 		SELECT id, token_hash, name, scopes, rate_limit_override, is_active, created_at, expires_at
 		FROM api_keys
@@ -164,8 +157,6 @@ func (r *ApiKeyRepository) List(ctx context.Context, limit, offset int) ([]domai
 	return keys, total, nil
 }
 
-// Revoke effectively deletes an API key by setting is_active to false.
-// This is preferred over hard deletion to keep historical records.
 func (r *ApiKeyRepository) Revoke(ctx context.Context, id string) error {
 	query := `
 		UPDATE api_keys 

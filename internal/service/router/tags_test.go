@@ -4,7 +4,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/kwilabs/straw-proxy-server/internal/domain"
+	"github.com/beremaran/straw/internal/domain"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -82,7 +82,7 @@ func TestParseTags(t *testing.T) {
 				HeaderLegacyCountry: "us",
 			},
 			apiKey: &domain.ApiKey{
-				Scopes: []string{"customer:vip", "target:amazon"}, // Duplicate target:amazon
+				Scopes: []string{"customer:vip", "target:amazon"},
 			},
 			expectedTags: []domain.Tag{
 				{Key: "target", Value: "amazon"},
@@ -138,7 +138,6 @@ func TestParseTags(t *testing.T) {
 			assert.NoError(t, err)
 			assert.Len(t, result.Warnings, tt.expectedWarns)
 
-			// Compare tags (ignoring order)
 			assert.ElementsMatch(t, tt.expectedTags, result.Tags)
 		})
 	}

@@ -3,11 +3,10 @@ package handlers
 import (
 	"context"
 
-	"github.com/kwilabs/straw-proxy-server/internal/domain"
+	"github.com/beremaran/straw/internal/domain"
 	"github.com/stretchr/testify/mock"
 )
 
-// MockApiKeyRepo is a mock implementation of domain.ApiKeyRepository
 type MockApiKeyRepo struct {
 	mock.Mock
 }
@@ -46,7 +45,6 @@ func (m *MockApiKeyRepo) GetByTokenHash(ctx context.Context, tokenHash string) (
 	return args.Get(0).(*domain.ApiKey), args.Error(1)
 }
 
-// MockRoutingRuleRepo is a mock implementation of domain.RoutingRuleRepository
 type MockRoutingRuleRepo struct {
 	mock.Mock
 }

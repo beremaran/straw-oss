@@ -3,13 +3,10 @@ package dto
 import (
 	"time"
 
-	"github.com/kwilabs/straw-proxy-server/internal/domain"
-	"github.com/kwilabs/straw-proxy-server/pkg/protocol"
+	"github.com/beremaran/straw/internal/domain"
+	"github.com/beremaran/straw/pkg/protocol"
 )
 
-// --- Relay Mappers ---
-
-// ToProtocolRequest converts RelayRequest DTO to protocol.Request
 func (r *RelayRequest) ToProtocolRequest() (*protocol.Request, error) {
 	var timeout time.Duration
 	if r.Timeout != "" {
@@ -39,7 +36,6 @@ func (r *RelayRequest) ToProtocolRequest() (*protocol.Request, error) {
 	}, nil
 }
 
-// FromProtocolResponse converts protocol.Response to RelayResponse DTO
 func FromProtocolResponse(resp *protocol.Response, meta *RelayMetaDTO) *RelayResponse {
 	headers := make(map[string]string, len(resp.Headers))
 	for _, h := range resp.Headers {
@@ -69,9 +65,6 @@ func FromProtocolResponse(resp *protocol.Response, meta *RelayMetaDTO) *RelayRes
 	}
 }
 
-// --- Routing Rule Mappers ---
-
-// ToDomain converts CreateRoutingRuleRequest to domain.RoutingRule
 func (r *CreateRoutingRuleRequest) ToDomain() (*domain.RoutingRule, error) {
 	var hardTimeout time.Duration
 	if r.HardTimeout != "" {
@@ -114,7 +107,6 @@ func (r *CreateRoutingRuleRequest) ToDomain() (*domain.RoutingRule, error) {
 	return rule, nil
 }
 
-// ABConfigDTO.ToDomain converts ABConfigDTO to domain.ABConfig
 func (c *ABConfigDTO) ToDomain() *domain.ABConfig {
 	if c == nil {
 		return nil
@@ -134,7 +126,6 @@ func (c *ABConfigDTO) ToDomain() *domain.ABConfig {
 	}
 }
 
-// RequestFilterDTO.ToDomain converts RequestFilterDTO to domain.RequestFilter
 func (f *RequestFilterDTO) ToDomain() *domain.RequestFilter {
 	if f == nil {
 		return nil
@@ -149,7 +140,6 @@ func (f *RequestFilterDTO) ToDomain() *domain.RequestFilter {
 	}
 }
 
-// EndpointPoolsDTOToDomain converts []EndpointPoolDTO to []domain.EndpointPool
 func EndpointPoolsDTOToDomain(pools []EndpointPoolDTO) []domain.EndpointPool {
 	result := make([]domain.EndpointPool, len(pools))
 	for i, p := range pools {
@@ -162,7 +152,6 @@ func EndpointPoolsDTOToDomain(pools []EndpointPoolDTO) []domain.EndpointPool {
 	return result
 }
 
-// FromRoutingRule converts domain.RoutingRule to RoutingRuleResponse DTO
 func FromRoutingRule(rule *domain.RoutingRule) *RoutingRuleResponse {
 	if rule == nil {
 		return nil
@@ -207,7 +196,6 @@ func FromRoutingRule(rule *domain.RoutingRule) *RoutingRuleResponse {
 	return resp
 }
 
-// FromRoutingRules converts a slice of domain.RoutingRule to RoutingRuleResponse DTOs
 func FromRoutingRules(rules []domain.RoutingRule) []RoutingRuleResponse {
 	result := make([]RoutingRuleResponse, len(rules))
 	for i, r := range rules {
@@ -219,7 +207,6 @@ func FromRoutingRules(rules []domain.RoutingRule) []RoutingRuleResponse {
 	return result
 }
 
-// FromABConfig converts domain.ABConfig to ABConfigDTO
 func FromABConfig(c *domain.ABConfig) *ABConfigDTO {
 	if c == nil {
 		return nil
@@ -239,7 +226,6 @@ func FromABConfig(c *domain.ABConfig) *ABConfigDTO {
 	}
 }
 
-// FromRequestFilter converts domain.RequestFilter to RequestFilterDTO
 func FromRequestFilter(f *domain.RequestFilter) *RequestFilterDTO {
 	if f == nil {
 		return nil
@@ -254,7 +240,6 @@ func FromRequestFilter(f *domain.RequestFilter) *RequestFilterDTO {
 	}
 }
 
-// FromEndpointPools converts []domain.EndpointPool to []EndpointPoolDTO
 func FromEndpointPools(pools []domain.EndpointPool) []EndpointPoolDTO {
 	result := make([]EndpointPoolDTO, len(pools))
 	for i, p := range pools {
@@ -267,10 +252,6 @@ func FromEndpointPools(pools []domain.EndpointPool) []EndpointPoolDTO {
 	return result
 }
 
-// --- API Key Mappers ---
-
-// FromApiKey converts domain.ApiKey to ApiKeyResponse DTO
-// Note: TokenHash is intentionally NOT included for security
 func FromApiKey(key *domain.ApiKey) *ApiKeyResponse {
 	if key == nil {
 		return nil
@@ -287,7 +268,6 @@ func FromApiKey(key *domain.ApiKey) *ApiKeyResponse {
 	}
 }
 
-// FromApiKeys converts a slice of domain.ApiKey to ApiKeyResponse DTOs
 func FromApiKeys(keys []domain.ApiKey) []ApiKeyResponse {
 	result := make([]ApiKeyResponse, len(keys))
 	for i, k := range keys {
@@ -299,9 +279,6 @@ func FromApiKeys(keys []domain.ApiKey) []ApiKeyResponse {
 	return result
 }
 
-// --- Fingerprint Mappers ---
-
-// ToDomain converts CreateFingerprintRequest to domain.FingerprintPreset
 func (r *CreateFingerprintRequest) ToDomain() *domain.FingerprintPreset {
 	return &domain.FingerprintPreset{
 		ID:     r.ID,
@@ -310,7 +287,6 @@ func (r *CreateFingerprintRequest) ToDomain() *domain.FingerprintPreset {
 	}
 }
 
-// FromFingerprintPreset converts domain.FingerprintPreset to FingerprintResponse
 func FromFingerprintPreset(p *domain.FingerprintPreset) *FingerprintResponse {
 	if p == nil {
 		return nil
@@ -325,7 +301,6 @@ func FromFingerprintPreset(p *domain.FingerprintPreset) *FingerprintResponse {
 	}
 }
 
-// FromFingerprintPresets converts a slice of domain.FingerprintPreset to FingerprintResponse DTOs
 func FromFingerprintPresets(presets []domain.FingerprintPreset) []FingerprintResponse {
 	result := make([]FingerprintResponse, len(presets))
 	for i, p := range presets {
@@ -337,9 +312,6 @@ func FromFingerprintPresets(presets []domain.FingerprintPreset) []FingerprintRes
 	return result
 }
 
-// --- Usage Mappers ---
-
-// FromUsageSummary converts domain.UsageSummary to UsageSummaryDTO
 func FromUsageSummary(s *domain.UsageSummary) *UsageSummaryDTO {
 	if s == nil {
 		return nil
@@ -354,7 +326,6 @@ func FromUsageSummary(s *domain.UsageSummary) *UsageSummaryDTO {
 	}
 }
 
-// FromUsageSummaries converts a slice of domain.UsageSummary to UsageSummaryDTO
 func FromUsageSummaries(summaries []domain.UsageSummary) []UsageSummaryDTO {
 	result := make([]UsageSummaryDTO, len(summaries))
 	for i, s := range summaries {

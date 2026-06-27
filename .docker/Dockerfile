@@ -1,0 +1,20 @@
+FROM alpine:latest
+
+ARG BINARY_NAME=relay
+ENV BINARY_NAME=${BINARY_NAME}
+
+WORKDIR /app
+RUN apk add --no-cache ca-certificates curl
+
+COPY --from=beremaran/straw:base /app/${BINARY_NAME} /app/app
+
+RUN adduser -D -g '' appuser \
+    && chown appuser:appuser /app/app \
+    && chmod +x /app/app
+
+USER appuser
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:9090/healthz || exit 1
+
+ENTRYPOINT ["/app/app"]

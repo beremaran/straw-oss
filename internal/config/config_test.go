@@ -7,27 +7,26 @@ import (
 )
 
 func TestLoadServerConfig_Defaults(t *testing.T) {
-	// Set required env vars
+
 	setEnvVars(t, map[string]string{
 		"POSTGRES_DSN": "postgres://localhost/test",
 		"NATS_URL":     "nats://localhost:4222",
 		"HMAC_SECRET":  "test-secret",
 	})
 
-	cfg, err := LoadServerConfig("")
+	cfg, err := LoadServerConfig()
 	if err != nil {
 		t.Fatalf("LoadServerConfig() error = %v", err)
 	}
 
-	// Check defaults applied
-	if cfg.Core.RedisAddr != "localhost:6379" {
-		t.Errorf("RedisAddr = %v, want localhost:6379", cfg.Core.RedisAddr)
+	if cfg.Redis.Addr != "localhost:6379" {
+		t.Errorf("RedisAddr = %v, want localhost:6379", cfg.Redis.Addr)
 	}
-	if cfg.Core.LogLevel != "info" {
-		t.Errorf("LogLevel = %v, want info", cfg.Core.LogLevel)
+	if cfg.Observability.LogLevel != "info" {
+		t.Errorf("LogLevel = %v, want info", cfg.Observability.LogLevel)
 	}
-	if cfg.Core.LogFormat != "json" {
-		t.Errorf("LogFormat = %v, want json", cfg.Core.LogFormat)
+	if cfg.Observability.LogFormat != "json" {
+		t.Errorf("LogFormat = %v, want json", cfg.Observability.LogFormat)
 	}
 	if !cfg.Observability.MetricsEnabled {
 		t.Error("MetricsEnabled should be true by default")
@@ -54,19 +53,19 @@ func TestLoadServerConfig_EnvOverride(t *testing.T) {
 		"HTTP_PORT":    "3000",
 	})
 
-	cfg, err := LoadServerConfig("")
+	cfg, err := LoadServerConfig()
 	if err != nil {
 		t.Fatalf("LoadServerConfig() error = %v", err)
 	}
 
-	if cfg.Core.PostgresDSN != "postgres://custom/db" {
-		t.Errorf("PostgresDSN = %v, want postgres://custom/db", cfg.Core.PostgresDSN)
+	if cfg.Database.DSN != "postgres://custom/db" {
+		t.Errorf("PostgresDSN = %v, want postgres://custom/db", cfg.Database.DSN)
 	}
-	if cfg.Core.RedisAddr != "redis.example.com:6380" {
-		t.Errorf("RedisAddr = %v, want redis.example.com:6380", cfg.Core.RedisAddr)
+	if cfg.Redis.Addr != "redis.example.com:6380" {
+		t.Errorf("RedisAddr = %v, want redis.example.com:6380", cfg.Redis.Addr)
 	}
-	if cfg.Core.LogLevel != "debug" {
-		t.Errorf("LogLevel = %v, want debug", cfg.Core.LogLevel)
+	if cfg.Observability.LogLevel != "debug" {
+		t.Errorf("LogLevel = %v, want debug", cfg.Observability.LogLevel)
 	}
 	if cfg.Observability.MetricsPort != 9091 {
 		t.Errorf("MetricsPort = %v, want 9091", cfg.Observability.MetricsPort)
@@ -104,7 +103,7 @@ func TestLoadServerConfig_MissingRequired(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			setEnvVars(t, tt.envVars)
 
-			_, err := LoadServerConfig("")
+			_, err := LoadServerConfig()
 			if err == nil {
 				t.Fatal("LoadServerConfig() expected error, got nil")
 			}
@@ -136,7 +135,7 @@ func TestLoadEndpointConfig_Defaults(t *testing.T) {
 		"HMAC_SECRET": "test-secret",
 	})
 
-	cfg, err := LoadEndpointConfig("")
+	cfg, err := LoadEndpointConfig()
 	if err != nil {
 		t.Fatalf("LoadEndpointConfig() error = %v", err)
 	}
@@ -157,7 +156,7 @@ func TestLoadEndpointConfig_TagsParsing(t *testing.T) {
 		"ENDPOINT_TAGS": "type:residential, region:us, capability:stealth",
 	})
 
-	cfg, err := LoadEndpointConfig("")
+	cfg, err := LoadEndpointConfig()
 	if err != nil {
 		t.Fatalf("LoadEndpointConfig() error = %v", err)
 	}
@@ -193,7 +192,7 @@ func TestLoadEndpointConfig_MissingRequired(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			setEnvVars(t, tt.envVars)
 
-			_, err := LoadEndpointConfig("")
+			_, err := LoadEndpointConfig()
 			if err == nil {
 				t.Fatal("LoadEndpointConfig() expected error, got nil")
 			}
@@ -270,11 +269,9 @@ func TestValidationError_Error(t *testing.T) {
 	}
 }
 
-// setEnvVars is a test helper that sets environment variables and cleans them up after the test.
 func setEnvVars(t *testing.T, vars map[string]string) {
 	t.Helper()
 
-	// Clear all config-related env vars first
 	allVars := []string{
 		"POSTGRES_DSN", "REDIS_ADDR", "NATS_URL", "LOG_LEVEL", "LOG_FORMAT",
 		"HMAC_SECRET", "TLS_CERT_FILE", "TLS_KEY_FILE", "VAULT_ADDR",
@@ -286,12 +283,10 @@ func setEnvVars(t *testing.T, vars map[string]string) {
 		_ = os.Unsetenv(v)
 	}
 
-	// Set the provided vars
 	for k, v := range vars {
 		_ = os.Setenv(k, v)
 	}
 
-	// Cleanup after test
 	t.Cleanup(func() {
 		for k := range vars {
 			_ = os.Unsetenv(k)

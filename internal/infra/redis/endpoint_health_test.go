@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kwilabs/straw-proxy-server/internal/config"
+	"github.com/beremaran/straw/internal/config"
 )
 
 func TestEndpointHealthStore_UpdateAndGetHealth(t *testing.T) {
@@ -25,13 +25,11 @@ func TestEndpointHealthStore_UpdateAndGetHealth(t *testing.T) {
 		LastSeen:    time.Now(),
 	}
 
-	// Update health
 	err := store.UpdateHealth(ctx, health)
 	if err != nil {
 		t.Fatalf("UpdateHealth failed: %v", err)
 	}
 
-	// Get health
 	retrieved, err := store.GetHealth(ctx, "test-endpoint-1")
 	if err != nil {
 		t.Fatalf("GetHealth failed: %v", err)
@@ -71,7 +69,6 @@ func TestEndpointHealthStore_ListHealthyByTags(t *testing.T) {
 	store := NewEndpointHealthStore(client)
 	ctx := context.Background()
 
-	// Create test endpoints
 	endpoints := []*EndpointHealth{
 		{
 			EndpointID: "ep-1",
@@ -113,22 +110,22 @@ func TestEndpointHealthStore_ListHealthyByTags(t *testing.T) {
 		{
 			name:     "filter by type:residential",
 			tags:     []string{"type:residential"},
-			expected: 2, // ep-1, ep-2 (ep-3 is unhealthy)
+			expected: 2,
 		},
 		{
 			name:     "filter by region:us",
 			tags:     []string{"region:us"},
-			expected: 2, // ep-1, ep-4 (ep-3 is unhealthy)
+			expected: 2,
 		},
 		{
 			name:     "filter by residential AND us",
 			tags:     []string{"type:residential", "region:us"},
-			expected: 1, // ep-1 only
+			expected: 1,
 		},
 		{
 			name:     "no filter (all healthy/suspect)",
 			tags:     []string{},
-			expected: 3, // ep-1, ep-2, ep-4
+			expected: 3,
 		},
 		{
 			name:     "filter by non-existent tag",
@@ -157,7 +154,6 @@ func TestEndpointHealthStore_ListAllEndpoints(t *testing.T) {
 	store := NewEndpointHealthStore(client)
 	ctx := context.Background()
 
-	// Create test endpoints
 	endpoints := []*EndpointHealth{
 		{EndpointID: "ep-1", State: HealthStateHealthy, LastSeen: time.Now()},
 		{EndpointID: "ep-2", State: HealthStateUnhealthy, LastSeen: time.Now()},
@@ -187,7 +183,6 @@ func TestEndpointHealthStore_DeleteHealth(t *testing.T) {
 	store := NewEndpointHealthStore(client)
 	ctx := context.Background()
 
-	// Create endpoint
 	health := &EndpointHealth{
 		EndpointID: "ep-to-delete",
 		State:      HealthStateHealthy,
@@ -198,24 +193,20 @@ func TestEndpointHealthStore_DeleteHealth(t *testing.T) {
 		t.Fatalf("UpdateHealth failed: %v", err)
 	}
 
-	// Verify it exists
 	_, err := store.GetHealth(ctx, "ep-to-delete")
 	if err != nil {
 		t.Fatalf("GetHealth failed: %v", err)
 	}
 
-	// Delete it
 	if err := store.DeleteHealth(ctx, "ep-to-delete"); err != nil {
 		t.Fatalf("DeleteHealth failed: %v", err)
 	}
 
-	// Verify it's gone
 	_, err = store.GetHealth(ctx, "ep-to-delete")
 	if !errors.Is(err, ErrCacheMiss) {
 		t.Errorf("expected ErrCacheMiss after delete, got %v", err)
 	}
 
-	// Verify it's removed from index
 	all, err := store.ListAllEndpoints(ctx)
 	if err != nil {
 		t.Fatalf("ListAllEndpoints failed: %v", err)
@@ -234,19 +225,16 @@ func TestEndpointHealthStore_Validation(t *testing.T) {
 	store := NewEndpointHealthStore(client)
 	ctx := context.Background()
 
-	// Test nil health
 	err := store.UpdateHealth(ctx, nil)
 	if err == nil {
 		t.Error("expected error for nil health")
 	}
 
-	// Test empty endpoint ID
 	err = store.UpdateHealth(ctx, &EndpointHealth{State: HealthStateHealthy})
 	if err == nil {
 		t.Error("expected error for empty endpoint_id")
 	}
 
-	// Test empty endpoint ID for GetHealth
 	_, err = store.GetHealth(ctx, "")
 	if err == nil {
 		t.Error("expected error for empty endpoint_id in GetHealth")
@@ -303,21 +291,17 @@ func TestMatchesTags(t *testing.T) {
 	}
 }
 
-// setupTestRedis creates a test Redis client.
-// In a real test environment, this would connect to a test Redis instance.
-// For now, we'll skip tests if Redis is not available.
 func setupTestRedis(t *testing.T) (*Client, func()) {
 	t.Helper()
 
-	client, err := NewClient(config.CoreConfig{RedisAddr: "localhost:6379"}, nil)
+	client, err := NewClient(config.RedisConfig{Addr: "localhost:6379"}, nil)
 	if err != nil {
 		t.Skipf("Redis not available: %v", err)
 	}
 
-	// Use a unique prefix for test isolation
 	cleanup := func() {
 		ctx := context.Background()
-		// Clean up test keys
+
 		keys, _ := client.Client.Keys(ctx, "endpoint:health:*").Result()
 		if len(keys) > 0 {
 			client.Client.Del(ctx, keys...)
@@ -325,7 +309,6 @@ func setupTestRedis(t *testing.T) (*Client, func()) {
 		client.Close()
 	}
 
-	// Clean up any existing test data
 	ctx := context.Background()
 	keys, _ := client.Client.Keys(ctx, "endpoint:health:*").Result()
 	if len(keys) > 0 {

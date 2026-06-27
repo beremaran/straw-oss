@@ -8,8 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/kwilabs/straw-proxy-server/internal/domain"
-	"github.com/labstack/echo/v4"
+	"github.com/beremaran/straw/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -24,10 +23,8 @@ func (m *MockRuleVersionManager) IncrementRulesVersion(ctx context.Context) (int
 }
 
 func TestRoutingRuleHandler_HandleListRoutingRules(t *testing.T) {
-	e := echo.New()
 	req := httptest.NewRequest(http.MethodGet, "/admin/rules", nil)
 	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
 
 	mockRepo := new(MockRoutingRuleRepo)
 	mockVerMgr := new(MockRuleVersionManager)
@@ -38,19 +35,15 @@ func TestRoutingRuleHandler_HandleListRoutingRules(t *testing.T) {
 	}
 	mockRepo.On("ListRules", mock.Anything, 20, 0).Return(rules, 1, nil).Once()
 
-	err := handler.HandleListRoutingRules(c)
+	handler.HandleListRoutingRules(rec, req)
 
-	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
 }
 
 func TestRoutingRuleHandler_HandleGetRoutingRule(t *testing.T) {
-	e := echo.New()
 	req := httptest.NewRequest(http.MethodGet, "/admin/rules/rule1", nil)
+	req.SetPathValue("id", "rule1")
 	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-	c.SetParamNames("id")
-	c.SetParamValues("rule1")
 
 	mockRepo := new(MockRoutingRuleRepo)
 	mockVerMgr := new(MockRuleVersionManager)
@@ -59,20 +52,17 @@ func TestRoutingRuleHandler_HandleGetRoutingRule(t *testing.T) {
 	rule := &domain.RoutingRule{ID: "rule1", Name: "Rule 1"}
 	mockRepo.On("GetRuleByID", mock.Anything, "rule1").Return(rule, nil).Once()
 
-	err := handler.HandleGetRoutingRule(c)
+	handler.HandleGetRoutingRule(rec, req)
 
-	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
 }
 
 func TestRoutingRuleHandler_HandleCreateRoutingRule(t *testing.T) {
-	e := echo.New()
 	rule := domain.RoutingRule{Name: "New Rule", Priority: 10}
 	body, _ := json.Marshal(rule)
 	req := httptest.NewRequest(http.MethodPost, "/admin/rules", bytes.NewReader(body))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
 
 	mockRepo := new(MockRoutingRuleRepo)
 	mockVerMgr := new(MockRuleVersionManager)
@@ -84,23 +74,19 @@ func TestRoutingRuleHandler_HandleCreateRoutingRule(t *testing.T) {
 
 	mockVerMgr.On("IncrementRulesVersion", mock.Anything).Return(int64(2), nil).Once()
 
-	err := handler.HandleCreateRoutingRule(c)
+	handler.HandleCreateRoutingRule(rec, req)
 
-	assert.NoError(t, err)
 	assert.Equal(t, http.StatusCreated, rec.Code)
 	mockVerMgr.AssertExpectations(t)
 }
 
 func TestRoutingRuleHandler_HandleUpdateRoutingRule(t *testing.T) {
-	e := echo.New()
 	rule := domain.RoutingRule{ID: "rule1", Name: "Updated Rule", Priority: 20}
 	body, _ := json.Marshal(rule)
 	req := httptest.NewRequest(http.MethodPut, "/admin/rules/rule1", bytes.NewReader(body))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	req.Header.Set("Content-Type", "application/json")
+	req.SetPathValue("id", "rule1")
 	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-	c.SetParamNames("id")
-	c.SetParamValues("rule1")
 
 	mockRepo := new(MockRoutingRuleRepo)
 	mockVerMgr := new(MockRuleVersionManager)
@@ -112,20 +98,16 @@ func TestRoutingRuleHandler_HandleUpdateRoutingRule(t *testing.T) {
 
 	mockVerMgr.On("IncrementRulesVersion", mock.Anything).Return(int64(3), nil).Once()
 
-	err := handler.HandleUpdateRoutingRule(c)
+	handler.HandleUpdateRoutingRule(rec, req)
 
-	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
 	mockVerMgr.AssertExpectations(t)
 }
 
 func TestRoutingRuleHandler_HandleDeleteRoutingRule(t *testing.T) {
-	e := echo.New()
 	req := httptest.NewRequest(http.MethodDelete, "/admin/rules/rule1", nil)
+	req.SetPathValue("id", "rule1")
 	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-	c.SetParamNames("id")
-	c.SetParamValues("rule1")
 
 	mockRepo := new(MockRoutingRuleRepo)
 	mockVerMgr := new(MockRuleVersionManager)
@@ -135,9 +117,8 @@ func TestRoutingRuleHandler_HandleDeleteRoutingRule(t *testing.T) {
 
 	mockVerMgr.On("IncrementRulesVersion", mock.Anything).Return(int64(4), nil).Once()
 
-	err := handler.HandleDeleteRoutingRule(c)
+	handler.HandleDeleteRoutingRule(rec, req)
 
-	assert.NoError(t, err)
 	assert.Equal(t, http.StatusNoContent, rec.Code)
 	mockVerMgr.AssertExpectations(t)
 }

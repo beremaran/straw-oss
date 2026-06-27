@@ -1,80 +1,116 @@
-# Straw Proxy Server 🥤
+# straw-proxy
 
-> The distributed, passive-consumer proxy system for high-scale web scraping.
+## Environment Variables
 
-[![Go Report Card](https://goreportcard.com/badge/github.com/kwilabs/straw-proxy-server)](https://goreportcard.com/report/github.com/kwilabs/straw-proxy-server)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Go Version](https://img.shields.io/github/go-mod/go-version/kwilabs/straw-proxy-server)](https://go.dev/)
+### Relay Server (`cmd/relay-server/`)
 
-**Straw Proxy Server (V2)** is designed to solve the hardest problems in web scraping infrastructure: **concurrency, latency, and blocking**. Unlike traditional proxy chains, Straw uses a "passive consumer" model where endpoints connect *outbound* to the server, bypassing complex NAT and firewall configurations.
+#### Required
+
+| Variable | Type | Description |
+|---|---|---|
+| `POSTGRES_DSN` | string | Postgres connection string (DSN). |
+| `NATS_URL` | string | NATS message broker URL. |
+| `HMAC_SECRET` | string | Secret used for HMAC request signing/verification. |
+
+#### Optional
+
+| Variable | Type | Default | Description |
+|---|---|---|---|
+| `DB_AUTO_MIGRATE` | bool | `false` | Run embedded database migrations on startup. |
+| `HTTP_PORT` | int | `8080` | Main HTTP server port. |
+| `ADMIN_PORT` | int | `8081` | Admin API server port. |
+| `SHUTDOWN_TIMEOUT` | duration | `30s` | Graceful shutdown timeout. |
+| `ADMIN_API_KEY` | string | *(empty)* | API key for authenticating admin API requests. |
+| `RESULT_TIMEOUT` | duration | `30s` | Timeout waiting for endpoint task results. |
+| `MAX_BODY_SIZE` | string | `2M` | Maximum request body size (e.g. `1M`, `10M`, `100K`). |
+| `MAX_CONCURRENT_REQUESTS` | int | `50` | Maximum concurrent in-flight requests. |
+| `ALLOW_PRIVATE_IPS` | bool | `false` | Allow forwarding requests to private IP addresses (SSRF protection bypass, testing mode). |
+
+#### Redis
+
+| Variable | Type | Default | Description |
+|---|---|---|---|
+| `REDIS_ADDR` | string | `localhost:6379` | Redis server address. |
+| `REDIS_POOL_SIZE` | int | `100` | Redis connection pool size. |
+| `REDIS_MIN_IDLE_CONNS` | int | `10` | Minimum idle connections in the Redis pool. |
+
+#### NATS
+
+| Variable | Type | Default | Description |
+|---|---|---|---|
+| `NATS_TOKEN` | string | *(empty)* | NATS authentication token. |
+
+#### Security
+
+| Variable | Type | Default | Description |
+|---|---|---|---|
+| `TLS_CERT_FILE` | string | *(empty)* | Path to TLS certificate file (for HTTPS). |
+| `TLS_KEY_FILE` | string | *(empty)* | Path to TLS private key file (for HTTPS). |
+| `VAULT_ADDR` | string | *(empty)* | HashiCorp Vault address (for secrets management). |
+
+#### Observability
+
+| Variable | Type | Default | Description |
+|---|---|---|---|
+| `LOG_LEVEL` | string | `info` | Log level (`debug`, `info`, `warn`, `error`). |
+| `LOG_FORMAT` | string | `json` | Log format (`json`, `console`). |
+| `METRICS_ENABLED` | bool | `true` | Enable the standalone metrics server. |
+| `METRICS_PORT` | int | `9090` | Port for the metrics server (serves `/metrics` and pprof). |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | string | *(empty)* | OTLP gRPC endpoint for OpenTelemetry trace export. |
 
 ---
 
-## 🚀 Why Straw?
+### Endpoint Worker (`cmd/endpoint/`)
 
-Traditional proxies require port forwarding and struggle with stability. Straw flips the model:
+#### Required
 
-* **⚡ Zero-Config Deployment**: Endpoints work behind any NAT, firewall, or 4G modem without port forwarding.
-* **🕵️‍♂️ Advanced Fingerprinting**: Built-in TLS spoofing (JA3/JA4) to mimic real browsers (Chrome, Firefox, Safari) and bypass anti-bot protections.
-* **🚅 High Performance**: Written in Go to handle thousands of concurrent connections with minimal latency.
-* **🧠 Intelligent Routing**: Tag-based routing ensures your requests hit the right endpoint every time (e.g., `target:amazon`, `region:us`).
+| Variable | Type | Description |
+|---|---|---|
+| `ENDPOINT_ID` | string | Unique identifier for this endpoint instance. |
+| `NATS_URL` | string | NATS message broker URL. |
+| `HMAC_SECRET` | string | Secret used for HMAC request signing/verification (must match relay server). |
 
-## ✨ Key Features
+#### Optional
 
-| Feature | Description |
-| :--- | :--- |
-| **Passive Connectivity** | Endpoints dial `out` to the server; no incoming ports needed. |
-| **TLS Fingerprinting** | powered by `utls` to emulate legitimate browser handshakes. |
-| **Smart Caching** | Redis-backed caching for high-speed config and session lookups. |
-| **Resilience** | Automatic circuit breakers, retry policies, and failover pools. |
-| **Scalable Architecture** | Decoupled "Brain" (Relay) and "Muscle" (Endpoint) via RabbitMQ. |
+| Variable | Type | Default | Description |
+|---|---|---|---|
+| `ENDPOINT_TAGS` | string | *(empty)* | Comma-separated tags for this endpoint (e.g. `"us-east,high-memory"`). Used by the router to select endpoints. |
+| `CONCURRENCY_LIMIT` | int | `25` | Maximum concurrent tasks processed by this endpoint. |
+| `SELF_UPDATE_URL` | string | *(empty)* | URL to fetch self-update version manifests. |
+| `SELF_UPDATE_INTERVAL` | duration | `5m` | How often to check for new versions. |
+| `SELF_UPDATE_ENABLED` | bool | `true` | Enable automatic self-updates. |
+| `MAX_POOL_HOSTS` | int | `1000` | Maximum number of hosts in the HTTP connection pool. |
+| `IDLE_CONNS_PER_HOST` | int | `10` | Idle connections kept per host in the HTTP pool. |
+| `IDLE_CONN_TIMEOUT` | duration | `90s` | Timeout for idle connections in the HTTP pool. |
 
-## 🛠️ Quick Start
+#### NATS
 
-Get your local environment running in minutes.
+| Variable | Type | Default | Description |
+|---|---|---|---|
+| `NATS_TOKEN` | string | *(empty)* | NATS authentication token. |
 
-### 1. Prerequisites
+#### Security
 
-* [Go 1.22+](https://go.dev/)
-* [Docker & Compose](https://www.docker.com/)
+| Variable | Type | Default | Description |
+|---|---|---|---|
+| `TLS_CERT_FILE` | string | *(empty)* | Path to TLS certificate file. |
+| `TLS_KEY_FILE` | string | *(empty)* | Path to TLS private key file. |
+| `VAULT_ADDR` | string | *(empty)* | HashiCorp Vault address. |
 
-### 2. Run the Stack
+#### Observability
 
-Start the infrastructure (Postgres, Redis, RabbitMQ):
+| Variable | Type | Default | Description |
+|---|---|---|---|
+| `LOG_LEVEL` | string | `info` | Log level (`debug`, `info`, `warn`, `error`). |
+| `LOG_FORMAT` | string | `json` | Log format (`json`, `console`). |
+| `METRICS_ENABLED` | bool | `true` | Enable the health/metrics server. |
+| `METRICS_PORT` | int | `9090` | Port for the health/metrics server (serves `/healthz`, `/metrics`, and pprof). |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | string | *(empty)* | OTLP gRPC endpoint for OpenTelemetry trace export. |
 
-```bash
-make dev-up
-```
+---
 
-Start the Relay Server:
+### Shared / Global
 
-```bash
-go run cmd/relay-server/main.go
-```
-
-Start a Worker Endpoint (CLI):
-bash
-go run cmd/endpoint/main.go
-
-```
-
-Start a Worker Endpoint (GUI):
-```bash
-go run cmd/endpoint-gui/*.go
-```
-
-> [!TIP]
-> **GUI Build Dependencies (Linux)**: To build or run the GUI version on Linux, you need the following packages:
-> `libx11-dev libxcursor-dev libxrandr-dev libxinerama-dev libxi-dev libgl1-mesa-dev libxxf86vm-dev`
-
-👉 **[Read the Full Quick Start Guide](docs/getting-started/quickstart.md)**
-
-## 📚 Documentation
-
-* **[Architecture Overview](docs/architecture/overview.md)**: Deep dive into how it works.
-* **[Development Guide](docs/guides/development.md)**: How to build and test.
-* **[Contributing](CONTRIBUTING.md)**: Join the community.
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+| Variable | Type | Default | Description |
+|---|---|---|---|
+| `OTEL_SDK_DISABLED` | string | *(empty)* | Set to `true` to disable the OpenTelemetry SDK entirely (both relay server and endpoint). |

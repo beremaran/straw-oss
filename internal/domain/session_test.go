@@ -99,7 +99,6 @@ func TestSession_Migrate(t *testing.T) {
 		t.Errorf("Migrate() did not increment MigrationCount, got %d", s.MigrationCount)
 	}
 
-	// Exhaust migrations
 	s.MigrationCount = MaxMigrationCount
 	if s.Migrate("another-endpoint") {
 		t.Error("Migrate() returned true when at limit")

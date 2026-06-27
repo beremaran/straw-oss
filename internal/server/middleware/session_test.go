@@ -5,55 +5,29 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
-	"github.com/kwilabs/straw-proxy-server/internal/domain"
-	"github.com/kwilabs/straw-proxy-server/internal/server/middleware"
-	"github.com/kwilabs/straw-proxy-server/internal/service/session"
-	"github.com/labstack/echo/v4"
+	"github.com/alicebob/miniredis/v2"
+	"github.com/beremaran/straw/internal/config"
+	"github.com/beremaran/straw/internal/domain"
+	"github.com/beremaran/straw/internal/infra/redis"
+	"github.com/beremaran/straw/internal/server/middleware"
+	"github.com/beremaran/straw/internal/service/session"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// Re-using mock store from service test is hard across packages unless exported.
-// I will implement a quick inline mock or move mock to a test package.
-// For simplicity, I'll just re-implement a minimal mock here.
-
-type mockStore struct {
-	sessions map[string]*domain.Session
-}
-
-func newMockStore() *mockStore {
-	return &mockStore{sessions: make(map[string]*domain.Session)}
-}
-func (m *mockStore) Save(ctx context.Context, s *domain.Session, ttl time.Duration) error {
-	m.sessions[s.ID] = s
-	return nil
-}
-func (m *mockStore) Get(ctx context.Context, id string) (*domain.Session, error) {
-	s, ok := m.sessions[id]
-	if !ok {
-		return nil, domain.ErrSessionExpired
-	}
-	return s, nil
-}
-func (m *mockStore) Delete(ctx context.Context, id string) error {
-	delete(m.sessions, id)
-	return nil
-}
-func (m *mockStore) Touch(ctx context.Context, id string, ttl time.Duration) error {
-	if _, ok := m.sessions[id]; !ok {
-		return domain.ErrSessionExpired
-	}
-	return nil
-}
-
 func TestSessionMiddleware(t *testing.T) {
-	store := newMockStore()
-	svc := session.NewService(store)
-	e := echo.New()
+	mr, err := miniredis.Run()
+	require.NoError(t, err)
+	defer mr.Close()
 
-	// Pre-create a session
+	client, err := redis.NewClient(config.RedisConfig{Addr: mr.Addr()}, nil)
+	require.NoError(t, err)
+	defer client.Close()
+
+	store := session.NewRedisStore(client)
+	svc := session.NewService(store)
+
 	ctx := context.Background()
 	sess, err := svc.CreateSession(ctx, "ep1", "rule1", nil)
 	require.NoError(t, err)
@@ -64,34 +38,33 @@ func TestSessionMiddleware(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		req.Header.Set(middleware.HeaderSessionID, sess.ID)
 		rec := httptest.NewRecorder()
-		c := e.NewContext(req, rec)
 
-		h := mw(func(c echo.Context) error {
-			// Check context
-			extracted := middleware.GetSessionFromContext(c.Request().Context())
+		h := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			extracted := middleware.GetSessionFromContext(r.Context())
 			assert.NotNil(t, extracted)
 			if extracted != nil {
 				assert.Equal(t, sess.ID, extracted.ID)
 			}
-			return c.NoContent(200)
-		})
+			w.WriteHeader(http.StatusOK)
+		}))
 
-		assert.NoError(t, h(c))
+		h.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
 		assert.Equal(t, sess.ID, rec.Header().Get(middleware.HeaderSessionID))
 	})
 
 	t.Run("Missing Session ID", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		rec := httptest.NewRecorder()
-		c := e.NewContext(req, rec)
 
-		h := mw(func(c echo.Context) error {
-			extracted := middleware.GetSessionFromContext(c.Request().Context())
+		h := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			extracted := middleware.GetSessionFromContext(r.Context())
 			assert.Nil(t, extracted)
-			return c.NoContent(200)
-		})
+			w.WriteHeader(http.StatusOK)
+		}))
 
-		assert.NoError(t, h(c))
+		h.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
 		assert.Empty(t, rec.Header().Get(middleware.HeaderSessionID))
 	})
 
@@ -99,17 +72,12 @@ func TestSessionMiddleware(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		req.Header.Set(middleware.HeaderSessionID, "invalid-123")
 		rec := httptest.NewRecorder()
-		c := e.NewContext(req, rec)
 
-		h := mw(func(c echo.Context) error {
-			return c.NoContent(200) // Should not reach here
-		})
+		h := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}))
 
-		// Expect 410 Gone (Session Expired error mapping)
-		// Or whatever default error handler does with it.
-		// Wait, in middleware I returned `c.JSON(410, ...)`
-		err := h(c)
-		assert.NoError(t, err) // Handler returns error? No, c.JSON returns nil usually.
+		h.ServeHTTP(rec, req)
 		assert.Equal(t, 410, rec.Code)
 	})
 
@@ -118,15 +86,13 @@ func TestSessionMiddleware(t *testing.T) {
 		req.Header.Set(middleware.HeaderSessionID, sess.ID)
 		req.Header.Set(middleware.HeaderSessionEnd, "true")
 		rec := httptest.NewRecorder()
-		c := e.NewContext(req, rec)
 
-		h := mw(func(c echo.Context) error {
-			return c.NoContent(200)
-		})
+		h := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}))
 
-		assert.NoError(t, h(c))
+		h.ServeHTTP(rec, req)
 
-		// Verify deleted
 		_, err := store.Get(ctx, sess.ID)
 		assert.ErrorIs(t, err, domain.ErrSessionExpired)
 	})

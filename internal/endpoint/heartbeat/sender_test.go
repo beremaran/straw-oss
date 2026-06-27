@@ -8,10 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kwilabs/straw-proxy-server/internal/broker"
+	"github.com/beremaran/straw/internal/broker"
 )
 
-// mockBroker implements broker.MessageBroker for testing.
 type mockBroker struct {
 	publishedMsgs []publishedMsg
 	mu            sync.Mutex
@@ -152,7 +151,6 @@ func TestSender_HeartbeatMessageFormat(t *testing.T) {
 
 	s.Start(ctx)
 
-	// Wait for initial heartbeat
 	time.Sleep(50 * time.Millisecond)
 
 	s.Stop()
@@ -164,7 +162,6 @@ func TestSender_HeartbeatMessageFormat(t *testing.T) {
 
 	msg := msgs[0]
 
-	// Check exchange and routing key
 	if msg.Exchange != "heartbeats" {
 		t.Errorf("expected exchange 'heartbeats', got %q", msg.Exchange)
 	}
@@ -173,7 +170,6 @@ func TestSender_HeartbeatMessageFormat(t *testing.T) {
 		t.Errorf("expected routing key 'endpoint-003', got %q", msg.RoutingKey)
 	}
 
-	// Unmarshal and verify message content
 	var hb Message
 	if err := json.Unmarshal(msg.Body, &hb); err != nil {
 		t.Fatalf("failed to unmarshal heartbeat: %v", err)
@@ -212,13 +208,12 @@ func TestSender_PeriodicSending(t *testing.T) {
 
 	s.Start(ctx)
 
-	// Wait for multiple heartbeats (initial + at least 2 more)
 	time.Sleep(150 * time.Millisecond)
 
 	s.Stop()
 
 	msgs := mb.getMessages()
-	// Should have at least 3 messages: initial + 2 from ticker
+
 	if len(msgs) < 3 {
 		t.Errorf("expected at least 3 heartbeats, got %d", len(msgs))
 	}
@@ -239,20 +234,16 @@ func TestSender_GracefulShutdown(t *testing.T) {
 		t.Error("expected sender to be running after Start")
 	}
 
-	// Stop should block until the sender is fully stopped
 	s.Stop()
 
 	if s.IsRunning() {
 		t.Error("expected sender to not be running after Stop")
 	}
 
-	// Count messages before second stop
 	countBefore := mb.messageCount()
 
-	// Double stop should be safe
 	s.Stop()
 
-	// Verify no more messages are sent after stop
 	time.Sleep(50 * time.Millisecond)
 	countAfter := mb.messageCount()
 
@@ -271,14 +262,12 @@ func TestSender_DoubleStartIsSafe(t *testing.T) {
 	ctx := context.Background()
 
 	s.Start(ctx)
-	s.Start(ctx) // Should be a no-op
+	s.Start(ctx)
 
 	time.Sleep(50 * time.Millisecond)
 
 	s.Stop()
 
-	// Should still only have one initial heartbeat (not two)
-	// and sender should be cleanly stopped
 	if s.IsRunning() {
 		t.Error("expected sender to not be running after Stop")
 	}
@@ -300,13 +289,10 @@ func TestSender_ActiveTasksCallback(t *testing.T) {
 
 	s.Start(ctx)
 
-	// Wait for initial heartbeat
 	time.Sleep(30 * time.Millisecond)
 
-	// Change task count
 	taskCount.Store(20)
 
-	// Wait for another heartbeat
 	time.Sleep(60 * time.Millisecond)
 
 	s.Stop()
@@ -316,7 +302,6 @@ func TestSender_ActiveTasksCallback(t *testing.T) {
 		t.Fatalf("expected at least 2 heartbeats, got %d", len(msgs))
 	}
 
-	// First heartbeat should have 10 active tasks
 	var hb1 Message
 	if err := json.Unmarshal(msgs[0].Body, &hb1); err != nil {
 		t.Fatalf("failed to unmarshal first heartbeat: %v", err)
@@ -325,7 +310,6 @@ func TestSender_ActiveTasksCallback(t *testing.T) {
 		t.Errorf("expected first heartbeat active tasks 10, got %d", hb1.ActiveTasks)
 	}
 
-	// Second heartbeat should have 20 active tasks
 	var hb2 Message
 	if err := json.Unmarshal(msgs[1].Body, &hb2); err != nil {
 		t.Fatalf("failed to unmarshal second heartbeat: %v", err)
@@ -346,13 +330,10 @@ func TestSender_ContextCancellation(t *testing.T) {
 
 	s.Start(ctx)
 
-	// Cancel context should stop the sender
 	cancel()
 
-	// Give it a moment to stop
 	time.Sleep(50 * time.Millisecond)
 
-	// Calling Stop after context cancel should be safe
 	s.Stop()
 
 	if s.IsRunning() {
@@ -372,14 +353,12 @@ func TestSender_PublishErrorDoesNotCrash(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Should not panic even with publish errors
 	s.Start(ctx)
 
 	time.Sleep(100 * time.Millisecond)
 
 	s.Stop()
 
-	// Sender should have stopped gracefully despite errors
 	if s.IsRunning() {
 		t.Error("expected sender to not be running after Stop")
 	}

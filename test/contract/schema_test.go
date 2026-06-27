@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kwilabs/straw-proxy-server/pkg/protocol"
+	"github.com/beremaran/straw/pkg/protocol"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/xeipuuv/gojsonschema"
@@ -18,20 +18,17 @@ func loadSchema(t *testing.T, filename string) *gojsonschema.Schema {
 	wd, err := os.Getwd()
 	require.NoError(t, err)
 
-	// Adjust path depending on where test is run from
-	// Assuming test is run from project root or test/contract
 	path := filepath.Join(wd, "schemas", filename)
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		// Try relative to project root if running from test/contract
+
 		path = filepath.Join(wd, "test", "contract", "schemas", filename)
 	}
 
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		// Try relative to test file if running from project root
+
 		path = filepath.Join("test", "contract", "schemas", filename)
 	}
 
-	// Absolute path for safe loading
 	absPath, err := filepath.Abs(path)
 	require.NoError(t, err)
 
@@ -87,12 +84,10 @@ func TestRequestSchema(t *testing.T) {
 		validateAgainstSchema(t, schema, req)
 	})
 
-	// Check that missing required fields fails validation
 	t.Run("InvalidRequest_MissingRequired", func(t *testing.T) {
-		// Create a map to manually omit fields, since empty struct fields might be marshaled as empty strings/ints
+
 		invalidReq := map[string]interface{}{
 			"id": "req-bad",
-			// Missing Method, URL, Headers
 		}
 
 		loader := gojsonschema.NewGoLoader(invalidReq)

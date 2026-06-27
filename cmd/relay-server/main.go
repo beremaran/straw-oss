@@ -1,23 +1,3 @@
-// Package main is the entry point for the relay server.
-//
-//	@title						Straw Proxy Relay Server API
-//	@version					1.0
-//	@description				HTTP relay proxy with fingerprinting and routing capabilities.
-//	@description				This API allows clients to proxy HTTP requests through distributed endpoints.
-//
-//	@contact.name				Straw Proxy Support
-//	@contact.url				https://github.com/kwilabs/straw-proxy-server
-//
-//	@license.name				MIT
-//	@license.url				https://opensource.org/licenses/MIT
-//
-//	@host						localhost:8080
-//	@BasePath					/
-//
-//	@securityDefinitions.apikey	ApiKeyAuth
-//	@in							header
-//	@name						Authorization
-//	@description				Bearer token authentication (format: "Bearer <token>")
 package main
 
 import (
@@ -30,23 +10,23 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/kwilabs/straw-proxy-server/internal/broker"
-	"github.com/kwilabs/straw-proxy-server/internal/config"
-	"github.com/kwilabs/straw-proxy-server/internal/infra/circuitbreaker"
-	"github.com/kwilabs/straw-proxy-server/internal/infra/postgres"
-	"github.com/kwilabs/straw-proxy-server/internal/infra/redis"
-	"github.com/kwilabs/straw-proxy-server/internal/observability/logging"
-	"github.com/kwilabs/straw-proxy-server/internal/observability/metrics"
-	"github.com/kwilabs/straw-proxy-server/internal/observability/tracing"
-	"github.com/kwilabs/straw-proxy-server/internal/server"
-	"github.com/kwilabs/straw-proxy-server/internal/server/admin"
-	"github.com/kwilabs/straw-proxy-server/internal/service/auth"
-	"github.com/kwilabs/straw-proxy-server/internal/service/endpoint"
-	"github.com/kwilabs/straw-proxy-server/internal/service/filter"
-	"github.com/kwilabs/straw-proxy-server/internal/service/orchestrator"
-	"github.com/kwilabs/straw-proxy-server/internal/service/ratelimit"
-	"github.com/kwilabs/straw-proxy-server/internal/service/router"
-	"github.com/kwilabs/straw-proxy-server/internal/service/session"
+	"github.com/beremaran/straw/internal/broker"
+	"github.com/beremaran/straw/internal/config"
+	"github.com/beremaran/straw/internal/infra/circuitbreaker"
+	"github.com/beremaran/straw/internal/infra/postgres"
+	"github.com/beremaran/straw/internal/infra/redis"
+	"github.com/beremaran/straw/internal/observability/logging"
+	"github.com/beremaran/straw/internal/observability/metrics"
+	"github.com/beremaran/straw/internal/observability/tracing"
+	"github.com/beremaran/straw/internal/server"
+	"github.com/beremaran/straw/internal/server/admin"
+	"github.com/beremaran/straw/internal/service/auth"
+	"github.com/beremaran/straw/internal/service/endpoint"
+	"github.com/beremaran/straw/internal/service/filter"
+	"github.com/beremaran/straw/internal/service/orchestrator"
+	"github.com/beremaran/straw/internal/service/ratelimit"
+	"github.com/beremaran/straw/internal/service/router"
+	"github.com/beremaran/straw/internal/service/session"
 )
 
 var (
@@ -56,24 +36,22 @@ var (
 )
 
 func main() {
-	// 1. Load Configuration
-	cfg, err := config.LoadServerConfig("")
+
+	cfg, err := config.LoadServerConfig()
 	if err != nil {
 		slog.Error("Failed to load config", "error", err)
 		os.Exit(1)
 	}
 
-	// 2. Initialize Infrastructure
 	logger := logging.SetupLogger(logging.Config{
-		Level:   cfg.Core.LogLevel,
-		Format:  cfg.Core.LogFormat,
-		Service: "straw-relay-server",
+		Level:   cfg.Observability.LogLevel,
+		Format:  cfg.Observability.LogFormat,
+		Service: "relay",
 		Version: Version,
 	})
 	slog.SetDefault(logger)
 	ctx := context.Background()
 
-	// Initialize OpenTelemetry
 	shutdownTracer, err := tracing.InitTracerProvider(ctx, "straw-relay-server", Version)
 	if err != nil {
 		slog.Warn("Failed to initialize tracer provider", "error", err)
@@ -85,7 +63,6 @@ func main() {
 		}()
 	}
 
-	// Circuit Breakers
 	pgBreaker := circuitbreaker.New(circuitbreaker.Config{
 		Name:             "postgres",
 		FailureThreshold: 5,
@@ -102,33 +79,29 @@ func main() {
 		ResetTimeout:     20 * time.Second,
 	})
 
-	// Postgres
-	pgClient, err := postgres.NewClient(ctx, cfg.Core.PostgresDSN, pgBreaker)
+	pgClient, err := postgres.NewClient(ctx, cfg.Database.DSN, pgBreaker)
 	if err != nil {
 		slog.Error("Failed to connect to Postgres", "error", err)
 		os.Exit(1)
 	}
 	defer pgClient.Close()
 
-	// 3. Run Migrations if enabled
-	if cfg.Core.DBAutoMigrate {
+	if cfg.Database.AutoMigrate {
 		slog.Info("Applying pending migrations...")
-		if err := postgres.RunEmbeddedMigrations(cfg.Core.PostgresDSN); err != nil {
+		if err := postgres.RunEmbeddedMigrations(cfg.Database.DSN); err != nil {
 			slog.Error("Failed to run migrations", "error", err)
 			os.Exit(1)
 		}
 		slog.Info("Migrations applied successfully!")
 	}
 
-	// Redis
-	redisClient, err := redis.NewClient(cfg.Core, redisBreaker)
+	redisClient, err := redis.NewClient(cfg.Redis, redisBreaker)
 	if err != nil {
 		slog.Error("Failed to connect to Redis", "error", err)
 		os.Exit(1)
 	}
 	defer func() { _ = redisClient.Close() }()
 
-	// 4. Initialize Services
 	apiKeyRepo := postgres.NewApiKeyRepository(pgClient)
 	authCache := auth.NewAuthCache(redisClient, 5*time.Minute)
 	authService := auth.NewAuthService(apiKeyRepo, authCache)
@@ -140,32 +113,22 @@ func main() {
 	ruleCache := router.NewRuleCache(redisClient.Client, 10*time.Minute)
 	matcher := router.NewMatcher(ruleRepo, ruleCache)
 
-	// Rate Limiter
 	rateLimiter := ratelimit.NewRateLimiter(redisClient)
 
-	// Filter Service
 	abpMatcher := filter.NewABPMatcher(redisClient, filter.ABPMatcherConfig{
 		UpdateInterval: 24 * time.Hour,
 	})
-	// Run auto update
+
 	go abpMatcher.StartAutoUpdate(ctx)
 
 	filterService := filter.NewService(abpMatcher)
 
-	// Orchestrator Dependencies
 	endpointHealthStore := redis.NewEndpointHealthStore(redisClient)
 	endpointSelector := orchestrator.NewSimpleEndpointSelector(endpointHealthStore)
 
-	// Here creating a shared broker instance earlier would be better.
-	// Let's create the broker connection HERE instead of later for Admin.
-
-	// NATS Broker
-	// We use the NatsURL from config.
-	// CircuitBreaker option is ignored by NatsBroker for now as NATS has built-in reconnection logic,
-	// but we can pass it if we implement wrap logic later.
 	natsBroker := broker.NewNatsBroker(
-		broker.Addrs(cfg.Core.NatsURL),
-		broker.Token(cfg.Core.NatsToken),
+		broker.Addrs(cfg.NATS.URL),
+		broker.Token(cfg.NATS.Token),
 	)
 	if err := natsBroker.Connect(); err != nil {
 		slog.Error("Failed to connect to message broker", "error", err)
@@ -173,8 +136,6 @@ func main() {
 	}
 	defer func() { _ = natsBroker.Close() }()
 
-	// Declare required exchanges before endpoints can connect
-	// These exchanges must exist for endpoints to successfully publish/consume messages
 	if err := natsBroker.DeclareExchange(ctx, "heartbeats", "fanout"); err != nil {
 		slog.Error("Failed to declare heartbeats exchange", "error", err)
 		os.Exit(1)
@@ -189,28 +150,22 @@ func main() {
 	}
 	slog.Info("NATS streams declared successfully", "streams", []string{"heartbeats", "tasks", "results"})
 
-	// Declare heartbeats queue before binding it
 	if err := natsBroker.DeclareQueue(ctx, "heartbeats"); err != nil {
 		slog.Error("Failed to declare heartbeats queue", "error", err)
 		os.Exit(1)
 	}
 
-	// Bind heartbeats queue to heartbeats exchange
-	// For fanout exchanges, routing key is ignored (empty string)
 	if err := natsBroker.BindQueue(ctx, "heartbeats", "heartbeats", ""); err != nil {
 		slog.Error("Failed to bind heartbeats queue to exchange", "error", err)
 		os.Exit(1)
 	}
 	slog.Info("NATS heartbeats consumer bound to stream")
 
-	// Declare result queue before binding it
 	if err := natsBroker.DeclareQueue(ctx, orchestrator.SharedResultQueue); err != nil {
 		slog.Error("Failed to declare result queue", "error", err)
 		os.Exit(1)
 	}
 
-	// Bind result queue to results exchange
-	// Use empty exchange because the endpoint publishes directly to the subject "results.relay-server"
 	if err := natsBroker.BindQueue(ctx, orchestrator.SharedResultQueue, "", orchestrator.SharedResultQueue); err != nil {
 		slog.Error("Failed to bind result queue to exchange", "error", err)
 		os.Exit(1)
@@ -223,25 +178,22 @@ func main() {
 	retryExecutor := orchestrator.NewRetryExecutor(
 		publisher,
 		consumer,
-		endpointSelector, // SimpleEndpointSelector implements PoolManager
+		endpointSelector,
 		natsBroker,
 		[]byte(cfg.Security.HMACSecret),
 	)
 
-	// Start Retry Executor response listener
 	if err := retryExecutor.Start(ctx); err != nil {
 		slog.Error("Failed to start retry executor", "error", err)
 		os.Exit(1)
 	}
 
-	// Pre-warm Cache / Load Rules
 	if err := matcher.LoadRules(ctx); err != nil {
 		slog.Warn("Failed to load initial routing rules", "error", err)
 	}
-	// Start auto-refresh
-	matcher.StartAutoRefresh(ctx, 1*time.Minute)
 
-	// 5. Initialize Server
+	matcher.StartAutoRefresh(ctx, 5*time.Second)
+
 	var serverOpts []server.Option
 	if cfg.AllowPrivateIPs {
 		slog.Warn("Private IP validation disabled - SSRF protection bypassed (testing mode)")
@@ -249,18 +201,14 @@ func main() {
 	}
 	srv := server.New(*cfg, authService, sessionService, matcher, rateLimiter, filterService, retryExecutor, serverOpts...)
 
-	// 6. Initialize Admin Server Dependencies
-	// Health Service
 	healthService := endpoint.NewHealthService(natsBroker, endpointHealthStore)
 	if err := healthService.Start(ctx); err != nil {
 		slog.Warn("Failed to start health service", "error", err)
 	}
 	defer healthService.Stop()
 
-	// Admin Server
 	adminSrv := admin.New(*cfg, pgClient, redisClient, healthService, natsBroker)
 
-	// 7. Start Servers
 	go func() {
 		if err := srv.Start(); err != nil {
 			slog.Error("Server shutting down", "error", err)
@@ -273,13 +221,12 @@ func main() {
 		}
 	}()
 
-	// Metrics Server
 	var metricsSrv *http.Server
 	if cfg.Observability.MetricsEnabled {
 		metrics.Init()
 		mux := http.NewServeMux()
 		mux.Handle("/metrics", metrics.Handler())
-		// pprof handlers for runtime profiling
+
 		metrics.RegisterPprof(mux)
 
 		metricsSrv = &http.Server{
@@ -297,7 +244,6 @@ func main() {
 
 	fmt.Printf("Straw Proxy Relay Server %s started on %s\n", Version, srv.Address())
 
-	// 6. Graceful Shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit

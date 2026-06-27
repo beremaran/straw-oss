@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/kwilabs/straw-proxy-server/internal/endpoint/fingerprint"
-	endpointhttp "github.com/kwilabs/straw-proxy-server/internal/endpoint/http"
-	"github.com/kwilabs/straw-proxy-server/pkg/protocol"
+	"github.com/beremaran/straw/internal/endpoint/fingerprint"
+	endpointhttp "github.com/beremaran/straw/internal/endpoint/http"
+	"github.com/beremaran/straw/pkg/protocol"
 )
 
 func TestConsumer_StatsCallback(t *testing.T) {
@@ -27,7 +27,6 @@ func TestConsumer_StatsCallback(t *testing.T) {
 	)
 	c.ctx = context.Background()
 
-	// Create a valid request
 	req := &protocol.Request{
 		ID:     "test-req-stats",
 		Method: "POST",
@@ -45,11 +44,8 @@ func TestConsumer_StatsCallback(t *testing.T) {
 		t.Fatalf("failed to marshal signed task: %v", err)
 	}
 
-	// Process the task
-	// This will fail the HTTP request (fingerprint not found), but should still calculate stats
 	_ = c.processTask(context.Background(), body)
 
-	// Check BytesSent - should match EstimateWireSize
 	expectedBytesSent := req.EstimateWireSize()
 	if statsResult.BytesSent != expectedBytesSent {
 		t.Errorf("expected BytesSent %d, got %d", expectedBytesSent, statsResult.BytesSent)
@@ -63,7 +59,6 @@ func TestConsumer_StatsCallback(t *testing.T) {
 		t.Errorf("expected RequestID 'test-req-stats', got %s", statsResult.RequestID)
 	}
 
-	// BytesReceived should be > 0 even on error (minimal response structure)
 	if statsResult.BytesReceived == 0 {
 		t.Error("expected BytesReceived > 0 (even error response has wire size)")
 	}

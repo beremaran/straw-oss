@@ -4,27 +4,23 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
-	"github.com/kwilabs/straw-proxy-server/internal/broker"
-	"github.com/kwilabs/straw-proxy-server/internal/config"
-	"github.com/kwilabs/straw-proxy-server/internal/infra/postgres"
-	"github.com/kwilabs/straw-proxy-server/internal/infra/redis"
-	"github.com/kwilabs/straw-proxy-server/internal/server/admin/handlers"
-	"github.com/kwilabs/straw-proxy-server/internal/server/admin/middleware"
-	"github.com/kwilabs/straw-proxy-server/internal/service/endpoint"
-	"github.com/kwilabs/straw-proxy-server/internal/service/router"
-	"github.com/labstack/echo/v4"
-	echoMiddleware "github.com/labstack/echo/v4/middleware"
-	echoSwagger "github.com/swaggo/echo-swagger"
-
-	// Swagger docs import
-	_ "github.com/kwilabs/straw-proxy-server/docs/admin"
+	"github.com/beremaran/straw/internal/broker"
+	"github.com/beremaran/straw/internal/config"
+	"github.com/beremaran/straw/internal/infra/postgres"
+	"github.com/beremaran/straw/internal/infra/redis"
+	"github.com/beremaran/straw/internal/server/admin/handlers"
+	"github.com/beremaran/straw/internal/server/admin/middleware"
+	mw "github.com/beremaran/straw/internal/server/middleware"
+	"github.com/beremaran/straw/internal/service/endpoint"
+	"github.com/beremaran/straw/internal/service/router"
 )
 
-// Server represents the Admin HTTP server.
 type Server struct {
-	echo          *echo.Echo
+	mux           *http.ServeMux
+	server        *http.Server
 	conf          config.ServerConfig
 	client        *postgres.Client
 	redisClient   *redis.Client
@@ -32,22 +28,11 @@ type Server struct {
 	broker        broker.MessageBroker
 }
 
-// New creates a new Admin Server instance.
 func New(conf config.ServerConfig, client *postgres.Client, redisClient *redis.Client, healthService *endpoint.HealthService, broker broker.MessageBroker) *Server {
-	e := echo.New()
-
-	// Hide banner
-	e.HideBanner = true
-	e.HidePort = true
-
-	// Standard Middleware
-	e.Use(echoMiddleware.RequestID())
-	e.Use(echoMiddleware.Logger())
-	e.Use(echoMiddleware.Recover())
-	e.Use(echoMiddleware.CORS())
+	mux := http.NewServeMux()
 
 	s := &Server{
-		echo:          e,
+		mux:           mux,
 		conf:          conf,
 		client:        client,
 		redisClient:   redisClient,
@@ -58,48 +43,41 @@ func New(conf config.ServerConfig, client *postgres.Client, redisClient *redis.C
 	s.registerRoutes()
 	s.setupBroker()
 
+	handler := applyMiddlewares(mux,
+		mw.Recover(),
+		mw.RequestID(),
+		mw.LoggerMiddleware(),
+		mw.CORS(),
+		adminGlobalMiddleware(conf, client),
+	)
+
+	s.server = &http.Server{
+		Handler: handler,
+	}
+
 	return s
 }
 
-// setupBroker declares necessary exchanges.
 func (s *Server) setupBroker() {
 	if s.broker != nil {
-		// Declare fanout exchange for fingerprint broadcasts
-		// We ignore error here as it will be logged by broker or fail on publish
 		_ = s.broker.DeclareExchange(context.Background(), "fingerprint_broadcast", "fanout")
 	}
 }
 
-// registerRoutes registers the Admin API routes.
 func (s *Server) registerRoutes() {
-	// Health Checks - Public
-	s.echo.GET("/healthz", s.healthCheck)
 
-	// Swagger UI
-	s.echo.GET("/swagger/*", echoSwagger.EchoWrapHandler(echoSwagger.InstanceName("admin")))
+	s.mux.HandleFunc("GET /healthz", s.healthCheck)
 
-	// Admin API - Protected
-	adminGroup := s.echo.Group("/admin")
-	adminGroup.Use(middleware.KeyAuth(s.conf))
-	// AuditLog requires *AuditLogger, create one from the pool
-	if s.client != nil && s.client.Pool != nil {
-		auditLogger := middleware.NewAuditLogger(s.client.Pool, 0, 0) // use defaults
-		adminGroup.Use(middleware.AuditLog(auditLogger))
-	}
-
-	// Repositories
 	apiKeyRepo := postgres.NewApiKeyRepository(s.client)
 	routingRuleRepo := postgres.NewRoutingRuleRepository(s.client)
 	fingerprintRepo := postgres.NewFingerprintRepository(s.client)
 	usageRepo := postgres.NewUsageRepository(s.client)
 
-	// Services
 	var ruleCache *router.RuleCache
 	if s.redisClient != nil {
 		ruleCache = router.NewRuleCache(s.redisClient.Client, 10*time.Minute)
 	}
 
-	// Handlers
 	apiKeyHandler := handlers.NewApiKeyHandler(apiKeyRepo)
 	routingRuleHandler := handlers.NewRoutingRuleHandler(routingRuleRepo, ruleCache)
 	endpointHandler := handlers.NewEndpointHandler(s.healthService)
@@ -111,55 +89,87 @@ func (s *Server) registerRoutes() {
 		cacheHandler = handlers.NewCacheHandler(s.redisClient)
 	}
 
-	// API Keys Routes
-	adminGroup.POST("/api-keys", apiKeyHandler.HandleCreateApiKey)
-	adminGroup.GET("/api-keys", apiKeyHandler.HandleListApiKeys)
-	adminGroup.DELETE("/api-keys/:id", apiKeyHandler.HandleRevokeApiKey)
+	s.mux.HandleFunc("POST /admin/api-keys", apiKeyHandler.HandleCreateApiKey)
+	s.mux.HandleFunc("GET /admin/api-keys", apiKeyHandler.HandleListApiKeys)
+	s.mux.HandleFunc("DELETE /admin/api-keys/{id}", apiKeyHandler.HandleRevokeApiKey)
 
-	// Routing Rules Routes
-	adminGroup.POST("/rules", routingRuleHandler.HandleCreateRoutingRule)
-	adminGroup.GET("/rules", routingRuleHandler.HandleListRoutingRules)
-	adminGroup.GET("/rules/:id", routingRuleHandler.HandleGetRoutingRule)
-	adminGroup.PUT("/rules/:id", routingRuleHandler.HandleUpdateRoutingRule)
-	adminGroup.DELETE("/rules/:id", routingRuleHandler.HandleDeleteRoutingRule)
+	s.mux.HandleFunc("POST /admin/rules", routingRuleHandler.HandleCreateRoutingRule)
+	s.mux.HandleFunc("GET /admin/rules", routingRuleHandler.HandleListRoutingRules)
+	s.mux.HandleFunc("GET /admin/rules/{id}", routingRuleHandler.HandleGetRoutingRule)
+	s.mux.HandleFunc("PUT /admin/rules/{id}", routingRuleHandler.HandleUpdateRoutingRule)
+	s.mux.HandleFunc("DELETE /admin/rules/{id}", routingRuleHandler.HandleDeleteRoutingRule)
 
-	// Endpoint Routes
-	adminGroup.GET("/endpoints", endpointHandler.HandleListEndpoints)
-	adminGroup.POST("/endpoints/:id/drain", endpointHandler.HandleDrainEndpoint)
+	s.mux.HandleFunc("GET /admin/endpoints", endpointHandler.HandleListEndpoints)
+	s.mux.HandleFunc("POST /admin/endpoints/{id}/drain", endpointHandler.HandleDrainEndpoint)
 
-	// Fingerprint Routes
-	adminGroup.GET("/fingerprints", fingerprintHandler.HandleListPresets)
-	adminGroup.POST("/fingerprints", fingerprintHandler.HandleCreatePreset)
-	adminGroup.POST("/fingerprints/broadcast", fingerprintHandler.HandleBroadcastPresets)
+	s.mux.HandleFunc("GET /admin/fingerprints", fingerprintHandler.HandleListPresets)
+	s.mux.HandleFunc("POST /admin/fingerprints", fingerprintHandler.HandleCreatePreset)
+	s.mux.HandleFunc("POST /admin/fingerprints/broadcast", fingerprintHandler.HandleBroadcastPresets)
 
-	// Usage Routes
-	adminGroup.GET("/usage/summary", usageHandler.HandleGetUsageSummary)
-	adminGroup.GET("/billing/estimate", usageHandler.HandleGetBillingEstimate)
+	s.mux.HandleFunc("GET /admin/usage/summary", usageHandler.HandleGetUsageSummary)
+	s.mux.HandleFunc("GET /admin/billing/estimate", usageHandler.HandleGetBillingEstimate)
 
-	// Cache Routes
 	if cacheHandler != nil {
-		adminGroup.POST("/cache/clear", cacheHandler.HandleClearCache)
-		adminGroup.GET("/cache/stats", cacheHandler.HandleGetCacheStats)
+		s.mux.HandleFunc("POST /admin/cache/clear", cacheHandler.HandleClearCache)
+		s.mux.HandleFunc("GET /admin/cache/stats", cacheHandler.HandleGetCacheStats)
 	}
 }
 
-// healthCheck returns safe 200 OK.
-func (s *Server) healthCheck(c echo.Context) error {
-	return c.String(http.StatusOK, "OK")
+func (s *Server) healthCheck(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("OK"))
 }
 
-// Start starts the Admin HTTP server.
 func (s *Server) Start() error {
 	addr := fmt.Sprintf(":%d", s.conf.AdminPort)
-	return s.echo.Start(addr)
+	s.server.Addr = addr
+	return s.server.ListenAndServe()
 }
 
-// Stop stops the Admin HTTP server gracefully.
 func (s *Server) Stop(ctx context.Context) error {
-	return s.echo.Shutdown(ctx)
+	return s.server.Shutdown(ctx)
 }
 
-// Address returns the server address.
 func (s *Server) Address() string {
 	return fmt.Sprintf(":%d", s.conf.AdminPort)
+}
+
+func (s *Server) GetHandler() http.Handler {
+	return s.server.Handler
+}
+
+func applyMiddlewares(handler http.Handler, middlewares ...func(http.Handler) http.Handler) http.Handler {
+	for i := len(middlewares) - 1; i >= 0; i-- {
+		handler = middlewares[i](handler)
+	}
+	return handler
+}
+
+func adminGlobalMiddleware(cfg config.ServerConfig, client *postgres.Client) func(http.Handler) http.Handler {
+	keyAuth := middleware.KeyAuth(cfg)
+	var auditLog func(http.Handler) http.Handler
+	if client != nil && client.Pool != nil {
+		auditLogger := middleware.NewAuditLogger(client.Pool, 0, 0)
+		auditLog = middleware.AuditLog(auditLogger)
+	}
+
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasPrefix(r.URL.Path, "/admin") {
+				inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					next.ServeHTTP(w, r)
+				})
+
+				var h http.Handler = inner
+				if auditLog != nil {
+					h = auditLog(h)
+				}
+				h = keyAuth(h)
+				h.ServeHTTP(w, r)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }

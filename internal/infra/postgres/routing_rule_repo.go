@@ -7,21 +7,19 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/beremaran/straw/internal/domain"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/kwilabs/straw-proxy-server/internal/domain"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
 
-// RoutingRuleRepository implements the repository for routing rules using PostgreSQL.
 type RoutingRuleRepository struct {
 	client *Client
 	tracer trace.Tracer
 }
 
-// NewRoutingRuleRepository creates a new RoutingRuleRepository.
 func NewRoutingRuleRepository(client *Client) *RoutingRuleRepository {
 	return &RoutingRuleRepository{
 		client: client,
@@ -29,7 +27,6 @@ func NewRoutingRuleRepository(client *Client) *RoutingRuleRepository {
 	}
 }
 
-// GetActiveRules retrieves all active routing rules, ordered by priority (highest first).
 func (r *RoutingRuleRepository) GetActiveRules(ctx context.Context) ([]domain.RoutingRule, error) {
 	ctx, span := r.tracer.Start(ctx, "db.query", trace.WithAttributes(
 		attribute.String("db.system", "postgresql"),
@@ -81,13 +78,11 @@ func (r *RoutingRuleRepository) GetActiveRules(ctx context.Context) ([]domain.Ro
 			return nil, fmt.Errorf("failed to scan routing rule row: %w", err)
 		}
 
-		// Unmarshal the config JSON first to get the base fields
 		var rule domain.RoutingRule
 		if err := json.Unmarshal(configJSON, &rule); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal routing rule config for ruled %s: %w", id, err)
 		}
 
-		// Overwrite with the indexed column values to ensure consistency
 		rule.ID = id
 		rule.Name = name
 		rule.Priority = priority
@@ -96,8 +91,6 @@ func (r *RoutingRuleRepository) GetActiveRules(ctx context.Context) ([]domain.Ro
 		rule.CreatedAt = createdAt
 		rule.UpdatedAt = updatedAt
 
-		// Parse tags from the strongly typed JSON columns
-		// The columns are stored as JSON strings array ["key:val", "key2:val2"]
 		var reqTags []string
 		if err := json.Unmarshal(reqTagsJSON, &reqTags); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal required tags for rule %s: %w", id, err)
@@ -120,8 +113,6 @@ func (r *RoutingRuleRepository) GetActiveRules(ctx context.Context) ([]domain.Ro
 	return rules, nil
 }
 
-// CreateRule creates a new routing rule.
-// This is primarily for testing and admin API usage.
 func (r *RoutingRuleRepository) CreateRule(ctx context.Context, rule *domain.RoutingRule) error {
 	ctx, span := r.tracer.Start(ctx, "db.query", trace.WithAttributes(
 		attribute.String("db.system", "postgresql"),
@@ -130,18 +121,16 @@ func (r *RoutingRuleRepository) CreateRule(ctx context.Context, rule *domain.Rou
 	))
 	defer span.End()
 
-	// Marshal the full rule to config
 	configJSON, err := json.Marshal(rule)
 	if err != nil {
 		return fmt.Errorf("failed to marshal rule config: %w", err)
 	}
 
-	// Marshal tags
 	reqTagsJSON, err := json.Marshal(rule.RequiredTags)
 	if err != nil {
 		return fmt.Errorf("failed to marshal required tags: %w", err)
 	}
-	// Defaults to empty JSON array if nil
+
 	if rule.RequiredTags == nil {
 		reqTagsJSON = []byte("[]")
 	}
@@ -163,7 +152,6 @@ func (r *RoutingRuleRepository) CreateRule(ctx context.Context, rule *domain.Rou
 		)
 	`
 
-	// Ensure timestamps are set
 	if rule.CreatedAt.IsZero() {
 		rule.CreatedAt = time.Now()
 	}
@@ -185,7 +173,6 @@ func (r *RoutingRuleRepository) CreateRule(ctx context.Context, rule *domain.Rou
 	return err
 }
 
-// GetRuleByID fetches a single rule by ID.
 func (r *RoutingRuleRepository) GetRuleByID(ctx context.Context, id string) (*domain.RoutingRule, error) {
 	ctx, span := r.tracer.Start(ctx, "db.query", trace.WithAttributes(
 		attribute.String("db.system", "postgresql"),
@@ -223,7 +210,7 @@ func (r *RoutingRuleRepository) GetRuleByID(ctx context.Context, id string) (*do
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, nil // Not found
+			return nil, nil
 		}
 		return nil, fmt.Errorf("failed to get routing rule %s: %w", id, err)
 	}
@@ -256,8 +243,6 @@ func (r *RoutingRuleRepository) GetRuleByID(ctx context.Context, id string) (*do
 	return &rule, nil
 }
 
-// UpdateRule updates an existing routing rule.
-// It also handles optimistic locking via the version field.
 func (r *RoutingRuleRepository) UpdateRule(ctx context.Context, rule *domain.RoutingRule) error {
 	ctx, span := r.tracer.Start(ctx, "db.query", trace.WithAttributes(
 		attribute.String("db.system", "postgresql"),
@@ -267,7 +252,6 @@ func (r *RoutingRuleRepository) UpdateRule(ctx context.Context, rule *domain.Rou
 	))
 	defer span.End()
 
-	// Marshal fields
 	configJSON, err := json.Marshal(rule)
 	if err != nil {
 		return fmt.Errorf("failed to marshal rule config: %w", err)
@@ -293,7 +277,6 @@ func (r *RoutingRuleRepository) UpdateRule(ctx context.Context, rule *domain.Rou
 		rule.UpdatedAt = time.Now()
 	}
 
-	// Increment version for optimistic locking
 	newVersion := rule.Version + 1
 
 	query := `
@@ -327,13 +310,11 @@ func (r *RoutingRuleRepository) UpdateRule(ctx context.Context, rule *domain.Rou
 		return fmt.Errorf("routing rule not found or version mismatch (concurrency conflict)")
 	}
 
-	// Update the struct with new version
 	rule.Version = newVersion
 
 	return nil
 }
 
-// DeleteRule soft deletes a routing rule by setting is_active = false.
 func (r *RoutingRuleRepository) DeleteRule(ctx context.Context, id string) error {
 	ctx, span := r.tracer.Start(ctx, "db.query", trace.WithAttributes(
 		attribute.String("db.system", "postgresql"),
@@ -365,7 +346,6 @@ func (r *RoutingRuleRepository) DeleteRule(ctx context.Context, id string) error
 	return nil
 }
 
-// ListRules retrieves a paginated list of all routing rules, regardless of active status.
 func (r *RoutingRuleRepository) ListRules(ctx context.Context, limit, offset int) ([]domain.RoutingRule, int, error) {
 	ctx, span := r.tracer.Start(ctx, "db.query", trace.WithAttributes(
 		attribute.String("db.system", "postgresql"),
@@ -374,7 +354,6 @@ func (r *RoutingRuleRepository) ListRules(ctx context.Context, limit, offset int
 	))
 	defer span.End()
 
-	// Get total count
 	var total int
 	countQuery := `SELECT COUNT(*) FROM routing_rules`
 	err := r.client.Execute(func() error {
@@ -439,7 +418,6 @@ func (r *RoutingRuleRepository) ListRules(ctx context.Context, limit, offset int
 		rule.CreatedAt = createdAt
 		rule.UpdatedAt = updatedAt
 
-		// Parse tags just in case
 		var reqTags []string
 		_ = json.Unmarshal(reqTagsJSON, &reqTags)
 		rule.RequiredTags = reqTags

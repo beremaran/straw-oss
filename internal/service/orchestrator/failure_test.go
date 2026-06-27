@@ -3,7 +3,7 @@ package orchestrator
 import (
 	"testing"
 
-	"github.com/kwilabs/straw-proxy-server/pkg/protocol"
+	"github.com/beremaran/straw/pkg/protocol"
 )
 
 func TestFailureType_String(t *testing.T) {
@@ -35,13 +35,13 @@ func TestFailureType_ShouldRetry(t *testing.T) {
 		failure  FailureType
 		expected bool
 	}{
-		{FailureNone, false},       // No failure, no retry needed
-		{FailureTimeout, true},     // Retry on timeout
-		{FailureConnection, true},  // Retry on connection failure
-		{FailureRateLimited, true}, // Retry with backoff
-		{FailureBlocked, false},    // 403/Captcha should escalate, not retry
-		{FailureUpstream, true},    // Retry on 5xx
-		{FailureInternal, true},    // Retry on internal error
+		{FailureNone, false},
+		{FailureTimeout, true},
+		{FailureConnection, true},
+		{FailureRateLimited, true},
+		{FailureBlocked, false},
+		{FailureUpstream, true},
+		{FailureInternal, true},
 	}
 
 	for _, tt := range tests {
@@ -62,7 +62,7 @@ func TestFailureType_ShouldEscalate(t *testing.T) {
 		{FailureTimeout, false},
 		{FailureConnection, false},
 		{FailureRateLimited, false},
-		{FailureBlocked, true}, // Only blocked should immediately escalate
+		{FailureBlocked, true},
 		{FailureUpstream, false},
 		{FailureInternal, false},
 	}
@@ -84,7 +84,7 @@ func TestFailureType_RequiresBackoff(t *testing.T) {
 		{FailureNone, false},
 		{FailureTimeout, false},
 		{FailureConnection, false},
-		{FailureRateLimited, true}, // Only rate limited requires backoff
+		{FailureRateLimited, true},
 		{FailureBlocked, false},
 		{FailureUpstream, false},
 		{FailureInternal, false},
@@ -157,7 +157,7 @@ func TestClassifyFailure(t *testing.T) {
 			result: &ResultMessage{
 				StatusCode: 400,
 			},
-			expected: FailureNone, // 4xx (except 403, 429) are not retryable
+			expected: FailureNone,
 		},
 		{
 			name: "no status code",
@@ -281,8 +281,8 @@ func TestIsRetryableStatusCode(t *testing.T) {
 		{200, false},
 		{301, false},
 		{400, false},
-		{403, false}, // Blocked - escalate, not retry
-		{429, true},  // Rate limited - retry with backoff
+		{403, false},
+		{429, true},
 		{500, true},
 		{502, true},
 		{503, true},

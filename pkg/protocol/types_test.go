@@ -128,8 +128,8 @@ func TestHeaderMap_Get(t *testing.T) {
 		expected string
 	}{
 		{"Content-Type", "application/json"},
-		{"content-type", "application/json"}, // case-insensitive
-		{"CONTENT-TYPE", "application/json"}, // case-insensitive
+		{"content-type", "application/json"},
+		{"CONTENT-TYPE", "application/json"},
 		{"X-Custom-Header", "custom-value"},
 		{"x-custom-header", "custom-value"},
 		{"NonExistent", ""},
@@ -150,13 +150,11 @@ func TestHeaderMap_Set(t *testing.T) {
 		{Key: "Content-Type", Value: "text/html"},
 	}
 
-	// Update existing
 	headers.Set("Content-Type", "application/json")
 	if headers.Get("Content-Type") != "application/json" {
 		t.Error("Set did not update existing header")
 	}
 
-	// Add new
 	headers.Set("X-New-Header", "new-value")
 	if headers.Get("X-New-Header") != "new-value" {
 		t.Error("Set did not add new header")
@@ -197,11 +195,9 @@ func TestHeaderMap_Clone(t *testing.T) {
 
 	clone := original.Clone()
 
-	// Modify clone
 	clone.Set("Content-Type", "text/html")
 	clone.Set("X-New", "new")
 
-	// Original should be unchanged
 	if original.Get("Content-Type") != "application/json" {
 		t.Error("Clone modified original")
 	}
@@ -235,7 +231,6 @@ func TestHeaderMap_OrderPreservation(t *testing.T) {
 		t.Fatalf("unmarshal failed: %v", err)
 	}
 
-	// Verify order is preserved
 	for i, h := range headers {
 		if decoded[i].Key != h.Key || decoded[i].Value != h.Value {
 			t.Errorf("order not preserved at index %d: expected %v, got %v",
@@ -332,7 +327,7 @@ func TestHeaderMap_UnmarshalJSON_ArrayFormat(t *testing.T) {
 }
 
 func TestHeaderMap_UnmarshalJSON_PreservesOrder(t *testing.T) {
-	// Object format should preserve order
+
 	jsonData := `{"First": "1", "Second": "2", "Third": "3", "Fourth": "4"}`
 
 	var headers HeaderMap
@@ -349,8 +344,7 @@ func TestHeaderMap_UnmarshalJSON_PreservesOrder(t *testing.T) {
 }
 
 func TestRequest_UnmarshalJSON_LoadTestFormat(t *testing.T) {
-	// This test verifies that the server can accept headers in the format
-	// sent by the load test (object format instead of array format)
+
 	jsonData := `{
 		"url": "http://example.com",
 		"method": "GET",
@@ -365,7 +359,6 @@ func TestRequest_UnmarshalJSON_LoadTestFormat(t *testing.T) {
 		t.Fatalf("unmarshal failed: %v", err)
 	}
 
-	// Verify headers were parsed correctly
 	if len(req.Headers) != 2 {
 		t.Errorf("expected 2 headers, got %d", len(req.Headers))
 	}

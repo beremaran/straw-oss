@@ -1,14 +1,3 @@
-// Command tlstest verifies TLS fingerprinting works correctly by connecting
-// to tls.browserleaks.com and displaying the detected fingerprint information.
-//
-// Usage:
-//
-//	go run ./cmd/tlstest [preset]
-//
-// Example:
-//
-//	go run ./cmd/tlstest chrome-133
-//	go run ./cmd/tlstest firefox-120
 package main
 
 import (
@@ -22,7 +11,8 @@ import (
 	"strings"
 	"time"
 
-	stls "github.com/kwilabs/straw-proxy-server/internal/endpoint/tls"
+	"github.com/beremaran/straw/internal/endpoint/fingerprint"
+	stls "github.com/beremaran/straw/internal/endpoint/tls"
 	"golang.org/x/net/http2"
 )
 
@@ -31,7 +21,6 @@ const (
 	defaultHost = "tls.browserleaks.com:443"
 )
 
-// BrowserleaksResponse represents the JSON response from tls.browserleaks.com.
 type BrowserleaksResponse struct {
 	UserAgent      string `json:"user_agent"`
 	TLSVersion     string `json:"tls_version"`
@@ -53,22 +42,18 @@ func main() {
 		preset = os.Args[1]
 	}
 
-	// Validate preset
-	if _, ok := stls.GetPreset(preset); !ok {
+	if _, ok := fingerprint.Get(preset); !ok {
 		fmt.Printf("❌ Unknown preset: %s\n", preset)
-		fmt.Printf("Available presets: %s\n", strings.Join(stls.ListPresets(), ", "))
+		fmt.Printf("Available presets: %s\n", strings.Join(fingerprint.List(), ", "))
 		os.Exit(1)
 	}
 
-	// Get preset info
-	info, _ := stls.GetPresetInfo(preset)
-	fmt.Printf("🔐 Testing TLS fingerprint: %s (%s)\n", preset, info.Description)
+	fmt.Printf("🔐 Testing TLS fingerprint: %s\n", preset)
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Dial with TLS fingerprint
 	fmt.Printf("📡 Connecting to %s...\n", defaultHost)
 	conn, err := stls.Dial(ctx, "tcp", defaultHost, preset)
 	if err != nil {
@@ -78,7 +63,6 @@ func main() {
 	defer func() { _ = conn.Close() }()
 	fmt.Println("✅ TLS handshake successful")
 
-	// Send raw HTTP/1.1 request (simpler than dealing with HTTP/2 complexity)
 	fmt.Printf("🌐 Fetching %s...\n", testURL)
 	userAgent := getUserAgent(preset)
 	request := fmt.Sprintf("GET /json HTTP/1.1\r\nHost: tls.browserleaks.com\r\nUser-Agent: %s\r\nAccept: application/json\r\nConnection: close\r\n\r\n", userAgent)
@@ -89,11 +73,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Read response
 	reader := bufio.NewReader(conn)
 	resp, err := http.ReadResponse(reader, nil)
 	if err != nil {
-		// If HTTP/1.1 failed, try with HTTP/2 transport
+
 		fmt.Printf("⚠️  HTTP/1.1 failed (server may require HTTP/2), trying HTTP/2...\n")
 		runWithHTTP2(ctx, preset, userAgent)
 		return
@@ -104,14 +87,13 @@ func main() {
 }
 
 func runWithHTTP2(ctx context.Context, preset, userAgent string) {
-	// Create a new connection for HTTP/2
+
 	conn, err := stls.Dial(ctx, "tcp", defaultHost, preset)
 	if err != nil {
 		fmt.Printf("❌ TLS dial failed: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Use HTTP/2 transport
 	tr := &http2.Transport{}
 	h2Conn, err := tr.NewClientConn(conn)
 	if err != nil {
@@ -144,7 +126,6 @@ func processResponse(resp *http.Response) {
 		os.Exit(1)
 	}
 
-	// Parse and display response
 	var result BrowserleaksResponse
 	if err := json.Unmarshal(body, &result); err != nil {
 		fmt.Printf("❌ Failed to parse JSON: %v\n", err)

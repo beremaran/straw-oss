@@ -7,11 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kwilabs/straw-proxy-server/internal/broker"
-	"github.com/kwilabs/straw-proxy-server/pkg/protocol"
+	"github.com/beremaran/straw/internal/broker"
+	"github.com/beremaran/straw/pkg/protocol"
 )
 
-// mockBroker implements broker.MessageBroker for testing.
 type mockBroker struct {
 	publishedMsgs []publishedMsg
 	mu            sync.Mutex
@@ -123,18 +122,15 @@ func TestPublisher_Publish(t *testing.T) {
 
 	msg := msgs[0]
 
-	// Check routing key
 	expectedRoutingKey := "results.test-request-123"
 	if msg.RoutingKey != expectedRoutingKey {
 		t.Errorf("expected routing key %q, got %q", expectedRoutingKey, msg.RoutingKey)
 	}
 
-	// Check exchange is empty (direct to queue)
 	if msg.Exchange != "" {
 		t.Errorf("expected empty exchange, got %q", msg.Exchange)
 	}
 
-	// Unmarshal and verify the result message
 	var result ResultMessage
 	if err := json.Unmarshal(msg.Body, &result); err != nil {
 		t.Fatalf("failed to unmarshal result: %v", err)
@@ -156,7 +152,6 @@ func TestPublisher_Publish(t *testing.T) {
 		t.Error("expected body to be compressed")
 	}
 
-	// Decompress and verify body
 	decompressed, err := protocol.Decompress(result.CompressedBody)
 	if err != nil {
 		t.Fatalf("failed to decompress body: %v", err)
@@ -294,7 +289,6 @@ func TestPublisher_PublishError(t *testing.T) {
 		t.Fatalf("expected 1 message, got %d", len(msgs))
 	}
 
-	// Verify the error was published correctly
 	if msgs[0].RoutingKey != "results.test-req" {
 		t.Errorf("expected routing key 'results.test-req', got %q", msgs[0].RoutingKey)
 	}
@@ -403,7 +397,6 @@ func TestPublisher_Publish_LargeBody(t *testing.T) {
 	mb := &mockBroker{}
 	p := New(mb)
 
-	// Create a large body (100KB of repeated text)
 	largeBody := make([]byte, 100*1024)
 	for i := range largeBody {
 		largeBody[i] = byte('A' + (i % 26))
@@ -434,13 +427,11 @@ func TestPublisher_Publish_LargeBody(t *testing.T) {
 		t.Error("expected body to be compressed")
 	}
 
-	// Verify compression actually reduced size
 	if len(result.CompressedBody) >= len(largeBody) {
 		t.Errorf("expected compressed body to be smaller than original (%d >= %d)",
 			len(result.CompressedBody), len(largeBody))
 	}
 
-	// Verify we can decompress back to original
 	decompressed, err := protocol.Decompress(result.CompressedBody)
 	if err != nil {
 		t.Fatalf("failed to decompress body: %v", err)

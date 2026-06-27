@@ -2,55 +2,51 @@ package middleware
 
 import (
 	"log/slog"
-
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
+	"net"
+	"net/http"
+	"time"
 )
 
-// LoggerMiddleware returns a middleware that logs HTTP requests using slog.
-func LoggerMiddleware() echo.MiddlewareFunc {
-	return middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
-		LogStatus:    true,
-		LogURI:       true,
-		LogMethod:    true,
-		LogError:     true,
-		LogRemoteIP:  true,
-		LogLatency:   true,
-		LogUserAgent: true,
-		LogRequestID: true,
-		HandleError:  true, // Forward error to next handler so it can be handled by global error handler
-		LogValuesFunc: func(c echo.Context, v middleware.RequestLoggerValues) error {
-			ctx := c.Request().Context()
+func LoggerMiddleware() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			start := time.Now()
 
-			// Attributes to log
+			sw := NewStatusResponseWriter(w)
+			next.ServeHTTP(sw, r)
+
+			latency := time.Since(start)
+			ctx := r.Context()
+
+			reqID := r.Header.Get("X-Request-ID")
+			if reqID == "" {
+				reqID = sw.Header().Get("X-Request-ID")
+			}
+
+			remoteIP, _, err := net.SplitHostPort(r.RemoteAddr)
+			if err != nil {
+				remoteIP = r.RemoteAddr
+			}
+
 			attrs := []slog.Attr{
 				slog.String("event", "http.request.complete"),
-				slog.String("method", v.Method),
-				slog.String("uri", v.URI),
-				slog.Int("status", v.Status),
-				slog.String("remote_ip", v.RemoteIP),
-				slog.Duration("latency", v.Latency),
-				slog.String("user_agent", v.UserAgent),
+				slog.String("method", r.Method),
+				slog.String("uri", r.URL.RequestURI()),
+				slog.Int("status", sw.Status),
+				slog.String("remote_ip", remoteIP),
+				slog.Duration("latency", latency),
+				slog.String("user_agent", r.UserAgent()),
 			}
 
-			if v.RequestID != "" {
-				attrs = append(attrs, slog.String("request_id", v.RequestID))
+			if reqID != "" {
+				attrs = append(attrs, slog.String("request_id", reqID))
 			}
 
-			// We use LogAttrs to pass the context which allows TraceHandler to extract trace_id
-			if v.Error != nil {
-				attrs = append(attrs, slog.String("error", v.Error.Error()))
-				// Log at Error level if status is 5xx or there is an error
-				if v.Status >= 500 {
-					slog.LogAttrs(ctx, slog.LevelError, "request completed with error", attrs...)
-				} else {
-					slog.LogAttrs(ctx, slog.LevelInfo, "request completed with client error", attrs...) // 4xx is usually info/warn
-				}
+			if sw.Status >= 500 {
+				slog.LogAttrs(ctx, slog.LevelError, "request completed with error", attrs...)
 			} else {
 				slog.LogAttrs(ctx, slog.LevelInfo, "request completed", attrs...)
 			}
-
-			return nil
-		},
-	})
+		})
+	}
 }

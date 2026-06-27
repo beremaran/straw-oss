@@ -46,8 +46,6 @@ Dockerfile*
 /repomix-output.xml
 
 # Project specific (not needed for binary build)
-# /docs/ is NOT ignored because it contains Swagger Go files
-docs/**/*.md
 /scripts/
 /test/
 /deploy/

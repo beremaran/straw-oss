@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kwilabs/straw-proxy-server/internal/config"
-	"github.com/kwilabs/straw-proxy-server/internal/infra/redis"
+	"github.com/beremaran/straw/internal/config"
+	"github.com/beremaran/straw/internal/infra/redis"
 )
 
 func TestRedisIntegration(t *testing.T) {
@@ -17,7 +17,7 @@ func TestRedisIntegration(t *testing.T) {
 		addr = "localhost:6379"
 	}
 
-	client, err := redis.NewClient(config.CoreConfig{RedisAddr: addr}, nil)
+	client, err := redis.NewClient(config.RedisConfig{Addr: addr}, nil)
 	if err != nil {
 		t.Skipf("Skipping integration test: %v", err)
 	}
@@ -30,7 +30,6 @@ func TestRedisIntegration(t *testing.T) {
 		t.Fatalf("HealthCheck failed: %v", err)
 	}
 
-	// Cache operations test
 	key := "test_key"
 	value := map[string]string{"foo": "bar"}
 

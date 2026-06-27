@@ -6,36 +6,27 @@ import (
 	utls "github.com/refraction-networking/utls"
 )
 
-// registerBuiltinPresets registers all built-in browser fingerprint presets.
 func registerBuiltinPresets(r *Registry) {
-	// Chrome presets
+
 	registerChromePresets(r)
 
-	// Firefox presets
 	registerFirefoxPresets(r)
 
-	// Safari presets
 	registerSafariPresets(r)
 
-	// Edge presets
 	registerEdgePresets(r)
 }
 
-// Common HTTP/2 pseudo-header orders
 var (
-	// chromePseudoHeaderOrder is the pseudo-header order used by Chrome
 	chromePseudoHeaderOrder = []string{":method", ":authority", ":scheme", ":path"}
 
-	// firefoxPseudoHeaderOrder is the pseudo-header order used by Firefox
 	firefoxPseudoHeaderOrder = []string{":method", ":path", ":authority", ":scheme"}
 
-	// safariPseudoHeaderOrder is the pseudo-header order used by Safari
 	safariPseudoHeaderOrder = []string{":method", ":scheme", ":path", ":authority"}
 )
 
-// registerChromePresets registers Chrome browser fingerprint presets.
 func registerChromePresets(r *Registry) {
-	// Chrome 133 - Current stable
+
 	r.MustRegister(Preset{
 		ID:             "chrome-133",
 		TLSClientHello: utls.HelloChrome_133,
@@ -73,7 +64,6 @@ func registerChromePresets(r *Registry) {
 		LastUpdated:       time.Date(2025, 12, 31, 0, 0, 0, 0, time.UTC),
 	})
 
-	// Chrome 131 - Previous version
 	r.MustRegister(Preset{
 		ID:             "chrome-131",
 		TLSClientHello: utls.HelloChrome_131,
@@ -111,7 +101,6 @@ func registerChromePresets(r *Registry) {
 		LastUpdated:       time.Date(2025, 11, 15, 0, 0, 0, 0, time.UTC),
 	})
 
-	// Chrome 129 - Older version
 	r.MustRegister(Preset{
 		ID:             "chrome-129",
 		TLSClientHello: utls.HelloChrome_120,
@@ -150,19 +139,18 @@ func registerChromePresets(r *Registry) {
 	})
 }
 
-// registerFirefoxPresets registers Firefox browser fingerprint presets.
 func registerFirefoxPresets(r *Registry) {
-	// Firefox 133 - Current stable
+
 	r.MustRegister(Preset{
 		ID:             "firefox-133",
-		TLSClientHello: utls.HelloFirefox_120, // Using available Firefox preset
+		TLSClientHello: utls.HelloFirefox_120,
 		HTTP2Settings: &HTTP2Settings{
 			HeaderTableSize:      65536,
 			EnablePush:           true,
 			MaxConcurrentStreams: 100,
 			InitialWindowSize:    131072,
 			MaxFrameSize:         16384,
-			MaxHeaderListSize:    0, // Firefox doesn't send this
+			MaxHeaderListSize:    0,
 		},
 		HeaderOrder: []string{
 			"Host",
@@ -180,14 +168,13 @@ func registerFirefoxPresets(r *Registry) {
 		PseudoHeaderOrder: firefoxPseudoHeaderOrder,
 		UserAgent:         "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0",
 		AcceptLanguage:    "en-US,en;q=0.5",
-		SecCHUA:           "", // Firefox doesn't send Sec-CH-UA
+		SecCHUA:           "",
 		SecCHUAMobile:     "",
 		SecCHUAPlatform:   "",
 		Deprecated:        false,
 		LastUpdated:       time.Date(2025, 12, 31, 0, 0, 0, 0, time.UTC),
 	})
 
-	// Firefox 120 - Previous version
 	r.MustRegister(Preset{
 		ID:             "firefox-120",
 		TLSClientHello: utls.HelloFirefox_120,
@@ -223,9 +210,8 @@ func registerFirefoxPresets(r *Registry) {
 	})
 }
 
-// registerSafariPresets registers Safari browser fingerprint presets.
 func registerSafariPresets(r *Registry) {
-	// Safari 18 - macOS/iOS current stable
+
 	r.MustRegister(Preset{
 		ID:             "safari-18",
 		TLSClientHello: utls.HelloSafari_Auto,
@@ -251,14 +237,13 @@ func registerSafariPresets(r *Registry) {
 		PseudoHeaderOrder: safariPseudoHeaderOrder,
 		UserAgent:         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15",
 		AcceptLanguage:    "en-US,en;q=0.9",
-		SecCHUA:           "", // Safari doesn't send Sec-CH-UA
+		SecCHUA:           "",
 		SecCHUAMobile:     "",
 		SecCHUAPlatform:   "",
 		Deprecated:        false,
 		LastUpdated:       time.Date(2025, 12, 31, 0, 0, 0, 0, time.UTC),
 	})
 
-	// Safari 17 - Previous version
 	r.MustRegister(Preset{
 		ID:             "safari-17",
 		TLSClientHello: utls.HelloSafari_16_0,
@@ -292,9 +277,8 @@ func registerSafariPresets(r *Registry) {
 	})
 }
 
-// registerEdgePresets registers Microsoft Edge browser fingerprint presets.
 func registerEdgePresets(r *Registry) {
-	// Edge 130 - Current stable (based on Chromium)
+
 	r.MustRegister(Preset{
 		ID:             "edge-130",
 		TLSClientHello: utls.HelloEdge_Auto,
@@ -322,7 +306,7 @@ func registerEdgePresets(r *Registry) {
 			"Accept-Encoding",
 			"Accept-Language",
 		},
-		PseudoHeaderOrder: chromePseudoHeaderOrder, // Edge uses Chrome's order
+		PseudoHeaderOrder: chromePseudoHeaderOrder,
 		UserAgent:         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0",
 		AcceptLanguage:    "en-US,en;q=0.9",
 		SecCHUA:           `"Chromium";v="130", "Microsoft Edge";v="130", "Not-A.Brand";v="24"`,
@@ -332,7 +316,6 @@ func registerEdgePresets(r *Registry) {
 		LastUpdated:       time.Date(2025, 12, 31, 0, 0, 0, 0, time.UTC),
 	})
 
-	// Edge 106 - Earlier version
 	r.MustRegister(Preset{
 		ID:             "edge-106",
 		TLSClientHello: utls.HelloEdge_106,

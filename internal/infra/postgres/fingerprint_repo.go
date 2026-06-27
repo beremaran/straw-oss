@@ -7,21 +7,18 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/beremaran/straw/internal/domain"
 	"github.com/jackc/pgx/v5"
-	"github.com/kwilabs/straw-proxy-server/internal/domain"
 )
 
-// FingerprintRepository implements domain.FingerprintRepository using PostgreSQL.
 type FingerprintRepository struct {
 	client *Client
 }
 
-// NewFingerprintRepository creates a new FingerprintRepository.
 func NewFingerprintRepository(client *Client) *FingerprintRepository {
 	return &FingerprintRepository{client: client}
 }
 
-// ListPresets returns all fingerprint presets.
 func (r *FingerprintRepository) ListPresets(ctx context.Context) ([]domain.FingerprintPreset, error) {
 	query := `
 		SELECT id, name, config, created_at, updated_at
@@ -60,7 +57,6 @@ func (r *FingerprintRepository) ListPresets(ctx context.Context) ([]domain.Finge
 	return presets, nil
 }
 
-// GetPreset retrieves a preset by ID.
 func (r *FingerprintRepository) GetPreset(ctx context.Context, id string) (*domain.FingerprintPreset, error) {
 	query := `
 		SELECT id, name, config, created_at, updated_at
@@ -87,7 +83,6 @@ func (r *FingerprintRepository) GetPreset(ctx context.Context, id string) (*doma
 	return &p, nil
 }
 
-// CreatePreset creates a new fingerprint preset.
 func (r *FingerprintRepository) CreatePreset(ctx context.Context, preset *domain.FingerprintPreset) error {
 	query := `
 		INSERT INTO fingerprint_presets (id, name, config, created_at, updated_at)
@@ -116,7 +111,6 @@ func (r *FingerprintRepository) CreatePreset(ctx context.Context, preset *domain
 	return nil
 }
 
-// UpdatePreset updates an existing fingerprint preset.
 func (r *FingerprintRepository) UpdatePreset(ctx context.Context, preset *domain.FingerprintPreset) error {
 	query := `
 		UPDATE fingerprint_presets
@@ -143,7 +137,6 @@ func (r *FingerprintRepository) UpdatePreset(ctx context.Context, preset *domain
 	return nil
 }
 
-// DeletePreset deletes a fingerprint preset by ID.
 func (r *FingerprintRepository) DeletePreset(ctx context.Context, id string) error {
 	query := `DELETE FROM fingerprint_presets WHERE id = $1`
 

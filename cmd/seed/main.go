@@ -25,7 +25,6 @@ func main() {
 		log.Fatalf("Failed to ping database: %v", err)
 	}
 
-	// Try multiple locations for seed.sql
 	locations := []string{
 		"scripts/seed.sql",
 		"../scripts/seed.sql",
@@ -45,7 +44,7 @@ func main() {
 	}
 
 	if content == nil {
-		// Try to find it relative to current working directory
+
 		cwd, _ := os.Getwd()
 		log.Fatalf("Could not find seed.sql in any of %v (current dir: %s)", locations, cwd)
 	}

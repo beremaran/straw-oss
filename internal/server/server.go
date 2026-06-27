@@ -4,28 +4,23 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
-	"github.com/kwilabs/straw-proxy-server/internal/config"
-	"github.com/kwilabs/straw-proxy-server/internal/server/handlers"
-	"github.com/kwilabs/straw-proxy-server/internal/server/metrics"
-	mw "github.com/kwilabs/straw-proxy-server/internal/server/middleware"
-	"github.com/kwilabs/straw-proxy-server/internal/service/auth"
-	"github.com/kwilabs/straw-proxy-server/internal/service/filter"
-	"github.com/kwilabs/straw-proxy-server/internal/service/orchestrator"
-	"github.com/kwilabs/straw-proxy-server/internal/service/ratelimit"
-	"github.com/kwilabs/straw-proxy-server/internal/service/router"
-	"github.com/kwilabs/straw-proxy-server/internal/service/session"
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
-	echoSwagger "github.com/swaggo/echo-swagger"
-
-	// Swagger docs import
-	_ "github.com/kwilabs/straw-proxy-server/docs/relay"
+	"github.com/beremaran/straw/internal/config"
+	"github.com/beremaran/straw/internal/server/handlers"
+	"github.com/beremaran/straw/internal/server/metrics"
+	mw "github.com/beremaran/straw/internal/server/middleware"
+	"github.com/beremaran/straw/internal/service/auth"
+	"github.com/beremaran/straw/internal/service/filter"
+	"github.com/beremaran/straw/internal/service/orchestrator"
+	"github.com/beremaran/straw/internal/service/ratelimit"
+	"github.com/beremaran/straw/internal/service/router"
+	"github.com/beremaran/straw/internal/service/session"
 )
 
-// Server represents the HTTP server.
 type Server struct {
-	echo           *echo.Echo
+	mux            *http.ServeMux
+	server         *http.Server
 	conf           config.ServerConfig
 	authService    *auth.Service
 	sessionService *session.Service
@@ -34,22 +29,17 @@ type Server struct {
 	filterService  *filter.Service
 	orchestrator   *orchestrator.RetryExecutor
 
-	// Testing options
-	allowPrivateIPs bool // Allow localhost/private IPs (for testing only)
+	allowPrivateIPs bool
 }
 
-// Option is a functional option for configuring the Server.
 type Option func(*Server)
 
-// WithAllowPrivateIPs allows URLs that resolve to private IPs.
-// WARNING: Only use for testing. This disables SSRF protection.
 func WithAllowPrivateIPs() Option {
 	return func(s *Server) {
 		s.allowPrivateIPs = true
 	}
 }
 
-// New creates a new Server instance.
 func New(
 	conf config.ServerConfig,
 	authService *auth.Service,
@@ -60,26 +50,13 @@ func New(
 	orchestrator *orchestrator.RetryExecutor,
 	opts ...Option,
 ) *Server {
-	e := echo.New()
 
-	// Hide banner
-	e.HideBanner = true
-	e.HidePort = true
-
-	// Initialize metrics
 	metrics.Init()
 
-	// Standard Middleware
-	e.Use(middleware.RequestID())
-	e.Use(mw.TracingMiddleware("straw-proxy-server"))
-	e.Use(mw.MetricsMiddleware())
-	e.Use(mw.LoggerMiddleware())
-	e.Use(middleware.Recover())
-	e.Use(middleware.CORS())
-	e.Use(middleware.BodyLimit(conf.MaxBodySize))
+	mux := http.NewServeMux()
 
 	s := &Server{
-		echo:           e,
+		mux:            mux,
 		conf:           conf,
 		authService:    authService,
 		sessionService: sessionService,
@@ -89,42 +66,44 @@ func New(
 		orchestrator:   orchestrator,
 	}
 
-	// Apply options
 	for _, opt := range opts {
 		opt(s)
 	}
 
 	s.registerRoutes()
 
+	maxBodyBytes := parseBytesSize(conf.MaxBodySize)
+	handler := applyMiddlewares(mux,
+		mw.Recover(),
+		mw.RequestID(),
+		mw.TracingMiddleware("straw"),
+		mw.MetricsMiddleware(),
+		mw.LoggerMiddleware(),
+		mw.CORS(),
+		mw.BodyLimit(maxBodyBytes),
+	)
+
+	s.server = &http.Server{
+		Handler: handler,
+	}
+
 	return s
 }
 
-// registerRoutes registers the API routes.
 func (s *Server) registerRoutes() {
-	// Health Checks
-	s.echo.GET("/healthz", s.healthCheck)
-	s.echo.GET("/readyz", s.readyCheck)
 
-	// Swagger UI
-	s.echo.GET("/swagger/*", echoSwagger.EchoWrapHandler(echoSwagger.InstanceName("relay")))
+	s.mux.HandleFunc("GET /healthz", s.healthCheck)
+	s.mux.HandleFunc("GET /readyz", s.readyCheck)
 
-	// API Groups
-	// Apply Auth Middleware to protected routes
 	authMiddleware := mw.AuthMiddleware(s.authService)
 
-	// Concurrency limiter for relay requests
 	concurrencyLimit := s.conf.MaxConcurrentRequests
 	if concurrencyLimit <= 0 {
-		concurrencyLimit = 50 // Default fallback
+		concurrencyLimit = 50
 	}
 	concurrencyLimiter := mw.ConcurrencyLimiter(concurrencyLimit)
+	sessionMiddleware := mw.SessionMiddleware(s.sessionService)
 
-	v1 := s.echo.Group("/v1")
-	v1.Use(authMiddleware)
-	v1.Use(mw.SessionMiddleware(s.sessionService))
-	v1.Use(concurrencyLimiter)
-
-	// Relay Handler configuration
 	var relayOpts []handlers.RelayHandlerOption
 	if s.allowPrivateIPs {
 		relayOpts = append(relayOpts, handlers.WithAllowPrivateIPs())
@@ -139,66 +118,88 @@ func (s *Server) registerRoutes() {
 		relayOpts...,
 	)
 
-	v1.POST("/request", relayHandler.Handle)
+	v1Handler := applyMiddlewares(http.HandlerFunc(relayHandler.Handle),
+		authMiddleware,
+		sessionMiddleware,
+		concurrencyLimiter,
+	)
+	s.mux.Handle("POST /v1/request", v1Handler)
 
-	v2 := s.echo.Group("/v2")
-	v2.Use(authMiddleware)
-	v2.Use(mw.SessionMiddleware(s.sessionService))
-	v2.Use(concurrencyLimiter)
-
-	// V2 Relay Handler (same for now)
-	v2.POST("/request", relayHandler.Handle)
+	v2Handler := applyMiddlewares(http.HandlerFunc(relayHandler.Handle),
+		authMiddleware,
+		sessionMiddleware,
+		concurrencyLimiter,
+	)
+	s.mux.Handle("POST /v2/request", v2Handler)
 }
 
-// healthCheck returns safe 200 OK.
-//
-//	@Summary		Health Check
-//	@Description	Returns OK if the server is running
-//	@Tags			health
-//	@Produce		plain
-//	@Success		200	{string}	string	"OK"
-//	@Router			/healthz [get]
-func (s *Server) healthCheck(c echo.Context) error {
-	return c.String(http.StatusOK, "OK")
+func (s *Server) healthCheck(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("OK"))
 }
 
-// readyCheck returns safe 200 OK.
-//
-//	@Summary		Readiness Check
-//	@Description	Returns OK if the server is ready to accept traffic
-//	@Tags			health
-//	@Produce		plain
-//	@Success		200	{string}	string	"OK"
-//	@Router			/readyz [get]
-func (s *Server) readyCheck(c echo.Context) error {
-	return c.String(http.StatusOK, "OK")
+func (s *Server) readyCheck(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("OK"))
 }
 
-// Start starts the HTTP server.
 func (s *Server) Start() error {
 	addr := fmt.Sprintf(":%d", s.conf.HTTPPort)
+	s.server.Addr = addr
 	if s.conf.Security.TLSCertFile != "" && s.conf.Security.TLSKeyFile != "" {
-		return s.echo.StartTLS(addr, s.conf.Security.TLSCertFile, s.conf.Security.TLSKeyFile)
+		return s.server.ListenAndServeTLS(s.conf.Security.TLSCertFile, s.conf.Security.TLSKeyFile)
 	}
-	return s.echo.Start(addr)
+	return s.server.ListenAndServe()
 }
 
-// Stop stops the HTTP server gracefully.
 func (s *Server) Stop(ctx context.Context) error {
-	return s.echo.Shutdown(ctx)
+	return s.server.Shutdown(ctx)
 }
 
-// Address returns the server address.
 func (s *Server) Address() string {
 	return fmt.Sprintf(":%d", s.conf.HTTPPort)
 }
 
-// GetMatcher returns the router matcher for testing purposes.
 func (s *Server) GetMatcher() *router.Matcher {
 	return s.matcher
 }
 
-// GetEcho returns the underlying Echo instance for testing purposes.
-func (s *Server) GetEcho() *echo.Echo {
-	return s.echo
+func (s *Server) GetMux() *http.ServeMux {
+	return s.mux
+}
+
+func (s *Server) GetHandler() http.Handler {
+	return s.server.Handler
+}
+
+func applyMiddlewares(handler http.Handler, middlewares ...func(http.Handler) http.Handler) http.Handler {
+	for i := len(middlewares) - 1; i >= 0; i-- {
+		handler = middlewares[i](handler)
+	}
+	return handler
+}
+
+func parseBytesSize(s string) int64 {
+	s = strings.ToUpper(strings.TrimSpace(s))
+	if s == "" {
+		return 0
+	}
+	var multiplier int64 = 1
+	if strings.HasSuffix(s, "G") {
+		multiplier = 1024 * 1024 * 1024
+		s = s[:len(s)-1]
+	} else if strings.HasSuffix(s, "M") {
+		multiplier = 1024 * 1024
+		s = s[:len(s)-1]
+	} else if strings.HasSuffix(s, "K") {
+		multiplier = 1024
+		s = s[:len(s)-1]
+	} else if strings.HasSuffix(s, "B") {
+		s = s[:len(s)-1]
+	}
+	var val int64
+	_, _ = fmt.Sscanf(s, "%d", &val)
+	return val * multiplier
 }

@@ -8,11 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kwilabs/straw-proxy-server/internal/broker"
-	"github.com/kwilabs/straw-proxy-server/internal/infra/redis"
+	"github.com/beremaran/straw/internal/broker"
+	"github.com/beremaran/straw/internal/infra/redis"
 )
 
-// mockHealthStore is a mock implementation of redis.HealthStore for testing.
 type mockHealthStore struct {
 	endpoints map[string]*redis.EndpointHealth
 	draining  map[string]bool
@@ -82,7 +81,6 @@ func TestHealthService_HandleHeartbeat(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Create a heartbeat message
 	msg := HeartbeatMessage{
 		EndpointID:  "test-endpoint",
 		Timestamp:   time.Now().Unix(),
@@ -93,13 +91,11 @@ func TestHealthService_HandleHeartbeat(t *testing.T) {
 
 	data, _ := json.Marshal(msg)
 
-	// Process heartbeat
 	err := service.handleHeartbeat(ctx, data)
 	if err != nil {
 		t.Fatalf("handleHeartbeat failed: %v", err)
 	}
 
-	// Verify endpoint was updated
 	health, ok := store.endpoints["test-endpoint"]
 	if !ok {
 		t.Fatal("endpoint not found in store")
@@ -125,13 +121,11 @@ func TestHealthService_HandleHeartbeat_MalformedMessage(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Malformed JSON
 	err := service.handleHeartbeat(ctx, []byte("not json"))
 	if err != nil {
 		t.Error("malformed JSON should not return error (just drop the message)")
 	}
 
-	// Empty endpoint ID
 	msg := HeartbeatMessage{
 		EndpointID: "",
 		Timestamp:  time.Now().Unix(),
@@ -143,7 +137,6 @@ func TestHealthService_HandleHeartbeat_MalformedMessage(t *testing.T) {
 		t.Error("empty endpoint_id should not return error (just drop the message)")
 	}
 
-	// Verify no endpoints were stored
 	if len(store.endpoints) != 0 {
 		t.Errorf("expected 0 endpoints, got %d", len(store.endpoints))
 	}
@@ -158,7 +151,6 @@ func TestHealthService_HandleHeartbeat_OldTimestamp(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Very old timestamp (should be replaced with current time)
 	msg := HeartbeatMessage{
 		EndpointID: "old-ts-endpoint",
 		Timestamp:  time.Now().Add(-2 * time.Hour).Unix(),
@@ -185,7 +177,6 @@ func TestHealthService_HandleHeartbeat_ZeroTimestamp(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Zero timestamp (should be replaced with current time)
 	msg := HeartbeatMessage{
 		EndpointID: "zero-ts-endpoint",
 		Timestamp:  0,
@@ -272,10 +263,8 @@ func TestHealthService_HandleHeartbeat_Draining(t *testing.T) {
 	ctx := context.Background()
 	endpointID := "draining-endpoint"
 
-	// Mark endpoint as draining
 	_ = store.SetDraining(ctx, endpointID, true)
 
-	// Send heartbeat
 	msg := HeartbeatMessage{
 		EndpointID:  endpointID,
 		Timestamp:   time.Now().Unix(),
@@ -288,7 +277,6 @@ func TestHealthService_HandleHeartbeat_Draining(t *testing.T) {
 		t.Fatalf("handleHeartbeat failed: %v", err)
 	}
 
-	// Verify endpoint state is draining
 	health, ok := store.endpoints[endpointID]
 	if !ok {
 		t.Fatal("endpoint not found in store")
@@ -299,7 +287,6 @@ func TestHealthService_HandleHeartbeat_Draining(t *testing.T) {
 	}
 }
 
-// mockBroker is a mock implementation of broker.MessageBroker for testing.
 type mockBroker struct {
 	subscribeHandler broker.Handler
 	subscribeCalled  bool
@@ -357,7 +344,6 @@ func (m *mockBroker) Close() error {
 	return nil
 }
 
-// TestWithQueue tests the WithQueue option function.
 func TestWithQueue(t *testing.T) {
 	store := newMockHealthStore()
 	service := &HealthService{
@@ -375,7 +361,6 @@ func TestWithQueue(t *testing.T) {
 	}
 }
 
-// TestWithHealthLogger tests the WithHealthLogger option function.
 func TestWithHealthLogger(t *testing.T) {
 	store := newMockHealthStore()
 	service := &HealthService{
@@ -393,7 +378,6 @@ func TestWithHealthLogger(t *testing.T) {
 	}
 }
 
-// TestNewHealthService tests the NewHealthService constructor.
 func TestNewHealthService(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -478,7 +462,6 @@ func TestNewHealthService(t *testing.T) {
 	}
 }
 
-// TestHealthService_StartStop tests the Start and Stop lifecycle methods.
 func TestHealthService_StartStop(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -491,21 +474,17 @@ func TestHealthService_StartStop(t *testing.T) {
 			testFunc: func(t *testing.T, s *HealthService) {
 				ctx := context.Background()
 
-				// Start the service
 				err := s.Start(ctx)
 				if err != nil {
 					t.Fatalf("Start failed: %v", err)
 				}
 
-				// Check if running
 				if !s.IsRunning() {
 					t.Error("expected service to be running after Start")
 				}
 
-				// Stop the service
 				s.Stop()
 
-				// Check if stopped
 				if s.IsRunning() {
 					t.Error("expected service to be stopped after Stop")
 				}
@@ -517,13 +496,11 @@ func TestHealthService_StartStop(t *testing.T) {
 			testFunc: func(t *testing.T, s *HealthService) {
 				ctx := context.Background()
 
-				// First start
 				err := s.Start(ctx)
 				if err != nil {
 					t.Fatalf("first Start failed: %v", err)
 				}
 
-				// Second start should be idempotent
 				err = s.Start(ctx)
 				if err != nil {
 					t.Errorf("second Start should not return error, got: %v", err)
@@ -536,7 +513,7 @@ func TestHealthService_StartStop(t *testing.T) {
 			name:  "stop not running service",
 			setup: func(s *HealthService) {},
 			testFunc: func(t *testing.T, s *HealthService) {
-				// Stop without starting should not panic
+
 				s.Stop()
 
 				if s.IsRunning() {
@@ -581,7 +558,6 @@ func TestHealthService_StartStop(t *testing.T) {
 	}
 }
 
-// TestHealthService_IsRunning tests the IsRunning method.
 func TestHealthService_IsRunning(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -623,7 +599,6 @@ func TestHealthService_IsRunning(t *testing.T) {
 				t.Errorf("IsRunning() = %v, want %v", got, tt.expected)
 			}
 
-			// Cleanup
 			if service.IsRunning() {
 				service.Stop()
 			}
@@ -631,7 +606,6 @@ func TestHealthService_IsRunning(t *testing.T) {
 	}
 }
 
-// TestHealthService_run tests the run method behavior.
 func TestHealthService_run(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -641,7 +615,7 @@ func TestHealthService_run(t *testing.T) {
 		{
 			name: "run subscribes to correct queue",
 			setup: func(mb *mockBroker, store *mockHealthStore) {
-				// No special setup needed
+
 			},
 			verify: func(t *testing.T, s *HealthService, mb *mockBroker) {
 				if !mb.subscribeCalled {
@@ -655,7 +629,7 @@ func TestHealthService_run(t *testing.T) {
 		{
 			name: "run uses custom queue",
 			setup: func(mb *mockBroker, store *mockHealthStore) {
-				// Custom queue will be set in service creation
+
 			},
 			verify: func(t *testing.T, s *HealthService, mb *mockBroker) {
 				if mb.subscribeQueue != "custom-queue" {
@@ -683,19 +657,15 @@ func TestHealthService_run(t *testing.T) {
 
 			ctx := context.Background()
 
-			// Start the service (which calls run internally)
 			err := service.Start(ctx)
 			if err != nil {
 				t.Fatalf("Start failed: %v", err)
 			}
 
-			// Give it a moment to start
 			time.Sleep(10 * time.Millisecond)
 
-			// Stop the service
 			service.Stop()
 
-			// Wait a bit for cleanup
 			time.Sleep(10 * time.Millisecond)
 
 			if tt.verify != nil {
@@ -705,7 +675,6 @@ func TestHealthService_run(t *testing.T) {
 	}
 }
 
-// TestHealthService_GetHealthyEndpoints tests the GetHealthyEndpoints method.
 func TestHealthService_GetHealthyEndpoints(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -733,7 +702,7 @@ func TestHealthService_GetHealthyEndpoints(t *testing.T) {
 				}
 			},
 			tags:    []string{"type:residential"},
-			wantLen: 2, // Both healthy and suspect are returned
+			wantLen: 2,
 			wantErr: false,
 		},
 		{
@@ -792,7 +761,7 @@ func TestHealthService_GetHealthyEndpoints(t *testing.T) {
 				}
 			},
 			tags:    []string{},
-			wantLen: 2, // Only healthy and suspect
+			wantLen: 2,
 			wantErr: false,
 		},
 	}
@@ -816,7 +785,6 @@ func TestHealthService_GetHealthyEndpoints(t *testing.T) {
 				t.Errorf("GetHealthyEndpoints() returned %d endpoints, want %d", len(endpoints), tt.wantLen)
 			}
 
-			// Verify all returned endpoints are healthy or suspect
 			for _, ep := range endpoints {
 				if ep.State != redis.HealthStateHealthy && ep.State != redis.HealthStateSuspect {
 					t.Errorf("GetHealthyEndpoints() returned endpoint %s with state %s", ep.EndpointID, ep.State)
@@ -826,7 +794,6 @@ func TestHealthService_GetHealthyEndpoints(t *testing.T) {
 	}
 }
 
-// TestHealthService_GetEndpointHealth tests the GetEndpointHealth method.
 func TestHealthService_GetEndpointHealth(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -927,7 +894,6 @@ func TestHealthService_GetEndpointHealth(t *testing.T) {
 	}
 }
 
-// TestHealthService_DrainEndpoint tests the DrainEndpoint method.
 func TestHealthService_DrainEndpoint(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -1012,7 +978,6 @@ func TestHealthService_DrainEndpoint(t *testing.T) {
 	}
 }
 
-// TestHealthService_ListAllEndpoints tests the ListAllEndpoints method.
 func TestHealthService_ListAllEndpoints(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -1104,7 +1069,6 @@ func TestHealthService_ListAllEndpoints(t *testing.T) {
 				t.Errorf("ListAllEndpoints() returned %d endpoints, want %d", len(endpoints), tt.wantLen)
 			}
 
-			// Verify all returned endpoints have required fields
 			for _, ep := range endpoints {
 				if ep.EndpointID == "" {
 					t.Error("ListAllEndpoints() returned endpoint with empty EndpointID")
@@ -1114,7 +1078,6 @@ func TestHealthService_ListAllEndpoints(t *testing.T) {
 	}
 }
 
-// errorMockHealthStore is a mock that can return errors.
 type errorMockHealthStore struct {
 	*mockHealthStore
 	updateHealthError error
@@ -1135,9 +1098,8 @@ func (m *errorMockHealthStore) IsDraining(ctx context.Context, endpointID string
 	return m.mockHealthStore.IsDraining(ctx, endpointID)
 }
 
-// TestHealthService_HandleHeartbeat_StoreError tests error handling in handleHeartbeat.
 func TestHealthService_HandleHeartbeat_StoreError(t *testing.T) {
-	// Create a mock store that returns an error
+
 	errorStore := &errorMockHealthStore{
 		mockHealthStore:   newMockHealthStore(),
 		updateHealthError: redis.ErrCacheMiss,
@@ -1162,9 +1124,8 @@ func TestHealthService_HandleHeartbeat_StoreError(t *testing.T) {
 	}
 }
 
-// TestHealthService_HandleHeartbeat_DrainingCheckError tests when draining check fails.
 func TestHealthService_HandleHeartbeat_DrainingCheckError(t *testing.T) {
-	// Create a mock store that returns error on IsDraining
+
 	errorStore := &errorMockHealthStore{
 		mockHealthStore: newMockHealthStore(),
 		isDrainingError: redis.ErrCacheMiss,
@@ -1183,7 +1144,6 @@ func TestHealthService_HandleHeartbeat_DrainingCheckError(t *testing.T) {
 	}
 	data, _ := json.Marshal(msg)
 
-	// Should not return error, just continue without draining state
 	err := service.handleHeartbeat(ctx, data)
 	if err != nil {
 		t.Errorf("handleHeartbeat should not return error when draining check fails, got: %v", err)

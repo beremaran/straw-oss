@@ -11,10 +11,8 @@ import (
 
 type contextKey string
 
-// RequestIDKey is the context key for request ID
 const RequestIDKey contextKey = "request_id"
 
-// Config holds the logging configuration
 type Config struct {
 	Level   string
 	Format  string
@@ -22,7 +20,6 @@ type Config struct {
 	Version string
 }
 
-// SetupLogger initializes the global logger
 func SetupLogger(cfg Config) *slog.Logger {
 	var handler slog.Handler
 	opts := &slog.HandlerOptions{
@@ -35,18 +32,15 @@ func SetupLogger(cfg Config) *slog.Logger {
 		handler = slog.NewTextHandler(os.Stdout, opts)
 	}
 
-	// Wrap with OpenTelemetry trace handler
 	handler = &TraceHandler{Handler: handler}
 
 	logger := slog.New(handler)
 
-	// Add default fields
 	logger = logger.With(
 		slog.String("service", cfg.Service),
 		slog.String("version", cfg.Version),
 	)
 
-	// Set as default logger
 	slog.SetDefault(logger)
 
 	return logger
@@ -67,7 +61,6 @@ func parseLogLevel(level string) slog.Level {
 	}
 }
 
-// TraceHandler adds trace_id and span_id to logs
 type TraceHandler struct {
 	slog.Handler
 }

@@ -3,8 +3,8 @@ package ratelimit_test
 import (
 	"testing"
 
-	"github.com/kwilabs/straw-proxy-server/internal/domain"
-	"github.com/kwilabs/straw-proxy-server/internal/service/ratelimit"
+	"github.com/beremaran/straw/internal/domain"
+	"github.com/beremaran/straw/internal/service/ratelimit"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -114,8 +114,7 @@ func TestGenerateQuotaKey(t *testing.T) {
 }
 
 func TestGenerateQuotaKey_NilRule(t *testing.T) {
-	// This test documents the behavior when rule is nil
-	// In production, this should be handled by the caller
+
 	t.Run("Panics with nil rule", func(t *testing.T) {
 		assert.Panics(t, func() {
 			ratelimit.GenerateQuotaKey(nil, "key-abc")

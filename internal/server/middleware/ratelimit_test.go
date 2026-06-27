@@ -5,15 +5,15 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/kwilabs/straw-proxy-server/internal/config"
-	"github.com/kwilabs/straw-proxy-server/internal/domain"
-	"github.com/kwilabs/straw-proxy-server/internal/infra/redis"
-	"github.com/kwilabs/straw-proxy-server/internal/server/middleware"
-	"github.com/kwilabs/straw-proxy-server/internal/service/ratelimit"
-	"github.com/kwilabs/straw-proxy-server/internal/service/router"
-	"github.com/labstack/echo/v4"
+	"github.com/beremaran/straw/internal/config"
+	"github.com/beremaran/straw/internal/domain"
+	"github.com/beremaran/straw/internal/infra/redis"
+	"github.com/beremaran/straw/internal/server/middleware"
+	"github.com/beremaran/straw/internal/service/ratelimit"
+	"github.com/beremaran/straw/internal/service/router"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -23,7 +23,6 @@ func intPtr(i int) *int {
 	return &i
 }
 
-// MockRuleRepo mocks router.RuleRepository
 type MockRuleRepo struct {
 	mock.Mock
 }
@@ -32,53 +31,34 @@ func (m *MockRuleRepo) GetActiveRules(ctx context.Context) ([]domain.RoutingRule
 	args := m.Called(ctx)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
-
 	}
 	return args.Get(0).([]domain.RoutingRule), args.Error(1)
 }
 
-// MockRuleCache mocks router.RuleCacheInterface
-type MockRuleCache struct {
-	mock.Mock
+func (m *MockRuleRepo) CreateRule(ctx context.Context, rule *domain.RoutingRule) error { return nil }
+func (m *MockRuleRepo) GetRuleByID(ctx context.Context, id string) (*domain.RoutingRule, error) {
+	return nil, nil
 }
-
-func (m *MockRuleCache) GetRulesVersion(ctx context.Context) (int64, error) {
-	args := m.Called(ctx)
-	return args.Get(0).(int64), args.Error(1)
-}
-
-func (m *MockRuleCache) GetRulesByVersion(ctx context.Context, version int64) ([]domain.RoutingRule, error) {
-	args := m.Called(ctx, version)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).([]domain.RoutingRule), args.Error(1)
-}
-
-func (m *MockRuleCache) SetRulesByVersion(ctx context.Context, version int64, rules []domain.RoutingRule) error {
-	args := m.Called(ctx, version, rules)
-	return args.Error(0)
+func (m *MockRuleRepo) UpdateRule(ctx context.Context, rule *domain.RoutingRule) error { return nil }
+func (m *MockRuleRepo) DeleteRule(ctx context.Context, id string) error                { return nil }
+func (m *MockRuleRepo) ListRules(ctx context.Context, limit, offset int) ([]domain.RoutingRule, int, error) {
+	return nil, 0, nil
 }
 
 func TestRateLimitMiddleware(t *testing.T) {
-	// 1. Setup Redis & Limiter
+
 	s, err := miniredis.Run()
 	require.NoError(t, err)
 	defer s.Close()
 
-	client, err := redis.NewClient(config.CoreConfig{RedisAddr: s.Addr()}, nil)
+	client, err := redis.NewClient(config.RedisConfig{Addr: s.Addr()}, nil)
 	require.NoError(t, err)
 	defer client.Close()
 
 	limiter := ratelimit.NewRateLimiter(client)
 
-	// 2. Setup Matcher with Rules
 	mockRepo := new(MockRuleRepo)
-	mockCache := new(MockRuleCache)
-	// Simulate cache miss (no version)
-	mockCache.On("GetRulesVersion", mock.Anything).Return(int64(0), nil)
-	// mockCache.On("GetRulesByVersion", ... ) // Not called if version is 0
-	mockCache.On("SetRulesByVersion", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	ruleCache := router.NewRuleCache(client.Client, time.Minute)
 
 	rules := []domain.RoutingRule{
 		{
@@ -94,43 +74,40 @@ func TestRateLimitMiddleware(t *testing.T) {
 			ID:           "rule-general",
 			Name:         "General Rule",
 			RequiredTags: []string{"type:general"},
-			// No limits
-			IsActive: true,
-			Priority: 5,
+			IsActive:     true,
+			Priority:     5,
 		},
 	}
 	mockRepo.On("GetActiveRules", mock.Anything).Return(rules, nil)
 
-	matcher := router.NewMatcher(mockRepo, mockCache)
+	matcher := router.NewMatcher(mockRepo, ruleCache)
 	err = matcher.LoadRules(context.Background())
 	require.NoError(t, err)
 
-	// 3. Setup Echo
-	e := echo.New()
 	mw := middleware.RateLimitMiddleware(limiter, matcher)
 
-	// Handler that asserts rule is present
-	handler := func(c echo.Context) error {
-		rule := middleware.GetRoutingRule(c)
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rule := middleware.GetRoutingRule(r)
 		if rule == nil {
-			return c.String(http.StatusInternalServerError, "no rule in context")
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte("no rule in context"))
+			return
 		}
-		return c.String(http.StatusOK, "success:"+rule.ID)
-	}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("success:" + rule.ID))
+	})
 
 	t.Run("Allows request under limit", func(t *testing.T) {
 		s.FlushAll()
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		// mock X-Relay-Tags
 		req.Header.Set("X-Relay-Tags", "target=amazon")
 		rec := httptest.NewRecorder()
-		c := e.NewContext(req, rec)
 
-		// Set dummy API Key
-		c.Set("api_key", &domain.ApiKey{ID: "test-user"})
+		ctx := context.WithValue(req.Context(), middleware.ContextApiKey{Value: "api_key"}, &domain.ApiKey{ID: "test-user"})
+		req = req.WithContext(ctx)
 
-		err := mw(handler)(c)
-		assert.NoError(t, err)
+		mw(handler).ServeHTTP(rec, req)
+
 		assert.Equal(t, http.StatusOK, rec.Code)
 		assert.Contains(t, rec.Body.String(), "success:rule-amazon")
 		assert.Equal(t, "2", rec.Header().Get("X-RateLimit-Limit"))
@@ -143,16 +120,15 @@ func TestRateLimitMiddleware(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
 			req.Header.Set("X-Relay-Tags", "target=amazon")
 			rec := httptest.NewRecorder()
-			c := e.NewContext(req, rec)
-			c.Set("api_key", &domain.ApiKey{ID: "test-user"})
 
-			err := mw(handler)(c)
+			ctx := context.WithValue(req.Context(), middleware.ContextApiKey{Value: "api_key"}, &domain.ApiKey{ID: "test-user"})
+			req = req.WithContext(ctx)
+
+			mw(handler).ServeHTTP(rec, req)
 			if i < 2 {
-				assert.NoError(t, err)
 				assert.Equal(t, http.StatusOK, rec.Code)
 			} else {
-				// Third request should be blocked (429)
-				assert.NoError(t, err)
+
 				assert.Equal(t, http.StatusTooManyRequests, rec.Code)
 				assert.Contains(t, rec.Body.String(), "RATE_LIMIT_EXCEEDED")
 				assert.Equal(t, "0", rec.Header().Get("X-RateLimit-Remaining"))
@@ -164,28 +140,21 @@ func TestRateLimitMiddleware(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		req.Header.Set("X-Relay-Tags", "target=uknown")
 		rec := httptest.NewRecorder()
-		c := e.NewContext(req, rec)
 
-		err := mw(handler)(c)
-		// Should return 503 HTTPError
-		assert.Error(t, err)
-		httpErr, ok := err.(*echo.HTTPError)
-		assert.True(t, ok)
-		assert.Equal(t, http.StatusServiceUnavailable, httpErr.Code)
+		mw(handler).ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
 	})
 
 	t.Run("Uses API Key override", func(t *testing.T) {
 		s.FlushAll()
-		// Rule has limit 2. Key has override 10.
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		req.Header.Set("X-Relay-Tags", "target=amazon")
 		rec := httptest.NewRecorder()
-		c := e.NewContext(req, rec)
 
-		c.Set("api_key", &domain.ApiKey{ID: "whale-user", RateLimitOverride: intPtr(10)})
+		ctx := context.WithValue(req.Context(), middleware.ContextApiKey{Value: "api_key"}, &domain.ApiKey{ID: "whale-user", RateLimitOverride: intPtr(10)})
+		req = req.WithContext(ctx)
 
-		err := mw(handler)(c)
-		assert.NoError(t, err)
+		mw(handler).ServeHTTP(rec, req)
 		assert.Equal(t, "10", rec.Header().Get("X-RateLimit-Limit"))
 	})
 }

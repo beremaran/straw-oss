@@ -1,46 +1,48 @@
 package middleware
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
 
-	"github.com/kwilabs/straw-proxy-server/internal/service/auth"
-	"github.com/labstack/echo/v4"
+	"github.com/beremaran/straw/internal/server/helper"
+	"github.com/beremaran/straw/internal/service/auth"
 )
+
+type ContextApiKey struct {
+	Value string
+}
 
 const (
-	HeaderAuthorization = "Authorization"
-	ContextKeyAPIKey    = "api_key"
+	HeaderAuthorization string = "Authorization"
 )
 
-// AuthMiddleware creates a middleware that validates API keys using Bearer tokens.
-func AuthMiddleware(validator auth.Validator) echo.MiddlewareFunc {
-	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			// 1. Extract Token from Bearer header
-			token := extractBearerToken(c.Request())
+func AuthMiddleware(validator *auth.Service) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+			token := extractBearerToken(r)
 			if token == "" {
-				return echo.NewHTTPError(http.StatusUnauthorized, "missing bearer token")
+				helper.WriteError(w, http.StatusUnauthorized, "missing bearer token")
+				return
 			}
 
-			// 2. Validate Token
-			apiKey, err := validator.ValidateKey(c.Request().Context(), token)
+			apiKey, err := validator.ValidateKey(r.Context(), token)
 			if err != nil {
 				if errors.Is(err, auth.ErrInvalidKey) {
-					return echo.NewHTTPError(http.StatusUnauthorized, "invalid bearer token")
+					helper.WriteError(w, http.StatusUnauthorized, "invalid bearer token")
+					return
 				}
-				// Internal error
-				c.Logger().Errorf("failed to validate bearer token: %v", err)
-				return echo.NewHTTPError(http.StatusInternalServerError, "internal auth error")
+
+				helper.WriteError(w, http.StatusInternalServerError, "internal auth error")
+				return
 			}
 
-			// 3. Set in Context
-			c.Set(ContextKeyAPIKey, apiKey)
+			ctx := context.WithValue(r.Context(), ContextApiKey{Value: "api_key"}, apiKey)
 
-			// 4. Continue
-			return next(c)
-		}
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
 	}
 }
 
@@ -52,11 +54,6 @@ func extractBearerToken(r *http.Request) string {
 	return ""
 }
 
-// GetAPIKey retrieves the authenticated API key from the context.
-// Helper for handlers.
-func GetAPIKey(c echo.Context) interface{} {
-	return c.Get(ContextKeyAPIKey)
+func GetAPIKey(r *http.Request) interface{} {
+	return r.Context().Value(ContextApiKey{Value: "api_key"})
 }
-
-// To get the actual type, handlers should assert:
-// key := c.Get(ContextKeyAPIKey).(*domain.ApiKey)

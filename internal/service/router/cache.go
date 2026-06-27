@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/kwilabs/straw-proxy-server/internal/domain"
-	"github.com/kwilabs/straw-proxy-server/internal/server/metrics"
+	"github.com/beremaran/straw/internal/domain"
+	"github.com/beremaran/straw/internal/server/metrics"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -16,22 +16,19 @@ import (
 )
 
 const (
-	// ActiveRulesKeyPrefix is the prefix for versioned rules keys.
 	ActiveRulesKeyPrefix = "router:rules:v"
-	// RulesVersionKey is the Redis key for the current rules version.
+
 	RulesVersionKey = "router:rules:version"
-	// DefaultCacheTTL is the expiration time for the rules cache.
+
 	DefaultCacheTTL = 10 * time.Minute
 )
 
-// RuleCache handles caching of routing rules in Redis.
 type RuleCache struct {
 	client *redis.Client
 	ttl    time.Duration
 	tracer trace.Tracer
 }
 
-// NewRuleCache creates a new RuleCache.
 func NewRuleCache(client *redis.Client, ttl time.Duration) *RuleCache {
 	if ttl == 0 {
 		ttl = DefaultCacheTTL
@@ -43,8 +40,6 @@ func NewRuleCache(client *redis.Client, ttl time.Duration) *RuleCache {
 	}
 }
 
-// GetRulesVersion returns the current rules version from Redis.
-// Returns 0 if the version key does not exist.
 func (c *RuleCache) GetRulesVersion(ctx context.Context) (int64, error) {
 	ctx, span := c.tracer.Start(ctx, "cache.get", trace.WithAttributes(
 		attribute.String("db.system", "redis"),
@@ -56,14 +51,13 @@ func (c *RuleCache) GetRulesVersion(ctx context.Context) (int64, error) {
 	val, err := c.client.Get(ctx, RulesVersionKey).Int64()
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
-			return 0, nil // No version set
+			return 0, nil
 		}
 		return 0, fmt.Errorf("failed to get rules version: %w", err)
 	}
 	return val, nil
 }
 
-// GetRulesByVersion returns the active rules for a specific version from Redis.
 func (c *RuleCache) GetRulesByVersion(ctx context.Context, version int64) ([]domain.RoutingRule, error) {
 	ctx, span := c.tracer.Start(ctx, "cache.get", trace.WithAttributes(
 		attribute.String("db.system", "redis"),
@@ -79,7 +73,7 @@ func (c *RuleCache) GetRulesByVersion(ctx context.Context, version int64) ([]dom
 			if metrics.CacheMisses != nil {
 				metrics.CacheMisses.WithLabelValues("rules").Inc()
 			}
-			return nil, nil // Cache miss
+			return nil, nil
 		}
 		return nil, fmt.Errorf("failed to get rules from cache (v%d): %w", version, err)
 	}
@@ -96,7 +90,6 @@ func (c *RuleCache) GetRulesByVersion(ctx context.Context, version int64) ([]dom
 	return rules, nil
 }
 
-// SetRulesByVersion updates the active rules in Redis for a specific version.
 func (c *RuleCache) SetRulesByVersion(ctx context.Context, version int64, rules []domain.RoutingRule) error {
 	ctx, span := c.tracer.Start(ctx, "cache.set", trace.WithAttributes(
 		attribute.String("db.system", "redis"),
@@ -118,15 +111,10 @@ func (c *RuleCache) SetRulesByVersion(ctx context.Context, version int64, rules 
 	return nil
 }
 
-// IncrementRulesVersion increments the rules version in Redis.
-// This is typically used by the Admin API when rules change.
 func (c *RuleCache) IncrementRulesVersion(ctx context.Context) (int64, error) {
 	return c.client.Incr(ctx, RulesVersionKey).Result()
 }
 
-// Invalidate clears the rules cache for a specific version.
-// Note: In strict versioning, we might just let old versions expire,
-// but this can be useful for forcing a cleanup.
 func (c *RuleCache) Invalidate(ctx context.Context, version int64) error {
 	key := fmt.Sprintf("%s%d", ActiveRulesKeyPrefix, version)
 	return c.client.Del(ctx, key).Err()

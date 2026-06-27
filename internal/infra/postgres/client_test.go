@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kwilabs/straw-proxy-server/internal/infra/postgres"
+	"github.com/beremaran/straw/internal/infra/postgres"
 )
 
 func TestPostgresIntegration(t *testing.T) {
@@ -28,7 +28,6 @@ func TestPostgresIntegration(t *testing.T) {
 		t.Fatalf("HealthCheck failed: %v", err)
 	}
 
-	// Basic query test
 	var result int
 	err = client.Pool.QueryRow(ctx, "SELECT 1").Scan(&result)
 	if err != nil {

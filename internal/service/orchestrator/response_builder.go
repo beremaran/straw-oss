@@ -6,25 +6,19 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/kwilabs/straw-proxy-server/pkg/protocol"
-	"github.com/labstack/echo/v4"
+	"github.com/beremaran/straw/pkg/protocol"
 )
 
-// ResponseBuilder builds HTTP responses from result messages.
 type ResponseBuilder struct {
-	// FilterHeaders specifies headers to exclude from upstream response.
 	FilterHeaders []string
 }
 
-// NewResponseBuilder creates a new ResponseBuilder with default settings.
 func NewResponseBuilder() *ResponseBuilder {
 	return &ResponseBuilder{
 		FilterHeaders: defaultFilteredHeaders,
 	}
 }
 
-// defaultFilteredHeaders are headers that should not be copied from upstream.
-// These are hop-by-hop headers or headers that should be set by the proxy.
 var defaultFilteredHeaders = []string{
 	"Connection",
 	"Keep-Alive",
@@ -34,11 +28,10 @@ var defaultFilteredHeaders = []string{
 	"Trailers",
 	"Transfer-Encoding",
 	"Upgrade",
-	"Content-Length",   // Will be set by Echo based on actual body
-	"Content-Encoding", // Response is already decompressed
+	"Content-Length",
+	"Content-Encoding",
 }
 
-// RelayMetadata contains metadata about the relay operation.
 type RelayMetadata struct {
 	Retries       int
 	Pool          string
@@ -47,15 +40,14 @@ type RelayMetadata struct {
 	SessionID     string
 	Migrated      bool
 	MigrateCount  int
-	AttemptErrors []AttemptError // Failed attempts for debugging
+	AttemptErrors []AttemptError
 }
 
-// WriteResponse writes a ResultMessage to an Echo context as an HTTP response.
-func (b *ResponseBuilder) WriteResponse(c echo.Context, result *ResultMessage, meta *RelayMetadata) error {
-	// Set status code
+func (b *ResponseBuilder) WriteResponse(w http.ResponseWriter, result *ResultMessage, meta *RelayMetadata) error {
+
 	statusCode := result.StatusCode
 	if statusCode == 0 {
-		// Default to 502 if no status code and there's an error
+
 		if result.Error != nil {
 			statusCode = http.StatusBadGateway
 		} else {
@@ -63,33 +55,29 @@ func (b *ResponseBuilder) WriteResponse(c echo.Context, result *ResultMessage, m
 		}
 	}
 
-	// Copy headers from upstream (filtered)
-	b.copyHeaders(c.Response(), result.Headers)
+	b.copyHeaders(w.Header(), result.Headers)
 
-	// Add relay headers
-	b.addRelayHeaders(c.Response(), meta)
+	b.addRelayHeaders(w.Header(), meta)
 
-	// Handle error response
 	if result.Error != nil {
-		return b.writeErrorResponse(c, statusCode, result.Error)
+		return b.writeErrorResponse(w, statusCode, result.Error)
 	}
 
-	// Write body
-	return c.Blob(statusCode, result.Headers.Get("Content-Type"), result.CompressedBody)
+	w.Header().Set("Content-Type", result.Headers.Get("Content-Type"))
+	w.WriteHeader(statusCode)
+	_, err := w.Write(result.CompressedBody)
+	return err
 }
 
-// copyHeaders copies headers from the upstream response to the client response,
-// filtering out hop-by-hop headers and other headers that shouldn't be copied.
-func (b *ResponseBuilder) copyHeaders(resp *echo.Response, headers protocol.HeaderMap) {
+func (b *ResponseBuilder) copyHeaders(resp http.Header, headers protocol.HeaderMap) {
 	for _, h := range headers {
 		if b.isFiltered(h.Key) {
 			continue
 		}
-		resp.Header().Add(h.Key, h.Value)
+		resp.Add(h.Key, h.Value)
 	}
 }
 
-// isFiltered checks if a header should be filtered out.
 func (b *ResponseBuilder) isFiltered(key string) bool {
 	for _, filtered := range b.FilterHeaders {
 		if equalFoldASCII(key, filtered) {
@@ -99,70 +87,64 @@ func (b *ResponseBuilder) isFiltered(key string) bool {
 	return false
 }
 
-// addRelayHeaders adds relay-specific headers to the response.
-func (b *ResponseBuilder) addRelayHeaders(resp *echo.Response, meta *RelayMetadata) {
+func (b *ResponseBuilder) addRelayHeaders(resp http.Header, meta *RelayMetadata) {
 	if meta == nil {
 		return
 	}
 
-	// Add retry count if any retries occurred
 	if meta.Retries > 0 {
-		resp.Header().Set("X-Relay-Retries", strconv.Itoa(meta.Retries))
+		resp.Set("X-Relay-Retries", strconv.Itoa(meta.Retries))
 	}
 
-	// Add pool information
 	if meta.Pool != "" {
-		resp.Header().Set("X-Relay-Pool", meta.Pool)
+		resp.Set("X-Relay-Pool", meta.Pool)
 	}
 
-	// Add timing information
 	if meta.Timing != nil {
-		resp.Header().Set("X-Relay-Timing", formatTiming(meta.Timing))
+		resp.Set("X-Relay-Timing", formatTiming(meta.Timing))
 	}
 
-	// Add endpoint ID for debugging
 	if meta.EndpointID != "" {
-		resp.Header().Set("X-Relay-Endpoint", meta.EndpointID)
+		resp.Set("X-Relay-Endpoint", meta.EndpointID)
 	}
 
-	// Add session headers
 	if meta.SessionID != "" {
-		resp.Header().Set("X-Session-ID", meta.SessionID)
+		resp.Set("X-Session-ID", meta.SessionID)
 	}
 
 	if meta.Migrated {
-		resp.Header().Set("X-Session-Migrated", "true")
-		resp.Header().Set("X-Session-Migration-Count", strconv.Itoa(meta.MigrateCount))
+		resp.Set("X-Session-Migrated", "true")
+		resp.Set("X-Session-Migration-Count", strconv.Itoa(meta.MigrateCount))
 	}
 
-	// Add attempt errors for debugging (only include if there were failures)
 	if len(meta.AttemptErrors) > 0 {
 		if errorsJSON, err := json.Marshal(formatAttemptErrors(meta.AttemptErrors)); err == nil {
-			resp.Header().Set("X-Relay-Attempt-Errors", string(errorsJSON))
+			resp.Set("X-Relay-Attempt-Errors", string(errorsJSON))
 		}
 	}
 }
 
-// writeErrorResponse writes an error response in the standard format.
-func (b *ResponseBuilder) writeErrorResponse(c echo.Context, statusCode int, errInfo *protocol.ErrorInfo) error {
+func (b *ResponseBuilder) writeErrorResponse(w http.ResponseWriter, statusCode int, errInfo *protocol.ErrorInfo) error {
+	requestID := w.Header().Get("X-Request-ID")
 	response := map[string]interface{}{
 		"error": map[string]interface{}{
 			"code":       errInfo.Code,
 			"message":    errInfo.Message,
 			"retryable":  errInfo.Retryable,
-			"request_id": c.Response().Header().Get(echo.HeaderXRequestID),
+			"request_id": requestID,
 		},
 	}
 
 	if errInfo.RetryAfter > 0 {
 		response["error"].(map[string]interface{})["retry_after_seconds"] = int(errInfo.RetryAfter.Seconds())
-		c.Response().Header().Set("Retry-After", strconv.Itoa(int(errInfo.RetryAfter.Seconds())))
+		w.Header().Set("Retry-After", strconv.Itoa(int(errInfo.RetryAfter.Seconds())))
 	}
 
-	return c.JSON(statusCode, response)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	return json.NewEncoder(w).Encode(response)
 }
 
-// formatTiming formats timing info for the X-Relay-Timing header.
 func formatTiming(t *protocol.TimingInfo) string {
 	if t == nil {
 		return ""
@@ -170,7 +152,6 @@ func formatTiming(t *protocol.TimingInfo) string {
 	return t.Total.Round(time.Millisecond).String()
 }
 
-// equalFoldASCII is a simple case-insensitive comparison for ASCII strings.
 func equalFoldASCII(a, b string) bool {
 	if len(a) != len(b) {
 		return false
@@ -190,11 +171,12 @@ func equalFoldASCII(a, b string) bool {
 	return true
 }
 
-// WriteTimeoutResponse writes a 504 Gateway Timeout response.
-func WriteTimeoutResponse(c echo.Context, requestID string) error {
-	c.Response().Header().Set("X-Request-ID", requestID)
+func WriteTimeoutResponse(w http.ResponseWriter, requestID string) error {
+	w.Header().Set("X-Request-ID", requestID)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusGatewayTimeout)
 
-	return c.JSON(http.StatusGatewayTimeout, map[string]interface{}{
+	return json.NewEncoder(w).Encode(map[string]interface{}{
 		"error": map[string]interface{}{
 			"code":       protocol.ErrCodeEndpointTimeout,
 			"message":    "Endpoint did not respond in time",
@@ -204,7 +186,6 @@ func WriteTimeoutResponse(c echo.Context, requestID string) error {
 	})
 }
 
-// attemptErrorSummary is a compact representation of an AttemptError for headers.
 type attemptErrorSummary struct {
 	Pool     int    `json:"p"`
 	Attempt  int    `json:"a"`
@@ -213,7 +194,6 @@ type attemptErrorSummary struct {
 	Message  string `json:"m,omitempty"`
 }
 
-// formatAttemptErrors converts AttemptErrors to a compact format for the header.
 func formatAttemptErrors(errors []AttemptError) []attemptErrorSummary {
 	summaries := make([]attemptErrorSummary, 0, len(errors))
 	for _, e := range errors {
@@ -228,7 +208,6 @@ func formatAttemptErrors(errors []AttemptError) []attemptErrorSummary {
 	return summaries
 }
 
-// truncateMessage truncates a message to maxLen characters.
 func truncateMessage(msg string, maxLen int) string {
 	if len(msg) <= maxLen {
 		return msg

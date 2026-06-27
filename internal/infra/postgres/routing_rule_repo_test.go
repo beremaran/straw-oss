@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/beremaran/straw/internal/domain"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/kwilabs/straw-proxy-server/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -23,7 +23,6 @@ func TestRoutingRuleRepository(t *testing.T) {
 	require.NoError(t, err)
 	defer pool.Close()
 
-	// Ensure clean slate (careful! only run against test DB)
 	_, err = pool.Exec(ctx, "TRUNCATE routing_rules CASCADE")
 	require.NoError(t, err)
 
@@ -49,7 +48,7 @@ func TestRoutingRuleRepository(t *testing.T) {
 	})
 
 	t.Run("GetActiveRules", func(t *testing.T) {
-		// Create another rule that is inactive
+
 		inactiveRule := &domain.RoutingRule{
 			ID:           "rule-002",
 			Name:         "Inactive Rule",
@@ -68,7 +67,7 @@ func TestRoutingRuleRepository(t *testing.T) {
 		assert.Equal(t, "rule-001", rules[0].ID)
 		assert.Equal(t, "Test Rule 1", rules[0].Name)
 		assert.Equal(t, 100, rules[0].Priority)
-		assert.Equal(t, 60, rules[0].RateLimitPerMinute) // Check config field
+		assert.Equal(t, 60, rules[0].RateLimitPerMinute)
 	})
 
 	t.Run("GetRuleByID", func(t *testing.T) {

@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/kwilabs/straw-proxy-server/internal/broker"
-	"github.com/kwilabs/straw-proxy-server/internal/domain"
-	"github.com/kwilabs/straw-proxy-server/internal/server/dto"
-	"github.com/labstack/echo/v4"
+	"github.com/beremaran/straw/internal/broker"
+	"github.com/beremaran/straw/internal/domain"
+	"github.com/beremaran/straw/internal/server/dto"
+	"github.com/beremaran/straw/internal/server/helper"
 )
 
 type FingerprintHandler struct {
@@ -19,97 +19,70 @@ func NewFingerprintHandler(repo domain.FingerprintRepository, broker broker.Mess
 	return &FingerprintHandler{repo: repo, broker: broker}
 }
 
-// HandleListPresets returns all fingerprint presets
-//
-//	@Summary		List Fingerprint Presets
-//	@Description	Returns all available fingerprint presets for TLS fingerprinting
-//	@Tags			fingerprints
-//	@Produce		json
-//	@Success		200	{array}		dto.FingerprintResponse	"List of presets"
-//	@Failure		500	{object}	map[string]string		"Internal server error"
-//	@Security		AdminKeyAuth
-//	@Router			/fingerprints [get]
-func (h *FingerprintHandler) HandleListPresets(c echo.Context) error {
-	presets, err := h.repo.ListPresets(c.Request().Context())
+func (h *FingerprintHandler) HandleListPresets(w http.ResponseWriter, r *http.Request) {
+	presets, err := h.repo.ListPresets(r.Context())
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to list presets"})
+		helper.WriteError(w, http.StatusInternalServerError, "failed to list presets")
+		return
 	}
-	return c.JSON(http.StatusOK, dto.FromFingerprintPresets(presets))
+	helper.WriteJSON(w, http.StatusOK, dto.FromFingerprintPresets(presets))
 }
 
-// HandleCreatePreset creates or updates a preset
-//
-//	@Summary		Create or Update Fingerprint Preset
-//	@Description	Creates a new fingerprint preset or updates an existing one
-//	@Tags			fingerprints
-//	@Accept			json
-//	@Produce		json
-//	@Param			preset	body		dto.CreateFingerprintRequest	true	"Fingerprint preset"
-//	@Success		200		{object}	dto.FingerprintResponse	"Created or updated preset"
-//	@Failure		400		{object}	map[string]string		"Invalid request"
-//	@Failure		500		{object}	map[string]string		"Internal server error"
-//	@Security		AdminKeyAuth
-//	@Router			/fingerprints [post]
-func (h *FingerprintHandler) HandleCreatePreset(c echo.Context) error {
+func (h *FingerprintHandler) HandleCreatePreset(w http.ResponseWriter, r *http.Request) {
 	var req dto.CreateFingerprintRequest
-	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	if err := helper.ReadJSON(r, &req); err != nil {
+		helper.WriteError(w, http.StatusBadRequest, "invalid request body")
+		return
 	}
 
 	if req.ID == "" || req.Name == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "id and name are required"})
+		helper.WriteError(w, http.StatusBadRequest, "id and name are required")
+		return
 	}
 
 	preset := req.ToDomain()
 
-	// Check availability
-	existing, err := h.repo.GetPreset(c.Request().Context(), preset.ID)
+	existing, err := h.repo.GetPreset(r.Context(), preset.ID)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to check existing preset"})
+		helper.WriteError(w, http.StatusInternalServerError, "failed to check existing preset")
+		return
 	}
 
 	if existing != nil {
-		if err := h.repo.UpdatePreset(c.Request().Context(), preset); err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to update preset"})
+		if err := h.repo.UpdatePreset(r.Context(), preset); err != nil {
+			helper.WriteError(w, http.StatusInternalServerError, "failed to update preset")
+			return
 		}
 	} else {
-		if err := h.repo.CreatePreset(c.Request().Context(), preset); err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to create preset"})
+		if err := h.repo.CreatePreset(r.Context(), preset); err != nil {
+			helper.WriteError(w, http.StatusInternalServerError, "failed to create preset")
+			return
 		}
 	}
 
-	return c.JSON(http.StatusOK, dto.FromFingerprintPreset(preset))
+	helper.WriteJSON(w, http.StatusOK, dto.FromFingerprintPreset(preset))
 }
 
-// HandleBroadcastPresets sends all presets to endpoints via fanout
-//
-//	@Summary		Broadcast Fingerprint Presets
-//	@Description	Sends all fingerprint presets to all connected endpoints via message broker
-//	@Tags			fingerprints
-//	@Success		200	"Presets broadcast successfully"
-//	@Failure		500	{object}	map[string]string	"Internal server error"
-//	@Security		AdminKeyAuth
-//	@Router			/fingerprints/broadcast [post]
-func (h *FingerprintHandler) HandleBroadcastPresets(c echo.Context) error {
-	presets, err := h.repo.ListPresets(c.Request().Context())
+func (h *FingerprintHandler) HandleBroadcastPresets(w http.ResponseWriter, r *http.Request) {
+	presets, err := h.repo.ListPresets(r.Context())
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to list presets"})
+		helper.WriteError(w, http.StatusInternalServerError, "failed to list presets")
+		return
 	}
 
-	// Convert to DTOs for broadcast
 	presetsDTO := dto.FromFingerprintPresets(presets)
 
 	body, err := json.Marshal(presetsDTO)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to marshal presets"})
+		helper.WriteError(w, http.StatusInternalServerError, "failed to marshal presets")
+		return
 	}
 
-	// Publish to fanout exchange
-	// Exchange: "fingerprint_broadcast", routing key: ignored
-	err = h.broker.Publish(c.Request().Context(), "fingerprint_broadcast", "", body)
+	err = h.broker.Publish(r.Context(), "fingerprint_broadcast", "", body)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to broadcast"})
+		helper.WriteError(w, http.StatusInternalServerError, "failed to broadcast")
+		return
 	}
 
-	return c.NoContent(http.StatusOK)
+	w.WriteHeader(http.StatusOK)
 }

@@ -3,10 +3,8 @@ package security
 import (
 	"context"
 
-	"github.com/kwilabs/straw-proxy-server/internal/domain"
+	"github.com/beremaran/straw/internal/domain"
 )
-
-// Dummy Implementations to satisfy interfaces
 
 type dummySelector struct{}
 

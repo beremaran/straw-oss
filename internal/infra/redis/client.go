@@ -5,30 +5,27 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/kwilabs/straw-proxy-server/internal/config"
-	"github.com/kwilabs/straw-proxy-server/internal/infra/circuitbreaker"
+	"github.com/beremaran/straw/internal/config"
+	"github.com/beremaran/straw/internal/infra/circuitbreaker"
 	"github.com/redis/go-redis/v9"
 )
 
-// Client wraps the redis.Client to provide a unified interface for cache interactions.
 type Client struct {
 	Client  *redis.Client
 	breaker *circuitbreaker.CircuitBreaker
 }
 
-// NewClient creates a new Redis client.
-func NewClient(cfg config.CoreConfig, breaker *circuitbreaker.CircuitBreaker) (*Client, error) {
+func NewClient(cfg config.RedisConfig, breaker *circuitbreaker.CircuitBreaker) (*Client, error) {
 	opts := &redis.Options{
-		Addr:         cfg.RedisAddr,
-		Password:     "", // no password set
-		DB:           0,  // use default DB
-		PoolSize:     cfg.RedisPoolSize,
-		MinIdleConns: cfg.RedisMinIdleConns,
+		Addr:         cfg.Addr,
+		Password:     "",
+		DB:           0,
+		PoolSize:     cfg.PoolSize,
+		MinIdleConns: cfg.MinIdleConns,
 	}
 
 	client := redis.NewClient(opts)
 
-	// Verify connection
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -39,20 +36,10 @@ func NewClient(cfg config.CoreConfig, breaker *circuitbreaker.CircuitBreaker) (*
 	return &Client{Client: client, breaker: breaker}, nil
 }
 
-// Execute runs the given function within the circuit breaker if one is configured.
-func (c *Client) Execute(fn func() error) error {
-	if c.breaker != nil {
-		return c.breaker.Execute(fn)
-	}
-	return fn()
-}
-
-// Close closes the Redis client.
 func (c *Client) Close() error {
 	return c.Client.Close()
 }
 
-// HealthCheck checks the Redis connection.
 func (c *Client) HealthCheck(ctx context.Context) error {
 	return c.Client.Ping(ctx).Err()
 }
