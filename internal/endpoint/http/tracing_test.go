@@ -64,7 +64,7 @@ func TestClient_Do_Tracing(t *testing.T) {
 
 	server := http.NewServeMux()
 	server.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(200)
+		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ok"))
 	})
 

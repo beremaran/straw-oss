@@ -151,7 +151,7 @@ func AuditLog(auditLogger *AuditLogger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
-			if r.Method == "GET" || r.Method == "HEAD" {
+			if r.Method == http.MethodGet || r.Method == http.MethodHead {
 				next.ServeHTTP(w, r)
 				return
 			}
