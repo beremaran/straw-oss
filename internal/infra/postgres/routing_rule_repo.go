@@ -29,6 +29,68 @@ func NewRoutingRuleRepository(client *Client) *RoutingRuleRepository {
 	}
 }
 
+func scanRoutingRule(scan func(dest ...interface{}) error, strictTags bool) (domain.RoutingRule, error) {
+	var (
+		id           string
+		name         string
+		priority     int
+		reqTagsJSON  []byte
+		exclTagsJSON []byte
+		configJSON   []byte
+		isActive     bool
+		version      int
+		createdAt    time.Time
+		updatedAt    time.Time
+	)
+
+	err := scan(
+		&id, &name, &priority, &reqTagsJSON, &exclTagsJSON, &configJSON,
+		&isActive, &version, &createdAt, &updatedAt,
+	)
+	if err != nil {
+		return domain.RoutingRule{}, err
+	}
+
+	var rule domain.RoutingRule
+	err = json.Unmarshal(configJSON, &rule)
+	if err != nil {
+		return domain.RoutingRule{}, fmt.Errorf("failed to unmarshal routing rule config for rule %s: %w", id, err)
+	}
+
+	rule.ID = id
+	rule.Name = name
+	rule.Priority = priority
+	rule.IsActive = isActive
+	rule.Version = version
+	rule.CreatedAt = createdAt
+	rule.UpdatedAt = updatedAt
+
+	err = applyRoutingRuleTags(&rule, reqTagsJSON, exclTagsJSON, strictTags)
+	if err != nil {
+		return domain.RoutingRule{}, err
+	}
+
+	return rule, nil
+}
+
+func applyRoutingRuleTags(rule *domain.RoutingRule, reqTagsJSON, exclTagsJSON []byte, strict bool) error {
+	var reqTags []string
+	err := json.Unmarshal(reqTagsJSON, &reqTags)
+	if err != nil && strict {
+		return fmt.Errorf("failed to unmarshal required tags for rule %s: %w", rule.ID, err)
+	}
+	rule.RequiredTags = reqTags
+
+	var exclTags []string
+	err = json.Unmarshal(exclTagsJSON, &exclTags)
+	if err != nil && strict {
+		return fmt.Errorf("failed to unmarshal excluded tags for rule %s: %w", rule.ID, err)
+	}
+	rule.ExcludedTags = exclTags
+
+	return nil
+}
+
 func (r *RoutingRuleRepository) GetActiveRules(ctx context.Context) ([]domain.RoutingRule, error) {
 	ctx, span := r.tracer.Start(ctx, "db.query", trace.WithAttributes(
 		attribute.String("db.system", "postgresql"),
@@ -61,54 +123,10 @@ func (r *RoutingRuleRepository) GetActiveRules(ctx context.Context) ([]domain.Ro
 	var rules []domain.RoutingRule
 
 	for rows.Next() {
-		var (
-			id           string
-			name         string
-			priority     int
-			reqTagsJSON  []byte
-			exclTagsJSON []byte
-			configJSON   []byte
-			isActive     bool
-			version      int
-			createdAt    time.Time
-			updatedAt    time.Time
-		)
-
-		err := rows.Scan(
-			&id, &name, &priority, &reqTagsJSON, &exclTagsJSON, &configJSON,
-			&isActive, &version, &createdAt, &updatedAt,
-		)
+		rule, err := scanRoutingRule(rows.Scan, true)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan routing rule row: %w", err)
 		}
-
-		var rule domain.RoutingRule
-		err = json.Unmarshal(configJSON, &rule)
-		if err != nil {
-			return nil, fmt.Errorf("failed to unmarshal routing rule config for ruled %s: %w", id, err)
-		}
-
-		rule.ID = id
-		rule.Name = name
-		rule.Priority = priority
-		rule.IsActive = isActive
-		rule.Version = version
-		rule.CreatedAt = createdAt
-		rule.UpdatedAt = updatedAt
-
-		var reqTags []string
-		err = json.Unmarshal(reqTagsJSON, &reqTags)
-		if err != nil {
-			return nil, fmt.Errorf("failed to unmarshal required tags for rule %s: %w", id, err)
-		}
-		rule.RequiredTags = reqTags
-
-		var exclTags []string
-		err = json.Unmarshal(exclTagsJSON, &exclTags)
-		if err != nil {
-			return nil, fmt.Errorf("failed to unmarshal excluded tags for rule %s: %w", id, err)
-		}
-		rule.ExcludedTags = exclTags
 
 		rules = append(rules, rule)
 	}
@@ -129,26 +147,9 @@ func (r *RoutingRuleRepository) CreateRule(ctx context.Context, rule *domain.Rou
 	))
 	defer span.End()
 
-	configJSON, err := json.Marshal(rule)
+	configJSON, reqTagsJSON, exclTagsJSON, err := routingRuleJSON(rule)
 	if err != nil {
-		return fmt.Errorf("failed to marshal rule config: %w", err)
-	}
-
-	reqTagsJSON, err := json.Marshal(rule.RequiredTags)
-	if err != nil {
-		return fmt.Errorf("failed to marshal required tags: %w", err)
-	}
-
-	if rule.RequiredTags == nil {
-		reqTagsJSON = []byte("[]")
-	}
-
-	exclTagsJSON, err := json.Marshal(rule.ExcludedTags)
-	if err != nil {
-		return fmt.Errorf("failed to marshal excluded tags: %w", err)
-	}
-	if rule.ExcludedTags == nil {
-		exclTagsJSON = []byte("[]")
+		return err
 	}
 
 	query := `
@@ -182,6 +183,37 @@ func (r *RoutingRuleRepository) CreateRule(ctx context.Context, rule *domain.Rou
 	return err
 }
 
+func routingRuleJSON(rule *domain.RoutingRule) ([]byte, []byte, []byte, error) {
+	configJSON, err := json.Marshal(rule)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to marshal rule config: %w", err)
+	}
+
+	reqTagsJSON, err := tagListJSON(rule.RequiredTags, "required tags")
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	exclTagsJSON, err := tagListJSON(rule.ExcludedTags, "excluded tags")
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	return configJSON, reqTagsJSON, exclTagsJSON, nil
+}
+
+func tagListJSON(tags []string, name string) ([]byte, error) {
+	data, err := json.Marshal(tags)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal %s: %w", name, err)
+	}
+	if tags == nil {
+		return []byte("[]"), nil
+	}
+
+	return data, nil
+}
+
 func (r *RoutingRuleRepository) GetRuleByID(ctx context.Context, id string) (*domain.RoutingRule, error) {
 	ctx, span := r.tracer.Start(ctx, "db.query", trace.WithAttributes(
 		attribute.String("db.system", "postgresql"),
@@ -199,23 +231,12 @@ func (r *RoutingRuleRepository) GetRuleByID(ctx context.Context, id string) (*do
 		WHERE id = $1
 	`
 
-	var (
-		name         string
-		priority     int
-		reqTagsJSON  []byte
-		exclTagsJSON []byte
-		configJSON   []byte
-		isActive     bool
-		version      int
-		createdAt    time.Time
-		updatedAt    time.Time
-	)
-
+	var rule domain.RoutingRule
 	err := r.client.Execute(func() error {
-		return r.client.Pool.QueryRow(ctx, query, id).Scan(
-			&id, &name, &priority, &reqTagsJSON, &exclTagsJSON, &configJSON,
-			&isActive, &version, &createdAt, &updatedAt,
-		)
+		var scanErr error
+		rule, scanErr = scanRoutingRule(r.client.Pool.QueryRow(ctx, query, id).Scan, true)
+
+		return scanErr
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -224,34 +245,6 @@ func (r *RoutingRuleRepository) GetRuleByID(ctx context.Context, id string) (*do
 
 		return nil, fmt.Errorf("failed to get routing rule %s: %w", id, err)
 	}
-
-	var rule domain.RoutingRule
-	err = json.Unmarshal(configJSON, &rule)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal routing rule config: %w", err)
-	}
-
-	rule.ID = id
-	rule.Name = name
-	rule.Priority = priority
-	rule.IsActive = isActive
-	rule.Version = version
-	rule.CreatedAt = createdAt
-	rule.UpdatedAt = updatedAt
-
-	var reqTags []string
-	err = json.Unmarshal(reqTagsJSON, &reqTags)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal required tags: %w", err)
-	}
-	rule.RequiredTags = reqTags
-
-	var exclTags []string
-	err = json.Unmarshal(exclTagsJSON, &exclTags)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal excluded tags: %w", err)
-	}
-	rule.ExcludedTags = exclTags
 
 	return &rule, nil
 }
@@ -265,25 +258,9 @@ func (r *RoutingRuleRepository) UpdateRule(ctx context.Context, rule *domain.Rou
 	))
 	defer span.End()
 
-	configJSON, err := json.Marshal(rule)
+	configJSON, reqTagsJSON, exclTagsJSON, err := routingRuleJSON(rule)
 	if err != nil {
-		return fmt.Errorf("failed to marshal rule config: %w", err)
-	}
-
-	reqTagsJSON, err := json.Marshal(rule.RequiredTags)
-	if err != nil {
-		return fmt.Errorf("failed to marshal required tags: %w", err)
-	}
-	if rule.RequiredTags == nil {
-		reqTagsJSON = []byte("[]")
-	}
-
-	exclTagsJSON, err := json.Marshal(rule.ExcludedTags)
-	if err != nil {
-		return fmt.Errorf("failed to marshal excluded tags: %w", err)
-	}
-	if rule.ExcludedTags == nil {
-		exclTagsJSON = []byte("[]")
+		return err
 	}
 
 	if rule.UpdatedAt.IsZero() {
@@ -401,48 +378,10 @@ func (r *RoutingRuleRepository) ListRules(ctx context.Context, limit, offset int
 	var rules []domain.RoutingRule
 
 	for rows.Next() {
-		var (
-			id           string
-			name         string
-			priority     int
-			reqTagsJSON  []byte
-			exclTagsJSON []byte
-			configJSON   []byte
-			isActive     bool
-			version      int
-			createdAt    time.Time
-			updatedAt    time.Time
-		)
-
-		err := rows.Scan(
-			&id, &name, &priority, &reqTagsJSON, &exclTagsJSON, &configJSON,
-			&isActive, &version, &createdAt, &updatedAt,
-		)
+		rule, err := scanRoutingRule(rows.Scan, false)
 		if err != nil {
 			return nil, 0, fmt.Errorf("failed to scan routing rule row: %w", err)
 		}
-
-		var rule domain.RoutingRule
-		err = json.Unmarshal(configJSON, &rule)
-		if err != nil {
-			return nil, 0, fmt.Errorf("failed to unmarshal routing rule config for ruled %s: %w", id, err)
-		}
-
-		rule.ID = id
-		rule.Name = name
-		rule.Priority = priority
-		rule.IsActive = isActive
-		rule.Version = version
-		rule.CreatedAt = createdAt
-		rule.UpdatedAt = updatedAt
-
-		var reqTags []string
-		_ = json.Unmarshal(reqTagsJSON, &reqTags)
-		rule.RequiredTags = reqTags
-
-		var exclTags []string
-		_ = json.Unmarshal(exclTagsJSON, &exclTags)
-		rule.ExcludedTags = exclTags
 
 		rules = append(rules, rule)
 	}

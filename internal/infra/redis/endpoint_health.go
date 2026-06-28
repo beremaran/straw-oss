@@ -127,55 +127,22 @@ func (s *EndpointHealthStore) GetHealth(ctx context.Context, endpointID string) 
 }
 
 func (s *EndpointHealthStore) ListHealthyByTags(ctx context.Context, tags []string) ([]*EndpointHealth, error) {
-	endpointIDs, err := s.client.Client.ZRange(ctx, endpointHealthIndexKey, 0, -1).Result()
+	endpoints, err := listHealthRecords(ctx, s)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list endpoint IDs: %w", err)
+		return nil, err
 	}
 
-	if len(endpointIDs) == 0 {
-		return []*EndpointHealth{}, nil
-	}
-
-	keys := make([]string, len(endpointIDs))
-	for i, id := range endpointIDs {
-		keys[i] = healthKey(id)
-	}
-
-	results, err := s.client.Client.MGet(ctx, keys...).Result()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get health records: %w", err)
-	}
-
-	healthy := make([]*EndpointHealth, 0)
-	for _, result := range results {
-		if result == nil {
-			continue
-		}
-
-		str, ok := result.(string)
-		if !ok {
-			continue
-		}
-
-		var health EndpointHealth
-		err := json.Unmarshal([]byte(str), &health)
-		if err != nil {
-			continue
-		}
-
-		if health.State != HealthStateHealthy && health.State != HealthStateSuspect {
-			continue
-		}
-
-		if matchesTags(&health, tags) {
-			healthy = append(healthy, &health)
+	healthy := make([]*EndpointHealth, 0, len(endpoints))
+	for _, health := range endpoints {
+		if isHealthyForSelection(health) && matchesTags(health, tags) {
+			healthy = append(healthy, health)
 		}
 	}
 
 	return healthy, nil
 }
 
-func (s *EndpointHealthStore) ListAllEndpoints(ctx context.Context) ([]*EndpointHealth, error) {
+func listHealthRecords(ctx context.Context, s *EndpointHealthStore) ([]*EndpointHealth, error) {
 	endpointIDs, err := s.client.Client.ZRange(ctx, endpointHealthIndexKey, 0, -1).Result()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list endpoint IDs: %w", err)
@@ -195,27 +162,42 @@ func (s *EndpointHealthStore) ListAllEndpoints(ctx context.Context) ([]*Endpoint
 		return nil, fmt.Errorf("failed to get health records: %w", err)
 	}
 
+	return decodeHealthRecords(results), nil
+}
+
+func (s *EndpointHealthStore) ListAllEndpoints(ctx context.Context) ([]*EndpointHealth, error) {
+	return listHealthRecords(ctx, s)
+}
+
+func decodeHealthRecords(results []interface{}) []*EndpointHealth {
 	endpoints := make([]*EndpointHealth, 0, len(results))
 	for _, result := range results {
-		if result == nil {
-			continue
+		health := decodeHealthRecord(result)
+		if health != nil {
+			endpoints = append(endpoints, health)
 		}
-
-		str, ok := result.(string)
-		if !ok {
-			continue
-		}
-
-		var health EndpointHealth
-		err := json.Unmarshal([]byte(str), &health)
-		if err != nil {
-			continue
-		}
-
-		endpoints = append(endpoints, &health)
 	}
 
-	return endpoints, nil
+	return endpoints
+}
+
+func decodeHealthRecord(result interface{}) *EndpointHealth {
+	str, ok := result.(string)
+	if !ok {
+		return nil
+	}
+
+	health := new(EndpointHealth)
+	err := json.Unmarshal([]byte(str), health)
+	if err != nil {
+		return nil
+	}
+
+	return health
+}
+
+func isHealthyForSelection(health *EndpointHealth) bool {
+	return health.State == HealthStateHealthy || health.State == HealthStateSuspect
 }
 
 func (s *EndpointHealthStore) DeleteHealth(ctx context.Context, endpointID string) error {

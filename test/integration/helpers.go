@@ -206,6 +206,36 @@ func CreateTestRoutingRule(
 	}
 	defer func() { _ = db.Close() }()
 
+	rule := newTestRoutingRule(
+		name,
+		priority,
+		requiredTags,
+		excludedTags,
+		quotaKey,
+		rateLimitPerSecond,
+		rateLimitPerMinute,
+		fingerprintPreset,
+		endpointPools,
+	)
+	configJSON, reqTagsJSON, exclTagsJSON, err := testRoutingRuleJSON(rule)
+	if err != nil {
+		return err
+	}
+
+	return insertTestRoutingRule(ctx, db, rule, configJSON, reqTagsJSON, exclTagsJSON)
+}
+
+func newTestRoutingRule(
+	name string,
+	priority int,
+	requiredTags []string,
+	excludedTags []string,
+	quotaKey string,
+	rateLimitPerSecond int,
+	rateLimitPerMinute int,
+	fingerprintPreset string,
+	endpointPools []TestEndpointPool,
+) domain.RoutingRule {
 	id := uuid.New().String()
 	if name == "" {
 		name = "Test Rule " + id
@@ -240,35 +270,49 @@ func CreateTestRoutingRule(
 		UpdatedAt:          time.Now(),
 	}
 
+	return rule
+}
+
+func testRoutingRuleJSON(rule domain.RoutingRule) ([]byte, []byte, []byte, error) {
 	configJSON, err := json.Marshal(rule)
 	if err != nil {
-		return fmt.Errorf("failed to marshal rule config: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to marshal rule config: %w", err)
 	}
 
-	reqTagsJSON, err := json.Marshal(requiredTags)
+	reqTagsJSON, err := testStringSliceJSON(rule.RequiredTags, "required tags")
 	if err != nil {
-		return fmt.Errorf("failed to marshal required tags: %w", err)
-	}
-	if requiredTags == nil {
-		reqTagsJSON = []byte("[]")
+		return nil, nil, nil, err
 	}
 
-	exclTagsJSON, err := json.Marshal(excludedTags)
+	exclTagsJSON, err := testStringSliceJSON(rule.ExcludedTags, "excluded tags")
 	if err != nil {
-		return fmt.Errorf("failed to marshal excluded tags: %w", err)
-	}
-	if excludedTags == nil {
-		exclTagsJSON = []byte("[]")
+		return nil, nil, nil, err
 	}
 
-	_, err = db.ExecContext(ctx, `
+	return configJSON, reqTagsJSON, exclTagsJSON, nil
+}
+
+func testStringSliceJSON(values []string, name string) ([]byte, error) {
+	data, err := json.Marshal(values)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal %s: %w", name, err)
+	}
+	if values == nil {
+		return []byte("[]"), nil
+	}
+
+	return data, nil
+}
+
+func insertTestRoutingRule(ctx context.Context, db *sql.DB, rule domain.RoutingRule, configJSON, reqTagsJSON, exclTagsJSON []byte) error {
+	_, err := db.ExecContext(ctx, `
 		INSERT INTO routing_rules (
 			id, name, priority, required_tags, excluded_tags, config,
 			is_active, version, created_at, updated_at
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10
 		)
-	`, id, name, priority, reqTagsJSON, exclTagsJSON, configJSON,
+	`, rule.ID, rule.Name, rule.Priority, reqTagsJSON, exclTagsJSON, configJSON,
 		true, 1, time.Now(), time.Now())
 	if err != nil {
 		return fmt.Errorf("failed to create routing rule: %w", err)
@@ -355,6 +399,36 @@ func (c *HTTPTestClient) SendRequest(ctx context.Context, req *ProxyRequest) (*P
 		req.Method = "GET"
 	}
 
+	httpReq, err := c.newProxyHTTPRequest(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.Client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	return readProxyResponse(resp)
+}
+
+func (c *HTTPTestClient) newProxyHTTPRequest(ctx context.Context, req *ProxyRequest) (*http.Request, error) {
+	body, err := json.Marshal(proxyPayload(req))
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/v1/request", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	applyProxyRequestHeaders(httpReq, c.APIKey, req)
+
+	return httpReq, nil
+}
+
+func proxyPayload(req *ProxyRequest) map[string]interface{} {
 	payload := map[string]interface{}{
 		"url":    req.URL,
 		"method": req.Method,
@@ -373,31 +447,21 @@ func (c *HTTPTestClient) SendRequest(ctx context.Context, req *ProxyRequest) (*P
 		payload["session_id"] = req.SessionID
 	}
 
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
-	}
+	return payload
+}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/v1/request", bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
+func applyProxyRequestHeaders(httpReq *http.Request, apiKey string, req *ProxyRequest) {
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+c.APIKey)
+	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
 	if len(req.Tags) > 0 {
 		httpReq.Header.Set("X-Relay-Tags", strings.Join(req.Tags, ","))
 	}
 	if req.SessionID != "" {
 		httpReq.Header.Set("X-Session-ID", req.SessionID)
 	}
+}
 
-	resp, err := c.Client.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
+func readProxyResponse(resp *http.Response) (*ProxyResponse, error) {
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)

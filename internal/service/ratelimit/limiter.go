@@ -27,48 +27,67 @@ func NewRateLimiter(redis *redis.Client) *RateLimiter {
 
 func (l *RateLimiter) Allow(ctx context.Context, quotaKey string, limitPerSecond, limitPerMinute int) (bool, Result, error) {
 	now := time.Now()
-	var secResult Result
-
-	if limitPerSecond > 0 {
-		allowed, res, err := l.checkSecondLimit(ctx, quotaKey, limitPerSecond, now)
-		if err != nil {
-			return false, Result{}, err
-		}
-		if !allowed {
-			return false, res, nil
-		}
-		secResult = res
+	secResult, blocked, err := l.checkOptionalSecondLimit(ctx, quotaKey, limitPerSecond, now)
+	if err != nil || blocked {
+		return false, secResult, err
 	}
 
-	var minResult Result
-	if limitPerMinute > 0 {
-		allowed, res, err := l.checkMinuteLimit(ctx, quotaKey, limitPerMinute, now)
-		if err != nil {
-			return false, Result{}, err
-		}
-		if !allowed {
-			return false, res, nil
-		}
-		minResult = res
+	minResult, blocked, err := l.checkOptionalMinuteLimit(ctx, quotaKey, limitPerMinute, now)
+	if err != nil || blocked {
+		return false, minResult, err
 	}
 
+	return true, allowedResult(limitPerSecond, limitPerMinute, secResult, minResult), nil
+}
+
+func (l *RateLimiter) checkOptionalSecondLimit(
+	ctx context.Context,
+	quotaKey string,
+	limitPerSecond int,
+	now time.Time,
+) (Result, bool, error) {
+	if limitPerSecond <= 0 {
+		return Result{}, false, nil
+	}
+
+	allowed, res, err := l.checkSecondLimit(ctx, quotaKey, limitPerSecond, now)
+
+	return res, !allowed, err
+}
+
+func (l *RateLimiter) checkOptionalMinuteLimit(
+	ctx context.Context,
+	quotaKey string,
+	limitPerMinute int,
+	now time.Time,
+) (Result, bool, error) {
+	if limitPerMinute <= 0 {
+		return Result{}, false, nil
+	}
+
+	allowed, res, err := l.checkMinuteLimit(ctx, quotaKey, limitPerMinute, now)
+
+	return res, !allowed, err
+}
+
+func allowedResult(limitPerSecond, limitPerMinute int, secResult, minResult Result) Result {
 	if limitPerSecond > 0 && limitPerMinute > 0 {
 		if limitPerSecond*60 < limitPerMinute {
-			return true, secResult, nil
+			return secResult
 		}
 
-		return true, minResult, nil
+		return minResult
 	}
 
 	if limitPerSecond > 0 {
-		return true, secResult, nil
+		return secResult
 	}
 
 	if limitPerMinute > 0 {
-		return true, minResult, nil
+		return minResult
 	}
 
-	return true, Result{Allowed: true, Remaining: -1}, nil
+	return Result{Allowed: true, Remaining: -1}
 }
 
 func (l *RateLimiter) checkSecondLimit(ctx context.Context, quotaKey string, limitPerSecond int, now time.Time) (bool, Result, error) {

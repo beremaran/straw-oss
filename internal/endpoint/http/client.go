@@ -18,6 +18,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/beremaran/straw/internal/endpoint/fingerprint"
 	"github.com/beremaran/straw/internal/endpoint/metrics"
@@ -111,33 +112,14 @@ func (c *Client) Do(ctx context.Context, req *protocol.Request) (*protocol.Respo
 	startTime := time.Now()
 
 	var reusedConn bool
-	traceCtx := httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
-		GotConn: func(info httptrace.GotConnInfo) {
-			reusedConn = info.Reused
-		},
-	})
+	traceCtx := tracedRequestContext(ctx, req, span, &reusedConn)
 
-	span.SetAttributes(
-		semconv.HTTPRequestMethodKey.String(req.Method),
-		semconv.URLFullKey.String(req.URL),
-		attribute.String("endpoint.tls_fingerprint", req.Fingerprint),
-	)
+	preset, err := resolveClientPreset(c, req.Fingerprint)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 
-	preset, ok := c.registry.Get(req.Fingerprint)
-	if ok {
-		metrics.TLSFingerprintUsed.WithLabelValues(req.Fingerprint).Inc()
-	} else {
-		preset, ok = c.registry.Get("chrome-133")
-		if !ok {
-			err := &ClientError{
-				Code:    "FINGERPRINT_NOT_FOUND",
-				Message: "fingerprint preset not found: " + req.Fingerprint,
-			}
-			span.RecordError(err)
-			span.SetStatus(codes.Error, err.Error())
-
-			return nil, err
-		}
+		return nil, err
 	}
 
 	fhttpReq, err := BuildRequest(traceCtx, req, preset)
@@ -148,25 +130,11 @@ func (c *Client) Do(ctx context.Context, req *protocol.Request) (*protocol.Respo
 		return nil, err
 	}
 
-	host := fhttpReq.URL.Host
-	if host == "" {
-		var u *url.URL
-		u, err = url.Parse(req.URL)
-		if err == nil {
-			host = u.Host
-		}
-	}
+	host := requestHost(req.URL, fhttpReq)
 	span.SetAttributes(semconv.ServerAddressKey.String(host))
 
-	var dialContext func(ctx context.Context, network, addr string) (net.Conn, error)
-	if c.transportProvider != nil {
-		if t := c.transportProvider.GetTransport(host, preset); t != nil {
-			dialContext = t.DialContext
-		}
-	}
-
 	timeout := c.getTimeout(req)
-	client, err := c.getTLSClient(preset.ID, timeout, dialContext)
+	client, err := c.getTLSClient(preset.ID, timeout, clientDialContext(c, host, preset))
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "failed to get tls client: "+err.Error())
@@ -184,17 +152,7 @@ func (c *Client) Do(ctx context.Context, req *protocol.Request) (*protocol.Respo
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 
-		return &protocol.Response{
-			RequestID:  req.ID,
-			EndpointID: c.endpointID,
-			SessionID:  req.SessionID,
-			Timing:     &timing,
-			Error: &protocol.ErrorInfo{
-				Code:      protocol.ErrCodeUpstreamError,
-				Message:   err.Error(),
-				Retryable: isRetryableError(err),
-			},
-		}, nil
+		return upstreamErrorResponse(req, c.endpointID, timing, err), nil
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -204,6 +162,48 @@ func (c *Client) Do(ctx context.Context, req *protocol.Request) (*protocol.Respo
 		semconv.HTTPResponseStatusCodeKey.Int(resp.StatusCode),
 	)
 
+	protocolResp, err := BuildResponseWithOptions(req.ID, resp, timing, responseOptions(c, req), c.endpointID, req.SessionID)
+	recordUpstreamResult(span, host, startTime, protocolResp, err)
+
+	return protocolResp, err
+}
+
+func tracedRequestContext(ctx context.Context, req *protocol.Request, span trace.Span, reusedConn *bool) context.Context {
+	traceCtx := httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
+		GotConn: func(info httptrace.GotConnInfo) {
+			*reusedConn = info.Reused
+		},
+	})
+
+	span.SetAttributes(
+		semconv.HTTPRequestMethodKey.String(req.Method),
+		semconv.URLFullKey.String(req.URL),
+		attribute.String("endpoint.tls_fingerprint", req.Fingerprint),
+	)
+
+	return traceCtx
+}
+
+func upstreamErrorResponse(
+	req *protocol.Request,
+	endpointID string,
+	timing protocol.TimingInfo,
+	err error,
+) *protocol.Response {
+	return &protocol.Response{
+		RequestID:  req.ID,
+		EndpointID: endpointID,
+		SessionID:  req.SessionID,
+		Timing:     &timing,
+		Error: &protocol.ErrorInfo{
+			Code:      protocol.ErrCodeUpstreamError,
+			Message:   err.Error(),
+			Retryable: isRetryableError(err),
+		},
+	}
+}
+
+func responseOptions(c *Client, req *protocol.Request) ResponseOptions {
 	opts := ResponseOptions{
 		MaxBodySize:    c.maxBodySize,
 		StreamResponse: req.StreamResponse,
@@ -212,8 +212,17 @@ func (c *Client) Do(ctx context.Context, req *protocol.Request) (*protocol.Respo
 	if req.MaxResponseSize > 0 {
 		opts.MaxBodySize = req.MaxResponseSize
 	}
-	protocolResp, err := BuildResponseWithOptions(req.ID, resp, timing, opts, c.endpointID, req.SessionID)
 
+	return opts
+}
+
+func recordUpstreamResult(
+	span trace.Span,
+	host string,
+	startTime time.Time,
+	protocolResp *protocol.Response,
+	err error,
+) {
 	status := "unknown"
 	if err == nil {
 		status = fmt.Sprintf("%d", protocolResp.StatusCode)
@@ -222,8 +231,55 @@ func (c *Client) Do(ctx context.Context, req *protocol.Request) (*protocol.Respo
 		span.SetStatus(codes.Error, "failed to build response")
 	}
 	metrics.UpstreamDuration.WithLabelValues(host, status).Observe(time.Since(startTime).Seconds())
+}
 
-	return protocolResp, err
+func resolveClientPreset(c *Client, presetID string) (fingerprint.Preset, error) {
+	preset, ok := c.registry.Get(presetID)
+	if ok {
+		metrics.TLSFingerprintUsed.WithLabelValues(presetID).Inc()
+
+		return preset, nil
+	}
+
+	preset, ok = c.registry.Get("chrome-133")
+	if ok {
+		return preset, nil
+	}
+
+	return fingerprint.Preset{}, &ClientError{
+		Code:    "FINGERPRINT_NOT_FOUND",
+		Message: "fingerprint preset not found: " + presetID,
+	}
+}
+
+func requestHost(reqURL string, req *fhttp.Request) string {
+	if req.URL.Host != "" {
+		return req.URL.Host
+	}
+
+	u, err := url.Parse(reqURL)
+	if err != nil {
+		return ""
+	}
+
+	return u.Host
+}
+
+func clientDialContext(
+	c *Client,
+	host string,
+	preset fingerprint.Preset,
+) func(ctx context.Context, network, addr string) (net.Conn, error) {
+	if c.transportProvider == nil {
+		return nil
+	}
+
+	transport := c.transportProvider.GetTransport(host, preset)
+	if transport == nil {
+		return nil
+	}
+
+	return transport.DialContext
 }
 
 func isRetryableError(err error) bool {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -103,129 +104,91 @@ func RunWithConfig(cfg *config.EndpointConfig) error {
 func (w *Worker) Start(ctx context.Context) error {
 	cfg := w.cfg
 
-	logger := logging.SetupLogger(logging.Config{
+	logger := setupWorkerLogger(cfg)
+	logWorkerStart(logger, cfg)
+
+	defer setupEndpointTracer(ctx, logger)()
+
+	executor, cleanupExecutor := setupEndpointExecutor(cfg, logger, w.executor)
+	defer cleanupExecutor()
+
+	mqBroker, err := connectWorkerBroker(cfg)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = mqBroker.Close() }()
+	logger.Info("connected to message broker")
+
+	resultPublisher := NewPublisher(
+		mqBroker,
+		WithPublisherLogger(logger.WithGroup("publisher")),
+	)
+	hbSender := newWorkerHeartbeat(mqBroker, cfg, logger)
+	taskConsumer := newWorkerConsumer(mqBroker, executor, cfg, logger, resultPublisher)
+	updateChecker := newUpdateChecker(ctx, cfg, logger)
+
+	var wg sync.WaitGroup
+	obsmetrics.Init()
+	healthServer := newHealthServer(cfg)
+
+	startWorkerServices(ctx, &wg, logger, hbSender, updateChecker, taskConsumer, healthServer)
+
+	<-ctx.Done()
+
+	return shutdownWorker(ctx, &wg, logger, healthServer)
+}
+
+func setupWorkerLogger(cfg *config.EndpointConfig) *slog.Logger {
+	return logging.SetupLogger(logging.Config{
 		Level:   cfg.Observability.LogLevel,
 		Format:  cfg.Observability.LogFormat,
 		Service: "endpoint",
 		Version: Version,
 	})
+}
 
+func logWorkerStart(logger *slog.Logger, cfg *config.EndpointConfig) {
 	logger.Info("starting endpoint worker",
 		"endpoint_id", cfg.ID,
 		"version", Version,
 		"concurrency_limit", cfg.ConcurrencyLimit,
 	)
+}
 
-	shutdownTracer, err := tracing.InitTracerProvider(ctx, "straw-endpoint", Version)
-	if err != nil {
-		logger.Warn("failed to initialize tracer provider", "error", err)
-	} else {
-		defer func() {
-			shutdownCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			defer cancel()
-			err := shutdownTracer(shutdownCtx)
-			if err != nil {
-				logger.Error("failed to shutdown tracer provider", "error", err)
-			}
-		}()
-	}
-
-	var pooledTransport *endpointtransport.PooledTransport
-	executor := w.executor
-
-	if executor == nil {
-		registry := fingerprint.DefaultRegistry()
-		logger.Info("fingerprint registry initialized", "count", registry.Count())
-
-		poolConfig := endpointtransport.DefaultPoolConfig().
-			WithMaxPoolHosts(cfg.MaxPoolHosts).
-			WithIdleConnsPerHost(cfg.IdleConnsPerHost).
-			WithIdleConnTimeout(cfg.IdleConnTimeout)
-
-		pooledTransport = endpointtransport.NewPooledTransport(poolConfig, func(ctx context.Context, network, addr, fp string) (net.Conn, error) {
-			return endpointtls.Dial(ctx, network, addr, fp)
-		})
-		defer func() { _ = pooledTransport.Close() }()
-
-		httpClient := endpointhttp.NewClient(
-			registry,
-			pooledTransport,
-			endpointhttp.WithEndpointID(cfg.ID),
-			endpointhttp.WithDefaultTimeout(30*time.Second),
-		)
-		defer func() { _ = httpClient.Close() }()
-		executor = httpClient
-	}
-
+func connectWorkerBroker(cfg *config.EndpointConfig) (broker.MessageBroker, error) {
 	mqBroker := broker.NewNatsBroker(
 		broker.Addrs(cfg.NATS.URL),
 		broker.Token(cfg.NATS.Token),
 	)
 
-	err = mqBroker.Connect()
+	err := mqBroker.Connect()
 	if err != nil {
-		return fmt.Errorf("failed to connect to message broker: %w", err)
+		return nil, fmt.Errorf("failed to connect to message broker: %w", err)
 	}
-	defer func() { _ = mqBroker.Close() }()
-	logger.Info("connected to message broker")
 
-	hbSender := NewHeartbeatSender(
-		mqBroker,
+	return mqBroker, nil
+}
+
+func newWorkerHeartbeat(b broker.MessageBroker, cfg *config.EndpointConfig, logger *slog.Logger) *HeartbeatSender {
+	return NewHeartbeatSender(
+		b,
 		cfg.ID,
 		WithHeartbeatVersion(Version),
 		WithHeartbeatTags(cfg.Tags),
 		WithHeartbeatInterval(10*time.Second),
 		WithHeartbeatLogger(logger.WithGroup("heartbeat")),
 	)
+}
 
-	resultPublisher := NewPublisher(
-		mqBroker,
-		WithPublisherLogger(logger.WithGroup("publisher")),
-	)
-
-	var updateChecker *update.Checker
-	if cfg.SelfUpdateEnabled && cfg.SelfUpdateURL != "" {
-		installer := update.NewInstaller(
-			update.WithInstallerLogger(logger.WithGroup("installer")),
-		)
-
-		updateChecker = update.NewChecker(
-			cfg.SelfUpdateURL,
-			Version,
-			update.WithCheckInterval(cfg.SelfUpdateInterval),
-			update.WithCheckerLogger(logger.WithGroup("update")),
-			update.WithUpdateCallback(func(r *update.Result) bool {
-				logger.Info("starting auto-update", "new_version", r.NewVersion)
-
-				updateCtx, msgCancel := context.WithTimeout(ctx, 5*time.Minute)
-				defer msgCancel()
-
-				err := installer.Install(updateCtx, &update.VersionManifest{
-					Version: r.NewVersion,
-					URL:     r.DownloadURL,
-					SHA256:  r.Checksum,
-				})
-				if err != nil {
-					logger.Error("failed to install update", "error", err)
-
-					return false
-				}
-
-				logger.Info("update installed, restarting...")
-				err = installer.ReplaceAndRestart()
-				if err != nil {
-					logger.Error("failed to restart", "error", err)
-
-					return false
-				}
-
-				return true
-			}),
-		)
-	}
-
-	taskConsumer := NewConsumer(
-		mqBroker,
+func newWorkerConsumer(
+	b broker.MessageBroker,
+	executor RequestExecutor,
+	cfg *config.EndpointConfig,
+	logger *slog.Logger,
+	resultPublisher *Publisher,
+) *Consumer {
+	return NewConsumer(
+		b,
 		executor,
 		[]byte(cfg.Security.HMACSecret),
 		cfg.ID,
@@ -233,54 +196,160 @@ func (w *Worker) Start(ctx context.Context) error {
 		WithLogger(logger.WithGroup("consumer")),
 		WithResultHandler(resultPublisher.Handler()),
 	)
+}
 
-	var wg sync.WaitGroup
+func newHealthServer(cfg *config.EndpointConfig) *http.Server {
+	return &http.Server{
+		Addr:    fmt.Sprintf(":%d", cfg.Observability.MetricsPort),
+		Handler: setupHealthHandler(),
+	}
+}
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		hbSender.Start(ctx)
-	}()
+func setupEndpointTracer(ctx context.Context, logger *slog.Logger) func() {
+	shutdownTracer, err := tracing.InitTracerProvider(ctx, "straw-endpoint", Version)
+	if err != nil {
+		logger.Warn("failed to initialize tracer provider", "error", err)
 
-	if updateChecker != nil {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			updateChecker.Start(ctx)
-		}()
+		return func() {}
 	}
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	return func() {
+		shutdownCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		err := shutdownTracer(shutdownCtx)
+		if err != nil {
+			logger.Error("failed to shutdown tracer provider", "error", err)
+		}
+	}
+}
+
+func setupEndpointExecutor(
+	cfg *config.EndpointConfig,
+	logger *slog.Logger,
+	executor RequestExecutor,
+) (RequestExecutor, func()) {
+	if executor != nil {
+		return executor, func() {}
+	}
+
+	registry := fingerprint.DefaultRegistry()
+	logger.Info("fingerprint registry initialized", "count", registry.Count())
+
+	poolConfig := endpointtransport.DefaultPoolConfig().
+		WithMaxPoolHosts(cfg.MaxPoolHosts).
+		WithIdleConnsPerHost(cfg.IdleConnsPerHost).
+		WithIdleConnTimeout(cfg.IdleConnTimeout)
+
+	pooledTransport := endpointtransport.NewPooledTransport(poolConfig, func(ctx context.Context, network, addr, fp string) (net.Conn, error) {
+		return endpointtls.Dial(ctx, network, addr, fp)
+	})
+	httpClient := endpointhttp.NewClient(
+		registry,
+		pooledTransport,
+		endpointhttp.WithEndpointID(cfg.ID),
+		endpointhttp.WithDefaultTimeout(30*time.Second),
+	)
+
+	return httpClient, func() {
+		_ = httpClient.Close()
+		_ = pooledTransport.Close()
+	}
+}
+
+func newUpdateChecker(ctx context.Context, cfg *config.EndpointConfig, logger *slog.Logger) *update.Checker {
+	if !cfg.SelfUpdateEnabled || cfg.SelfUpdateURL == "" {
+		return nil
+	}
+
+	installer := update.NewInstaller(
+		update.WithInstallerLogger(logger.WithGroup("installer")),
+	)
+
+	return update.NewChecker(
+		cfg.SelfUpdateURL,
+		Version,
+		update.WithCheckInterval(cfg.SelfUpdateInterval),
+		update.WithCheckerLogger(logger.WithGroup("update")),
+		update.WithUpdateCallback(updateCallback(ctx, logger, installer)),
+	)
+}
+
+func updateCallback(ctx context.Context, logger *slog.Logger, installer *update.Installer) func(*update.Result) bool {
+	return func(r *update.Result) bool {
+		logger.Info("starting auto-update", "new_version", r.NewVersion)
+
+		updateCtx, msgCancel := context.WithTimeout(ctx, 5*time.Minute)
+		defer msgCancel()
+
+		err := installer.Install(updateCtx, &update.VersionManifest{
+			Version: r.NewVersion,
+			URL:     r.DownloadURL,
+			SHA256:  r.Checksum,
+		})
+		if err != nil {
+			logger.Error("failed to install update", "error", err)
+
+			return false
+		}
+
+		logger.Info("update installed, restarting...")
+		err = installer.ReplaceAndRestart()
+		if err != nil {
+			logger.Error("failed to restart", "error", err)
+
+			return false
+		}
+
+		return true
+	}
+}
+
+func startWorkerServices(
+	ctx context.Context,
+	wg *sync.WaitGroup,
+	logger *slog.Logger,
+	hbSender *HeartbeatSender,
+	updateChecker *update.Checker,
+	taskConsumer *Consumer,
+	healthServer *http.Server,
+) {
+	startWorkerService(wg, func() {
+		hbSender.Start(ctx)
+	})
+	if updateChecker != nil {
+		startWorkerService(wg, func() {
+			updateChecker.Start(ctx)
+		})
+	}
+	startWorkerService(wg, func() {
 		err := taskConsumer.Start(ctx)
 		if err != nil {
 			logger.Error("consumer stopped with error", "error", err)
 		}
-	}()
-
-	obsmetrics.Init()
-	healthServer := &http.Server{
-		Addr:    fmt.Sprintf(":%d", cfg.Observability.MetricsPort),
-		Handler: setupHealthHandler(),
-	}
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	})
+	startWorkerService(wg, func() {
 		logger.Info("starting health/metrics server", "addr", healthServer.Addr)
 		err := healthServer.ListenAndServe()
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Error("health server failed", "error", err)
 		}
-	}()
+	})
+}
 
-	<-ctx.Done()
+func startWorkerService(wg *sync.WaitGroup, run func()) {
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		run()
+	}()
+}
+
+func shutdownWorker(ctx context.Context, wg *sync.WaitGroup, logger *slog.Logger, healthServer *http.Server) error {
 	logger.Info("shutting down...")
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(ctx, 5*time.Second)
 	defer shutdownCancel()
-	err = healthServer.Shutdown(shutdownCtx)
+	err := healthServer.Shutdown(shutdownCtx)
 	if err != nil {
 		logger.Warn("health server shutdown error", "error", err)
 	}

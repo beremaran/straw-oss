@@ -119,11 +119,10 @@ func (i *Installer) DownloadAndVerify(ctx context.Context, manifest *VersionMani
 		"expected_sha256", manifest.SHA256,
 	)
 
-	tmpFile, err := os.CreateTemp("", "straw-update-*")
+	tmpFile, tmpPath, err := createUpdateTempFile()
 	if err != nil {
-		return "", fmt.Errorf("%w: failed to create temp file: %w", ErrDownloadFailed, err)
+		return "", err
 	}
-	tmpPath := tmpFile.Name()
 
 	success := false
 	defer func() {
@@ -133,46 +132,23 @@ func (i *Installer) DownloadAndVerify(ctx context.Context, manifest *VersionMani
 		}
 	}()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, manifest.URL, nil)
+	resp, err := download(ctx, i.httpClient, manifest.URL)
 	if err != nil {
-		return "", fmt.Errorf("%w: failed to create request: %w", ErrDownloadFailed, err)
-	}
-
-	resp, err := i.httpClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("%w: HTTP request failed: %w", ErrDownloadFailed, err)
+		return "", err
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("%w: unexpected status code: %d", ErrDownloadFailed, resp.StatusCode)
-	}
-
 	hasher := sha256.New()
-	var downloaded int64
-
-	var reader io.Reader = resp.Body
-	if i.onProgress != nil {
-		reader = &progressReader{
-			reader:     resp.Body,
-			total:      resp.ContentLength,
-			onProgress: i.onProgress,
-		}
-	}
-
-	multiWriter := io.MultiWriter(tmpFile, hasher)
-	downloaded, err = io.Copy(multiWriter, reader)
+	downloaded, err := copyDownload(tmpFile, hasher, resp, i.onProgress)
 	if err != nil {
 		return "", fmt.Errorf("%w: failed to download: %w", ErrDownloadFailed, err)
 	}
 
 	i.logger.Debug("download complete", "bytes", downloaded)
 
-	actualSum := hex.EncodeToString(hasher.Sum(nil))
-	expectedSum := manifest.SHA256
-
-	if actualSum != expectedSum {
-		return "", fmt.Errorf("%w: expected %s, got %s", ErrChecksumMismatch, expectedSum, actualSum)
+	actualSum, err := verifyChecksum(hasher.Sum(nil), manifest.SHA256)
+	if err != nil {
+		return "", err
 	}
 
 	i.logger.Debug("checksum verified", "sha256", actualSum)
@@ -185,6 +161,68 @@ func (i *Installer) DownloadAndVerify(ctx context.Context, manifest *VersionMani
 	success = true
 
 	return tmpPath, nil
+}
+
+func createUpdateTempFile() (*os.File, string, error) {
+	tmpFile, err := os.CreateTemp("", "straw-update-*")
+	if err != nil {
+		return nil, "", fmt.Errorf("%w: failed to create temp file: %w", ErrDownloadFailed, err)
+	}
+
+	return tmpFile, tmpFile.Name(), nil
+}
+
+func download(ctx context.Context, client *http.Client, url string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("%w: failed to create request: %w", ErrDownloadFailed, err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("%w: HTTP request failed: %w", ErrDownloadFailed, err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		_ = resp.Body.Close()
+
+		return nil, fmt.Errorf("%w: unexpected status code: %d", ErrDownloadFailed, resp.StatusCode)
+	}
+
+	return resp, nil
+}
+
+func copyDownload(
+	tmpFile *os.File,
+	hasher io.Writer,
+	resp *http.Response,
+	onProgress func(downloaded, total int64),
+) (int64, error) {
+	reader := downloadReader(resp, onProgress)
+	multiWriter := io.MultiWriter(tmpFile, hasher)
+
+	return io.Copy(multiWriter, reader)
+}
+
+func downloadReader(resp *http.Response, onProgress func(downloaded, total int64)) io.Reader {
+	if onProgress == nil {
+		return resp.Body
+	}
+
+	return &progressReader{
+		reader:     resp.Body,
+		total:      resp.ContentLength,
+		onProgress: onProgress,
+	}
+}
+
+func verifyChecksum(actual []byte, expected string) (string, error) {
+	actualSum := hex.EncodeToString(actual)
+	if actualSum != expected {
+		return "", fmt.Errorf("%w: expected %s, got %s", ErrChecksumMismatch, expected, actualSum)
+	}
+
+	return actualSum, nil
 }
 
 func (i *Installer) ReplaceAndRestart() error {

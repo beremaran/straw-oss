@@ -137,9 +137,13 @@ func (h *HeaderMap) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
+	return h.unmarshalJSONObject(data)
+}
+
+func (h *HeaderMap) unmarshalJSONObject(data []byte) error {
 	dec := json.NewDecoder(strings.NewReader(string(data)))
 	var t json.Token
-	t, err = dec.Token()
+	t, err := dec.Token()
 	if err != nil {
 		return err
 	} else if t != json.Delim('{') {
@@ -157,26 +161,15 @@ func (h *HeaderMap) UnmarshalJSON(data []byte) error {
 			return &json.UnmarshalTypeError{Value: "string", Offset: dec.InputOffset()}
 		}
 
-		var value string
 		var rawValue json.RawMessage
 		err = dec.Decode(&rawValue)
 		if err != nil {
 			return err
 		}
 
-		if len(rawValue) > 0 && rawValue[0] == '[' {
-			var values []string
-			err := json.Unmarshal(rawValue, &values)
-			if err != nil {
-				return err
-			}
-
-			value = strings.Join(values, ", ")
-		} else {
-			err := json.Unmarshal(rawValue, &value)
-			if err != nil {
-				return err
-			}
+		value, err := decodeHeaderJSONValue(rawValue)
+		if err != nil {
+			return err
 		}
 
 		result = append(result, Header{Key: key, Value: value})
@@ -190,6 +183,26 @@ func (h *HeaderMap) UnmarshalJSON(data []byte) error {
 	*h = result
 
 	return nil
+}
+
+func decodeHeaderJSONValue(rawValue json.RawMessage) (string, error) {
+	if len(rawValue) > 0 && rawValue[0] == '[' {
+		var values []string
+		err := json.Unmarshal(rawValue, &values)
+		if err != nil {
+			return "", err
+		}
+
+		return strings.Join(values, ", "), nil
+	}
+
+	var value string
+	err := json.Unmarshal(rawValue, &value)
+	if err != nil {
+		return "", err
+	}
+
+	return value, nil
 }
 
 func equalFold(a, b string) bool {

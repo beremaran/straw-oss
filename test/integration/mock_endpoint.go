@@ -203,21 +203,41 @@ func (m *MockEndpoint) EndpointID() string {
 }
 
 func (m *MockEndpoint) handleMessage(ctx context.Context, body []byte) error {
+	req, err := m.parseRequest(body)
+	if err != nil {
+		return err
+	}
+
+	m.recordRequest(req)
+	m.logger.Info("mock endpoint received request",
+		"request_id", req.ID,
+		"method", req.Method,
+		"url", req.URL,
+	)
+
+	return m.publishResponse(ctx, req, m.buildResponse(ctx, req))
+}
+
+func (m *MockEndpoint) parseRequest(body []byte) (*protocol.Request, error) {
 	var signedTask protocol.SignedTask
 	err := json.Unmarshal(body, &signedTask)
 	if err != nil {
 		m.logger.Error("failed to unmarshal signed task", "error", err)
 
-		return err
+		return nil, err
 	}
 
 	req, err := protocol.ValidateSignedTask(&signedTask, m.config.Secret, 60*time.Second)
 	if err != nil {
 		m.logger.Error("failed to validate signed task", "error", err)
 
-		return err
+		return nil, err
 	}
 
+	return req, nil
+}
+
+func (m *MockEndpoint) recordRequest(req *protocol.Request) {
 	m.mu.Lock()
 	m.requests = append(m.requests, EndpointRequestRecord{
 		RequestID:   req.ID,
@@ -227,20 +247,10 @@ func (m *MockEndpoint) handleMessage(ctx context.Context, body []byte) error {
 		Time:        time.Now(),
 	})
 	m.mu.Unlock()
+}
 
-	m.logger.Info("mock endpoint received request",
-		"request_id", req.ID,
-		"method", req.Method,
-		"url", req.URL,
-	)
-
-	resp := m.buildResponse(ctx, req)
-
-	respQueueName := req.ReplyTo
-	if respQueueName == "" {
-		respQueueName = fmt.Sprintf("results.%s", req.ID)
-	}
-
+func (m *MockEndpoint) publishResponse(ctx context.Context, req *protocol.Request, resp *MockEndpointResponse) error {
+	respQueueName := responseQueueName(req)
 	resultMsg := resp.ToResultMessage(m.config.EndpointID, "", req.ID)
 
 	respBody, err := json.Marshal(resultMsg)
@@ -264,6 +274,14 @@ func (m *MockEndpoint) handleMessage(ctx context.Context, body []byte) error {
 	)
 
 	return nil
+}
+
+func responseQueueName(req *protocol.Request) string {
+	if req.ReplyTo != "" {
+		return req.ReplyTo
+	}
+
+	return fmt.Sprintf("results.%s", req.ID)
 }
 
 func (m *MockEndpoint) buildResponse(ctx context.Context, req *protocol.Request) *MockEndpointResponse {

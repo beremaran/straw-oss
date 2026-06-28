@@ -38,16 +38,9 @@ func (s *SimpleEndpointSelector) SelectWithSession(ctx context.Context, sessionI
 
 func (s *SimpleEndpointSelector) GetEndpointFromPool(ctx context.Context, rule *domain.RoutingRule, poolTier int, exclude []string) (string, error) {
 	poolConfig := s.GetPoolConfig(rule, poolTier)
-	var requiredTags []string
-	if poolConfig != nil {
-		requiredTags = rule.RequiredTags
-	} else {
-		if poolTier > 1 {
-			if len(rule.EndpointPools) == 0 {
-				return "", fmt.Errorf("%w: tier %d", ErrPoolTierNotConfigured, poolTier)
-			}
-		}
-		requiredTags = rule.RequiredTags
+	requiredTags, err := requiredTagsForPool(rule, poolConfig, poolTier)
+	if err != nil {
+		return "", err
 	}
 
 	endpoints, err := s.healthStore.ListHealthyByTags(ctx, requiredTags)
@@ -59,40 +52,12 @@ func (s *SimpleEndpointSelector) GetEndpointFromPool(ctx context.Context, rule *
 		return "", fmt.Errorf("%w for tags: %v", ErrNoHealthyEndpoints, requiredTags)
 	}
 
-	if poolConfig != nil && len(poolConfig.Endpoints) > 0 {
-		allowedEndpoints := make(map[string]bool)
-		for _, id := range poolConfig.Endpoints {
-			allowedEndpoints[id] = true
-		}
-
-		filteredEndpoints := make([]*redis.EndpointHealth, 0, len(endpoints))
-		for _, ep := range endpoints {
-			if allowedEndpoints[ep.EndpointID] {
-				filteredEndpoints = append(filteredEndpoints, ep)
-			}
-		}
-		endpoints = filteredEndpoints
-
-		if len(endpoints) == 0 {
-			return "", fmt.Errorf("%w (tier %d)", ErrNoHealthyEndpointsInPool, poolTier)
-		}
+	endpoints, err = filterPoolEndpoints(endpoints, poolConfig, poolTier)
+	if err != nil {
+		return "", err
 	}
 
-	candidates := make([]string, 0, len(endpoints))
-	for _, ep := range endpoints {
-		excluded := false
-		for _, ex := range exclude {
-			if ep.EndpointID == ex {
-				excluded = true
-
-				break
-			}
-		}
-		if !excluded {
-			candidates = append(candidates, ep.EndpointID)
-		}
-	}
-
+	candidates := endpointCandidates(endpoints, exclude)
 	if len(candidates) == 0 {
 		return "", ErrNoAvailableEndpointsAfterExclusion
 	}
@@ -100,6 +65,62 @@ func (s *SimpleEndpointSelector) GetEndpointFromPool(ctx context.Context, rule *
 	idx := rand.Intn(len(candidates))
 
 	return candidates[idx], nil
+}
+
+func requiredTagsForPool(
+	rule *domain.RoutingRule,
+	poolConfig *domain.EndpointPool,
+	poolTier int,
+) ([]string, error) {
+	if poolConfig == nil && poolTier > 1 && len(rule.EndpointPools) == 0 {
+		return nil, fmt.Errorf("%w: tier %d", ErrPoolTierNotConfigured, poolTier)
+	}
+
+	return rule.RequiredTags, nil
+}
+
+func filterPoolEndpoints(
+	endpoints []*redis.EndpointHealth,
+	poolConfig *domain.EndpointPool,
+	poolTier int,
+) ([]*redis.EndpointHealth, error) {
+	if poolConfig == nil || len(poolConfig.Endpoints) == 0 {
+		return endpoints, nil
+	}
+
+	allowedEndpoints := make(map[string]bool, len(poolConfig.Endpoints))
+	for _, id := range poolConfig.Endpoints {
+		allowedEndpoints[id] = true
+	}
+
+	filteredEndpoints := make([]*redis.EndpointHealth, 0, len(endpoints))
+	for _, ep := range endpoints {
+		if allowedEndpoints[ep.EndpointID] {
+			filteredEndpoints = append(filteredEndpoints, ep)
+		}
+	}
+
+	if len(filteredEndpoints) == 0 {
+		return nil, fmt.Errorf("%w (tier %d)", ErrNoHealthyEndpointsInPool, poolTier)
+	}
+
+	return filteredEndpoints, nil
+}
+
+func endpointCandidates(endpoints []*redis.EndpointHealth, exclude []string) []string {
+	excluded := make(map[string]bool, len(exclude))
+	for _, endpointID := range exclude {
+		excluded[endpointID] = true
+	}
+
+	candidates := make([]string, 0, len(endpoints))
+	for _, ep := range endpoints {
+		if !excluded[ep.EndpointID] {
+			candidates = append(candidates, ep.EndpointID)
+		}
+	}
+
+	return candidates
 }
 
 func (s *SimpleEndpointSelector) GetPoolConfig(rule *domain.RoutingRule, poolTier int) *domain.EndpointPool {

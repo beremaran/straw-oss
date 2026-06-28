@@ -72,179 +72,33 @@ func NewRelayHandler(
 func (h *RelayHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	var reqDTO dto.RelayRequest
-	err := helper.ReadJSON(r, &reqDTO)
-	if err != nil {
-		var maxBytesErr *http.MaxBytesError
-		if errors.As(err, &maxBytesErr) || strings.Contains(err.Error(), "request body too large") {
-			helper.WriteError(w, http.StatusRequestEntityTooLarge, "request body too large")
-
-			return
-		}
-		helper.WriteError(w, http.StatusBadRequest, "invalid request body")
-
+	req, ok := h.readRelayRequest(w, r)
+	if !ok {
+		return
+	}
+	if !h.prepareRelayRequest(ctx, w, req) {
 		return
 	}
 
-	req, err := reqDTO.ToProtocolRequest()
-	if err != nil {
-		helper.WriteError(w, http.StatusBadRequest, err.Error())
-
+	apiKey := relayAPIKey(r)
+	parseResult, ok := h.parseRelayTags(ctx, w, r, apiKey)
+	if !ok {
 		return
 	}
-
-	if req.URL == "" {
-		helper.WriteError(w, http.StatusBadRequest, "missing url")
-
-		return
-	}
-	if req.Method == "" {
-		req.Method = http.MethodGet
-	}
-
-	if req.ID == "" {
-		req.ID = fmt.Sprintf("req_%d", time.Now().UnixNano())
-	}
-
-	validationOpts := []validator.ValidationOption{}
-	if h.allowPrivateIPs {
-		validationOpts = append(validationOpts, validator.WithAllowPrivateIPs())
-	}
-	err = validator.ValidateTargetURL(r.Context(), req.URL, validationOpts...)
-	if err != nil {
-		slog.WarnContext(ctx, "target url validation failed", "url", req.URL, "error", err)
-		helper.WriteError(w, http.StatusForbidden, fmt.Sprintf("invalid target url: %v", err))
-
-		return
-	}
-
-	var apiKey *domain.ApiKey
-	if val := middleware.GetAPIKey(r); val != nil {
-		if k, ok := val.(*domain.ApiKey); ok {
-			apiKey = k
-		}
-	}
-
-	parseResult, err := h.tagParser.ParseTags(r, apiKey)
-	if err != nil {
-		helper.WriteError(w, http.StatusBadRequest, "invalid tags")
-
-		return
-	}
-
-	for _, warn := range parseResult.Warnings {
-		w.Header().Add("X-Relay-Warning", warn)
-	}
-
-	if apiKey != nil && len(apiKey.Scopes) > 0 {
-		for _, tag := range parseResult.Tags {
-			if !apiKey.HasScope(tag) {
-				slog.WarnContext(ctx, "tag denied by api key scope",
-					"key_id", apiKey.ID,
-					"tag", tag.String(),
-				)
-				helper.WriteError(w, http.StatusForbidden, fmt.Sprintf("tag '%s' not allowed by api key scopes", tag.String()))
-
-				return
-			}
-		}
-	}
-
-	tracer := otel.Tracer("router")
-	_, span := tracer.Start(ctx, "router.resolve")
-	rule := h.matcher.Match(parseResult.Tags)
-
-	if rule != nil {
-		span.SetAttributes(
-			attribute.String("matched_rule.id", rule.ID),
-			attribute.String("fingerprint", rule.FingerprintPreset),
-			attribute.String("quota_key", rule.QuotaKey),
-		)
-		slog.InfoContext(ctx, "rule matched",
-			"rule_id", rule.ID,
-			"fingerprint", rule.FingerprintPreset,
-		)
-	}
-	span.End()
-	if rule == nil {
-		helper.WriteError(w, http.StatusNotFound, "no matching routing rule found")
-
+	rule, ok := h.matchRelayRule(ctx, w, parseResult)
+	if !ok {
 		return
 	}
 
 	req.Fingerprint = rule.FingerprintPreset
-
-	limitPerSecond := rule.RateLimitPerSecond
-	if apiKey != nil && apiKey.RateLimitOverride != nil {
-		limitPerSecond = *apiKey.RateLimitOverride
+	if !h.applyRelayRateLimit(ctx, w, rule, apiKey) {
+		return
 	}
-
-	if limitPerSecond > 0 || rule.RateLimitPerMinute > 0 {
-		quotaKey := rule.QuotaKey
-		if quotaKey == "" {
-			quotaKey = rule.ID
-		}
-
-		allowed, result, err := h.rateLimiter.Allow(ctx, quotaKey, limitPerSecond, rule.RateLimitPerMinute)
-		if err != nil {
-			slog.ErrorContext(ctx, "rate limit check failed", "error", err)
-			helper.WriteError(w, http.StatusInternalServerError, "rate limit check failed")
-
-			return
-		}
-
-		if result.Limit > 0 {
-			w.Header().Set("X-RateLimit-Limit", strconv.Itoa(result.Limit))
-			w.Header().Set("X-RateLimit-Remaining", strconv.Itoa(result.Remaining))
-			w.Header().Set("X-RateLimit-Reset", fmt.Sprintf("%.0f", result.Reset.Seconds()))
-		}
-
-		if !allowed {
-			slog.WarnContext(ctx, "rate limit exceeded",
-				"rule_id", rule.ID,
-				"quota_key", quotaKey,
-				"retry_after", result.Reset,
-			)
-			w.Header().Set("Retry-After", fmt.Sprintf("%.0f", result.Reset.Seconds()))
-			helper.WriteError(w, http.StatusTooManyRequests, "rate limit exceeded")
-
-			return
-		}
-	}
-
-	filterReq := filter.NewFilterRequest(
-		req.URL,
-		req.Headers.Get("Host"),
-		req.Headers.Get("Accept"),
-		req.Method,
-	)
-
-	shouldBlock, err := h.filter.ShouldBlock(ctx, filterReq, rule.RequestFilters)
-	if err != nil {
-		helper.WriteError(w, http.StatusInternalServerError, "filter check failed")
-
+	if !h.allowByFilters(ctx, w, req, rule) {
 		return
 	}
 
-	if shouldBlock.Blocked {
-		helper.WriteError(w, http.StatusForbidden, fmt.Sprintf("request blocked: %s", shouldBlock.Reason))
-
-		return
-	}
-
-	sessionID := req.SessionID
-	var preferredEndpointID string
-	var currentSession *domain.Session
-
-	if existingSession := middleware.GetSessionFromContext(ctx); existingSession != nil {
-		currentSession = existingSession
-		if sessionID == "" || sessionID == existingSession.ID {
-			preferredEndpointID = existingSession.EndpointID
-			req.SessionID = existingSession.ID
-			sessionID = existingSession.ID
-		}
-	}
-
+	sessionID, preferredEndpointID, currentSession := sessionPreference(ctx, req)
 	result, err := h.executor.Execute(ctx, req, rule, sessionID, preferredEndpointID)
 	if err != nil {
 		helper.WriteError(w, http.StatusBadGateway, "execution failed")
@@ -258,55 +112,326 @@ func (h *RelayHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	h.manageSession(w, r, currentSession, result, parseResult, rule)
+	h.writeRelayResult(ctx, w, result)
+}
 
+func (h *RelayHandler) readRelayRequest(w http.ResponseWriter, r *http.Request) (*protocol.Request, bool) {
+	var reqDTO dto.RelayRequest
+	err := helper.ReadJSON(r, &reqDTO)
+	if err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) || strings.Contains(err.Error(), "request body too large") {
+			helper.WriteError(w, http.StatusRequestEntityTooLarge, "request body too large")
+
+			return nil, false
+		}
+		helper.WriteError(w, http.StatusBadRequest, "invalid request body")
+
+		return nil, false
+	}
+
+	req, err := reqDTO.ToProtocolRequest()
+	if err != nil {
+		helper.WriteError(w, http.StatusBadRequest, err.Error())
+
+		return nil, false
+	}
+
+	return req, true
+}
+
+func (h *RelayHandler) prepareRelayRequest(ctx context.Context, w http.ResponseWriter, req *protocol.Request) bool {
+	if req.URL == "" {
+		helper.WriteError(w, http.StatusBadRequest, "missing url")
+
+		return false
+	}
+	if req.Method == "" {
+		req.Method = http.MethodGet
+	}
+	if req.ID == "" {
+		req.ID = fmt.Sprintf("req_%d", time.Now().UnixNano())
+	}
+
+	validationOpts := []validator.ValidationOption{}
+	if h.allowPrivateIPs {
+		validationOpts = append(validationOpts, validator.WithAllowPrivateIPs())
+	}
+	err := validator.ValidateTargetURL(ctx, req.URL, validationOpts...)
+	if err != nil {
+		slog.WarnContext(ctx, "target url validation failed", "url", req.URL, "error", err)
+		helper.WriteError(w, http.StatusForbidden, fmt.Sprintf("invalid target url: %v", err))
+
+		return false
+	}
+
+	return true
+}
+
+func relayAPIKey(r *http.Request) *domain.ApiKey {
+	val := middleware.GetAPIKey(r)
+	if val == nil {
+		return nil
+	}
+
+	apiKey, _ := val.(*domain.ApiKey)
+
+	return apiKey
+}
+
+func (h *RelayHandler) parseRelayTags(
+	ctx context.Context,
+	w http.ResponseWriter,
+	r *http.Request,
+	apiKey *domain.ApiKey,
+) (*router.ParseResult, bool) {
+	parseResult, err := h.tagParser.ParseTags(r, apiKey)
+	if err != nil {
+		helper.WriteError(w, http.StatusBadRequest, "invalid tags")
+
+		return nil, false
+	}
+
+	for _, warn := range parseResult.Warnings {
+		w.Header().Add("X-Relay-Warning", warn)
+	}
+
+	if !apiKeyAllowsTags(ctx, w, apiKey, parseResult.Tags) {
+		return nil, false
+	}
+
+	return parseResult, true
+}
+
+func apiKeyAllowsTags(ctx context.Context, w http.ResponseWriter, apiKey *domain.ApiKey, tags []domain.Tag) bool {
+	if apiKey == nil || len(apiKey.Scopes) == 0 {
+		return true
+	}
+
+	for _, tag := range tags {
+		if !apiKey.HasScope(tag) {
+			slog.WarnContext(ctx, "tag denied by api key scope",
+				"key_id", apiKey.ID,
+				"tag", tag.String(),
+			)
+			helper.WriteError(w, http.StatusForbidden, fmt.Sprintf("tag '%s' not allowed by api key scopes", tag.String()))
+
+			return false
+		}
+	}
+
+	return true
+}
+
+func (h *RelayHandler) matchRelayRule(
+	ctx context.Context,
+	w http.ResponseWriter,
+	parseResult *router.ParseResult,
+) (*domain.RoutingRule, bool) {
+	tracer := otel.Tracer("router")
+	_, span := tracer.Start(ctx, "router.resolve")
+	defer span.End()
+
+	rule := h.matcher.Match(parseResult.Tags)
+	if rule == nil {
+		helper.WriteError(w, http.StatusNotFound, "no matching routing rule found")
+
+		return nil, false
+	}
+
+	span.SetAttributes(
+		attribute.String("matched_rule.id", rule.ID),
+		attribute.String("fingerprint", rule.FingerprintPreset),
+		attribute.String("quota_key", rule.QuotaKey),
+	)
+	slog.InfoContext(ctx, "rule matched",
+		"rule_id", rule.ID,
+		"fingerprint", rule.FingerprintPreset,
+	)
+
+	return rule, true
+}
+
+func (h *RelayHandler) applyRelayRateLimit(
+	ctx context.Context,
+	w http.ResponseWriter,
+	rule *domain.RoutingRule,
+	apiKey *domain.ApiKey,
+) bool {
+	limitPerSecond := relayLimitPerSecond(rule, apiKey)
+	if limitPerSecond <= 0 && rule.RateLimitPerMinute <= 0 {
+		return true
+	}
+
+	quotaKey := relayQuotaKey(rule)
+	allowed, result, err := h.rateLimiter.Allow(ctx, quotaKey, limitPerSecond, rule.RateLimitPerMinute)
+	if err != nil {
+		slog.ErrorContext(ctx, "rate limit check failed", "error", err)
+		helper.WriteError(w, http.StatusInternalServerError, "rate limit check failed")
+
+		return false
+	}
+
+	writeRelayRateLimitHeaders(w, result)
+	if !allowed {
+		writeRelayRateLimitExceeded(ctx, w, rule, quotaKey, result)
+
+		return false
+	}
+
+	return true
+}
+
+func relayLimitPerSecond(rule *domain.RoutingRule, apiKey *domain.ApiKey) int {
+	if apiKey != nil && apiKey.RateLimitOverride != nil {
+		return *apiKey.RateLimitOverride
+	}
+
+	return rule.RateLimitPerSecond
+}
+
+func relayQuotaKey(rule *domain.RoutingRule) string {
+	if rule.QuotaKey != "" {
+		return rule.QuotaKey
+	}
+
+	return rule.ID
+}
+
+func writeRelayRateLimitHeaders(w http.ResponseWriter, result ratelimit.Result) {
+	if result.Limit <= 0 {
+		return
+	}
+
+	w.Header().Set("X-RateLimit-Limit", strconv.Itoa(result.Limit))
+	w.Header().Set("X-RateLimit-Remaining", strconv.Itoa(result.Remaining))
+	w.Header().Set("X-RateLimit-Reset", fmt.Sprintf("%.0f", result.Reset.Seconds()))
+}
+
+func writeRelayRateLimitExceeded(
+	ctx context.Context,
+	w http.ResponseWriter,
+	rule *domain.RoutingRule,
+	quotaKey string,
+	result ratelimit.Result,
+) {
+	slog.WarnContext(ctx, "rate limit exceeded",
+		"rule_id", rule.ID,
+		"quota_key", quotaKey,
+		"retry_after", result.Reset,
+	)
+	w.Header().Set("Retry-After", fmt.Sprintf("%.0f", result.Reset.Seconds()))
+	helper.WriteError(w, http.StatusTooManyRequests, "rate limit exceeded")
+}
+
+func (h *RelayHandler) allowByFilters(
+	ctx context.Context,
+	w http.ResponseWriter,
+	req *protocol.Request,
+	rule *domain.RoutingRule,
+) bool {
+	filterReq := filter.NewFilterRequest(
+		req.URL,
+		req.Headers.Get("Host"),
+		req.Headers.Get("Accept"),
+		req.Method,
+	)
+
+	shouldBlock, err := h.filter.ShouldBlock(ctx, filterReq, rule.RequestFilters)
+	if err != nil {
+		helper.WriteError(w, http.StatusInternalServerError, "filter check failed")
+
+		return false
+	}
+
+	if shouldBlock.Blocked {
+		helper.WriteError(w, http.StatusForbidden, fmt.Sprintf("request blocked: %s", shouldBlock.Reason))
+
+		return false
+	}
+
+	return true
+}
+
+func sessionPreference(ctx context.Context, req *protocol.Request) (string, string, *domain.Session) {
+	sessionID := req.SessionID
+	existingSession := middleware.GetSessionFromContext(ctx)
+	if existingSession == nil {
+		return sessionID, "", nil
+	}
+
+	if sessionID == "" || sessionID == existingSession.ID {
+		req.SessionID = existingSession.ID
+
+		return existingSession.ID, existingSession.EndpointID, existingSession
+	}
+
+	return sessionID, "", existingSession
+}
+
+func (h *RelayHandler) writeRelayResult(
+	ctx context.Context,
+	w http.ResponseWriter,
+	result *orchestrator.RetryResult,
+) {
 	if !result.Success {
-		if result.Response != nil {
-			meta := &orchestrator.RelayMetadata{
-				Retries:       result.TotalRetries,
-				Pool:          fmt.Sprintf("%d", result.FinalPool),
-				Timing:        result.Response.Timing,
-				EndpointID:    result.Response.EndpointID,
-				SessionID:     result.Response.SessionID,
-				AttemptErrors: result.AttemptErrors,
-			}
-			_ = h.responseBuilder.WriteResponse(w, result.Response, meta)
-
-			return
-		}
-
-		msg := "request failed"
-		if len(result.AttemptErrors) > 0 {
-			msg = result.AttemptErrors[len(result.AttemptErrors)-1].Message
-		}
-		helper.WriteError(w, http.StatusBadGateway, msg)
+		h.writeFailedRelayResult(w, result)
 
 		return
 	}
 
 	res := result.Response
-
-	if res.BodyCompressed && len(res.CompressedBody) > 0 {
-		decompressed, err := protocol.Decompress(res.CompressedBody)
-		if err == nil {
-			res.CompressedBody = decompressed
-			res.BodyCompressed = false
-		} else {
-			slog.WarnContext(ctx, "failed to decompress response body", "error", err)
-			helper.WriteError(w, http.StatusBadGateway, "failed to decompress response")
-
-			return
-		}
+	if !decompressRelayResponse(ctx, w, res) {
+		return
 	}
 
-	meta := &orchestrator.RelayMetadata{
+	meta := relayMetadata(result, res)
+	_ = h.responseBuilder.WriteResponse(w, res, meta)
+}
+
+func (h *RelayHandler) writeFailedRelayResult(w http.ResponseWriter, result *orchestrator.RetryResult) {
+	if result.Response != nil {
+		meta := relayMetadata(result, result.Response)
+		meta.AttemptErrors = result.AttemptErrors
+		_ = h.responseBuilder.WriteResponse(w, result.Response, meta)
+
+		return
+	}
+
+	msg := "request failed"
+	if len(result.AttemptErrors) > 0 {
+		msg = result.AttemptErrors[len(result.AttemptErrors)-1].Message
+	}
+	helper.WriteError(w, http.StatusBadGateway, msg)
+}
+
+func decompressRelayResponse(ctx context.Context, w http.ResponseWriter, res *orchestrator.ResultMessage) bool {
+	if !res.BodyCompressed || len(res.CompressedBody) == 0 {
+		return true
+	}
+
+	decompressed, err := protocol.Decompress(res.CompressedBody)
+	if err != nil {
+		slog.WarnContext(ctx, "failed to decompress response body", "error", err)
+		helper.WriteError(w, http.StatusBadGateway, "failed to decompress response")
+
+		return false
+	}
+
+	res.CompressedBody = decompressed
+	res.BodyCompressed = false
+
+	return true
+}
+
+func relayMetadata(result *orchestrator.RetryResult, res *orchestrator.ResultMessage) *orchestrator.RelayMetadata {
+	return &orchestrator.RelayMetadata{
 		Retries:    result.TotalRetries,
 		Pool:       fmt.Sprintf("%d", result.FinalPool),
 		Timing:     res.Timing,
 		EndpointID: res.EndpointID,
 		SessionID:  res.SessionID,
 	}
-
-	_ = h.responseBuilder.WriteResponse(w, res, meta)
 }
 
 func (h *RelayHandler) manageSession(
