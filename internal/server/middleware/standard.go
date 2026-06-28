@@ -32,7 +32,6 @@ func RequestID() func(http.Handler) http.Handler {
 func Recover() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			//nolint:contextcheck // panic recovery handler, no context-aware I/O
 			defer func() {
 				if err := recover(); err != nil {
 					slog.ErrorContext(r.Context(), "panic recovered",
