@@ -105,7 +105,6 @@ func (cb *CircuitBreaker) ReportSuccess() {
 		cb.state = StateClosed
 		cb.failures = 0
 	} else if cb.state == StateClosed {
-
 		cb.failures = 0
 	}
 }
@@ -124,7 +123,6 @@ func (cb *CircuitBreaker) ReportFailure() {
 		cb.state = StateOpen
 		cb.lastFailure = time.Now()
 	} else if cb.state == StateOpen {
-
 		cb.lastFailure = time.Now()
 	}
 }

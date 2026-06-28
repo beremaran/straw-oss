@@ -16,7 +16,6 @@ import (
 )
 
 func InitTracerProvider(ctx context.Context, serviceName, serviceVersion string) (func(context.Context) error, error) {
-
 	if strings.EqualFold(os.Getenv("OTEL_SDK_DISABLED"), "true") {
 
 		return func(context.Context) error { return nil }, nil
