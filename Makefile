@@ -71,7 +71,7 @@ format:
 
 lint:
 	@./scripts/install-golangci-lint.sh
-	golangci-lint run --fix ./...
+	golangci-lint run ./...
 
 docs:
 	npx -y @redocly/cli lint api/openapi.yaml
