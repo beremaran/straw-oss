@@ -1,11 +1,9 @@
-package config_test
+package config
 
 import (
 	"errors"
 	"os"
 	"testing"
-
-	"github.com/beremaran/straw/internal/config"
 )
 
 func TestLoadServerConfig_Defaults(t *testing.T) {
@@ -15,7 +13,7 @@ func TestLoadServerConfig_Defaults(t *testing.T) {
 		"HMAC_SECRET":  "test-secret",
 	})
 
-	cfg, err := config.LoadServerConfig()
+	cfg, err := LoadServerConfig()
 	if err != nil {
 		t.Fatalf("LoadServerConfig() error = %v", err)
 	}
@@ -54,7 +52,7 @@ func TestLoadServerConfig_EnvOverride(t *testing.T) {
 		"HTTP_PORT":    "3000",
 	})
 
-	cfg, err := config.LoadServerConfig()
+	cfg, err := LoadServerConfig()
 	if err != nil {
 		t.Fatalf("LoadServerConfig() error = %v", err)
 	}
@@ -104,12 +102,12 @@ func TestLoadServerConfig_MissingRequired(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			setEnvVars(t, tt.envVars)
 
-			_, err := config.LoadServerConfig()
+			_, err := LoadServerConfig()
 			if err == nil {
 				t.Fatal("LoadServerConfig() expected error, got nil")
 			}
 
-			var validationErr *config.ValidationError
+			var validationErr *ValidationError
 			ok := errors.As(err, &validationErr)
 			if !ok {
 				t.Fatalf("expected ValidationError, got %T", err)
@@ -137,7 +135,7 @@ func TestLoadEndpointConfig_Defaults(t *testing.T) {
 		"HMAC_SECRET": "test-secret",
 	})
 
-	cfg, err := config.LoadEndpointConfig()
+	cfg, err := LoadEndpointConfig()
 	if err != nil {
 		t.Fatalf("LoadEndpointConfig() error = %v", err)
 	}
@@ -158,7 +156,7 @@ func TestLoadEndpointConfig_TagsParsing(t *testing.T) {
 		"ENDPOINT_TAGS": "type:residential, region:us, capability:stealth",
 	})
 
-	cfg, err := config.LoadEndpointConfig()
+	cfg, err := LoadEndpointConfig()
 	if err != nil {
 		t.Fatalf("LoadEndpointConfig() error = %v", err)
 	}
@@ -194,12 +192,12 @@ func TestLoadEndpointConfig_MissingRequired(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			setEnvVars(t, tt.envVars)
 
-			_, err := config.LoadEndpointConfig()
+			_, err := LoadEndpointConfig()
 			if err == nil {
 				t.Fatal("LoadEndpointConfig() expected error, got nil")
 			}
 
-			var validationErr *config.ValidationError
+			var validationErr *ValidationError
 			ok := errors.As(err, &validationErr)
 			if !ok {
 				t.Fatalf("expected ValidationError, got %T", err)
@@ -220,8 +218,53 @@ func TestLoadEndpointConfig_MissingRequired(t *testing.T) {
 	}
 }
 
+func TestParseCommaSeparated(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  []string
+	}{
+		{
+			name:  "multiple values",
+			input: "a, b, c",
+			want:  []string{"a", "b", "c"},
+		},
+		{
+			name:  "single value",
+			input: "a",
+			want:  []string{"a"},
+		},
+		{
+			name:  "empty string",
+			input: "",
+			want:  nil,
+		},
+		{
+			name:  "whitespace handling",
+			input: "  a  ,  b  ,  c  ",
+			want:  []string{"a", "b", "c"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseCommaSeparated(tt.input)
+			if len(got) != len(tt.want) {
+				t.Errorf("parseCommaSeparated() = %v, want %v", got, tt.want)
+
+				return
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("parseCommaSeparated()[%d] = %v, want %v", i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
+
 func TestValidationError_Error(t *testing.T) {
-	err := &config.ValidationError{Errors: []string{"error1", "error2"}}
+	err := &ValidationError{Errors: []string{"error1", "error2"}}
 	want := "configuration validation failed: error1; error2"
 	if got := err.Error(); got != want {
 		t.Errorf("ValidationError.Error() = %v, want %v", got, want)
