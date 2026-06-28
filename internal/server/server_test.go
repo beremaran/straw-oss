@@ -52,12 +52,16 @@ func TestServerHealthRoutes(t *testing.T) {
 
 	t.Run("Healthz", func(t *testing.T) {
 		resp, err := http.Get(baseURL + "/healthz")
+		defer resp.Body.Close()
+
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 	})
 
 	t.Run("Readyz", func(t *testing.T) {
 		resp, err := http.Get(baseURL + "/readyz")
+		defer resp.Body.Close()
+
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 	})
