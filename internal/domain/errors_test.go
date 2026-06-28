@@ -1,13 +1,14 @@
-package domain
+package domain_test
 
 import (
 	"testing"
 
+	"github.com/beremaran/straw/internal/domain"
 	"github.com/beremaran/straw/pkg/protocol"
 )
 
 func TestDomainError_Error(t *testing.T) {
-	err := &StrawError{
+	err := &domain.StrawError{
 		Code:    "TEST_ERROR",
 		Message: "This is a test error",
 	}
@@ -19,7 +20,7 @@ func TestDomainError_Error(t *testing.T) {
 }
 
 func TestDomainError_ToResponse(t *testing.T) {
-	err := ErrAuthInvalid
+	err := domain.ErrAuthInvalid
 
 	resp := err.ToResponse("req-123", "trace-456")
 
@@ -38,7 +39,7 @@ func TestDomainError_ToResponse(t *testing.T) {
 }
 
 func TestNewRateLimitError(t *testing.T) {
-	err := NewRateLimitError("target:amazon", 30)
+	err := domain.NewRateLimitError("target:amazon", 30)
 
 	if err.Code != protocol.ErrCodeRateLimitExceeded {
 		t.Errorf("NewRateLimitError() Code = %s, want %s", err.Code, protocol.ErrCodeRateLimitExceeded)
@@ -60,7 +61,7 @@ func TestNewUpstreamError(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := NewUpstreamError(tt.targetStatus, "test")
+			err := domain.NewUpstreamError(tt.targetStatus, "test")
 			if err.Retryable != tt.wantRetry {
 				t.Errorf("NewUpstreamError() Retryable = %v, want %v", err.Retryable, tt.wantRetry)
 			}
@@ -69,17 +70,17 @@ func TestNewUpstreamError(t *testing.T) {
 }
 
 func TestPredefinedErrors(t *testing.T) {
-	errors := []*StrawError{
-		ErrAuthInvalid,
-		ErrAuthForbidden,
-		ErrRateLimitExceeded,
-		ErrNoEndpointsAvailable,
-		ErrEndpointTimeout,
-		ErrUpstreamError,
-		ErrSessionExpired,
-		ErrInternalError,
-		ErrSessionMigrationLimit,
-		ErrNoMatchingRule,
+	errors := []*domain.StrawError{
+		domain.ErrAuthInvalid,
+		domain.ErrAuthForbidden,
+		domain.ErrRateLimitExceeded,
+		domain.ErrNoEndpointsAvailable,
+		domain.ErrEndpointTimeout,
+		domain.ErrUpstreamError,
+		domain.ErrSessionExpired,
+		domain.ErrInternalError,
+		domain.ErrSessionMigrationLimit,
+		domain.ErrNoMatchingRule,
 	}
 
 	for _, err := range errors {
