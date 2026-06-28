@@ -54,7 +54,7 @@ func WithAuditLogger(logger *slog.Logger) AuditLoggerOption {
 	}
 }
 
-func NewAuditLogger(ctx context.Context, db Execer, bufferSize, workers int, opts ...AuditLoggerOption) *AuditLogger {
+func NewAuditLogger(db Execer, bufferSize, workers int, opts ...AuditLoggerOption) *AuditLogger {
 	if bufferSize <= 0 {
 		bufferSize = defaultAuditBufferSize
 	}
@@ -74,7 +74,7 @@ func NewAuditLogger(ctx context.Context, db Execer, bufferSize, workers int, opt
 
 	for i := 0; i < workers; i++ {
 		al.wg.Add(1)
-		go al.worker(ctx)
+		go al.worker()
 	}
 
 	return al
@@ -116,7 +116,7 @@ func (al *AuditLogger) Stop() {
 	al.wg.Wait()
 }
 
-func (al *AuditLogger) worker(ctx context.Context) {
+func (al *AuditLogger) worker() {
 	defer al.wg.Done()
 
 	const insertQuery = `
@@ -125,7 +125,7 @@ func (al *AuditLogger) worker(ctx context.Context) {
 	`
 
 	for entry := range al.entries {
-		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		_, err := al.db.Exec(ctx, insertQuery,
 			entry.Timestamp,
 			entry.Method,

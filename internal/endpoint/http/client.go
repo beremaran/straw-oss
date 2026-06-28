@@ -154,12 +154,21 @@ func (c *Client) Do(ctx context.Context, req *protocol.Request) (*protocol.Respo
 		attribute.String("endpoint.tls_fingerprint", req.Fingerprint),
 	)
 
-	preset, err := c.getFingerprint(req.Fingerprint)
-	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+	preset, ok := c.registry.Get(req.Fingerprint)
+	if ok {
+		metrics.TLSFingerprintUsed.WithLabelValues(req.Fingerprint).Inc()
+	} else {
+		preset, ok = c.registry.Get("chrome-133")
+		if !ok {
+			err := &ClientError{
+				Code:    "FINGERPRINT_NOT_FOUND",
+				Message: "fingerprint preset not found: " + req.Fingerprint,
+			}
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
 
-		return nil, err
+			return nil, err
+		}
 	}
 
 	fhttpReq, err := BuildRequest(traceCtx, req, preset)
@@ -170,10 +179,20 @@ func (c *Client) Do(ctx context.Context, req *protocol.Request) (*protocol.Respo
 		return nil, err
 	}
 
-	host := resolveHost(fhttpReq, req)
+	host := fhttpReq.URL.Host
+	if host == "" {
+		if u, err := url.Parse(req.URL); err == nil {
+			host = u.Host
+		}
+	}
 	span.SetAttributes(semconv.ServerAddressKey.String(host))
 
-	dialContext := c.resolveDialContext(host, preset)
+	var dialContext func(ctx context.Context, network, addr string) (net.Conn, error)
+	if c.transportProvider != nil {
+		if t := c.transportProvider.GetTransport(host, preset); t != nil {
+			dialContext = t.DialContext
+		}
+	}
 
 	timeout := c.getTimeout(req)
 	client, err := c.getTLSClient(preset.ID, timeout, dialContext)
@@ -264,44 +283,6 @@ type ClientError struct {
 
 func (e *ClientError) Error() string {
 	return e.Code + ": " + e.Message
-}
-
-func resolveHost(fhttpReq *fhttp.Request, req *protocol.Request) string {
-	host := fhttpReq.URL.Host
-	if host == "" {
-		if u, err := url.Parse(req.URL); err == nil {
-			host = u.Host
-		}
-	}
-
-	return host
-}
-
-func (c *Client) resolveDialContext(host string, preset fingerprint.Preset) func(ctx context.Context, network, addr string) (net.Conn, error) {
-	if c.transportProvider != nil {
-		if t := c.transportProvider.GetTransport(host, preset); t != nil {
-			return t.DialContext
-		}
-	}
-
-	return nil
-}
-
-func (c *Client) getFingerprint(presetID string) (fingerprint.Preset, error) {
-	if preset, ok := c.registry.Get(presetID); ok {
-		metrics.TLSFingerprintUsed.WithLabelValues(presetID).Inc()
-
-		return preset, nil
-	}
-
-	if preset, ok := c.registry.Get("chrome-133"); ok {
-		return preset, nil
-	}
-
-	return fingerprint.Preset{}, &ClientError{
-		Code:    "FINGERPRINT_NOT_FOUND",
-		Message: "fingerprint preset not found: " + presetID,
-	}
 }
 
 func (c *Client) Close() error {
