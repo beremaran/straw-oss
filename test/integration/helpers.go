@@ -107,6 +107,16 @@ func CleanDatabase(ctx context.Context, dsn string) error {
 	return nil
 }
 
+func CleanRedis(ctx context.Context, addr string) error {
+	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: addr}, nil)
+	if err != nil {
+		return fmt.Errorf("failed to open redis for cleanup: %w", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	return client.Client.FlushDB(ctx).Err()
+}
+
 func WithTimeout(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(parent, timeout)
 }

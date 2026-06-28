@@ -139,11 +139,19 @@ func (s *TestSuite) CleanupForTest(t *testing.T) {
 	if err != nil {
 		t.Logf("Warning: failed to clean database: %v", err)
 	}
+	err = CleanRedis(ctx, s.Redis.Addr())
+	if err != nil {
+		t.Logf("Warning: failed to clean redis: %v", err)
+	}
 
 	t.Cleanup(func() {
 		err := CleanDatabase(ctx, s.Postgres.DSN())
 		if err != nil {
 			t.Logf("Warning: failed to clean database after test: %v", err)
+		}
+		err = CleanRedis(ctx, s.Redis.Addr())
+		if err != nil {
+			t.Logf("Warning: failed to clean redis after test: %v", err)
 		}
 	})
 }
