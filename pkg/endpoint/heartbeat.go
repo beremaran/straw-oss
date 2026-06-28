@@ -1,4 +1,4 @@
-package heartbeat
+package endpoint
 
 import (
 	"context"
@@ -7,14 +7,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/beremaran/straw/internal/broker"
-	"github.com/beremaran/straw/internal/domain"
 	"github.com/beremaran/straw/internal/endpoint/metrics"
+	"github.com/beremaran/straw/pkg/broker"
 )
 
-const DefaultInterval = domain.DefaultHeartbeatInterval
+const DefaultHeartbeatInterval = 10 * time.Second
 
-type Message struct {
+type HeartbeatMessage struct {
 	EndpointID string `json:"endpoint_id"`
 
 	Timestamp int64 `json:"ts"`
@@ -28,7 +27,7 @@ type Message struct {
 
 type ActiveTasksFunc func() int
 
-type Sender struct {
+type HeartbeatSender struct {
 	broker     broker.MessageBroker
 	endpointID string
 	version    string
@@ -44,45 +43,45 @@ type Sender struct {
 	done    chan struct{}
 }
 
-type Option func(*Sender)
+type HeartbeatOption func(*HeartbeatSender)
 
-func WithInterval(d time.Duration) Option {
-	return func(s *Sender) {
+func WithHeartbeatInterval(d time.Duration) HeartbeatOption {
+	return func(s *HeartbeatSender) {
 		if d > 0 {
 			s.interval = d
 		}
 	}
 }
 
-func WithLogger(logger *slog.Logger) Option {
-	return func(s *Sender) {
+func WithHeartbeatLogger(logger *slog.Logger) HeartbeatOption {
+	return func(s *HeartbeatSender) {
 		s.logger = logger
 	}
 }
 
-func WithVersion(version string) Option {
-	return func(s *Sender) {
+func WithHeartbeatVersion(version string) HeartbeatOption {
+	return func(s *HeartbeatSender) {
 		s.version = version
 	}
 }
 
-func WithTags(tags []string) Option {
-	return func(s *Sender) {
+func WithHeartbeatTags(tags []string) HeartbeatOption {
+	return func(s *HeartbeatSender) {
 		s.tags = tags
 	}
 }
 
-func WithActiveTasksFunc(f ActiveTasksFunc) Option {
-	return func(s *Sender) {
+func WithHeartbeatActiveTasksFunc(f ActiveTasksFunc) HeartbeatOption {
+	return func(s *HeartbeatSender) {
 		s.activeTasksFunc = f
 	}
 }
 
-func New(b broker.MessageBroker, endpointID string, opts ...Option) *Sender {
-	s := &Sender{
+func NewHeartbeatSender(b broker.MessageBroker, endpointID string, opts ...HeartbeatOption) *HeartbeatSender {
+	s := &HeartbeatSender{
 		broker:          b,
 		endpointID:      endpointID,
-		interval:        DefaultInterval,
+		interval:        DefaultHeartbeatInterval,
 		logger:          slog.Default(),
 		activeTasksFunc: func() int { return 0 },
 	}
@@ -94,7 +93,7 @@ func New(b broker.MessageBroker, endpointID string, opts ...Option) *Sender {
 	return s
 }
 
-func (s *Sender) Start(ctx context.Context) {
+func (s *HeartbeatSender) Start(ctx context.Context) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -115,7 +114,7 @@ func (s *Sender) Start(ctx context.Context) {
 	go s.run(ctx)
 }
 
-func (s *Sender) Stop() {
+func (s *HeartbeatSender) Stop() {
 	s.mu.Lock()
 	if !s.running {
 		s.mu.Unlock()
@@ -140,7 +139,7 @@ func (s *Sender) Stop() {
 	s.logger.Info("heartbeat sender stopped", "endpoint_id", s.endpointID)
 }
 
-func (s *Sender) run(ctx context.Context) {
+func (s *HeartbeatSender) run(ctx context.Context) {
 	defer close(s.done)
 
 	s.sendHeartbeat(ctx)
@@ -158,8 +157,8 @@ func (s *Sender) run(ctx context.Context) {
 	}
 }
 
-func (s *Sender) sendHeartbeat(ctx context.Context) {
-	msg := Message{
+func (s *HeartbeatSender) sendHeartbeat(ctx context.Context) {
+	msg := HeartbeatMessage{
 		EndpointID:  s.endpointID,
 		Timestamp:   time.Now().Unix(),
 		Version:     s.version,
@@ -192,7 +191,7 @@ func (s *Sender) sendHeartbeat(ctx context.Context) {
 	)
 }
 
-func (s *Sender) IsRunning() bool {
+func (s *HeartbeatSender) IsRunning() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.running

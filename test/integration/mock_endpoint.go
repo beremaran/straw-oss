@@ -11,8 +11,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/beremaran/straw/internal/broker"
-	"github.com/beremaran/straw/internal/endpoint/heartbeat"
+	"github.com/beremaran/straw/pkg/broker"
+	"github.com/beremaran/straw/pkg/endpoint"
 	"github.com/beremaran/straw/pkg/protocol"
 )
 
@@ -67,7 +67,7 @@ type MockEndpoint struct {
 	wg              sync.WaitGroup
 	responseHandler func(*protocol.Request) *MockEndpointResponse
 
-	heartbeatSender *heartbeat.Sender
+	heartbeatSender *endpoint.HeartbeatSender
 }
 
 func NewMockEndpoint(b broker.MessageBroker, config MockEndpointConfig) *MockEndpoint {
@@ -102,11 +102,11 @@ func (m *MockEndpoint) Start(ctx context.Context) error {
 		"tags", m.config.Tags,
 	)
 
-	m.heartbeatSender = heartbeat.New(
+	m.heartbeatSender = endpoint.NewHeartbeatSender(
 		m.broker,
 		m.config.EndpointID,
-		heartbeat.WithTags(m.config.Tags),
-		heartbeat.WithInterval(m.config.HeartbeatInterval),
+		endpoint.WithHeartbeatTags(m.config.Tags),
+		endpoint.WithHeartbeatInterval(m.config.HeartbeatInterval),
 	)
 	m.heartbeatSender.Start(ctx)
 

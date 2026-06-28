@@ -1,4 +1,4 @@
-package consumer
+package endpoint
 
 import (
 	"context"
@@ -22,7 +22,7 @@ func TestConsumer_StatsCallback(t *testing.T) {
 		statsResult = res
 	}
 
-	c := New(mb, httpClient, secret, "test-endpoint",
+	c := NewConsumer(mb, httpClient, secret, "test-endpoint",
 		WithStatsCallback(callback),
 	)
 	c.ctx = context.Background()

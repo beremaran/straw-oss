@@ -1,0 +1,280 @@
+# Admin API Reference
+
+The Admin API serves as the control gateway for managing API keys, routing rules, fingerprint presets, and inspecting worker health and billing statistics.
+
+---
+
+## 🔒 Authentication
+
+All requests targeting `/admin/*` endpoints must be authenticated by supplying the `ADMIN_API_KEY` configured in your Relay environment as a Bearer token in the `Authorization` header:
+
+```http
+Authorization: Bearer <ADMIN_API_KEY>
+```
+
+---
+
+## 🛠️ API Key Management
+
+### Create API Key
+Creates a new API client key. The response contains a `raw_key` which is **only returned once** upon creation. Save it securely.
+
+* **URL**: `POST /admin/api-keys`
+* **Request Body**:
+  ```json
+  {
+    "name": "Production Crawler Key",
+    "scopes": ["target:*", "type:residential", "region:us"],
+    "rate_limit_override": 100
+  }
+  ```
+* **Response (Status 201 Created)**:
+  ```json
+  {
+    "id": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+    "name": "Production Crawler Key",
+    "scopes": ["target:*", "type:residential", "region:us"],
+    "rate_limit_override": 100,
+    "is_active": true,
+    "raw_key": "4cf5df...3a2f8c" 
+  }
+  ```
+
+### List API Keys
+Retrieves a paginated list of all API keys (active and inactive).
+
+* **URL**: `GET /admin/api-keys`
+* **Query Params**:
+  * `page` (default: `1`)
+  * `limit` (default: `20`, max: `100`)
+* **Response (Status 200 OK)**:
+  ```json
+  {
+    "data": [
+      {
+        "id": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+        "name": "Production Crawler Key",
+        "scopes": ["target:*", "type:residential"],
+        "rate_limit_override": 100,
+        "is_active": true
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "limit": 20
+  }
+  ```
+
+### Revoke API Key
+Disables an API key immediately.
+
+* **URL**: `DELETE /admin/api-keys/{id}`
+* **Response (Status 204 No Content)**: *(empty)*
+
+---
+
+## 🗺️ Routing Rules Management
+
+### Create Routing Rule
+Defines how incoming client proxy requests map to endpoint workers.
+
+* **URL**: `POST /admin/rules`
+* **Request Body**:
+  ```json
+  {
+    "name": "US Residential Egress",
+    "priority": 100,
+    "required_tags": ["type:residential", "region:us"],
+    "excluded_tags": ["type:datacenter"],
+    "config": {
+      "mode": "tag_match",
+      "retry_limit": 3
+    },
+    "quota_key": "residential-us-quota",
+    "is_active": true
+  }
+  ```
+* **Response (Status 201 Created)**:
+  ```json
+  {
+    "id": "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12",
+    "name": "US Residential Egress",
+    "priority": 100,
+    "required_tags": ["type:residential", "region:us"],
+    "excluded_tags": ["type:datacenter"],
+    "config": {
+      "mode": "tag_match",
+      "retry_limit": 3
+    },
+    "quota_key": "residential-us-quota",
+    "is_active": true,
+    "version": 1
+  }
+  ```
+
+### List Routing Rules
+Retrieves routing rules sorted by priority in descending order.
+
+* **URL**: `GET /admin/rules`
+* **Response (Status 200 OK)**:
+  ```json
+  {
+    "data": [...],
+    "total": 5,
+    "page": 1,
+    "limit": 20
+  }
+  ```
+
+### Get Routing Rule Details
+* **URL**: `GET /admin/rules/{id}`
+* **Response (Status 200 OK)**: Returns the matching rule configuration object.
+
+### Update Routing Rule
+Updates a routing rule's parameters. Utilizes optimistic locking via the `version` field.
+
+* **URL**: `PUT /admin/rules/{id}`
+* **Request Body**: Same schema as Create Rule, plus `"version": 1`.
+* **Response (Status 200 OK)**: Returns the updated rule.
+
+### Delete Routing Rule
+* **URL**: `DELETE /admin/rules/{id}`
+* **Response (Status 204 No Content)**: *(empty)*
+
+---
+
+## 🖥️ Endpoint Monitoring & Management
+
+### List Active Endpoints
+Inspects heartbeats and health status of all workers connected to the message broker.
+
+* **URL**: `GET /admin/endpoints`
+* **Response (Status 200 OK)**:
+  ```json
+  [
+    {
+      "endpoint_id": "worker-us-residential-01",
+      "state": "healthy",
+      "tags": ["type:residential", "region:us"],
+      "version": "1.0.3",
+      "active_tasks": 2,
+      "last_seen": "2026-06-28T12:00:35Z"
+    }
+  ]
+  ```
+
+### Drain Endpoint
+Instructs a worker to complete its active tasks but refuse any new incoming tasks, allowing for graceful worker recycling or node migration.
+
+* **URL**: `POST /admin/endpoints/{id}/drain`
+* **Response (Status 200 OK)**: *(empty)*
+
+---
+
+## 🕵️ Client Fingerprint Presets
+
+### List Fingerprint Presets
+Lists preset user agents, HTTP/2 configurations, and TLS/JA3 spoofing parameters.
+
+* **URL**: `GET /admin/fingerprints`
+* **Response (Status 200 OK)**: List of presets.
+
+### Create Preset
+Adds a new browser profile fingerprint.
+
+* **URL**: `POST /admin/fingerprints`
+* **Request Body**:
+  ```json
+  {
+    "id": "chrome-131",
+    "name": "Chrome 131 Desktop Preset",
+    "config": {
+      "user_agent": "Mozilla/5.0 ... Chrome/131.0.0.0 Safari/537.36",
+      "ja3": "771,4865-4866-4867...",
+      "h2_settings": {
+        "settings": { "1": 65536 },
+        "connection_flow": 15663105
+      }
+    }
+  }
+  ```
+* **Response (Status 200 OK)**: Created preset object.
+
+### Broadcast Presets
+Triggers a broadcast via NATS to push all registered fingerprint presets directly into memory on active worker nodes.
+
+* **URL**: `POST /admin/fingerprints/broadcast`
+* **Response (Status 200 OK)**: *(empty)*
+
+---
+
+## 📊 Usage & Billing
+
+### Get Daily Usage Summary
+Returns daily logs of requests and transfer size.
+
+* **URL**: `GET /admin/usage/summary`
+* **Query Params**:
+  * `start` (date format: `YYYY-MM-DD`, default: 30 days ago)
+  * `end` (date format: `YYYY-MM-DD`, default: today)
+  * `api_key_id` (optional filter)
+* **Response (Status 200 OK)**:
+  ```json
+  {
+    "data": [
+      {
+        "api_key_id": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+        "date": "2026-06-28",
+        "total_requests": 14022,
+        "total_bytes": 104857600,
+        "cost_units": 140220.00,
+        "breakdown": {
+          "residential": 14022
+        }
+      }
+    ],
+    "start": "2026-05-29",
+    "end": "2026-06-28"
+  }
+  ```
+
+### Get Billing Estimate
+Aggregates daily summaries and calculates estimated costs in USD.
+
+* **URL**: `GET /admin/billing/estimate`
+* **Query Params**:
+  * `start` (default: start of the current month)
+  * `end` (default: today)
+  * `api_key_id` (optional filter)
+* **Response (Status 200 OK)**:
+  ```json
+  {
+    "total_cost_units": 140220.00,
+    "estimated_usd": 14.022,
+    "currency": "USD",
+    "start": "2026-06-01",
+    "end": "2026-06-28"
+  }
+  ```
+
+---
+
+## ⚡ Cache Management
+
+### Clear Redis Cache
+Cleans in-memory caches on Redis. Forces the Relay Server to pull the latest rules and keys from PostgreSQL.
+
+* **URL**: `POST /admin/cache/clear`
+* **Response (Status 200 OK)**: *(empty)*
+
+### Get Cache Statistics
+Reports current hit rates and size estimates.
+
+* **URL**: `GET /admin/cache/stats`
+* **Response (Status 200 OK)**:
+  ```json
+  {
+    "keys_cached": 12,
+    "hit_rate": 0.98
+  }
+  ```
