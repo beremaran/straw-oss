@@ -3,7 +3,21 @@ package tls
 import (
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"testing"
+)
+
+var (
+	testErrTLSNoApplicationProtocol = errors.New("tls: no application protocol")
+	testErrTLSProtocolVersion       = errors.New("tls: protocol version not supported")
+	testErrConnectionReset          = errors.New("connection reset")
+	testErrX509UnknownAuthority     = errors.New("x509: certificate signed by unknown authority")
+	testErrX509Expired              = errors.New("x509: certificate has expired")
+	testErrGeneric                  = errors.New("generic error")
+	testErrNoCipherSuite            = errors.New("tls: no cipher suite supported")
+	testErrHandshakeFailure         = errors.New("tls: handshake failure")
+	testErrALPNFailed               = errors.New("ALPN negotiation failed")
+	testErrSomeOther                = errors.New("some other error")
 )
 
 func TestClassifyHandshakeError(t *testing.T) {
@@ -29,17 +43,17 @@ func TestClassifyHandshakeError(t *testing.T) {
 		},
 		{
 			name:     "Protocol Error - ALPN",
-			err:      errors.New("tls: no application protocol"),
+			err:      fmt.Errorf("test: %w", testErrTLSNoApplicationProtocol),
 			expected: ErrProtocolNegotiation,
 		},
 		{
 			name:     "Protocol Error - Version",
-			err:      errors.New("tls: protocol version not supported"),
+			err:      fmt.Errorf("test: %w", testErrTLSProtocolVersion),
 			expected: ErrProtocolNegotiation,
 		},
 		{
 			name:     "Generic Dial Error",
-			err:      errors.New("connection reset"),
+			err:      fmt.Errorf("test: %w", testErrConnectionReset),
 			expected: nil,
 		},
 	}
@@ -77,9 +91,9 @@ func TestIsCertificateError(t *testing.T) {
 		{"x509.UnknownAuthorityError", x509.UnknownAuthorityError{}, true},
 		{"x509.HostnameError", x509.HostnameError{Certificate: &x509.Certificate{}, Host: "example.com"}, true},
 		{"x509.SystemRootsError", x509.SystemRootsError{}, true},
-		{"String match: certificate signed by unknown authority", errors.New("x509: certificate signed by unknown authority"), true},
-		{"String match: certificate has expired", errors.New("x509: certificate has expired"), true},
-		{"Generic error", errors.New("generic error"), false},
+		{"String match: certificate signed by unknown authority", fmt.Errorf("test: %w", testErrX509UnknownAuthority), true},
+		{"String match: certificate has expired", fmt.Errorf("test: %w", testErrX509Expired), true},
+		{"Generic error", fmt.Errorf("test: %w", testErrGeneric), false},
 		{"Nil error", nil, false},
 	}
 
@@ -98,15 +112,15 @@ func TestIsProtocolError(t *testing.T) {
 		err      error
 		expected bool
 	}{
-		{"no application protocol", errors.New("tls: no application protocol"), true},
-		{"no cipher suite supported", errors.New("tls: no cipher suite supported"), true},
-		{"protocol version not supported", errors.New("tls: protocol version not supported"), true},
-		{"handshake failure", errors.New("tls: handshake failure"), true},
+		{"no application protocol", fmt.Errorf("test: %w", testErrTLSNoApplicationProtocol), true},
+		{"no cipher suite supported", fmt.Errorf("test: %w", testErrNoCipherSuite), true},
+		{"protocol version not supported", fmt.Errorf("test: %w", testErrTLSProtocolVersion), true},
+		{"handshake failure", fmt.Errorf("test: %w", testErrHandshakeFailure), true},
 
-		{"protocol version not supported", errors.New("tls: protocol version not supported"), true},
-		{"ALPN error", errors.New("ALPN negotiation failed"), true},
-		{"Cipher suite error", errors.New("no cipher suite supported"), true},
-		{"Generic error", errors.New("some other error"), false},
+		{"protocol version not supported", fmt.Errorf("test: %w", testErrTLSProtocolVersion), true},
+		{"ALPN error", fmt.Errorf("test: %w", testErrALPNFailed), true},
+		{"Cipher suite error", fmt.Errorf("test: %w", testErrNoCipherSuite), true},
+		{"Generic error", fmt.Errorf("test: %w", testErrSomeOther), false},
 		{"nil error", nil, false},
 	}
 
