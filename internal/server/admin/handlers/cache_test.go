@@ -19,8 +19,7 @@ func TestCacheHandler_HandleClearCache(t *testing.T) {
 	assert.NoError(t, err)
 	defer mr.Close()
 
-	ctx := context.Background()
-	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
+	client, err := redis.NewClient(config.RedisConfig{Addr: mr.Addr()}, nil)
 	assert.NoError(t, err)
 
 	h := NewCacheHandler(client)
@@ -49,8 +48,7 @@ func TestCacheHandler_HandleGetCacheStats(t *testing.T) {
 	assert.NoError(t, err)
 	defer mr.Close()
 
-	ctx := context.Background()
-	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
+	client, err := redis.NewClient(config.RedisConfig{Addr: mr.Addr()}, nil)
 	assert.NoError(t, err)
 
 	h := NewCacheHandler(client)

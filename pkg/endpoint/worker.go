@@ -121,7 +121,7 @@ func (w *Worker) Start(ctx context.Context) error {
 		logger.Warn("failed to initialize tracer provider", "error", err)
 	} else {
 		defer func() {
-			err := shutdownTracer(ctx)
+			err := shutdownTracer(context.Background())
 			if err != nil {
 				logger.Error("failed to shutdown tracer provider", "error", err)
 			}
@@ -194,7 +194,7 @@ func (w *Worker) Start(ctx context.Context) error {
 			update.WithUpdateCallback(func(r *update.Result) bool {
 				logger.Info("starting auto-update", "new_version", r.NewVersion)
 
-				updateCtx, msgCancel := context.WithTimeout(ctx, 5*time.Minute)
+				updateCtx, msgCancel := context.WithTimeout(context.Background(), 5*time.Minute)
 				defer msgCancel()
 
 				err := installer.Install(updateCtx, &update.VersionManifest{
@@ -275,7 +275,7 @@ func (w *Worker) Start(ctx context.Context) error {
 	<-ctx.Done()
 	logger.Info("shutting down...")
 
-	shutdownCtx, shutdownCancel := context.WithTimeout(ctx, 5*time.Second)
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
 	if err := healthServer.Shutdown(shutdownCtx); err != nil {
 		logger.Warn("health server shutdown error", "error", err)

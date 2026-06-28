@@ -21,13 +21,14 @@ func TestSessionMiddleware(t *testing.T) {
 	require.NoError(t, err)
 	defer mr.Close()
 
-	ctx := context.Background()
-	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
+	client, err := redis.NewClient(config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
 	defer client.Close()
 
 	store := session.NewRedisStore(client)
 	svc := session.NewService(store)
+
+	ctx := context.Background()
 	sess, err := svc.CreateSession(ctx, "ep1", "rule1", nil)
 	require.NoError(t, err)
 

@@ -34,7 +34,7 @@ func TestAuthentication_SecurityScenarios(t *testing.T) {
 
 	authRepo := integration.NewTestAuthRepo(t, s.PostgresDSN())
 
-	rlRedis := integration.NewTestRedisClient(ctx, t, s.RedisAddr())
+	rlRedis := integration.NewTestRedisClient(t, s.RedisAddr())
 	authCache := auth.NewAuthCache(rlRedis, 10*time.Second)
 	authService := auth.NewAuthService(authRepo, authCache)
 
