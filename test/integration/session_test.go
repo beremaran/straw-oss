@@ -215,7 +215,7 @@ func TestSession_Expiration(t *testing.T) {
 	sessionID := resp.Headers.Get(middleware.HeaderSessionID)
 	require.NotEmpty(t, sessionID)
 
-	redisClient, err := redis.NewClient(ctx, config.RedisConfig{Addr: suite.RedisAddr()}, nil)
+	redisClient, err := redis.NewClient(config.RedisConfig{Addr: suite.RedisAddr()}, nil)
 	require.NoError(t, err)
 	defer redisClient.Close()
 

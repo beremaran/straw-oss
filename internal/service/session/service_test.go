@@ -19,13 +19,13 @@ func TestService_CreateSession(t *testing.T) {
 	require.NoError(t, err)
 	defer mr.Close()
 
-	ctx := context.Background()
-	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
+	client, err := redis.NewClient(config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
 	defer client.Close()
 
 	store := session.NewRedisStore(client)
 	svc := session.NewService(store)
+	ctx := context.Background()
 
 	sess, err := svc.CreateSession(ctx, "ep1", "rule1", []string{"tag1"})
 	assert.NoError(t, err)
@@ -38,13 +38,13 @@ func TestService_GetSession(t *testing.T) {
 	require.NoError(t, err)
 	defer mr.Close()
 
-	ctx := context.Background()
-	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
+	client, err := redis.NewClient(config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
 	defer client.Close()
 
 	store := session.NewRedisStore(client)
 	svc := session.NewService(store)
+	ctx := context.Background()
 
 	sess, err := svc.CreateSession(ctx, "ep1", "rule1", nil)
 	require.NoError(t, err)
@@ -66,13 +66,13 @@ func TestService_MigrateSession(t *testing.T) {
 	require.NoError(t, err)
 	defer mr.Close()
 
-	ctx := context.Background()
-	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
+	client, err := redis.NewClient(config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
 	defer client.Close()
 
 	store := session.NewRedisStore(client)
 	svc := session.NewService(store)
+	ctx := context.Background()
 
 	sess, _ := svc.CreateSession(ctx, "ep1", "rule1", nil)
 
@@ -96,14 +96,13 @@ func TestService_MigrateSession(t *testing.T) {
 func TestService_CreateSession_StoreError(t *testing.T) {
 	mr, err := miniredis.Run()
 	require.NoError(t, err)
-
-	ctx := context.Background()
-	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
+	client, err := redis.NewClient(config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
 	defer client.Close()
 
 	store := session.NewRedisStore(client)
 	svc := session.NewService(store)
+	ctx := context.Background()
 
 	mr.Close()
 
@@ -114,14 +113,13 @@ func TestService_CreateSession_StoreError(t *testing.T) {
 func TestService_GetSession_StoreError(t *testing.T) {
 	mr, err := miniredis.Run()
 	require.NoError(t, err)
-
-	ctx := context.Background()
-	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
+	client, err := redis.NewClient(config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
 	defer client.Close()
 
 	store := session.NewRedisStore(client)
 	svc := session.NewService(store)
+	ctx := context.Background()
 
 	mr.Close()
 
@@ -134,13 +132,13 @@ func TestService_GetSession_NonExistent(t *testing.T) {
 	require.NoError(t, err)
 	defer mr.Close()
 
-	ctx := context.Background()
-	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
+	client, err := redis.NewClient(config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
 	defer client.Close()
 
 	store := session.NewRedisStore(client)
 	svc := session.NewService(store)
+	ctx := context.Background()
 
 	_, err = svc.GetSession(ctx, "nonexistent")
 	assert.ErrorIs(t, err, domain.ErrSessionExpired)
@@ -151,13 +149,13 @@ func TestService_TouchSession(t *testing.T) {
 	require.NoError(t, err)
 	defer mr.Close()
 
-	ctx := context.Background()
-	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
+	client, err := redis.NewClient(config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
 	defer client.Close()
 
 	store := session.NewRedisStore(client)
 	svc := session.NewService(store)
+	ctx := context.Background()
 
 	sess, _ := svc.CreateSession(ctx, "ep1", "rule1", nil)
 
@@ -171,14 +169,13 @@ func TestService_TouchSession(t *testing.T) {
 func TestService_TouchSession_StoreError(t *testing.T) {
 	mr, err := miniredis.Run()
 	require.NoError(t, err)
-
-	ctx := context.Background()
-	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
+	client, err := redis.NewClient(config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
 	defer client.Close()
 
 	store := session.NewRedisStore(client)
 	svc := session.NewService(store)
+	ctx := context.Background()
 
 	sess, _ := svc.CreateSession(ctx, "ep1", "rule1", nil)
 
@@ -193,13 +190,13 @@ func TestService_EndSession(t *testing.T) {
 	require.NoError(t, err)
 	defer mr.Close()
 
-	ctx := context.Background()
-	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
+	client, err := redis.NewClient(config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
 	defer client.Close()
 
 	store := session.NewRedisStore(client)
 	svc := session.NewService(store)
+	ctx := context.Background()
 
 	sess, _ := svc.CreateSession(ctx, "ep1", "rule1", nil)
 
@@ -213,14 +210,13 @@ func TestService_EndSession(t *testing.T) {
 func TestService_EndSession_StoreError(t *testing.T) {
 	mr, err := miniredis.Run()
 	require.NoError(t, err)
-
-	ctx := context.Background()
-	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
+	client, err := redis.NewClient(config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
 	defer client.Close()
 
 	store := session.NewRedisStore(client)
 	svc := session.NewService(store)
+	ctx := context.Background()
 
 	sess, _ := svc.CreateSession(ctx, "ep1", "rule1", nil)
 
@@ -235,13 +231,13 @@ func TestService_MigrateSession_NonExistent(t *testing.T) {
 	require.NoError(t, err)
 	defer mr.Close()
 
-	ctx := context.Background()
-	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
+	client, err := redis.NewClient(config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
 	defer client.Close()
 
 	store := session.NewRedisStore(client)
 	svc := session.NewService(store)
+	ctx := context.Background()
 
 	_, err = svc.MigrateSession(ctx, "nonexistent", "ep2")
 	assert.ErrorIs(t, err, domain.ErrSessionExpired)
@@ -250,14 +246,13 @@ func TestService_MigrateSession_NonExistent(t *testing.T) {
 func TestService_MigrateSession_StoreSaveError(t *testing.T) {
 	mr, err := miniredis.Run()
 	require.NoError(t, err)
-
-	ctx := context.Background()
-	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
+	client, err := redis.NewClient(config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
 	defer client.Close()
 
 	store := session.NewRedisStore(client)
 	svc := session.NewService(store)
+	ctx := context.Background()
 
 	sess, _ := svc.CreateSession(ctx, "ep1", "rule1", nil)
 
@@ -272,13 +267,13 @@ func TestService_CreateSession_WithTags(t *testing.T) {
 	require.NoError(t, err)
 	defer mr.Close()
 
-	ctx := context.Background()
-	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
+	client, err := redis.NewClient(config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
 	defer client.Close()
 
 	store := session.NewRedisStore(client)
 	svc := session.NewService(store)
+	ctx := context.Background()
 
 	tags := []string{"tag1", "tag2", "tag3"}
 	sess, err := svc.CreateSession(ctx, "ep1", "rule1", tags)

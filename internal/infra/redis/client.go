@@ -15,7 +15,7 @@ type Client struct {
 	breaker *circuitbreaker.CircuitBreaker
 }
 
-func NewClient(ctx context.Context, cfg config.RedisConfig, breaker *circuitbreaker.CircuitBreaker) (*Client, error) {
+func NewClient(cfg config.RedisConfig, breaker *circuitbreaker.CircuitBreaker) (*Client, error) {
 	opts := &redis.Options{
 		Addr:         cfg.Addr,
 		Password:     "",
@@ -26,7 +26,7 @@ func NewClient(ctx context.Context, cfg config.RedisConfig, breaker *circuitbrea
 
 	client := redis.NewClient(opts)
 
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	err := client.Ping(ctx).Err()
