@@ -1,0 +1,10 @@
+repos:
+  - repo: local
+    hooks:
+      - id: make-build-test-lint
+        name: make build test lint
+        entry: make build test lint
+        language: system
+        types: [file]
+        pass_filenames: false
+        always_run: true
