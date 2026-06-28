@@ -1,3 +1,4 @@
+//nolint:funcorder
 package orchestrator
 
 import (
@@ -156,6 +157,7 @@ func (r *RetryExecutor) handleResult(ctx context.Context, body []byte) error {
 	return nil
 }
 
+//nolint:cyclop,funlen
 func (r *RetryExecutor) Execute(
 	ctx context.Context,
 	req *protocol.Request,

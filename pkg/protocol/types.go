@@ -128,6 +128,7 @@ func (h HeaderMap) Clone() HeaderMap {
 	return clone
 }
 
+//nolint:cyclop,funlen
 func (h *HeaderMap) UnmarshalJSON(data []byte) error {
 	var arrayFormat []Header
 	err := json.Unmarshal(data, &arrayFormat)

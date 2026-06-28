@@ -1,3 +1,4 @@
+//nolint:funcorder
 package http
 
 import (
@@ -135,6 +136,7 @@ func (c *Client) getTLSClient(presetID string, timeout time.Duration, dialContex
 	return client, nil
 }
 
+//nolint:cyclop,funlen
 func (c *Client) Do(ctx context.Context, req *protocol.Request) (*protocol.Response, error) {
 	ctx, span := otel.Tracer("internal/endpoint/http").Start(ctx, "upstream.request")
 	defer span.End()

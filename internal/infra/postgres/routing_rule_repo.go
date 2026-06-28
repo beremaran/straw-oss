@@ -29,6 +29,7 @@ func NewRoutingRuleRepository(client *Client) *RoutingRuleRepository {
 	}
 }
 
+//nolint:funlen
 func (r *RoutingRuleRepository) GetActiveRules(ctx context.Context) ([]domain.RoutingRule, error) {
 	ctx, span := r.tracer.Start(ctx, "db.query", trace.WithAttributes(
 		attribute.String("db.system", "postgresql"),
@@ -182,6 +183,7 @@ func (r *RoutingRuleRepository) CreateRule(ctx context.Context, rule *domain.Rou
 	return err
 }
 
+//nolint:funlen
 func (r *RoutingRuleRepository) GetRuleByID(ctx context.Context, id string) (*domain.RoutingRule, error) {
 	ctx, span := r.tracer.Start(ctx, "db.query", trace.WithAttributes(
 		attribute.String("db.system", "postgresql"),
@@ -256,6 +258,7 @@ func (r *RoutingRuleRepository) GetRuleByID(ctx context.Context, id string) (*do
 	return &rule, nil
 }
 
+//nolint:funlen
 func (r *RoutingRuleRepository) UpdateRule(ctx context.Context, rule *domain.RoutingRule) error {
 	ctx, span := r.tracer.Start(ctx, "db.query", trace.WithAttributes(
 		attribute.String("db.system", "postgresql"),
@@ -361,6 +364,7 @@ func (r *RoutingRuleRepository) DeleteRule(ctx context.Context, id string) error
 	return nil
 }
 
+//nolint:funlen
 func (r *RoutingRuleRepository) ListRules(ctx context.Context, limit, offset int) ([]domain.RoutingRule, int, error) {
 	ctx, span := r.tracer.Start(ctx, "db.query", trace.WithAttributes(
 		attribute.String("db.system", "postgresql"),

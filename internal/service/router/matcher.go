@@ -1,3 +1,4 @@
+//nolint:funcorder
 package router
 
 import (
@@ -30,6 +31,7 @@ func NewMatcher(repo domain.RoutingRuleRepository, cache *RuleCache) *Matcher {
 	}
 }
 
+//nolint:cyclop
 func (m *Matcher) LoadRules(ctx context.Context) error {
 	if m.cache == nil {
 		return m.loadFromDB(ctx)

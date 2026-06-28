@@ -64,7 +64,7 @@ func main() {
 	defer pgClient.Close()
 
 	redisClient := getRedisClientOrDie(ctx, cfg)
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	natsBroker := getNATSConnectionOrDie(ctx, cfg)
 	defer func() { _ = natsBroker.Close() }()

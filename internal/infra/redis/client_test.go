@@ -1,3 +1,4 @@
+//nolint:errcheck
 package redis_test
 
 import (

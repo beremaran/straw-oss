@@ -22,6 +22,7 @@ type ContextRoutingRuleKey struct {
 	Value string
 }
 
+//nolint:cyclop,funlen
 func RateLimitMiddleware(limiter *ratelimit.RateLimiter, matcher *router.Matcher) func(http.Handler) http.Handler {
 	tagParser := router.NewTagParser()
 

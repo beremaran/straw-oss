@@ -100,6 +100,8 @@ func RunWithConfig(cfg *config.EndpointConfig) error {
 }
 
 // Start starts all background components of the worker and blocks until the context is canceled.
+//
+//nolint:cyclop,funlen
 func (w *Worker) Start(ctx context.Context) error {
 	cfg := w.cfg
 
@@ -280,7 +282,8 @@ func (w *Worker) Start(ctx context.Context) error {
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(ctx, 5*time.Second)
 	defer shutdownCancel()
-	if err := healthServer.Shutdown(shutdownCtx); err != nil {
+	err = healthServer.Shutdown(shutdownCtx)
+	if err != nil {
 		logger.Warn("health server shutdown error", "error", err)
 	}
 

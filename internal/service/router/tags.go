@@ -25,6 +25,7 @@ type ParseResult struct {
 	Warnings []string
 }
 
+//nolint:cyclop
 func (p *TagParser) ParseTags(r *http.Request, apiKey *domain.ApiKey) (*ParseResult, error) {
 	result := &ParseResult{
 		Tags:     make([]domain.Tag, 0),

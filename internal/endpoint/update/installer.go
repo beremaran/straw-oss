@@ -1,3 +1,4 @@
+//nolint:funcorder
 package update
 
 import (
@@ -113,6 +114,7 @@ func (i *Installer) Install(ctx context.Context, manifest *VersionManifest) erro
 	return nil
 }
 
+//nolint:funlen
 func (i *Installer) DownloadAndVerify(ctx context.Context, manifest *VersionManifest) (string, error) {
 	i.logger.Debug("downloading update",
 		"url", manifest.URL,

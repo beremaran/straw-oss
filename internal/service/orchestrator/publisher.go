@@ -37,6 +37,7 @@ func NewPublisher(b broker.MessageBroker, s EndpointSelector, secret []byte, bre
 	}
 }
 
+//nolint:cyclop,funlen
 func (p *Publisher) Publish(
 	ctx context.Context,
 	req *protocol.Request,

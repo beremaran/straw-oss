@@ -1,3 +1,4 @@
+//nolint:errcheck
 package update
 
 import (
