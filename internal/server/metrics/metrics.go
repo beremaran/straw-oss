@@ -26,73 +26,51 @@ var (
 )
 
 func Init() {
-	once.Do(func() {
-		reg := metrics.GetRegistry()
+	once.Do(initCollectors)
+}
 
-		RequestsTotal = prometheus.NewCounterVec(
-			prometheus.CounterOpts{
-				Name: "relay_requests_total",
-				Help: "Total number of relay requests processed",
-			},
-			[]string{"status", "rule_id", "fingerprint"},
-		)
+func initCollectors() {
+	reg := metrics.GetRegistry()
 
-		RequestDuration = prometheus.NewHistogramVec(
-			prometheus.HistogramOpts{
-				Name:    "relay_request_duration_seconds",
-				Help:    "Duration of relay requests in seconds",
-				Buckets: prometheus.DefBuckets,
-			},
-			[]string{"rule_id", "status"},
-		)
-
-		QueueDepth = prometheus.NewGaugeVec(
-			prometheus.GaugeOpts{
-				Name: "relay_queue_depth",
-				Help: "Depth of the relay request queue",
-			},
-			[]string{"queue_name"},
-		)
-
-		CacheHits = prometheus.NewCounterVec(
-			prometheus.CounterOpts{
-				Name: "relay_cache_hits_total",
-				Help: "Total number of cache hits",
-			},
-			[]string{"cache_type"},
-		)
-
-		CacheMisses = prometheus.NewCounterVec(
-			prometheus.CounterOpts{
-				Name: "relay_cache_misses_total",
-				Help: "Total number of cache misses",
-			},
-			[]string{"cache_type"},
-		)
-
-		ActiveSessions = prometheus.NewGauge(
-			prometheus.GaugeOpts{
-				Name: "relay_active_sessions",
-				Help: "Number of active sessions (concurrent requests)",
-			},
-		)
-
-		RateLimitExceeded = prometheus.NewCounterVec(
-			prometheus.CounterOpts{
-				Name: "relay_rate_limit_exceeded_total",
-				Help: "Total number of requests exceeded rate limit",
-			},
-			[]string{"quota_key"},
-		)
-
-		reg.MustRegister(
-			RequestsTotal,
-			RequestDuration,
-			QueueDepth,
-			CacheHits,
-			CacheMisses,
-			ActiveSessions,
-			RateLimitExceeded,
-		)
+	RequestsTotal = counterVec("relay_requests_total", "Total number of relay requests processed", "status", "rule_id", "fingerprint")
+	RequestDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "relay_request_duration_seconds",
+			Help:    "Duration of relay requests in seconds",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"rule_id", "status"},
+	)
+	QueueDepth = gaugeVec("relay_queue_depth", "Depth of the relay request queue", "queue_name")
+	CacheHits = counterVec("relay_cache_hits_total", "Total number of cache hits", "cache_type")
+	CacheMisses = counterVec("relay_cache_misses_total", "Total number of cache misses", "cache_type")
+	ActiveSessions = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "relay_active_sessions",
+		Help: "Number of active sessions (concurrent requests)",
 	})
+	RateLimitExceeded = counterVec("relay_rate_limit_exceeded_total", "Total number of requests exceeded rate limit", "quota_key")
+
+	reg.MustRegister(
+		RequestsTotal,
+		RequestDuration,
+		QueueDepth,
+		CacheHits,
+		CacheMisses,
+		ActiveSessions,
+		RateLimitExceeded,
+	)
+}
+
+func counterVec(name, help string, labels ...string) *prometheus.CounterVec {
+	return prometheus.NewCounterVec(
+		prometheus.CounterOpts{Name: name, Help: help},
+		labels,
+	)
+}
+
+func gaugeVec(name, help string, labels ...string) *prometheus.GaugeVec {
+	return prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{Name: name, Help: help},
+		labels,
+	)
 }

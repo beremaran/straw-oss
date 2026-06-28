@@ -56,10 +56,7 @@ func getSessionCache() utls.ClientSessionCache {
 }
 
 func Dial(ctx context.Context, network, addr string, presetID string, opts ...DialOption) (net.Conn, error) {
-	options := &DialOptions{}
-	for _, opt := range opts {
-		opt(options)
-	}
+	options := newDialOptions(opts)
 
 	presetObj, ok := fingerprint.Get(presetID)
 	if !ok {
@@ -70,13 +67,7 @@ func Dial(ctx context.Context, network, addr string, presetID string, opts ...Di
 	}
 	clientHelloID := presetObj.TLSClientHello
 
-	host, _, err := net.SplitHostPort(addr)
-	if err != nil {
-		host = addr
-	}
-	if options.ServerName != "" {
-		host = options.ServerName
-	}
+	host := serverName(addr, options.ServerName)
 
 	var d net.Dialer
 	rawConn, err := d.DialContext(ctx, network, addr)
@@ -98,16 +89,13 @@ func Dial(ctx context.Context, network, addr string, presetID string, opts ...Di
 		ClientSessionCache: getSessionCache(),
 	}, clientHelloID)
 
-	if options.HandshakeTimeout > 0 {
-		deadline := time.Now().Add(options.HandshakeTimeout)
-		err := uConn.SetDeadline(deadline)
-		if err != nil {
-			_ = rawConn.Close()
+	err = setHandshakeDeadline(uConn, options.HandshakeTimeout)
+	if err != nil {
+		_ = rawConn.Close()
 
-			return nil, &HandshakeError{
-				Addr: addr,
-				Err:  err,
-			}
+		return nil, &HandshakeError{
+			Addr: addr,
+			Err:  err,
 		}
 	}
 
@@ -118,18 +106,54 @@ func Dial(ctx context.Context, network, addr string, presetID string, opts ...Di
 		return nil, classifyHandshakeError(addr, err)
 	}
 
-	if options.HandshakeTimeout > 0 {
-		err := uConn.SetDeadline(time.Time{})
-		if err != nil {
-			_ = uConn.Close()
+	err = clearHandshakeDeadline(uConn, options.HandshakeTimeout)
+	if err != nil {
+		_ = uConn.Close()
 
-			return nil, err
-		}
+		return nil, err
 	}
 
 	metrics.TLSFingerprintUsed.WithLabelValues(presetID).Inc()
 
 	return uConn, nil
+}
+
+func newDialOptions(opts []DialOption) *DialOptions {
+	options := &DialOptions{}
+	for _, opt := range opts {
+		opt(options)
+	}
+
+	return options
+}
+
+func serverName(addr, override string) string {
+	if override != "" {
+		return override
+	}
+
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return addr
+	}
+
+	return host
+}
+
+func setHandshakeDeadline(conn net.Conn, timeout time.Duration) error {
+	if timeout <= 0 {
+		return nil
+	}
+
+	return conn.SetDeadline(time.Now().Add(timeout))
+}
+
+func clearHandshakeDeadline(conn net.Conn, timeout time.Duration) error {
+	if timeout <= 0 {
+		return nil
+	}
+
+	return conn.SetDeadline(time.Time{})
 }
 
 func classifyHandshakeError(addr string, err error) error {

@@ -45,25 +45,9 @@ func (p *Publisher) Publish(
 	targetEndpointID string,
 	replyTo string,
 ) (string, error) {
-	var endpointID string
-	var err error
-
-	if targetEndpointID != "" {
-		endpointID = targetEndpointID
-	} else {
-		if sessionID != "" {
-			endpointID, err = p.selector.SelectWithSession(ctx, sessionID)
-			if err != nil {
-				p.logger.Warn("failed to select endpoint from session", "session_id", sessionID, "error", err)
-			}
-		}
-	}
-
-	if endpointID == "" {
-		endpointID, err = p.selector.Select(ctx, rule)
-		if err != nil {
-			return "", fmt.Errorf("failed to select endpoint: %w", err)
-		}
+	endpointID, err := p.selectEndpoint(ctx, rule, sessionID, targetEndpointID)
+	if err != nil {
+		return "", err
 	}
 
 	if req.ID == "" {
@@ -100,4 +84,42 @@ func (p *Publisher) Publish(
 	}
 
 	return endpointID, nil
+}
+
+func (p *Publisher) selectEndpoint(
+	ctx context.Context,
+	rule *domain.RoutingRule,
+	sessionID string,
+	targetEndpointID string,
+) (string, error) {
+	if targetEndpointID != "" {
+		return targetEndpointID, nil
+	}
+
+	endpointID := p.selectSessionEndpoint(ctx, sessionID)
+	if endpointID != "" {
+		return endpointID, nil
+	}
+
+	endpointID, err := p.selector.Select(ctx, rule)
+	if err != nil {
+		return "", fmt.Errorf("failed to select endpoint: %w", err)
+	}
+
+	return endpointID, nil
+}
+
+func (p *Publisher) selectSessionEndpoint(ctx context.Context, sessionID string) string {
+	if sessionID == "" {
+		return ""
+	}
+
+	endpointID, err := p.selector.SelectWithSession(ctx, sessionID)
+	if err != nil {
+		p.logger.Warn("failed to select endpoint from session", "session_id", sessionID, "error", err)
+
+		return ""
+	}
+
+	return endpointID
 }

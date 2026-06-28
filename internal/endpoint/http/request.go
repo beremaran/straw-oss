@@ -103,32 +103,32 @@ func applyHeaderOrder(req *fhttp.Request, order []string) {
 }
 
 func applyFingerprintHeaders(req *fhttp.Request, preset fingerprint.Preset) {
-	if req.Header.Get("User-Agent") == "" && preset.UserAgent != "" {
-		req.Header.Set("User-Agent", preset.UserAgent)
+	for _, h := range defaultFingerprintHeaders(preset) {
+		setHeaderDefault(req, h.key, h.value)
 	}
+}
 
-	if req.Header.Get("Accept-Language") == "" && preset.AcceptLanguage != "" {
-		req.Header.Set("Accept-Language", preset.AcceptLanguage)
-	}
+type defaultHeader struct {
+	key   string
+	value string
+}
 
-	if req.Header.Get("Sec-CH-UA") == "" && preset.SecCHUA != "" {
-		req.Header.Set("Sec-CH-UA", preset.SecCHUA)
+func defaultFingerprintHeaders(preset fingerprint.Preset) []defaultHeader {
+	return []defaultHeader{
+		{key: "User-Agent", value: preset.UserAgent},
+		{key: "Accept-Language", value: preset.AcceptLanguage},
+		{key: "Sec-CH-UA", value: preset.SecCHUA},
+		{key: "Sec-CH-UA-Mobile", value: preset.SecCHUAMobile},
+		{key: "Sec-CH-UA-Platform", value: preset.SecCHUAPlatform},
+		{key: "Accept", value: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"},
+		{key: "Accept-Encoding", value: "gzip, deflate, br"},
+		{key: "Connection", value: "keep-alive"},
 	}
-	if req.Header.Get("Sec-CH-UA-Mobile") == "" && preset.SecCHUAMobile != "" {
-		req.Header.Set("Sec-CH-UA-Mobile", preset.SecCHUAMobile)
-	}
-	if req.Header.Get("Sec-CH-UA-Platform") == "" && preset.SecCHUAPlatform != "" {
-		req.Header.Set("Sec-CH-UA-Platform", preset.SecCHUAPlatform)
-	}
+}
 
-	if req.Header.Get("Accept") == "" {
-		req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8")
-	}
-	if req.Header.Get("Accept-Encoding") == "" {
-		req.Header.Set("Accept-Encoding", "gzip, deflate, br")
-	}
-	if req.Header.Get("Connection") == "" {
-		req.Header.Set("Connection", "keep-alive")
+func setHeaderDefault(req *fhttp.Request, key, value string) {
+	if value != "" && req.Header.Get(key) == "" {
+		req.Header.Set(key, value)
 	}
 }
 

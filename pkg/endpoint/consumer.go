@@ -211,6 +211,24 @@ func (c *Consumer) processTask(ctx context.Context, body []byte) error {
 	metrics.TasksInFlight.Inc()
 	defer metrics.TasksInFlight.Dec()
 
+	req, err := c.parseTask(body)
+	if err != nil {
+		return err
+	}
+
+	c.logger.Info("processing task",
+		"request_id", req.ID,
+		"method", req.Method,
+		"url", req.URL,
+	)
+
+	resp := c.executeRequest(ctx, req)
+	c.recordTaskCompletion(req, resp)
+
+	return c.publishResult(ctx, req, resp)
+}
+
+func (c *Consumer) parseTask(body []byte) (*protocol.Request, error) {
 	var signedTask protocol.SignedTask
 	err := json.Unmarshal(body, &signedTask)
 	if err != nil {
@@ -219,7 +237,7 @@ func (c *Consumer) processTask(ctx context.Context, body []byte) error {
 			"body_len", len(body),
 		)
 
-		return &TaskError{
+		return nil, &TaskError{
 			Code:    protocol.ErrCodeInternalError,
 			Message: "failed to unmarshal signed task: " + err.Error(),
 		}
@@ -233,24 +251,22 @@ func (c *Consumer) processTask(ctx context.Context, body []byte) error {
 
 		var valErr *protocol.ValidationError
 		if errors.As(err, &valErr) {
-			return &TaskError{
+			return nil, &TaskError{
 				Code:    valErr.Code,
 				Message: valErr.Message,
 			}
 		}
 
-		return &TaskError{
+		return nil, &TaskError{
 			Code:    protocol.ErrCodeInternalError,
 			Message: "task validation failed: " + err.Error(),
 		}
 	}
 
-	c.logger.Info("processing task",
-		"request_id", req.ID,
-		"method", req.Method,
-		"url", req.URL,
-	)
+	return req, nil
+}
 
+func (c *Consumer) executeRequest(ctx context.Context, req *protocol.Request) *protocol.Response {
 	resp, err := c.httpClient.Do(ctx, req)
 	if err != nil {
 		c.logger.Error("HTTP request failed",
@@ -272,6 +288,10 @@ func (c *Consumer) processTask(ctx context.Context, body []byte) error {
 
 	resp.EndpointID = c.endpointID
 
+	return resp
+}
+
+func (c *Consumer) recordTaskCompletion(req *protocol.Request, resp *protocol.Response) {
 	c.logger.Info("task completed",
 		"request_id", req.ID,
 		"status_code", resp.StatusCode,
@@ -309,7 +329,9 @@ func (c *Consumer) processTask(ctx context.Context, body []byte) error {
 			HasError:      resp.Error != nil,
 		})
 	}
+}
 
+func (c *Consumer) publishResult(ctx context.Context, req *protocol.Request, resp *protocol.Response) error {
 	if c.resultHandler != nil {
 		err := c.resultHandler(ctx, resp, req.ReplyTo)
 		if err != nil {

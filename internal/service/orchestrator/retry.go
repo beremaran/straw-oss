@@ -152,172 +152,13 @@ func (r *RetryExecutor) Execute(
 
 	var excludedEndpoints []string
 
-	if preferredEndpointID != "" {
-		r.logger.DebugContext(ctx, "attempting sticky session endpoint",
-			"request_id", req.ID,
-			"endpoint_id", preferredEndpointID,
-		)
-
-		attemptPoolTier := 1
-
-		response, endpointID, err := r.executeAttempt(ctx, req, rule, attemptPoolTier, excludedEndpoints, sessionID, resultCh, preferredEndpointID)
-
-		if err == nil {
-			failure := ClassifyFailure(response)
-			if failure == FailureNone {
-				result.Success = true
-				result.Response = response
-				result.FinalPool = attemptPoolTier
-
-				return result, nil
-			}
-
-			r.logger.InfoContext(ctx, "sticky endpoint failed, falling back to pools",
-				"request_id", req.ID,
-				"endpoint_id", endpointID,
-				"failure", failure.String(),
-			)
-
-			attemptErr := AttemptError{
-				Pool:          attemptPoolTier,
-				Attempt:       1,
-				EndpointID:    endpointID,
-				Failure:       failure,
-				FailureString: failure.String(),
-				Message:       r.getFailureMessage(response),
-				Duration:      0,
-			}
-			result.AttemptErrors = append(result.AttemptErrors, attemptErr)
-			result.TotalRetries++
-			excludedEndpoints = append(excludedEndpoints, endpointID)
-
-			ReleaseResultMessage(response)
-		} else {
-			r.logger.WarnContext(ctx, "sticky endpoint execution error", "error", err)
-			excludedEndpoints = append(excludedEndpoints, preferredEndpointID)
-		}
+	if preferredEndpointID != "" && r.executePreferredEndpoint(ctx, req, rule, result, sessionID, resultCh, preferredEndpointID, &excludedEndpoints) {
+		return result, nil
 	}
 
-	for _, poolTier := range pools {
-		poolConfig := r.poolManager.GetPoolConfig(rule, poolTier)
-		maxRetries := r.getMaxRetries(poolConfig, poolTier)
-
-		for attempt := 1; attempt <= maxRetries; attempt++ {
-			if ctx.Err() != nil {
-				return result, ctx.Err()
-			}
-
-			attemptStart := time.Now()
-
-			response, endpointID, err := r.executeAttempt(ctx, req, rule, poolTier, excludedEndpoints, sessionID, resultCh, "")
-			attemptDuration := time.Since(attemptStart)
-
-			if err != nil {
-				attemptErr := AttemptError{
-					Pool:          poolTier,
-					Attempt:       attempt,
-					EndpointID:    endpointID,
-					Failure:       FailureInternal,
-					FailureString: FailureInternal.String(),
-					Message:       err.Error(),
-					Duration:      attemptDuration,
-				}
-				result.AttemptErrors = append(result.AttemptErrors, attemptErr)
-				result.TotalRetries++
-				if endpointID != "" {
-					excludedEndpoints = append(excludedEndpoints, endpointID)
-				}
-
-				r.logger.WarnContext(ctx, "attempt failed with error",
-					"request_id", req.ID,
-					"pool", poolTier,
-					"attempt", attempt,
-					"endpoint", endpointID,
-					"error", err,
-				)
-
-				continue
-			}
-
-			failure := ClassifyFailure(response)
-
-			if failure == FailureNone {
-				result.Success = true
-				result.Response = response
-				result.FinalPool = poolTier
-
-				r.logger.DebugContext(ctx, "request succeeded",
-					"request_id", req.ID,
-					"pool", poolTier,
-					"attempt", attempt,
-					"endpoint", endpointID,
-					"total_retries", result.TotalRetries,
-				)
-
-				return result, nil
-			}
-
-			attemptErr := AttemptError{
-				Pool:          poolTier,
-				Attempt:       attempt,
-				EndpointID:    endpointID,
-				Failure:       failure,
-				FailureString: failure.String(),
-				Message:       r.getFailureMessage(response),
-				Duration:      attemptDuration,
-			}
-			result.AttemptErrors = append(result.AttemptErrors, attemptErr)
-			result.TotalRetries++
-			excludedEndpoints = append(excludedEndpoints, endpointID)
-
-			r.logger.WarnContext(ctx, "attempt failed",
-				"request_id", req.ID,
-				"pool", poolTier,
-				"attempt", attempt,
-				"endpoint", endpointID,
-				"failure", failure.String(),
-				"status_code", response.StatusCode,
-			)
-
-			if failure.ShouldEscalate() {
-				r.logger.InfoContext(ctx, "immediate escalation triggered",
-					"request_id", req.ID,
-					"pool", poolTier,
-					"failure", failure.String(),
-				)
-				ReleaseResultMessage(response)
-
-				break
-			}
-
-			if !failure.ShouldRetry() {
-				result.Response = response
-				result.FinalPool = poolTier
-
-				return result, nil
-			}
-
-			ReleaseResultMessage(response)
-
-			if failure.RequiresBackoff() && attempt < maxRetries {
-				backoff := r.calculateBackoff(attempt)
-				r.logger.DebugContext(ctx, "applying backoff before retry",
-					"request_id", req.ID,
-					"backoff", backoff,
-				)
-
-				select {
-				case <-ctx.Done():
-					return result, ctx.Err()
-				case <-time.After(backoff):
-				}
-			}
-		}
-
-		r.logger.InfoContext(ctx, "pool exhausted, escalating",
-			"request_id", req.ID,
-			"pool", poolTier,
-		)
+	done, err := r.executePools(ctx, req, rule, result, sessionID, resultCh, pools, &excludedEndpoints)
+	if err != nil || done {
+		return result, err
 	}
 
 	r.logger.WarnContext(ctx, "all pools exhausted",
@@ -326,6 +167,282 @@ func (r *RetryExecutor) Execute(
 	)
 
 	return result, nil
+}
+
+func (r *RetryExecutor) executePreferredEndpoint(
+	ctx context.Context,
+	req *protocol.Request,
+	rule *domain.RoutingRule,
+	result *RetryResult,
+	sessionID string,
+	resultCh <-chan *ResultMessage,
+	preferredEndpointID string,
+	excludedEndpoints *[]string,
+) bool {
+	r.logger.DebugContext(ctx, "attempting sticky session endpoint",
+		"request_id", req.ID,
+		"endpoint_id", preferredEndpointID,
+	)
+
+	response, endpointID, err := r.executeAttempt(ctx, req, rule, 1, *excludedEndpoints, sessionID, resultCh, preferredEndpointID)
+	if err != nil {
+		r.logger.WarnContext(ctx, "sticky endpoint execution error", "error", err)
+		*excludedEndpoints = append(*excludedEndpoints, preferredEndpointID)
+
+		return false
+	}
+
+	failure := ClassifyFailure(response)
+	if failure == FailureNone {
+		result.Success = true
+		result.Response = response
+		result.FinalPool = 1
+
+		return true
+	}
+
+	r.logger.InfoContext(ctx, "sticky endpoint failed, falling back to pools",
+		"request_id", req.ID,
+		"endpoint_id", endpointID,
+		"failure", failure.String(),
+	)
+	r.recordFailure(result, 1, 1, endpointID, failure, 0, response)
+	*excludedEndpoints = append(*excludedEndpoints, endpointID)
+	ReleaseResultMessage(response)
+
+	return false
+}
+
+func (r *RetryExecutor) executePools(
+	ctx context.Context,
+	req *protocol.Request,
+	rule *domain.RoutingRule,
+	result *RetryResult,
+	sessionID string,
+	resultCh <-chan *ResultMessage,
+	pools []int,
+	excludedEndpoints *[]string,
+) (bool, error) {
+	for _, poolTier := range pools {
+		done, err := r.executePool(ctx, req, rule, result, sessionID, resultCh, poolTier, excludedEndpoints)
+		if err != nil || done {
+			return done, err
+		}
+
+		r.logger.InfoContext(ctx, "pool exhausted, escalating",
+			"request_id", req.ID,
+			"pool", poolTier,
+		)
+	}
+
+	return false, nil
+}
+
+func (r *RetryExecutor) executePool(
+	ctx context.Context,
+	req *protocol.Request,
+	rule *domain.RoutingRule,
+	result *RetryResult,
+	sessionID string,
+	resultCh <-chan *ResultMessage,
+	poolTier int,
+	excludedEndpoints *[]string,
+) (bool, error) {
+	poolConfig := r.poolManager.GetPoolConfig(rule, poolTier)
+	maxRetries := r.getMaxRetries(poolConfig, poolTier)
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		if ctx.Err() != nil {
+			return false, ctx.Err()
+		}
+
+		done, stopPool, err := r.executePoolAttempt(ctx, req, rule, result, sessionID, resultCh, poolTier, attempt, maxRetries, excludedEndpoints)
+		if err != nil || done || stopPool {
+			return done, err
+		}
+	}
+
+	return false, nil
+}
+
+func (r *RetryExecutor) executePoolAttempt(
+	ctx context.Context,
+	req *protocol.Request,
+	rule *domain.RoutingRule,
+	result *RetryResult,
+	sessionID string,
+	resultCh <-chan *ResultMessage,
+	poolTier int,
+	attempt int,
+	maxRetries int,
+	excludedEndpoints *[]string,
+) (bool, bool, error) {
+	attemptStart := time.Now()
+	response, endpointID, err := r.executeAttempt(ctx, req, rule, poolTier, *excludedEndpoints, sessionID, resultCh, "")
+	attemptDuration := time.Since(attemptStart)
+	if err != nil {
+		r.recordInternalFailure(ctx, req, result, poolTier, attempt, endpointID, attemptDuration, err, excludedEndpoints)
+
+		return false, false, nil
+	}
+
+	failure := ClassifyFailure(response)
+	if failure == FailureNone {
+		r.recordSuccess(ctx, req, result, poolTier, attempt, endpointID, response)
+
+		return true, false, nil
+	}
+
+	r.recordFailedResponse(ctx, req, result, poolTier, attempt, endpointID, attemptDuration, failure, response, excludedEndpoints)
+	if failure.ShouldEscalate() {
+		ReleaseResultMessage(response)
+
+		return false, true, nil
+	}
+	if !failure.ShouldRetry() {
+		result.Response = response
+		result.FinalPool = poolTier
+
+		return true, false, nil
+	}
+
+	ReleaseResultMessage(response)
+
+	return false, false, r.backoffBeforeRetry(ctx, req, failure, attempt, maxRetries)
+}
+
+func (r *RetryExecutor) recordInternalFailure(
+	ctx context.Context,
+	req *protocol.Request,
+	result *RetryResult,
+	poolTier int,
+	attempt int,
+	endpointID string,
+	duration time.Duration,
+	err error,
+	excludedEndpoints *[]string,
+) {
+	result.AttemptErrors = append(result.AttemptErrors, AttemptError{
+		Pool:          poolTier,
+		Attempt:       attempt,
+		EndpointID:    endpointID,
+		Failure:       FailureInternal,
+		FailureString: FailureInternal.String(),
+		Message:       err.Error(),
+		Duration:      duration,
+	})
+	result.TotalRetries++
+	if endpointID != "" {
+		*excludedEndpoints = append(*excludedEndpoints, endpointID)
+	}
+
+	r.logger.WarnContext(ctx, "attempt failed with error",
+		"request_id", req.ID,
+		"pool", poolTier,
+		"attempt", attempt,
+		"endpoint", endpointID,
+		"error", err,
+	)
+}
+
+func (r *RetryExecutor) recordSuccess(
+	ctx context.Context,
+	req *protocol.Request,
+	result *RetryResult,
+	poolTier int,
+	attempt int,
+	endpointID string,
+	response *ResultMessage,
+) {
+	result.Success = true
+	result.Response = response
+	result.FinalPool = poolTier
+
+	r.logger.DebugContext(ctx, "request succeeded",
+		"request_id", req.ID,
+		"pool", poolTier,
+		"attempt", attempt,
+		"endpoint", endpointID,
+		"total_retries", result.TotalRetries,
+	)
+}
+
+func (r *RetryExecutor) recordFailedResponse(
+	ctx context.Context,
+	req *protocol.Request,
+	result *RetryResult,
+	poolTier int,
+	attempt int,
+	endpointID string,
+	duration time.Duration,
+	failure FailureType,
+	response *ResultMessage,
+	excludedEndpoints *[]string,
+) {
+	r.recordFailure(result, poolTier, attempt, endpointID, failure, duration, response)
+	*excludedEndpoints = append(*excludedEndpoints, endpointID)
+
+	r.logger.WarnContext(ctx, "attempt failed",
+		"request_id", req.ID,
+		"pool", poolTier,
+		"attempt", attempt,
+		"endpoint", endpointID,
+		"failure", failure.String(),
+		"status_code", response.StatusCode,
+	)
+	if failure.ShouldEscalate() {
+		r.logger.InfoContext(ctx, "immediate escalation triggered",
+			"request_id", req.ID,
+			"pool", poolTier,
+			"failure", failure.String(),
+		)
+	}
+}
+
+func (r *RetryExecutor) recordFailure(
+	result *RetryResult,
+	poolTier int,
+	attempt int,
+	endpointID string,
+	failure FailureType,
+	duration time.Duration,
+	response *ResultMessage,
+) {
+	result.AttemptErrors = append(result.AttemptErrors, AttemptError{
+		Pool:          poolTier,
+		Attempt:       attempt,
+		EndpointID:    endpointID,
+		Failure:       failure,
+		FailureString: failure.String(),
+		Message:       r.getFailureMessage(response),
+		Duration:      duration,
+	})
+	result.TotalRetries++
+}
+
+func (r *RetryExecutor) backoffBeforeRetry(
+	ctx context.Context,
+	req *protocol.Request,
+	failure FailureType,
+	attempt int,
+	maxRetries int,
+) error {
+	if !failure.RequiresBackoff() || attempt >= maxRetries {
+		return nil
+	}
+
+	backoff := r.calculateBackoff(attempt)
+	r.logger.DebugContext(ctx, "applying backoff before retry",
+		"request_id", req.ID,
+		"backoff", backoff,
+	)
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(backoff):
+		return nil
+	}
 }
 
 func (r *RetryExecutor) executeAttempt(

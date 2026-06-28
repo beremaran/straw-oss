@@ -42,25 +42,12 @@ func (m *Matcher) LoadRules(ctx context.Context) error {
 		return m.loadFromDB(ctx)
 	}
 
-	m.mu.RLock()
-	if m.currentVersion == version && version > 0 && len(m.rules) > 0 {
-		m.mu.RUnlock()
-
+	if matcherHasCurrentVersion(m, version) {
 		return nil
 	}
-	m.mu.RUnlock()
 
-	if version > 0 {
-		rules, err := m.cache.GetRulesByVersion(ctx, version)
-		if err != nil {
-			log.Printf("Failed to get rules (v%d) from cache: %v", version, err)
-		} else if rules != nil {
-			m.updateRules(rules, version)
-			atomic.AddInt64(&m.cacheHits, 1)
-			log.Printf("Routing rules loaded from cache (v%d): count=%d", version, len(rules))
-
-			return nil
-		}
+	if loadCachedRules(m, ctx, version) {
+		return nil
 	}
 
 	atomic.AddInt64(&m.cacheMisses, 1)
@@ -71,20 +58,53 @@ func (m *Matcher) LoadRules(ctx context.Context) error {
 	}
 
 	if version > 0 {
-		go func(v int64, r []domain.RoutingRule) {
-			cacheCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-			defer cancel()
-			err := m.cache.SetRulesByVersion(cacheCtx, v, r)
-			if err != nil {
-				log.Printf("Failed to update rules cache (v%d): %v", v, err)
-			}
-		}(version, rules)
+		cacheRulesAsync(m, ctx, version, rules)
 	}
 
 	m.updateRules(rules, version)
 	log.Printf("Routing rules loaded from DB: count=%d, version=%d", len(rules), version)
 
 	return nil
+}
+
+func matcherHasCurrentVersion(m *Matcher, version int64) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	return m.currentVersion == version && version > 0 && len(m.rules) > 0
+}
+
+func loadCachedRules(m *Matcher, ctx context.Context, version int64) bool {
+	if version <= 0 {
+		return false
+	}
+
+	rules, err := m.cache.GetRulesByVersion(ctx, version)
+	if err != nil {
+		log.Printf("Failed to get rules (v%d) from cache: %v", version, err)
+
+		return false
+	}
+	if rules == nil {
+		return false
+	}
+
+	m.updateRules(rules, version)
+	atomic.AddInt64(&m.cacheHits, 1)
+	log.Printf("Routing rules loaded from cache (v%d): count=%d", version, len(rules))
+
+	return true
+}
+
+func cacheRulesAsync(m *Matcher, ctx context.Context, version int64, rules []domain.RoutingRule) {
+	go func() {
+		cacheCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		err := m.cache.SetRulesByVersion(cacheCtx, version, rules)
+		if err != nil {
+			log.Printf("Failed to update rules cache (v%d): %v", version, err)
+		}
+	}()
 }
 
 func (m *Matcher) Match(tags []domain.Tag) *domain.RoutingRule {
