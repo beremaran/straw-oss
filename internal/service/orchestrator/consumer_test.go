@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"net/http"
 	"testing"
 	"time"
 
@@ -278,7 +279,7 @@ func TestResultMessage_ToResponse(t *testing.T) {
 		t.Errorf("expected session ID 'session-567', got %q", resp.SessionID)
 	}
 
-	if resp.StatusCode != 201 {
+	if resp.StatusCode != http.StatusCreated {
 		t.Errorf("expected status code 201, got %d", resp.StatusCode)
 	}
 

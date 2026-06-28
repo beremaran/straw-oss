@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"io"
+	"net/http"
 	"testing"
 
 	"github.com/andybalholm/brotli"
@@ -41,7 +42,7 @@ func TestBuildResponse_Basic(t *testing.T) {
 		t.Errorf("expected request ID req-123, got %s", protoResp.RequestID)
 	}
 
-	if protoResp.StatusCode != 200 {
+	if protoResp.StatusCode != http.StatusOK {
 		t.Errorf("expected status 200, got %d", protoResp.StatusCode)
 	}
 
@@ -385,7 +386,7 @@ func TestBuildResponseWithOptions_StreamingResponse(t *testing.T) {
 		t.Error("expected body to be nil for streaming response")
 	}
 
-	if protoResp.StatusCode != 200 {
+	if protoResp.StatusCode != http.StatusOK {
 		t.Errorf("expected status 200, got %d", protoResp.StatusCode)
 	}
 

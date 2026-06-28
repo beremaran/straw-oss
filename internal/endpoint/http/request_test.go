@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 	"time"
 
@@ -31,7 +32,7 @@ func TestBuildRequest_Basic(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if fhttpReq.Method != "GET" {
+	if fhttpReq.Method != http.MethodGet {
 		t.Errorf("expected method GET, got %s", fhttpReq.Method)
 	}
 
@@ -66,7 +67,7 @@ func TestBuildRequest_WithBody(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if fhttpReq.Method != "POST" {
+	if fhttpReq.Method != http.MethodPost {
 		t.Errorf("expected method POST, got %s", fhttpReq.Method)
 	}
 
