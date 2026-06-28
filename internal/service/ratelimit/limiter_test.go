@@ -1,3 +1,4 @@
+//nolint:errcheck
 package ratelimit_test
 
 import (

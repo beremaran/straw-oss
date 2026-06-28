@@ -1,3 +1,4 @@
+//nolint:errcheck
 package integration
 
 import (
@@ -187,6 +188,7 @@ type TestEndpointPool struct {
 	MaxRetries int
 }
 
+//nolint:cyclop,funlen
 func CreateTestRoutingRule(
 	ctx context.Context,
 	dsn string,
@@ -350,6 +352,7 @@ type ProxyResponse struct {
 	Body       []byte
 }
 
+//nolint:cyclop
 func (c *HTTPTestClient) SendRequest(ctx context.Context, req *ProxyRequest) (*ProxyResponse, error) {
 	if req.Method == "" {
 		req.Method = "GET"

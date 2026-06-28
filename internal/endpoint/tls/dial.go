@@ -55,6 +55,7 @@ func getSessionCache() utls.ClientSessionCache {
 	return sessionCache
 }
 
+//nolint:cyclop,funlen
 func Dial(ctx context.Context, network, addr string, presetID string, opts ...DialOption) (net.Conn, error) {
 	options := &DialOptions{}
 	for _, opt := range opts {

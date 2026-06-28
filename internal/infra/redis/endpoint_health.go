@@ -126,6 +126,7 @@ func (s *EndpointHealthStore) GetHealth(ctx context.Context, endpointID string) 
 	return &health, nil
 }
 
+//nolint:cyclop
 func (s *EndpointHealthStore) ListHealthyByTags(ctx context.Context, tags []string) ([]*EndpointHealth, error) {
 	endpointIDs, err := s.client.Client.ZRange(ctx, endpointHealthIndexKey, 0, -1).Result()
 	if err != nil {

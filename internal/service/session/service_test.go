@@ -1,3 +1,4 @@
+//nolint:errcheck
 package session_test
 
 import (

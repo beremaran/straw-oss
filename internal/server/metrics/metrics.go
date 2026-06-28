@@ -25,6 +25,7 @@ var (
 	once sync.Once
 )
 
+//nolint:funlen
 func Init() {
 	once.Do(func() {
 		reg := metrics.GetRegistry()

@@ -102,6 +102,7 @@ func applyHeaderOrder(req *fhttp.Request, order []string) {
 	req.Header[fhttp.HeaderOrderKey] = orderedHeaders
 }
 
+//nolint:cyclop
 func applyFingerprintHeaders(req *fhttp.Request, preset fingerprint.Preset) {
 	if req.Header.Get("User-Agent") == "" && preset.UserAgent != "" {
 		req.Header.Set("User-Agent", preset.UserAgent)

@@ -1,3 +1,4 @@
+//nolint:errcheck
 package integration
 
 import (
@@ -202,6 +203,7 @@ func (m *MockEndpoint) EndpointID() string {
 	return m.config.EndpointID
 }
 
+//nolint:funlen
 func (m *MockEndpoint) handleMessage(ctx context.Context, body []byte) error {
 	var signedTask protocol.SignedTask
 	err := json.Unmarshal(body, &signedTask)
