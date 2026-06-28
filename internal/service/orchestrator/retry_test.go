@@ -17,7 +17,7 @@ import (
 type retryMockBroker struct {
 	mu            sync.Mutex
 	subscriptions map[string]broker.Handler
-	responseFunc  func(routingKey string, body []byte) []byte
+	responseFunc  func(subject string, body []byte) []byte
 }
 
 func newRetryMockBroker() *retryMockBroker {
@@ -26,14 +26,14 @@ func newRetryMockBroker() *retryMockBroker {
 	}
 }
 
-func (m *retryMockBroker) Publish(ctx context.Context, exchange, routingKey string, body []byte) error {
+func (m *retryMockBroker) Publish(ctx context.Context, subject string, body []byte) error {
 	m.mu.Lock()
 	handler := m.subscriptions["temp-reply-queue"]
 	respFunc := m.responseFunc
 	m.mu.Unlock()
 
 	if respFunc != nil {
-		responseBody := respFunc(routingKey, body)
+		responseBody := respFunc(subject, body)
 
 		go func() {
 			if handler != nil {
@@ -45,35 +45,21 @@ func (m *retryMockBroker) Publish(ctx context.Context, exchange, routingKey stri
 	return nil
 }
 
-func (m *retryMockBroker) Subscribe(ctx context.Context, queue string, handler broker.Handler, opts ...broker.SubscribeOption) error {
+func (m *retryMockBroker) Subscribe(ctx context.Context, subject string, handler broker.Handler, opts ...broker.SubscribeOption) error {
 	return nil
 }
 
-func (m *retryMockBroker) SubscribeTemporary(ctx context.Context, queue string, handler broker.Handler) error {
-	m.mu.Lock()
-	m.subscriptions["temp-reply-queue"] = handler
-	m.mu.Unlock()
-
-	return nil
-}
-
-func (m *retryMockBroker) ConsumeOnce(ctx context.Context, queue string, timeout time.Duration) ([]byte, error) {
+func (m *retryMockBroker) ConsumeOnce(ctx context.Context, subject string, timeout time.Duration) ([]byte, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (m *retryMockBroker) Close() error                                                 { return nil }
-func (m *retryMockBroker) DeclareExchange(ctx context.Context, name, kind string) error { return nil }
-func (m *retryMockBroker) DeclareQueue(ctx context.Context, name string) error          { return nil }
-func (m *retryMockBroker) BindQueue(ctx context.Context, queue, exchange, routingKey string) error {
+func (m *retryMockBroker) Close() error { return nil }
+func (m *retryMockBroker) DeclareStream(ctx context.Context, name string, subjects ...string) error {
 	return nil
 }
 
 func (m *retryMockBroker) IsConnected() bool {
 	return true
-}
-
-func (m *retryMockBroker) QueueDepth(ctx context.Context, name string) (int, error) {
-	return 0, nil
 }
 
 type mockPoolManager struct {

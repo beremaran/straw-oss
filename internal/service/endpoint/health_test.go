@@ -311,7 +311,7 @@ func TestHealthService_HandleHeartbeat_Draining(t *testing.T) {
 type mockBroker struct {
 	subscribeHandler broker.Handler
 	subscribeCalled  bool
-	subscribeQueue   string
+	subscribeSubject string
 	publishCalled    bool
 	closed           bool
 }
@@ -320,33 +320,21 @@ func newMockBroker() *mockBroker {
 	return &mockBroker{}
 }
 
-func (m *mockBroker) Publish(_ context.Context, exchange, routingKey string, body []byte) error {
+func (m *mockBroker) Publish(_ context.Context, subject string, body []byte) error {
 	m.publishCalled = true
 
 	return nil
 }
 
-func (m *mockBroker) Subscribe(ctx context.Context, queue string, handler broker.Handler, opts ...broker.SubscribeOption) error {
+func (m *mockBroker) Subscribe(ctx context.Context, subject string, handler broker.Handler, opts ...broker.SubscribeOption) error {
 	m.subscribeCalled = true
-	m.subscribeQueue = queue
+	m.subscribeSubject = subject
 	m.subscribeHandler = handler
 
 	return nil
 }
 
-func (m *mockBroker) SubscribeTemporary(ctx context.Context, queue string, handler broker.Handler) error {
-	return nil
-}
-
-func (m *mockBroker) DeclareExchange(ctx context.Context, name, kind string) error {
-	return nil
-}
-
-func (m *mockBroker) DeclareQueue(ctx context.Context, name string) error {
-	return nil
-}
-
-func (m *mockBroker) BindQueue(ctx context.Context, queue, exchange, routingKey string) error {
+func (m *mockBroker) DeclareStream(ctx context.Context, name string, subjects ...string) error {
 	return nil
 }
 
@@ -354,11 +342,7 @@ func (m *mockBroker) IsConnected() bool {
 	return true
 }
 
-func (m *mockBroker) QueueDepth(ctx context.Context, name string) (int, error) {
-	return 0, nil
-}
-
-func (m *mockBroker) ConsumeOnce(ctx context.Context, queue string, timeout time.Duration) ([]byte, error) {
+func (m *mockBroker) ConsumeOnce(ctx context.Context, subject string, timeout time.Duration) ([]byte, error) {
 	return nil, nil
 }
 
@@ -368,29 +352,29 @@ func (m *mockBroker) Close() error {
 	return nil
 }
 
-func TestWithQueue(t *testing.T) {
+func TestWithHeartbeatSubject(t *testing.T) {
 	store := newMockHealthStore()
 	service := &HealthService{
-		store:  store,
-		logger: slog.Default(),
-		queue:  "default",
+		store:            store,
+		logger:           slog.Default(),
+		heartbeatSubject: "default",
 	}
 
-	customQueue := "custom-heartbeats"
-	opt := WithQueue(customQueue)
+	customSubject := "custom-heartbeats"
+	opt := WithHeartbeatSubject(customSubject)
 	opt(service)
 
-	if service.queue != customQueue {
-		t.Errorf("expected queue %s, got %s", customQueue, service.queue)
+	if service.heartbeatSubject != customSubject {
+		t.Errorf("expected subject %s, got %s", customSubject, service.heartbeatSubject)
 	}
 }
 
 func TestWithHealthLogger(t *testing.T) {
 	store := newMockHealthStore()
 	service := &HealthService{
-		store:  store,
-		logger: slog.Default(),
-		queue:  "heartbeats",
+		store:            store,
+		logger:           slog.Default(),
+		heartbeatSubject: "heartbeats.>",
 	}
 
 	customLogger := slog.New(slog.NewTextHandler(nil, nil))
@@ -427,20 +411,20 @@ func TestNewHealthService(t *testing.T) {
 				if s.logger == nil {
 					t.Error("expected logger to be set")
 				}
-				if s.queue != "heartbeats" {
-					t.Errorf("expected default queue 'heartbeats', got %s", s.queue)
+				if s.heartbeatSubject != "heartbeats.>" {
+					t.Errorf("expected default subject 'heartbeats.>', got %s", s.heartbeatSubject)
 				}
 			},
 		},
 		{
-			name:    "with custom queue",
+			name:    "with custom subject",
 			broker:  newMockBroker(),
 			store:   newMockHealthStore(),
-			opts:    []HealthOption{WithQueue("custom-queue")},
+			opts:    []HealthOption{WithHeartbeatSubject("custom-queue")},
 			wantErr: false,
 			verify: func(t *testing.T, s *HealthService) {
-				if s.queue != "custom-queue" {
-					t.Errorf("expected queue 'custom-queue', got %s", s.queue)
+				if s.heartbeatSubject != "custom-queue" {
+					t.Errorf("expected subject 'custom-queue', got %s", s.heartbeatSubject)
 				}
 			},
 		},
@@ -461,13 +445,13 @@ func TestNewHealthService(t *testing.T) {
 			broker: newMockBroker(),
 			store:  newMockHealthStore(),
 			opts: []HealthOption{
-				WithQueue("multi-queue"),
+				WithHeartbeatSubject("multi-queue"),
 				WithHealthLogger(slog.New(slog.NewTextHandler(nil, nil))),
 			},
 			wantErr: false,
 			verify: func(t *testing.T, s *HealthService) {
-				if s.queue != "multi-queue" {
-					t.Errorf("expected queue 'multi-queue', got %s", s.queue)
+				if s.heartbeatSubject != "multi-queue" {
+					t.Errorf("expected subject 'multi-queue', got %s", s.heartbeatSubject)
 				}
 				if s.logger == nil {
 					t.Error("expected custom logger to be set")
@@ -642,7 +626,7 @@ func TestHealthService_run(t *testing.T) {
 		verify func(*testing.T, *HealthService, *mockBroker)
 	}{
 		{
-			name: "run subscribes to correct queue",
+			name: "run subscribes to correct subject",
 			setup: func(mb *mockBroker, store *mockHealthStore) {
 
 			},
@@ -650,19 +634,19 @@ func TestHealthService_run(t *testing.T) {
 				if !mb.subscribeCalled {
 					t.Error("expected Subscribe to be called")
 				}
-				if mb.subscribeQueue != "heartbeats" {
-					t.Errorf("expected Subscribe to be called with queue 'heartbeats', got %s", mb.subscribeQueue)
+				if mb.subscribeSubject != "heartbeats.>" {
+					t.Errorf("expected Subscribe to be called with subject 'heartbeats.>', got %s", mb.subscribeSubject)
 				}
 			},
 		},
 		{
-			name: "run uses custom queue",
+			name: "run uses custom subject",
 			setup: func(mb *mockBroker, store *mockHealthStore) {
 
 			},
 			verify: func(t *testing.T, s *HealthService, mb *mockBroker) {
-				if mb.subscribeQueue != "custom-queue" {
-					t.Errorf("expected Subscribe to be called with queue 'custom-queue', got %s", mb.subscribeQueue)
+				if mb.subscribeSubject != "custom-queue" {
+					t.Errorf("expected Subscribe to be called with subject 'custom-queue', got %s", mb.subscribeSubject)
 				}
 			},
 		},
@@ -674,8 +658,8 @@ func TestHealthService_run(t *testing.T) {
 			store := newMockHealthStore()
 			var service *HealthService
 
-			if tt.name == "run uses custom queue" {
-				service = NewHealthService(mb, store, WithQueue("custom-queue"))
+			if tt.name == "run uses custom subject" {
+				service = NewHealthService(mb, store, WithHeartbeatSubject("custom-queue"))
 			} else {
 				service = NewHealthService(mb, store)
 			}

@@ -18,29 +18,24 @@ type mockPublisherBroker struct {
 	publishErr    error
 }
 
-func (m *mockPublisherBroker) Publish(ctx context.Context, exchange, routingKey string, body []byte) error {
+func (m *mockPublisherBroker) Publish(ctx context.Context, subject string, body []byte) error {
 	if m.publishErr != nil {
 		return m.publishErr
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.publishedMsgs = append(m.publishedMsgs, publishedMsg{
-		Exchange:   exchange,
-		RoutingKey: routingKey,
-		Body:       body,
+		Subject: subject,
+		Body:    body,
 	})
 
 	return nil
 }
-func (m *mockPublisherBroker) Subscribe(ctx context.Context, queue string, handler broker.Handler, opts ...broker.SubscribeOption) error {
+func (m *mockPublisherBroker) Subscribe(ctx context.Context, subject string, handler broker.Handler, opts ...broker.SubscribeOption) error {
 	return nil
 }
 
-func (m *mockPublisherBroker) SubscribeTemporary(ctx context.Context, queue string, handler broker.Handler) error {
-	return nil
-}
-
-func (m *mockPublisherBroker) ConsumeOnce(ctx context.Context, queue string, timeout time.Duration) ([]byte, error) {
+func (m *mockPublisherBroker) ConsumeOnce(ctx context.Context, subject string, timeout time.Duration) ([]byte, error) {
 	return nil, nil
 }
 
@@ -48,24 +43,12 @@ func (m *mockPublisherBroker) Close() error {
 	return nil
 }
 
-func (m *mockPublisherBroker) DeclareExchange(ctx context.Context, name, kind string) error {
-	return nil
-}
-
-func (m *mockPublisherBroker) DeclareQueue(ctx context.Context, name string) error {
-	return nil
-}
-
-func (m *mockPublisherBroker) BindQueue(ctx context.Context, queue, exchange, routingKey string) error {
+func (m *mockPublisherBroker) DeclareStream(ctx context.Context, name string, subjects ...string) error {
 	return nil
 }
 
 func (m *mockPublisherBroker) IsConnected() bool {
 	return true
-}
-
-func (m *mockPublisherBroker) QueueDepth(ctx context.Context, name string) (int, error) {
-	return 0, nil
 }
 
 func (m *mockPublisherBroker) getMessages() []publishedMsg {
@@ -119,13 +102,9 @@ func TestPublisher_Publish(t *testing.T) {
 
 	msg := msgs[0]
 
-	expectedRoutingKey := "results.test-request-123"
-	if msg.RoutingKey != expectedRoutingKey {
-		t.Errorf("expected routing key %q, got %q", expectedRoutingKey, msg.RoutingKey)
-	}
-
-	if msg.Exchange != "" {
-		t.Errorf("expected empty exchange, got %q", msg.Exchange)
+	expectedSubject := "results.test-request-123"
+	if msg.Subject != expectedSubject {
+		t.Errorf("expected subject %q, got %q", expectedSubject, msg.Subject)
 	}
 
 	var result ResultMessage
@@ -289,8 +268,8 @@ func TestPublisher_PublishError(t *testing.T) {
 		t.Fatalf("expected 1 message, got %d", len(msgs))
 	}
 
-	if msgs[0].RoutingKey != "results.test-req" {
-		t.Errorf("expected routing key 'results.test-req', got %q", msgs[0].RoutingKey)
+	if msgs[0].Subject != "results.test-req" {
+		t.Errorf("expected subject 'results.test-req', got %q", msgs[0].Subject)
 	}
 }
 

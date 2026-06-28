@@ -17,29 +17,24 @@ type mockHeartbeatBroker struct {
 	publishErr    error
 }
 
-func (m *mockHeartbeatBroker) Publish(ctx context.Context, exchange, routingKey string, body []byte) error {
+func (m *mockHeartbeatBroker) Publish(ctx context.Context, subject string, body []byte) error {
 	if m.publishErr != nil {
 		return m.publishErr
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.publishedMsgs = append(m.publishedMsgs, publishedMsg{
-		Exchange:   exchange,
-		RoutingKey: routingKey,
-		Body:       body,
+		Subject: subject,
+		Body:    body,
 	})
 
 	return nil
 }
-func (m *mockHeartbeatBroker) Subscribe(ctx context.Context, queue string, handler broker.Handler, opts ...broker.SubscribeOption) error {
+func (m *mockHeartbeatBroker) Subscribe(ctx context.Context, subject string, handler broker.Handler, opts ...broker.SubscribeOption) error {
 	return nil
 }
 
-func (m *mockHeartbeatBroker) SubscribeTemporary(ctx context.Context, queue string, handler broker.Handler) error {
-	return nil
-}
-
-func (m *mockHeartbeatBroker) ConsumeOnce(ctx context.Context, queue string, timeout time.Duration) ([]byte, error) {
+func (m *mockHeartbeatBroker) ConsumeOnce(ctx context.Context, subject string, timeout time.Duration) ([]byte, error) {
 	return nil, nil
 }
 
@@ -47,24 +42,12 @@ func (m *mockHeartbeatBroker) Close() error {
 	return nil
 }
 
-func (m *mockHeartbeatBroker) DeclareExchange(ctx context.Context, name, kind string) error {
-	return nil
-}
-
-func (m *mockHeartbeatBroker) DeclareQueue(ctx context.Context, name string) error {
-	return nil
-}
-
-func (m *mockHeartbeatBroker) BindQueue(ctx context.Context, queue, exchange, routingKey string) error {
+func (m *mockHeartbeatBroker) DeclareStream(ctx context.Context, name string, subjects ...string) error {
 	return nil
 }
 
 func (m *mockHeartbeatBroker) IsConnected() bool {
 	return true
-}
-
-func (m *mockHeartbeatBroker) QueueDepth(ctx context.Context, name string) (int, error) {
-	return 0, nil
 }
 
 func (m *mockHeartbeatBroker) getMessages() []publishedMsg {
@@ -159,12 +142,8 @@ func TestSender_HeartbeatMessageFormat(t *testing.T) {
 
 	msg := msgs[0]
 
-	if msg.Exchange != "heartbeats" {
-		t.Errorf("expected exchange 'heartbeats', got %q", msg.Exchange)
-	}
-
-	if msg.RoutingKey != "endpoint-003" {
-		t.Errorf("expected routing key 'endpoint-003', got %q", msg.RoutingKey)
+	if msg.Subject != "heartbeats.endpoint-003" {
+		t.Errorf("expected subject 'heartbeats.endpoint-003', got %q", msg.Subject)
 	}
 
 	var hb HeartbeatMessage

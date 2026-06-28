@@ -23,40 +23,38 @@ type mockBroker struct {
 }
 
 type publishedMsg struct {
-	Exchange   string
-	RoutingKey string
-	Body       []byte
+	Subject string
+	Body    []byte
 }
 
 type subscription struct {
-	Queue   string
+	Subject string
 	IsTemp  bool
 	Handler broker.Handler
 }
 
-func (m *mockBroker) Publish(ctx context.Context, exchange, routingKey string, body []byte) error {
+func (m *mockBroker) Publish(ctx context.Context, subject string, body []byte) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.publishErr != nil {
 		return m.publishErr
 	}
 	m.publishedMsgs = append(m.publishedMsgs, publishedMsg{
-		Exchange:   exchange,
-		RoutingKey: routingKey,
-		Body:       body,
+		Subject: subject,
+		Body:    body,
 	})
 
 	return nil
 }
 
-func (m *mockBroker) Subscribe(ctx context.Context, queue string, handler broker.Handler, opts ...broker.SubscribeOption) error {
+func (m *mockBroker) Subscribe(ctx context.Context, subject string, handler broker.Handler, opts ...broker.SubscribeOption) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.subscribeErr != nil {
 		return m.subscribeErr
 	}
 	m.subscriptions = append(m.subscriptions, subscription{
-		Queue:   queue,
+		Subject: subject,
 		IsTemp:  false,
 		Handler: handler,
 	})
@@ -64,22 +62,7 @@ func (m *mockBroker) Subscribe(ctx context.Context, queue string, handler broker
 	return nil
 }
 
-func (m *mockBroker) SubscribeTemporary(ctx context.Context, queue string, handler broker.Handler) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.subscribeErr != nil {
-		return m.subscribeErr
-	}
-	m.subscriptions = append(m.subscriptions, subscription{
-		Queue:   queue,
-		IsTemp:  true,
-		Handler: handler,
-	})
-
-	return nil
-}
-
-func (m *mockBroker) ConsumeOnce(ctx context.Context, queue string, timeout time.Duration) ([]byte, error) {
+func (m *mockBroker) ConsumeOnce(ctx context.Context, subject string, timeout time.Duration) ([]byte, error) {
 	return nil, errors.New("not implemented in mock")
 }
 
@@ -87,24 +70,12 @@ func (m *mockBroker) Close() error {
 	return nil
 }
 
-func (m *mockBroker) DeclareExchange(ctx context.Context, name, kind string) error {
-	return nil
-}
-
-func (m *mockBroker) DeclareQueue(ctx context.Context, name string) error {
-	return nil
-}
-
-func (m *mockBroker) BindQueue(ctx context.Context, queue, exchange, routingKey string) error {
+func (m *mockBroker) DeclareStream(ctx context.Context, name string, subjects ...string) error {
 	return nil
 }
 
 func (m *mockBroker) IsConnected() bool {
 	return true
-}
-
-func (m *mockBroker) QueueDepth(ctx context.Context, name string) (int, error) {
-	return 0, nil
 }
 
 type mockSelector struct {
@@ -158,9 +129,9 @@ func TestPublisher_Publish(t *testing.T) {
 		t.Errorf("expected 1 published message, got %d", len(mb.publishedMsgs))
 	} else {
 		msg := mb.publishedMsgs[0]
-		expectedQueue := "endpoint.ep-1.tasks"
-		if msg.RoutingKey != expectedQueue {
-			t.Errorf("expected routing key %s, got %s", expectedQueue, msg.RoutingKey)
+		expectedSubject := "tasks.ep-1.tasks"
+		if msg.Subject != expectedSubject {
+			t.Errorf("expected subject %s, got %s", expectedSubject, msg.Subject)
 		}
 
 		var st protocol.SignedTask
@@ -273,9 +244,9 @@ func TestPublisher_Publish_WithTargetEndpointID(t *testing.T) {
 	}
 
 	msg := mb.publishedMsgs[0]
-	expectedQueue := "endpoint.ep-target-1.tasks"
-	if msg.RoutingKey != expectedQueue {
-		t.Errorf("expected routing key %s, got %s", expectedQueue, msg.RoutingKey)
+	expectedSubject := "tasks.ep-target-1.tasks"
+	if msg.Subject != expectedSubject {
+		t.Errorf("expected subject %s, got %s", expectedSubject, msg.Subject)
 	}
 }
 

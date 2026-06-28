@@ -39,23 +39,15 @@ func WithDurableName(name string) SubscribeOption {
 }
 
 type MessageBroker interface {
-	Publish(ctx context.Context, exchange, routingKey string, body []byte) error
+	Publish(ctx context.Context, subject string, body []byte) error
 
-	Subscribe(ctx context.Context, queue string, handler Handler, opts ...SubscribeOption) error
+	Subscribe(ctx context.Context, subject string, handler Handler, opts ...SubscribeOption) error
 
-	SubscribeTemporary(ctx context.Context, queue string, handler Handler) error
+	ConsumeOnce(ctx context.Context, subject string, timeout time.Duration) ([]byte, error)
 
-	DeclareExchange(ctx context.Context, name, kind string) error
-
-	DeclareQueue(ctx context.Context, name string) error
-
-	BindQueue(ctx context.Context, queue, exchange, routingKey string) error
-
-	ConsumeOnce(ctx context.Context, queue string, timeout time.Duration) ([]byte, error)
+	DeclareStream(ctx context.Context, name string, subjects ...string) error
 
 	IsConnected() bool
-
-	QueueDepth(ctx context.Context, name string) (int, error)
 
 	Close() error
 }

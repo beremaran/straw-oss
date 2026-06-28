@@ -17,24 +17,20 @@ type consumeOnceMockBroker struct {
 	response    []byte
 	responseErr error
 
-	calledQueue   string
+	calledSubject string
 	calledTimeout time.Duration
 }
 
-func (m *consumeOnceMockBroker) Publish(ctx context.Context, exchange, routingKey string, body []byte) error {
+func (m *consumeOnceMockBroker) Publish(ctx context.Context, subject string, body []byte) error {
 	return nil
 }
 
-func (m *consumeOnceMockBroker) Subscribe(ctx context.Context, queue string, handler broker.Handler, opts ...broker.SubscribeOption) error {
+func (m *consumeOnceMockBroker) Subscribe(ctx context.Context, subject string, handler broker.Handler, opts ...broker.SubscribeOption) error {
 	return nil
 }
 
-func (m *consumeOnceMockBroker) SubscribeTemporary(ctx context.Context, queue string, handler broker.Handler) error {
-	return nil
-}
-
-func (m *consumeOnceMockBroker) ConsumeOnce(ctx context.Context, queue string, timeout time.Duration) ([]byte, error) {
-	m.calledQueue = queue
+func (m *consumeOnceMockBroker) ConsumeOnce(ctx context.Context, subject string, timeout time.Duration) ([]byte, error) {
+	m.calledSubject = subject
 	m.calledTimeout = timeout
 
 	if m.responseErr != nil {
@@ -48,24 +44,12 @@ func (m *consumeOnceMockBroker) Close() error {
 	return nil
 }
 
-func (m *consumeOnceMockBroker) DeclareExchange(ctx context.Context, name, kind string) error {
-	return nil
-}
-
-func (m *consumeOnceMockBroker) DeclareQueue(ctx context.Context, name string) error {
-	return nil
-}
-
-func (m *consumeOnceMockBroker) BindQueue(ctx context.Context, queue, exchange, routingKey string) error {
+func (m *consumeOnceMockBroker) DeclareStream(ctx context.Context, name string, subjects ...string) error {
 	return nil
 }
 
 func (m *consumeOnceMockBroker) IsConnected() bool {
 	return true
-}
-
-func (m *consumeOnceMockBroker) QueueDepth(ctx context.Context, name string) (int, error) {
-	return 0, nil
 }
 
 func TestConsumer_New(t *testing.T) {
@@ -136,8 +120,8 @@ func TestConsumer_WaitForResult_Success(t *testing.T) {
 		t.Errorf("expected status code 200, got %d", got.StatusCode)
 	}
 
-	if mb.calledQueue != "results.test-req-123" {
-		t.Errorf("expected queue 'results.test-req-123', got %q", mb.calledQueue)
+	if mb.calledSubject != "results.test-req-123" {
+		t.Errorf("expected subject 'results.test-req-123', got %q", mb.calledSubject)
 	}
 
 	if mb.calledTimeout != 5*time.Second {

@@ -89,7 +89,7 @@ func (h *FingerprintHandler) HandleBroadcastPresets(w http.ResponseWriter, r *ht
 		return
 	}
 
-	err = h.broker.Publish(r.Context(), "fingerprint_broadcast", "", body)
+	err = h.broker.Publish(r.Context(), "fingerprint_broadcast", body)
 	if err != nil {
 		helper.WriteError(w, http.StatusInternalServerError, "failed to broadcast")
 

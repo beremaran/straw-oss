@@ -79,7 +79,7 @@ func (s *Server) GetHandler() http.Handler {
 
 func (s *Server) setupBroker() {
 	if s.broker != nil {
-		_ = s.broker.DeclareExchange(context.Background(), "fingerprint_broadcast", "fanout")
+		_ = s.broker.DeclareStream(context.Background(), "fingerprint_broadcast", "fingerprint_broadcast")
 	}
 }
 

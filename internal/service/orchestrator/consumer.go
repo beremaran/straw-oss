@@ -68,17 +68,17 @@ func NewConsumer(b broker.MessageBroker, opts ...ConsumerOption) *Consumer {
 	return c
 }
 
-func (c *Consumer) WaitForResult(ctx context.Context, resultQueue string) (*ResultMessage, error) {
+func (c *Consumer) WaitForResult(ctx context.Context, resultSubject string) (*ResultMessage, error) {
 	c.logger.Debug("waiting for result",
-		"queue", resultQueue,
+		"subject", resultSubject,
 		"timeout", c.timeout,
 	)
 
-	body, err := c.broker.ConsumeOnce(ctx, resultQueue, c.timeout)
+	body, err := c.broker.ConsumeOnce(ctx, resultSubject, c.timeout)
 	if err != nil {
 		if errors.Is(err, broker.ErrTimeout) {
 			c.logger.Warn("timeout waiting for result",
-				"queue", resultQueue,
+				"subject", resultSubject,
 				"timeout", c.timeout,
 			)
 
@@ -97,7 +97,7 @@ func (c *Consumer) WaitForResult(ctx context.Context, resultQueue string) (*Resu
 	}
 
 	c.logger.Debug("received result",
-		"queue", resultQueue,
+		"subject", resultSubject,
 		"request_id", result.RequestID,
 		"status_code", result.StatusCode,
 		"has_error", result.Error != nil,

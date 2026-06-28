@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -13,18 +12,14 @@ import (
 )
 
 var (
-	ErrNoBindingsForQueue = errors.New("no bindings found for queue")
 	ErrNoStreamForSubject = errors.New("no stream found for subject")
 )
 
 type NatsBroker struct {
-	mu   sync.RWMutex
 	url  string
 	conn *nats.Conn
 	js   jetstream.JetStream
 	opts []Option
-
-	bindings map[string][]string
 }
 
 func NewNatsBroker(opts ...Option) *NatsBroker {
@@ -41,9 +36,8 @@ func NewNatsBroker(opts ...Option) *NatsBroker {
 	}
 
 	b := &NatsBroker{
-		url:      url,
-		bindings: make(map[string][]string),
-		opts:     opts,
+		url:  url,
+		opts: opts,
 	}
 
 	return b
@@ -91,11 +85,7 @@ func (b *NatsBroker) IsConnected() bool {
 	return b.conn != nil && b.conn.IsConnected()
 }
 
-func (b *NatsBroker) Publish(ctx context.Context, exchange, routingKey string, body []byte) error {
-	subject := fmt.Sprintf("%s.%s", exchange, routingKey)
-	if exchange == "" {
-		subject = routingKey
-	}
+func (b *NatsBroker) Publish(ctx context.Context, subject string, body []byte) error {
 	_, err := b.js.Publish(ctx, subject, body)
 	if err != nil {
 		return fmt.Errorf("failed to publish to %s: %w", subject, err)
@@ -104,62 +94,53 @@ func (b *NatsBroker) Publish(ctx context.Context, exchange, routingKey string, b
 	return nil
 }
 
-func (b *NatsBroker) Subscribe(ctx context.Context, queue string, handler Handler, opts ...SubscribeOption) error {
-	b.mu.RLock()
-	subjects, ok := b.bindings[queue]
-	b.mu.RUnlock()
-	if !ok || len(subjects) == 0 {
-		return fmt.Errorf("%w: %s", ErrNoBindingsForQueue, queue)
-	}
-
+func (b *NatsBroker) Subscribe(ctx context.Context, subject string, handler Handler, opts ...SubscribeOption) error {
 	subOpts := SubscribeOptions{}
 	for _, o := range opts {
 		o(&subOpts)
 	}
 
-	for _, subject := range subjects {
-		streamName := b.findStreamForSubject(ctx, subject)
-		if streamName == "" {
-			return fmt.Errorf("%w: %s", ErrNoStreamForSubject, subject)
-		}
-
-		var durableName string
-		if subOpts.Durable != nil {
-			durableName = *subOpts.Durable
-		} else {
-			durableName = strings.ReplaceAll(queue, ".", "_")
-		}
-
-		consumerConfig := jetstream.ConsumerConfig{
-			Durable:       durableName,
-			FilterSubject: subject,
-			DeliverPolicy: jetstream.DeliverNewPolicy,
-			AckPolicy:     jetstream.AckExplicitPolicy,
-			MaxAckPending: subOpts.MaxAckPending,
-		}
-
-		cons, err := b.js.CreateOrUpdateConsumer(ctx, streamName, consumerConfig)
-		if err != nil {
-			return fmt.Errorf("failed to create consumer for %s: %w", queue, err)
-		}
-
-		cc, err := cons.Consume(func(msg jetstream.Msg) {
-			err := handler(ctx, msg.Data())
-			if err != nil {
-				_ = msg.Nak()
-			} else {
-				_ = msg.Ack()
-			}
-		})
-		if err != nil {
-			return fmt.Errorf("failed to start consumer for %s: %w", queue, err)
-		}
-
-		go func() {
-			<-ctx.Done()
-			cc.Stop()
-		}()
+	streamName := b.findStreamForSubject(ctx, subject)
+	if streamName == "" {
+		return fmt.Errorf("%w: %s", ErrNoStreamForSubject, subject)
 	}
+
+	var durableName string
+	if subOpts.Durable != nil {
+		durableName = *subOpts.Durable
+	} else {
+		durableName = strings.NewReplacer(".", "_", "*", "_", ">", "_").Replace(subject)
+	}
+
+	consumerConfig := jetstream.ConsumerConfig{
+		Durable:       durableName,
+		FilterSubject: subject,
+		DeliverPolicy: jetstream.DeliverNewPolicy,
+		AckPolicy:     jetstream.AckExplicitPolicy,
+		MaxAckPending: subOpts.MaxAckPending,
+	}
+
+	cons, err := b.js.CreateOrUpdateConsumer(ctx, streamName, consumerConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create consumer for %s: %w", subject, err)
+	}
+
+	cc, err := cons.Consume(func(msg jetstream.Msg) {
+		err := handler(ctx, msg.Data())
+		if err != nil {
+			_ = msg.Nak()
+		} else {
+			_ = msg.Ack()
+		}
+	})
+	if err != nil {
+		return fmt.Errorf("failed to start consumer for %s: %w", subject, err)
+	}
+
+	go func() {
+		<-ctx.Done()
+		cc.Stop()
+	}()
 
 	return nil
 }
@@ -197,26 +178,14 @@ func subjectMatchesPattern(pattern, subject string) bool {
 	return i == pLen
 }
 
-func (b *NatsBroker) SubscribeTemporary(ctx context.Context, queue string, handler Handler) error {
-	sub, err := b.conn.QueueSubscribe(queue, queue, func(msg *nats.Msg) {
-		_ = handler(ctx, msg.Data)
-	})
-	if err != nil {
-		return err
+func (b *NatsBroker) DeclareStream(ctx context.Context, name string, subjects ...string) error {
+	if len(subjects) == 0 {
+		subjects = []string{name + ".>"}
 	}
 
-	go func() {
-		<-ctx.Done()
-		_ = sub.Unsubscribe()
-	}()
-
-	return nil
-}
-
-func (b *NatsBroker) DeclareExchange(ctx context.Context, name, kind string) error {
 	_, err := b.js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
 		Name:     name,
-		Subjects: []string{name + ".>"},
+		Subjects: subjects,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create stream %s: %w", name, err)
@@ -225,38 +194,8 @@ func (b *NatsBroker) DeclareExchange(ctx context.Context, name, kind string) err
 	return nil
 }
 
-func (b *NatsBroker) DeclareQueue(ctx context.Context, name string) error {
-	b.mu.Lock()
-	if _, ok := b.bindings[name]; !ok {
-		b.bindings[name] = []string{}
-	}
-	b.mu.Unlock()
-
-	return nil
-}
-
-func (b *NatsBroker) BindQueue(ctx context.Context, queue, exchange, routingKey string) error {
-	subject := fmt.Sprintf("%s.%s", exchange, routingKey)
-	if exchange == "" {
-		subject = routingKey
-	}
-	if routingKey == "" {
-		subject = exchange + ".>"
-	}
-
-	b.mu.Lock()
-	b.bindings[queue] = append(b.bindings[queue], subject)
-	b.mu.Unlock()
-
-	return nil
-}
-
-func (b *NatsBroker) QueueDepth(ctx context.Context, name string) (int, error) {
-	return 0, nil
-}
-
-func (b *NatsBroker) ConsumeOnce(ctx context.Context, queue string, timeout time.Duration) ([]byte, error) {
-	sub, err := b.conn.SubscribeSync(queue)
+func (b *NatsBroker) ConsumeOnce(ctx context.Context, subject string, timeout time.Duration) ([]byte, error) {
+	sub, err := b.conn.SubscribeSync(subject)
 	if err != nil {
 		return nil, err
 	}

@@ -22,7 +22,7 @@ var ErrMockEndpointAlreadyRunning = errors.New("mock endpoint already running")
 type MockEndpointConfig struct {
 	EndpointID string
 
-	QueueName string
+	TaskSubject string
 
 	Secret []byte
 
@@ -74,8 +74,8 @@ type MockEndpoint struct {
 }
 
 func NewMockEndpoint(b broker.MessageBroker, config MockEndpointConfig) *MockEndpoint {
-	if config.QueueName == "" {
-		config.QueueName = "endpoint." + config.EndpointID + ".tasks"
+	if config.TaskSubject == "" {
+		config.TaskSubject = "tasks." + config.EndpointID + ".tasks"
 	}
 
 	if config.HeartbeatInterval == 0 {
@@ -102,7 +102,7 @@ func (m *MockEndpoint) Start(ctx context.Context) error {
 
 	m.logger.Info("starting mock endpoint",
 		"endpoint_id", m.config.EndpointID,
-		"queue", m.config.QueueName,
+		"subject", m.config.TaskSubject,
 		"tags", m.config.Tags,
 	)
 
@@ -118,21 +118,7 @@ func (m *MockEndpoint) Start(ctx context.Context) error {
 	go func() {
 		defer m.wg.Done()
 
-		err := m.broker.DeclareQueue(ctx, m.config.QueueName)
-		if err != nil {
-			m.logger.Error("failed to declare queue", "error", err)
-
-			return
-		}
-
-		err = m.broker.BindQueue(ctx, m.config.QueueName, "tasks", m.config.QueueName)
-		if err != nil {
-			m.logger.Error("failed to bind queue", "error", err)
-
-			return
-		}
-
-		err = m.broker.Subscribe(ctx, m.config.QueueName, m.handleMessage)
+		err := m.broker.Subscribe(ctx, m.config.TaskSubject, m.handleMessage)
 		if err != nil && ctx.Err() == nil {
 			m.logger.Error("mock endpoint subscription error", "error", err)
 		}
@@ -250,7 +236,7 @@ func (m *MockEndpoint) recordRequest(req *protocol.Request) {
 }
 
 func (m *MockEndpoint) publishResponse(ctx context.Context, req *protocol.Request, resp *MockEndpointResponse) error {
-	respQueueName := responseQueueName(req)
+	respSubjectName := responseSubjectName(req)
 	resultMsg := resp.ToResultMessage(m.config.EndpointID, "", req.ID)
 
 	respBody, err := json.Marshal(resultMsg)
@@ -260,7 +246,7 @@ func (m *MockEndpoint) publishResponse(ctx context.Context, req *protocol.Reques
 		return err
 	}
 
-	err = m.broker.Publish(ctx, "", respQueueName, respBody)
+	err = m.broker.Publish(ctx, respSubjectName, respBody)
 	if err != nil {
 		m.logger.Error("failed to publish response", "error", err)
 
@@ -270,13 +256,13 @@ func (m *MockEndpoint) publishResponse(ctx context.Context, req *protocol.Reques
 	m.logger.Info("mock endpoint published response",
 		"request_id", req.ID,
 		"status_code", resp.StatusCode,
-		"queue", respQueueName,
+		"subject", respSubjectName,
 	)
 
 	return nil
 }
 
-func responseQueueName(req *protocol.Request) string {
+func responseSubjectName(req *protocol.Request) string {
 	if req.ReplyTo != "" {
 		return req.ReplyTo
 	}

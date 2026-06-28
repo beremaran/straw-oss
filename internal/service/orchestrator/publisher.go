@@ -67,17 +67,17 @@ func (p *Publisher) Publish(
 		return "", fmt.Errorf("failed to marshal signed task: %w", err)
 	}
 
-	endpointQueue := "endpoint." + endpointID + ".tasks"
+	taskSubject := "tasks." + endpointID + ".tasks"
 
 	p.logger.InfoContext(ctx, "task published",
 		"request_id", req.ID,
 		"endpoint_id", endpointID,
-		"queue", endpointQueue,
-		"result_queue", replyTo,
+		"subject", taskSubject,
+		"reply_to", replyTo,
 	)
 
 	err = p.breaker.Execute(func() error {
-		return p.broker.Publish(ctx, "tasks", endpointQueue, body)
+		return p.broker.Publish(ctx, taskSubject, body)
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to publish task (circuit breaker): %w", err)

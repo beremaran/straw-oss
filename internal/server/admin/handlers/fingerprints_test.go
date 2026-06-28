@@ -56,39 +56,25 @@ type mockBroker struct {
 	mock.Mock
 }
 
-func (m *mockBroker) Publish(ctx context.Context, exchange, routingKey string, body []byte) error {
-	args := m.Called(ctx, exchange, routingKey, body)
+func (m *mockBroker) Publish(ctx context.Context, subject string, body []byte) error {
+	args := m.Called(ctx, subject, body)
 
 	return args.Error(0)
 }
-func (m *mockBroker) Subscribe(ctx context.Context, queue string, handler broker.Handler, opts ...broker.SubscribeOption) error {
+func (m *mockBroker) Subscribe(ctx context.Context, subject string, handler broker.Handler, opts ...broker.SubscribeOption) error {
 	return nil
 }
-func (m *mockBroker) SubscribeTemporary(ctx context.Context, queue string, handler broker.Handler) error {
-	return nil
-}
-func (m *mockBroker) ConsumeOnce(ctx context.Context, queue string, timeout time.Duration) ([]byte, error) {
+func (m *mockBroker) ConsumeOnce(ctx context.Context, subject string, timeout time.Duration) ([]byte, error) {
 	return nil, nil
 }
 func (m *mockBroker) Close() error {
 	return nil
 }
-func (m *mockBroker) DeclareExchange(ctx context.Context, name, kind string) error {
+func (m *mockBroker) DeclareStream(ctx context.Context, name string, subjects ...string) error {
 	return nil
 }
-func (m *mockBroker) DeclareQueue(ctx context.Context, name string) error {
-	return nil
-}
-func (m *mockBroker) BindQueue(ctx context.Context, queue, exchange, routingKey string) error {
-	return nil
-}
-
 func (m *mockBroker) IsConnected() bool {
 	return true
-}
-
-func (m *mockBroker) QueueDepth(ctx context.Context, name string) (int, error) {
-	return 0, nil
 }
 
 func TestFingerprintHandler_List(t *testing.T) {
@@ -141,7 +127,7 @@ func TestFingerprintHandler_Broadcast(t *testing.T) {
 
 	presets := []domain.FingerprintPreset{{ID: "p1"}}
 	repo.On("ListPresets", mock.Anything).Return(presets, nil)
-	mb.On("Publish", mock.Anything, "fingerprint_broadcast", "", mock.Anything).Return(nil)
+	mb.On("Publish", mock.Anything, "fingerprint_broadcast", mock.Anything).Return(nil)
 
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/admin/fingerprints/broadcast", nil)
 	rec := httptest.NewRecorder()

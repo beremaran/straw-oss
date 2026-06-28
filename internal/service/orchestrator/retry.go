@@ -21,7 +21,7 @@ const (
 	DefaultMaxBackoff      = 5 * time.Second
 	DefaultBackoffFactor   = 2.0
 	DefaultLastExitRetries = 1
-	SharedResultQueue      = "results.relay"
+	SharedResultSubject    = "results.relay"
 )
 
 type AttemptError struct {
@@ -117,7 +117,7 @@ func NewRetryExecutor(
 }
 
 func (r *RetryExecutor) Start(ctx context.Context) error {
-	return r.broker.Subscribe(ctx, SharedResultQueue, r.handleResult, broker.WithTransient(), broker.WithMaxAckPending(5000))
+	return r.broker.Subscribe(ctx, SharedResultSubject, r.handleResult, broker.WithTransient(), broker.WithMaxAckPending(5000))
 }
 
 func (r *RetryExecutor) Execute(
@@ -467,7 +467,7 @@ func (r *RetryExecutor) executeAttempt(
 		}
 	}
 
-	_, err = r.publisher.Publish(ctx, req, rule, sessionID, endpointID, SharedResultQueue)
+	_, err = r.publisher.Publish(ctx, req, rule, sessionID, endpointID, SharedResultSubject)
 	if err != nil {
 		return nil, endpointID, fmt.Errorf("failed to publish task: %w", err)
 	}
