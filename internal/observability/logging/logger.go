@@ -78,5 +78,6 @@ func (h *TraceHandler) Handle(ctx context.Context, r slog.Record) error {
 	if reqID, ok := ctx.Value(RequestIDKey).(string); ok && reqID != "" {
 		r.AddAttrs(slog.String("request_id", reqID))
 	}
+
 	return h.Handler.Handle(ctx, r)
 }

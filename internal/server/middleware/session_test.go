@@ -35,7 +35,7 @@ func TestSessionMiddleware(t *testing.T) {
 	mw := middleware.SessionMiddleware(svc)
 
 	t.Run("Existing Session", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 		req.Header.Set(middleware.HeaderSessionID, sess.ID)
 		rec := httptest.NewRecorder()
 
@@ -54,7 +54,7 @@ func TestSessionMiddleware(t *testing.T) {
 	})
 
 	t.Run("Missing Session ID", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 		rec := httptest.NewRecorder()
 
 		h := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -69,7 +69,7 @@ func TestSessionMiddleware(t *testing.T) {
 	})
 
 	t.Run("Invalid Session ID", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 		req.Header.Set(middleware.HeaderSessionID, "invalid-123")
 		rec := httptest.NewRecorder()
 
@@ -82,7 +82,7 @@ func TestSessionMiddleware(t *testing.T) {
 	})
 
 	t.Run("End Session", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 		req.Header.Set(middleware.HeaderSessionID, sess.ID)
 		req.Header.Set(middleware.HeaderSessionEnd, "true")
 		rec := httptest.NewRecorder()

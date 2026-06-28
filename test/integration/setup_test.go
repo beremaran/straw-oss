@@ -204,6 +204,7 @@ func TestWaitForHealthy(t *testing.T) {
 			if attempts < 3 {
 				return assert.AnError
 			}
+
 			return nil
 		}, 50*time.Millisecond, 1*time.Second)
 		assert.NoError(t, err)

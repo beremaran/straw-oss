@@ -1,6 +1,7 @@
 package security
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -19,9 +20,8 @@ import (
 )
 
 func TestSecurity_SSRFProtection(t *testing.T) {
-
 	reqJSON := `{"url": "http://127.0.0.1:8080/admin", "method": "GET"}`
-	req := httptest.NewRequest(http.MethodPost, "/v1/request", strings.NewReader(reqJSON))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/v1/request", strings.NewReader(reqJSON))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 
@@ -35,7 +35,6 @@ func TestSecurity_SSRFProtection(t *testing.T) {
 }
 
 func TestSecurity_BodyLimit(t *testing.T) {
-
 	cfg := config.ServerConfig{}
 	cfg.MaxBodySize = "10B"
 	cfg.HTTPPort = 0
@@ -43,7 +42,7 @@ func TestSecurity_BodyLimit(t *testing.T) {
 	s := server.New(cfg, &auth.Service{}, &session.Service{}, &router.Matcher{}, &ratelimit.RateLimiter{}, &filter.Service{}, &orchestrator.RetryExecutor{})
 
 	largeBody := strings.Repeat("A", 100)
-	req := httptest.NewRequest(http.MethodPost, "/v1/request", strings.NewReader(largeBody))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/v1/request", strings.NewReader(largeBody))
 	rec := httptest.NewRecorder()
 
 	s.GetMux().ServeHTTP(rec, req)

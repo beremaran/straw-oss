@@ -2,10 +2,8 @@ package integration
 
 import (
 	"context"
-	"math/rand"
 	"net/http"
 	"testing"
-	"time"
 
 	"github.com/beremaran/straw/internal/config"
 	"github.com/beremaran/straw/internal/infra/redis"
@@ -20,8 +18,6 @@ func TestSession_Stickiness(t *testing.T) {
 
 	tc := setupTestServer(t, suite)
 	defer tc.Cleanup()
-
-	rand.Seed(time.Now().UnixNano())
 
 	apiKey, err := CreateTestAPIKey(ctx, suite.PostgresDSN(), "test-client", []string{"*"})
 	require.NoError(t, err)
@@ -112,7 +108,6 @@ func TestSession_Stickiness(t *testing.T) {
 func TestSession_Migration(t *testing.T) {
 	suite := GetSuite(t)
 	ctx := context.Background()
-	rand.Seed(time.Now().UnixNano())
 
 	tc := setupTestServer(t, suite)
 	defer tc.Cleanup()
@@ -188,7 +183,6 @@ func TestSession_Migration(t *testing.T) {
 }
 
 func TestSession_Expiration(t *testing.T) {
-
 	suite := GetSuite(t)
 	ctx := context.Background()
 	tc := setupTestServer(t, suite)

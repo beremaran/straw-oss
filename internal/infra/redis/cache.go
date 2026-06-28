@@ -17,10 +17,12 @@ func (c *Client) Get(ctx context.Context, key string, v interface{}) error {
 		if errors.Is(err, redis.Nil) {
 			return ErrCacheMiss
 		}
+
 		return err
 	}
 
-	if err := json.Unmarshal(val, v); err != nil {
+	err = json.Unmarshal(val, v)
+	if err != nil {
 		return err
 	}
 

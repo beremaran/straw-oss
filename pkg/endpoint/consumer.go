@@ -128,11 +128,11 @@ func (c *Consumer) Start(ctx context.Context) error {
 		"max_task_age", c.maxTaskAge,
 	)
 
-	if err := c.broker.DeclareQueue(c.ctx, c.queueName); err != nil {
+	if err := c.broker.DeclareQueue(ctx, c.queueName); err != nil {
 		return fmt.Errorf("failed to declare task queue: %w", err)
 	}
 
-	if err := c.broker.BindQueue(c.ctx, c.queueName, "tasks", c.queueName); err != nil {
+	if err := c.broker.BindQueue(ctx, c.queueName, "tasks", c.queueName); err != nil {
 		return fmt.Errorf("failed to bind task queue to exchange: %w", err)
 	}
 	c.logger.Info("bound task queue to tasks exchange",
@@ -141,7 +141,7 @@ func (c *Consumer) Start(ctx context.Context) error {
 		"routing_key", c.queueName,
 	)
 
-	err := c.broker.Subscribe(c.ctx, c.queueName, c.handleMessage, broker.WithMaxAckPending(c.concurrencyLimit))
+	err := c.broker.Subscribe(ctx, c.queueName, c.handleMessage, broker.WithMaxAckPending(c.concurrencyLimit))
 	if err != nil {
 		return err
 	}
@@ -151,6 +151,7 @@ func (c *Consumer) Start(ctx context.Context) error {
 	c.wg.Wait()
 
 	c.logger.Info("consumer stopped", "endpoint_id", c.endpointID)
+
 	return nil
 }
 
@@ -175,7 +176,8 @@ func (c *Consumer) handleMessage(ctx context.Context, body []byte) error {
 		defer c.wg.Done()
 		defer func() { <-c.semaphore }()
 
-		if err := c.processTask(ctx, body); err != nil {
+		err := c.processTask(ctx, body)
+		if err != nil {
 			c.logger.Error("failed to process task",
 				"error", err,
 				"endpoint_id", c.endpointID,
@@ -191,11 +193,13 @@ func (c *Consumer) processTask(ctx context.Context, body []byte) error {
 	defer metrics.TasksInFlight.Dec()
 
 	var signedTask protocol.SignedTask
-	if err := json.Unmarshal(body, &signedTask); err != nil {
+	err := json.Unmarshal(body, &signedTask)
+	if err != nil {
 		c.logger.Warn("failed to unmarshal signed task",
 			"error", err,
 			"body_len", len(body),
 		)
+
 		return &TaskError{
 			Code:    protocol.ErrCodeInternalError,
 			Message: "failed to unmarshal signed task: " + err.Error(),
@@ -215,6 +219,7 @@ func (c *Consumer) processTask(ctx context.Context, body []byte) error {
 				Message: valErr.Message,
 			}
 		}
+
 		return &TaskError{
 			Code:    protocol.ErrCodeInternalError,
 			Message: "task validation failed: " + err.Error(),
@@ -287,11 +292,13 @@ func (c *Consumer) processTask(ctx context.Context, body []byte) error {
 	}
 
 	if c.resultHandler != nil {
-		if err := c.resultHandler(ctx, resp, req.ReplyTo); err != nil {
+		err := c.resultHandler(ctx, resp, req.ReplyTo)
+		if err != nil {
 			c.logger.Error("failed to publish result",
 				"request_id", req.ID,
 				"error", err,
 			)
+
 			return err
 		}
 	}

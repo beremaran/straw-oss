@@ -1,6 +1,8 @@
 package router
 
 import (
+	"context"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
@@ -124,7 +126,7 @@ func TestParseTags(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest("GET", "/", nil)
+			req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 			for k, v := range tt.headers {
 				req.Header.Set(k, v)
 			}
@@ -132,6 +134,7 @@ func TestParseTags(t *testing.T) {
 			result, err := parser.ParseTags(req, tt.apiKey)
 			if tt.expectError {
 				assert.Error(t, err)
+
 				return
 			}
 

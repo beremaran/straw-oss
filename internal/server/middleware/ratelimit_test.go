@@ -32,6 +32,7 @@ func (m *MockRuleRepo) GetActiveRules(ctx context.Context) ([]domain.RoutingRule
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
+
 	return args.Get(0).([]domain.RoutingRule), args.Error(1)
 }
 
@@ -46,7 +47,6 @@ func (m *MockRuleRepo) ListRules(ctx context.Context, limit, offset int) ([]doma
 }
 
 func TestRateLimitMiddleware(t *testing.T) {
-
 	s, err := miniredis.Run()
 	require.NoError(t, err)
 	defer s.Close()
@@ -91,6 +91,7 @@ func TestRateLimitMiddleware(t *testing.T) {
 		if rule == nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			_, _ = w.Write([]byte("no rule in context"))
+
 			return
 		}
 		w.WriteHeader(http.StatusOK)
@@ -99,7 +100,7 @@ func TestRateLimitMiddleware(t *testing.T) {
 
 	t.Run("Allows request under limit", func(t *testing.T) {
 		s.FlushAll()
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 		req.Header.Set("X-Relay-Tags", "target=amazon")
 		rec := httptest.NewRecorder()
 
@@ -117,7 +118,7 @@ func TestRateLimitMiddleware(t *testing.T) {
 	t.Run("Blocks request over limit", func(t *testing.T) {
 		s.FlushAll()
 		for i := 0; i < 3; i++ {
-			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 			req.Header.Set("X-Relay-Tags", "target=amazon")
 			rec := httptest.NewRecorder()
 
@@ -128,7 +129,6 @@ func TestRateLimitMiddleware(t *testing.T) {
 			if i < 2 {
 				assert.Equal(t, http.StatusOK, rec.Code)
 			} else {
-
 				assert.Equal(t, http.StatusTooManyRequests, rec.Code)
 				assert.Contains(t, rec.Body.String(), "RATE_LIMIT_EXCEEDED")
 				assert.Equal(t, "0", rec.Header().Get("X-RateLimit-Remaining"))
@@ -137,7 +137,7 @@ func TestRateLimitMiddleware(t *testing.T) {
 	})
 
 	t.Run("Fails if no rule matches", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 		req.Header.Set("X-Relay-Tags", "target=uknown")
 		rec := httptest.NewRecorder()
 
@@ -147,7 +147,7 @@ func TestRateLimitMiddleware(t *testing.T) {
 
 	t.Run("Uses API Key override", func(t *testing.T) {
 		s.FlushAll()
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 		req.Header.Set("X-Relay-Tags", "target=amazon")
 		rec := httptest.NewRecorder()
 

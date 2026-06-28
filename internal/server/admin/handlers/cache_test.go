@@ -27,7 +27,7 @@ func TestCacheHandler_HandleClearCache(t *testing.T) {
 	client.Client.Set(context.Background(), "test:1", "val1", time.Minute)
 	client.Client.Set(context.Background(), "other:1", "val2", time.Minute)
 
-	req := httptest.NewRequest(http.MethodPost, "/admin/cache/clear?pattern=test:*", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/admin/cache/clear?pattern=test:*", nil)
 	rec := httptest.NewRecorder()
 
 	h.HandleClearCache(rec, req)
@@ -53,7 +53,7 @@ func TestCacheHandler_HandleGetCacheStats(t *testing.T) {
 
 	h := NewCacheHandler(client)
 
-	req := httptest.NewRequest(http.MethodGet, "/admin/cache/stats", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/admin/cache/stats", nil)
 	rec := httptest.NewRecorder()
 
 	h.HandleGetCacheStats(rec, req)

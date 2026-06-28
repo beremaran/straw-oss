@@ -81,14 +81,18 @@ func (c *Consumer) WaitForResult(ctx context.Context, resultQueue string) (*Resu
 				"queue", resultQueue,
 				"timeout", c.timeout,
 			)
+
 			return nil, ErrResultTimeout
 		}
+
 		return nil, fmt.Errorf("failed to consume result: %w", err)
 	}
 
 	result := AcquireResultMessage()
-	if err := json.Unmarshal(body, result); err != nil {
+	err = json.Unmarshal(body, result)
+	if err != nil {
 		ReleaseResultMessage(result)
+
 		return nil, fmt.Errorf("failed to unmarshal result: %w", err)
 	}
 

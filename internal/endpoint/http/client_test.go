@@ -21,6 +21,7 @@ func (m *mockTransportProvider) GetTransport(host string, preset fingerprint.Pre
 	if m.transport != nil {
 		return m.transport
 	}
+
 	return &fhttp.Transport{}
 }
 
@@ -108,7 +109,6 @@ func TestNewRequest_WithBody(t *testing.T) {
 }
 
 func TestClient_Do_MockServer(t *testing.T) {
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)

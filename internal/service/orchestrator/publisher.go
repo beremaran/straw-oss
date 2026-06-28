@@ -45,7 +45,6 @@ func (p *Publisher) Publish(
 	targetEndpointID string,
 	replyTo string,
 ) (string, error) {
-
 	var endpointID string
 	var err error
 
@@ -56,7 +55,6 @@ func (p *Publisher) Publish(
 			endpointID, err = p.selector.SelectWithSession(ctx, sessionID)
 			if err != nil {
 				p.logger.Warn("failed to select endpoint from session", "session_id", sessionID, "error", err)
-
 			}
 		}
 	}

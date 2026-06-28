@@ -57,7 +57,7 @@ func TestService_GetSession(t *testing.T) {
 	err = store.Save(ctx, sess, time.Minute)
 	require.NoError(t, err)
 
-	got, err = svc.GetSession(ctx, sess.ID)
+	_, err = svc.GetSession(ctx, sess.ID)
 	assert.ErrorIs(t, err, domain.ErrSessionExpired)
 }
 

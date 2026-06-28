@@ -21,6 +21,7 @@ type mockFingerprintRepo struct {
 
 func (m *mockFingerprintRepo) ListPresets(ctx context.Context) ([]domain.FingerprintPreset, error) {
 	args := m.Called(ctx)
+
 	return args.Get(0).([]domain.FingerprintPreset), args.Error(1)
 }
 
@@ -29,21 +30,25 @@ func (m *mockFingerprintRepo) GetPreset(ctx context.Context, id string) (*domain
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
+
 	return args.Get(0).(*domain.FingerprintPreset), args.Error(1)
 }
 
 func (m *mockFingerprintRepo) CreatePreset(ctx context.Context, preset *domain.FingerprintPreset) error {
 	args := m.Called(ctx, preset)
+
 	return args.Error(0)
 }
 
 func (m *mockFingerprintRepo) UpdatePreset(ctx context.Context, preset *domain.FingerprintPreset) error {
 	args := m.Called(ctx, preset)
+
 	return args.Error(0)
 }
 
 func (m *mockFingerprintRepo) DeletePreset(ctx context.Context, id string) error {
 	args := m.Called(ctx, id)
+
 	return args.Error(0)
 }
 
@@ -53,6 +58,7 @@ type mockBroker struct {
 
 func (m *mockBroker) Publish(ctx context.Context, exchange, routingKey string, body []byte) error {
 	args := m.Called(ctx, exchange, routingKey, body)
+
 	return args.Error(0)
 }
 func (m *mockBroker) Subscribe(ctx context.Context, queue string, handler broker.Handler, opts ...broker.SubscribeOption) error {
@@ -95,7 +101,7 @@ func TestFingerprintHandler_List(t *testing.T) {
 	}
 	repo.On("ListPresets", mock.Anything).Return(presets, nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/admin/fingerprints", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/admin/fingerprints", nil)
 	rec := httptest.NewRecorder()
 
 	h.HandleListPresets(rec, req)
@@ -110,14 +116,15 @@ func TestFingerprintHandler_Create(t *testing.T) {
 	h := NewFingerprintHandler(repo, mb)
 
 	preset := domain.FingerprintPreset{ID: "p1", Name: "Preset 1", Config: domain.ConfigMap{"a": 1}}
-	body, _ := json.Marshal(preset)
+	body, err := json.Marshal(preset)
+	assert.NoError(t, err)
 
 	repo.On("GetPreset", mock.Anything, "p1").Return((*domain.FingerprintPreset)(nil), nil)
 	repo.On("CreatePreset", mock.Anything, mock.MatchedBy(func(p *domain.FingerprintPreset) bool {
 		return p.ID == "p1"
 	})).Return(nil)
 
-	req := httptest.NewRequest(http.MethodPost, "/admin/fingerprints", bytes.NewReader(body))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/admin/fingerprints", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 
@@ -136,7 +143,7 @@ func TestFingerprintHandler_Broadcast(t *testing.T) {
 	repo.On("ListPresets", mock.Anything).Return(presets, nil)
 	mb.On("Publish", mock.Anything, "fingerprint_broadcast", "", mock.Anything).Return(nil)
 
-	req := httptest.NewRequest(http.MethodPost, "/admin/fingerprints/broadcast", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/admin/fingerprints/broadcast", nil)
 	rec := httptest.NewRecorder()
 
 	h.HandleBroadcastPresets(rec, req)

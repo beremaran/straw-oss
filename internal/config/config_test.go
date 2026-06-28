@@ -7,7 +7,6 @@ import (
 )
 
 func TestLoadServerConfig_Defaults(t *testing.T) {
-
 	setEnvVars(t, map[string]string{
 		"POSTGRES_DSN": "postgres://localhost/test",
 		"NATS_URL":     "nats://localhost:4222",
@@ -252,6 +251,7 @@ func TestParseCommaSeparated(t *testing.T) {
 			got := parseCommaSeparated(tt.input)
 			if len(got) != len(tt.want) {
 				t.Errorf("parseCommaSeparated() = %v, want %v", got, tt.want)
+
 				return
 			}
 			for i := range got {

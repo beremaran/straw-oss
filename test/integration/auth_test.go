@@ -58,7 +58,6 @@ func TestAuthenticationFlows(t *testing.T) {
 	require.NoError(t, tc.WaitForEndpoint(ctx, "test-endpoint-1"))
 
 	t.Run("Valid API Key", func(t *testing.T) {
-
 		keyName := "valid-user"
 		apiKey, err := CreateTestAPIKey(ctx, suite.PostgresDSN(), keyName, []string{"*"})
 		require.NoError(t, err)
@@ -73,7 +72,6 @@ func TestAuthenticationFlows(t *testing.T) {
 	})
 
 	t.Run("Invalid API Key", func(t *testing.T) {
-
 		client := NewHTTPTestClient(tc.ServerURL, "invalid-key-format")
 		resp, err := client.SendRequest(ctx, &ProxyRequest{
 			URL:  tc.MockTarget.URL(),
@@ -92,7 +90,6 @@ func TestAuthenticationFlows(t *testing.T) {
 	})
 
 	t.Run("Expired API Key", func(t *testing.T) {
-
 		keyID := uuid.New().String()
 		token := "expired-token-" + uuid.New().String()
 		tokenHashBytes := sha256.Sum256([]byte(token))
@@ -118,7 +115,6 @@ func TestAuthenticationFlows(t *testing.T) {
 	})
 
 	t.Run("Scope Restriction", func(t *testing.T) {
-
 		createRule("ScopeTestRule", 200, []string{"target:scope_test"}, 100)
 		require.NoError(t, tc.Server.GetMatcher().LoadRules(ctx))
 
@@ -147,7 +143,6 @@ func TestAuthenticationFlows(t *testing.T) {
 	})
 
 	t.Run("Rate Limit Override", func(t *testing.T) {
-
 		createRule("RateLimitRule", 300, []string{"target:rate_limit_test"}, 1)
 		require.NoError(t, tc.Server.GetMatcher().LoadRules(ctx))
 
@@ -169,7 +164,6 @@ func TestAuthenticationFlows(t *testing.T) {
 		})
 		require.NoError(t, err)
 		if resp.StatusCode != http.StatusTooManyRequests {
-
 			resp, _ = clientStd.SendRequest(ctx, &ProxyRequest{
 				URL:  tc.MockTarget.URL(),
 				Tags: []string{"target:rate_limit_test"},
@@ -210,7 +204,6 @@ func TestAuthenticationFlows(t *testing.T) {
 
 		if successCount < 5 {
 			t.Logf("FAILURE EXPECTED: Rate Limit Override not implemented yet. Success count: %d", successCount)
-
 		} else {
 			assert.Equal(t, 5, successCount, "Premium key should bypass rule rate limit")
 		}

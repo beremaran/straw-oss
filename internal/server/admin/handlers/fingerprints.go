@@ -23,6 +23,7 @@ func (h *FingerprintHandler) HandleListPresets(w http.ResponseWriter, r *http.Re
 	presets, err := h.repo.ListPresets(r.Context())
 	if err != nil {
 		helper.WriteError(w, http.StatusInternalServerError, "failed to list presets")
+
 		return
 	}
 	helper.WriteJSON(w, http.StatusOK, dto.FromFingerprintPresets(presets))
@@ -30,13 +31,16 @@ func (h *FingerprintHandler) HandleListPresets(w http.ResponseWriter, r *http.Re
 
 func (h *FingerprintHandler) HandleCreatePreset(w http.ResponseWriter, r *http.Request) {
 	var req dto.CreateFingerprintRequest
-	if err := helper.ReadJSON(r, &req); err != nil {
+	err := helper.ReadJSON(r, &req)
+	if err != nil {
 		helper.WriteError(w, http.StatusBadRequest, "invalid request body")
+
 		return
 	}
 
 	if req.ID == "" || req.Name == "" {
 		helper.WriteError(w, http.StatusBadRequest, "id and name are required")
+
 		return
 	}
 
@@ -45,17 +49,22 @@ func (h *FingerprintHandler) HandleCreatePreset(w http.ResponseWriter, r *http.R
 	existing, err := h.repo.GetPreset(r.Context(), preset.ID)
 	if err != nil {
 		helper.WriteError(w, http.StatusInternalServerError, "failed to check existing preset")
+
 		return
 	}
 
 	if existing != nil {
-		if err := h.repo.UpdatePreset(r.Context(), preset); err != nil {
+		err := h.repo.UpdatePreset(r.Context(), preset)
+		if err != nil {
 			helper.WriteError(w, http.StatusInternalServerError, "failed to update preset")
+
 			return
 		}
 	} else {
-		if err := h.repo.CreatePreset(r.Context(), preset); err != nil {
+		err := h.repo.CreatePreset(r.Context(), preset)
+		if err != nil {
 			helper.WriteError(w, http.StatusInternalServerError, "failed to create preset")
+
 			return
 		}
 	}
@@ -67,6 +76,7 @@ func (h *FingerprintHandler) HandleBroadcastPresets(w http.ResponseWriter, r *ht
 	presets, err := h.repo.ListPresets(r.Context())
 	if err != nil {
 		helper.WriteError(w, http.StatusInternalServerError, "failed to list presets")
+
 		return
 	}
 
@@ -75,12 +85,14 @@ func (h *FingerprintHandler) HandleBroadcastPresets(w http.ResponseWriter, r *ht
 	body, err := json.Marshal(presetsDTO)
 	if err != nil {
 		helper.WriteError(w, http.StatusInternalServerError, "failed to marshal presets")
+
 		return
 	}
 
 	err = h.broker.Publish(r.Context(), "fingerprint_broadcast", "", body)
 	if err != nil {
 		helper.WriteError(w, http.StatusInternalServerError, "failed to broadcast")
+
 		return
 	}
 

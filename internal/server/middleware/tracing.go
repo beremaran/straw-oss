@@ -77,8 +77,10 @@ func getRealIP(r *http.Request) string {
 		if idx := strings.Index(ip, ","); idx != -1 {
 			return strings.TrimSpace(ip[:idx])
 		}
+
 		return strings.TrimSpace(ip)
 	}
+
 	return r.RemoteAddr
 }
 
@@ -89,5 +91,6 @@ func getScheme(r *http.Request) string {
 	if scheme := r.Header.Get("X-Forwarded-Proto"); scheme != "" {
 		return scheme
 	}
+
 	return "http"
 }

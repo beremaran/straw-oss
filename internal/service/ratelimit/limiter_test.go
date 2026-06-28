@@ -132,10 +132,14 @@ func TestRateLimiter_Allow(t *testing.T) {
 		allowed, res, err := limiter.Allow(ctx, quotaKey, 2, 1000)
 		require.NoError(t, err)
 		assert.True(t, allowed)
+		assert.Equal(t, 2, res.Limit)
+		assert.Equal(t, 1, res.Remaining)
 
 		allowed, res, err = limiter.Allow(ctx, quotaKey, 2, 1000)
 		require.NoError(t, err)
 		assert.True(t, allowed)
+		assert.Equal(t, 2, res.Limit)
+		assert.Equal(t, 0, res.Remaining)
 
 		allowed, res, err = limiter.Allow(ctx, quotaKey, 2, 1000)
 		require.NoError(t, err)

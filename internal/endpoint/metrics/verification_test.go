@@ -8,7 +8,6 @@ import (
 )
 
 func TestEndpointMetrics_Registration(t *testing.T) {
-
 	assert.NotNil(t, metrics.UpstreamDuration)
 	assert.NotNil(t, metrics.TLSFingerprintUsed)
 	assert.NotNil(t, metrics.FingerprintDeprecatedUsed)
@@ -20,7 +19,6 @@ func TestEndpointMetrics_Registration(t *testing.T) {
 }
 
 func TestEndpointMetrics_Usage(t *testing.T) {
-
 	metrics.UpstreamDuration.WithLabelValues("example.com", "200").Observe(0.1)
 	metrics.TLSFingerprintUsed.WithLabelValues("chrome-100").Inc()
 	metrics.ConnectionsPooled.WithLabelValues("example.com").Inc()
@@ -29,11 +27,9 @@ func TestEndpointMetrics_Usage(t *testing.T) {
 	metrics.HeartbeatsSent.Inc()
 	metrics.TasksProcessed.WithLabelValues("success").Inc()
 	metrics.TasksFailed.WithLabelValues("timeout").Inc()
-
 }
 
 func TestEndpointMetrics_Values(t *testing.T) {
-
 	metrics.TasksInFlight.Set(10)
 
 	c := metrics.HeartbeatsSent

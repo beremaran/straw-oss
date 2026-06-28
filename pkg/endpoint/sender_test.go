@@ -28,6 +28,7 @@ func (m *mockHeartbeatBroker) Publish(ctx context.Context, exchange, routingKey 
 		RoutingKey: routingKey,
 		Body:       body,
 	})
+
 	return nil
 }
 func (m *mockHeartbeatBroker) Subscribe(ctx context.Context, queue string, handler broker.Handler, opts ...broker.SubscribeOption) error {
@@ -69,12 +70,14 @@ func (m *mockHeartbeatBroker) QueueDepth(ctx context.Context, name string) (int,
 func (m *mockHeartbeatBroker) getMessages() []publishedMsg {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	return m.publishedMsgs
 }
 
 func (m *mockHeartbeatBroker) messageCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	return len(m.publishedMsgs)
 }
 
@@ -165,7 +168,8 @@ func TestSender_HeartbeatMessageFormat(t *testing.T) {
 	}
 
 	var hb HeartbeatMessage
-	if err := json.Unmarshal(msg.Body, &hb); err != nil {
+	err := json.Unmarshal(msg.Body, &hb)
+	if err != nil {
 		t.Fatalf("failed to unmarshal heartbeat: %v", err)
 	}
 
@@ -297,7 +301,8 @@ func TestSender_ActiveTasksCallback(t *testing.T) {
 	}
 
 	var hb1 HeartbeatMessage
-	if err := json.Unmarshal(msgs[0].Body, &hb1); err != nil {
+	err := json.Unmarshal(msgs[0].Body, &hb1)
+	if err != nil {
 		t.Fatalf("failed to unmarshal first heartbeat: %v", err)
 	}
 	if hb1.ActiveTasks != 10 {
@@ -305,7 +310,8 @@ func TestSender_ActiveTasksCallback(t *testing.T) {
 	}
 
 	var hb2 HeartbeatMessage
-	if err := json.Unmarshal(msgs[1].Body, &hb2); err != nil {
+	err = json.Unmarshal(msgs[1].Body, &hb2)
+	if err != nil {
 		t.Fatalf("failed to unmarshal second heartbeat: %v", err)
 	}
 	if hb2.ActiveTasks != 20 {

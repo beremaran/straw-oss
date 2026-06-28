@@ -26,19 +26,22 @@ func TestRedisIntegration(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := client.HealthCheck(ctx); err != nil {
+	err = client.HealthCheck(ctx)
+	if err != nil {
 		t.Fatalf("HealthCheck failed: %v", err)
 	}
 
 	key := "test_key"
 	value := map[string]string{"foo": "bar"}
 
-	if err := client.Set(ctx, key, value, 10*time.Second); err != nil {
+	err = client.Set(ctx, key, value, 10*time.Second)
+	if err != nil {
 		t.Fatalf("Set failed: %v", err)
 	}
 
 	var result map[string]string
-	if err := client.Get(ctx, key, &result); err != nil {
+	err = client.Get(ctx, key, &result)
+	if err != nil {
 		t.Fatalf("Get failed: %v", err)
 	}
 
@@ -46,7 +49,8 @@ func TestRedisIntegration(t *testing.T) {
 		t.Errorf("Expected bar, got %s", result["foo"])
 	}
 
-	if err := client.Delete(ctx, key); err != nil {
+	err = client.Delete(ctx, key)
+	if err != nil {
 		t.Fatalf("Delete failed: %v", err)
 	}
 

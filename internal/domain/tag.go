@@ -71,6 +71,7 @@ func (t Tag) Matches(pattern Tag) bool {
 	if pattern.Value == "*" {
 		return true
 	}
+
 	return t.Value == pattern.Value
 }
 
@@ -80,6 +81,7 @@ func MatchesAll(tags []Tag, required []Tag) bool {
 		for _, tag := range tags {
 			if tag.Matches(req) {
 				found = true
+
 				break
 			}
 		}
@@ -87,6 +89,7 @@ func MatchesAll(tags []Tag, required []Tag) bool {
 			return false
 		}
 	}
+
 	return true
 }
 
@@ -98,6 +101,7 @@ func MatchesNone(tags []Tag, excluded []Tag) bool {
 			}
 		}
 	}
+
 	return true
 }
 
@@ -109,6 +113,7 @@ func TagsToStrings(tags []Tag) []string {
 	for i, tag := range tags {
 		result[i] = tag.String()
 	}
+
 	return result
 }
 
@@ -124,5 +129,6 @@ func StringsToTags(strs []string) ([]Tag, error) {
 		}
 		tags = append(tags, tag)
 	}
+
 	return tags, nil
 }

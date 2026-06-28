@@ -24,5 +24,6 @@ func (d *dummyPoolManager) GetPoolConfig(rule *domain.RoutingRule, poolTier int)
 	if len(rule.EndpointPools) > 0 {
 		return &rule.EndpointPools[0]
 	}
+
 	return nil
 }

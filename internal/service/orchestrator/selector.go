@@ -21,7 +21,6 @@ func NewSimpleEndpointSelector(healthStore *redis.EndpointHealthStore) *SimpleEn
 }
 
 func (s *SimpleEndpointSelector) Select(ctx context.Context, rule *domain.RoutingRule) (string, error) {
-
 	return s.GetEndpointFromPool(ctx, rule, 1, nil)
 }
 
@@ -36,7 +35,6 @@ func (s *SimpleEndpointSelector) GetEndpointFromPool(ctx context.Context, rule *
 		requiredTags = rule.RequiredTags
 	} else {
 		if poolTier > 1 {
-
 			if len(rule.EndpointPools) == 0 {
 				return "", fmt.Errorf("pool tier %d not configured", poolTier)
 			}
@@ -78,6 +76,7 @@ func (s *SimpleEndpointSelector) GetEndpointFromPool(ctx context.Context, rule *
 		for _, ex := range exclude {
 			if ep.EndpointID == ex {
 				excluded = true
+
 				break
 			}
 		}
@@ -91,6 +90,7 @@ func (s *SimpleEndpointSelector) GetEndpointFromPool(ctx context.Context, rule *
 	}
 
 	idx := rand.Intn(len(candidates))
+
 	return candidates[idx], nil
 }
 
@@ -103,5 +103,6 @@ func (s *SimpleEndpointSelector) GetPoolConfig(rule *domain.RoutingRule, poolTie
 			return &rule.EndpointPools[i]
 		}
 	}
+
 	return nil
 }

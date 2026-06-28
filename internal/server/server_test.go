@@ -8,6 +8,7 @@ import (
 
 	"github.com/beremaran/straw/internal/config"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewServer(t *testing.T) {
@@ -37,7 +38,8 @@ func TestServerHealthRoutes(t *testing.T) {
 	}
 	srv := New(cfg, nil, nil, nil, nil, nil, nil)
 
-	listener, err := net.Listen("tcp", ":0")
+	lc := &net.ListenConfig{}
+	listener, err := lc.Listen(context.Background(), "tcp", ":0")
 	if err != nil {
 		t.Fatalf("failed to create listener: %v", err)
 	}
@@ -51,18 +53,22 @@ func TestServerHealthRoutes(t *testing.T) {
 	defer srv.Stop(context.Background())
 
 	t.Run("Healthz", func(t *testing.T) {
-		resp, err := http.Get(baseURL + "/healthz")
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, baseURL+"/healthz", nil)
+		require.NoError(t, err)
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
 		defer resp.Body.Close()
 
-		assert.NoError(t, err)
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 	})
 
 	t.Run("Readyz", func(t *testing.T) {
-		resp, err := http.Get(baseURL + "/readyz")
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, baseURL+"/readyz", nil)
+		require.NoError(t, err)
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
 		defer resp.Body.Close()
 
-		assert.NoError(t, err)
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 	})
 }

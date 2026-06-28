@@ -33,6 +33,7 @@ func NewRuleCache(client *redis.Client, ttl time.Duration) *RuleCache {
 	if ttl == 0 {
 		ttl = DefaultCacheTTL
 	}
+
 	return &RuleCache{
 		client: client,
 		ttl:    ttl,
@@ -53,8 +54,10 @@ func (c *RuleCache) GetRulesVersion(ctx context.Context) (int64, error) {
 		if errors.Is(err, redis.Nil) {
 			return 0, nil
 		}
+
 		return 0, fmt.Errorf("failed to get rules version: %w", err)
 	}
+
 	return val, nil
 }
 
@@ -73,8 +76,10 @@ func (c *RuleCache) GetRulesByVersion(ctx context.Context, version int64) ([]dom
 			if metrics.CacheMisses != nil {
 				metrics.CacheMisses.WithLabelValues("rules").Inc()
 			}
+
 			return nil, nil
 		}
+
 		return nil, fmt.Errorf("failed to get rules from cache (v%d): %w", version, err)
 	}
 
@@ -83,7 +88,8 @@ func (c *RuleCache) GetRulesByVersion(ctx context.Context, version int64) ([]dom
 	}
 
 	var rules []domain.RoutingRule
-	if err := json.Unmarshal(data, &rules); err != nil {
+	err = json.Unmarshal(data, &rules)
+	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal rules from cache (v%d): %w", version, err)
 	}
 
@@ -105,9 +111,11 @@ func (c *RuleCache) SetRulesByVersion(ctx context.Context, version int64, rules 
 	}
 
 	key := fmt.Sprintf("%s%d", ActiveRulesKeyPrefix, version)
-	if err := c.client.Set(ctx, key, data, c.ttl).Err(); err != nil {
+	err = c.client.Set(ctx, key, data, c.ttl).Err()
+	if err != nil {
 		return fmt.Errorf("failed to set rules in cache (v%d): %w", version, err)
 	}
+
 	return nil
 }
 
@@ -117,5 +125,6 @@ func (c *RuleCache) IncrementRulesVersion(ctx context.Context) (int64, error) {
 
 func (c *RuleCache) Invalidate(ctx context.Context, version int64) error {
 	key := fmt.Sprintf("%s%d", ActiveRulesKeyPrefix, version)
+
 	return c.client.Del(ctx, key).Err()
 }

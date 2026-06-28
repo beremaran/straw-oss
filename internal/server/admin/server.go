@@ -65,7 +65,6 @@ func (s *Server) setupBroker() {
 }
 
 func (s *Server) registerRoutes() {
-
 	s.mux.HandleFunc("GET /healthz", s.healthCheck)
 
 	apiKeyRepo := postgres.NewApiKeyRepository(s.client)
@@ -124,6 +123,7 @@ func (s *Server) healthCheck(w http.ResponseWriter, r *http.Request) {
 func (s *Server) Start() error {
 	addr := fmt.Sprintf(":%d", s.conf.AdminPort)
 	s.server.Addr = addr
+
 	return s.server.ListenAndServe()
 }
 
@@ -143,6 +143,7 @@ func applyMiddlewares(handler http.Handler, middlewares ...func(http.Handler) ht
 	for i := len(middlewares) - 1; i >= 0; i-- {
 		handler = middlewares[i](handler)
 	}
+
 	return handler
 }
 
@@ -167,6 +168,7 @@ func adminGlobalMiddleware(cfg config.ServerConfig, client *postgres.Client) fun
 				}
 				h = keyAuth(h)
 				h.ServeHTTP(w, r)
+
 				return
 			}
 			next.ServeHTTP(w, r)

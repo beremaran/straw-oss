@@ -97,7 +97,8 @@ func TestEndpointHealthStore_ListHealthyByTags(t *testing.T) {
 	}
 
 	for _, ep := range endpoints {
-		if err := store.UpdateHealth(ctx, ep); err != nil {
+		err := store.UpdateHealth(ctx, ep)
+		if err != nil {
 			t.Fatalf("UpdateHealth failed for %s: %v", ep.EndpointID, err)
 		}
 	}
@@ -161,7 +162,8 @@ func TestEndpointHealthStore_ListAllEndpoints(t *testing.T) {
 	}
 
 	for _, ep := range endpoints {
-		if err := store.UpdateHealth(ctx, ep); err != nil {
+		err := store.UpdateHealth(ctx, ep)
+		if err != nil {
 			t.Fatalf("UpdateHealth failed for %s: %v", ep.EndpointID, err)
 		}
 	}
@@ -189,16 +191,18 @@ func TestEndpointHealthStore_DeleteHealth(t *testing.T) {
 		LastSeen:   time.Now(),
 	}
 
-	if err := store.UpdateHealth(ctx, health); err != nil {
+	err := store.UpdateHealth(ctx, health)
+	if err != nil {
 		t.Fatalf("UpdateHealth failed: %v", err)
 	}
 
-	_, err := store.GetHealth(ctx, "ep-to-delete")
+	_, err = store.GetHealth(ctx, "ep-to-delete")
 	if err != nil {
 		t.Fatalf("GetHealth failed: %v", err)
 	}
 
-	if err := store.DeleteHealth(ctx, "ep-to-delete"); err != nil {
+	err = store.DeleteHealth(ctx, "ep-to-delete")
+	if err != nil {
 		t.Fatalf("DeleteHealth failed: %v", err)
 	}
 

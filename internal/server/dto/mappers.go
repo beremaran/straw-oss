@@ -149,6 +149,7 @@ func EndpointPoolsDTOToDomain(pools []EndpointPoolDTO) []domain.EndpointPool {
 			MaxRetries: p.MaxRetries,
 		}
 	}
+
 	return result
 }
 
@@ -204,6 +205,7 @@ func FromRoutingRules(rules []domain.RoutingRule) []RoutingRuleResponse {
 			result[i] = *resp
 		}
 	}
+
 	return result
 }
 
@@ -249,6 +251,7 @@ func FromEndpointPools(pools []domain.EndpointPool) []EndpointPoolDTO {
 			MaxRetries: p.MaxRetries,
 		}
 	}
+
 	return result
 }
 
@@ -276,6 +279,7 @@ func FromApiKeys(keys []domain.ApiKey) []ApiKeyResponse {
 			result[i] = *resp
 		}
 	}
+
 	return result
 }
 
@@ -309,6 +313,7 @@ func FromFingerprintPresets(presets []domain.FingerprintPreset) []FingerprintRes
 			result[i] = *resp
 		}
 	}
+
 	return result
 }
 
@@ -334,5 +339,6 @@ func FromUsageSummaries(summaries []domain.UsageSummary) []UsageSummaryDTO {
 			result[i] = *resp
 		}
 	}
+
 	return result
 }
