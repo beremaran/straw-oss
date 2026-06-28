@@ -278,7 +278,7 @@ func (w *Worker) Start(ctx context.Context) error {
 	<-ctx.Done()
 	logger.Info("shutting down...")
 
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	shutdownCtx, shutdownCancel := context.WithTimeout(ctx, 5*time.Second)
 	defer shutdownCancel()
 	if err := healthServer.Shutdown(shutdownCtx); err != nil {
 		logger.Warn("health server shutdown error", "error", err)

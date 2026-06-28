@@ -1,7 +1,6 @@
 package session_test
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -15,16 +14,16 @@ import (
 )
 
 func TestRedisStore(t *testing.T) {
+	ctx := t.Context()
 	mr, err := miniredis.Run()
 	require.NoError(t, err)
 	defer mr.Close()
 
-	client, err := redis.NewClient(config.RedisConfig{Addr: mr.Addr()}, nil)
+	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
 	defer client.Close()
 
 	store := session.NewRedisStore(client)
-	ctx := context.Background()
 
 	t.Run("Save and Get", func(t *testing.T) {
 		sess := domain.NewSession("123", "ep1", "rule1", []string{"tag1"})
@@ -70,15 +69,15 @@ func TestRedisStore(t *testing.T) {
 }
 
 func TestRedisStore_SaveWithRedisError(t *testing.T) {
+	ctx := t.Context()
 	mr, err := miniredis.Run()
 	require.NoError(t, err)
 
-	client, err := redis.NewClient(config.RedisConfig{Addr: mr.Addr()}, nil)
+	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
 	defer client.Close()
 
 	store := session.NewRedisStore(client)
-	ctx := context.Background()
 
 	sess := domain.NewSession("123", "ep1", "rule1", []string{"tag1"})
 
@@ -90,16 +89,16 @@ func TestRedisStore_SaveWithRedisError(t *testing.T) {
 }
 
 func TestRedisStore_GetWithInvalidData(t *testing.T) {
+	ctx := t.Context()
 	mr, err := miniredis.Run()
 	require.NoError(t, err)
 	defer mr.Close()
 
-	client, err := redis.NewClient(config.RedisConfig{Addr: mr.Addr()}, nil)
+	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
 	defer client.Close()
 
 	store := session.NewRedisStore(client)
-	ctx := context.Background()
 
 	key := "session:invalid-json"
 	err = client.Client.Set(ctx, key, []byte("invalid json"), time.Minute).Err()
@@ -111,15 +110,15 @@ func TestRedisStore_GetWithInvalidData(t *testing.T) {
 }
 
 func TestRedisStore_GetWithRedisError(t *testing.T) {
+	ctx := t.Context()
 	mr, err := miniredis.Run()
 	require.NoError(t, err)
 
-	client, err := redis.NewClient(config.RedisConfig{Addr: mr.Addr()}, nil)
+	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
 	defer client.Close()
 
 	store := session.NewRedisStore(client)
-	ctx := context.Background()
 
 	mr.Close()
 
@@ -129,15 +128,15 @@ func TestRedisStore_GetWithRedisError(t *testing.T) {
 }
 
 func TestRedisStore_DeleteWithRedisError(t *testing.T) {
+	ctx := t.Context()
 	mr, err := miniredis.Run()
 	require.NoError(t, err)
 
-	client, err := redis.NewClient(config.RedisConfig{Addr: mr.Addr()}, nil)
+	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
 	defer client.Close()
 
 	store := session.NewRedisStore(client)
-	ctx := context.Background()
 
 	mr.Close()
 
@@ -147,15 +146,15 @@ func TestRedisStore_DeleteWithRedisError(t *testing.T) {
 }
 
 func TestRedisStore_TouchWithRedisError(t *testing.T) {
+	ctx := t.Context()
 	mr, err := miniredis.Run()
 	require.NoError(t, err)
 
-	client, err := redis.NewClient(config.RedisConfig{Addr: mr.Addr()}, nil)
+	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
 	defer client.Close()
 
 	store := session.NewRedisStore(client)
-	ctx := context.Background()
 
 	mr.Close()
 
@@ -165,32 +164,32 @@ func TestRedisStore_TouchWithRedisError(t *testing.T) {
 }
 
 func TestRedisStore_TouchNonExistent(t *testing.T) {
+	ctx := t.Context()
 	mr, err := miniredis.Run()
 	require.NoError(t, err)
 	defer mr.Close()
 
-	client, err := redis.NewClient(config.RedisConfig{Addr: mr.Addr()}, nil)
+	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
 	defer client.Close()
 
 	store := session.NewRedisStore(client)
-	ctx := context.Background()
 
 	err = store.Touch(ctx, "non-existent", time.Minute)
 	assert.ErrorIs(t, err, domain.ErrSessionExpired)
 }
 
 func TestRedisStore_SaveAllFields(t *testing.T) {
+	ctx := t.Context()
 	mr, err := miniredis.Run()
 	require.NoError(t, err)
 	defer mr.Close()
 
-	client, err := redis.NewClient(config.RedisConfig{Addr: mr.Addr()}, nil)
+	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
 	defer client.Close()
 
 	store := session.NewRedisStore(client)
-	ctx := context.Background()
 
 	sess := domain.NewSession("full-test", "ep1", "rule1", []string{"tag1", "tag2"})
 	sess.MigrationCount = 2
@@ -212,16 +211,16 @@ func TestRedisStore_SaveAllFields(t *testing.T) {
 }
 
 func TestRedisStore_SaveAndVerifyTTL(t *testing.T) {
+	ctx := t.Context()
 	mr, err := miniredis.Run()
 	require.NoError(t, err)
 	defer mr.Close()
 
-	client, err := redis.NewClient(config.RedisConfig{Addr: mr.Addr()}, nil)
+	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
 	defer client.Close()
 
 	store := session.NewRedisStore(client)
-	ctx := context.Background()
 
 	sess := domain.NewSession("ttl-test", "ep1", "rule1", nil)
 	ttl := 2 * time.Second

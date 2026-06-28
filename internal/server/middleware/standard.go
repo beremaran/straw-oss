@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -33,15 +34,16 @@ func RequestID() func(http.Handler) http.Handler {
 func Recover() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			defer func() {
+			ctx := r.Context()
+			defer func(ctx context.Context) {
 				if err := recover(); err != nil {
-					slog.ErrorContext(r.Context(), "panic recovered",
+					slog.ErrorContext(ctx, "panic recovered",
 						"error", err,
 						"stack", string(debug.Stack()),
 					)
 					helper.WriteError(w, http.StatusInternalServerError, "Internal Server Error")
 				}
-			}()
+			}(ctx)
 			next.ServeHTTP(w, r)
 		})
 	}
