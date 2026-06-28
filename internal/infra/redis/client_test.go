@@ -17,13 +17,14 @@ func TestRedisIntegration(t *testing.T) {
 		addr = "localhost:6379"
 	}
 
-	client, err := redis.NewClient(config.RedisConfig{Addr: addr}, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: addr}, nil)
 	if err != nil {
 		t.Skipf("Skipping integration test: %v", err)
 	}
 	defer client.Close()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	if err := client.HealthCheck(ctx); err != nil {

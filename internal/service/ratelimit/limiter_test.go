@@ -18,12 +18,12 @@ func TestRateLimiter_Allow(t *testing.T) {
 	require.NoError(t, err)
 	defer s.Close()
 
-	client, err := redis.NewClient(config.RedisConfig{Addr: s.Addr()}, nil)
+	ctx := context.Background()
+	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: s.Addr()}, nil)
 	require.NoError(t, err)
 	defer client.Close()
 
 	limiter := ratelimit.NewRateLimiter(client)
-	ctx := context.Background()
 	quotaKey := "test_key"
 
 	t.Run("Approves request within limits", func(t *testing.T) {
@@ -150,12 +150,12 @@ func TestRateLimiter_RedisErrors(t *testing.T) {
 	require.NoError(t, err)
 	defer s.Close()
 
-	client, err := redis.NewClient(config.RedisConfig{Addr: s.Addr()}, nil)
+	ctx := context.Background()
+	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: s.Addr()}, nil)
 	require.NoError(t, err)
 	defer client.Close()
 
 	limiter := ratelimit.NewRateLimiter(client)
-	ctx := context.Background()
 	quotaKey := "test_key"
 
 	t.Run("Returns error on Redis failure for per-second limit", func(t *testing.T) {
@@ -170,7 +170,7 @@ func TestRateLimiter_RedisErrors(t *testing.T) {
 		s, err = miniredis.Run()
 		require.NoError(t, err)
 		defer s.Close()
-		client, err = redis.NewClient(config.RedisConfig{Addr: s.Addr()}, nil)
+		client, err = redis.NewClient(ctx, config.RedisConfig{Addr: s.Addr()}, nil)
 		require.NoError(t, err)
 		defer client.Close()
 		limiter = ratelimit.NewRateLimiter(client)
@@ -193,12 +193,12 @@ func TestRateLimiter_ResetCalculation(t *testing.T) {
 	require.NoError(t, err)
 	defer s.Close()
 
-	client, err := redis.NewClient(config.RedisConfig{Addr: s.Addr()}, nil)
+	ctx := context.Background()
+	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: s.Addr()}, nil)
 	require.NoError(t, err)
 	defer client.Close()
 
 	limiter := ratelimit.NewRateLimiter(client)
-	ctx := context.Background()
 	quotaKey := "test_key"
 
 	t.Run("Reset duration is positive when limit exceeded", func(t *testing.T) {
@@ -238,7 +238,8 @@ func TestNewRateLimiter(t *testing.T) {
 		require.NoError(t, err)
 		defer s.Close()
 
-		client, err := redis.NewClient(config.RedisConfig{Addr: s.Addr()}, nil)
+		ctx := context.Background()
+		client, err := redis.NewClient(ctx, config.RedisConfig{Addr: s.Addr()}, nil)
 		require.NoError(t, err)
 		defer client.Close()
 

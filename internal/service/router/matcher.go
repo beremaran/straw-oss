@@ -72,7 +72,7 @@ func (m *Matcher) LoadRules(ctx context.Context) error {
 
 	if version > 0 {
 		go func(v int64, r []domain.RoutingRule) {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			defer cancel()
 			err := m.cache.SetRulesByVersion(ctx, v, r)
 			if err != nil {

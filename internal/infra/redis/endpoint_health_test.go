@@ -296,7 +296,8 @@ func TestMatchesTags(t *testing.T) {
 func setupTestRedis(t *testing.T) (*Client, func()) {
 	t.Helper()
 
-	client, err := NewClient(config.RedisConfig{Addr: "localhost:6379"}, nil)
+	ctx := context.Background()
+	client, err := NewClient(ctx, config.RedisConfig{Addr: "localhost:6379"}, nil)
 	if err != nil {
 		t.Skipf("Redis not available: %v", err)
 	}
@@ -311,7 +312,6 @@ func setupTestRedis(t *testing.T) (*Client, func()) {
 		client.Close()
 	}
 
-	ctx := context.Background()
 	keys, _ := client.Client.Keys(ctx, "endpoint:health:*").Result()
 	if len(keys) > 0 {
 		client.Client.Del(ctx, keys...)
