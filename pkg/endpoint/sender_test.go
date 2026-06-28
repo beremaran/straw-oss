@@ -310,7 +310,7 @@ func TestSender_ActiveTasksCallback(t *testing.T) {
 	}
 
 	var hb2 HeartbeatMessage
-	err = json.Unmarshal(msgs[1].Body, &hb2)
+	err := json.Unmarshal(msgs[1].Body, &hb2)
 	if err != nil {
 		t.Fatalf("failed to unmarshal second heartbeat: %v", err)
 	}

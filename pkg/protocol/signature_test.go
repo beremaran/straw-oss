@@ -1,7 +1,6 @@
 package protocol
 
 import (
-	"errors"
 	"testing"
 	"time"
 )
