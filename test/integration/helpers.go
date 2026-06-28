@@ -121,7 +121,6 @@ func WaitForHealthy(ctx context.Context, healthCheck func() error, interval, tim
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-time.After(interval):
-
 		}
 	}
 

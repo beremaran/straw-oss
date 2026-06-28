@@ -142,7 +142,6 @@ func TestAuthenticationFlows(t *testing.T) {
 
 		if resp.StatusCode == http.StatusOK {
 			t.Log("FAILURE EXPECTED: Scope Restriction not implemented yet")
-
 		}
 		assert.Contains(t, []int{http.StatusForbidden, http.StatusUnauthorized}, resp.StatusCode, "Expected Forbidden or Unauthorized for scope violation")
 	})
@@ -215,7 +214,6 @@ func TestAuthenticationFlows(t *testing.T) {
 		} else {
 			assert.Equal(t, 5, successCount, "Premium key should bypass rule rate limit")
 		}
-
 		assert.Equal(t, 5, successCount, "Premium key should bypass rule rate limit")
 	})
 }
