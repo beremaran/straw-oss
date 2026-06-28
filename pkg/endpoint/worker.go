@@ -209,7 +209,7 @@ func (w *Worker) Start(ctx context.Context) error {
 				}
 
 				logger.Info("update installed, restarting...")
-				err := installer.ReplaceAndRestart()
+				err = installer.ReplaceAndRestart()
 				if err != nil {
 					logger.Error("failed to restart", "error", err)
 

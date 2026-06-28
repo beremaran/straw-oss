@@ -76,7 +76,7 @@ func (h *ApiKeyHandler) HandleCreateApiKey(w http.ResponseWriter, r *http.Reques
 	apiKey := domain.NewApiKey(uuid.New().String(), tokenHash, req.Name, req.Scopes)
 	apiKey.RateLimitOverride = req.RateLimitOverride
 
-	err := h.repo.Create(r.Context(), apiKey)
+	err = h.repo.Create(r.Context(), apiKey)
 	if err != nil {
 		helper.WriteError(w, http.StatusInternalServerError, "failed to create api key")
 

@@ -46,7 +46,7 @@ func (r *FingerprintRepository) ListPresets(ctx context.Context) ([]domain.Finge
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan preset: %w", err)
 		}
-		err := json.Unmarshal(configJSON, &p.Config)
+		err = json.Unmarshal(configJSON, &p.Config)
 		if err != nil {
 			return nil, fmt.Errorf("failed to unmarshal config for preset %s: %w", p.ID, err)
 		}

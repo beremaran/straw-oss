@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 	"time"
 

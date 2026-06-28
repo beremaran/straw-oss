@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"io"
+	"net/http"
 	"testing"
 
 	"github.com/andybalholm/brotli"
