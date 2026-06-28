@@ -148,14 +148,6 @@ This compiles:
 
 3. **Run database migrations**: Set `DB_AUTO_MIGRATE=true` on the Relay Server startup to automatically apply all embedded SQL schema migrations on startup, or use a goose-compatible migration tool.
 
-4. **Seed sample data**: Seed initial rules, cost multipliers, and API keys:
-   ```bash
-   export POSTGRES_DSN="postgres://postgres:postgres@localhost:5432/straw_proxy?sslmode=disable"
-   go run cmd/seed/main.go
-   ```
-   > [!NOTE]
-   > This seeds a default administrative API token: `default-token-123456`.
-
 ### Start the Services
 
 In terminal 1, launch the Relay Server:
@@ -206,3 +198,49 @@ Ensure your code contributions adhere to the style guide:
 make format
 make lint
 ```
+
+---
+
+## 🔌 4. API Clients & Code Generation
+
+Straw Proxy publishes a comprehensive **OpenAPI 3.0.3 specification** located at [api/openapi.yaml](../api/openapi.yaml). This specification can be used to generate clean API client SDKs for any programming language (Go, TypeScript, Python, Java, etc.) to communicate with the Client and Admin APIs.
+
+### Validate the OpenAPI Specification
+To validate the OpenAPI schema format, run:
+```bash
+make docs
+```
+This runs the `@redocly/cli` linter on the spec file.
+
+### Specification Drift Tests
+To ensure the OpenAPI specification never drifts out of sync with the actual Go DTO structs used by the server runtime, we have a contract test suite:
+* File: [openapi_drift_test.go](../test/contract/openapi_drift_test.go)
+
+This test suite loads `api/openapi.yaml`, normalizes its schema components, and validates actual JSON-marshaled Go DTO instances against the corresponding schema definitions using `gojsonschema`.
+
+Any changes to HTTP request/response payloads in Go code (or in the OpenAPI specification) will automatically trigger validation failures in standard tests unless both are kept in sync.
+
+Run the spec drift tests as part of the normal test target:
+```bash
+make test
+```
+
+### Generate Client SDKs
+We have bundled ready-to-run client generation tasks in the `Makefile`. Run:
+```bash
+make generate-clients
+```
+
+This uses the `@openapitools/openapi-generator-cli` tool (via Node/npx) to automatically generate:
+* **TypeScript Client** (`client/typescript/`)
+* **Go Client** (`client/go/`)
+
+### Generating for Other Languages
+You can also run the generator manually to create SDKs for other target languages (e.g. Python):
+```bash
+npx @openapitools/openapi-generator-cli generate \
+  -i api/openapi.yaml \
+  -g python \
+  -o client/python
+```
+

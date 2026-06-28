@@ -1,0 +1,1074 @@
+openapi: 3.0.3
+info:
+  title: Straw Proxy API
+  description: |
+    API Reference for Straw Proxy, a distributed, high-performance HTTP proxy mesh
+    with fingerprint spoofing and centralized orchestrator-relay architecture.
+    
+    The API is divided into two separate server runtimes:
+    1. **Client API** (Default port `8080`): Handles request relaying through worker nodes.
+    2. **Admin API** (Default port `8081`): Handles API keys, routing rules, fingerprint presets, and metrics.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8080
+    description: "Local Client API Server"
+  - url: http://localhost:8081
+    description: "Local Admin API Server"
+
+security:
+  - BearerAuth: []
+
+tags:
+  - name: client
+    description: "End-user proxy client endpoints"
+  - name: api-keys
+    description: "API Key provisioning and authorization management"
+  - name: routing-rules
+    description: "Egress routing rule configurations"
+  - name: endpoints
+    description: "Active worker node tracking and control"
+  - name: fingerprints
+    description: "Browser spoofing and TLS JA3 fingerprint preset control"
+  - name: usage
+    description: "Data transfer billing and usage metrics"
+  - name: cache
+    description: "Relay server redis cache orchestration"
+
+paths:
+  # Client API Paths
+  /healthz:
+    get:
+      tags:
+        - client
+      summary: Health Check
+      operationId: healthCheck
+      description: "Returns the health status of the relay server or admin server."
+      security: []
+      responses:
+        '200':
+          description: "Server is healthy"
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: OK
+
+  /readyz:
+    get:
+      tags:
+        - client
+      summary: Readiness Check
+      operationId: readyCheck
+      description: "Returns whether the server is ready to accept traffic."
+      security: []
+      responses:
+        '200':
+          description: "Server is ready"
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: OK
+
+  /v1/request:
+    post:
+      tags:
+        - client
+      summary: Relay HTTP Request (v1)
+      operationId: relayRequestV1
+      description: "Relays an HTTP request to a target destination through the proxy mesh."
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RelayRequest'
+      responses:
+        '200':
+          description: "Successful proxied response. The body and headers are copied directly from the target destination."
+          headers:
+            X-Relay-Retries:
+              schema:
+                type: integer
+              description: "Number of attempts made to execute the request."
+            X-Relay-Pool:
+              schema:
+                type: string
+              description: "The pool tier used for executing the request."
+            X-Relay-Timing:
+              schema:
+                type: string
+              description: "Total duration of the proxy operation."
+            X-Relay-Endpoint:
+              schema:
+                type: string
+              description: "The ID of the endpoint worker that executed the request."
+            X-Session-ID:
+              schema:
+                type: string
+              description: "The session ID associated with this request."
+            X-Session-Migrated:
+              schema:
+                type: string
+              description: "Indicates if the session was migrated to a new endpoint."
+            X-Session-Migration-Count:
+              schema:
+                type: integer
+              description: "Number of migrations performed on the session."
+            X-Relay-Attempt-Errors:
+              schema:
+                type: string
+              description: "JSON array of attempt failures."
+          content:
+            '*/*':
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/ErrorResponse'
+        '502':
+          $ref: '#/components/responses/ErrorResponse'
+        '504':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v2/request:
+    post:
+      tags:
+        - client
+      summary: Relay HTTP Request (v2)
+      operationId: relayRequestV2
+      description: "Relays an HTTP request to a target destination through the proxy mesh (v2 routing/features)."
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RelayRequest'
+      responses:
+        '200':
+          description: "Successful proxied response. The body and headers are copied directly from the target destination."
+          headers:
+            X-Relay-Retries:
+              schema:
+                type: integer
+            X-Relay-Pool:
+              schema:
+                type: string
+            X-Relay-Timing:
+              schema:
+                type: string
+            X-Relay-Endpoint:
+              schema:
+                type: string
+            X-Session-ID:
+              schema:
+                type: string
+            X-Session-Migrated:
+              schema:
+                type: string
+            X-Session-Migration-Count:
+              schema:
+                type: integer
+            X-Relay-Attempt-Errors:
+              schema:
+                type: string
+          content:
+            '*/*':
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/ErrorResponse'
+        '502':
+          $ref: '#/components/responses/ErrorResponse'
+        '504':
+          $ref: '#/components/responses/ErrorResponse'
+
+  # Admin API Paths
+  /admin/api-keys:
+    post:
+      tags:
+        - api-keys
+      summary: Create API Key
+      operationId: createApiKey
+      description: "Creates a new API key client key. The response contains raw_key, only returned once."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateApiKeyRequest'
+      responses:
+        '201':
+          description: "Created"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateApiKeyResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+
+    get:
+      tags:
+        - api-keys
+      summary: List API Keys
+      operationId: listApiKeys
+      description: "Retrieves a paginated list of all API keys (active and inactive)."
+      parameters:
+        - name: page
+          in: query
+          description: "Page number to retrieve (1-based)."
+          required: false
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          description: "Number of keys to retrieve per page."
+          required: false
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+      responses:
+        '200':
+          description: "Paginated API Key List"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListApiKeysResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /admin/api-keys/{id}:
+    delete:
+      tags:
+        - api-keys
+      summary: Revoke API Key
+      operationId: revokeApiKey
+      description: "Disables an API key immediately."
+      parameters:
+        - name: id
+          in: path
+          description: "API key ID to revoke."
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: "API key successfully revoked"
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /admin/rules:
+    post:
+      tags:
+        - routing-rules
+      summary: Create Routing Rule
+      operationId: createRoutingRule
+      description: "Defines how incoming client proxy requests map to endpoint workers."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRoutingRuleRequest'
+      responses:
+        '201':
+          description: "Routing rule created"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoutingRuleResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+
+    get:
+      tags:
+        - routing-rules
+      summary: List Routing Rules
+      operationId: listRoutingRules
+      description: "Retrieves routing rules sorted by priority in descending order."
+      responses:
+        '200':
+          description: "List of routing rules"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListRoutingRulesResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /admin/rules/{id}:
+    get:
+      tags:
+        - routing-rules
+      summary: Get Routing Rule Details
+      operationId: getRoutingRule
+      description: "Retrieves details of a specific routing rule."
+      parameters:
+        - name: id
+          in: path
+          description: "Routing rule ID."
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: "Routing rule configuration object"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoutingRuleResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+
+    put:
+      tags:
+        - routing-rules
+      summary: Update Routing Rule
+      operationId: updateRoutingRule
+      description: "Updates a routing rule's parameters. Utilizes optimistic locking via the version field."
+      parameters:
+        - name: id
+          in: path
+          description: "Routing rule ID."
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRoutingRuleRequest'
+      responses:
+        '200':
+          description: "Updated routing rule details"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoutingRuleResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+
+    delete:
+      tags:
+        - routing-rules
+      summary: Delete Routing Rule
+      operationId: deleteRoutingRule
+      description: "Deletes a routing rule."
+      parameters:
+        - name: id
+          in: path
+          description: "Routing rule ID."
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: "Routing rule successfully deleted"
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /admin/endpoints:
+    get:
+      tags:
+        - endpoints
+      summary: List Active Endpoints
+      operationId: listEndpoints
+      description: "Inspects heartbeats and health status of all workers connected to the message broker."
+      responses:
+        '200':
+          description: "List of active endpoints"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EndpointHealthResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /admin/endpoints/{id}/drain:
+    post:
+      tags:
+        - endpoints
+      summary: Drain Endpoint
+      operationId: drainEndpoint
+      description: "Instructs a worker to complete active tasks but refuse any new incoming tasks."
+      parameters:
+        - name: id
+          in: path
+          description: "Endpoint worker ID."
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: "Endpoint is draining"
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /admin/fingerprints:
+    get:
+      tags:
+        - fingerprints
+      summary: List Fingerprint Presets
+      operationId: listFingerprints
+      description: "Lists preset user agents, HTTP/2 configurations, and TLS/JA3 spoofing parameters."
+      responses:
+        '200':
+          description: "List of presets"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListFingerprintsResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+
+    post:
+      tags:
+        - fingerprints
+      summary: Create Fingerprint Preset
+      operationId: createFingerprint
+      description: "Adds a new browser profile fingerprint preset. If it already exists, updates it."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateFingerprintRequest'
+      responses:
+        '200':
+          description: "Created/updated preset object"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FingerprintResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /admin/fingerprints/broadcast:
+    post:
+      tags:
+        - fingerprints
+      summary: Broadcast Presets
+      operationId: broadcastFingerprints
+      description: "Triggers a NATS broadcast to push all registered fingerprint presets directly into memory on active worker nodes."
+      responses:
+        '200':
+          description: "Successfully broadcasted to worker nodes"
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /admin/usage/summary:
+    get:
+      tags:
+        - usage
+      summary: Get Daily Usage Summary
+      operationId: getUsageSummary
+      description: "Returns daily logs of requests and transfer size."
+      parameters:
+        - name: start
+          in: query
+          description: "Start date in YYYY-MM-DD format (default: 30 days ago)."
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: end
+          in: query
+          description: "End date in YYYY-MM-DD format (default: today)."
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: api_key_id
+          in: query
+          description: "Optional filter by API Key ID."
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: "Usage summary list"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsageSummaryResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /admin/billing/estimate:
+    get:
+      tags:
+        - usage
+      summary: Get Billing Estimate
+      operationId: getBillingEstimate
+      description: "Aggregates daily summaries and calculates estimated costs in USD."
+      parameters:
+        - name: start
+          in: query
+          description: "Start date in YYYY-MM-DD format (default: start of the current month)."
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: end
+          in: query
+          description: "End date in YYYY-MM-DD format (default: today)."
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: api_key_id
+          in: query
+          description: "Optional filter by API Key ID."
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: "Billing estimate calculations"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingEstimateResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /admin/cache/clear:
+    post:
+      tags:
+        - cache
+      summary: Clear Redis Cache
+      operationId: clearCache
+      description: "Cleans in-memory caches on Redis. Forces Relay Server to pull latest rules and keys from PostgreSQL."
+      parameters:
+        - name: pattern
+          in: query
+          description: "Key pattern to scan and clear (default: *)."
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: "Cache cleared response details"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClearCacheResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /admin/cache/stats:
+    get:
+      tags:
+        - cache
+      summary: Get Cache Statistics
+      operationId: getCacheStats
+      description: "Reports Redis server info and stats."
+      responses:
+        '200':
+          description: "Redis cache status info"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CacheStatsResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: "Enter Bearer token (API Key or Admin token depending on port/path)."
+
+  responses:
+    ErrorResponse:
+      description: "General error response"
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: "Error message details."
+        code:
+          type: string
+          description: "Internal error code."
+        details:
+          type: object
+          description: "Extra contextual error details."
+
+    RelayRequest:
+      type: object
+      required:
+        - url
+      properties:
+        id:
+          type: string
+          description: "Optional unique request ID."
+        method:
+          type: string
+          description: "HTTP method to use (e.g. GET, POST)."
+          default: GET
+        url:
+          type: string
+          format: uri
+          description: "Target URL destination to proxy to."
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+          description: "Key-value map of HTTP headers."
+        body:
+          type: string
+          format: byte
+          description: "Base64-encoded request payload."
+        timeout:
+          type: string
+          description: "Duration string (e.g. \"30s\", \"1m\")."
+        session_id:
+          type: string
+          description: "Optional sticky session ID."
+        trace_id:
+          type: string
+          description: "Optional OpenTelemetry trace ID."
+        stream_response:
+          type: boolean
+          description: "Whether response should be streamed."
+        max_response_size:
+          type: integer
+          format: int64
+          description: "Limit response size in bytes."
+
+    CreateApiKeyRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: "Descriptive name for the API key."
+        scopes:
+          type: array
+          items:
+            type: string
+          description: "Authorization scopes (e.g. \"target:*\", \"region:us\")."
+        rate_limit_override:
+          type: integer
+          description: "Optional rate limit override (requests per second)."
+
+    ApiKeyResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        scopes:
+          type: array
+          items:
+            type: string
+        rate_limit_override:
+          type: integer
+          nullable: true
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    CreateApiKeyResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiKeyResponse'
+        - type: object
+          properties:
+            raw_key:
+              type: string
+              description: "Only returned once."
+
+    ListApiKeysResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApiKeyResponse'
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    CreateRoutingRuleRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        required_tags:
+          type: array
+          items:
+            type: string
+        excluded_tags:
+          type: array
+          items:
+            type: string
+        priority:
+          type: integer
+        hard_timeout:
+          type: string
+          description: "Duration string (e.g. \"30s\")."
+        rate_limit_per_minute:
+          type: integer
+        rate_limit_per_second:
+          type: integer
+        allowed_endpoint_types:
+          type: array
+          items:
+            type: string
+        required_endpoint_caps:
+          type: array
+          items:
+            type: string
+        fingerprint_preset:
+          type: string
+        fingerprint_ab_test:
+          $ref: '#/components/schemas/ABConfigDTO'
+        quota_key:
+          type: string
+        allow_insecure_tls:
+          type: boolean
+        pinned_cert_hash:
+          type: string
+        request_filters:
+          $ref: '#/components/schemas/RequestFilterDTO'
+        endpoint_pools:
+          type: array
+          items:
+            $ref: '#/components/schemas/EndpointPoolDTO'
+        is_active:
+          type: boolean
+
+    UpdateRoutingRuleRequest:
+      allOf:
+        - $ref: '#/components/schemas/CreateRoutingRuleRequest'
+        - type: object
+          required:
+            - version
+          properties:
+            version:
+              type: integer
+
+    RoutingRuleResponse:
+      allOf:
+        - $ref: '#/components/schemas/CreateRoutingRuleRequest'
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            version:
+              type: integer
+            created_at:
+              type: string
+              format: date-time
+            updated_at:
+              type: string
+              format: date-time
+
+    ListRoutingRulesResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoutingRuleResponse'
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    ABConfigDTO:
+      type: object
+      required:
+        - variants
+        - strategy
+      properties:
+        variants:
+          type: array
+          items:
+            $ref: '#/components/schemas/ABVariantDTO'
+        strategy:
+          type: string
+
+    ABVariantDTO:
+      type: object
+      required:
+        - fingerprint
+        - weight
+      properties:
+        fingerprint:
+          type: string
+        weight:
+          type: integer
+
+    RequestFilterDTO:
+      type: object
+      properties:
+        block_content_types:
+          type: array
+          items:
+            type: string
+        block_url_patterns:
+          type: array
+          items:
+            type: string
+        block_domains:
+          type: array
+          items:
+            type: string
+        enable_adblock:
+          type: boolean
+        adblock_lists:
+          type: array
+          items:
+            type: string
+
+    EndpointPoolDTO:
+      type: object
+      required:
+        - tier
+        - endpoints
+        - max_retries
+      properties:
+        tier:
+          type: integer
+        endpoints:
+          type: array
+          items:
+            type: string
+        max_retries:
+          type: integer
+
+    EndpointHealthResponse:
+      type: object
+      properties:
+        endpoint_id:
+          type: string
+        state:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        version:
+          type: string
+        active_tasks:
+          type: integer
+        last_seen:
+          type: string
+          format: date-time
+
+    CreateFingerprintRequest:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        config:
+          type: object
+
+    FingerprintResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        config:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ListFingerprintsResponse:
+      type: array
+      items:
+        $ref: '#/components/schemas/FingerprintResponse'
+
+    UsageSummaryDTO:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        total_requests:
+          type: integer
+          format: int64
+        total_bytes:
+          type: integer
+          format: int64
+        cost_units:
+          type: number
+        breakdown:
+          type: object
+          additionalProperties:
+            type: integer
+            format: int64
+
+    UsageSummaryResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/UsageSummaryDTO'
+        start:
+          type: string
+          format: date
+        end:
+          type: string
+          format: date
+
+    BillingEstimateResponse:
+      type: object
+      properties:
+        total_cost_units:
+          type: number
+        estimated_usd:
+          type: number
+        currency:
+          type: string
+        start:
+          type: string
+          format: date
+        end:
+          type: string
+          format: date
+
+    ClearCacheResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        pattern:
+          type: string
+        deleted:
+          type: integer
+
+    CacheStatsResponse:
+      type: object
+      properties:
+        info:
+          type: string

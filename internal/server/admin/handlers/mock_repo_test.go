@@ -32,6 +32,11 @@ func (m *MockApiKeyRepo) List(ctx context.Context, limit, offset int) ([]domain.
 	return args.Get(0).([]domain.ApiKey), args.Int(1), args.Error(2)
 }
 
+func (m *MockApiKeyRepo) Exists(ctx context.Context) (bool, error) {
+	args := m.Called(ctx)
+	return args.Bool(0), args.Error(1)
+}
+
 func (m *MockApiKeyRepo) Revoke(ctx context.Context, id string) error {
 	args := m.Called(ctx, id)
 	return args.Error(0)

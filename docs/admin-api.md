@@ -2,7 +2,12 @@
 
 The Admin API serves as the control gateway for managing API keys, routing rules, fingerprint presets, and inspecting worker health and billing statistics.
 
----
+> [!TIP]
+> **Interactive API Reference (OpenAPI)**
+> We provide a comprehensive, interactive API reference generated with Redocly.
+> * View the interactive docs: **[API Reference (Redoc)](api-reference.html)**
+> * Download the OpenAPI YAML specification: **[openapi.yaml](openapi.yaml)**
+
 
 ## 🔒 Authentication
 

@@ -16,7 +16,7 @@ ARG BUILD_TIME=unknown
 
 RUN CGO_ENABLED=0 GOOS=linux go build \
     -ldflags "-w -s -X main.Version=${VERSION} -X main.GitCommit=${COMMIT} -X main.BuildTime=${BUILD_TIME}" \
-    -o /app/relay ./cmd/relay-server
+    -o /app/relay ./cmd/relay
 
 RUN CGO_ENABLED=0 GOOS=linux go build \
     -ldflags "-w -s -X main.Version=${VERSION} -X main.GitCommit=${COMMIT} -X main.BuildTime=${BUILD_TIME}" \

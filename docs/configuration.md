@@ -13,7 +13,7 @@ Straw Proxy is configured entirely using environment variables. This section con
 
 ## 📡 Relay Server Configuration
 
-These variables configure the behavior of the orchestrator gateway (`cmd/relay-server`).
+These variables configure the behavior of the orchestrator gateway (`cmd/relay`).
 
 ### Required Variables
 

@@ -157,6 +157,16 @@ func (r *ApiKeyRepository) List(ctx context.Context, limit, offset int) ([]domai
 	return keys, total, nil
 }
 
+func (r *ApiKeyRepository) Exists(ctx context.Context) (bool, error) {
+	query := `SELECT EXISTS(SELECT 1 FROM api_keys LIMIT 1)`
+	var exists bool
+	err := r.client.Pool.QueryRow(ctx, query).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("failed to check api keys existence: %w", err)
+	}
+	return exists, nil
+}
+
 func (r *ApiKeyRepository) Revoke(ctx context.Context, id string) error {
 	query := `
 		UPDATE api_keys 

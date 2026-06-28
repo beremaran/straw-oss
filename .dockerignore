@@ -7,6 +7,7 @@ vendor/
 /bin/
 # Ignore all binaries (only if they are files, but dockerignore uses glob)
 # Better to ignore them by specific paths if they are known to be built in root
+/relay
 /relay-server
 /endpoint
 *.exe
