@@ -51,7 +51,8 @@ func TestRateLimitMiddleware(t *testing.T) {
 	require.NoError(t, err)
 	defer s.Close()
 
-	client, err := redis.NewClient(config.RedisConfig{Addr: s.Addr()}, nil)
+	ctx := t.Context()
+	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: s.Addr()}, nil)
 	require.NoError(t, err)
 	defer client.Close()
 

@@ -63,7 +63,7 @@ func main() {
 	pgClient := getPostgresClientOrDie(ctx, cfg)
 	defer pgClient.Close()
 
-	redisClient := getRedisClientOrDie(cfg)
+	redisClient := getRedisClientOrDie(ctx, cfg)
 	defer redisClient.Close()
 
 	natsBroker := getNATSConnectionOrDie(ctx, cfg)
@@ -390,8 +390,8 @@ func getNATSConnectionOrDie(ctx context.Context, cfg *config.ServerConfig) *brok
 	return natsBroker
 }
 
-func getRedisClientOrDie(cfg *config.ServerConfig) *redis.Client {
-	redisClient, err := redis.NewClient(cfg.Redis, circuitbreaker.New(circuitbreaker.Config{
+func getRedisClientOrDie(ctx context.Context, cfg *config.ServerConfig) *redis.Client {
+	redisClient, err := redis.NewClient(ctx, cfg.Redis, circuitbreaker.New(circuitbreaker.Config{
 		Name:             "redis",
 		FailureThreshold: 10,
 		ResetTimeout:     10 * time.Second,

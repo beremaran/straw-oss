@@ -34,7 +34,7 @@ func TestAuthentication_SecurityScenarios(t *testing.T) {
 
 	authRepo := integration.NewTestAuthRepo(t, s.PostgresDSN())
 
-	rlRedis := integration.NewTestRedisClient(t, s.RedisAddr())
+	rlRedis := integration.NewTestRedisClient(t, ctx, s.RedisAddr())
 	authCache := auth.NewAuthCache(rlRedis, 10*time.Second)
 	authService := auth.NewAuthService(authRepo, authCache)
 
@@ -94,7 +94,7 @@ func TestAuthentication_SecurityScenarios(t *testing.T) {
 		rec := sendRequest("POST", "/v1/request", key.RawKey)
 		assert.NotEqual(t, http.StatusUnauthorized, rec.Code, "Key should be valid initially")
 
-		integration.ExecuteSQL(t, s.PostgresDSN(), "UPDATE api_keys SET is_active = false WHERE id = $1", key.ID)
+		integration.ExecuteSQL(t, ctx, s.PostgresDSN(), "UPDATE api_keys SET is_active = false WHERE id = $1", key.ID)
 
 		err = authService.InvalidateKey(ctx, key.RawKey)
 		require.NoError(t, err)
@@ -114,7 +114,7 @@ func TestAuthentication_SecurityScenarios(t *testing.T) {
 		newHashBytes := sha256.Sum256([]byte(newToken))
 		newHash := hex.EncodeToString(newHashBytes[:])
 
-		integration.ExecuteSQL(t, s.PostgresDSN(), "UPDATE api_keys SET token_hash = $1 WHERE id = $2", newHash, key.ID)
+		integration.ExecuteSQL(t, ctx, s.PostgresDSN(), "UPDATE api_keys SET token_hash = $1 WHERE id = $2", newHash, key.ID)
 
 		authService.InvalidateKey(ctx, key.RawKey)
 

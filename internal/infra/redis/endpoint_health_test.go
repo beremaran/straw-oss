@@ -298,7 +298,7 @@ func TestMatchesTags(t *testing.T) {
 func setupTestRedis(t *testing.T) (*Client, func()) {
 	t.Helper()
 
-	client, err := NewClient(config.RedisConfig{Addr: "localhost:6379"}, nil)
+	client, err := NewClient(context.Background(), config.RedisConfig{Addr: "localhost:6379"}, nil)
 	if err != nil {
 		t.Skipf("Redis not available: %v", err)
 	}
