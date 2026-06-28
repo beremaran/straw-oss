@@ -21,7 +21,7 @@ const (
 	DefaultMaxBackoff      = 5 * time.Second
 	DefaultBackoffFactor   = 2.0
 	DefaultLastExitRetries = 1
-	SharedResultQueue      = "results.relay-server"
+	SharedResultQueue      = "results.relay"
 )
 
 type AttemptError struct {

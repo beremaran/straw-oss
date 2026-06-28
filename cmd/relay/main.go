@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -11,6 +14,7 @@ import (
 	"time"
 
 	"github.com/beremaran/straw/internal/config"
+	"github.com/beremaran/straw/internal/domain"
 	"github.com/beremaran/straw/internal/infra/circuitbreaker"
 	"github.com/beremaran/straw/internal/infra/postgres"
 	"github.com/beremaran/straw/internal/infra/redis"
@@ -27,6 +31,7 @@ import (
 	"github.com/beremaran/straw/internal/service/router"
 	"github.com/beremaran/straw/internal/service/session"
 	"github.com/beremaran/straw/pkg/broker"
+	"github.com/google/uuid"
 )
 
 var (
@@ -34,6 +39,10 @@ var (
 	GitCommit = "unknown"
 	BuildTime = "unknown"
 )
+
+func intPtr(i int) *int {
+	return &i
+}
 
 func main() {
 
@@ -52,7 +61,7 @@ func main() {
 	slog.SetDefault(logger)
 	ctx := context.Background()
 
-	shutdownTracer, err := tracing.InitTracerProvider(ctx, "straw-relay-server", Version)
+	shutdownTracer, err := tracing.InitTracerProvider(ctx, "straw-relay", Version)
 	if err != nil {
 		slog.Warn("Failed to initialize tracer provider", "error", err)
 	} else {
@@ -193,6 +202,30 @@ func main() {
 	}
 
 	matcher.StartAutoRefresh(ctx, 5*time.Second)
+
+	if keysExist, err := apiKeyRepo.Exists(ctx); err != nil {
+		slog.Warn("Failed to check for existing API keys", "error", err)
+	} else if !keysExist {
+		keyBytes := make([]byte, 32)
+		if _, err := rand.Read(keyBytes); err != nil {
+			slog.Error("Failed to generate admin key", "error", err)
+			os.Exit(1)
+		}
+		rawKey := hex.EncodeToString(keyBytes)
+		hash := sha256.Sum256([]byte(rawKey))
+		tokenHash := hex.EncodeToString(hash[:])
+
+		adminKey := domain.NewApiKey(uuid.New().String(), tokenHash, "Default Administrator Key", []string{"target:*", "type:*", "region:*"})
+		adminKey.RateLimitOverride = intPtr(100)
+
+		if err := apiKeyRepo.Create(ctx, adminKey); err != nil {
+			slog.Error("Failed to create initial admin API key", "error", err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("Initial admin API key generated: %s\n", rawKey)
+		fmt.Println("Save this key — it will not be shown again.")
+	}
 
 	var serverOpts []server.Option
 	if cfg.AllowPrivateIPs {

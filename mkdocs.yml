@@ -1,5 +1,5 @@
 site_name: Straw Proxy Documentation
-site_url: https://github.com/beremaran/straw
+site_url: https://beremaran.github.io/straw
 site_description: Full architectural and operational documentation for Straw Proxy, a distributed, high-performance HTTP proxy mesh with fingerprint spoofing and centralized orchestrator-relay architecture.
 site_author: beremaran
 
@@ -62,5 +62,6 @@ nav:
   - Architecture: architecture.md
   - Configuration Reference: configuration.md
   - Admin API: admin-api.md
+  - API Reference: api-reference.html
   - Custom Endpoint SDK: custom-endpoint.md
   - Contributing: contributing.md

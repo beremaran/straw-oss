@@ -44,6 +44,11 @@ func (m *MockRepo) List(ctx context.Context, limit, offset int) ([]domain.ApiKey
 	return args.Get(0).([]domain.ApiKey), args.Int(1), args.Error(2)
 }
 
+func (m *MockRepo) Exists(ctx context.Context) (bool, error) {
+	args := m.Called(ctx)
+	return args.Bool(0), args.Error(1)
+}
+
 func (m *MockRepo) Revoke(ctx context.Context, id string) error {
 	args := m.Called(ctx, id)
 	return args.Error(0)

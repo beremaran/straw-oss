@@ -1,116 +1,192 @@
-# straw-proxy
+# 🥤 Straw Proxy
 
-## Environment Variables
+[![Go Version](https://img.shields.io/github/go-mod/go-version/beremaran/straw?color=00ADD8&logo=go)](https://golang.org)
+[![Docker Image](https://img.shields.io/badge/docker-publish-blue?logo=docker&logoColor=white)](https://github.com/beremaran/straw/pkgs/container/straw)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Docs](https://img.shields.io/badge/docs-mkdocs-green.svg)](docs/index.md)
 
-### Relay Server (`cmd/relay-server/`)
-
-#### Required
-
-| Variable | Type | Description |
-|---|---|---|
-| `POSTGRES_DSN` | string | Postgres connection string (DSN). |
-| `NATS_URL` | string | NATS message broker URL. |
-| `HMAC_SECRET` | string | Secret used for HMAC request signing/verification. |
-
-#### Optional
-
-| Variable | Type | Default | Description |
-|---|---|---|---|
-| `DB_AUTO_MIGRATE` | bool | `false` | Run embedded database migrations on startup. |
-| `HTTP_PORT` | int | `8080` | Main HTTP server port. |
-| `ADMIN_PORT` | int | `8081` | Admin API server port. |
-| `SHUTDOWN_TIMEOUT` | duration | `30s` | Graceful shutdown timeout. |
-| `ADMIN_API_KEY` | string | *(empty)* | API key for authenticating admin API requests. |
-| `RESULT_TIMEOUT` | duration | `30s` | Timeout waiting for endpoint task results. |
-| `MAX_BODY_SIZE` | string | `2M` | Maximum request body size (e.g. `1M`, `10M`, `100K`). |
-| `MAX_CONCURRENT_REQUESTS` | int | `50` | Maximum concurrent in-flight requests. |
-| `ALLOW_PRIVATE_IPS` | bool | `false` | Allow forwarding requests to private IP addresses (SSRF protection bypass, testing mode). |
-
-#### Redis
-
-| Variable | Type | Default | Description |
-|---|---|---|---|
-| `REDIS_ADDR` | string | `localhost:6379` | Redis server address. |
-| `REDIS_POOL_SIZE` | int | `100` | Redis connection pool size. |
-| `REDIS_MIN_IDLE_CONNS` | int | `10` | Minimum idle connections in the Redis pool. |
-
-#### NATS
-
-| Variable | Type | Default | Description |
-|---|---|---|---|
-| `NATS_TOKEN` | string | *(empty)* | NATS authentication token. |
-
-#### Security
-
-| Variable | Type | Default | Description |
-|---|---|---|---|
-| `TLS_CERT_FILE` | string | *(empty)* | Path to TLS certificate file (for HTTPS). |
-| `TLS_KEY_FILE` | string | *(empty)* | Path to TLS private key file (for HTTPS). |
-| `VAULT_ADDR` | string | *(empty)* | HashiCorp Vault address (for secrets management). |
-
-#### Observability
-
-| Variable | Type | Default | Description |
-|---|---|---|---|
-| `LOG_LEVEL` | string | `info` | Log level (`debug`, `info`, `warn`, `error`). |
-| `LOG_FORMAT` | string | `json` | Log format (`json`, `console`). |
-| `METRICS_ENABLED` | bool | `true` | Enable the standalone metrics server. |
-| `METRICS_PORT` | int | `9090` | Port for the metrics server (serves `/metrics` and pprof). |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | string | *(empty)* | OTLP gRPC endpoint for OpenTelemetry trace export. |
+**Straw Proxy** is a distributed, high-performance HTTP proxy mesh and routing orchestrator designed for web scraping, automated testing, and anti-bot bypass. By decoupling the control/routing layer from the physical execution/egress nodes, Straw Proxy allows you to scale, orchestrate, and secure distributed scraper traffic seamlessly.
 
 ---
 
-### Endpoint Worker (`cmd/endpoint/`)
+## 🎨 System Architecture
 
-#### Required
+Unlike traditional proxy servers that route traffic through a single server, Straw Proxy splits execution into a central **Control Plane (Relay)** and a distributed **Execution Plane (Endpoints)**:
 
-| Variable | Type | Description |
-|---|---|---|
-| `ENDPOINT_ID` | string | Unique identifier for this endpoint instance. |
-| `NATS_URL` | string | NATS message broker URL. |
-| `HMAC_SECRET` | string | Secret used for HMAC request signing/verification (must match relay server). |
+```mermaid
+graph TD
+    Client[HTTP Client] -->|1. HTTP Request| Relay[Relay Server]
+    subgraph Control Layer (Relay Server)
+        Relay --> Auth[API Key Auth & Limits]
+        Relay --> Router[Routing & Priority Engine]
+        Relay --> Filter[ABP Tracker Filter]
+    end
+    Relay -->|2. Task Publish| Broker((NATS Broker))
+    subgraph Execution Layer (Distributed Workers)
+        Broker -->|3. Job Dispatch| Worker1[Worker A - Residential US]
+        Broker -->|3. Job Dispatch| Worker2[Worker B - Datacenter EU]
+        Worker1 -->|4. Spoofed Request| Web1[Target Website]
+        Worker2 -->|4. Spoofed Request| Web2[Target Website]
+    end
+```
 
-#### Optional
-
-| Variable | Type | Default | Description |
-|---|---|---|---|
-| `ENDPOINT_TAGS` | string | *(empty)* | Comma-separated tags for this endpoint (e.g. `"us-east,high-memory"`). Used by the router to select endpoints. |
-| `CONCURRENCY_LIMIT` | int | `25` | Maximum concurrent tasks processed by this endpoint. |
-| `SELF_UPDATE_URL` | string | *(empty)* | URL to fetch self-update version manifests. |
-| `SELF_UPDATE_INTERVAL` | duration | `5m` | How often to check for new versions. |
-| `SELF_UPDATE_ENABLED` | bool | `true` | Enable automatic self-updates. |
-| `MAX_POOL_HOSTS` | int | `1000` | Maximum number of hosts in the HTTP connection pool. |
-| `IDLE_CONNS_PER_HOST` | int | `10` | Idle connections kept per host in the HTTP pool. |
-| `IDLE_CONN_TIMEOUT` | duration | `90s` | Timeout for idle connections in the HTTP pool. |
-
-#### NATS
-
-| Variable | Type | Default | Description |
-|---|---|---|---|
-| `NATS_TOKEN` | string | *(empty)* | NATS authentication token. |
-
-#### Security
-
-| Variable | Type | Default | Description |
-|---|---|---|---|
-| `TLS_CERT_FILE` | string | *(empty)* | Path to TLS certificate file. |
-| `TLS_KEY_FILE` | string | *(empty)* | Path to TLS private key file. |
-| `VAULT_ADDR` | string | *(empty)* | HashiCorp Vault address. |
-
-#### Observability
-
-| Variable | Type | Default | Description |
-|---|---|---|---|
-| `LOG_LEVEL` | string | `info` | Log level (`debug`, `info`, `warn`, `error`). |
-| `LOG_FORMAT` | string | `json` | Log format (`json`, `console`). |
-| `METRICS_ENABLED` | bool | `true` | Enable the health/metrics server. |
-| `METRICS_PORT` | int | `9090` | Port for the health/metrics server (serves `/healthz`, `/metrics`, and pprof). |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | string | *(empty)* | OTLP gRPC endpoint for OpenTelemetry trace export. |
+1. **Relay Server (Orchestrator)**: The entry gateway. It handles API authentication, rate limiting, AdBlock filtering, session pinning, and task scheduling.
+2. **NATS Message Broker**: Dispatches tasks to workers and streams responses back in real time.
+3. **Endpoint Workers**: Lightweight, stateless worker nodes that subscribe to task streams, execute HTTPS requests with custom browser fingerprints (TLS/JA3/JA4), and return the results.
 
 ---
 
-### Shared / Global
+## ✨ Key Features
 
-| Variable | Type | Default | Description |
-|---|---|---|---|
-| `OTEL_SDK_DISABLED` | string | *(empty)* | Set to `true` to disable the OpenTelemetry SDK entirely (both relay server and endpoint). |
+* 🚀 **Decoupled Egress Scaling**: Run multiple lightweight worker nodes across residential, cellular, and datacenter networks without changes to your central API client.
+* 🕵️ **Advanced Client Spoofing**: Built-in emulation for JA3/JA4 TLS fingerprints, HTTP/2 connection flows, and browser header presets to bypass Cloudflare, Akamai, and other anti-bot services.
+* 🛑 **ABP Ad & Tracker Filtering**: Embedded AdBlock Plus engine filters ads, trackers, and telemetry directly at the Relay level, saving valuable worker egress bandwidth.
+* 🗺️ **Smart Egress Routing**: Route proxy requests dynamically using tags (e.g. `type:residential`, `region:us`).
+* 🔒 **Session Pinning (Sticky Sessions)**: Keep multi-request browser sessions pinned to the exact same egress worker node.
+* 🔌 **Custom Worker SDK**: Implement your own custom egress handlers, proxies, and logging using our exported Go SDK packages.
+* 📊 **Production-Ready Observability**: Built-in Prometheus metrics, OpenTelemetry traces, pprof profiling, and structured logging.
+* 🛡️ **Resilience**: Integrated Redis-backed rate limiting, database circuit breakers, and automatic Server-Side Request Forgery (SSRF) protections.
+
+---
+
+## 🚀 Quick Start (Under 2 Minutes)
+
+The fastest way to spin up the entire Straw Proxy stack is using **Docker Compose**.
+
+### 1. Run the Stack
+
+Start Postgres, Redis, NATS, a Relay Server, and a residential worker:
+
+```bash
+docker compose up -d
+```
+
+* *Default Client API Port*: `8080`
+* *Default Admin API Port*: `8081`
+
+### 2. Generate a Client API Key
+
+Create an API key for your crawler clients using the Admin API:
+
+```bash
+curl -X POST http://localhost:8081/admin/api-keys \
+  -H "Authorization: Bearer default-token-123456" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Production Scraper Key",
+    "scopes": ["target:*", "type:residential"],
+    "rate_limit_override": 100
+  }'
+```
+
+Save the `raw_key` returned in the JSON response (e.g., `YOUR_CLIENT_API_KEY`).
+
+### 3. Send a Proxied Request
+
+Send requests through the proxy mesh via the Relay HTTP gateway:
+
+```bash
+curl -X POST http://localhost:8080/v1/request \
+  -H "Authorization: Bearer YOUR_CLIENT_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "method": "GET",
+    "url": "https://httpbin.org/headers"
+  }'
+```
+
+---
+
+## 🔌 Building Custom Workers (Go SDK)
+
+Straw Proxy exports its message protocol and worker interfaces as a modular Go SDK. You can compile your own custom workers integrating commercial residential proxy pools, rotators, or custom TLS spoofing:
+
+```go
+package main
+
+import (
+	"context"
+	"log"
+
+	"github.com/beremaran/straw/internal/config"
+	"github.com/beremaran/straw/pkg/endpoint"
+)
+
+func main() {
+	// 1. Load configuration from environment
+	cfg, err := config.LoadEndpointConfig()
+	if err != nil {
+		log.Fatalf("failed to load configuration: %v", err)
+	}
+
+	// 2. Initialize a worker with custom request execution
+	worker := endpoint.NewWorker(cfg, endpoint.WithRequestExecutor(myCustomExecutor))
+
+	// 3. Start receiving and executing requests
+	if err := worker.Start(context.Background()); err != nil {
+		log.Fatalf("worker failed: %v", err)
+	}
+}
+```
+
+Refer to the [Custom Endpoint Developer Guide](docs/custom-endpoint.md) for full implementation details.
+
+---
+
+## 📁 Repository Structure
+
+```text
+├── api/                  # OpenAPI 3.0 specification schemas
+├── cmd/
+│   ├── relay-server/     # Control Plane entry point
+│   └── endpoint/         # Data/Execution Plane default worker daemon
+├── docs/                 # Extensive MkDocs markdown documentation
+├── internal/             # Private application logic (routing, filters, DB)
+├── pkg/                  # Public SDKs (Endpoint, NATS Broker, Protocol models)
+├── scripts/              # Setup, linting, and load testing scripts
+└── test/                 # Unit, contract, and integration test suites
+```
+
+---
+
+## ⚙️ Configuration
+
+Straw Proxy is configured using environment variables. Below is a summary of the core variables:
+
+| Variable | Type | Description |
+|---|---|---|
+| `POSTGRES_DSN` | string | PostgreSQL database connection string (DSN). |
+| `NATS_URL` | string | NATS message broker URL (e.g., `nats://localhost:4222`). |
+| `HMAC_SECRET` | string | Shared signing key used for securing NATS task payloads. **Must be identical on Relay and Workers.** |
+| `ENDPOINT_ID` | string | (Worker only) Unique identifier for the worker node. |
+| `ENDPOINT_TAGS` | string | (Worker only) Comma-separated tags (e.g., `type:residential,region:us`). |
+
+For a complete list of configuration options, check the [Configuration Reference](docs/configuration.md).
+
+---
+
+## 📚 Documentation
+
+The `/docs` folder contains a comprehensive documentation suite. You can run the docs site locally using:
+
+```bash
+make docs-serve
+```
+
+* **[Getting Started](docs/getting-started.md)**: Extended setup and development environment guides.
+* **[Architecture Overview](docs/architecture.md)**: In-depth sequence flows, schemas, and resilience patterns.
+* **[Admin API Reference](docs/admin-api.md)**: Detailed API specs for key rotation, routing rules, and metrics.
+* **[Custom Endpoint SDK](docs/custom-endpoint.md)**: Complete guide on building proprietary workers.
+
+---
+
+## 🤝 Contributing
+
+We welcome contributions to Straw Proxy! Please read [CONTRIBUTING.md](CONTRIBUTING.md) to get started with our development workflow and code style guidelines.
+
+---
+
+## 📄 License
+
+Straw Proxy is open-sourced software licensed under the [MIT License](LICENSE).
+

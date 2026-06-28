@@ -48,6 +48,7 @@ func (m *MockApiKeyRepo) Delete(ctx context.Context, id string) error          {
 func (m *MockApiKeyRepo) List(ctx context.Context, limit, offset int) ([]domain.ApiKey, int, error) {
 	return nil, 0, nil
 }
+func (m *MockApiKeyRepo) Exists(ctx context.Context) (bool, error)    { return false, nil }
 func (m *MockApiKeyRepo) Revoke(ctx context.Context, id string) error { return nil }
 
 type MockKeyCache struct {
