@@ -290,6 +290,7 @@ func TestHeaderMap_UnmarshalJSON_ObjectFormat(t *testing.T) {
 			for i, h := range tt.expected {
 				if i >= len(headers) {
 					t.Errorf("missing header at index %d", i)
+
 					continue
 				}
 				if headers[i].Key != h.Key {

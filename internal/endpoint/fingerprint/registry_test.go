@@ -184,6 +184,7 @@ func TestDefaultRegistry_BuiltInPresets(t *testing.T) {
 		preset, ok := r.Get(presetID)
 		if !ok {
 			t.Errorf("expected built-in preset %q to exist", presetID)
+
 			continue
 		}
 

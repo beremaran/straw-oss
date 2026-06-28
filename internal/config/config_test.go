@@ -118,6 +118,7 @@ func TestLoadServerConfig_MissingRequired(t *testing.T) {
 			for _, e := range validationErr.Errors {
 				if e == tt.wantErr {
 					found = true
+
 					break
 				}
 			}
@@ -207,6 +208,7 @@ func TestLoadEndpointConfig_MissingRequired(t *testing.T) {
 			for _, e := range validationErr.Errors {
 				if e == tt.wantErr {
 					found = true
+
 					break
 				}
 			}

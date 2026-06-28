@@ -80,6 +80,7 @@ func getEnv(key, defaultVal string) string {
 	if val == "" {
 		return defaultVal
 	}
+
 	return val
 }
 
@@ -92,6 +93,7 @@ func getEnvBool(key string, defaultVal bool) bool {
 	if err != nil {
 		return defaultVal
 	}
+
 	return b
 }
 
@@ -104,6 +106,7 @@ func getEnvInt(key string, defaultVal int) int {
 	if err != nil {
 		return defaultVal
 	}
+
 	return n
 }
 
