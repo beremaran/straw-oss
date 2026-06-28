@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/beremaran/straw/internal/broker"
 	"github.com/beremaran/straw/internal/infra/redis"
+	"github.com/beremaran/straw/pkg/broker"
 )
 
 type HeartbeatMessage struct {

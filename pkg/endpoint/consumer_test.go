@@ -1,4 +1,4 @@
-package consumer
+package endpoint
 
 import (
 	"context"
@@ -11,9 +11,9 @@ import (
 
 	fhttp "github.com/bogdanfinn/fhttp"
 
-	"github.com/beremaran/straw/internal/broker"
 	"github.com/beremaran/straw/internal/endpoint/fingerprint"
 	endpointhttp "github.com/beremaran/straw/internal/endpoint/http"
+	"github.com/beremaran/straw/pkg/broker"
 	"github.com/beremaran/straw/pkg/protocol"
 )
 
@@ -103,7 +103,7 @@ func TestConsumer_New(t *testing.T) {
 	httpClient := endpointhttp.NewClient(registry, provider)
 	secret := []byte("test-secret")
 
-	c := New(mb, httpClient, secret, "test-endpoint")
+	c := NewConsumer(mb, httpClient, secret, "test-endpoint")
 
 	if c.endpointID != "test-endpoint" {
 		t.Errorf("expected endpointID 'test-endpoint', got %s", c.endpointID)
@@ -129,7 +129,7 @@ func TestConsumer_WithOptions(t *testing.T) {
 	httpClient := endpointhttp.NewClient(registry, provider)
 	secret := []byte("test-secret")
 
-	c := New(mb, httpClient, secret, "test-endpoint",
+	c := NewConsumer(mb, httpClient, secret, "test-endpoint",
 		WithConcurrencyLimit(50),
 		WithMaxTaskAge(30*time.Second),
 	)
@@ -150,7 +150,7 @@ func TestConsumer_QueueName(t *testing.T) {
 	httpClient := endpointhttp.NewClient(registry, provider)
 	secret := []byte("test-secret")
 
-	c := New(mb, httpClient, secret, "my-endpoint")
+	c := NewConsumer(mb, httpClient, secret, "my-endpoint")
 
 	expected := "endpoint.my-endpoint.tasks"
 	if c.QueueName() != expected {
@@ -165,7 +165,7 @@ func TestConsumer_InvalidSignature(t *testing.T) {
 	httpClient := endpointhttp.NewClient(registry, provider)
 	secret := []byte("test-secret")
 
-	c := New(mb, httpClient, secret, "test-endpoint")
+	c := NewConsumer(mb, httpClient, secret, "test-endpoint")
 	c.ctx = context.Background()
 
 	req := &protocol.Request{
@@ -208,7 +208,7 @@ func TestConsumer_ReplayAttack(t *testing.T) {
 	httpClient := endpointhttp.NewClient(registry, provider)
 	secret := []byte("test-secret")
 
-	c := New(mb, httpClient, secret, "test-endpoint",
+	c := NewConsumer(mb, httpClient, secret, "test-endpoint",
 		WithMaxTaskAge(1*time.Millisecond),
 	)
 	c.ctx = context.Background()
@@ -254,7 +254,7 @@ func TestConsumer_ConcurrencyLimit(t *testing.T) {
 	httpClient := endpointhttp.NewClient(registry, provider)
 	secret := []byte("test-secret")
 
-	c := New(mb, httpClient, secret, "test-endpoint",
+	c := NewConsumer(mb, httpClient, secret, "test-endpoint",
 		WithConcurrencyLimit(2),
 	)
 
@@ -310,7 +310,7 @@ func TestConsumer_InvalidJSON(t *testing.T) {
 	httpClient := endpointhttp.NewClient(registry, provider)
 	secret := []byte("test-secret")
 
-	c := New(mb, httpClient, secret, "test-endpoint")
+	c := NewConsumer(mb, httpClient, secret, "test-endpoint")
 	c.ctx = context.Background()
 
 	err := c.processTask(context.Background(), []byte("not json"))
@@ -342,7 +342,7 @@ func TestConsumer_ResultHandler(t *testing.T) {
 		return nil
 	}
 
-	c := New(mb, httpClient, secret, "test-endpoint",
+	c := NewConsumer(mb, httpClient, secret, "test-endpoint",
 		WithResultHandler(handler),
 	)
 	c.ctx = context.Background()

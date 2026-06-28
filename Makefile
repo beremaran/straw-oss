@@ -1,4 +1,4 @@
-.PHONY: docker server endpoint build all test load-test security format lint clean
+.PHONY: docker server endpoint build all test load-test security format lint clean docs docs-serve
 
 docker:
 	docker build -t beremaran/straw:base -f .docker/base.Dockerfile .
@@ -32,5 +32,11 @@ lint:
 	@./scripts/install-golangci-lint.sh
 	golangci-lint run ./...
 
+docs:
+	mkdocs build --strict
+
+docs-serve:
+	mkdocs serve
+
 clean:
-	rm -rf bin/
+	rm -rf bin/ site/

@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/beremaran/straw/internal/broker"
 	"github.com/beremaran/straw/internal/infra/circuitbreaker"
 	"github.com/beremaran/straw/internal/server"
 	"github.com/beremaran/straw/internal/service/auth"
@@ -18,6 +17,7 @@ import (
 	"github.com/beremaran/straw/internal/service/ratelimit"
 	"github.com/beremaran/straw/internal/service/router"
 	"github.com/beremaran/straw/internal/service/session"
+	"github.com/beremaran/straw/pkg/broker"
 	"github.com/beremaran/straw/test/integration"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

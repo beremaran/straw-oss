@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/beremaran/straw/internal/broker"
 	"github.com/beremaran/straw/internal/domain"
+	"github.com/beremaran/straw/pkg/broker"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )

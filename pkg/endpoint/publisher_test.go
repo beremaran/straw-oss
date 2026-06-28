@@ -1,4 +1,4 @@
-package publisher
+package endpoint
 
 import (
 	"context"
@@ -7,23 +7,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/beremaran/straw/internal/broker"
+	"github.com/beremaran/straw/pkg/broker"
 	"github.com/beremaran/straw/pkg/protocol"
 )
 
-type mockBroker struct {
+type mockPublisherBroker struct {
 	publishedMsgs []publishedMsg
 	mu            sync.Mutex
 	publishErr    error
 }
 
-type publishedMsg struct {
-	Exchange   string
-	RoutingKey string
-	Body       []byte
-}
-
-func (m *mockBroker) Publish(ctx context.Context, exchange, routingKey string, body []byte) error {
+func (m *mockPublisherBroker) Publish(ctx context.Context, exchange, routingKey string, body []byte) error {
 	if m.publishErr != nil {
 		return m.publishErr
 	}
@@ -36,51 +30,51 @@ func (m *mockBroker) Publish(ctx context.Context, exchange, routingKey string, b
 	})
 	return nil
 }
-func (m *mockBroker) Subscribe(ctx context.Context, queue string, handler broker.Handler, opts ...broker.SubscribeOption) error {
+func (m *mockPublisherBroker) Subscribe(ctx context.Context, queue string, handler broker.Handler, opts ...broker.SubscribeOption) error {
 	return nil
 }
 
-func (m *mockBroker) SubscribeTemporary(ctx context.Context, queue string, handler broker.Handler) error {
+func (m *mockPublisherBroker) SubscribeTemporary(ctx context.Context, queue string, handler broker.Handler) error {
 	return nil
 }
 
-func (m *mockBroker) ConsumeOnce(ctx context.Context, queue string, timeout time.Duration) ([]byte, error) {
+func (m *mockPublisherBroker) ConsumeOnce(ctx context.Context, queue string, timeout time.Duration) ([]byte, error) {
 	return nil, nil
 }
 
-func (m *mockBroker) Close() error {
+func (m *mockPublisherBroker) Close() error {
 	return nil
 }
 
-func (m *mockBroker) DeclareExchange(ctx context.Context, name, kind string) error {
+func (m *mockPublisherBroker) DeclareExchange(ctx context.Context, name, kind string) error {
 	return nil
 }
 
-func (m *mockBroker) DeclareQueue(ctx context.Context, name string) error {
+func (m *mockPublisherBroker) DeclareQueue(ctx context.Context, name string) error {
 	return nil
 }
 
-func (m *mockBroker) BindQueue(ctx context.Context, queue, exchange, routingKey string) error {
+func (m *mockPublisherBroker) BindQueue(ctx context.Context, queue, exchange, routingKey string) error {
 	return nil
 }
 
-func (m *mockBroker) IsConnected() bool {
+func (m *mockPublisherBroker) IsConnected() bool {
 	return true
 }
 
-func (m *mockBroker) QueueDepth(ctx context.Context, name string) (int, error) {
+func (m *mockPublisherBroker) QueueDepth(ctx context.Context, name string) (int, error) {
 	return 0, nil
 }
 
-func (m *mockBroker) getMessages() []publishedMsg {
+func (m *mockPublisherBroker) getMessages() []publishedMsg {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.publishedMsgs
 }
 
 func TestPublisher_New(t *testing.T) {
-	mb := &mockBroker{}
-	p := New(mb)
+	mb := &mockPublisherBroker{}
+	p := NewPublisher(mb)
 
 	if p.broker != mb {
 		t.Error("expected broker to be set")
@@ -96,8 +90,8 @@ func TestPublisher_New(t *testing.T) {
 }
 
 func TestPublisher_Publish(t *testing.T) {
-	mb := &mockBroker{}
-	p := New(mb)
+	mb := &mockPublisherBroker{}
+	p := NewPublisher(mb)
 
 	resp := &protocol.Response{
 		RequestID:  "test-request-123",
@@ -167,8 +161,8 @@ func TestPublisher_Publish(t *testing.T) {
 }
 
 func TestPublisher_Publish_EmptyBody(t *testing.T) {
-	mb := &mockBroker{}
-	p := New(mb)
+	mb := &mockPublisherBroker{}
+	p := NewPublisher(mb)
 
 	resp := &protocol.Response{
 		RequestID:  "test-request-456",
@@ -200,8 +194,8 @@ func TestPublisher_Publish_EmptyBody(t *testing.T) {
 }
 
 func TestPublisher_Publish_ErrorResponse(t *testing.T) {
-	mb := &mockBroker{}
-	p := New(mb)
+	mb := &mockPublisherBroker{}
+	p := NewPublisher(mb)
 
 	resp := &protocol.Response{
 		RequestID:  "test-request-789",
@@ -246,8 +240,8 @@ func TestPublisher_Publish_ErrorResponse(t *testing.T) {
 }
 
 func TestPublisher_Publish_NilResponse(t *testing.T) {
-	mb := &mockBroker{}
-	p := New(mb)
+	mb := &mockPublisherBroker{}
+	p := NewPublisher(mb)
 
 	err := p.Publish(context.Background(), nil, "")
 	if err == nil {
@@ -256,8 +250,8 @@ func TestPublisher_Publish_NilResponse(t *testing.T) {
 }
 
 func TestPublisher_Publish_MissingRequestID(t *testing.T) {
-	mb := &mockBroker{}
-	p := New(mb)
+	mb := &mockPublisherBroker{}
+	p := NewPublisher(mb)
 
 	resp := &protocol.Response{
 		StatusCode: 200,
@@ -270,8 +264,8 @@ func TestPublisher_Publish_MissingRequestID(t *testing.T) {
 }
 
 func TestPublisher_PublishError(t *testing.T) {
-	mb := &mockBroker{}
-	p := New(mb)
+	mb := &mockPublisherBroker{}
+	p := NewPublisher(mb)
 
 	errInfo := &protocol.ErrorInfo{
 		Code:      protocol.ErrCodeUpstreamError,
@@ -295,8 +289,8 @@ func TestPublisher_PublishError(t *testing.T) {
 }
 
 func TestPublisher_Handler(t *testing.T) {
-	mb := &mockBroker{}
-	p := New(mb)
+	mb := &mockPublisherBroker{}
+	p := NewPublisher(mb)
 
 	handler := p.Handler()
 	if handler == nil {
@@ -394,8 +388,8 @@ func TestNewTimeoutError(t *testing.T) {
 }
 
 func TestPublisher_Publish_LargeBody(t *testing.T) {
-	mb := &mockBroker{}
-	p := New(mb)
+	mb := &mockPublisherBroker{}
+	p := NewPublisher(mb)
 
 	largeBody := make([]byte, 100*1024)
 	for i := range largeBody {

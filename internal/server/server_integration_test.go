@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/beremaran/straw/internal/broker"
 	"github.com/beremaran/straw/internal/config"
 	"github.com/beremaran/straw/internal/domain"
 	"github.com/beremaran/straw/internal/infra/circuitbreaker"
@@ -19,6 +18,7 @@ import (
 	"github.com/beremaran/straw/internal/service/filter"
 	"github.com/beremaran/straw/internal/service/orchestrator"
 	"github.com/beremaran/straw/internal/service/router"
+	"github.com/beremaran/straw/pkg/broker"
 	"github.com/beremaran/straw/pkg/protocol"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"

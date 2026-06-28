@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/beremaran/straw/internal/broker"
 	"github.com/beremaran/straw/internal/domain"
 	"github.com/beremaran/straw/internal/server/dto"
 	"github.com/beremaran/straw/internal/server/helper"
+	"github.com/beremaran/straw/pkg/broker"
 )
 
 type FingerprintHandler struct {

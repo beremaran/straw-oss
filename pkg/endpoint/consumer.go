@@ -1,4 +1,4 @@
-package consumer
+package endpoint
 
 import (
 	"context"
@@ -9,19 +9,23 @@ import (
 	"sync"
 	"time"
 
-	"github.com/beremaran/straw/internal/broker"
-	endpointhttp "github.com/beremaran/straw/internal/endpoint/http"
 	"github.com/beremaran/straw/internal/endpoint/metrics"
+	"github.com/beremaran/straw/pkg/broker"
 	"github.com/beremaran/straw/pkg/protocol"
 )
 
 const DefaultMaxTaskAge = 60 * time.Second
-
 const DefaultConcurrencyLimit = 25
+
+// RequestExecutor defines the interface for executing a proxy request.
+// This allows users to supply their own request executors or HTTP clients.
+type RequestExecutor interface {
+	Do(ctx context.Context, req *protocol.Request) (*protocol.Response, error)
+}
 
 type Consumer struct {
 	broker     broker.MessageBroker
-	httpClient *endpointhttp.Client
+	httpClient RequestExecutor
 	secret     []byte
 	endpointID string
 	queueName  string
@@ -87,9 +91,9 @@ func WithStatsCallback(h func(TaskResult)) Option {
 	}
 }
 
-func New(
+func NewConsumer(
 	b broker.MessageBroker,
-	httpClient *endpointhttp.Client,
+	httpClient RequestExecutor,
 	secret []byte,
 	endpointID string,
 	opts ...Option,
@@ -162,7 +166,6 @@ func (c *Consumer) handleMessage(ctx context.Context, body []byte) error {
 
 	select {
 	case c.semaphore <- struct{}{}:
-
 	case <-ctx.Done():
 		return ctx.Err()
 	}

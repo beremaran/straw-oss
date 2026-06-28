@@ -9,7 +9,6 @@ func TestSubjectMatchesPattern(t *testing.T) {
 		subject string
 		want    bool
 	}{
-
 		{
 			name:    "exact match",
 			pattern: "foo.bar.baz",
@@ -22,7 +21,6 @@ func TestSubjectMatchesPattern(t *testing.T) {
 			subject: "foo.bar.qux",
 			want:    false,
 		},
-
 		{
 			name:    "wildcard single token middle",
 			pattern: "foo.*.baz",
@@ -47,7 +45,6 @@ func TestSubjectMatchesPattern(t *testing.T) {
 			subject: "foo.bar.qux.baz",
 			want:    false,
 		},
-
 		{
 			name:    "gt wildcard matches rest",
 			pattern: "foo.>",
@@ -66,7 +63,6 @@ func TestSubjectMatchesPattern(t *testing.T) {
 			subject: "foo.bar",
 			want:    false,
 		},
-
 		{
 			name:    "subject longer than pattern",
 			pattern: "foo.bar",

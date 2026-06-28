@@ -49,7 +49,6 @@ func (b *NatsBroker) Connect() error {
 	}
 
 	if len(b.opts) > 0 {
-
 		config := Options{}
 		for _, o := range b.opts {
 			o(&config)
@@ -111,7 +110,6 @@ func (b *NatsBroker) Subscribe(ctx context.Context, queue string, handler Handle
 	}
 
 	for _, subject := range subjects {
-
 		streamName := b.findStreamForSubject(ctx, subject)
 		if streamName == "" {
 			return fmt.Errorf("no stream found for subject %s", subject)
@@ -121,7 +119,6 @@ func (b *NatsBroker) Subscribe(ctx context.Context, queue string, handler Handle
 		if subOpts.Durable != nil {
 			durableName = *subOpts.Durable
 		} else {
-
 			durableName = strings.ReplaceAll(queue, ".", "_")
 		}
 
@@ -158,10 +155,8 @@ func (b *NatsBroker) Subscribe(ctx context.Context, queue string, handler Handle
 }
 
 func (b *NatsBroker) findStreamForSubject(ctx context.Context, subject string) string {
-
 	streams := b.js.ListStreams(ctx)
 	for stream := range streams.Info() {
-
 		for _, pattern := range stream.Config.Subjects {
 			if subjectMatchesPattern(pattern, subject) {
 				return stream.Config.Name
@@ -172,7 +167,6 @@ func (b *NatsBroker) findStreamForSubject(ctx context.Context, subject string) s
 }
 
 func subjectMatchesPattern(pattern, subject string) bool {
-
 	if pattern == subject {
 		return true
 	}
@@ -206,10 +200,9 @@ func subjectMatchesPattern(pattern, subject string) bool {
 }
 
 func (b *NatsBroker) SubscribeTemporary(ctx context.Context, queue string, handler Handler) error {
-
 	sub, err := b.conn.QueueSubscribe(queue, queue, func(msg *nats.Msg) {
 		if err := handler(ctx, msg.Data); err != nil {
-
+			// error log or handling
 		}
 	})
 	if err != nil {
@@ -225,7 +218,6 @@ func (b *NatsBroker) SubscribeTemporary(ctx context.Context, queue string, handl
 }
 
 func (b *NatsBroker) DeclareExchange(ctx context.Context, name, kind string) error {
-
 	_, err := b.js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
 		Name:     name,
 		Subjects: []string{name + ".>"},
@@ -237,7 +229,6 @@ func (b *NatsBroker) DeclareExchange(ctx context.Context, name, kind string) err
 }
 
 func (b *NatsBroker) DeclareQueue(ctx context.Context, name string) error {
-
 	b.mu.Lock()
 	if _, ok := b.bindings[name]; !ok {
 		b.bindings[name] = []string{}
@@ -252,7 +243,6 @@ func (b *NatsBroker) BindQueue(ctx context.Context, queue, exchange, routingKey 
 		subject = routingKey
 	}
 	if routingKey == "" {
-
 		subject = exchange + ".>"
 	}
 
@@ -263,12 +253,10 @@ func (b *NatsBroker) BindQueue(ctx context.Context, queue, exchange, routingKey 
 }
 
 func (b *NatsBroker) QueueDepth(ctx context.Context, name string) (int, error) {
-
 	return 0, nil
 }
 
 func (b *NatsBroker) ConsumeOnce(ctx context.Context, queue string, timeout time.Duration) ([]byte, error) {
-
 	sub, err := b.conn.SubscribeSync(queue)
 	if err != nil {
 		return nil, err

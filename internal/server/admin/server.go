@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/beremaran/straw/internal/broker"
 	"github.com/beremaran/straw/internal/config"
 	"github.com/beremaran/straw/internal/infra/postgres"
 	"github.com/beremaran/straw/internal/infra/redis"
@@ -16,6 +15,7 @@ import (
 	mw "github.com/beremaran/straw/internal/server/middleware"
 	"github.com/beremaran/straw/internal/service/endpoint"
 	"github.com/beremaran/straw/internal/service/router"
+	"github.com/beremaran/straw/pkg/broker"
 )
 
 type Server struct {

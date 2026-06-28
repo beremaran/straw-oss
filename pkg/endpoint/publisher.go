@@ -1,4 +1,4 @@
-package publisher
+package endpoint
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/beremaran/straw/internal/broker"
+	"github.com/beremaran/straw/pkg/broker"
 	"github.com/beremaran/straw/pkg/protocol"
 )
 
@@ -17,21 +17,21 @@ type Publisher struct {
 	useConfirm bool
 }
 
-type Option func(*Publisher)
+type PublisherOption func(*Publisher)
 
-func WithLogger(logger *slog.Logger) Option {
+func WithPublisherLogger(logger *slog.Logger) PublisherOption {
 	return func(p *Publisher) {
 		p.logger = logger
 	}
 }
 
-func WithConfirm(enabled bool) Option {
+func WithPublisherConfirm(enabled bool) PublisherOption {
 	return func(p *Publisher) {
 		p.useConfirm = enabled
 	}
 }
 
-func New(b broker.MessageBroker, opts ...Option) *Publisher {
+func NewPublisher(b broker.MessageBroker, opts ...PublisherOption) *Publisher {
 	p := &Publisher{
 		broker:     b,
 		logger:     slog.Default(),
@@ -165,7 +165,6 @@ func NewTLSError(message string) *protocol.ErrorInfo {
 }
 
 func NewHTTPError(statusCode int, message string) *protocol.ErrorInfo {
-
 	retryable := statusCode >= 500 && statusCode < 600
 	return &protocol.ErrorInfo{
 		Code:      protocol.ErrCodeUpstreamError,
