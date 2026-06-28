@@ -106,7 +106,7 @@ func main() {
 		slog.Info("Migrations applied successfully!")
 	}
 
-	redisClient, err := redis.NewClient(cfg.Redis, redisBreaker)
+	redisClient, err := redis.NewClient(ctx, cfg.Redis, redisBreaker)
 	if err != nil {
 		slog.Error("Failed to connect to Redis", "error", err)
 		os.Exit(1)

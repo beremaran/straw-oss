@@ -72,7 +72,7 @@ func setupTestServer(t *testing.T, suite *TestSuite) *testServerContext {
 	err = broker.DeclareExchange(ctx, "results", "topic")
 	require.NoError(t, err, "failed to declare results exchange")
 
-	redisClient, err := infraredis.NewClient(config.RedisConfig{Addr: suite.RedisAddr()}, nil)
+	redisClient, err := infraredis.NewClient(ctx, config.RedisConfig{Addr: suite.RedisAddr()}, nil)
 	require.NoError(t, err, "failed to connect to Redis")
 
 	postgresClient, err := postgres.NewClient(ctx, suite.PostgresDSN(), nil)

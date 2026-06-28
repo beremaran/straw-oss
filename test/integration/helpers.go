@@ -400,11 +400,11 @@ func (c *HTTPTestClient) SendRequest(ctx context.Context, req *ProxyRequest) (*P
 	}, nil
 }
 
-func NewTestRedisClient(t testing.TB, addr string) *redis.Client {
+func NewTestRedisClient(ctx context.Context, t testing.TB, addr string) *redis.Client {
 	cfg := config.RedisConfig{
 		Addr: addr,
 	}
-	client, err := redis.NewClient(cfg, nil)
+	client, err := redis.NewClient(ctx, cfg, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		client.Close()
