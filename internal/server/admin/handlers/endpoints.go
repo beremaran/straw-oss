@@ -20,7 +20,6 @@ func (h *EndpointHandler) HandleListEndpoints(w http.ResponseWriter, r *http.Req
 	endpoints, err := h.healthService.ListAllEndpoints(r.Context())
 	if err != nil {
 		helper.WriteError(w, http.StatusInternalServerError, "failed to list endpoints")
-
 		return
 	}
 	response := make([]dto.EndpointHealthResponse, len(endpoints))
@@ -42,14 +41,11 @@ func (h *EndpointHandler) HandleDrainEndpoint(w http.ResponseWriter, r *http.Req
 	id := r.PathValue("id")
 	if id == "" {
 		helper.WriteError(w, http.StatusBadRequest, "id is required")
-
 		return
 	}
 
-	err := h.healthService.DrainEndpoint(r.Context(), id)
-	if err != nil {
+	if err := h.healthService.DrainEndpoint(r.Context(), id); err != nil {
 		helper.WriteError(w, http.StatusInternalServerError, "failed to drain endpoint")
-
 		return
 	}
 

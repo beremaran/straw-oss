@@ -97,8 +97,7 @@ func TestEndpointHealthStore_ListHealthyByTags(t *testing.T) {
 	}
 
 	for _, ep := range endpoints {
-		err := store.UpdateHealth(ctx, ep)
-		if err != nil {
+		if err := store.UpdateHealth(ctx, ep); err != nil {
 			t.Fatalf("UpdateHealth failed for %s: %v", ep.EndpointID, err)
 		}
 	}
@@ -162,8 +161,7 @@ func TestEndpointHealthStore_ListAllEndpoints(t *testing.T) {
 	}
 
 	for _, ep := range endpoints {
-		err := store.UpdateHealth(ctx, ep)
-		if err != nil {
+		if err := store.UpdateHealth(ctx, ep); err != nil {
 			t.Fatalf("UpdateHealth failed for %s: %v", ep.EndpointID, err)
 		}
 	}

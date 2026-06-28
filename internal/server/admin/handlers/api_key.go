@@ -35,7 +35,6 @@ func (h *ApiKeyHandler) HandleListApiKeys(w http.ResponseWriter, r *http.Request
 	keys, total, err := h.repo.List(r.Context(), limit, offset)
 	if err != nil {
 		helper.WriteError(w, http.StatusInternalServerError, "failed to list api keys")
-
 		return
 	}
 
@@ -49,23 +48,19 @@ func (h *ApiKeyHandler) HandleListApiKeys(w http.ResponseWriter, r *http.Request
 
 func (h *ApiKeyHandler) HandleCreateApiKey(w http.ResponseWriter, r *http.Request) {
 	var req dto.CreateApiKeyRequest
-	err := helper.ReadJSON(r, &req)
-	if err != nil {
+	if err := helper.ReadJSON(r, &req); err != nil {
 		helper.WriteError(w, http.StatusBadRequest, "invalid request body")
-
 		return
 	}
 
 	if req.Name == "" {
 		helper.WriteError(w, http.StatusBadRequest, "name is required")
-
 		return
 	}
 
 	keyBytes := make([]byte, 32)
 	if _, err := rand.Read(keyBytes); err != nil {
 		helper.WriteError(w, http.StatusInternalServerError, "failed to generate key")
-
 		return
 	}
 	rawKey := hex.EncodeToString(keyBytes)
@@ -76,10 +71,8 @@ func (h *ApiKeyHandler) HandleCreateApiKey(w http.ResponseWriter, r *http.Reques
 	apiKey := domain.NewApiKey(uuid.New().String(), tokenHash, req.Name, req.Scopes)
 	apiKey.RateLimitOverride = req.RateLimitOverride
 
-	err := h.repo.Create(r.Context(), apiKey)
-	if err != nil {
+	if err := h.repo.Create(r.Context(), apiKey); err != nil {
 		helper.WriteError(w, http.StatusInternalServerError, "failed to create api key")
-
 		return
 	}
 
@@ -94,14 +87,11 @@ func (h *ApiKeyHandler) HandleRevokeApiKey(w http.ResponseWriter, r *http.Reques
 	id := r.PathValue("id")
 	if id == "" {
 		helper.WriteError(w, http.StatusBadRequest, "id is required")
-
 		return
 	}
 
-	err := h.repo.Revoke(r.Context(), id)
-	if err != nil {
+	if err := h.repo.Revoke(r.Context(), id); err != nil {
 		helper.WriteError(w, http.StatusInternalServerError, "failed to revoke api key")
-
 		return
 	}
 

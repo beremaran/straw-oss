@@ -44,13 +44,11 @@ func (s *Session) Migrate(newEndpointID string) bool {
 	s.EndpointID = newEndpointID
 	s.MigrationCount++
 	s.LastUsedAt = time.Now()
-
 	return true
 }
 
 func NewSession(id, endpointID, ruleID string, tags []string) *Session {
 	now := time.Now()
-
 	return &Session{
 		ID:             id,
 		EndpointID:     endpointID,

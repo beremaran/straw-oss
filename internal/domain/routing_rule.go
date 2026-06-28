@@ -82,6 +82,7 @@ type EndpointPool struct {
 }
 
 func (r *RoutingRule) MatchesTags(requestTags []Tag) bool {
+
 	required, err := StringsToTags(r.RequiredTags)
 	if err != nil {
 		return false

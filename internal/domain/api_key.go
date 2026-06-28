@@ -31,7 +31,6 @@ func (k *ApiKey) IsValid() bool {
 	if k.ExpiresAt != nil && time.Now().After(*k.ExpiresAt) {
 		return false
 	}
-
 	return true
 }
 
@@ -43,7 +42,6 @@ func (k *ApiKey) HasScope(tag Tag) bool {
 			return true
 		}
 	}
-
 	return false
 }
 
@@ -53,11 +51,11 @@ func (k *ApiKey) HasScopeForTags(tags []Tag) bool {
 			return false
 		}
 	}
-
 	return true
 }
 
 func matchScope(scope, tag string) bool {
+
 	if scope == "*" {
 		return true
 	}
@@ -68,13 +66,11 @@ func matchScope(scope, tag string) bool {
 
 	if strings.HasSuffix(scope, ":*") {
 		prefix := strings.TrimSuffix(scope, "*")
-
 		return strings.HasPrefix(tag, prefix)
 	}
 
 	if strings.HasPrefix(scope, "*:") {
 		suffix := strings.TrimPrefix(scope, "*")
-
 		return strings.HasSuffix(tag, suffix)
 	}
 

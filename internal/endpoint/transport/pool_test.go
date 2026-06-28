@@ -33,7 +33,6 @@ func (m *mockDialer) dial(ctx context.Context, network, addr, fingerprint string
 	}
 
 	client, _ := net.Pipe()
-
 	return client, nil
 }
 
@@ -194,6 +193,7 @@ func TestPooledTransport_LRUEviction(t *testing.T) {
 	if t1 == nil {
 		t.Error("expected host1 pool to still exist")
 	}
+
 }
 
 func TestPooledTransport_ConcurrentAccess(t *testing.T) {

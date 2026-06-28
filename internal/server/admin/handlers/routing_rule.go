@@ -42,7 +42,6 @@ func (h *RoutingRuleHandler) HandleListRoutingRules(w http.ResponseWriter, r *ht
 	rules, total, err := h.repo.ListRules(r.Context(), limit, offset)
 	if err != nil {
 		helper.WriteError(w, http.StatusInternalServerError, "failed to list routing rules")
-
 		return
 	}
 
@@ -58,19 +57,16 @@ func (h *RoutingRuleHandler) HandleGetRoutingRule(w http.ResponseWriter, r *http
 	id := r.PathValue("id")
 	if id == "" {
 		helper.WriteError(w, http.StatusBadRequest, "id is required")
-
 		return
 	}
 
 	rule, err := h.repo.GetRuleByID(r.Context(), id)
 	if err != nil {
 		helper.WriteError(w, http.StatusInternalServerError, "failed to get routing rule")
-
 		return
 	}
 	if rule == nil {
 		helper.WriteError(w, http.StatusNotFound, "routing rule not found")
-
 		return
 	}
 
@@ -81,20 +77,17 @@ func (h *RoutingRuleHandler) HandleCreateRoutingRule(w http.ResponseWriter, r *h
 	var req dto.CreateRoutingRuleRequest
 	if err := helper.ReadJSON(r, &req); err != nil {
 		helper.WriteError(w, http.StatusBadRequest, "invalid request body")
-
 		return
 	}
 
 	if req.Name == "" {
 		helper.WriteError(w, http.StatusBadRequest, "name is required")
-
 		return
 	}
 
 	rule, err := req.ToDomain()
 	if err != nil {
 		helper.WriteError(w, http.StatusBadRequest, err.Error())
-
 		return
 	}
 
@@ -105,7 +98,6 @@ func (h *RoutingRuleHandler) HandleCreateRoutingRule(w http.ResponseWriter, r *h
 
 	if err := h.repo.CreateRule(r.Context(), rule); err != nil {
 		helper.WriteError(w, http.StatusInternalServerError, "failed to create routing rule")
-
 		return
 	}
 
@@ -118,21 +110,18 @@ func (h *RoutingRuleHandler) HandleUpdateRoutingRule(w http.ResponseWriter, r *h
 	id := r.PathValue("id")
 	if id == "" {
 		helper.WriteError(w, http.StatusBadRequest, "id is required")
-
 		return
 	}
 
 	var req dto.UpdateRoutingRuleRequest
 	if err := helper.ReadJSON(r, &req); err != nil {
 		helper.WriteError(w, http.StatusBadRequest, "invalid request body")
-
 		return
 	}
 
 	rule, err := req.ToDomain()
 	if err != nil {
 		helper.WriteError(w, http.StatusBadRequest, err.Error())
-
 		return
 	}
 
@@ -143,7 +132,6 @@ func (h *RoutingRuleHandler) HandleUpdateRoutingRule(w http.ResponseWriter, r *h
 	err = h.repo.UpdateRule(r.Context(), rule)
 	if err != nil {
 		helper.WriteError(w, http.StatusInternalServerError, err.Error())
-
 		return
 	}
 
@@ -156,14 +144,11 @@ func (h *RoutingRuleHandler) HandleDeleteRoutingRule(w http.ResponseWriter, r *h
 	id := r.PathValue("id")
 	if id == "" {
 		helper.WriteError(w, http.StatusBadRequest, "id is required")
-
 		return
 	}
 
-	err := h.repo.DeleteRule(r.Context(), id)
-	if err != nil {
+	if err := h.repo.DeleteRule(r.Context(), id); err != nil {
 		helper.WriteError(w, http.StatusInternalServerError, "failed to delete routing rule")
-
 		return
 	}
 

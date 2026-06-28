@@ -22,7 +22,6 @@ func Init() *prometheus.Registry {
 		registry.MustRegister(collectors.NewGoCollector())
 		registry.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 	})
-
 	return registry
 }
 
@@ -30,7 +29,6 @@ func GetRegistry() *prometheus.Registry {
 	if registry == nil {
 		return Init()
 	}
-
 	return registry
 }
 

@@ -45,7 +45,6 @@ func (m *mockBroker) Publish(ctx context.Context, exchange, routingKey string, b
 		RoutingKey: routingKey,
 		Body:       body,
 	})
-
 	return nil
 }
 
@@ -60,7 +59,6 @@ func (m *mockBroker) Subscribe(ctx context.Context, queue string, handler broker
 		IsTemp:  false,
 		Handler: handler,
 	})
-
 	return nil
 }
 
@@ -75,11 +73,11 @@ func (m *mockBroker) SubscribeTemporary(ctx context.Context, queue string, handl
 		IsTemp:  true,
 		Handler: handler,
 	})
-
 	return nil
 }
 
 func (m *mockBroker) ConsumeOnce(ctx context.Context, queue string, timeout time.Duration) ([]byte, error) {
+
 	return nil, errors.New("not implemented in mock")
 }
 
@@ -164,8 +162,7 @@ func TestPublisher_Publish(t *testing.T) {
 		}
 
 		var st protocol.SignedTask
-		err := json.Unmarshal(msg.Body, &st)
-		if err != nil {
+		if err := json.Unmarshal(msg.Body, &st); err != nil {
 			t.Errorf("failed to unmarshal signed task: %v", err)
 		}
 

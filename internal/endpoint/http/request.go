@@ -14,6 +14,7 @@ import (
 )
 
 func BuildRequest(ctx context.Context, req *protocol.Request, preset fingerprint.Preset) (*fhttp.Request, error) {
+
 	parsedURL, err := url.Parse(req.URL)
 	if err != nil {
 		return nil, &ClientError{
@@ -57,6 +58,7 @@ func BuildRequest(ctx context.Context, req *protocol.Request, preset fingerprint
 
 func applyHeaders(req *fhttp.Request, headers protocol.HeaderMap) {
 	for _, h := range headers {
+
 		if strings.HasPrefix(h.Key, ":") || strings.EqualFold(h.Key, "host") {
 			continue
 		}
@@ -103,6 +105,7 @@ func applyHeaderOrder(req *fhttp.Request, order []string) {
 }
 
 func applyFingerprintHeaders(req *fhttp.Request, preset fingerprint.Preset) {
+
 	if req.Header.Get("User-Agent") == "" && preset.UserAgent != "" {
 		req.Header.Set("User-Agent", preset.UserAgent)
 	}
@@ -135,6 +138,7 @@ func applyFingerprintHeaders(req *fhttp.Request, preset fingerprint.Preset) {
 func HeadersToProtocol(headers fhttp.Header) protocol.HeaderMap {
 	result := make(protocol.HeaderMap, 0, len(headers))
 	for key, values := range headers {
+
 		if key == fhttp.PHeaderOrderKey || key == fhttp.HeaderOrderKey {
 			continue
 		}
@@ -142,6 +146,5 @@ func HeadersToProtocol(headers fhttp.Header) protocol.HeaderMap {
 			result = append(result, protocol.Header{Key: key, Value: value})
 		}
 	}
-
 	return result
 }

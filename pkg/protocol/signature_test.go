@@ -173,8 +173,7 @@ func TestValidateSignedTask_ExpiredTimestamp(t *testing.T) {
 		t.Error("expected error for expired timestamp")
 	}
 
-	validErr := &ValidationError{}
-	if errors.As(err, &validErr) {
+	if validErr, ok := err.(*ValidationError); ok {
 		if validErr.Code != ErrCodeReplayAttack {
 			t.Errorf("expected REPLAY_ATTACK error, got: %s", validErr.Code)
 		}
@@ -201,8 +200,7 @@ func TestValidateSignedTask_InvalidSignature(t *testing.T) {
 		t.Error("expected error for invalid signature")
 	}
 
-	validErr := &ValidationError{}
-	if errors.As(err, &validErr) {
+	if validErr, ok := err.(*ValidationError); ok {
 		if validErr.Code != ErrCodeSignatureInvalid {
 			t.Errorf("expected SIGNATURE_INVALID error, got: %s", validErr.Code)
 		}

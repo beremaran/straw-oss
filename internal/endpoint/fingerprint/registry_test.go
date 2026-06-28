@@ -57,15 +57,10 @@ func TestRegistry_RegisterDuplicate(t *testing.T) {
 	}
 
 	var dupErr *DuplicatePresetError
-	duplicatePresetError := &DuplicatePresetError{}
-	if errors.As(err, &duplicatePresetError) {
+	if _, ok := err.(*DuplicatePresetError); !ok {
 		t.Errorf("expected DuplicatePresetError, got %T", err)
 	} else {
-		dupErr = func() *DuplicatePresetError {
-			target := &DuplicatePresetError{}
-			_ = errors.As(err, &target)
-			return target
-		}()
+		dupErr = err.(*DuplicatePresetError)
 		if dupErr.PresetID != "test-preset" {
 			t.Errorf("expected preset ID 'test-preset', got %q", dupErr.PresetID)
 		}
@@ -163,6 +158,7 @@ func TestRegistry_ConcurrentAccess(t *testing.T) {
 	}
 
 	wg.Wait()
+
 }
 
 func TestDefaultRegistry_BuiltInPresets(t *testing.T) {
@@ -188,7 +184,6 @@ func TestDefaultRegistry_BuiltInPresets(t *testing.T) {
 		preset, ok := r.Get(presetID)
 		if !ok {
 			t.Errorf("expected built-in preset %q to exist", presetID)
-
 			continue
 		}
 
@@ -248,6 +243,7 @@ func TestPreset_FirefoxNoClientHints(t *testing.T) {
 }
 
 func TestPreset_DeprecatedFlag(t *testing.T) {
+
 	preset, ok := Get("chrome-129")
 	if !ok {
 		t.Fatal("expected chrome-129 preset to exist")
@@ -266,6 +262,7 @@ func TestPreset_DeprecatedFlag(t *testing.T) {
 }
 
 func TestPackageLevelFunctions(t *testing.T) {
+
 	preset, ok := Get("chrome-133")
 	if !ok {
 		t.Error("Get should find chrome-133")

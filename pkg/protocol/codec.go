@@ -45,6 +45,5 @@ func CompressionRatio(original, compressed []byte) float64 {
 	if len(original) == 0 {
 		return 0
 	}
-
 	return float64(len(compressed)) / float64(len(original))
 }

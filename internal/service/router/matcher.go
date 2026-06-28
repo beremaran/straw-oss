@@ -38,14 +38,12 @@ func (m *Matcher) LoadRules(ctx context.Context) error {
 	version, err := m.cache.GetRulesVersion(ctx)
 	if err != nil {
 		log.Printf("Failed to get rules version from cache, falling back to DB: %v", err)
-
 		return m.loadFromDB(ctx)
 	}
 
 	m.mu.RLock()
 	if m.currentVersion == version && version > 0 && len(m.rules) > 0 {
 		m.mu.RUnlock()
-
 		return nil
 	}
 	m.mu.RUnlock()
@@ -54,11 +52,12 @@ func (m *Matcher) LoadRules(ctx context.Context) error {
 		rules, err := m.cache.GetRulesByVersion(ctx, version)
 		if err != nil {
 			log.Printf("Failed to get rules (v%d) from cache: %v", version, err)
+
 		} else if rules != nil {
+
 			m.updateRules(rules, version)
 			atomic.AddInt64(&m.cacheHits, 1)
 			log.Printf("Routing rules loaded from cache (v%d): count=%d", version, len(rules))
-
 			return nil
 		}
 	}
@@ -74,8 +73,7 @@ func (m *Matcher) LoadRules(ctx context.Context) error {
 		go func(v int64, r []domain.RoutingRule) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			err := m.cache.SetRulesByVersion(ctx, v, r)
-			if err != nil {
+			if err := m.cache.SetRulesByVersion(ctx, v, r); err != nil {
 				log.Printf("Failed to update rules cache (v%d): %v", v, err)
 			}
 		}(version, rules)
@@ -83,7 +81,6 @@ func (m *Matcher) LoadRules(ctx context.Context) error {
 
 	m.updateRules(rules, version)
 	log.Printf("Routing rules loaded from DB: count=%d, version=%d", len(rules), version)
-
 	return nil
 }
 
@@ -98,7 +95,6 @@ func (m *Matcher) loadFromDB(ctx context.Context) error {
 	m.lastUpdate = time.Now()
 	m.mu.Unlock()
 	log.Printf("Routing rules loaded from DB (fallback): count=%d", len(rules))
-
 	return nil
 }
 
@@ -133,8 +129,7 @@ func (m *Matcher) StartAutoRefresh(ctx context.Context, interval time.Duration) 
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				err := m.LoadRules(ctx)
-				if err != nil {
+				if err := m.LoadRules(ctx); err != nil {
 					log.Printf("Failed to auto-refresh routing rules: %v", err)
 				}
 			}

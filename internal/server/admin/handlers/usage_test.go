@@ -19,7 +19,6 @@ type MockUsageRepo struct {
 
 func (m *MockUsageRepo) GetDailySummaries(ctx context.Context, apiKeyID string, start, end time.Time) ([]domain.UsageSummary, error) {
 	args := m.Called(ctx, apiKeyID, start, end)
-
 	return args.Get(0).([]domain.UsageSummary), args.Error(1)
 }
 

@@ -40,7 +40,6 @@ func NewClient(ctx context.Context, dsn string, breaker *circuitbreaker.CircuitB
 
 	if err := pool.Ping(ctx); err != nil {
 		pool.Close()
-
 		return nil, fmt.Errorf("failed to connect to postgres: %w", err)
 	}
 
@@ -59,6 +58,5 @@ func (c *Client) Execute(fn func() error) error {
 	if c.breaker != nil {
 		return c.breaker.Execute(fn)
 	}
-
 	return fn()
 }

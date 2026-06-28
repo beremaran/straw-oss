@@ -59,12 +59,10 @@ func (cb *CircuitBreaker) Execute(fn func() error) error {
 	err := fn()
 	if err != nil {
 		cb.ReportFailure()
-
 		return err
 	}
 
 	cb.ReportSuccess()
-
 	return nil
 }
 
@@ -87,19 +85,15 @@ func (cb *CircuitBreaker) Allow() bool {
 			if cb.state == StateOpen {
 				if time.Since(cb.lastFailure) > cb.resetTimeout {
 					cb.state = StateHalfOpen
-
 					return true
 				}
-
 				return false
 			}
 
 			return true
 		}
-
 		return false
 	}
-
 	return false
 }
 
@@ -107,11 +101,11 @@ func (cb *CircuitBreaker) ReportSuccess() {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
 
-	switch cb.state {
-	case StateHalfOpen:
+	if cb.state == StateHalfOpen {
 		cb.state = StateClosed
 		cb.failures = 0
-	case StateClosed:
+	} else if cb.state == StateClosed {
+
 		cb.failures = 0
 	}
 }
@@ -120,17 +114,17 @@ func (cb *CircuitBreaker) ReportFailure() {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
 
-	switch cb.state {
-	case StateClosed:
+	if cb.state == StateClosed {
 		cb.failures++
 		if cb.failures >= cb.failureThreshold {
 			cb.state = StateOpen
 			cb.lastFailure = time.Now()
 		}
-	case StateHalfOpen:
+	} else if cb.state == StateHalfOpen {
 		cb.state = StateOpen
 		cb.lastFailure = time.Now()
-	case StateOpen:
+	} else if cb.state == StateOpen {
+
 		cb.lastFailure = time.Now()
 	}
 }
@@ -138,6 +132,5 @@ func (cb *CircuitBreaker) ReportFailure() {
 func (cb *CircuitBreaker) State() State {
 	cb.mu.RLock()
 	defer cb.mu.RUnlock()
-
 	return cb.state
 }

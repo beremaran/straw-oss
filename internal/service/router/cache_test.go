@@ -113,6 +113,7 @@ func TestRuleCache_ErrorCases(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("GetRulesVersion - Redis Error", func(t *testing.T) {
+
 		client.Close()
 
 		ver, err := cache.GetRulesVersion(ctx)
@@ -122,6 +123,7 @@ func TestRuleCache_ErrorCases(t *testing.T) {
 	})
 
 	t.Run("GetRulesByVersion - Redis Error", func(t *testing.T) {
+
 		newClient := newTestRedis(t)
 		newCache := NewRuleCache(newClient, time.Minute)
 		newClient.Close()
@@ -133,6 +135,7 @@ func TestRuleCache_ErrorCases(t *testing.T) {
 	})
 
 	t.Run("SetRulesByVersion - JSON Marshal Error", func(t *testing.T) {
+
 		newClient := newTestRedis(t)
 		newCache := NewRuleCache(newClient, time.Minute)
 		newClient.Close()

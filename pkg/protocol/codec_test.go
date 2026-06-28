@@ -46,6 +46,7 @@ func TestCompressDecompress_RoundTrip_SmallData(t *testing.T) {
 }
 
 func TestCompressDecompress_RoundTrip_LargeData(t *testing.T) {
+
 	original := []byte(strings.Repeat("The quick brown fox jumps over the lazy dog. ", 10000))
 
 	compressed, err := Compress(original)
@@ -73,6 +74,7 @@ func TestCompressDecompress_RoundTrip_LargeData(t *testing.T) {
 }
 
 func TestCompressDecompress_RoundTrip_RandomData(t *testing.T) {
+
 	original := make([]byte, 1024)
 	_, err := rand.Read(original)
 	if err != nil {
@@ -95,6 +97,7 @@ func TestCompressDecompress_RoundTrip_RandomData(t *testing.T) {
 }
 
 func TestCompressDecompress_RoundTrip_JSONLike(t *testing.T) {
+
 	original := []byte(`{
 		"id": "req-12345",
 		"method": "GET",

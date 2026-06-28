@@ -26,7 +26,6 @@ func newMockHealthStore() *mockHealthStore {
 
 func (m *mockHealthStore) UpdateHealth(_ context.Context, health *redis.EndpointHealth) error {
 	m.endpoints[health.EndpointID] = health
-
 	return nil
 }
 
@@ -34,7 +33,6 @@ func (m *mockHealthStore) GetHealth(_ context.Context, endpointID string) (*redi
 	if health, ok := m.endpoints[endpointID]; ok {
 		return health, nil
 	}
-
 	return nil, redis.ErrCacheMiss
 }
 
@@ -45,7 +43,6 @@ func (m *mockHealthStore) ListHealthyByTags(_ context.Context, tags []string) ([
 			result = append(result, health)
 		}
 	}
-
 	return result, nil
 }
 
@@ -54,13 +51,11 @@ func (m *mockHealthStore) ListAllEndpoints(_ context.Context) ([]*redis.Endpoint
 	for _, health := range m.endpoints {
 		result = append(result, health)
 	}
-
 	return result, nil
 }
 
 func (m *mockHealthStore) DeleteHealth(_ context.Context, endpointID string) error {
 	delete(m.endpoints, endpointID)
-
 	return nil
 }
 
@@ -70,7 +65,6 @@ func (m *mockHealthStore) SetDraining(_ context.Context, endpointID string, drai
 	} else {
 		delete(m.draining, endpointID)
 	}
-
 	return nil
 }
 
@@ -307,7 +301,6 @@ func newMockBroker() *mockBroker {
 
 func (m *mockBroker) Publish(_ context.Context, exchange, routingKey string, body []byte) error {
 	m.publishCalled = true
-
 	return nil
 }
 
@@ -315,7 +308,6 @@ func (m *mockBroker) Subscribe(ctx context.Context, queue string, handler broker
 	m.subscribeCalled = true
 	m.subscribeQueue = queue
 	m.subscribeHandler = handler
-
 	return nil
 }
 
@@ -349,7 +341,6 @@ func (m *mockBroker) ConsumeOnce(ctx context.Context, queue string, timeout time
 
 func (m *mockBroker) Close() error {
 	m.closed = true
-
 	return nil
 }
 
@@ -522,6 +513,7 @@ func TestHealthService_StartStop(t *testing.T) {
 			name:  "stop not running service",
 			setup: func(s *HealthService) {},
 			testFunc: func(t *testing.T, s *HealthService) {
+
 				s.Stop()
 
 				if s.IsRunning() {
@@ -786,7 +778,6 @@ func TestHealthService_GetHealthyEndpoints(t *testing.T) {
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GetHealthyEndpoints() error = %v, wantErr %v", err, tt.wantErr)
-
 				return
 			}
 
@@ -885,7 +876,6 @@ func TestHealthService_GetEndpointHealth(t *testing.T) {
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GetEndpointHealth() error = %v, wantErr %v", err, tt.wantErr)
-
 				return
 			}
 
@@ -978,7 +968,6 @@ func TestHealthService_DrainEndpoint(t *testing.T) {
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("DrainEndpoint() error = %v, wantErr %v", err, tt.wantErr)
-
 				return
 			}
 
@@ -1073,7 +1062,6 @@ func TestHealthService_ListAllEndpoints(t *testing.T) {
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ListAllEndpoints() error = %v, wantErr %v", err, tt.wantErr)
-
 				return
 			}
 
@@ -1100,7 +1088,6 @@ func (m *errorMockHealthStore) UpdateHealth(ctx context.Context, health *redis.E
 	if m.updateHealthError != nil {
 		return m.updateHealthError
 	}
-
 	return m.mockHealthStore.UpdateHealth(ctx, health)
 }
 
@@ -1108,11 +1095,11 @@ func (m *errorMockHealthStore) IsDraining(ctx context.Context, endpointID string
 	if m.isDrainingError != nil {
 		return false, m.isDrainingError
 	}
-
 	return m.mockHealthStore.IsDraining(ctx, endpointID)
 }
 
 func TestHealthService_HandleHeartbeat_StoreError(t *testing.T) {
+
 	errorStore := &errorMockHealthStore{
 		mockHealthStore:   newMockHealthStore(),
 		updateHealthError: redis.ErrCacheMiss,
@@ -1138,6 +1125,7 @@ func TestHealthService_HandleHeartbeat_StoreError(t *testing.T) {
 }
 
 func TestHealthService_HandleHeartbeat_DrainingCheckError(t *testing.T) {
+
 	errorStore := &errorMockHealthStore{
 		mockHealthStore: newMockHealthStore(),
 		isDrainingError: redis.ErrCacheMiss,

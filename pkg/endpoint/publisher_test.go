@@ -28,7 +28,6 @@ func (m *mockPublisherBroker) Publish(ctx context.Context, exchange, routingKey 
 		RoutingKey: routingKey,
 		Body:       body,
 	})
-
 	return nil
 }
 func (m *mockPublisherBroker) Subscribe(ctx context.Context, queue string, handler broker.Handler, opts ...broker.SubscribeOption) error {
@@ -70,7 +69,6 @@ func (m *mockPublisherBroker) QueueDepth(ctx context.Context, name string) (int,
 func (m *mockPublisherBroker) getMessages() []publishedMsg {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
 	return m.publishedMsgs
 }
 
@@ -140,7 +138,7 @@ func TestPublisher_Publish(t *testing.T) {
 		t.Errorf("expected endpoint ID 'endpoint-001', got %q", result.EndpointID)
 	}
 
-	if result.StatusCode != http.StatusOK {
+	if result.StatusCode != 200 {
 		t.Errorf("expected status code 200, got %d", result.StatusCode)
 	}
 

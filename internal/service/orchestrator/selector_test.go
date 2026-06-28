@@ -25,7 +25,6 @@ func newTestHealthStore(t *testing.T) *redis.EndpointHealthStore {
 	})
 
 	client := &redis.Client{Client: rdb}
-
 	return redis.NewEndpointHealthStore(client)
 }
 

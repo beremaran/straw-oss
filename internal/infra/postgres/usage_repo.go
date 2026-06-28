@@ -37,7 +37,6 @@ func (r *UsageRepository) GetDailySummaries(ctx context.Context, apiKeyID string
 	var err error
 	err = r.client.Execute(func() error {
 		rows, err = r.client.Pool.Query(ctx, sql, args...)
-
 		return err
 	})
 	if err != nil {
@@ -54,15 +53,14 @@ func (r *UsageRepository) GetDailySummaries(ctx context.Context, apiKeyID string
 		var costUnits float64
 		var breakdownRaw []byte
 
-		err := rows.Scan(&date, &totalRequests, &totalBytes, &costUnits, &breakdownRaw)
-		if err != nil {
+		if err := rows.Scan(&date, &totalRequests, &totalBytes, &costUnits, &breakdownRaw); err != nil {
 			return nil, fmt.Errorf("failed to scan usage row: %w", err)
 		}
 
 		var breakdown map[string]int64
 		if len(breakdownRaw) > 0 {
-			err := json.Unmarshal(breakdownRaw, &breakdown)
-			if err != nil {
+			if err := json.Unmarshal(breakdownRaw, &breakdown); err != nil {
+
 				breakdown = make(map[string]int64)
 			}
 		}

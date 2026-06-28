@@ -12,7 +12,6 @@ func CircuitBreaker(cb *circuitbreaker.CircuitBreaker) func(http.Handler) http.H
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if !cb.Allow() {
 				helper.WriteError(w, http.StatusServiceUnavailable, "Service Unavailable (Circuit Open)")
-
 				return
 			}
 

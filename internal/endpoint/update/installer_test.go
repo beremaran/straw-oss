@@ -54,6 +54,7 @@ func TestInstaller_NewWithOptions(t *testing.T) {
 }
 
 func TestInstaller_DownloadAndVerify_Success(t *testing.T) {
+
 	binaryContent := []byte("#!/bin/bash\necho 'Hello World'")
 	hash := sha256.Sum256(binaryContent)
 	hashHex := hex.EncodeToString(hash[:])
@@ -212,6 +213,7 @@ func TestInstaller_DownloadAndVerify_ProgressCallback(t *testing.T) {
 }
 
 func TestInstaller_DownloadAndVerify_LargeFile(t *testing.T) {
+
 	binaryContent := make([]byte, 1024*1024)
 	for i := range binaryContent {
 		binaryContent[i] = byte(i % 256)
@@ -250,6 +252,7 @@ func TestInstaller_DownloadAndVerify_LargeFile(t *testing.T) {
 }
 
 func TestInstaller_AtomicReplace(t *testing.T) {
+
 	tmpDir, err := os.MkdirTemp("", "installer-test-*")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
@@ -286,6 +289,7 @@ func TestInstaller_AtomicReplace(t *testing.T) {
 
 func TestInstaller_ContextCancellation(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
 		select {
 		case <-r.Context().Done():
 			return
@@ -322,6 +326,7 @@ func isDownloadFailed(err error) bool {
 }
 
 func TestInstaller_Install(t *testing.T) {
+
 	tmpDir, err := os.MkdirTemp("", "installer-install-test-*")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)

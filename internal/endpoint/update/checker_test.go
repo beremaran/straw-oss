@@ -35,7 +35,6 @@ func TestChecker_NewWithOptions(t *testing.T) {
 		WithHTTPTimeout(10*time.Second),
 		WithUpdateCallback(func(*Result) bool {
 			callbackCalled = true
-
 			return true
 		}),
 	)
@@ -185,6 +184,7 @@ func TestChecker_CheckNow_MissingFields(t *testing.T) {
 }
 
 func TestChecker_CheckNow_NetworkError(t *testing.T) {
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		panic("intentional panic to close connection")
 	}))

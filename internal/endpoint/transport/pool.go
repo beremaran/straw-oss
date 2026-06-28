@@ -60,7 +60,6 @@ func (pt *PooledTransport) GetTransport(host string, preset fingerprint.Preset) 
 	if pool, ok := pt.pools[key]; ok {
 		pt.mu.RUnlock()
 		pt.touchPool(key)
-
 		return pool.transport
 	}
 	pt.mu.RUnlock()
@@ -70,7 +69,6 @@ func (pt *PooledTransport) GetTransport(host string, preset fingerprint.Preset) 
 
 	if pool, ok := pt.pools[key]; ok {
 		pt.touchPoolLocked(key)
-
 		return pool.transport
 	}
 
@@ -95,17 +93,18 @@ func (pt *PooledTransport) GetTransport(host string, preset fingerprint.Preset) 
 }
 
 func (pt *PooledTransport) createTransport(host string, preset fingerprint.Preset) *fhttp.Transport {
+
 	h2Transport := &http2.Transport{
 		DialTLS: func(network, addr string, cfg *tls.Config) (net.Conn, error) {
 			ctx := context.Background()
 			conn, err := pt.dialTLS(ctx, network, addr, preset.ID)
 			if err == nil {
+
 				hostVal, _, _ := net.SplitHostPort(addr)
 				metrics.ConnectionsPooled.WithLabelValues(hostVal).Inc()
 
 				return &metricConn{Conn: conn, host: hostVal}, nil
 			}
-
 			return conn, err
 		},
 		AllowHTTP:                  false,
@@ -124,10 +123,8 @@ func (pt *PooledTransport) createTransport(host string, preset fingerprint.Prese
 			if err == nil {
 				hostVal, _, _ := net.SplitHostPort(addr)
 				metrics.ConnectionsPooled.WithLabelValues(hostVal).Inc()
-
 				return &metricConn{Conn: conn, host: hostVal}, nil
 			}
-
 			return conn, err
 		},
 		MaxIdleConns:        pt.config.IdleConnsPerHost,
@@ -151,11 +148,12 @@ type h2RoundTripper struct {
 }
 
 func (rt *h2RoundTripper) RoundTrip(req *fhttp.Request) (*fhttp.Response, error) {
+
 	resp, err := rt.h2.RoundTrip(req)
 	if err != nil {
+
 		return rt.h1.RoundTrip(req)
 	}
-
 	return resp, nil
 }
 
@@ -239,6 +237,7 @@ func (pt *PooledTransport) evictStale() {
 }
 
 func (pt *PooledTransport) Close() error {
+
 	close(pt.stopEviction)
 	<-pt.evictionDone
 
@@ -277,6 +276,5 @@ type metricConn struct {
 
 func (c *metricConn) Close() error {
 	metrics.ConnectionsPooled.WithLabelValues(c.host).Dec()
-
 	return c.Conn.Close()
 }

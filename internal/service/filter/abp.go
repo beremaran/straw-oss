@@ -71,21 +71,20 @@ func NewABPMatcher(redisClient *redis.Client, config ABPMatcherConfig) *ABPMatch
 
 func (m *ABPMatcher) LoadDefaultLists(ctx context.Context) error {
 	for name, url := range DefaultLists {
-		err := m.LoadList(ctx, name, url)
-		if err != nil {
+		if err := m.LoadList(ctx, name, url); err != nil {
+
 			continue
 		}
 	}
-
 	return nil
 }
 
 func (m *ABPMatcher) LoadList(ctx context.Context, listName string, listURL string) error {
+
 	cacheKey := fmt.Sprintf("abp:list:%s", listName)
 	if m.redis != nil {
 		if cached, err := m.redis.Client.Get(ctx, cacheKey).Result(); err == nil && cached != "" {
-			err := m.parseAndStore(listName, strings.NewReader(cached))
-			if err == nil {
+			if err := m.parseAndStore(listName, strings.NewReader(cached)); err == nil {
 				return nil
 			}
 		}
@@ -133,6 +132,7 @@ func (m *ABPMatcher) parseAndStore(listName string, reader io.Reader) error {
 
 		rule, err := adblock.ParseRule(line)
 		if err != nil {
+
 			continue
 		}
 
@@ -141,8 +141,7 @@ func (m *ABPMatcher) parseAndStore(listName string, reader io.Reader) error {
 		}
 	}
 
-	err := scanner.Err()
-	if err != nil {
+	if err := scanner.Err(); err != nil {
 		return fmt.Errorf("error reading list: %w", err)
 	}
 
@@ -206,7 +205,6 @@ func (m *ABPMatcher) HasList(listName string) bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	_, ok := m.matchers[listName]
-
 	return ok
 }
 
@@ -219,6 +217,5 @@ func extractDomain(rawURL string) string {
 	if err != nil {
 		return rawURL
 	}
-
 	return u.Hostname()
 }

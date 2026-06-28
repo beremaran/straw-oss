@@ -60,10 +60,8 @@ func normalizeOpenApiSchema(node interface{}) interface{} {
 			for i, v := range a {
 				a[i] = normalizeOpenApiSchema(v)
 			}
-
 			return a
 		}
-
 		return node
 	}
 
@@ -81,7 +79,6 @@ func normalizeOpenApiSchema(node interface{}) interface{} {
 			for _, typ := range types {
 				if typ == "null" {
 					hasNull = true
-
 					break
 				}
 			}

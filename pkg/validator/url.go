@@ -53,6 +53,5 @@ func isPrivateIP(ip net.IP) bool {
 	if ip4 := ip.To4(); ip4 != nil {
 		return ip4[0] == 0
 	}
-
 	return false
 }

@@ -23,10 +23,12 @@ type ContextRoutingRuleKey struct {
 }
 
 func RateLimitMiddleware(limiter *ratelimit.RateLimiter, matcher *router.Matcher) func(http.Handler) http.Handler {
+
 	tagParser := router.NewTagParser()
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
 			var apiKey *domain.ApiKey
 			if key := GetAPIKey(r); key != nil {
 				if k, ok := key.(*domain.ApiKey); ok {
@@ -37,7 +39,6 @@ func RateLimitMiddleware(limiter *ratelimit.RateLimiter, matcher *router.Matcher
 			parseResult, err := tagParser.ParseTags(r, apiKey)
 			if err != nil {
 				helper.WriteError(w, http.StatusBadRequest, "invalid tags")
-
 				return
 			}
 
@@ -46,7 +47,6 @@ func RateLimitMiddleware(limiter *ratelimit.RateLimiter, matcher *router.Matcher
 			rule := matcher.Match(parseResult.Tags)
 			if rule == nil {
 				helper.WriteError(w, http.StatusServiceUnavailable, "no matching routing rule found")
-
 				return
 			}
 
@@ -61,7 +61,6 @@ func RateLimitMiddleware(limiter *ratelimit.RateLimiter, matcher *router.Matcher
 
 			if limitPerMinute <= 0 && limitPerSecond <= 0 {
 				next.ServeHTTP(w, r.WithContext(ctx))
-
 				return
 			}
 
@@ -74,7 +73,6 @@ func RateLimitMiddleware(limiter *ratelimit.RateLimiter, matcher *router.Matcher
 			allowed, res, err := limiter.Allow(r.Context(), quotaKey, limitPerSecond, limitPerMinute)
 			if err != nil {
 				helper.WriteError(w, http.StatusInternalServerError, "internal rate limit error")
-
 				return
 			}
 
@@ -100,7 +98,6 @@ func RateLimitMiddleware(limiter *ratelimit.RateLimiter, matcher *router.Matcher
 						"retry_after_seconds": retryAfter,
 					},
 				})
-
 				return
 			}
 
@@ -113,6 +110,5 @@ func GetRoutingRule(r *http.Request) *domain.RoutingRule {
 	if rule, ok := r.Context().Value(ContextRoutingRuleKey{Value: "routing_rule"}).(*domain.RoutingRule); ok {
 		return rule
 	}
-
 	return nil
 }

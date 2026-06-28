@@ -33,9 +33,11 @@ type Request struct {
 }
 
 func (r *Request) EstimateWireSize() uint64 {
+
 	size := uint64(len(r.Method) + len(r.URL) + 12)
 
 	for _, h := range r.Headers {
+
 		size += uint64(len(h.Key) + len(h.Value) + 4)
 	}
 
@@ -67,9 +69,11 @@ type Response struct {
 }
 
 func (r *Response) EstimateWireSize() uint64 {
+
 	size := uint64(15)
 
 	for _, h := range r.Headers {
+
 		size += uint64(len(h.Key) + len(h.Value) + 4)
 	}
 
@@ -93,7 +97,6 @@ func (h HeaderMap) Get(key string) string {
 			return header.Value
 		}
 	}
-
 	return ""
 }
 
@@ -101,7 +104,6 @@ func (h *HeaderMap) Set(key, value string) {
 	for i, header := range *h {
 		if equalFold(header.Key, key) {
 			(*h)[i].Value = value
-
 			return
 		}
 	}
@@ -124,16 +126,14 @@ func (h HeaderMap) Clone() HeaderMap {
 	}
 	clone := make(HeaderMap, len(h))
 	copy(clone, h)
-
 	return clone
 }
 
 func (h *HeaderMap) UnmarshalJSON(data []byte) error {
-	var arrayFormat []Header
-	err := json.Unmarshal(data, &arrayFormat)
-	if err == nil {
-		*h = HeaderMap(arrayFormat)
 
+	var arrayFormat []Header
+	if err := json.Unmarshal(data, &arrayFormat); err == nil {
+		*h = HeaderMap(arrayFormat)
 		return nil
 	}
 
@@ -146,6 +146,7 @@ func (h *HeaderMap) UnmarshalJSON(data []byte) error {
 
 	var result HeaderMap
 	for dec.More() {
+
 		keyToken, err := dec.Token()
 		if err != nil {
 			return err
@@ -163,15 +164,14 @@ func (h *HeaderMap) UnmarshalJSON(data []byte) error {
 
 		if len(rawValue) > 0 && rawValue[0] == '[' {
 			var values []string
-			err := json.Unmarshal(rawValue, &values)
-			if err != nil {
+			if err := json.Unmarshal(rawValue, &values); err != nil {
 				return err
 			}
 
 			value = strings.Join(values, ", ")
 		} else {
-			err := json.Unmarshal(rawValue, &value)
-			if err != nil {
+
+			if err := json.Unmarshal(rawValue, &value); err != nil {
 				return err
 			}
 		}
@@ -184,7 +184,6 @@ func (h *HeaderMap) UnmarshalJSON(data []byte) error {
 	}
 
 	*h = result
-
 	return nil
 }
 
@@ -204,7 +203,6 @@ func equalFold(a, b string) bool {
 			return false
 		}
 	}
-
 	return true
 }
 

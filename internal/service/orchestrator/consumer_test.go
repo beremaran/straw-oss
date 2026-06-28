@@ -39,7 +39,6 @@ func (m *consumeOnceMockBroker) ConsumeOnce(ctx context.Context, queue string, t
 	if m.responseErr != nil {
 		return nil, m.responseErr
 	}
-
 	return m.response, nil
 }
 
@@ -103,6 +102,7 @@ func TestConsumer_WithConsumerLogger(t *testing.T) {
 }
 
 func TestConsumer_WaitForResult_Success(t *testing.T) {
+
 	result := ResultMessage{
 		RequestID:      "test-req-123",
 		EndpointID:     "endpoint-001",
@@ -131,7 +131,7 @@ func TestConsumer_WaitForResult_Success(t *testing.T) {
 		t.Errorf("expected request ID 'test-req-123', got %q", got.RequestID)
 	}
 
-	if got.StatusCode != http.StatusOK {
+	if got.StatusCode != 200 {
 		t.Errorf("expected status code 200, got %d", got.StatusCode)
 	}
 
@@ -161,6 +161,7 @@ func TestConsumer_WaitForResult_Timeout(t *testing.T) {
 }
 
 func TestConsumer_WaitForResult_Decompression(t *testing.T) {
+
 	originalBody := []byte(`{"message": "hello world", "status": "ok"}`)
 	compressedBody, err := protocol.Compress(originalBody)
 	if err != nil {
@@ -199,6 +200,7 @@ func TestConsumer_WaitForResult_Decompression(t *testing.T) {
 }
 
 func TestConsumer_WaitForResult_ErrorResponse(t *testing.T) {
+
 	result := ResultMessage{
 		RequestID:  "test-req-error",
 		EndpointID: "endpoint-001",
@@ -276,7 +278,7 @@ func TestResultMessage_ToResponse(t *testing.T) {
 		t.Errorf("expected session ID 'session-567', got %q", resp.SessionID)
 	}
 
-	if resp.StatusCode != http.StatusCreated {
+	if resp.StatusCode != 201 {
 		t.Errorf("expected status code 201, got %d", resp.StatusCode)
 	}
 
@@ -294,6 +296,7 @@ func TestResultMessage_ToResponse(t *testing.T) {
 }
 
 func TestConsumer_WaitForResult_DecompressionError(t *testing.T) {
+
 	result := ResultMessage{
 		RequestID:      "test-req-decomp-error",
 		StatusCode:     200,

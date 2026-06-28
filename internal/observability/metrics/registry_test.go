@@ -7,6 +7,7 @@ import (
 )
 
 func TestInit(t *testing.T) {
+
 	reg := Init()
 	assert.NotNil(t, reg)
 
