@@ -10,6 +10,11 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+var (
+	ErrHealthCannotBeNil = errors.New("health cannot be nil")
+	ErrEmptyEndpointID   = errors.New("endpoint_id cannot be empty")
+)
+
 const (
 	HealthStateHealthy   = "healthy"
 	HealthStateSuspect   = "suspect"
@@ -69,10 +74,10 @@ func healthKey(endpointID string) string {
 
 func (s *EndpointHealthStore) UpdateHealth(ctx context.Context, health *EndpointHealth) error {
 	if health == nil {
-		return fmt.Errorf("health cannot be nil")
+		return ErrHealthCannotBeNil
 	}
 	if health.EndpointID == "" {
-		return fmt.Errorf("endpoint_id cannot be empty")
+		return ErrEmptyEndpointID
 	}
 
 	data, err := json.Marshal(health)
@@ -99,7 +104,7 @@ func (s *EndpointHealthStore) UpdateHealth(ctx context.Context, health *Endpoint
 
 func (s *EndpointHealthStore) GetHealth(ctx context.Context, endpointID string) (*EndpointHealth, error) {
 	if endpointID == "" {
-		return nil, fmt.Errorf("endpoint_id cannot be empty")
+		return nil, ErrEmptyEndpointID
 	}
 
 	key := healthKey(endpointID)
@@ -215,7 +220,7 @@ func (s *EndpointHealthStore) ListAllEndpoints(ctx context.Context) ([]*Endpoint
 
 func (s *EndpointHealthStore) DeleteHealth(ctx context.Context, endpointID string) error {
 	if endpointID == "" {
-		return fmt.Errorf("endpoint_id cannot be empty")
+		return ErrEmptyEndpointID
 	}
 
 	key := healthKey(endpointID)
@@ -253,7 +258,7 @@ func matchesTags(health *EndpointHealth, requiredTags []string) bool {
 
 func (s *EndpointHealthStore) SetDraining(ctx context.Context, endpointID string, draining bool) error {
 	if endpointID == "" {
-		return fmt.Errorf("endpoint_id cannot be empty")
+		return ErrEmptyEndpointID
 	}
 
 	if draining {
@@ -265,7 +270,7 @@ func (s *EndpointHealthStore) SetDraining(ctx context.Context, endpointID string
 
 func (s *EndpointHealthStore) IsDraining(ctx context.Context, endpointID string) (bool, error) {
 	if endpointID == "" {
-		return false, fmt.Errorf("endpoint_id cannot be empty")
+		return false, ErrEmptyEndpointID
 	}
 
 	return s.client.Client.SIsMember(ctx, endpointDrainingSetKey, endpointID).Result()

@@ -15,6 +15,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+var ErrRoutingRuleNotFound = errors.New("routing rule not found")
+
 type RoutingRuleRepository struct {
 	client *Client
 	tracer trace.Tracer
@@ -319,7 +321,7 @@ func (r *RoutingRuleRepository) UpdateRule(ctx context.Context, rule *domain.Rou
 	}
 
 	if res.RowsAffected() == 0 {
-		return fmt.Errorf("routing rule not found or version mismatch (concurrency conflict)")
+		return fmt.Errorf("%w", ErrRoutingRuleNotFound)
 	}
 
 	rule.Version = newVersion
@@ -353,7 +355,7 @@ func (r *RoutingRuleRepository) DeleteRule(ctx context.Context, id string) error
 	}
 
 	if res.RowsAffected() == 0 {
-		return errors.New("routing rule not found")
+		return ErrRoutingRuleNotFound
 	}
 
 	return nil

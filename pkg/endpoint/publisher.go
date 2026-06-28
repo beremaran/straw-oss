@@ -3,11 +3,17 @@ package endpoint
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 
 	"github.com/beremaran/straw/pkg/broker"
 	"github.com/beremaran/straw/pkg/protocol"
+)
+
+var (
+	ErrResponseCannotBeNil = errors.New("response cannot be nil")
+	ErrMissingRequestID    = errors.New("response must have a request ID")
 )
 
 type Publisher struct {
@@ -47,11 +53,11 @@ func NewPublisher(b broker.MessageBroker, opts ...PublisherOption) *Publisher {
 
 func (p *Publisher) Publish(ctx context.Context, resp *protocol.Response, replyTo string) error {
 	if resp == nil {
-		return fmt.Errorf("response cannot be nil")
+		return ErrResponseCannotBeNil
 	}
 
 	if resp.RequestID == "" {
-		return fmt.Errorf("response must have a request ID")
+		return ErrMissingRequestID
 	}
 
 	msg, err := p.buildMessage(resp)

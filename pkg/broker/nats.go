@@ -12,6 +12,11 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 )
 
+var (
+	ErrNoBindingsForQueue = errors.New("no bindings found for queue")
+	ErrNoStreamForSubject = errors.New("no stream found for subject")
+)
+
 type NatsBroker struct {
 	mu   sync.RWMutex
 	url  string
@@ -104,7 +109,7 @@ func (b *NatsBroker) Subscribe(ctx context.Context, queue string, handler Handle
 	subjects, ok := b.bindings[queue]
 	b.mu.RUnlock()
 	if !ok || len(subjects) == 0 {
-		return fmt.Errorf("no bindings found for queue %s", queue)
+		return fmt.Errorf("%w: %s", ErrNoBindingsForQueue, queue)
 	}
 
 	subOpts := SubscribeOptions{}
@@ -115,7 +120,7 @@ func (b *NatsBroker) Subscribe(ctx context.Context, queue string, handler Handle
 	for _, subject := range subjects {
 		streamName := b.findStreamForSubject(ctx, subject)
 		if streamName == "" {
-			return fmt.Errorf("no stream found for subject %s", subject)
+			return fmt.Errorf("%w: %s", ErrNoStreamForSubject, subject)
 		}
 
 		var durableName string

@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -22,6 +23,8 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/stretchr/testify/require"
 )
+
+var ErrHealthCheckTimeout = errors.New("health check timed out")
 
 func NewTestServerConfig(postgresDSN, redisAddr, natsURL string) *config.ServerConfig {
 	return &config.ServerConfig{
@@ -124,7 +127,7 @@ func WaitForHealthy(ctx context.Context, healthCheck func() error, interval, tim
 		}
 	}
 
-	return fmt.Errorf("health check timed out after %v", timeout)
+	return fmt.Errorf("%w: %v", ErrHealthCheckTimeout, timeout)
 }
 
 type TestAPIKey struct {

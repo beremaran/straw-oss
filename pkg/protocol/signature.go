@@ -4,9 +4,12 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"time"
 )
+
+var ErrTaskIsNil = errors.New("task is nil")
 
 const DefaultMaxTaskAge = 60 * time.Second
 
@@ -43,7 +46,7 @@ func NewSignedTask(req *Request, secret []byte) (*SignedTask, error) {
 
 func ValidateSignedTask(task *SignedTask, secret []byte, maxAge time.Duration) (*Request, error) {
 	if task == nil {
-		return nil, fmt.Errorf("task is nil")
+		return nil, ErrTaskIsNil
 	}
 
 	taskTime := time.Unix(task.Timestamp, 0)
