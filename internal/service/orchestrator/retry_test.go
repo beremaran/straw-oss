@@ -1,4 +1,3 @@
-//nolint:errcheck
 package orchestrator
 
 import (
@@ -38,7 +37,7 @@ func (m *retryMockBroker) Publish(ctx context.Context, exchange, routingKey stri
 
 		go func() {
 			if handler != nil {
-				handler(ctx, responseBody)
+				_ = handler(ctx, responseBody)
 			}
 		}()
 	}

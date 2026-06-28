@@ -1,4 +1,3 @@
-//nolint:funcorder
 package domain
 
 import (
@@ -23,6 +22,17 @@ type ApiKey struct {
 	CreatedAt time.Time `json:"created_at"`
 
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+}
+
+func NewApiKey(id, tokenHash, name string, scopes []string) *ApiKey {
+	return &ApiKey{
+		ID:        id,
+		TokenHash: tokenHash,
+		Name:      name,
+		Scopes:    scopes,
+		IsActive:  true,
+		CreatedAt: time.Now(),
+	}
 }
 
 func (k *ApiKey) IsValid() bool {
@@ -80,17 +90,6 @@ func matchScope(scope, tag string) bool {
 	}
 
 	return false
-}
-
-func NewApiKey(id, tokenHash, name string, scopes []string) *ApiKey {
-	return &ApiKey{
-		ID:        id,
-		TokenHash: tokenHash,
-		Name:      name,
-		Scopes:    scopes,
-		IsActive:  true,
-		CreatedAt: time.Now(),
-	}
 }
 
 type ApiKeyRepository interface {

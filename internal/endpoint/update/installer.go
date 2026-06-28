@@ -1,4 +1,3 @@
-//nolint:funcorder
 package update
 
 import (
@@ -114,7 +113,6 @@ func (i *Installer) Install(ctx context.Context, manifest *VersionManifest) erro
 	return nil
 }
 
-//nolint:funlen
 func (i *Installer) DownloadAndVerify(ctx context.Context, manifest *VersionManifest) (string, error) {
 	i.logger.Debug("downloading update",
 		"url", manifest.URL,
@@ -189,6 +187,24 @@ func (i *Installer) DownloadAndVerify(ctx context.Context, manifest *VersionMani
 	return tmpPath, nil
 }
 
+func (i *Installer) ReplaceAndRestart() error {
+	binaryPath := i.binaryPath
+	var err error
+	if binaryPath == "" {
+		binaryPath, err = os.Executable()
+		if err != nil {
+			return fmt.Errorf("failed to get executable path: %w", err)
+		}
+	}
+
+	i.logger.Info("restarting with new binary", "path", binaryPath)
+
+	args := os.Args
+	env := os.Environ()
+
+	return syscall.Exec(binaryPath, args, env)
+}
+
 func (i *Installer) atomicReplace(srcPath, dstPath string) error {
 	if runtime.GOOS == "windows" {
 		oldPath := dstPath + ".old"
@@ -215,24 +231,6 @@ func (i *Installer) atomicReplace(srcPath, dstPath string) error {
 	}
 
 	return nil
-}
-
-func (i *Installer) ReplaceAndRestart() error {
-	binaryPath := i.binaryPath
-	var err error
-	if binaryPath == "" {
-		binaryPath, err = os.Executable()
-		if err != nil {
-			return fmt.Errorf("failed to get executable path: %w", err)
-		}
-	}
-
-	i.logger.Info("restarting with new binary", "path", binaryPath)
-
-	args := os.Args
-	env := os.Environ()
-
-	return syscall.Exec(binaryPath, args, env)
 }
 
 type progressReader struct {

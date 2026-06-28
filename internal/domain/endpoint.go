@@ -1,4 +1,3 @@
-//nolint:funcorder
 package domain
 
 import "time"
@@ -33,6 +32,18 @@ const DefaultHeartbeatInterval = 10 * time.Second
 
 const DefaultHealthThreshold = 30 * time.Second
 
+func NewEndpoint(id string, tags []string) *Endpoint {
+	now := time.Now()
+
+	return &Endpoint{
+		ID:            id,
+		Tags:          tags,
+		LastHeartbeat: now,
+		IsHealthy:     true,
+		CreatedAt:     now,
+	}
+}
+
 func (e *Endpoint) IsStale(threshold time.Duration) bool {
 	return time.Since(e.LastHeartbeat) > threshold
 }
@@ -64,16 +75,4 @@ func (e *Endpoint) MatchesTags(requiredTags []string) bool {
 	}
 
 	return true
-}
-
-func NewEndpoint(id string, tags []string) *Endpoint {
-	now := time.Now()
-
-	return &Endpoint{
-		ID:            id,
-		Tags:          tags,
-		LastHeartbeat: now,
-		IsHealthy:     true,
-		CreatedAt:     now,
-	}
 }

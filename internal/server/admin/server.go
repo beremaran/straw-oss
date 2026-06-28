@@ -1,4 +1,3 @@
-//nolint:funcorder
 package admin
 
 import (
@@ -57,6 +56,25 @@ func New(conf config.ServerConfig, client *postgres.Client, redisClient *redis.C
 	}
 
 	return s
+}
+
+func (s *Server) Start() error {
+	addr := fmt.Sprintf(":%d", s.conf.AdminPort)
+	s.server.Addr = addr
+
+	return s.server.ListenAndServe()
+}
+
+func (s *Server) Stop(ctx context.Context) error {
+	return s.server.Shutdown(ctx)
+}
+
+func (s *Server) Address() string {
+	return fmt.Sprintf(":%d", s.conf.AdminPort)
+}
+
+func (s *Server) GetHandler() http.Handler {
+	return s.server.Handler
 }
 
 func (s *Server) setupBroker() {
@@ -119,25 +137,6 @@ func (s *Server) healthCheck(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("OK"))
-}
-
-func (s *Server) Start() error {
-	addr := fmt.Sprintf(":%d", s.conf.AdminPort)
-	s.server.Addr = addr
-
-	return s.server.ListenAndServe()
-}
-
-func (s *Server) Stop(ctx context.Context) error {
-	return s.server.Shutdown(ctx)
-}
-
-func (s *Server) Address() string {
-	return fmt.Sprintf(":%d", s.conf.AdminPort)
-}
-
-func (s *Server) GetHandler() http.Handler {
-	return s.server.Handler
 }
 
 func applyMiddlewares(handler http.Handler, middlewares ...func(http.Handler) http.Handler) http.Handler {

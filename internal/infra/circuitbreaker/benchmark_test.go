@@ -1,4 +1,3 @@
-//nolint:errcheck
 package circuitbreaker
 
 import (
@@ -31,7 +30,7 @@ func BenchmarkCircuitBreaker_Execute_Success(b *testing.B) {
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			cb.Execute(fn)
+			_ = cb.Execute(fn)
 		}
 	})
 }

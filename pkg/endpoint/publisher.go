@@ -1,4 +1,3 @@
-//nolint:funcorder
 package endpoint
 
 import (
@@ -107,45 +106,6 @@ type ResultMessage struct {
 	Timing *protocol.TimingInfo `json:"timing,omitempty"`
 }
 
-func (p *Publisher) buildMessage(resp *protocol.Response) ([]byte, error) {
-	msg := ResultMessage{
-		RequestID:  resp.RequestID,
-		EndpointID: resp.EndpointID,
-		SessionID:  resp.SessionID,
-		StatusCode: resp.StatusCode,
-		Headers:    resp.Headers,
-		Error:      resp.Error,
-		Timing:     resp.Timing,
-	}
-
-	if len(resp.Body) > 0 {
-		compressed, err := protocol.Compress(resp.Body)
-		if err != nil {
-			p.logger.Warn("failed to compress body, sending uncompressed",
-				"request_id", resp.RequestID,
-				"error", err,
-				"body_size", len(resp.Body),
-			)
-
-			msg.CompressedBody = resp.Body
-			msg.BodyCompressed = false
-		} else {
-			msg.CompressedBody = compressed
-			msg.BodyCompressed = true
-
-			ratio := protocol.CompressionRatio(resp.Body, compressed)
-			p.logger.Debug("compressed response body",
-				"request_id", resp.RequestID,
-				"original_size", len(resp.Body),
-				"compressed_size", len(compressed),
-				"ratio", fmt.Sprintf("%.2f", ratio),
-			)
-		}
-	}
-
-	return json.Marshal(msg)
-}
-
 func (p *Publisher) PublishError(ctx context.Context, requestID, endpointID string, errInfo *protocol.ErrorInfo, replyTo string) error {
 	resp := &protocol.Response{
 		RequestID:  requestID,
@@ -193,4 +153,43 @@ func NewTimeoutError(message string) *protocol.ErrorInfo {
 
 func (p *Publisher) Handler() func(ctx context.Context, resp *protocol.Response, replyTo string) error {
 	return p.Publish
+}
+
+func (p *Publisher) buildMessage(resp *protocol.Response) ([]byte, error) {
+	msg := ResultMessage{
+		RequestID:  resp.RequestID,
+		EndpointID: resp.EndpointID,
+		SessionID:  resp.SessionID,
+		StatusCode: resp.StatusCode,
+		Headers:    resp.Headers,
+		Error:      resp.Error,
+		Timing:     resp.Timing,
+	}
+
+	if len(resp.Body) > 0 {
+		compressed, err := protocol.Compress(resp.Body)
+		if err != nil {
+			p.logger.Warn("failed to compress body, sending uncompressed",
+				"request_id", resp.RequestID,
+				"error", err,
+				"body_size", len(resp.Body),
+			)
+
+			msg.CompressedBody = resp.Body
+			msg.BodyCompressed = false
+		} else {
+			msg.CompressedBody = compressed
+			msg.BodyCompressed = true
+
+			ratio := protocol.CompressionRatio(resp.Body, compressed)
+			p.logger.Debug("compressed response body",
+				"request_id", resp.RequestID,
+				"original_size", len(resp.Body),
+				"compressed_size", len(compressed),
+				"ratio", fmt.Sprintf("%.2f", ratio),
+			)
+		}
+	}
+
+	return json.Marshal(msg)
 }

@@ -1,4 +1,3 @@
-//nolint:funcorder
 package server
 
 import (
@@ -90,6 +89,36 @@ func New(
 	return s
 }
 
+func (s *Server) Start() error {
+	addr := fmt.Sprintf(":%d", s.conf.HTTPPort)
+	s.server.Addr = addr
+	if s.conf.Security.TLSCertFile != "" && s.conf.Security.TLSKeyFile != "" {
+		return s.server.ListenAndServeTLS(s.conf.Security.TLSCertFile, s.conf.Security.TLSKeyFile)
+	}
+
+	return s.server.ListenAndServe()
+}
+
+func (s *Server) Stop(ctx context.Context) error {
+	return s.server.Shutdown(ctx)
+}
+
+func (s *Server) Address() string {
+	return fmt.Sprintf(":%d", s.conf.HTTPPort)
+}
+
+func (s *Server) GetMatcher() *router.Matcher {
+	return s.matcher
+}
+
+func (s *Server) GetMux() *http.ServeMux {
+	return s.mux
+}
+
+func (s *Server) GetHandler() http.Handler {
+	return s.server.Handler
+}
+
 func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /healthz", s.healthCheck)
 	s.mux.HandleFunc("GET /readyz", s.readyCheck)
@@ -142,36 +171,6 @@ func (s *Server) readyCheck(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("OK"))
-}
-
-func (s *Server) Start() error {
-	addr := fmt.Sprintf(":%d", s.conf.HTTPPort)
-	s.server.Addr = addr
-	if s.conf.Security.TLSCertFile != "" && s.conf.Security.TLSKeyFile != "" {
-		return s.server.ListenAndServeTLS(s.conf.Security.TLSCertFile, s.conf.Security.TLSKeyFile)
-	}
-
-	return s.server.ListenAndServe()
-}
-
-func (s *Server) Stop(ctx context.Context) error {
-	return s.server.Shutdown(ctx)
-}
-
-func (s *Server) Address() string {
-	return fmt.Sprintf(":%d", s.conf.HTTPPort)
-}
-
-func (s *Server) GetMatcher() *router.Matcher {
-	return s.matcher
-}
-
-func (s *Server) GetMux() *http.ServeMux {
-	return s.mux
-}
-
-func (s *Server) GetHandler() http.Handler {
-	return s.server.Handler
 }
 
 func applyMiddlewares(handler http.Handler, middlewares ...func(http.Handler) http.Handler) http.Handler {

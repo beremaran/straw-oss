@@ -1,4 +1,3 @@
-//nolint:errcheck
 package middleware_test
 
 import (
@@ -55,7 +54,7 @@ func TestRateLimitMiddleware(t *testing.T) {
 	ctx := t.Context()
 	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: s.Addr()}, nil)
 	require.NoError(t, err)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	limiter := ratelimit.NewRateLimiter(client)
 

@@ -1,4 +1,3 @@
-//nolint:funcorder
 package endpoint
 
 import (
@@ -115,6 +114,31 @@ func (s *HealthService) IsRunning() bool {
 	return s.running
 }
 
+func (s *HealthService) GetHealthyEndpoints(ctx context.Context, tags []string) ([]*redis.EndpointHealth, error) {
+	return s.store.ListHealthyByTags(ctx, tags)
+}
+
+func (s *HealthService) IsEndpointHealthy(ctx context.Context, endpointID string) (bool, error) {
+	health, err := s.store.GetHealth(ctx, endpointID)
+	if err != nil {
+		return false, err
+	}
+
+	return health.State == redis.HealthStateHealthy || health.State == redis.HealthStateSuspect, nil
+}
+
+func (s *HealthService) GetEndpointHealth(ctx context.Context, endpointID string) (*redis.EndpointHealth, error) {
+	return s.store.GetHealth(ctx, endpointID)
+}
+
+func (s *HealthService) DrainEndpoint(ctx context.Context, endpointID string) error {
+	return s.store.SetDraining(ctx, endpointID, true)
+}
+
+func (s *HealthService) ListAllEndpoints(ctx context.Context) ([]*redis.EndpointHealth, error) {
+	return s.store.ListAllEndpoints(ctx)
+}
+
 func (s *HealthService) run(ctx context.Context) {
 	defer close(s.done)
 
@@ -177,29 +201,4 @@ func (s *HealthService) handleHeartbeat(ctx context.Context, body []byte) error 
 	)
 
 	return nil
-}
-
-func (s *HealthService) GetHealthyEndpoints(ctx context.Context, tags []string) ([]*redis.EndpointHealth, error) {
-	return s.store.ListHealthyByTags(ctx, tags)
-}
-
-func (s *HealthService) IsEndpointHealthy(ctx context.Context, endpointID string) (bool, error) {
-	health, err := s.store.GetHealth(ctx, endpointID)
-	if err != nil {
-		return false, err
-	}
-
-	return health.State == redis.HealthStateHealthy || health.State == redis.HealthStateSuspect, nil
-}
-
-func (s *HealthService) GetEndpointHealth(ctx context.Context, endpointID string) (*redis.EndpointHealth, error) {
-	return s.store.GetHealth(ctx, endpointID)
-}
-
-func (s *HealthService) DrainEndpoint(ctx context.Context, endpointID string) error {
-	return s.store.SetDraining(ctx, endpointID, true)
-}
-
-func (s *HealthService) ListAllEndpoints(ctx context.Context) ([]*redis.EndpointHealth, error) {
-	return s.store.ListAllEndpoints(ctx)
 }

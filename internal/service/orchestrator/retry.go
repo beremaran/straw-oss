@@ -1,4 +1,3 @@
-//nolint:funcorder
 package orchestrator
 
 import (
@@ -121,43 +120,6 @@ func (r *RetryExecutor) Start(ctx context.Context) error {
 	return r.broker.Subscribe(ctx, SharedResultQueue, r.handleResult, broker.WithTransient(), broker.WithMaxAckPending(5000))
 }
 
-func (r *RetryExecutor) handleResult(ctx context.Context, body []byte) error {
-	res, err := r.parseResult(body)
-	if err != nil {
-		r.logger.Error("failed to parse result message", "error", err)
-
-		return nil
-	}
-
-	requestID := res.RequestID
-	if requestID == "" {
-		r.logger.Warn("received result without request_id")
-		ReleaseResultMessage(res)
-
-		return nil
-	}
-
-	val, ok := r.responseChans.Load(requestID)
-	if !ok {
-		r.logger.Debug("received result for unknown or timed-out request", "request_id", requestID)
-		ReleaseResultMessage(res)
-
-		return nil
-	}
-
-	ch := val.(chan *ResultMessage)
-
-	select {
-	case ch <- res:
-	default:
-		r.logger.Warn("result channel full", "request_id", requestID)
-		ReleaseResultMessage(res)
-	}
-
-	return nil
-}
-
-//nolint:cyclop,funlen
 func (r *RetryExecutor) Execute(
 	ctx context.Context,
 	req *protocol.Request,
@@ -486,3 +448,39 @@ func (r *RetryExecutor) getFailureMessage(result *ResultMessage) string {
 var ErrNoEndpointsAvailable = errors.New("no endpoints available in any pool")
 
 var ErrAllPoolsExhausted = errors.New("all endpoint pools exhausted")
+
+func (r *RetryExecutor) handleResult(ctx context.Context, body []byte) error {
+	res, err := r.parseResult(body)
+	if err != nil {
+		r.logger.Error("failed to parse result message", "error", err)
+
+		return nil
+	}
+
+	requestID := res.RequestID
+	if requestID == "" {
+		r.logger.Warn("received result without request_id")
+		ReleaseResultMessage(res)
+
+		return nil
+	}
+
+	val, ok := r.responseChans.Load(requestID)
+	if !ok {
+		r.logger.Debug("received result for unknown or timed-out request", "request_id", requestID)
+		ReleaseResultMessage(res)
+
+		return nil
+	}
+
+	ch := val.(chan *ResultMessage)
+
+	select {
+	case ch <- res:
+	default:
+		r.logger.Warn("result channel full", "request_id", requestID)
+		ReleaseResultMessage(res)
+	}
+
+	return nil
+}

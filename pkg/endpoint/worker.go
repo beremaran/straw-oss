@@ -100,8 +100,6 @@ func RunWithConfig(cfg *config.EndpointConfig) error {
 }
 
 // Start starts all background components of the worker and blocks until the context is canceled.
-//
-//nolint:cyclop,funlen
 func (w *Worker) Start(ctx context.Context) error {
 	cfg := w.cfg
 

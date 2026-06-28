@@ -1,4 +1,3 @@
-//nolint:errcheck
 package integration
 
 import (
@@ -203,7 +202,6 @@ func (m *MockEndpoint) EndpointID() string {
 	return m.config.EndpointID
 }
 
-//nolint:funlen
 func (m *MockEndpoint) handleMessage(ctx context.Context, body []byte) error {
 	var signedTask protocol.SignedTask
 	err := json.Unmarshal(body, &signedTask)
@@ -337,7 +335,7 @@ func (m *MockEndpoint) forwardRequest(ctx context.Context, req *protocol.Request
 			},
 		}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
 

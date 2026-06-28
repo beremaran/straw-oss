@@ -1,4 +1,3 @@
-//nolint:errcheck
 package security
 
 import (
@@ -55,7 +54,7 @@ func TestAuthentication_SecurityScenarios(t *testing.T) {
 	natsBroker := broker.NewNatsBroker(broker.Addrs(s.NatsURL()))
 	err = natsBroker.Connect()
 	require.NoError(t, err)
-	defer natsBroker.Close()
+	defer func() { _ = natsBroker.Close() }()
 
 	cb := circuitbreaker.New(circuitbreaker.Config{})
 	selector := &dummySelector{}
@@ -117,7 +116,7 @@ func TestAuthentication_SecurityScenarios(t *testing.T) {
 
 		integration.ExecuteSQL(t, ctx, s.PostgresDSN(), "UPDATE api_keys SET token_hash = $1 WHERE id = $2", newHash, key.ID)
 
-		authService.InvalidateKey(ctx, key.RawKey)
+		require.NoError(t, authService.InvalidateKey(ctx, key.RawKey))
 
 		rec = sendRequest("POST", "/v1/request", key.RawKey)
 		assert.Equal(t, http.StatusUnauthorized, rec.Code, "Old token should fail after rotation")

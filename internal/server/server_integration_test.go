@@ -1,4 +1,3 @@
-//nolint:errcheck
 package server
 
 import (
@@ -261,7 +260,7 @@ func TestServer_RelayRequest_Success(t *testing.T) {
 
 	authSvc := auth.NewAuthService(mockKeyRepo, nil)
 	matcher := router.NewMatcher(mockRuleRepo, nil)
-	matcher.LoadRules(context.Background())
+	assert.NoError(t, matcher.LoadRules(context.Background()))
 
 	cb := circuitbreaker.New(circuitbreaker.Config{})
 	pub := orchestrator.NewPublisher(mockBroker, mockSelector, []byte("secret"), cb)
@@ -318,7 +317,7 @@ func TestServer_RelayRequest_Success(t *testing.T) {
 		}
 		bodyBytes, err := json.Marshal(result)
 		assert.NoError(t, err)
-		sharedQueueHandler(context.Background(), bodyBytes)
+		assert.NoError(t, sharedQueueHandler(context.Background(), bodyBytes))
 	} else {
 		t.Logf("Warning: sharedQueueHandler=%v, requestIDCaptured=%v, capturedRequestID=%s",
 			sharedQueueHandler != nil, requestIDCaptured, capturedRequestID)

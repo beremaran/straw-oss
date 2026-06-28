@@ -25,7 +25,6 @@ func NewRateLimiter(redis *redis.Client) *RateLimiter {
 	}
 }
 
-//nolint:cyclop
 func (l *RateLimiter) Allow(ctx context.Context, quotaKey string, limitPerSecond, limitPerMinute int) (bool, Result, error) {
 	now := time.Now()
 	var secResult Result

@@ -1,4 +1,3 @@
-//nolint:funcorder
 package transport
 
 import (
@@ -93,6 +92,49 @@ func (pt *PooledTransport) GetTransport(host string, preset fingerprint.Preset) 
 	pt.lruMap[key] = elem
 
 	return transport
+}
+
+func (pt *PooledTransport) Close() error {
+	close(pt.stopEviction)
+	<-pt.evictionDone
+
+	pt.mu.Lock()
+	defer pt.mu.Unlock()
+
+	for key, pool := range pt.pools {
+		pool.transport.CloseIdleConnections()
+		delete(pt.pools, key)
+	}
+	pt.lruList.Init()
+	pt.lruMap = make(map[string]*list.Element)
+
+	return nil
+}
+
+func (pt *PooledTransport) Stats() PoolStats {
+	pt.mu.RLock()
+	defer pt.mu.RUnlock()
+
+	return PoolStats{
+		PoolCount:    len(pt.pools),
+		MaxPoolHosts: pt.config.MaxPoolHosts,
+	}
+}
+
+type PoolStats struct {
+	PoolCount    int
+	MaxPoolHosts int
+}
+
+type metricConn struct {
+	net.Conn
+	host string
+}
+
+func (c *metricConn) Close() error {
+	metrics.ConnectionsPooled.WithLabelValues(c.host).Dec()
+
+	return c.Conn.Close()
 }
 
 func (pt *PooledTransport) createTransport(host string, preset fingerprint.Preset) *fhttp.Transport {
@@ -237,47 +279,4 @@ func (pt *PooledTransport) evictStale() {
 		elem := pt.lruMap[key]
 		pt.removePoolLocked(key, elem)
 	}
-}
-
-func (pt *PooledTransport) Close() error {
-	close(pt.stopEviction)
-	<-pt.evictionDone
-
-	pt.mu.Lock()
-	defer pt.mu.Unlock()
-
-	for key, pool := range pt.pools {
-		pool.transport.CloseIdleConnections()
-		delete(pt.pools, key)
-	}
-	pt.lruList.Init()
-	pt.lruMap = make(map[string]*list.Element)
-
-	return nil
-}
-
-func (pt *PooledTransport) Stats() PoolStats {
-	pt.mu.RLock()
-	defer pt.mu.RUnlock()
-
-	return PoolStats{
-		PoolCount:    len(pt.pools),
-		MaxPoolHosts: pt.config.MaxPoolHosts,
-	}
-}
-
-type PoolStats struct {
-	PoolCount    int
-	MaxPoolHosts int
-}
-
-type metricConn struct {
-	net.Conn
-	host string
-}
-
-func (c *metricConn) Close() error {
-	metrics.ConnectionsPooled.WithLabelValues(c.host).Dec()
-
-	return c.Conn.Close()
 }

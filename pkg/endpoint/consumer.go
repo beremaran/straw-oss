@@ -1,4 +1,3 @@
-//nolint:funcorder
 package endpoint
 
 import (
@@ -164,6 +163,23 @@ func (c *Consumer) Stop() {
 	}
 }
 
+type TaskError struct {
+	Code    string
+	Message string
+}
+
+func (e *TaskError) Error() string {
+	return e.Code + ": " + e.Message
+}
+
+func (c *Consumer) QueueName() string {
+	return c.queueName
+}
+
+func (c *Consumer) ConcurrencyLimit() int {
+	return c.concurrencyLimit
+}
+
 func (c *Consumer) handleMessage(ctx context.Context, body []byte) error {
 	metrics.TasksQueued.Inc()
 	defer metrics.TasksQueued.Dec()
@@ -191,7 +207,6 @@ func (c *Consumer) handleMessage(ctx context.Context, body []byte) error {
 	return nil
 }
 
-//nolint:cyclop,funlen
 func (c *Consumer) processTask(ctx context.Context, body []byte) error {
 	metrics.TasksInFlight.Inc()
 	defer metrics.TasksInFlight.Dec()
@@ -308,21 +323,4 @@ func (c *Consumer) processTask(ctx context.Context, body []byte) error {
 	}
 
 	return nil
-}
-
-func (c *Consumer) QueueName() string {
-	return c.queueName
-}
-
-func (c *Consumer) ConcurrencyLimit() int {
-	return c.concurrencyLimit
-}
-
-type TaskError struct {
-	Code    string
-	Message string
-}
-
-func (e *TaskError) Error() string {
-	return e.Code + ": " + e.Message
 }

@@ -1,4 +1,3 @@
-//nolint:errcheck
 package middleware_test
 
 import (
@@ -24,7 +23,7 @@ func TestSessionMiddleware(t *testing.T) {
 
 	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	store := session.NewRedisStore(client)
 	svc := session.NewService(store)

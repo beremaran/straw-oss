@@ -1,4 +1,3 @@
-//nolint:errcheck
 package ratelimit_test
 
 import (
@@ -22,7 +21,7 @@ func TestRateLimiter_Allow(t *testing.T) {
 
 	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: s.Addr()}, nil)
 	require.NoError(t, err)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	limiter := ratelimit.NewRateLimiter(client)
 	quotaKey := "test_key"
@@ -158,7 +157,7 @@ func TestRateLimiter_RedisErrors(t *testing.T) {
 
 	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: s.Addr()}, nil)
 	require.NoError(t, err)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	limiter := ratelimit.NewRateLimiter(client)
 	quotaKey := "test_key"
@@ -177,7 +176,7 @@ func TestRateLimiter_RedisErrors(t *testing.T) {
 		defer s.Close()
 		client, err = redis.NewClient(ctx, config.RedisConfig{Addr: s.Addr()}, nil)
 		require.NoError(t, err)
-		defer client.Close()
+		defer func() { _ = client.Close() }()
 		limiter = ratelimit.NewRateLimiter(client)
 	})
 
@@ -201,7 +200,7 @@ func TestRateLimiter_ResetCalculation(t *testing.T) {
 
 	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: s.Addr()}, nil)
 	require.NoError(t, err)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	limiter := ratelimit.NewRateLimiter(client)
 	quotaKey := "test_key"
@@ -246,7 +245,7 @@ func TestNewRateLimiter(t *testing.T) {
 
 		client, err := redis.NewClient(ctx, config.RedisConfig{Addr: s.Addr()}, nil)
 		require.NoError(t, err)
-		defer client.Close()
+		defer func() { _ = client.Close() }()
 
 		limiter := ratelimit.NewRateLimiter(client)
 		assert.NotNil(t, limiter)

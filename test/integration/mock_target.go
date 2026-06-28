@@ -1,4 +1,3 @@
-//nolint:errcheck
 package integration
 
 import (
@@ -131,7 +130,7 @@ func (m *MockTargetServer) handler(w http.ResponseWriter, r *http.Request) {
 		if hj, ok := w.(http.Hijacker); ok {
 			conn, _, err := hj.Hijack()
 			if err == nil {
-				conn.Close()
+				_ = conn.Close()
 
 				return
 			}
@@ -165,7 +164,7 @@ func readBody(r *http.Request) ([]byte, error) {
 	if r.Body == nil {
 		return nil, nil
 	}
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 
 	const maxBodySize = 1024 * 1024
 	limited := http.MaxBytesReader(nil, r.Body, maxBodySize)

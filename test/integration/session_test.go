@@ -1,4 +1,3 @@
-//nolint:errcheck
 package integration
 
 import (
@@ -123,16 +122,16 @@ func TestSession_Migration(t *testing.T) {
 	require.NoError(t, ep1.Start(ctx))
 	defer ep1.Stop()
 
-	CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{ID: "endpoint-1", Tags: []string{"type:migration"}, IsHealthy: true})
-	CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{ID: "endpoint-2", Tags: []string{"type:migration"}, IsHealthy: true})
+	require.NoError(t, CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{ID: "endpoint-1", Tags: []string{"type:migration"}, IsHealthy: true}))
+	require.NoError(t, CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{ID: "endpoint-2", Tags: []string{"type:migration"}, IsHealthy: true}))
 
 	require.NoError(t, tc.WaitForEndpoint(ctx, "endpoint-1"))
 
-	CreateTestRoutingRule(
+	require.NoError(t, CreateTestRoutingRule(
 		ctx, suite.PostgresDSN(), "Migration Rule", 100,
 		[]string{"type:migration"}, []string{}, "", 0, 0, "",
 		[]TestEndpointPool{{Tier: 1, Endpoints: []string{"endpoint-1", "endpoint-2"}, MaxRetries: 1}},
-	)
+	))
 	require.NoError(t, tc.Server.GetMatcher().LoadRules(ctx))
 
 	client := NewHTTPTestClient(tc.ServerURL, apiKey.RawKey)
@@ -197,11 +196,11 @@ func TestSession_Expiration(t *testing.T) {
 	require.NoError(t, ep1.Start(ctx), "failed to start mock endpoint")
 	defer ep1.Stop()
 
-	CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{ID: "ep1", Tags: []string{"type:expiry"}, IsHealthy: true})
+	require.NoError(t, CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{ID: "ep1", Tags: []string{"type:expiry"}, IsHealthy: true}))
 	require.NoError(t, tc.WaitForEndpoint(ctx, "ep1"), "failed to wait for endpoint health")
 
-	CreateTestRoutingRule(ctx, suite.PostgresDSN(), "Expiry Rule", 100, []string{"type:expiry"}, []string{}, "", 0, 0, "", []TestEndpointPool{{Tier: 1, Endpoints: []string{"ep1"}}})
-	tc.Server.GetMatcher().LoadRules(ctx)
+	require.NoError(t, CreateTestRoutingRule(ctx, suite.PostgresDSN(), "Expiry Rule", 100, []string{"type:expiry"}, []string{}, "", 0, 0, "", []TestEndpointPool{{Tier: 1, Endpoints: []string{"ep1"}}}))
+	require.NoError(t, tc.Server.GetMatcher().LoadRules(ctx))
 
 	client := NewHTTPTestClient(tc.ServerURL, apiKey.RawKey)
 
@@ -213,7 +212,7 @@ func TestSession_Expiration(t *testing.T) {
 
 	redisClient, err := redis.NewClient(ctx, config.RedisConfig{Addr: suite.RedisAddr()}, nil)
 	require.NoError(t, err)
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	redisClient.Client.Del(ctx, "session:"+sessionID)
 

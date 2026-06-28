@@ -1,4 +1,3 @@
-//nolint:funcorder
 package router
 
 import (
@@ -31,7 +30,6 @@ func NewMatcher(repo domain.RoutingRuleRepository, cache *RuleCache) *Matcher {
 	}
 }
 
-//nolint:cyclop
 func (m *Matcher) LoadRules(ctx context.Context) error {
 	if m.cache == nil {
 		return m.loadFromDB(ctx)
@@ -89,29 +87,6 @@ func (m *Matcher) LoadRules(ctx context.Context) error {
 	return nil
 }
 
-func (m *Matcher) loadFromDB(ctx context.Context) error {
-	rules, err := m.repo.GetActiveRules(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to load rules from repo (fallback): %w", err)
-	}
-
-	m.mu.Lock()
-	m.rules = rules
-	m.lastUpdate = time.Now()
-	m.mu.Unlock()
-	log.Printf("Routing rules loaded from DB (fallback): count=%d", len(rules))
-
-	return nil
-}
-
-func (m *Matcher) updateRules(rules []domain.RoutingRule, version int64) {
-	m.mu.Lock()
-	m.rules = rules
-	m.currentVersion = version
-	m.lastUpdate = time.Now()
-	m.mu.Unlock()
-}
-
 func (m *Matcher) Match(tags []domain.Tag) *domain.RoutingRule {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -146,4 +121,27 @@ func (m *Matcher) StartAutoRefresh(ctx context.Context, interval time.Duration) 
 
 func (m *Matcher) GetStats() (int64, int64) {
 	return atomic.LoadInt64(&m.cacheHits), atomic.LoadInt64(&m.cacheMisses)
+}
+
+func (m *Matcher) loadFromDB(ctx context.Context) error {
+	rules, err := m.repo.GetActiveRules(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to load rules from repo (fallback): %w", err)
+	}
+
+	m.mu.Lock()
+	m.rules = rules
+	m.lastUpdate = time.Now()
+	m.mu.Unlock()
+	log.Printf("Routing rules loaded from DB (fallback): count=%d", len(rules))
+
+	return nil
+}
+
+func (m *Matcher) updateRules(rules []domain.RoutingRule, version int64) {
+	m.mu.Lock()
+	m.rules = rules
+	m.currentVersion = version
+	m.lastUpdate = time.Now()
+	m.mu.Unlock()
 }

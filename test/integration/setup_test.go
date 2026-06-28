@@ -1,4 +1,3 @@
-//nolint:errcheck
 package integration
 
 import (
@@ -24,7 +23,7 @@ func TestContainerSetup(t *testing.T) {
 	t.Run("PostgreSQL is accessible", func(t *testing.T) {
 		db, err := sql.Open("pgx", suite.PostgresDSN())
 		require.NoError(t, err, "should connect to PostgreSQL")
-		defer db.Close()
+		defer func() { _ = db.Close() }()
 
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -37,7 +36,7 @@ func TestContainerSetup(t *testing.T) {
 		client := redis.NewClient(&redis.Options{
 			Addr: suite.RedisAddr(),
 		})
-		defer client.Close()
+		defer func() { _ = client.Close() }()
 
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -60,7 +59,7 @@ func TestDatabaseMigrations(t *testing.T) {
 
 	db, err := sql.Open("pgx", suite.PostgresDSN())
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -96,7 +95,7 @@ func TestDatabaseCleanup(t *testing.T) {
 
 	db, err := sql.Open("pgx", suite.PostgresDSN())
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -129,7 +128,7 @@ func TestParallelTestIsolation(t *testing.T) {
 
 		db, err := sql.Open("pgx", suite.PostgresDSN())
 		require.NoError(t, err)
-		defer db.Close()
+		defer func() { _ = db.Close() }()
 
 		ctx := context.Background()
 		_, err = db.ExecContext(ctx, `
@@ -152,7 +151,7 @@ func TestParallelTestIsolation(t *testing.T) {
 
 		db, err := sql.Open("pgx", suite.PostgresDSN())
 		require.NoError(t, err)
-		defer db.Close()
+		defer func() { _ = db.Close() }()
 
 		ctx := context.Background()
 		_, err = db.ExecContext(ctx, `

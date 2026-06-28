@@ -1,4 +1,3 @@
-//nolint:errcheck
 package update
 
 import (
@@ -62,7 +61,7 @@ func TestChecker_CheckNow_NoUpdate(t *testing.T) {
 			URL:     "http://example.com/binary",
 			SHA256:  "abc123",
 		}
-		json.NewEncoder(w).Encode(manifest)
+		_ = json.NewEncoder(w).Encode(manifest)
 	}))
 	defer server.Close()
 
@@ -93,7 +92,7 @@ func TestChecker_CheckNow_UpdateAvailable(t *testing.T) {
 			URL:     "http://example.com/binary-v2",
 			SHA256:  "def456",
 		}
-		json.NewEncoder(w).Encode(manifest)
+		_ = json.NewEncoder(w).Encode(manifest)
 	}))
 	defer server.Close()
 
@@ -128,7 +127,7 @@ func TestChecker_CheckNow_OlderVersion(t *testing.T) {
 			URL:     "http://example.com/binary",
 			SHA256:  "abc123",
 		}
-		json.NewEncoder(w).Encode(manifest)
+		_ = json.NewEncoder(w).Encode(manifest)
 	}))
 	defer server.Close()
 
@@ -146,7 +145,7 @@ func TestChecker_CheckNow_OlderVersion(t *testing.T) {
 
 func TestChecker_CheckNow_InvalidManifest(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("not valid json"))
+		_, _ = w.Write([]byte("not valid json"))
 	}))
 	defer server.Close()
 
@@ -171,7 +170,7 @@ func TestChecker_CheckNow_MissingFields(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				json.NewEncoder(w).Encode(tt.manifest)
+				_ = json.NewEncoder(w).Encode(tt.manifest)
 			}))
 			defer server.Close()
 
@@ -223,7 +222,7 @@ func TestChecker_PeriodicChecking(t *testing.T) {
 			URL:     "http://example.com/binary",
 			SHA256:  "abc123",
 		}
-		json.NewEncoder(w).Encode(manifest)
+		_ = json.NewEncoder(w).Encode(manifest)
 	}))
 	defer server.Close()
 
@@ -256,7 +255,7 @@ func TestChecker_GracefulShutdown(t *testing.T) {
 			URL:     "http://example.com/binary",
 			SHA256:  "abc123",
 		}
-		json.NewEncoder(w).Encode(manifest)
+		_ = json.NewEncoder(w).Encode(manifest)
 	}))
 	defer server.Close()
 
@@ -287,7 +286,7 @@ func TestChecker_DoubleStartIsSafe(t *testing.T) {
 			URL:     "http://example.com/binary",
 			SHA256:  "abc123",
 		}
-		json.NewEncoder(w).Encode(manifest)
+		_ = json.NewEncoder(w).Encode(manifest)
 	}))
 	defer server.Close()
 
@@ -313,7 +312,7 @@ func TestChecker_ContextCancellation(t *testing.T) {
 			URL:     "http://example.com/binary",
 			SHA256:  "abc123",
 		}
-		json.NewEncoder(w).Encode(manifest)
+		_ = json.NewEncoder(w).Encode(manifest)
 	}))
 	defer server.Close()
 

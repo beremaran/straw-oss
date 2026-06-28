@@ -1,4 +1,3 @@
-//nolint:errcheck
 package security
 
 import (
@@ -48,7 +47,7 @@ func TestRequestValidation_SecurityScenarios(t *testing.T) {
 	natsBroker := broker.NewNatsBroker(broker.Addrs(s.NatsURL()))
 	err = natsBroker.Connect()
 	require.NoError(t, err)
-	defer natsBroker.Close()
+	defer func() { _ = natsBroker.Close() }()
 	cb := circuitbreaker.New(circuitbreaker.Config{})
 	selector := &dummySelector{}
 	pub := orchestrator.NewPublisher(natsBroker, selector, []byte("secret"), cb)

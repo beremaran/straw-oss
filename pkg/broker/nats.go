@@ -1,4 +1,3 @@
-//nolint:funcorder
 package broker
 
 import (
@@ -165,19 +164,6 @@ func (b *NatsBroker) Subscribe(ctx context.Context, queue string, handler Handle
 	return nil
 }
 
-func (b *NatsBroker) findStreamForSubject(ctx context.Context, subject string) string {
-	streams := b.js.ListStreams(ctx)
-	for stream := range streams.Info() {
-		for _, pattern := range stream.Config.Subjects {
-			if subjectMatchesPattern(pattern, subject) {
-				return stream.Config.Name
-			}
-		}
-	}
-
-	return ""
-}
-
 func subjectMatchesPattern(pattern, subject string) bool {
 	if pattern == subject {
 		return true
@@ -288,4 +274,17 @@ func (b *NatsBroker) ConsumeOnce(ctx context.Context, queue string, timeout time
 	}
 
 	return msg.Data, nil
+}
+
+func (b *NatsBroker) findStreamForSubject(ctx context.Context, subject string) string {
+	streams := b.js.ListStreams(ctx)
+	for stream := range streams.Info() {
+		for _, pattern := range stream.Config.Subjects {
+			if subjectMatchesPattern(pattern, subject) {
+				return stream.Config.Name
+			}
+		}
+	}
+
+	return ""
 }

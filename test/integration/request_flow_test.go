@@ -1,4 +1,3 @@
-//nolint:errcheck
 package integration
 
 import (
@@ -167,8 +166,8 @@ func setupTestServer(t *testing.T, suite *TestSuite) *testServerContext {
 		}
 		mockTarget.Close()
 		testServer.Close()
-		broker.Close()
-		redisClient.Close()
+		_ = broker.Close()
+		_ = redisClient.Close()
 	}
 
 	return tc

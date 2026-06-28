@@ -1,4 +1,3 @@
-//nolint:errcheck
 package http
 
 import (
@@ -67,7 +66,7 @@ func TestClient_Do_Tracing(t *testing.T) {
 	server := http.NewServeMux()
 	server.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
+		_, _ = w.Write([]byte("ok"))
 	})
 
 	lc := &net.ListenConfig{}
@@ -75,9 +74,9 @@ func TestClient_Do_Tracing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to listen: %v", err)
 	}
-	defer l.Close()
+	defer func() { _ = l.Close() }()
 
-	go http.Serve(l, server)
+	go func() { _ = http.Serve(l, server) }()
 
 	transport := &fhttp.Transport{
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {

@@ -18,7 +18,6 @@ func NewUsageRepository(client *Client) *UsageRepository {
 	return &UsageRepository{client: client}
 }
 
-//nolint:funlen
 func (r *UsageRepository) GetDailySummaries(ctx context.Context, apiKeyID string, start, end time.Time) ([]domain.UsageSummary, error) {
 	sql := `
 		SELECT date, total_requests, total_bytes, cost_units, breakdown

@@ -1,4 +1,3 @@
-//nolint:errcheck
 package tls
 
 import (
@@ -74,7 +73,7 @@ func startTestTLSServer(t *testing.T) (string, func()) {
 			}
 
 			go func(c net.Conn) {
-				defer c.Close()
+				defer func() { _ = c.Close() }()
 
 				buf := make([]byte, 1024)
 				_, _ = c.Read(buf)
@@ -83,7 +82,7 @@ func startTestTLSServer(t *testing.T) (string, func()) {
 	}()
 
 	return listener.Addr().String(), func() {
-		listener.Close()
+		_ = listener.Close()
 	}
 }
 
@@ -177,7 +176,7 @@ func TestDial_WithServerName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Dial with ServerName failed: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 }
 
 func TestDial_WithHandshakeTimeout(t *testing.T) {
@@ -193,7 +192,7 @@ func TestDial_WithHandshakeTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Dial with HandshakeTimeout failed: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 }
 
 func TestErrorTypes(t *testing.T) {
@@ -245,7 +244,7 @@ func TestDial_AllPresets(t *testing.T) {
 
 				return
 			}
-			conn.Close()
+			_ = conn.Close()
 		})
 	}
 }
