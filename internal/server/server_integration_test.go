@@ -144,8 +144,8 @@ type MockBroker struct {
 	mock.Mock
 }
 
-func (m *MockBroker) Publish(ctx context.Context, exchange, queue string, body []byte) error {
-	args := m.Called(ctx, exchange, queue, body)
+func (m *MockBroker) Publish(ctx context.Context, subject string, body []byte) error {
+	args := m.Called(ctx, subject, body)
 
 	return args.Error(0)
 }
@@ -154,30 +154,24 @@ func (m *MockBroker) Consume(ctx context.Context, queue string, handler broker.H
 
 	return args.Error(0)
 }
-func (m *MockBroker) Subscribe(ctx context.Context, queue string, handler broker.Handler, opts ...broker.SubscribeOption) error {
-	args := m.Called(ctx, queue, handler, opts)
+func (m *MockBroker) Subscribe(ctx context.Context, subject string, handler broker.Handler, opts ...broker.SubscribeOption) error {
+	args := m.Called(ctx, subject, handler, opts)
 
 	return args.Error(0)
 }
-func (m *MockBroker) SubscribeTemporary(ctx context.Context, queue string, handler broker.Handler) error {
-	args := m.Called(ctx, queue, handler)
-
-	return args.Error(0)
-}
-func (m *MockBroker) ConsumeOnce(ctx context.Context, queue string, timeout time.Duration) ([]byte, error) {
-	args := m.Called(ctx, queue, timeout)
+func (m *MockBroker) ConsumeOnce(ctx context.Context, subject string, timeout time.Duration) ([]byte, error) {
+	args := m.Called(ctx, subject, timeout)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 
 	return args.Get(0).([]byte), args.Error(1)
 }
-func (m *MockBroker) Close() error                                                     { return nil }
-func (m *MockBroker) DeclareExchange(ctx context.Context, name, kind string) error     { return nil }
-func (m *MockBroker) BindQueue(ctx context.Context, queue, exchange, key string) error { return nil }
-func (m *MockBroker) DeclareQueue(ctx context.Context, name string) error              { return nil }
-func (m *MockBroker) IsConnected() bool                                                { return true }
-func (m *MockBroker) QueueDepth(ctx context.Context, name string) (int, error)         { return 0, nil }
+func (m *MockBroker) Close() error { return nil }
+func (m *MockBroker) DeclareStream(ctx context.Context, name string, subjects ...string) error {
+	return nil
+}
+func (m *MockBroker) IsConnected() bool { return true }
 
 func sha256Hash(s string) string {
 	hash := sha256.Sum256([]byte(s))
@@ -186,7 +180,7 @@ func sha256Hash(s string) string {
 }
 
 func TestServer_RelayRequest_Success(t *testing.T) {
-	t.Skip("Skipping: This test requires significant refactoring to work with the shared queue pattern. Integration tests in test/integration/ cover this functionality.")
+	t.Skip("Skipping: This test requires significant refactoring to work with the shared subject pattern. Integration tests in test/integration/ cover this functionality.")
 
 	mockKeyRepo := new(MockApiKeyRepo)
 	mockKeyCache := new(MockKeyCache)
@@ -229,15 +223,15 @@ func TestServer_RelayRequest_Success(t *testing.T) {
 
 	var sharedQueueHandler broker.Handler
 
-	mockBroker.On("Subscribe", mock.Anything, orchestrator.SharedResultQueue, mock.MatchedBy(func(h broker.Handler) bool {
+	mockBroker.On("Subscribe", mock.Anything, orchestrator.SharedResultSubject, mock.MatchedBy(func(h broker.Handler) bool {
 		sharedQueueHandler = h
 
 		return true
 	}), mock.Anything).Return(nil)
 
 	var capturedRequestID string
-	mockBroker.On("Publish", mock.Anything, mock.Anything, mock.AnythingOfType("string"), mock.Anything).Run(func(args mock.Arguments) {
-		body := args.Get(3).([]byte)
+	mockBroker.On("Publish", mock.Anything, mock.AnythingOfType("string"), mock.Anything).Run(func(args mock.Arguments) {
+		body := args.Get(2).([]byte)
 		var signedTask protocol.SignedTask
 		err := json.Unmarshal(body, &signedTask)
 		if err != nil {
@@ -255,8 +249,6 @@ func TestServer_RelayRequest_Success(t *testing.T) {
 		capturedRequestID = req.ID
 		t.Logf("DEBUG: Captured request ID: %s", capturedRequestID)
 	}).Return(nil)
-
-	mockBroker.On("SubscribeTemporary", mock.Anything, mock.AnythingOfType("string"), mock.Anything).Return(nil).Maybe()
 
 	authSvc := auth.NewAuthService(mockKeyRepo, nil)
 	matcher := router.NewMatcher(mockRuleRepo, nil)

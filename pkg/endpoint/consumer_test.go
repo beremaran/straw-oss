@@ -25,25 +25,23 @@ type mockBroker struct {
 }
 
 type publishedMsg struct {
-	Exchange   string
-	RoutingKey string
-	Body       []byte
+	Subject string
+	Body    []byte
 }
 
-func (m *mockBroker) Publish(ctx context.Context, exchange, routingKey string, body []byte) error {
+func (m *mockBroker) Publish(ctx context.Context, subject string, body []byte) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.publishedMsgs = append(m.publishedMsgs, publishedMsg{
-		Exchange:   exchange,
-		RoutingKey: routingKey,
-		Body:       body,
+		Subject: subject,
+		Body:    body,
 	})
 
 	return nil
 }
 
-func (m *mockBroker) Subscribe(ctx context.Context, queue string, handler broker.Handler, opts ...broker.SubscribeOption) error {
-	m.subscribeQueue = queue
+func (m *mockBroker) Subscribe(ctx context.Context, subject string, handler broker.Handler, opts ...broker.SubscribeOption) error {
+	m.subscribeQueue = subject
 	m.subscribeHandler = handler
 
 	<-ctx.Done()
@@ -51,16 +49,7 @@ func (m *mockBroker) Subscribe(ctx context.Context, queue string, handler broker
 	return nil
 }
 
-func (m *mockBroker) SubscribeTemporary(ctx context.Context, queue string, handler broker.Handler) error {
-	m.subscribeQueue = queue
-	m.subscribeHandler = handler
-
-	<-ctx.Done()
-
-	return nil
-}
-
-func (m *mockBroker) ConsumeOnce(ctx context.Context, queue string, timeout time.Duration) ([]byte, error) {
+func (m *mockBroker) ConsumeOnce(ctx context.Context, subject string, timeout time.Duration) ([]byte, error) {
 	return nil, nil
 }
 
@@ -68,24 +57,12 @@ func (m *mockBroker) Close() error {
 	return nil
 }
 
-func (m *mockBroker) DeclareExchange(ctx context.Context, name, kind string) error {
-	return nil
-}
-
-func (m *mockBroker) DeclareQueue(ctx context.Context, name string) error {
-	return nil
-}
-
-func (m *mockBroker) BindQueue(ctx context.Context, queue, exchange, routingKey string) error {
+func (m *mockBroker) DeclareStream(ctx context.Context, name string, subjects ...string) error {
 	return nil
 }
 
 func (m *mockBroker) IsConnected() bool {
 	return true
-}
-
-func (m *mockBroker) QueueDepth(ctx context.Context, name string) (int, error) {
-	return 0, nil
 }
 
 type mockTransportProvider struct {
@@ -113,8 +90,8 @@ func TestConsumer_New(t *testing.T) {
 		t.Errorf("expected endpointID 'test-endpoint', got %s", c.endpointID)
 	}
 
-	if c.queueName != "endpoint.test-endpoint.tasks" {
-		t.Errorf("expected queueName 'endpoint.test-endpoint.tasks', got %s", c.queueName)
+	if c.taskSubject != "tasks.test-endpoint.tasks" {
+		t.Errorf("expected taskSubject 'tasks.test-endpoint.tasks', got %s", c.taskSubject)
 	}
 
 	if c.concurrencyLimit != DefaultConcurrencyLimit {
@@ -147,7 +124,7 @@ func TestConsumer_WithOptions(t *testing.T) {
 	}
 }
 
-func TestConsumer_QueueName(t *testing.T) {
+func TestConsumer_TaskSubject(t *testing.T) {
 	mb := &mockBroker{}
 	registry := fingerprint.NewRegistry()
 	provider := &mockTransportProvider{}
@@ -156,9 +133,9 @@ func TestConsumer_QueueName(t *testing.T) {
 
 	c := NewConsumer(mb, httpClient, secret, "my-endpoint")
 
-	expected := "endpoint.my-endpoint.tasks"
-	if c.QueueName() != expected {
-		t.Errorf("expected QueueName %q, got %q", expected, c.QueueName())
+	expected := "tasks.my-endpoint.tasks"
+	if c.TaskSubject() != expected {
+		t.Errorf("expected TaskSubject %q, got %q", expected, c.TaskSubject())
 	}
 }
 

@@ -65,20 +65,20 @@ func (p *Publisher) Publish(ctx context.Context, resp *protocol.Response, replyT
 		return fmt.Errorf("failed to build message: %w", err)
 	}
 
-	routingKey := "results." + resp.RequestID
+	resultSubject := "results." + resp.RequestID
 	if replyTo != "" {
-		routingKey = replyTo
+		resultSubject = replyTo
 	}
 
 	p.logger.Debug("publishing result",
 		"request_id", resp.RequestID,
-		"routing_key", routingKey,
+		"subject", resultSubject,
 		"status_code", resp.StatusCode,
 		"has_error", resp.Error != nil,
 		"body_size", len(msg),
 	)
 
-	err = p.broker.Publish(ctx, "", routingKey, msg)
+	err = p.broker.Publish(ctx, resultSubject, msg)
 	if err != nil {
 		return fmt.Errorf("failed to publish result: %w", err)
 	}

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -24,11 +23,11 @@ type RequestExecutor interface {
 }
 
 type Consumer struct {
-	broker     broker.MessageBroker
-	httpClient RequestExecutor
-	secret     []byte
-	endpointID string
-	queueName  string
+	broker      broker.MessageBroker
+	httpClient  RequestExecutor
+	secret      []byte
+	endpointID  string
+	taskSubject string
 
 	concurrencyLimit int
 	semaphore        chan struct{}
@@ -103,7 +102,7 @@ func NewConsumer(
 		httpClient:       httpClient,
 		secret:           secret,
 		endpointID:       endpointID,
-		queueName:        "endpoint." + endpointID + ".tasks",
+		taskSubject:      "tasks." + endpointID + ".tasks",
 		concurrencyLimit: DefaultConcurrencyLimit,
 		maxTaskAge:       DefaultMaxTaskAge,
 		logger:           slog.Default(),
@@ -123,27 +122,16 @@ func (c *Consumer) Start(ctx context.Context) error {
 
 	c.logger.Info("starting consumer",
 		"endpoint_id", c.endpointID,
-		"queue", c.queueName,
+		"subject", c.taskSubject,
 		"concurrency_limit", c.concurrencyLimit,
 		"max_task_age", c.maxTaskAge,
 	)
 
-	err := c.broker.DeclareQueue(ctx, c.queueName)
-	if err != nil {
-		return fmt.Errorf("failed to declare task queue: %w", err)
-	}
-
-	err = c.broker.BindQueue(ctx, c.queueName, "tasks", c.queueName)
-	if err != nil {
-		return fmt.Errorf("failed to bind task queue to exchange: %w", err)
-	}
-	c.logger.Info("bound task queue to tasks exchange",
-		"queue", c.queueName,
-		"exchange", "tasks",
-		"routing_key", c.queueName,
+	c.logger.Info("subscribed to task subject",
+		"subject", c.taskSubject,
 	)
 
-	err = c.broker.Subscribe(ctx, c.queueName, c.handleMessage, broker.WithMaxAckPending(c.concurrencyLimit))
+	err := c.broker.Subscribe(ctx, c.taskSubject, c.handleMessage, broker.WithMaxAckPending(c.concurrencyLimit))
 	if err != nil {
 		return err
 	}
@@ -172,8 +160,8 @@ func (e *TaskError) Error() string {
 	return e.Code + ": " + e.Message
 }
 
-func (c *Consumer) QueueName() string {
-	return c.queueName
+func (c *Consumer) TaskSubject() string {
+	return c.taskSubject
 }
 
 func (c *Consumer) ConcurrencyLimit() int {

@@ -185,7 +185,7 @@ func (s *HeartbeatSender) sendHeartbeat(ctx context.Context) {
 		return
 	}
 
-	err = s.broker.Publish(ctx, "heartbeats", s.endpointID, data)
+	err = s.broker.Publish(ctx, "heartbeats."+s.endpointID, data)
 	if err != nil {
 		s.logger.Error("failed to publish heartbeat",
 			"endpoint_id", s.endpointID,

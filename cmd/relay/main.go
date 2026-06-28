@@ -326,52 +326,25 @@ func generateInitialAdminKey(apiKeyRepo *postgres.ApiKeyRepository, ctx context.
 }
 
 func initialiseNATSOrDie(natsBroker *broker.NatsBroker, ctx context.Context) {
-	err := natsBroker.DeclareExchange(ctx, "heartbeats", "fanout")
+	err := natsBroker.DeclareStream(ctx, "heartbeats", "heartbeats.>")
 	if err != nil {
-		slog.Error("Failed to declare heartbeats exchange", "error", err)
+		slog.Error("Failed to declare heartbeats stream", "error", err)
 		os.Exit(1)
 	}
 
-	err = natsBroker.DeclareExchange(ctx, "tasks", "direct")
+	err = natsBroker.DeclareStream(ctx, "tasks", "tasks.>")
 	if err != nil {
-		slog.Error("Failed to declare tasks exchange", "error", err)
+		slog.Error("Failed to declare tasks stream", "error", err)
 		os.Exit(1)
 	}
 
-	err = natsBroker.DeclareExchange(ctx, "results", "direct")
+	err = natsBroker.DeclareStream(ctx, "results", "results.>")
 	if err != nil {
-		slog.Error("Failed to declare results exchange", "error", err)
+		slog.Error("Failed to declare results stream", "error", err)
 		os.Exit(1)
 	}
 
 	slog.Info("NATS streams declared successfully", "streams", []string{"heartbeats", "tasks", "results"})
-
-	err = natsBroker.DeclareQueue(ctx, "heartbeats")
-	if err != nil {
-		slog.Error("Failed to declare heartbeats queue", "error", err)
-		os.Exit(1)
-	}
-
-	err = natsBroker.BindQueue(ctx, "heartbeats", "heartbeats", "")
-	if err != nil {
-		slog.Error("Failed to bind heartbeats queue to exchange", "error", err)
-		os.Exit(1)
-	}
-	slog.Info("NATS heartbeats consumer bound to stream")
-
-	err = natsBroker.DeclareQueue(ctx, orchestrator.SharedResultQueue)
-	if err != nil {
-		slog.Error("Failed to declare result queue", "error", err)
-		os.Exit(1)
-	}
-
-	err = natsBroker.BindQueue(ctx, orchestrator.SharedResultQueue, "", orchestrator.SharedResultQueue)
-	if err != nil {
-		slog.Error("Failed to bind result queue to exchange", "error", err)
-		os.Exit(1)
-	}
-
-	slog.Info("NATS result consumer bound to stream")
 }
 
 func getNATSConnectionOrDie(ctx context.Context, cfg *config.ServerConfig) *broker.NatsBroker {

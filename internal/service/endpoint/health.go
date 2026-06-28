@@ -20,10 +20,10 @@ type HeartbeatMessage struct {
 }
 
 type HealthService struct {
-	broker broker.MessageBroker
-	store  redis.HealthStore
-	logger *slog.Logger
-	queue  string
+	broker           broker.MessageBroker
+	store            redis.HealthStore
+	logger           *slog.Logger
+	heartbeatSubject string
 
 	mu      sync.Mutex
 	running bool
@@ -33,9 +33,9 @@ type HealthService struct {
 
 type HealthOption func(*HealthService)
 
-func WithQueue(queue string) HealthOption {
+func WithHeartbeatSubject(subject string) HealthOption {
 	return func(s *HealthService) {
-		s.queue = queue
+		s.heartbeatSubject = subject
 	}
 }
 
@@ -47,10 +47,10 @@ func WithHealthLogger(logger *slog.Logger) HealthOption {
 
 func NewHealthService(b broker.MessageBroker, store redis.HealthStore, opts ...HealthOption) *HealthService {
 	s := &HealthService{
-		broker: b,
-		store:  store,
-		logger: slog.Default(),
-		queue:  "heartbeats",
+		broker:           b,
+		store:            store,
+		logger:           slog.Default(),
+		heartbeatSubject: "heartbeats.>",
 	}
 
 	for _, opt := range opts {
@@ -74,7 +74,7 @@ func (s *HealthService) Start(ctx context.Context) error {
 	s.done = make(chan struct{})
 	s.running = true
 
-	s.logger.Info("starting health service", "queue", s.queue)
+	s.logger.Info("starting health service", "subject", s.heartbeatSubject)
 
 	go s.run(ctx)
 
@@ -142,7 +142,7 @@ func (s *HealthService) ListAllEndpoints(ctx context.Context) ([]*redis.Endpoint
 func (s *HealthService) run(ctx context.Context) {
 	defer close(s.done)
 
-	err := s.broker.Subscribe(ctx, s.queue, s.handleHeartbeat)
+	err := s.broker.Subscribe(ctx, s.heartbeatSubject, s.handleHeartbeat, broker.WithTransient())
 	if err != nil {
 		s.logger.Error("failed to subscribe to heartbeats", "error", err)
 

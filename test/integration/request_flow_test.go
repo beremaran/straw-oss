@@ -57,20 +57,14 @@ func setupTestServer(t *testing.T, suite *TestSuite) *testServerContext {
 	err := broker.Connect()
 	require.NoError(t, err, "failed to connect to NATS")
 
-	err = broker.DeclareExchange(ctx, "heartbeats", "fanout")
-	require.NoError(t, err, "failed to declare heartbeats exchange")
+	err = broker.DeclareStream(ctx, "heartbeats", "heartbeats.>")
+	require.NoError(t, err, "failed to declare heartbeats stream")
 
-	err = broker.DeclareQueue(ctx, "heartbeats")
-	require.NoError(t, err, "failed to declare heartbeats queue")
+	err = broker.DeclareStream(ctx, "tasks", "tasks.>")
+	require.NoError(t, err, "failed to declare tasks stream")
 
-	err = broker.BindQueue(ctx, "heartbeats", "heartbeats", "")
-	require.NoError(t, err, "failed to bind heartbeats queue")
-
-	err = broker.DeclareExchange(ctx, "tasks", "direct")
-	require.NoError(t, err, "failed to declare tasks exchange")
-
-	err = broker.DeclareExchange(ctx, "results", "topic")
-	require.NoError(t, err, "failed to declare results exchange")
+	err = broker.DeclareStream(ctx, "results", "results.>")
+	require.NoError(t, err, "failed to declare results stream")
 
 	redisClient, err := infraredis.NewClient(ctx, config.RedisConfig{Addr: suite.RedisAddr()}, nil)
 	require.NoError(t, err, "failed to connect to Redis")
@@ -99,12 +93,6 @@ func setupTestServer(t *testing.T, suite *TestSuite) *testServerContext {
 	publisher := orchestrator.NewPublisher(broker, selector, []byte(testHMACSecret), circuitBreaker)
 	consumer := orchestrator.NewConsumer(broker)
 	executor := orchestrator.NewRetryExecutor(publisher, consumer, selector, broker, []byte(testHMACSecret))
-
-	err = broker.DeclareQueue(ctx, orchestrator.SharedResultQueue)
-	require.NoError(t, err, "failed to declare shared results queue")
-
-	err = broker.BindQueue(ctx, orchestrator.SharedResultQueue, "", orchestrator.SharedResultQueue)
-	require.NoError(t, err, "failed to bind shared results queue")
 
 	err = executor.Start(ctx)
 	require.NoError(t, err, "failed to start retry executor")
