@@ -17,7 +17,7 @@ var (
 
 	TLSFingerprintUsed = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "endpoint_tls_fingerprint_used",
+			Name: "endpoint_tls_fingerprint_used_total",
 			Help: "Count of TLS fingerprints used by ID",
 		},
 		[]string{"fingerprint"},
@@ -25,7 +25,7 @@ var (
 
 	FingerprintDeprecatedUsed = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "endpoint_fingerprint_deprecated_used",
+			Name: "endpoint_fingerprint_deprecated_used_total",
 			Help: "Count of deprecated fingerprints used",
 		},
 		[]string{"fingerprint"},
