@@ -1,8 +1,15 @@
 package domain
 
 import (
+	"errors"
 	"fmt"
 	"strings"
+)
+
+var (
+	ErrEmptyTag         = errors.New("empty tag string")
+	ErrInvalidTagFormat = errors.New("invalid tag format")
+	ErrEmptyTagKey      = errors.New("tag key cannot be empty")
 )
 
 type Tag struct {
@@ -13,7 +20,7 @@ type Tag struct {
 func ParseTag(s string) (Tag, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
-		return Tag{}, fmt.Errorf("empty tag string")
+		return Tag{}, ErrEmptyTag
 	}
 
 	if s == "*" {
@@ -22,14 +29,14 @@ func ParseTag(s string) (Tag, error) {
 
 	idx := strings.IndexAny(s, ":=")
 	if idx == -1 {
-		return Tag{}, fmt.Errorf("invalid tag format: %q (expected key:value or key=value)", s)
+		return Tag{}, fmt.Errorf("%w: %q", ErrInvalidTagFormat, s)
 	}
 
 	key := strings.TrimSpace(s[:idx])
 	value := strings.TrimSpace(s[idx+1:])
 
 	if key == "" {
-		return Tag{}, fmt.Errorf("tag key cannot be empty")
+		return Tag{}, ErrEmptyTagKey
 	}
 
 	return Tag{Key: key, Value: value}, nil

@@ -10,6 +10,14 @@ import (
 	"github.com/beremaran/straw/internal/infra/redis"
 )
 
+var (
+	ErrSelectWithSessionNotImplemented    = errors.New("method SelectWithSession not implemented: requires session store access")
+	ErrPoolTierNotConfigured              = errors.New("pool tier not configured")
+	ErrNoHealthyEndpoints                 = errors.New("no healthy endpoints found")
+	ErrNoHealthyEndpointsInPool           = errors.New("no healthy endpoints found in configured pool")
+	ErrNoAvailableEndpointsAfterExclusion = errors.New("no available endpoints after exclusion")
+)
+
 type SimpleEndpointSelector struct {
 	healthStore *redis.EndpointHealthStore
 }
@@ -25,7 +33,7 @@ func (s *SimpleEndpointSelector) Select(ctx context.Context, rule *domain.Routin
 }
 
 func (s *SimpleEndpointSelector) SelectWithSession(ctx context.Context, sessionID string) (string, error) {
-	return "", errors.New("method SelectWithSession not implemented: requires session store access")
+	return "", ErrSelectWithSessionNotImplemented
 }
 
 func (s *SimpleEndpointSelector) GetEndpointFromPool(ctx context.Context, rule *domain.RoutingRule, poolTier int, exclude []string) (string, error) {
@@ -36,7 +44,7 @@ func (s *SimpleEndpointSelector) GetEndpointFromPool(ctx context.Context, rule *
 	} else {
 		if poolTier > 1 {
 			if len(rule.EndpointPools) == 0 {
-				return "", fmt.Errorf("pool tier %d not configured", poolTier)
+				return "", fmt.Errorf("%w: tier %d", ErrPoolTierNotConfigured, poolTier)
 			}
 		}
 		requiredTags = rule.RequiredTags
@@ -48,7 +56,7 @@ func (s *SimpleEndpointSelector) GetEndpointFromPool(ctx context.Context, rule *
 	}
 
 	if len(endpoints) == 0 {
-		return "", fmt.Errorf("no healthy endpoints found for tags: %v", requiredTags)
+		return "", fmt.Errorf("%w for tags: %v", ErrNoHealthyEndpoints, requiredTags)
 	}
 
 	if poolConfig != nil && len(poolConfig.Endpoints) > 0 {
@@ -66,7 +74,7 @@ func (s *SimpleEndpointSelector) GetEndpointFromPool(ctx context.Context, rule *
 		endpoints = filteredEndpoints
 
 		if len(endpoints) == 0 {
-			return "", fmt.Errorf("no healthy endpoints found in configured pool (tier %d)", poolTier)
+			return "", fmt.Errorf("%w (tier %d)", ErrNoHealthyEndpointsInPool, poolTier)
 		}
 	}
 
@@ -86,7 +94,7 @@ func (s *SimpleEndpointSelector) GetEndpointFromPool(ctx context.Context, rule *
 	}
 
 	if len(candidates) == 0 {
-		return "", fmt.Errorf("no available endpoints after exclusion")
+		return "", ErrNoAvailableEndpointsAfterExclusion
 	}
 
 	idx := rand.Intn(len(candidates))

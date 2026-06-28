@@ -3,6 +3,7 @@ package integration
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -15,6 +16,8 @@ import (
 	"github.com/beremaran/straw/pkg/endpoint"
 	"github.com/beremaran/straw/pkg/protocol"
 )
+
+var ErrMockEndpointAlreadyRunning = errors.New("mock endpoint already running")
 
 type MockEndpointConfig struct {
 	EndpointID string
@@ -90,7 +93,7 @@ func NewMockEndpoint(b broker.MessageBroker, config MockEndpointConfig) *MockEnd
 
 func (m *MockEndpoint) Start(ctx context.Context) error {
 	if m.running.Load() {
-		return fmt.Errorf("mock endpoint already running")
+		return ErrMockEndpointAlreadyRunning
 	}
 
 	ctx, cancel := context.WithCancel(ctx)

@@ -11,6 +11,8 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+var ErrPresetNotFound = errors.New("preset not found")
+
 type FingerprintRepository struct {
 	client *Client
 }
@@ -138,7 +140,7 @@ func (r *FingerprintRepository) UpdatePreset(ctx context.Context, preset *domain
 	}
 
 	if result.RowsAffected() == 0 {
-		return fmt.Errorf("preset not found")
+		return ErrPresetNotFound
 	}
 
 	return nil
@@ -153,7 +155,7 @@ func (r *FingerprintRepository) DeletePreset(ctx context.Context, id string) err
 	}
 
 	if result.RowsAffected() == 0 {
-		return fmt.Errorf("preset not found")
+		return ErrPresetNotFound
 	}
 
 	return nil

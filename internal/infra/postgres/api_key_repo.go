@@ -9,6 +9,8 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+var ErrApiKeyNotFound = errors.New("api key not found")
+
 type ApiKeyRepository struct {
 	client *Client
 }
@@ -185,7 +187,7 @@ func (r *ApiKeyRepository) Revoke(ctx context.Context, id string) error {
 	}
 
 	if res.RowsAffected() == 0 {
-		return errors.New("api key not found")
+		return ErrApiKeyNotFound
 	}
 
 	return nil

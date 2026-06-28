@@ -3,6 +3,7 @@ package filter
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,6 +15,8 @@ import (
 	"github.com/beremaran/straw/internal/infra/redis"
 	"github.com/pmezard/adblock/adblock"
 )
+
+var ErrUnexpectedListStatusCode = errors.New("unexpected status code for list")
 
 const (
 	EasyListURL      = "https://easylist.to/easylist/easylist.txt"
@@ -104,7 +107,7 @@ func (m *ABPMatcher) LoadList(ctx context.Context, listName string, listURL stri
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code %d for list %s", resp.StatusCode, listName)
+		return fmt.Errorf("%w: %d for %s", ErrUnexpectedListStatusCode, resp.StatusCode, listName)
 	}
 
 	body, err := io.ReadAll(resp.Body)

@@ -3,6 +3,7 @@ package update
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -11,6 +12,13 @@ import (
 	"time"
 
 	"golang.org/x/mod/semver"
+)
+
+var (
+	ErrUnexpectedStatusCode   = errors.New("unexpected status code")
+	ErrManifestMissingVersion = errors.New("manifest missing version field")
+	ErrManifestMissingURL     = errors.New("manifest missing url field")
+	ErrManifestMissingSHA256  = errors.New("manifest missing sha256 field")
 )
 
 type Checker struct {
@@ -230,7 +238,7 @@ func (c *Checker) fetchManifest(ctx context.Context) (*VersionManifest, error) {
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		return nil, fmt.Errorf("%w: %d", ErrUnexpectedStatusCode, resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
@@ -245,13 +253,13 @@ func (c *Checker) fetchManifest(ctx context.Context) (*VersionManifest, error) {
 	}
 
 	if manifest.Version == "" {
-		return nil, fmt.Errorf("manifest missing version field")
+		return nil, ErrManifestMissingVersion
 	}
 	if manifest.URL == "" {
-		return nil, fmt.Errorf("manifest missing url field")
+		return nil, ErrManifestMissingURL
 	}
 	if manifest.SHA256 == "" {
-		return nil, fmt.Errorf("manifest missing sha256 field")
+		return nil, ErrManifestMissingSHA256
 	}
 
 	return &manifest, nil

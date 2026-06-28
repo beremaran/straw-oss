@@ -2,10 +2,13 @@ package validator
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
 )
+
+var ErrPrivateIP = errors.New("target resolves to private ip")
 
 type ValidationOptions struct {
 	AllowPrivateIPs bool
@@ -45,7 +48,7 @@ func ValidateTargetURL(ctx context.Context, targetURL string, opts ...Validation
 	if !options.AllowPrivateIPs {
 		for _, ip := range ips {
 			if isPrivateIP(ip) {
-				return fmt.Errorf("target resolves to private ip %s", ip.String())
+				return fmt.Errorf("%w: %s", ErrPrivateIP, ip.String())
 			}
 		}
 	}
