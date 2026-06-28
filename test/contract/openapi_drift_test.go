@@ -79,6 +79,7 @@ func normalizeOpenApiSchema(node interface{}) interface{} {
 			for _, typ := range types {
 				if typ == "null" {
 					hasNull = true
+
 					break
 				}
 			}

@@ -408,6 +408,7 @@ func (r *RetryExecutor) executeAttempt(
 					"result_endpoint", result.EndpointID,
 				)
 				ReleaseResultMessage(result)
+
 				continue
 			}
 
