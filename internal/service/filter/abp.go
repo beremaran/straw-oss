@@ -1,4 +1,3 @@
-//nolint:funcorder
 package filter
 
 import (
@@ -123,41 +122,6 @@ func (m *ABPMatcher) LoadList(ctx context.Context, listName string, listURL stri
 	return m.parseAndStore(listName, strings.NewReader(string(body)))
 }
 
-func (m *ABPMatcher) parseAndStore(listName string, reader io.Reader) error {
-	matcher := adblock.NewMatcher()
-	scanner := bufio.NewScanner(reader)
-
-	lineNum := 0
-	for scanner.Scan() {
-		lineNum++
-		line := strings.TrimSpace(scanner.Text())
-
-		if line == "" || strings.HasPrefix(line, "!") || strings.HasPrefix(line, "[") {
-			continue
-		}
-
-		rule, err := adblock.ParseRule(line)
-		if err != nil {
-			continue
-		}
-
-		if rule != nil {
-			_ = matcher.AddRule(rule, lineNum)
-		}
-	}
-
-	err := scanner.Err()
-	if err != nil {
-		return fmt.Errorf("error reading list: %w", err)
-	}
-
-	m.mu.Lock()
-	m.matchers[listName] = matcher
-	m.mu.Unlock()
-
-	return nil
-}
-
 func (m *ABPMatcher) Match(url string, lists []string) (bool, string) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -226,4 +190,39 @@ func extractDomain(rawURL string) string {
 	}
 
 	return u.Hostname()
+}
+
+func (m *ABPMatcher) parseAndStore(listName string, reader io.Reader) error {
+	matcher := adblock.NewMatcher()
+	scanner := bufio.NewScanner(reader)
+
+	lineNum := 0
+	for scanner.Scan() {
+		lineNum++
+		line := strings.TrimSpace(scanner.Text())
+
+		if line == "" || strings.HasPrefix(line, "!") || strings.HasPrefix(line, "[") {
+			continue
+		}
+
+		rule, err := adblock.ParseRule(line)
+		if err != nil {
+			continue
+		}
+
+		if rule != nil {
+			_ = matcher.AddRule(rule, lineNum)
+		}
+	}
+
+	err := scanner.Err()
+	if err != nil {
+		return fmt.Errorf("error reading list: %w", err)
+	}
+
+	m.mu.Lock()
+	m.matchers[listName] = matcher
+	m.mu.Unlock()
+
+	return nil
 }

@@ -24,7 +24,6 @@ var (
 	safariPseudoHeaderOrder = []string{":method", ":scheme", ":path", ":authority"}
 )
 
-//nolint:funlen
 func registerChromePresets(r *Registry) {
 	r.MustRegister(Preset{
 		ID:             "chrome-133",
@@ -138,7 +137,6 @@ func registerChromePresets(r *Registry) {
 	})
 }
 
-//nolint:funlen
 func registerFirefoxPresets(r *Registry) {
 	r.MustRegister(Preset{
 		ID:             "firefox-133",
@@ -209,7 +207,6 @@ func registerFirefoxPresets(r *Registry) {
 	})
 }
 
-//nolint:funlen
 func registerSafariPresets(r *Registry) {
 	r.MustRegister(Preset{
 		ID:             "safari-18",
@@ -276,7 +273,6 @@ func registerSafariPresets(r *Registry) {
 	})
 }
 
-//nolint:funlen
 func registerEdgePresets(r *Registry) {
 	r.MustRegister(Preset{
 		ID:             "edge-130",

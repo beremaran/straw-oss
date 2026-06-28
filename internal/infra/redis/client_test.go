@@ -1,4 +1,3 @@
-//nolint:errcheck
 package redis_test
 
 import (
@@ -25,7 +24,7 @@ func TestRedisIntegration(t *testing.T) {
 	if err != nil {
 		t.Skipf("Skipping integration test: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 	defer cancel()
 
 	err = client.HealthCheck(ctx)

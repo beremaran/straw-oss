@@ -1,4 +1,3 @@
-//nolint:funcorder
 package endpoint
 
 import (
@@ -142,6 +141,13 @@ func (s *HeartbeatSender) Stop() {
 	s.logger.Info("heartbeat sender stopped", "endpoint_id", s.endpointID)
 }
 
+func (s *HeartbeatSender) IsRunning() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.running
+}
+
 func (s *HeartbeatSender) run(ctx context.Context) {
 	defer close(s.done)
 
@@ -195,11 +201,4 @@ func (s *HeartbeatSender) sendHeartbeat(ctx context.Context) {
 		"endpoint_id", s.endpointID,
 		"active_tasks", msg.ActiveTasks,
 	)
-}
-
-func (s *HeartbeatSender) IsRunning() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	return s.running
 }

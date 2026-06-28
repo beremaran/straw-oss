@@ -1,4 +1,3 @@
-//nolint:errcheck
 package server
 
 import (
@@ -51,14 +50,14 @@ func TestServerHealthRoutes(t *testing.T) {
 	go func() {
 		_ = srv.server.Serve(listener)
 	}()
-	defer srv.Stop(context.Background())
+	defer func() { _ = srv.Stop(context.Background()) }()
 
 	t.Run("Healthz", func(t *testing.T) {
 		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, baseURL+"/healthz", nil)
 		require.NoError(t, err)
 		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 	})
@@ -68,7 +67,7 @@ func TestServerHealthRoutes(t *testing.T) {
 		require.NoError(t, err)
 		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 	})

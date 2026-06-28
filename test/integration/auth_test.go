@@ -1,4 +1,3 @@
-//nolint:errcheck
 package integration
 
 import (
@@ -98,7 +97,7 @@ func TestAuthenticationFlows(t *testing.T) {
 
 		db, err := sql.Open("pgx", suite.PostgresDSN())
 		require.NoError(t, err)
-		defer db.Close()
+		defer func() { _ = db.Close() }()
 
 		_, err = db.ExecContext(ctx, `
 			INSERT INTO api_keys (id, name, token_hash, scopes, is_active, created_at, expires_at)
@@ -165,10 +164,11 @@ func TestAuthenticationFlows(t *testing.T) {
 		})
 		require.NoError(t, err)
 		if resp.StatusCode != http.StatusTooManyRequests {
-			resp, _ = clientStd.SendRequest(ctx, &ProxyRequest{
+			resp, err = clientStd.SendRequest(ctx, &ProxyRequest{
 				URL:  tc.MockTarget.URL(),
 				Tags: []string{"target:rate_limit_test"},
 			})
+			require.NoError(t, err)
 		}
 		assert.Equal(t, http.StatusTooManyRequests, resp.StatusCode, "Expected standard key to be rate limited")
 
@@ -179,7 +179,7 @@ func TestAuthenticationFlows(t *testing.T) {
 
 		db, err := sql.Open("pgx", suite.PostgresDSN())
 		require.NoError(t, err)
-		defer db.Close()
+		defer func() { _ = db.Close() }()
 
 		_, err = db.ExecContext(ctx, `
 			INSERT INTO api_keys (id, name, token_hash, scopes, rate_limit_override, is_active, created_at)

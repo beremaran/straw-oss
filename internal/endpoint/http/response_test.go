@@ -1,4 +1,3 @@
-//nolint:errcheck
 package http
 
 import (
@@ -67,8 +66,8 @@ func TestBuildResponse_Basic(t *testing.T) {
 func TestBuildResponse_GzipDecompression(t *testing.T) {
 	var buf bytes.Buffer
 	gzWriter := gzip.NewWriter(&buf)
-	gzWriter.Write([]byte("Gzipped content"))
-	gzWriter.Close()
+	_, _ = gzWriter.Write([]byte("Gzipped content"))
+	_ = gzWriter.Close()
 
 	resp := &fhttp.Response{
 		StatusCode: 200,
@@ -93,8 +92,8 @@ func TestBuildResponse_GzipDecompression(t *testing.T) {
 func TestBuildResponse_BrotliDecompression(t *testing.T) {
 	var buf bytes.Buffer
 	brWriter := brotli.NewWriter(&buf)
-	brWriter.Write([]byte("Brotli content"))
-	brWriter.Close()
+	_, _ = brWriter.Write([]byte("Brotli content"))
+	_ = brWriter.Close()
 
 	resp := &fhttp.Response{
 		StatusCode: 200,

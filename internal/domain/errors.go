@@ -1,4 +1,3 @@
-//nolint:funcorder
 package domain
 
 import (
@@ -31,6 +30,24 @@ type StrawError struct {
 	Message   string
 	Retryable bool
 	HTTPCode  int
+}
+
+func NewRateLimitError(quotaKey string, retryAfterSeconds int) *StrawError {
+	return &StrawError{
+		Code:      protocol.ErrCodeRateLimitExceeded,
+		Message:   fmt.Sprintf("Rate limit exceeded for quota key '%s'", quotaKey),
+		Retryable: true,
+		HTTPCode:  http.StatusTooManyRequests,
+	}
+}
+
+func NewUpstreamError(targetStatus int, message string) *StrawError {
+	return &StrawError{
+		Code:      protocol.ErrCodeUpstreamError,
+		Message:   message,
+		Retryable: targetStatus >= 500,
+		HTTPCode:  http.StatusBadGateway,
+	}
 }
 
 func (e *StrawError) Error() string {
@@ -119,22 +136,4 @@ var ErrNoMatchingRule = &StrawError{
 	Message:   "No routing rule matches the provided tags",
 	Retryable: false,
 	HTTPCode:  http.StatusNotFound,
-}
-
-func NewRateLimitError(quotaKey string, retryAfterSeconds int) *StrawError {
-	return &StrawError{
-		Code:      protocol.ErrCodeRateLimitExceeded,
-		Message:   fmt.Sprintf("Rate limit exceeded for quota key '%s'", quotaKey),
-		Retryable: true,
-		HTTPCode:  http.StatusTooManyRequests,
-	}
-}
-
-func NewUpstreamError(targetStatus int, message string) *StrawError {
-	return &StrawError{
-		Code:      protocol.ErrCodeUpstreamError,
-		Message:   message,
-		Retryable: targetStatus >= 500,
-		HTTPCode:  http.StatusBadGateway,
-	}
 }

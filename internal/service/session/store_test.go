@@ -1,4 +1,3 @@
-//nolint:errcheck
 package session_test
 
 import (
@@ -22,7 +21,7 @@ func TestRedisStore(t *testing.T) {
 
 	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	store := session.NewRedisStore(client)
 
@@ -76,7 +75,7 @@ func TestRedisStore_SaveWithRedisError(t *testing.T) {
 
 	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	store := session.NewRedisStore(client)
 
@@ -97,7 +96,7 @@ func TestRedisStore_GetWithInvalidData(t *testing.T) {
 
 	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	store := session.NewRedisStore(client)
 
@@ -117,7 +116,7 @@ func TestRedisStore_GetWithRedisError(t *testing.T) {
 
 	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	store := session.NewRedisStore(client)
 
@@ -135,7 +134,7 @@ func TestRedisStore_DeleteWithRedisError(t *testing.T) {
 
 	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	store := session.NewRedisStore(client)
 
@@ -153,7 +152,7 @@ func TestRedisStore_TouchWithRedisError(t *testing.T) {
 
 	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	store := session.NewRedisStore(client)
 
@@ -172,7 +171,7 @@ func TestRedisStore_TouchNonExistent(t *testing.T) {
 
 	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	store := session.NewRedisStore(client)
 
@@ -188,7 +187,7 @@ func TestRedisStore_SaveAllFields(t *testing.T) {
 
 	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	store := session.NewRedisStore(client)
 
@@ -219,7 +218,7 @@ func TestRedisStore_SaveAndVerifyTTL(t *testing.T) {
 
 	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	store := session.NewRedisStore(client)
 

@@ -1,4 +1,3 @@
-//nolint:errcheck
 package router
 
 import (
@@ -114,7 +113,7 @@ func TestRuleCache_ErrorCases(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("GetRulesVersion - Redis Error", func(t *testing.T) {
-		client.Close()
+		_ = client.Close()
 
 		ver, err := cache.GetRulesVersion(ctx)
 		assert.Error(t, err)
@@ -125,7 +124,7 @@ func TestRuleCache_ErrorCases(t *testing.T) {
 	t.Run("GetRulesByVersion - Redis Error", func(t *testing.T) {
 		newClient := newTestRedis(t)
 		newCache := NewRuleCache(newClient, time.Minute)
-		newClient.Close()
+		_ = newClient.Close()
 
 		rules, err := newCache.GetRulesByVersion(ctx, 1)
 		assert.Error(t, err)
@@ -136,7 +135,7 @@ func TestRuleCache_ErrorCases(t *testing.T) {
 	t.Run("SetRulesByVersion - JSON Marshal Error", func(t *testing.T) {
 		newClient := newTestRedis(t)
 		newCache := NewRuleCache(newClient, time.Minute)
-		newClient.Close()
+		_ = newClient.Close()
 
 		rules := []domain.RoutingRule{{ID: "rule1"}}
 		err := newCache.SetRulesByVersion(ctx, 1, rules)

@@ -69,7 +69,6 @@ func NewRelayHandler(
 	return h
 }
 
-//nolint:cyclop,funlen
 func (h *RelayHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 

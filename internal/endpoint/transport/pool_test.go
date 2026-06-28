@@ -1,4 +1,3 @@
-//nolint:errcheck
 package transport
 
 import (
@@ -81,7 +80,7 @@ func TestNewPooledTransport(t *testing.T) {
 	cfg := DefaultPoolConfig()
 
 	pt := NewPooledTransport(cfg, dialer.dial)
-	defer pt.Close()
+	defer func() { _ = pt.Close() }()
 
 	if pt == nil {
 		t.Fatal("expected non-nil PooledTransport")
@@ -101,7 +100,7 @@ func TestPooledTransport_GetTransport_Reuse(t *testing.T) {
 	cfg := DefaultPoolConfig()
 
 	pt := NewPooledTransport(cfg, dialer.dial)
-	defer pt.Close()
+	defer func() { _ = pt.Close() }()
 
 	preset := fingerprint.Preset{ID: "chrome-133"}
 
@@ -124,7 +123,7 @@ func TestPooledTransport_FingerprintIsolation(t *testing.T) {
 	cfg := DefaultPoolConfig()
 
 	pt := NewPooledTransport(cfg, dialer.dial)
-	defer pt.Close()
+	defer func() { _ = pt.Close() }()
 
 	preset1 := fingerprint.Preset{ID: "chrome-133"}
 	preset2 := fingerprint.Preset{ID: "firefox-133"}
@@ -147,7 +146,7 @@ func TestPooledTransport_HostIsolation(t *testing.T) {
 	cfg := DefaultPoolConfig()
 
 	pt := NewPooledTransport(cfg, dialer.dial)
-	defer pt.Close()
+	defer func() { _ = pt.Close() }()
 
 	preset := fingerprint.Preset{ID: "chrome-133"}
 
@@ -169,7 +168,7 @@ func TestPooledTransport_LRUEviction(t *testing.T) {
 	cfg := DefaultPoolConfig().WithMaxPoolHosts(3)
 
 	pt := NewPooledTransport(cfg, dialer.dial)
-	defer pt.Close()
+	defer func() { _ = pt.Close() }()
 
 	preset := fingerprint.Preset{ID: "chrome-133"}
 
@@ -202,7 +201,7 @@ func TestPooledTransport_ConcurrentAccess(t *testing.T) {
 	cfg := DefaultPoolConfig().WithMaxPoolHosts(100)
 
 	pt := NewPooledTransport(cfg, dialer.dial)
-	defer pt.Close()
+	defer func() { _ = pt.Close() }()
 
 	const goroutines = 50
 	const iterations = 10
@@ -234,7 +233,7 @@ func TestPooledTransport_ConcurrentDifferentHosts(t *testing.T) {
 	cfg := DefaultPoolConfig().WithMaxPoolHosts(100)
 
 	pt := NewPooledTransport(cfg, dialer.dial)
-	defer pt.Close()
+	defer func() { _ = pt.Close() }()
 
 	const goroutines = 20
 
@@ -287,7 +286,7 @@ func TestPooledTransport_StaleEviction(t *testing.T) {
 		WithEvictionInterval(20 * time.Millisecond)
 
 	pt := NewPooledTransport(cfg, dialer.dial)
-	defer pt.Close()
+	defer func() { _ = pt.Close() }()
 
 	preset := fingerprint.Preset{ID: "chrome-133"}
 

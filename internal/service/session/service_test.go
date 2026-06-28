@@ -1,4 +1,3 @@
-//nolint:errcheck
 package session_test
 
 import (
@@ -22,7 +21,7 @@ func TestService_CreateSession(t *testing.T) {
 
 	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	store := session.NewRedisStore(client)
 	svc := session.NewService(store)
@@ -41,7 +40,7 @@ func TestService_GetSession(t *testing.T) {
 
 	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	store := session.NewRedisStore(client)
 	svc := session.NewService(store)
@@ -69,7 +68,7 @@ func TestService_MigrateSession(t *testing.T) {
 
 	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	store := session.NewRedisStore(client)
 	svc := session.NewService(store)
@@ -99,7 +98,7 @@ func TestService_CreateSession_StoreError(t *testing.T) {
 	require.NoError(t, err)
 	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	store := session.NewRedisStore(client)
 	svc := session.NewService(store)
@@ -116,7 +115,7 @@ func TestService_GetSession_StoreError(t *testing.T) {
 	require.NoError(t, err)
 	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	store := session.NewRedisStore(client)
 	svc := session.NewService(store)
@@ -135,7 +134,7 @@ func TestService_GetSession_NonExistent(t *testing.T) {
 
 	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	store := session.NewRedisStore(client)
 	svc := session.NewService(store)
@@ -152,7 +151,7 @@ func TestService_TouchSession(t *testing.T) {
 
 	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	store := session.NewRedisStore(client)
 	svc := session.NewService(store)
@@ -172,7 +171,7 @@ func TestService_TouchSession_StoreError(t *testing.T) {
 	require.NoError(t, err)
 	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	store := session.NewRedisStore(client)
 	svc := session.NewService(store)
@@ -193,7 +192,7 @@ func TestService_EndSession(t *testing.T) {
 
 	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	store := session.NewRedisStore(client)
 	svc := session.NewService(store)
@@ -213,7 +212,7 @@ func TestService_EndSession_StoreError(t *testing.T) {
 	require.NoError(t, err)
 	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	store := session.NewRedisStore(client)
 	svc := session.NewService(store)
@@ -234,7 +233,7 @@ func TestService_MigrateSession_NonExistent(t *testing.T) {
 
 	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	store := session.NewRedisStore(client)
 	svc := session.NewService(store)
@@ -249,7 +248,7 @@ func TestService_MigrateSession_StoreSaveError(t *testing.T) {
 	require.NoError(t, err)
 	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	store := session.NewRedisStore(client)
 	svc := session.NewService(store)
@@ -270,7 +269,7 @@ func TestService_CreateSession_WithTags(t *testing.T) {
 
 	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
 	require.NoError(t, err)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	store := session.NewRedisStore(client)
 	svc := session.NewService(store)

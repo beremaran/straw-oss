@@ -1,4 +1,3 @@
-//nolint:errcheck
 package endpoint
 
 import (
@@ -597,7 +596,10 @@ func TestHealthService_IsRunning(t *testing.T) {
 			name: "running after start",
 			setup: func(s *HealthService) {
 				ctx := context.Background()
-				s.Start(ctx)
+				err := s.Start(ctx)
+				if err != nil {
+					t.Fatal(err)
+				}
 			},
 			expected: true,
 		},
@@ -605,7 +607,10 @@ func TestHealthService_IsRunning(t *testing.T) {
 			name: "not running after stop",
 			setup: func(s *HealthService) {
 				ctx := context.Background()
-				s.Start(ctx)
+				err := s.Start(ctx)
+				if err != nil {
+					t.Fatal(err)
+				}
 				s.Stop()
 			},
 			expected: false,

@@ -36,7 +36,6 @@ func (s *SimpleEndpointSelector) SelectWithSession(ctx context.Context, sessionI
 	return "", ErrSelectWithSessionNotImplemented
 }
 
-//nolint:cyclop,funlen
 func (s *SimpleEndpointSelector) GetEndpointFromPool(ctx context.Context, rule *domain.RoutingRule, poolTier int, exclude []string) (string, error) {
 	poolConfig := s.GetPoolConfig(rule, poolTier)
 	var requiredTags []string

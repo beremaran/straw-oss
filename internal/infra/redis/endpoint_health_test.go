@@ -1,4 +1,3 @@
-//nolint:errcheck
 package redis
 
 import (
@@ -311,7 +310,7 @@ func setupTestRedis(t *testing.T) (*Client, func()) {
 		if len(keys) > 0 {
 			client.Client.Del(ctx, keys...)
 		}
-		client.Close()
+		_ = client.Close()
 	}
 
 	ctx := context.Background()

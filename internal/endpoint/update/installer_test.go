@@ -1,4 +1,3 @@
-//nolint:errcheck
 package update
 
 import (
@@ -61,7 +60,7 @@ func TestInstaller_DownloadAndVerify_Success(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write(binaryContent)
+		_, _ = w.Write(binaryContent)
 	}))
 	defer server.Close()
 
@@ -77,7 +76,7 @@ func TestInstaller_DownloadAndVerify_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	defer os.Remove(tmpPath)
+	defer func() { _ = os.Remove(tmpPath) }()
 
 	content, err := os.ReadFile(tmpPath)
 	if err != nil {
@@ -103,7 +102,7 @@ func TestInstaller_DownloadAndVerify_BadChecksum(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write(binaryContent)
+		_, _ = w.Write(binaryContent)
 	}))
 	defer server.Close()
 
@@ -177,7 +176,7 @@ func TestInstaller_DownloadAndVerify_ProgressCallback(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(binaryContent)))
 		w.WriteHeader(http.StatusOK)
-		w.Write(binaryContent)
+		_, _ = w.Write(binaryContent)
 	}))
 	defer server.Close()
 
@@ -201,7 +200,7 @@ func TestInstaller_DownloadAndVerify_ProgressCallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	defer os.Remove(tmpPath)
+	defer func() { _ = os.Remove(tmpPath) }()
 
 	if progressCalls == 0 {
 		t.Error("expected progress callback to be called")
@@ -222,7 +221,7 @@ func TestInstaller_DownloadAndVerify_LargeFile(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write(binaryContent)
+		_, _ = w.Write(binaryContent)
 	}))
 	defer server.Close()
 
@@ -238,7 +237,7 @@ func TestInstaller_DownloadAndVerify_LargeFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	defer os.Remove(tmpPath)
+	defer func() { _ = os.Remove(tmpPath) }()
 
 	info, err := os.Stat(tmpPath)
 	if err != nil {
@@ -255,7 +254,7 @@ func TestInstaller_AtomicReplace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	srcPath := filepath.Join(tmpDir, "source")
 	srcContent := []byte("new binary content")
@@ -346,7 +345,7 @@ func TestInstaller_Install(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write(newContent)
+		_, _ = w.Write(newContent)
 	}))
 	defer server.Close()
 

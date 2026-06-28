@@ -1,4 +1,3 @@
-//nolint:funcorder
 package http
 
 import (
@@ -105,38 +104,6 @@ func mapPresetToProfile(presetID string) (profiles.ClientProfile, bool) {
 	return profile, true
 }
 
-func (c *Client) getTLSClient(presetID string, timeout time.Duration, dialContext func(ctx context.Context, network, addr string) (net.Conn, error)) (tls_client.HttpClient, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	key := fmt.Sprintf("%s_%s_%p", presetID, timeout, dialContext)
-	if client, ok := c.tlsClients[key]; ok {
-		return client, nil
-	}
-
-	profile, _ := mapPresetToProfile(presetID)
-
-	options := []tls_client.HttpClientOption{
-		tls_client.WithClientProfile(profile),
-		tls_client.WithTimeoutSeconds(int(timeout.Seconds())),
-		tls_client.WithCookieJar(&dummyCookieJar{}),
-	}
-
-	if dialContext != nil {
-		options = append(options, tls_client.WithDialContext(dialContext))
-	}
-
-	client, err := tls_client.NewHttpClient(tls_client.NewNoopLogger(), options...)
-	if err != nil {
-		return nil, err
-	}
-
-	c.tlsClients[key] = client
-
-	return client, nil
-}
-
-//nolint:cyclop,funlen
 func (c *Client) Do(ctx context.Context, req *protocol.Request) (*protocol.Response, error) {
 	ctx, span := otel.Tracer("internal/endpoint/http").Start(ctx, "upstream.request")
 	defer span.End()
@@ -259,14 +226,6 @@ func (c *Client) Do(ctx context.Context, req *protocol.Request) (*protocol.Respo
 	return protocolResp, err
 }
 
-func (c *Client) getTimeout(req *protocol.Request) time.Duration {
-	if req.Timeout > 0 {
-		return req.Timeout
-	}
-
-	return c.defaultTimeout
-}
-
 func isRetryableError(err error) bool {
 	if err == nil {
 		return false
@@ -298,6 +257,45 @@ func (c *Client) Close() error {
 	c.tlsClients = make(map[string]tls_client.HttpClient)
 
 	return nil
+}
+
+func (c *Client) getTLSClient(presetID string, timeout time.Duration, dialContext func(ctx context.Context, network, addr string) (net.Conn, error)) (tls_client.HttpClient, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	key := fmt.Sprintf("%s_%s_%p", presetID, timeout, dialContext)
+	if client, ok := c.tlsClients[key]; ok {
+		return client, nil
+	}
+
+	profile, _ := mapPresetToProfile(presetID)
+
+	options := []tls_client.HttpClientOption{
+		tls_client.WithClientProfile(profile),
+		tls_client.WithTimeoutSeconds(int(timeout.Seconds())),
+		tls_client.WithCookieJar(&dummyCookieJar{}),
+	}
+
+	if dialContext != nil {
+		options = append(options, tls_client.WithDialContext(dialContext))
+	}
+
+	client, err := tls_client.NewHttpClient(tls_client.NewNoopLogger(), options...)
+	if err != nil {
+		return nil, err
+	}
+
+	c.tlsClients[key] = client
+
+	return client, nil
+}
+
+func (c *Client) getTimeout(req *protocol.Request) time.Duration {
+	if req.Timeout > 0 {
+		return req.Timeout
+	}
+
+	return c.defaultTimeout
 }
 
 func NewRequest(method, url string, body []byte) *protocol.Request {

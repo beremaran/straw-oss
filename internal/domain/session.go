@@ -1,4 +1,3 @@
-//nolint:funcorder
 package domain
 
 import "time"
@@ -25,6 +24,21 @@ const DefaultSessionTTL = 10 * time.Minute
 
 const MaxMigrationCount = 3
 
+func NewSession(id, endpointID, ruleID string, tags []string) *Session {
+	now := time.Now()
+
+	return &Session{
+		ID:             id,
+		EndpointID:     endpointID,
+		Tags:           tags,
+		RuleID:         ruleID,
+		MigrationCount: 0,
+		CreatedAt:      now,
+		LastUsedAt:     now,
+		RequestCount:   0,
+	}
+}
+
 func (s *Session) IsExpired(ttl time.Duration) bool {
 	return time.Since(s.LastUsedAt) > ttl
 }
@@ -47,19 +61,4 @@ func (s *Session) Migrate(newEndpointID string) bool {
 	s.LastUsedAt = time.Now()
 
 	return true
-}
-
-func NewSession(id, endpointID, ruleID string, tags []string) *Session {
-	now := time.Now()
-
-	return &Session{
-		ID:             id,
-		EndpointID:     endpointID,
-		Tags:           tags,
-		RuleID:         ruleID,
-		MigrationCount: 0,
-		CreatedAt:      now,
-		LastUsedAt:     now,
-		RequestCount:   0,
-	}
 }

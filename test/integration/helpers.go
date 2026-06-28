@@ -1,4 +1,3 @@
-//nolint:errcheck
 package integration
 
 import (
@@ -83,7 +82,7 @@ func CleanDatabase(ctx context.Context, dsn string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open database for cleanup: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	tables := []string{
 		"usage_daily_summary",
@@ -145,7 +144,7 @@ func CreateTestAPIKey(ctx context.Context, dsn string, name string, scopes []str
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	id := uuid.New().String()
 
@@ -188,7 +187,6 @@ type TestEndpointPool struct {
 	MaxRetries int
 }
 
-//nolint:cyclop,funlen
 func CreateTestRoutingRule(
 	ctx context.Context,
 	dsn string,
@@ -206,7 +204,7 @@ func CreateTestRoutingRule(
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	id := uuid.New().String()
 	if name == "" {
@@ -290,7 +288,7 @@ func CreateTestEndpoint(ctx context.Context, dsn string, endpoint *TestEndpoint)
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if endpoint.ID == "" {
 		endpoint.ID = fmt.Sprintf("endpoint_%d", time.Now().UnixNano())
@@ -352,7 +350,6 @@ type ProxyResponse struct {
 	Body       []byte
 }
 
-//nolint:cyclop
 func (c *HTTPTestClient) SendRequest(ctx context.Context, req *ProxyRequest) (*ProxyResponse, error) {
 	if req.Method == "" {
 		req.Method = "GET"
@@ -399,7 +396,7 @@ func (c *HTTPTestClient) SendRequest(ctx context.Context, req *ProxyRequest) (*P
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -420,7 +417,7 @@ func NewTestRedisClient(t testing.TB, ctx context.Context, addr string) *redis.C
 	client, err := redis.NewClient(ctx, cfg, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		client.Close()
+		_ = client.Close()
 	})
 
 	return client
@@ -449,7 +446,7 @@ func NewTestRuleRepo(t testing.TB, dsn string) domain.RoutingRuleRepository {
 func ExecuteSQL(t testing.TB, ctx context.Context, dsn string, query string, args ...interface{}) {
 	db, err := sql.Open("pgx", dsn)
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	_, err = db.ExecContext(ctx, query, args...)
 	require.NoError(t, err)
