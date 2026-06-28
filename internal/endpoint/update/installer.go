@@ -195,7 +195,7 @@ func (i *Installer) atomicReplace(srcPath, dstPath string) error {
 			return fmt.Errorf("%w: failed to backup current binary: %w", ErrInstallFailed, err)
 		}
 
-		err = os.Rename(srcPath, dstPath)
+		err := os.Rename(srcPath, dstPath)
 		if err != nil {
 			_ = os.Rename(oldPath, dstPath)
 

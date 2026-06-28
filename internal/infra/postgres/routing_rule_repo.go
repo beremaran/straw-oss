@@ -81,7 +81,7 @@ func (r *RoutingRuleRepository) GetActiveRules(ctx context.Context) ([]domain.Ro
 		}
 
 		var rule domain.RoutingRule
-		err = json.Unmarshal(configJSON, &rule)
+		err := json.Unmarshal(configJSON, &rule)
 		if err != nil {
 			return nil, fmt.Errorf("failed to unmarshal routing rule config for ruled %s: %w", id, err)
 		}
@@ -95,14 +95,14 @@ func (r *RoutingRuleRepository) GetActiveRules(ctx context.Context) ([]domain.Ro
 		rule.UpdatedAt = updatedAt
 
 		var reqTags []string
-		err = json.Unmarshal(reqTagsJSON, &reqTags)
+		err := json.Unmarshal(reqTagsJSON, &reqTags)
 		if err != nil {
 			return nil, fmt.Errorf("failed to unmarshal required tags for rule %s: %w", id, err)
 		}
 		rule.RequiredTags = reqTags
 
 		var exclTags []string
-		err = json.Unmarshal(exclTagsJSON, &exclTags)
+		err := json.Unmarshal(exclTagsJSON, &exclTags)
 		if err != nil {
 			return nil, fmt.Errorf("failed to unmarshal excluded tags for rule %s: %w", id, err)
 		}
@@ -417,7 +417,7 @@ func (r *RoutingRuleRepository) ListRules(ctx context.Context, limit, offset int
 		}
 
 		var rule domain.RoutingRule
-		err = json.Unmarshal(configJSON, &rule)
+		err := json.Unmarshal(configJSON, &rule)
 		if err != nil {
 			return nil, 0, fmt.Errorf("failed to unmarshal routing rule config for ruled %s: %w", id, err)
 		}
