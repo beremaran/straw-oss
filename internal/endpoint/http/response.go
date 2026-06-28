@@ -114,37 +114,41 @@ func readResponseBody(resp *fhttp.Response, maxSize int64) ([]byte, error) {
 
 	switch contentEncoding {
 	case "gzip":
-		return decompressGzip(rawBody)
+
+		if len(rawBody) >= 2 && rawBody[0] == 0x1f && rawBody[1] == 0x8b {
+			gzReader, err := gzip.NewReader(bytes.NewReader(rawBody))
+			if err != nil {
+				return rawBody, nil
+			}
+			defer func() { _ = gzReader.Close() }()
+			decompressed, err := io.ReadAll(gzReader)
+			if err != nil {
+				return rawBody, nil
+			}
+
+			return decompressed, nil
+		}
+
+		return rawBody, nil
+
 	case "br":
-		return decompressBrotli(rawBody)
-	default:
-		return rawBody, nil
-	}
-}
 
-func decompressGzip(rawBody []byte) ([]byte, error) {
-	if len(rawBody) >= 2 && rawBody[0] == 0x1f && rawBody[1] == 0x8b {
-		gzReader, err := gzip.NewReader(bytes.NewReader(rawBody))
+		brReader := brotli.NewReader(bytes.NewReader(rawBody))
+		decompressed, err := io.ReadAll(brReader)
 		if err != nil {
 			return rawBody, nil
 		}
-		defer func() { _ = gzReader.Close() }()
-		decompressed, err := io.ReadAll(gzReader)
-		if err != nil {
-			return rawBody, nil
-		}
+
 		return decompressed, nil
-	}
-	return rawBody, nil
-}
 
-func decompressBrotli(rawBody []byte) ([]byte, error) {
-	brReader := brotli.NewReader(bytes.NewReader(rawBody))
-	decompressed, err := io.ReadAll(brReader)
-	if err != nil {
+	case "identity", "":
+
+		return rawBody, nil
+
+	default:
+
 		return rawBody, nil
 	}
-	return decompressed, nil
 }
 
 func IsSuccessStatus(statusCode int) bool {
