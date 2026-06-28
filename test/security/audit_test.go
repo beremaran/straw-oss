@@ -19,7 +19,6 @@ import (
 )
 
 func TestSecurity_SSRFProtection(t *testing.T) {
-
 	reqJSON := `{"url": "http://127.0.0.1:8080/admin", "method": "GET"}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/request", strings.NewReader(reqJSON))
 	req.Header.Set("Content-Type", "application/json")
@@ -35,7 +34,6 @@ func TestSecurity_SSRFProtection(t *testing.T) {
 }
 
 func TestSecurity_BodyLimit(t *testing.T) {
-
 	cfg := config.ServerConfig{}
 	cfg.MaxBodySize = "10B"
 	cfg.HTTPPort = 0

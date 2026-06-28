@@ -93,6 +93,7 @@ func (c *Checker) Start(ctx context.Context) {
 
 	if c.running {
 		c.logger.Warn("update checker already running")
+
 		return
 	}
 
@@ -113,6 +114,7 @@ func (c *Checker) Stop() {
 	c.mu.Lock()
 	if !c.running {
 		c.mu.Unlock()
+
 		return
 	}
 	cancel := c.cancel
@@ -155,6 +157,7 @@ func (c *Checker) CheckNow(ctx context.Context) (*Result, error) {
 func (c *Checker) IsRunning() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	return c.running
 }
 
@@ -187,6 +190,7 @@ func (c *Checker) performCheck(ctx context.Context) {
 	result, err := c.CheckNow(ctx)
 	if err != nil {
 		c.logger.Error("update check failed", "error", err)
+
 		return
 	}
 
@@ -195,6 +199,7 @@ func (c *Checker) performCheck(ctx context.Context) {
 			"current_version", result.CurrentVersion,
 			"latest_version", result.NewVersion,
 		)
+
 		return
 	}
 
@@ -206,7 +211,6 @@ func (c *Checker) performCheck(ctx context.Context) {
 
 	if c.callback != nil && c.callback(result) {
 		c.logger.Info("update approved by callback, proceeding with installation")
-
 	}
 }
 
@@ -259,5 +263,6 @@ func normalizeVersion(version string) string {
 	if version[0] != 'v' {
 		return "v" + version
 	}
+
 	return version
 }

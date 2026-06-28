@@ -17,7 +17,6 @@ import (
 )
 
 func TestTracingMiddleware(t *testing.T) {
-
 	exporter := tracetest.NewInMemoryExporter()
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithSyncer(exporter),
@@ -89,6 +88,7 @@ func TestTracingMiddleware(t *testing.T) {
 			if s.Name == "http.request" {
 				serverSpan = s
 				found = true
+
 				break
 			}
 		}

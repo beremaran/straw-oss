@@ -13,16 +13,17 @@ const DefaultMaxTaskAge = 60 * time.Second
 func Sign(data []byte, secret []byte) string {
 	h := hmac.New(sha256.New, secret)
 	h.Write(data)
+
 	return hex.EncodeToString(h.Sum(nil))
 }
 
 func Verify(data []byte, signature string, secret []byte) bool {
 	expected := Sign(data, secret)
+
 	return hmac.Equal([]byte(expected), []byte(signature))
 }
 
 func NewSignedTask(req *Request, secret []byte) (*SignedTask, error) {
-
 	payload, err := MarshalCompressed(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
@@ -66,7 +67,8 @@ func ValidateSignedTask(task *SignedTask, secret []byte, maxAge time.Duration) (
 	}
 
 	var req Request
-	if err := UnmarshalCompressed(task.Payload, &req); err != nil {
+	err := UnmarshalCompressed(task.Payload, &req)
+	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal request: %w", err)
 	}
 

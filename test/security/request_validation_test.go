@@ -23,7 +23,6 @@ import (
 )
 
 func TestRequestValidation_SecurityScenarios(t *testing.T) {
-
 	s := integration.GetSuite(t)
 	s.CleanupForTest(t)
 
@@ -67,11 +66,11 @@ func TestRequestValidation_SecurityScenarios(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 		srv.GetHandler().ServeHTTP(rec, req)
+
 		return rec
 	}
 
 	t.Run("OversizedRequest_Rejection", func(t *testing.T) {
-
 		largeBody := `{"url": "http://example.com", "body": "` + strings.Repeat("a", 2*1024*1024+10) + `"}`
 
 		rec := sendRequest("POST", "/v1/request", largeBody)
@@ -80,7 +79,6 @@ func TestRequestValidation_SecurityScenarios(t *testing.T) {
 	})
 
 	t.Run("InternalIP_Blocking_SSRF", func(t *testing.T) {
-
 		targets := []string{
 			"http://localhost:8080",
 			"http://127.0.0.1:22",
@@ -92,7 +90,6 @@ func TestRequestValidation_SecurityScenarios(t *testing.T) {
 
 		for _, target := range targets {
 			t.Run("Target_"+target, func(t *testing.T) {
-
 				body := `{"url": "` + target + `", "method": "GET"}`
 				rec := sendRequest("POST", "/v1/request", body)
 

@@ -99,6 +99,7 @@ func (s *HeartbeatSender) Start(ctx context.Context) {
 
 	if s.running {
 		s.logger.Warn("heartbeat sender already running", "endpoint_id", s.endpointID)
+
 		return
 	}
 
@@ -118,6 +119,7 @@ func (s *HeartbeatSender) Stop() {
 	s.mu.Lock()
 	if !s.running {
 		s.mu.Unlock()
+
 		return
 	}
 	cancel := s.cancel
@@ -172,6 +174,7 @@ func (s *HeartbeatSender) sendHeartbeat(ctx context.Context) {
 			"endpoint_id", s.endpointID,
 			"error", err,
 		)
+
 		return
 	}
 
@@ -180,6 +183,7 @@ func (s *HeartbeatSender) sendHeartbeat(ctx context.Context) {
 			"endpoint_id", s.endpointID,
 			"error", err,
 		)
+
 		return
 	}
 
@@ -194,5 +198,6 @@ func (s *HeartbeatSender) sendHeartbeat(ctx context.Context) {
 func (s *HeartbeatSender) IsRunning() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	return s.running
 }

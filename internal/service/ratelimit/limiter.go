@@ -52,6 +52,7 @@ func (l *RateLimiter) Allow(ctx context.Context, quotaKey string, limitPerSecond
 			if reset < 0 {
 				reset = 0
 			}
+
 			return false, Result{
 				Allowed:   false,
 				Limit:     limitPerSecond,
@@ -87,6 +88,7 @@ func (l *RateLimiter) Allow(ctx context.Context, quotaKey string, limitPerSecond
 			if reset < 0 {
 				reset = 0
 			}
+
 			return false, Result{
 				Allowed:   false,
 				Limit:     limitPerMinute,

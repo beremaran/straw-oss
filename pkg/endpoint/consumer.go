@@ -151,6 +151,7 @@ func (c *Consumer) Start(ctx context.Context) error {
 	c.wg.Wait()
 
 	c.logger.Info("consumer stopped", "endpoint_id", c.endpointID)
+
 	return nil
 }
 
@@ -175,7 +176,8 @@ func (c *Consumer) handleMessage(ctx context.Context, body []byte) error {
 		defer c.wg.Done()
 		defer func() { <-c.semaphore }()
 
-		if err := c.processTask(ctx, body); err != nil {
+		err := c.processTask(ctx, body)
+		if err != nil {
 			c.logger.Error("failed to process task",
 				"error", err,
 				"endpoint_id", c.endpointID,
@@ -196,6 +198,7 @@ func (c *Consumer) processTask(ctx context.Context, body []byte) error {
 			"error", err,
 			"body_len", len(body),
 		)
+
 		return &TaskError{
 			Code:    protocol.ErrCodeInternalError,
 			Message: "failed to unmarshal signed task: " + err.Error(),
@@ -215,6 +218,7 @@ func (c *Consumer) processTask(ctx context.Context, body []byte) error {
 				Message: valErr.Message,
 			}
 		}
+
 		return &TaskError{
 			Code:    protocol.ErrCodeInternalError,
 			Message: "task validation failed: " + err.Error(),
@@ -287,11 +291,13 @@ func (c *Consumer) processTask(ctx context.Context, body []byte) error {
 	}
 
 	if c.resultHandler != nil {
-		if err := c.resultHandler(ctx, resp, req.ReplyTo); err != nil {
+		err := c.resultHandler(ctx, resp, req.ReplyTo)
+		if err != nil {
 			c.logger.Error("failed to publish result",
 				"request_id", req.ID,
 				"error", err,
 			)
+
 			return err
 		}
 	}

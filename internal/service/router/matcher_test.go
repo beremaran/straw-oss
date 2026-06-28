@@ -280,5 +280,6 @@ func redisClientFromAddr(addr string) *redis.Client {
 	rdb := redis.NewClient(&redis.Options{
 		Addr: addr,
 	})
+
 	return rdb
 }

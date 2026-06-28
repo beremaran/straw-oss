@@ -141,7 +141,6 @@ func TestConcurrencyLimiterWithBlock(t *testing.T) {
 		case <-secondDone:
 			t.Fatal("second request should be blocked")
 		case <-time.After(50 * time.Millisecond):
-
 		}
 
 		close(releaseCh)

@@ -19,6 +19,7 @@ type mockHealthStore struct {
 
 func (m *mockHealthStore) UpdateHealth(ctx context.Context, health *redis.EndpointHealth) error {
 	m.endpoints[health.EndpointID] = health
+
 	return nil
 }
 
@@ -26,6 +27,7 @@ func (m *mockHealthStore) GetHealth(ctx context.Context, endpointID string) (*re
 	if h, ok := m.endpoints[endpointID]; ok {
 		return h, nil
 	}
+
 	return nil, redis.ErrCacheMiss
 }
 
@@ -38,11 +40,13 @@ func (m *mockHealthStore) ListAllEndpoints(ctx context.Context) ([]*redis.Endpoi
 	for _, h := range m.endpoints {
 		list = append(list, h)
 	}
+
 	return list, nil
 }
 
 func (m *mockHealthStore) DeleteHealth(ctx context.Context, endpointID string) error {
 	delete(m.endpoints, endpointID)
+
 	return nil
 }
 
@@ -52,6 +56,7 @@ func (m *mockHealthStore) SetDraining(ctx context.Context, endpointID string, dr
 	} else {
 		delete(m.draining, endpointID)
 	}
+
 	return nil
 }
 
@@ -60,7 +65,6 @@ func (m *mockHealthStore) IsDraining(ctx context.Context, endpointID string) (bo
 }
 
 func TestEndpointHandler_List(t *testing.T) {
-
 	store := &mockHealthStore{
 		endpoints: map[string]*redis.EndpointHealth{
 			"ep1": {EndpointID: "ep1", State: "healthy"},
@@ -85,7 +89,6 @@ func TestEndpointHandler_List(t *testing.T) {
 }
 
 func TestEndpointHandler_Drain(t *testing.T) {
-
 	store := &mockHealthStore{
 		endpoints: map[string]*redis.EndpointHealth{
 			"ep1": {EndpointID: "ep1", State: "healthy"},

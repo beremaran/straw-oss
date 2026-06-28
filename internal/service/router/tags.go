@@ -41,7 +41,6 @@ func (p *TagParser) ParseTags(r *http.Request, apiKey *domain.ApiKey) (*ParseRes
 	}
 
 	if headerVal := r.Header.Get(HeaderRelayTags); headerVal != "" {
-
 		tags, err := domain.ParseTags(headerVal)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse %s: %w", HeaderRelayTags, err)
@@ -67,10 +66,8 @@ func (p *TagParser) ParseTags(r *http.Request, apiKey *domain.ApiKey) (*ParseRes
 	}
 
 	if apiKey != nil && len(apiKey.Scopes) > 0 {
-
 		scopes, err := domain.StringsToTags(apiKey.Scopes)
 		if err != nil {
-
 			return nil, fmt.Errorf("invalid api key scopes: %w", err)
 		}
 		for _, t := range scopes {

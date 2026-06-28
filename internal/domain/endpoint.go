@@ -51,6 +51,7 @@ func (e *Endpoint) HasTag(tag string) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -60,11 +61,13 @@ func (e *Endpoint) MatchesTags(requiredTags []string) bool {
 			return false
 		}
 	}
+
 	return true
 }
 
 func NewEndpoint(id string, tags []string) *Endpoint {
 	now := time.Now()
+
 	return &Endpoint{
 		ID:            id,
 		Tags:          tags,

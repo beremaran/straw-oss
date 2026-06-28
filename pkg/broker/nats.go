@@ -40,6 +40,7 @@ func NewNatsBroker(opts ...Option) *NatsBroker {
 		bindings: make(map[string][]string),
 		opts:     opts,
 	}
+
 	return b
 }
 
@@ -77,6 +78,7 @@ func (b *NatsBroker) Close() error {
 	if b.conn != nil {
 		b.conn.Close()
 	}
+
 	return nil
 }
 
@@ -93,6 +95,7 @@ func (b *NatsBroker) Publish(ctx context.Context, exchange, routingKey string, b
 	if err != nil {
 		return fmt.Errorf("failed to publish to %s: %w", subject, err)
 	}
+
 	return nil
 }
 
@@ -136,7 +139,8 @@ func (b *NatsBroker) Subscribe(ctx context.Context, queue string, handler Handle
 		}
 
 		cc, err := cons.Consume(func(msg jetstream.Msg) {
-			if err := handler(ctx, msg.Data()); err != nil {
+			err := handler(ctx, msg.Data())
+			if err != nil {
 				_ = msg.Nak()
 			} else {
 				_ = msg.Ack()
@@ -151,6 +155,7 @@ func (b *NatsBroker) Subscribe(ctx context.Context, queue string, handler Handle
 			cc.Stop()
 		}()
 	}
+
 	return nil
 }
 
@@ -163,6 +168,7 @@ func (b *NatsBroker) findStreamForSubject(ctx context.Context, subject string) s
 			}
 		}
 	}
+
 	return ""
 }
 
@@ -201,7 +207,8 @@ func subjectMatchesPattern(pattern, subject string) bool {
 
 func (b *NatsBroker) SubscribeTemporary(ctx context.Context, queue string, handler Handler) error {
 	sub, err := b.conn.QueueSubscribe(queue, queue, func(msg *nats.Msg) {
-		if err := handler(ctx, msg.Data); err != nil {
+		err := handler(ctx, msg.Data)
+		if err != nil {
 			// error log or handling
 		}
 	})
@@ -225,6 +232,7 @@ func (b *NatsBroker) DeclareExchange(ctx context.Context, name, kind string) err
 	if err != nil {
 		return fmt.Errorf("failed to create stream %s: %w", name, err)
 	}
+
 	return nil
 }
 
@@ -234,6 +242,7 @@ func (b *NatsBroker) DeclareQueue(ctx context.Context, name string) error {
 		b.bindings[name] = []string{}
 	}
 	b.mu.Unlock()
+
 	return nil
 }
 
@@ -249,6 +258,7 @@ func (b *NatsBroker) BindQueue(ctx context.Context, queue, exchange, routingKey 
 	b.mu.Lock()
 	b.bindings[queue] = append(b.bindings[queue], subject)
 	b.mu.Unlock()
+
 	return nil
 }
 
@@ -270,7 +280,9 @@ func (b *NatsBroker) ConsumeOnce(ctx context.Context, queue string, timeout time
 		if errors.Is(err, nats.ErrTimeout) {
 			return nil, ErrTimeout
 		}
+
 		return nil, err
 	}
+
 	return msg.Data, nil
 }

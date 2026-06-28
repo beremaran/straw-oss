@@ -279,7 +279,8 @@ func TestHeaderMap_UnmarshalJSON_ObjectFormat(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var headers HeaderMap
-			if err := json.Unmarshal([]byte(tt.json), &headers); err != nil {
+			err := json.Unmarshal([]byte(tt.json), &headers)
+			if err != nil {
 				t.Fatalf("unmarshal failed: %v", err)
 			}
 
@@ -290,6 +291,7 @@ func TestHeaderMap_UnmarshalJSON_ObjectFormat(t *testing.T) {
 			for i, h := range tt.expected {
 				if i >= len(headers) {
 					t.Errorf("missing header at index %d", i)
+
 					continue
 				}
 				if headers[i].Key != h.Key {
@@ -311,7 +313,8 @@ func TestHeaderMap_UnmarshalJSON_ArrayFormat(t *testing.T) {
 	}
 
 	var headers HeaderMap
-	if err := json.Unmarshal([]byte(jsonData), &headers); err != nil {
+	err := json.Unmarshal([]byte(jsonData), &headers)
+	if err != nil {
 		t.Fatalf("unmarshal failed: %v", err)
 	}
 
@@ -327,11 +330,11 @@ func TestHeaderMap_UnmarshalJSON_ArrayFormat(t *testing.T) {
 }
 
 func TestHeaderMap_UnmarshalJSON_PreservesOrder(t *testing.T) {
-
 	jsonData := `{"First": "1", "Second": "2", "Third": "3", "Fourth": "4"}`
 
 	var headers HeaderMap
-	if err := json.Unmarshal([]byte(jsonData), &headers); err != nil {
+	err := json.Unmarshal([]byte(jsonData), &headers)
+	if err != nil {
 		t.Fatalf("unmarshal failed: %v", err)
 	}
 
@@ -344,7 +347,6 @@ func TestHeaderMap_UnmarshalJSON_PreservesOrder(t *testing.T) {
 }
 
 func TestRequest_UnmarshalJSON_LoadTestFormat(t *testing.T) {
-
 	jsonData := `{
 		"url": "http://example.com",
 		"method": "GET",
@@ -355,7 +357,8 @@ func TestRequest_UnmarshalJSON_LoadTestFormat(t *testing.T) {
 	}`
 
 	var req Request
-	if err := json.Unmarshal([]byte(jsonData), &req); err != nil {
+	err := json.Unmarshal([]byte(jsonData), &req)
+	if err != nil {
 		t.Fatalf("unmarshal failed: %v", err)
 	}
 

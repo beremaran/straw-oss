@@ -41,7 +41,7 @@ func TestBuildResponse_Basic(t *testing.T) {
 		t.Errorf("expected request ID req-123, got %s", protoResp.RequestID)
 	}
 
-	if protoResp.StatusCode != 200 {
+	if protoResp.StatusCode != http.StatusOK {
 		t.Errorf("expected status 200, got %d", protoResp.StatusCode)
 	}
 
@@ -63,7 +63,6 @@ func TestBuildResponse_Basic(t *testing.T) {
 }
 
 func TestBuildResponse_GzipDecompression(t *testing.T) {
-
 	var buf bytes.Buffer
 	gzWriter := gzip.NewWriter(&buf)
 	gzWriter.Write([]byte("Gzipped content"))
@@ -90,7 +89,6 @@ func TestBuildResponse_GzipDecompression(t *testing.T) {
 }
 
 func TestBuildResponse_BrotliDecompression(t *testing.T) {
-
 	var buf bytes.Buffer
 	brWriter := brotli.NewWriter(&buf)
 	brWriter.Write([]byte("Brotli content"))
@@ -178,7 +176,6 @@ func TestBuildResponse_NilBody(t *testing.T) {
 }
 
 func TestBuildResponse_LargeBody(t *testing.T) {
-
 	maxSize := int64(100)
 	largeBody := bytes.Repeat([]byte("x"), 200)
 
@@ -385,7 +382,7 @@ func TestBuildResponseWithOptions_StreamingResponse(t *testing.T) {
 		t.Error("expected body to be nil for streaming response")
 	}
 
-	if protoResp.StatusCode != 200 {
+	if protoResp.StatusCode != http.StatusOK {
 		t.Errorf("expected status 200, got %d", protoResp.StatusCode)
 	}
 
@@ -433,7 +430,6 @@ func TestBuildResponseWithOptions_BufferedResponse(t *testing.T) {
 }
 
 func TestBuildResponseWithOptions_CustomMaxBodySize(t *testing.T) {
-
 	customMaxSize := int64(10)
 	largeBody := bytes.Repeat([]byte("x"), 50)
 

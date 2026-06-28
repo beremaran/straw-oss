@@ -20,6 +20,7 @@ type MockExecer struct {
 
 func (m *MockExecer) Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error) {
 	args := m.Called(ctx, sql, arguments)
+
 	return args.Get(0).(pgconn.CommandTag), args.Error(1)
 }
 

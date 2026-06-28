@@ -57,21 +57,25 @@ func (s *RedisStore) Get(ctx context.Context, id string) (*domain.Session, error
 
 func (s *RedisStore) Delete(ctx context.Context, id string) error {
 	key := s.key(id)
-	if err := s.client.Client.Del(ctx, key).Err(); err != nil {
+	err := s.client.Client.Del(ctx, key).Err()
+	if err != nil {
 		return fmt.Errorf("failed to delete session from redis: %w", err)
 	}
+
 	return nil
 }
 
 func (s *RedisStore) Touch(ctx context.Context, id string, ttl time.Duration) error {
 	key := s.key(id)
 	cmd := s.client.Client.Expire(ctx, key, ttl)
-	if err := cmd.Err(); err != nil {
+	err := cmd.Err()
+	if err != nil {
 		return fmt.Errorf("failed to extend session ttl: %w", err)
 	}
 	if !cmd.Val() {
 		return domain.ErrSessionExpired
 	}
+
 	return nil
 }
 

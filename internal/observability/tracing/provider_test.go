@@ -10,7 +10,6 @@ import (
 )
 
 func TestInitTracerProvider(t *testing.T) {
-
 	originalProvider := otel.GetTracerProvider()
 	defer otel.SetTracerProvider(originalProvider)
 

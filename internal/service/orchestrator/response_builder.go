@@ -44,10 +44,8 @@ type RelayMetadata struct {
 }
 
 func (b *ResponseBuilder) WriteResponse(w http.ResponseWriter, result *ResultMessage, meta *RelayMetadata) error {
-
 	statusCode := result.StatusCode
 	if statusCode == 0 {
-
 		if result.Error != nil {
 			statusCode = http.StatusBadGateway
 		} else {
@@ -66,6 +64,7 @@ func (b *ResponseBuilder) WriteResponse(w http.ResponseWriter, result *ResultMes
 	w.Header().Set("Content-Type", result.Headers.Get("Content-Type"))
 	w.WriteHeader(statusCode)
 	_, err := w.Write(result.CompressedBody)
+
 	return err
 }
 
@@ -84,6 +83,7 @@ func (b *ResponseBuilder) isFiltered(key string) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -142,6 +142,7 @@ func (b *ResponseBuilder) writeErrorResponse(w http.ResponseWriter, statusCode i
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
+
 	return json.NewEncoder(w).Encode(response)
 }
 
@@ -149,6 +150,7 @@ func formatTiming(t *protocol.TimingInfo) string {
 	if t == nil {
 		return ""
 	}
+
 	return t.Total.Round(time.Millisecond).String()
 }
 
@@ -168,6 +170,7 @@ func equalFoldASCII(a, b string) bool {
 			return false
 		}
 	}
+
 	return true
 }
 
@@ -205,6 +208,7 @@ func formatAttemptErrors(errors []AttemptError) []attemptErrorSummary {
 			Message:  truncateMessage(e.Message, 50),
 		})
 	}
+
 	return summaries
 }
 
@@ -212,5 +216,6 @@ func truncateMessage(msg string, maxLen int) string {
 	if len(msg) <= maxLen {
 		return msg
 	}
+
 	return msg[:maxLen-3] + "..."
 }

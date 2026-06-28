@@ -29,6 +29,7 @@ func (m *MockTransportProvider) GetTransport(host string, preset fingerprint.Pre
 	if t, ok := args.Get(0).(*fhttp.Transport); ok {
 		return t
 	}
+
 	return nil
 }
 
@@ -41,11 +42,11 @@ func (m *MockRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 	if resp, ok := args.Get(0).(*http.Response); ok {
 		return resp, args.Error(1)
 	}
+
 	return nil, args.Error(1)
 }
 
 func TestClient_Do_Tracing(t *testing.T) {
-
 	mockProvider := &MockTransportProvider{}
 	mockProvider.On("GetTransport", mock.Anything, mock.Anything).Return(&fhttp.Transport{})
 
@@ -64,7 +65,7 @@ func TestClient_Do_Tracing(t *testing.T) {
 
 	server := http.NewServeMux()
 	server.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(200)
+		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ok"))
 	})
 
@@ -125,7 +126,6 @@ func TestClient_Do_Tracing(t *testing.T) {
 }
 
 func TestClient_Do_Tracing_Error(t *testing.T) {
-
 	exporter := tracetest.NewInMemoryExporter()
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithSyncer(exporter),

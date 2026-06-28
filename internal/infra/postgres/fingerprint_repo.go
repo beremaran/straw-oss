@@ -30,6 +30,7 @@ func (r *FingerprintRepository) ListPresets(ctx context.Context) ([]domain.Finge
 	var err error
 	err = r.client.Execute(func() error {
 		rows, err = r.client.Pool.Query(ctx, query)
+
 		return err
 	})
 	if err != nil {
@@ -41,10 +42,12 @@ func (r *FingerprintRepository) ListPresets(ctx context.Context) ([]domain.Finge
 	for rows.Next() {
 		var p domain.FingerprintPreset
 		var configJSON []byte
-		if err := rows.Scan(&p.ID, &p.Name, &configJSON, &p.CreatedAt, &p.UpdatedAt); err != nil {
+		err := rows.Scan(&p.ID, &p.Name, &configJSON, &p.CreatedAt, &p.UpdatedAt)
+		if err != nil {
 			return nil, fmt.Errorf("failed to scan preset: %w", err)
 		}
-		if err := json.Unmarshal(configJSON, &p.Config); err != nil {
+		err := json.Unmarshal(configJSON, &p.Config)
+		if err != nil {
 			return nil, fmt.Errorf("failed to unmarshal config for preset %s: %w", p.ID, err)
 		}
 		presets = append(presets, p)
@@ -73,6 +76,7 @@ func (r *FingerprintRepository) GetPreset(ctx context.Context, id string) (*doma
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
+
 		return nil, fmt.Errorf("failed to get preset: %w", err)
 	}
 
@@ -102,6 +106,7 @@ func (r *FingerprintRepository) CreatePreset(ctx context.Context, preset *domain
 
 	err = r.client.Execute(func() error {
 		_, err := r.client.Pool.Exec(ctx, query, preset.ID, preset.Name, configJSON, preset.CreatedAt, preset.UpdatedAt)
+
 		return err
 	})
 	if err != nil {

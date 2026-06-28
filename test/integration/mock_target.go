@@ -47,6 +47,7 @@ func NewMockTargetServer() *MockTargetServer {
 	}
 
 	m.server = httptest.NewServer(http.HandlerFunc(m.handler))
+
 	return m
 }
 
@@ -85,6 +86,7 @@ func (m *MockTargetServer) GetRequests() []RecordedRequest {
 	defer m.mu.RUnlock()
 	result := make([]RecordedRequest, len(m.requests))
 	copy(result, m.requests)
+
 	return result
 }
 
@@ -97,11 +99,11 @@ func (m *MockTargetServer) ClearRequests() {
 func (m *MockTargetServer) RequestCount() int {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+
 	return len(m.requests)
 }
 
 func (m *MockTargetServer) handler(w http.ResponseWriter, r *http.Request) {
-
 	body := make([]byte, 0)
 	if r.Body != nil {
 		body, _ = readBody(r)
@@ -125,15 +127,16 @@ func (m *MockTargetServer) handler(w http.ResponseWriter, r *http.Request) {
 	m.mu.RUnlock()
 
 	if config.Error {
-
 		if hj, ok := w.(http.Hijacker); ok {
 			if conn, _, err := hj.Hijack(); err == nil {
 				conn.Close()
+
 				return
 			}
 		}
 
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+
 		return
 	}
 
@@ -174,11 +177,13 @@ func readBody(r *http.Request) ([]byte, error) {
 			break
 		}
 	}
+
 	return buf, nil
 }
 
 func JSONResponse(data interface{}) []byte {
 	b, _ := json.Marshal(data)
+
 	return b
 }
 
