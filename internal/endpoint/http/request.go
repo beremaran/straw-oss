@@ -103,32 +103,20 @@ func applyHeaderOrder(req *fhttp.Request, order []string) {
 }
 
 func applyFingerprintHeaders(req *fhttp.Request, preset fingerprint.Preset) {
-	if req.Header.Get("User-Agent") == "" && preset.UserAgent != "" {
-		req.Header.Set("User-Agent", preset.UserAgent)
-	}
+	setIfEmpty(req, "User-Agent", preset.UserAgent)
+	setIfEmpty(req, "Accept-Language", preset.AcceptLanguage)
+	setIfEmpty(req, "Sec-CH-UA", preset.SecCHUA)
+	setIfEmpty(req, "Sec-CH-UA-Mobile", preset.SecCHUAMobile)
+	setIfEmpty(req, "Sec-CH-UA-Platform", preset.SecCHUAPlatform)
 
-	if req.Header.Get("Accept-Language") == "" && preset.AcceptLanguage != "" {
-		req.Header.Set("Accept-Language", preset.AcceptLanguage)
-	}
+	setIfEmpty(req, "Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8")
+	setIfEmpty(req, "Accept-Encoding", "gzip, deflate, br")
+	setIfEmpty(req, "Connection", "keep-alive")
+}
 
-	if req.Header.Get("Sec-CH-UA") == "" && preset.SecCHUA != "" {
-		req.Header.Set("Sec-CH-UA", preset.SecCHUA)
-	}
-	if req.Header.Get("Sec-CH-UA-Mobile") == "" && preset.SecCHUAMobile != "" {
-		req.Header.Set("Sec-CH-UA-Mobile", preset.SecCHUAMobile)
-	}
-	if req.Header.Get("Sec-CH-UA-Platform") == "" && preset.SecCHUAPlatform != "" {
-		req.Header.Set("Sec-CH-UA-Platform", preset.SecCHUAPlatform)
-	}
-
-	if req.Header.Get("Accept") == "" {
-		req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8")
-	}
-	if req.Header.Get("Accept-Encoding") == "" {
-		req.Header.Set("Accept-Encoding", "gzip, deflate, br")
-	}
-	if req.Header.Get("Connection") == "" {
-		req.Header.Set("Connection", "keep-alive")
+func setIfEmpty(req *fhttp.Request, key, value string) {
+	if value != "" && req.Header.Get(key) == "" {
+		req.Header.Set(key, value)
 	}
 }
 
