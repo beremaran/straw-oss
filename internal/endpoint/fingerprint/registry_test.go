@@ -1,6 +1,7 @@
 package fingerprint
 
 import (
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -64,6 +65,7 @@ func TestRegistry_RegisterDuplicate(t *testing.T) {
 		dupErr = func() *DuplicatePresetError {
 			target := &DuplicatePresetError{}
 			_ = errors.As(err, &target)
+
 			return target
 		}()
 		if dupErr.PresetID != "test-preset" {
