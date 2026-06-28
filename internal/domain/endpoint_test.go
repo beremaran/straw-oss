@@ -1,10 +1,8 @@
-package domain_test
+package domain
 
 import (
 	"testing"
 	"time"
-
-	"github.com/beremaran/straw/internal/domain"
 )
 
 func TestEndpoint_IsStale(t *testing.T) {
@@ -36,7 +34,7 @@ func TestEndpoint_IsStale(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			e := &domain.Endpoint{LastHeartbeat: tt.lastHeartbeat}
+			e := &Endpoint{LastHeartbeat: tt.lastHeartbeat}
 			if got := e.IsStale(tt.threshold); got != tt.want {
 				t.Errorf("Endpoint.IsStale() = %v, want %v", got, tt.want)
 			}
@@ -45,7 +43,7 @@ func TestEndpoint_IsStale(t *testing.T) {
 }
 
 func TestEndpoint_UpdateHeartbeat(t *testing.T) {
-	e := &domain.Endpoint{
+	e := &Endpoint{
 		LastHeartbeat: time.Now().Add(-1 * time.Hour),
 		IsHealthy:     false,
 	}
@@ -62,7 +60,7 @@ func TestEndpoint_UpdateHeartbeat(t *testing.T) {
 }
 
 func TestEndpoint_HasTag(t *testing.T) {
-	e := &domain.Endpoint{
+	e := &Endpoint{
 		Tags: []string{"type:residential", "region:us", "provider:luminati"},
 	}
 
@@ -76,7 +74,7 @@ func TestEndpoint_HasTag(t *testing.T) {
 }
 
 func TestEndpoint_MatchesTags(t *testing.T) {
-	e := &domain.Endpoint{
+	e := &Endpoint{
 		Tags: []string{"type:residential", "region:us", "provider:luminati"},
 	}
 
@@ -112,7 +110,7 @@ func TestEndpoint_MatchesTags(t *testing.T) {
 }
 
 func TestNewEndpoint(t *testing.T) {
-	e := domain.NewEndpoint("ep-001", []string{"type:residential", "region:us"})
+	e := NewEndpoint("ep-001", []string{"type:residential", "region:us"})
 
 	if e.ID != "ep-001" {
 		t.Errorf("NewEndpoint() ID = %s, want ep-001", e.ID)
