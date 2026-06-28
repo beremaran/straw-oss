@@ -3,6 +3,7 @@ package endpoint
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"sync"
 	"testing"
 	"time"
@@ -28,6 +29,7 @@ func (m *mockPublisherBroker) Publish(ctx context.Context, exchange, routingKey 
 		RoutingKey: routingKey,
 		Body:       body,
 	})
+
 	return nil
 }
 func (m *mockPublisherBroker) Subscribe(ctx context.Context, queue string, handler broker.Handler, opts ...broker.SubscribeOption) error {
@@ -69,6 +71,7 @@ func (m *mockPublisherBroker) QueueDepth(ctx context.Context, name string) (int,
 func (m *mockPublisherBroker) getMessages() []publishedMsg {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	return m.publishedMsgs
 }
 
@@ -126,7 +129,8 @@ func TestPublisher_Publish(t *testing.T) {
 	}
 
 	var result ResultMessage
-	if err := json.Unmarshal(msg.Body, &result); err != nil {
+	err = json.Unmarshal(msg.Body, &result)
+	if err != nil {
 		t.Fatalf("failed to unmarshal result: %v", err)
 	}
 
@@ -138,7 +142,7 @@ func TestPublisher_Publish(t *testing.T) {
 		t.Errorf("expected endpoint ID 'endpoint-001', got %q", result.EndpointID)
 	}
 
-	if result.StatusCode != 200 {
+	if result.StatusCode != http.StatusOK {
 		t.Errorf("expected status code 200, got %d", result.StatusCode)
 	}
 
@@ -180,7 +184,8 @@ func TestPublisher_Publish_EmptyBody(t *testing.T) {
 	}
 
 	var result ResultMessage
-	if err := json.Unmarshal(msgs[0].Body, &result); err != nil {
+	err = json.Unmarshal(msgs[0].Body, &result)
+	if err != nil {
 		t.Fatalf("failed to unmarshal result: %v", err)
 	}
 
@@ -218,7 +223,8 @@ func TestPublisher_Publish_ErrorResponse(t *testing.T) {
 	}
 
 	var result ResultMessage
-	if err := json.Unmarshal(msgs[0].Body, &result); err != nil {
+	err = json.Unmarshal(msgs[0].Body, &result)
+	if err != nil {
 		t.Fatalf("failed to unmarshal result: %v", err)
 	}
 
@@ -413,7 +419,8 @@ func TestPublisher_Publish_LargeBody(t *testing.T) {
 	}
 
 	var result ResultMessage
-	if err := json.Unmarshal(msgs[0].Body, &result); err != nil {
+	err = json.Unmarshal(msgs[0].Body, &result)
+	if err != nil {
 		t.Fatalf("failed to unmarshal result: %v", err)
 	}
 

@@ -17,7 +17,6 @@ import (
 )
 
 func TestTracingMiddleware(t *testing.T) {
-
 	exporter := tracetest.NewInMemoryExporter()
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithSyncer(exporter),
@@ -39,7 +38,7 @@ func TestTracingMiddleware(t *testing.T) {
 
 	t.Run("successful request creates span", func(t *testing.T) {
 		exporter.Reset()
-		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test", nil)
 		rec := httptest.NewRecorder()
 
 		handler.ServeHTTP(rec, req)
@@ -52,11 +51,11 @@ func TestTracingMiddleware(t *testing.T) {
 		span := spans[0]
 
 		assert.Equal(t, "http.request", span.Name)
-		assert.Equal(t, "test-service", span.InstrumentationLibrary.Name)
+		assert.Equal(t, "test-service", span.InstrumentationScope.Name)
 
 		attrs := make(map[string]string)
 		for _, kv := range span.Attributes {
-			attrs[string(kv.Key)] = kv.Value.Emit()
+			attrs[string(kv.Key)] = kv.Value.String()
 		}
 
 		assert.Equal(t, "GET", attrs["http.method"])
@@ -71,7 +70,7 @@ func TestTracingMiddleware(t *testing.T) {
 		tracer := tp.Tracer("test-client")
 		ctx, parentSpan := tracer.Start(ctx, "parent-request")
 
-		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test", nil)
 
 		otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
 
@@ -89,6 +88,7 @@ func TestTracingMiddleware(t *testing.T) {
 			if s.Name == "http.request" {
 				serverSpan = s
 				found = true
+
 				break
 			}
 		}
@@ -100,7 +100,7 @@ func TestTracingMiddleware(t *testing.T) {
 
 	t.Run("records error status", func(t *testing.T) {
 		exporter.Reset()
-		req := httptest.NewRequest(http.MethodGet, "/error", nil)
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/error", nil)
 		rec := httptest.NewRecorder()
 
 		handler.ServeHTTP(rec, req)
@@ -113,7 +113,7 @@ func TestTracingMiddleware(t *testing.T) {
 
 		attrs := make(map[string]string)
 		for _, kv := range span.Attributes {
-			attrs[string(kv.Key)] = kv.Value.Emit()
+			attrs[string(kv.Key)] = kv.Value.String()
 		}
 		assert.Equal(t, "500", attrs["http.status_code"])
 		assert.Equal(t, codes.Error, span.Status.Code)

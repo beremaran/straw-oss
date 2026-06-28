@@ -45,6 +45,7 @@ func (m *mockBroker) Publish(ctx context.Context, exchange, routingKey string, b
 		RoutingKey: routingKey,
 		Body:       body,
 	})
+
 	return nil
 }
 
@@ -59,6 +60,7 @@ func (m *mockBroker) Subscribe(ctx context.Context, queue string, handler broker
 		IsTemp:  false,
 		Handler: handler,
 	})
+
 	return nil
 }
 
@@ -73,11 +75,11 @@ func (m *mockBroker) SubscribeTemporary(ctx context.Context, queue string, handl
 		IsTemp:  true,
 		Handler: handler,
 	})
+
 	return nil
 }
 
 func (m *mockBroker) ConsumeOnce(ctx context.Context, queue string, timeout time.Duration) ([]byte, error) {
-
 	return nil, errors.New("not implemented in mock")
 }
 
@@ -162,11 +164,13 @@ func TestPublisher_Publish(t *testing.T) {
 		}
 
 		var st protocol.SignedTask
-		if err := json.Unmarshal(msg.Body, &st); err != nil {
+		err := json.Unmarshal(msg.Body, &st)
+		if err != nil {
 			t.Errorf("failed to unmarshal signed task: %v", err)
 		}
 
-		if _, err := protocol.ValidateSignedTask(&st, secret, 5*time.Second); err != nil {
+		_, err = protocol.ValidateSignedTask(&st, secret, 5*time.Second)
+		if err != nil {
 			t.Errorf("published task failed validation: %v", err)
 		}
 	}
@@ -199,7 +203,7 @@ func TestPublisher_Publish_SubscribeError(t *testing.T) {
 
 	_, err := p.Publish(context.Background(), req, rule, "", "", "res-q")
 	if err != nil {
-
+		t.Errorf("unexpected error: %v", err)
 	}
 }
 
@@ -217,8 +221,9 @@ func TestPublisher_Publish_BrokerError(t *testing.T) {
 		t.Error("expected error, got nil")
 	}
 
-	if err != nil && err.Error() != "failed to publish task (circuit breaker): publish failed" {
-
+	expectedErrStr := "failed to publish task (circuit breaker): publish failed"
+	if err != nil && err.Error() != expectedErrStr {
+		t.Errorf("expected error %q, got %v", expectedErrStr, err)
 	}
 }
 
@@ -317,11 +322,13 @@ func TestPublisher_Publish_SignedTask(t *testing.T) {
 	}
 
 	var signedTask protocol.SignedTask
-	if err := json.Unmarshal(mb.publishedMsgs[0].Body, &signedTask); err != nil {
+	err = json.Unmarshal(mb.publishedMsgs[0].Body, &signedTask)
+	if err != nil {
 		t.Fatalf("failed to unmarshal signed task: %v", err)
 	}
 
-	if _, err := protocol.ValidateSignedTask(&signedTask, secret, 5*time.Second); err != nil {
+	_, err = protocol.ValidateSignedTask(&signedTask, secret, 5*time.Second)
+	if err != nil {
 		t.Errorf("signed task validation failed: %v", err)
 	}
 

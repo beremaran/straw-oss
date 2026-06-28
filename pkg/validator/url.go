@@ -1,6 +1,7 @@
 package validator
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/url"
@@ -18,7 +19,7 @@ func WithAllowPrivateIPs() ValidationOption {
 	}
 }
 
-func ValidateTargetURL(targetURL string, opts ...ValidationOption) error {
+func ValidateTargetURL(ctx context.Context, targetURL string, opts ...ValidationOption) error {
 	options := &ValidationOptions{}
 	for _, opt := range opts {
 		opt(options)
@@ -30,9 +31,15 @@ func ValidateTargetURL(targetURL string, opts ...ValidationOption) error {
 	}
 
 	hostname := u.Hostname()
-	ips, err := net.LookupIP(hostname)
+	resolver := &net.Resolver{}
+	ipAddrs, err := resolver.LookupIPAddr(ctx, hostname)
 	if err != nil {
 		return fmt.Errorf("failed to lookup ip for host %s: %w", hostname, err)
+	}
+
+	var ips []net.IP
+	for _, ipAddr := range ipAddrs {
+		ips = append(ips, ipAddr.IP)
 	}
 
 	if !options.AllowPrivateIPs {
@@ -53,5 +60,6 @@ func isPrivateIP(ip net.IP) bool {
 	if ip4 := ip.To4(); ip4 != nil {
 		return ip4[0] == 0
 	}
+
 	return false
 }

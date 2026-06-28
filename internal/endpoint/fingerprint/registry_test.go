@@ -1,6 +1,7 @@
 package fingerprint
 
 import (
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -57,10 +58,9 @@ func TestRegistry_RegisterDuplicate(t *testing.T) {
 	}
 
 	var dupErr *DuplicatePresetError
-	if _, ok := err.(*DuplicatePresetError); !ok {
+	if !errors.As(err, &dupErr) {
 		t.Errorf("expected DuplicatePresetError, got %T", err)
 	} else {
-		dupErr = err.(*DuplicatePresetError)
 		if dupErr.PresetID != "test-preset" {
 			t.Errorf("expected preset ID 'test-preset', got %q", dupErr.PresetID)
 		}
@@ -158,7 +158,6 @@ func TestRegistry_ConcurrentAccess(t *testing.T) {
 	}
 
 	wg.Wait()
-
 }
 
 func TestDefaultRegistry_BuiltInPresets(t *testing.T) {
@@ -244,7 +243,6 @@ func TestPreset_FirefoxNoClientHints(t *testing.T) {
 }
 
 func TestPreset_DeprecatedFlag(t *testing.T) {
-
 	preset, ok := Get("chrome-129")
 	if !ok {
 		t.Fatal("expected chrome-129 preset to exist")
@@ -263,7 +261,6 @@ func TestPreset_DeprecatedFlag(t *testing.T) {
 }
 
 func TestPackageLevelFunctions(t *testing.T) {
-
 	preset, ok := Get("chrome-133")
 	if !ok {
 		t.Error("Get should find chrome-133")

@@ -20,6 +20,7 @@ type MockExecer struct {
 
 func (m *MockExecer) Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error) {
 	args := m.Called(ctx, sql, arguments)
+
 	return args.Get(0).(pgconn.CommandTag), args.Error(1)
 }
 
@@ -34,7 +35,7 @@ func TestAuditLog(t *testing.T) {
 		return strings.Contains(sql, "INSERT INTO admin_audit_log")
 	}), mock.Anything).Return(pgconn.CommandTag{}, nil)
 
-	req := httptest.NewRequest(http.MethodPost, "/test", strings.NewReader(`{"foo":"bar"}`))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/test", strings.NewReader(`{"foo":"bar"}`))
 	rec := httptest.NewRecorder()
 
 	h := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -56,7 +57,7 @@ func TestAuditLog_SkipGet(t *testing.T) {
 	defer auditLogger.Stop()
 	mw := AuditLog(auditLogger)
 
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test", nil)
 	rec := httptest.NewRecorder()
 
 	h := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

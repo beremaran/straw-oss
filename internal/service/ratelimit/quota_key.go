@@ -11,5 +11,6 @@ func GenerateQuotaKey(rule *domain.RoutingRule, apiKeyID string) string {
 	if prefix == "" {
 		prefix = rule.ID
 	}
+
 	return fmt.Sprintf("%s:%s", prefix, apiKeyID)
 }

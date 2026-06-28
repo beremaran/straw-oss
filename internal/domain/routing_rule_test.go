@@ -29,7 +29,8 @@ func TestRoutingRule_JSON(t *testing.T) {
 	}
 
 	var decoded RoutingRule
-	if err := json.Unmarshal(data, &decoded); err != nil {
+	err = json.Unmarshal(data, &decoded)
+	if err != nil {
 		t.Fatalf("Failed to unmarshal RoutingRule: %v", err)
 	}
 
@@ -106,7 +107,8 @@ func TestABConfig_JSON(t *testing.T) {
 	}
 
 	var decoded ABConfig
-	if err := json.Unmarshal(data, &decoded); err != nil {
+	err = json.Unmarshal(data, &decoded)
+	if err != nil {
 		t.Fatalf("Failed to unmarshal ABConfig: %v", err)
 	}
 
@@ -133,7 +135,8 @@ func TestRequestFilter_JSON(t *testing.T) {
 	}
 
 	var decoded RequestFilter
-	if err := json.Unmarshal(data, &decoded); err != nil {
+	err = json.Unmarshal(data, &decoded)
+	if err != nil {
 		t.Fatalf("Failed to unmarshal RequestFilter: %v", err)
 	}
 
@@ -155,7 +158,8 @@ func TestEndpointPool_JSON(t *testing.T) {
 	}
 
 	var decoded EndpointPool
-	if err := json.Unmarshal(data, &decoded); err != nil {
+	err = json.Unmarshal(data, &decoded)
+	if err != nil {
 		t.Fatalf("Failed to unmarshal EndpointPool: %v", err)
 	}
 

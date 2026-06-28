@@ -29,6 +29,7 @@ func (m *MockTransportProvider) GetTransport(host string, preset fingerprint.Pre
 	if t, ok := args.Get(0).(*fhttp.Transport); ok {
 		return t
 	}
+
 	return nil
 }
 
@@ -41,11 +42,11 @@ func (m *MockRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 	if resp, ok := args.Get(0).(*http.Response); ok {
 		return resp, args.Error(1)
 	}
+
 	return nil, args.Error(1)
 }
 
 func TestClient_Do_Tracing(t *testing.T) {
-
 	mockProvider := &MockTransportProvider{}
 	mockProvider.On("GetTransport", mock.Anything, mock.Anything).Return(&fhttp.Transport{})
 
@@ -68,7 +69,8 @@ func TestClient_Do_Tracing(t *testing.T) {
 		w.Write([]byte("ok"))
 	})
 
-	l, err := net.Listen("tcp", "127.0.0.1:0")
+	lc := &net.ListenConfig{}
+	l, err := lc.Listen(context.Background(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("failed to listen: %v", err)
 	}
@@ -78,7 +80,9 @@ func TestClient_Do_Tracing(t *testing.T) {
 
 	transport := &fhttp.Transport{
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			return net.Dial("tcp", l.Addr().String())
+			dialer := &net.Dialer{}
+
+			return dialer.DialContext(ctx, "tcp", l.Addr().String())
 		},
 	}
 
@@ -107,7 +111,7 @@ func TestClient_Do_Tracing(t *testing.T) {
 
 	span := spans[0]
 	assert.Equal(t, "upstream.request", span.Name)
-	assert.Equal(t, "internal/endpoint/http", span.InstrumentationLibrary.Name)
+	assert.Equal(t, "internal/endpoint/http", span.InstrumentationScope.Name)
 
 	attrs := span.Attributes
 	attrMap := make(map[string]interface{})
@@ -125,7 +129,6 @@ func TestClient_Do_Tracing(t *testing.T) {
 }
 
 func TestClient_Do_Tracing_Error(t *testing.T) {
-
 	exporter := tracetest.NewInMemoryExporter()
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithSyncer(exporter),

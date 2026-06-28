@@ -50,7 +50,6 @@ func New(
 	orchestrator *orchestrator.RetryExecutor,
 	opts ...Option,
 ) *Server {
-
 	metrics.Init()
 
 	mux := http.NewServeMux()
@@ -91,7 +90,6 @@ func New(
 }
 
 func (s *Server) registerRoutes() {
-
 	s.mux.HandleFunc("GET /healthz", s.healthCheck)
 	s.mux.HandleFunc("GET /readyz", s.readyCheck)
 
@@ -151,6 +149,7 @@ func (s *Server) Start() error {
 	if s.conf.Security.TLSCertFile != "" && s.conf.Security.TLSKeyFile != "" {
 		return s.server.ListenAndServeTLS(s.conf.Security.TLSCertFile, s.conf.Security.TLSKeyFile)
 	}
+
 	return s.server.ListenAndServe()
 }
 
@@ -178,6 +177,7 @@ func applyMiddlewares(handler http.Handler, middlewares ...func(http.Handler) ht
 	for i := len(middlewares) - 1; i >= 0; i-- {
 		handler = middlewares[i](handler)
 	}
+
 	return handler
 }
 
@@ -201,5 +201,6 @@ func parseBytesSize(s string) int64 {
 	}
 	var val int64
 	_, _ = fmt.Sscanf(s, "%d", &val)
+
 	return val * multiplier
 }

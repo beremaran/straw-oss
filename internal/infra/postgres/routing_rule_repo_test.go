@@ -48,7 +48,6 @@ func TestRoutingRuleRepository(t *testing.T) {
 	})
 
 	t.Run("GetActiveRules", func(t *testing.T) {
-
 		inactiveRule := &domain.RoutingRule{
 			ID:           "rule-002",
 			Name:         "Inactive Rule",

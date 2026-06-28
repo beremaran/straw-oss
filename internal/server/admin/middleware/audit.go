@@ -97,6 +97,7 @@ func (al *AuditLogger) Log(entry AuditEntry) bool {
 			"method", entry.Method,
 			"path", entry.Path,
 		)
+
 		return false
 	}
 }
@@ -105,6 +106,7 @@ func (al *AuditLogger) Stop() {
 	al.mu.Lock()
 	if al.closed {
 		al.mu.Unlock()
+
 		return
 	}
 	al.closed = true
@@ -150,15 +152,14 @@ func (al *AuditLogger) worker() {
 func AuditLog(auditLogger *AuditLogger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
 			if r.Method == http.MethodGet || r.Method == http.MethodHead {
 				next.ServeHTTP(w, r)
+
 				return
 			}
 
 			var bodyStr string
 			if r.Body != nil {
-
 				limitedReader := io.LimitReader(r.Body, maxAuditBodySize+1)
 				reqBody, _ := io.ReadAll(limitedReader)
 
@@ -218,7 +219,9 @@ func getRealIP(r *http.Request) string {
 		if idx := strings.Index(ip, ","); idx != -1 {
 			return strings.TrimSpace(ip[:idx])
 		}
+
 		return strings.TrimSpace(ip)
 	}
+
 	return r.RemoteAddr
 }

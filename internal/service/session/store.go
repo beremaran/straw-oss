@@ -29,7 +29,8 @@ func (s *RedisStore) Save(ctx context.Context, session *domain.Session, ttl time
 	}
 
 	key := s.key(session.ID)
-	if err := s.client.Client.Set(ctx, key, data, ttl).Err(); err != nil {
+	err = s.client.Client.Set(ctx, key, data, ttl).Err()
+	if err != nil {
 		return fmt.Errorf("failed to save session to redis: %w", err)
 	}
 
@@ -48,7 +49,8 @@ func (s *RedisStore) Get(ctx context.Context, id string) (*domain.Session, error
 	}
 
 	var session domain.Session
-	if err := json.Unmarshal(data, &session); err != nil {
+	err = json.Unmarshal(data, &session)
+	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal session: %w", err)
 	}
 
@@ -57,21 +59,25 @@ func (s *RedisStore) Get(ctx context.Context, id string) (*domain.Session, error
 
 func (s *RedisStore) Delete(ctx context.Context, id string) error {
 	key := s.key(id)
-	if err := s.client.Client.Del(ctx, key).Err(); err != nil {
+	err := s.client.Client.Del(ctx, key).Err()
+	if err != nil {
 		return fmt.Errorf("failed to delete session from redis: %w", err)
 	}
+
 	return nil
 }
 
 func (s *RedisStore) Touch(ctx context.Context, id string, ttl time.Duration) error {
 	key := s.key(id)
 	cmd := s.client.Client.Expire(ctx, key, ttl)
-	if err := cmd.Err(); err != nil {
+	err := cmd.Err()
+	if err != nil {
 		return fmt.Errorf("failed to extend session ttl: %w", err)
 	}
 	if !cmd.Val() {
 		return domain.ErrSessionExpired
 	}
+
 	return nil
 }
 

@@ -24,7 +24,8 @@ func TestPostgresIntegration(t *testing.T) {
 	}
 	defer client.Close()
 
-	if err := client.HealthCheck(ctx); err != nil {
+	err = client.HealthCheck(ctx)
+	if err != nil {
 		t.Fatalf("HealthCheck failed: %v", err)
 	}
 

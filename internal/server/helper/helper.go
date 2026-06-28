@@ -12,7 +12,10 @@ func ReadJSON(r *http.Request, v interface{}) error {
 func WriteJSON(w http.ResponseWriter, status int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	err := json.NewEncoder(w).Encode(v)
+	if err != nil {
+		return
+	}
 }
 
 func WriteError(w http.ResponseWriter, status int, errMsg string) {

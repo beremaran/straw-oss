@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 
@@ -9,25 +10,27 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
-func RunEmbeddedMigrations(dsn string) error {
-
+func RunEmbeddedMigrations(ctx context.Context, dsn string) error {
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return fmt.Errorf("failed to open db for migrations: %w", err)
 	}
 	defer func() { _ = db.Close() }()
 
-	if err := db.Ping(); err != nil {
+	err = db.PingContext(ctx)
+	if err != nil {
 		return fmt.Errorf("failed to connect to db for migrations: %w", err)
 	}
 
-	if err := goose.SetDialect("postgres"); err != nil {
+	err = goose.SetDialect("postgres")
+	if err != nil {
 		return fmt.Errorf("failed to set goose dialect: %w", err)
 	}
 
 	goose.SetBaseFS(migrations.FS)
 
-	if err := goose.Up(db, "."); err != nil {
+	err = goose.Up(db, ".")
+	if err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
 	}
 

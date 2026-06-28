@@ -53,7 +53,8 @@ func main() {
 	shutdownTracer := tryStartTracer(ctx)
 	if shutdownTracer != nil {
 		defer func() {
-			if err := shutdownTracer(ctx); err != nil {
+			err := shutdownTracer(ctx)
+			if err != nil {
 				slog.Error("Failed to shutdown tracer provider", "error", err)
 			}
 		}()
@@ -154,7 +155,7 @@ func listenInterrupts() {
 }
 
 func shutdown(ctx context.Context, cfg *config.ServerConfig, srv *server.Server, adminSrv *admin.Server, metricsSrv *http.Server) {
-	ctx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+	ctx, cancel := context.WithTimeout(ctx, cfg.ShutdownTimeout)
 	defer cancel()
 
 	tryStopServer(srv, ctx)
@@ -166,20 +167,23 @@ func shutdown(ctx context.Context, cfg *config.ServerConfig, srv *server.Server,
 
 func tryStopMetricsServer(metricsSrv *http.Server, ctx context.Context) {
 	if metricsSrv != nil {
-		if err := metricsSrv.Shutdown(ctx); err != nil {
+		err := metricsSrv.Shutdown(ctx)
+		if err != nil {
 			slog.Error("Metrics Server forced to shutdown", "error", err)
 		}
 	}
 }
 
 func tryStopManagementServer(adminSrv *admin.Server, ctx context.Context) {
-	if err := adminSrv.Stop(ctx); err != nil {
+	err := adminSrv.Stop(ctx)
+	if err != nil {
 		slog.Error("Admin Server forced to shutdown", "error", err)
 	}
 }
 
 func tryStopServer(srv *server.Server, ctx context.Context) {
-	if err := srv.Stop(ctx); err != nil {
+	err := srv.Stop(ctx)
+	if err != nil {
 		slog.Error("Server forced to shutdown", "error", err)
 	}
 }
@@ -203,7 +207,8 @@ func startMetricsServerIfEnabled(cfg *config.ServerConfig) *http.Server {
 
 	go func() {
 		slog.Info("Starting metrics server", "addr", metricsSrv.Addr)
-		if err := metricsSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		err := metricsSrv.ListenAndServe()
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("Metrics Server shutting down", "error", err)
 		}
 	}()
@@ -214,7 +219,8 @@ func startMetricsServerIfEnabled(cfg *config.ServerConfig) *http.Server {
 func getAdminServer(cfg *config.ServerConfig, pgClient *postgres.Client, redisClient *redis.Client, healthService *endpoint.HealthService, natsBroker *broker.NatsBroker) *admin.Server {
 	adminSrv := admin.New(*cfg, pgClient, redisClient, healthService, natsBroker)
 	go func() {
-		if err := adminSrv.Start(); err != nil {
+		err := adminSrv.Start()
+		if err != nil {
 			slog.Error("Admin Server shutting down", "error", err)
 		}
 	}()
@@ -230,7 +236,8 @@ func createServer(cfg *config.ServerConfig, authService *auth.Service, sessionSe
 	}
 	srv := server.New(*cfg, authService, sessionService, matcher, rateLimiter, filterService, retryExecutor, serverOpts...)
 	go func() {
-		if err := srv.Start(); err != nil {
+		err := srv.Start()
+		if err != nil {
 			slog.Error("Server shutting down", "error", err)
 		}
 	}()
@@ -240,7 +247,8 @@ func createServer(cfg *config.ServerConfig, authService *auth.Service, sessionSe
 
 func startHealthServiceOrDie(natsBroker *broker.NatsBroker, endpointHealthStore *redis.EndpointHealthStore, ctx context.Context) *endpoint.HealthService {
 	healthService := endpoint.NewHealthService(natsBroker, endpointHealthStore)
-	if err := healthService.Start(ctx); err != nil {
+	err := healthService.Start(ctx)
+	if err != nil {
 		slog.Warn("Failed to start health service", "error", err)
 		os.Exit(1)
 	}
@@ -250,7 +258,8 @@ func startHealthServiceOrDie(natsBroker *broker.NatsBroker, endpointHealthStore 
 
 func initRouter(ruleRepo *postgres.RoutingRuleRepository, ruleCache *router.RuleCache, ctx context.Context) *router.Matcher {
 	matcher := router.NewMatcher(ruleRepo, ruleCache)
-	if err := matcher.LoadRules(ctx); err != nil {
+	err := matcher.LoadRules(ctx)
+	if err != nil {
 		slog.Warn("Failed to load initial routing rules", "error", err)
 	}
 	matcher.StartAutoRefresh(ctx, 5*time.Second)
@@ -274,7 +283,8 @@ func initRetryablePubSubOrDie(natsBroker *broker.NatsBroker, endpointSelector *o
 		[]byte(cfg.Security.HMACSecret),
 	)
 
-	if err := retryExecutor.Start(ctx); err != nil {
+	err := retryExecutor.Start(ctx)
+	if err != nil {
 		slog.Error("Failed to start retry executor", "error", err)
 		os.Exit(1)
 	}
@@ -283,7 +293,8 @@ func initRetryablePubSubOrDie(natsBroker *broker.NatsBroker, endpointSelector *o
 }
 
 func ensureAdminKey(apiKeyRepo *postgres.ApiKeyRepository, ctx context.Context) {
-	if keysExist, err := apiKeyRepo.Exists(ctx); err != nil {
+	keysExist, err := apiKeyRepo.Exists(ctx)
+	if err != nil {
 		slog.Warn("Failed to check for existing API keys", "error", err)
 	} else if !keysExist {
 		generateInitialAdminKey(apiKeyRepo, ctx)
@@ -292,7 +303,8 @@ func ensureAdminKey(apiKeyRepo *postgres.ApiKeyRepository, ctx context.Context) 
 
 func generateInitialAdminKey(apiKeyRepo *postgres.ApiKeyRepository, ctx context.Context) {
 	keyBytes := make([]byte, 32)
-	if _, err := rand.Read(keyBytes); err != nil {
+	_, err := rand.Read(keyBytes)
+	if err != nil {
 		slog.Error("Failed to generate admin key", "error", err)
 		os.Exit(1)
 	}
@@ -303,7 +315,8 @@ func generateInitialAdminKey(apiKeyRepo *postgres.ApiKeyRepository, ctx context.
 	adminKey := domain.NewApiKey(uuid.New().String(), tokenHash, "Default Administrator Key", []string{"target:*", "type:*", "region:*"})
 	adminKey.RateLimitOverride = intPtr(100)
 
-	if err := apiKeyRepo.Create(ctx, adminKey); err != nil {
+	err = apiKeyRepo.Create(ctx, adminKey)
+	if err != nil {
 		slog.Error("Failed to create initial admin API key", "error", err)
 		os.Exit(1)
 	}
@@ -313,40 +326,47 @@ func generateInitialAdminKey(apiKeyRepo *postgres.ApiKeyRepository, ctx context.
 }
 
 func initialiseNATSOrDie(natsBroker *broker.NatsBroker, ctx context.Context) {
-	if err := natsBroker.DeclareExchange(ctx, "heartbeats", "fanout"); err != nil {
+	err := natsBroker.DeclareExchange(ctx, "heartbeats", "fanout")
+	if err != nil {
 		slog.Error("Failed to declare heartbeats exchange", "error", err)
 		os.Exit(1)
 	}
 
-	if err := natsBroker.DeclareExchange(ctx, "tasks", "direct"); err != nil {
+	err = natsBroker.DeclareExchange(ctx, "tasks", "direct")
+	if err != nil {
 		slog.Error("Failed to declare tasks exchange", "error", err)
 		os.Exit(1)
 	}
 
-	if err := natsBroker.DeclareExchange(ctx, "results", "direct"); err != nil {
+	err = natsBroker.DeclareExchange(ctx, "results", "direct")
+	if err != nil {
 		slog.Error("Failed to declare results exchange", "error", err)
 		os.Exit(1)
 	}
 
 	slog.Info("NATS streams declared successfully", "streams", []string{"heartbeats", "tasks", "results"})
 
-	if err := natsBroker.DeclareQueue(ctx, "heartbeats"); err != nil {
+	err = natsBroker.DeclareQueue(ctx, "heartbeats")
+	if err != nil {
 		slog.Error("Failed to declare heartbeats queue", "error", err)
 		os.Exit(1)
 	}
 
-	if err := natsBroker.BindQueue(ctx, "heartbeats", "heartbeats", ""); err != nil {
+	err = natsBroker.BindQueue(ctx, "heartbeats", "heartbeats", "")
+	if err != nil {
 		slog.Error("Failed to bind heartbeats queue to exchange", "error", err)
 		os.Exit(1)
 	}
 	slog.Info("NATS heartbeats consumer bound to stream")
 
-	if err := natsBroker.DeclareQueue(ctx, orchestrator.SharedResultQueue); err != nil {
+	err = natsBroker.DeclareQueue(ctx, orchestrator.SharedResultQueue)
+	if err != nil {
 		slog.Error("Failed to declare result queue", "error", err)
 		os.Exit(1)
 	}
 
-	if err := natsBroker.BindQueue(ctx, orchestrator.SharedResultQueue, "", orchestrator.SharedResultQueue); err != nil {
+	err = natsBroker.BindQueue(ctx, orchestrator.SharedResultQueue, "", orchestrator.SharedResultQueue)
+	if err != nil {
 		slog.Error("Failed to bind result queue to exchange", "error", err)
 		os.Exit(1)
 	}
@@ -359,7 +379,8 @@ func getNATSConnectionOrDie(ctx context.Context, cfg *config.ServerConfig) *brok
 		broker.Addrs(cfg.NATS.URL),
 		broker.Token(cfg.NATS.Token),
 	)
-	if err := natsBroker.Connect(); err != nil {
+	err := natsBroker.Connect()
+	if err != nil {
 		slog.Error("Failed to connect to message broker", "error", err)
 		os.Exit(1)
 	}
@@ -426,7 +447,8 @@ func handleMigrations(cfg *config.ServerConfig) {
 	}
 
 	slog.Info("Applying pending migrations...")
-	if err := postgres.RunEmbeddedMigrations(cfg.Database.DSN); err != nil {
+	err := postgres.RunEmbeddedMigrations(context.Background(), cfg.Database.DSN)
+	if err != nil {
 		slog.Error("Failed to run migrations", "error", err)
 		os.Exit(1)
 	}

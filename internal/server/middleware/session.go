@@ -23,6 +23,34 @@ type sessionContextKey string
 
 const SessionContextKey sessionContextKey = "session"
 
+func processExistingSession(w http.ResponseWriter, r *http.Request, service *session.Service, sessionID string) (*http.Request, bool) {
+	ctx := r.Context()
+	sess, err := service.GetSession(ctx, sessionID)
+	if err != nil {
+		if errors.Is(err, domain.ErrSessionExpired) {
+			requestID := r.Header.Get("X-Request-ID")
+			if requestID == "" {
+				requestID = w.Header().Get("X-Request-ID")
+			}
+			helper.WriteJSON(w, domain.ErrSessionExpired.HTTPCode, domain.ErrSessionExpired.ToResponse(requestID, ""))
+
+			return r, true
+		}
+
+		return r, false
+	}
+
+	_ = service.TouchSession(ctx, sessionID)
+	r = r.WithContext(context.WithValue(ctx, SessionContextKey, sess))
+	w.Header().Set(HeaderSessionID, sess.ID)
+
+	if sess.MigrationCount > 0 {
+		w.Header().Set(HeaderSessionMigrationCount, strconv.Itoa(sess.MigrationCount))
+	}
+
+	return r, false
+}
+
 func SessionMiddleware(service *session.Service) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -34,32 +62,15 @@ func SessionMiddleware(service *session.Service) func(http.Handler) http.Handler
 					_ = service.EndSession(ctx, sessionID)
 				}
 				next.ServeHTTP(w, r)
+
 				return
 			}
 
 			if sessionID != "" {
-				sess, err := service.GetSession(ctx, sessionID)
-				if err == nil {
-
-					_ = service.TouchSession(ctx, sessionID)
-
-					r = r.WithContext(context.WithValue(ctx, SessionContextKey, sess))
-
-					w.Header().Set(HeaderSessionID, sess.ID)
-
-					if sess.MigrationCount > 0 {
-						w.Header().Set(HeaderSessionMigrationCount, strconv.Itoa(sess.MigrationCount))
-					}
-				} else {
-
-					if errors.Is(err, domain.ErrSessionExpired) {
-						requestID := r.Header.Get("X-Request-ID")
-						if requestID == "" {
-							requestID = w.Header().Get("X-Request-ID")
-						}
-						helper.WriteJSON(w, domain.ErrSessionExpired.HTTPCode, domain.ErrSessionExpired.ToResponse(requestID, ""))
-						return
-					}
+				var shouldReturn bool
+				r, shouldReturn = processExistingSession(w, r, service, sessionID)
+				if shouldReturn {
+					return
 				}
 			}
 
@@ -73,5 +84,6 @@ func GetSessionFromContext(ctx context.Context) *domain.Session {
 	if !ok {
 		return nil
 	}
+
 	return sess
 }

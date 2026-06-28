@@ -23,20 +23,24 @@ func DefaultPoolConfig() PoolConfig {
 
 func (c PoolConfig) WithMaxPoolHosts(n int) PoolConfig {
 	c.MaxPoolHosts = n
+
 	return c
 }
 
 func (c PoolConfig) WithIdleConnsPerHost(n int) PoolConfig {
 	c.IdleConnsPerHost = n
+
 	return c
 }
 
 func (c PoolConfig) WithIdleConnTimeout(d time.Duration) PoolConfig {
 	c.IdleConnTimeout = d
+
 	return c
 }
 
 func (c PoolConfig) WithEvictionInterval(d time.Duration) PoolConfig {
 	c.EvictionInterval = d
+
 	return c
 }

@@ -94,10 +94,9 @@ func CleanDatabase(ctx context.Context, dsn string) error {
 	}
 
 	for _, table := range tables {
-
 		query := fmt.Sprintf("TRUNCATE TABLE %s CASCADE", table)
-		if _, err := db.ExecContext(ctx, query); err != nil {
-
+		_, err := db.ExecContext(ctx, query)
+		if err != nil {
 			continue
 		}
 	}
@@ -113,7 +112,8 @@ func WaitForHealthy(ctx context.Context, healthCheck func() error, interval, tim
 	deadline := time.Now().Add(timeout)
 
 	for time.Now().Before(deadline) {
-		if err := healthCheck(); err == nil {
+		err := healthCheck()
+		if err == nil {
 			return nil
 		}
 
@@ -152,7 +152,10 @@ func CreateTestAPIKey(ctx context.Context, dsn string, name string, scopes []str
 	if len(scopes) == 1 && scopes[0] == "*" {
 		scopes = []string{}
 	}
-	scopesJSON, _ := json.Marshal(scopes)
+	scopesJSON, err := json.Marshal(scopes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal scopes: %w", err)
+	}
 	if scopes == nil {
 		scopesJSON = []byte("[]")
 	}
@@ -288,7 +291,10 @@ func CreateTestEndpoint(ctx context.Context, dsn string, endpoint *TestEndpoint)
 		endpoint.ID = fmt.Sprintf("endpoint_%d", time.Now().UnixNano())
 	}
 
-	tagsJSON, _ := json.Marshal(endpoint.Tags)
+	tagsJSON, err := json.Marshal(endpoint.Tags)
+	if err != nil {
+		return fmt.Errorf("failed to marshal tags: %w", err)
+	}
 	if endpoint.Tags == nil {
 		tagsJSON = []byte("[]")
 	}
@@ -308,6 +314,7 @@ func CreateTestEndpoint(ctx context.Context, dsn string, endpoint *TestEndpoint)
 
 func sha256Hash(s string) string {
 	hash := sha256.Sum256([]byte(s))
+
 	return hex.EncodeToString(hash[:])
 }
 
@@ -409,6 +416,7 @@ func NewTestRedisClient(t testing.TB, addr string) *redis.Client {
 	t.Cleanup(func() {
 		client.Close()
 	})
+
 	return client
 }
 
@@ -418,6 +426,7 @@ func NewTestAuthRepo(t testing.TB, dsn string) domain.ApiKeyRepository {
 	t.Cleanup(func() {
 		client.Close()
 	})
+
 	return postgres.NewApiKeyRepository(client)
 }
 
@@ -427,6 +436,7 @@ func NewTestRuleRepo(t testing.TB, dsn string) domain.RoutingRuleRepository {
 	t.Cleanup(func() {
 		client.Close()
 	})
+
 	return postgres.NewRoutingRuleRepository(client)
 }
 
@@ -435,6 +445,6 @@ func ExecuteSQL(t testing.TB, dsn string, query string, args ...interface{}) {
 	require.NoError(t, err)
 	defer db.Close()
 
-	_, err = db.Exec(query, args...)
+	_, err = db.ExecContext(context.Background(), query, args...)
 	require.NoError(t, err)
 }

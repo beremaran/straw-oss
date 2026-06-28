@@ -27,7 +27,8 @@ func (s *Service) CreateSession(ctx context.Context, endpointID string, ruleID s
 
 	session := domain.NewSession(id, endpointID, ruleID, tags)
 
-	if err := s.store.Save(ctx, session, domain.DefaultSessionTTL); err != nil {
+	err = s.store.Save(ctx, session, domain.DefaultSessionTTL)
+	if err != nil {
 		return nil, err
 	}
 
@@ -41,8 +42,8 @@ func (s *Service) GetSession(ctx context.Context, id string) (*domain.Session, e
 	}
 
 	if session.IsExpired(domain.DefaultSessionTTL) {
-
 		_ = s.store.Delete(ctx, id)
+
 		return nil, domain.ErrSessionExpired
 	}
 
@@ -54,7 +55,6 @@ func (s *Service) TouchSession(ctx context.Context, id string) error {
 }
 
 func (s *Service) MigrateSession(ctx context.Context, id string, newEndpointID string) (*domain.Session, error) {
-
 	session, err := s.GetSession(ctx, id)
 	if err != nil {
 		return nil, err
@@ -64,7 +64,8 @@ func (s *Service) MigrateSession(ctx context.Context, id string, newEndpointID s
 		return nil, domain.ErrSessionMigrationLimit
 	}
 
-	if err := s.store.Save(ctx, session, domain.DefaultSessionTTL); err != nil {
+	err = s.store.Save(ctx, session, domain.DefaultSessionTTL)
+	if err != nil {
 		return nil, err
 	}
 
@@ -77,8 +78,10 @@ func (s *Service) EndSession(ctx context.Context, id string) error {
 
 func generateRandomID(bytes int) (string, error) {
 	b := make([]byte, bytes)
-	if _, err := rand.Read(b); err != nil {
+	_, err := rand.Read(b)
+	if err != nil {
 		return "", err
 	}
+
 	return hex.EncodeToString(b), nil
 }

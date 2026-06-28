@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -15,7 +16,7 @@ func TestConcurrencyLimiter(t *testing.T) {
 	t.Run("allows requests under limit", func(t *testing.T) {
 		mw := ConcurrencyLimiter(10)
 
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 		rec := httptest.NewRecorder()
 
 		handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -46,14 +47,14 @@ func TestConcurrencyLimiter(t *testing.T) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				req := httptest.NewRequest(http.MethodGet, "/", nil)
+				req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 				rec := httptest.NewRecorder()
 				handler.ServeHTTP(rec, req)
 			}()
 			<-startCh
 		}
 
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 		rec := httptest.NewRecorder()
 
 		handler.ServeHTTP(rec, req)
@@ -66,7 +67,7 @@ func TestConcurrencyLimiter(t *testing.T) {
 	t.Run("uses default when zero limit", func(t *testing.T) {
 		mw := ConcurrencyLimiter(0)
 
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 		rec := httptest.NewRecorder()
 
 		handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -87,12 +88,12 @@ func TestConcurrencyLimiter(t *testing.T) {
 			_, _ = w.Write([]byte("OK"))
 		}))
 
-		req1 := httptest.NewRequest(http.MethodGet, "/", nil)
+		req1 := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 		rec1 := httptest.NewRecorder()
 		handler.ServeHTTP(rec1, req1)
 		assert.Equal(t, http.StatusOK, rec1.Code)
 
-		req2 := httptest.NewRequest(http.MethodGet, "/", nil)
+		req2 := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 		rec2 := httptest.NewRecorder()
 		handler.ServeHTTP(rec2, req2)
 		assert.Equal(t, http.StatusOK, rec2.Code)
@@ -120,7 +121,7 @@ func TestConcurrencyLimiterWithBlock(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 			rec := httptest.NewRecorder()
 			handler.ServeHTTP(rec, req)
 		}()
@@ -131,7 +132,7 @@ func TestConcurrencyLimiterWithBlock(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 			rec := httptest.NewRecorder()
 			handler.ServeHTTP(rec, req)
 			close(secondDone)
@@ -141,7 +142,6 @@ func TestConcurrencyLimiterWithBlock(t *testing.T) {
 		case <-secondDone:
 			t.Fatal("second request should be blocked")
 		case <-time.After(50 * time.Millisecond):
-
 		}
 
 		close(releaseCh)

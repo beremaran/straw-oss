@@ -22,10 +22,12 @@ func loadOpenApiDoc(t *testing.T) map[string]interface{} {
 
 	// Traverse up to find api/openapi.yaml
 	path := filepath.Join(wd, "api", "openapi.yaml")
-	if _, err := os.Stat(path); os.IsNotExist(err) {
+	_, err = os.Stat(path)
+	if os.IsNotExist(err) {
 		path = filepath.Join(wd, "..", "api", "openapi.yaml")
 	}
-	if _, err := os.Stat(path); os.IsNotExist(err) {
+	_, err = os.Stat(path)
+	if os.IsNotExist(err) {
 		path = filepath.Join(wd, "..", "..", "api", "openapi.yaml")
 	}
 
@@ -60,8 +62,10 @@ func normalizeOpenApiSchema(node interface{}) interface{} {
 			for i, v := range a {
 				a[i] = normalizeOpenApiSchema(v)
 			}
+
 			return a
 		}
+
 		return node
 	}
 
@@ -69,27 +73,41 @@ func normalizeOpenApiSchema(node interface{}) interface{} {
 		m[k] = normalizeOpenApiSchema(v)
 	}
 
-	// Convert "nullable: true" to "type: [type, null]"
-	if nullable, ok := m["nullable"].(bool); ok && nullable {
-		delete(m, "nullable")
-		if t, ok := m["type"].(string); ok {
-			m["type"] = []interface{}{t, "null"}
-		} else if types, ok := m["type"].([]interface{}); ok {
-			hasNull := false
-			for _, typ := range types {
-				if typ == "null" {
-					hasNull = true
-
-					break
-				}
-			}
-			if !hasNull {
-				m["type"] = append(types, "null")
-			}
-		}
-	}
+	handleNullable(m)
 
 	return m
+}
+
+func handleNullable(m map[string]interface{}) {
+	nullable, ok := m["nullable"].(bool)
+	if !ok || !nullable {
+		return
+	}
+	delete(m, "nullable")
+
+	t, ok := m["type"].(string)
+	if ok {
+		m["type"] = []interface{}{t, "null"}
+
+		return
+	}
+
+	types, ok := m["type"].([]interface{})
+	if !ok {
+		return
+	}
+
+	hasNull := false
+	for _, typ := range types {
+		if typ == "null" {
+			hasNull = true
+
+			break
+		}
+	}
+	if !hasNull {
+		m["type"] = append(types, "null")
+	}
 }
 
 func validateAgainstOpenApiSchema(t *testing.T, doc map[string]interface{}, schemaName string, data interface{}) *gojsonschema.Result {

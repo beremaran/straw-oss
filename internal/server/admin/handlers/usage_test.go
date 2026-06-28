@@ -19,6 +19,7 @@ type MockUsageRepo struct {
 
 func (m *MockUsageRepo) GetDailySummaries(ctx context.Context, apiKeyID string, start, end time.Time) ([]domain.UsageSummary, error) {
 	args := m.Called(ctx, apiKeyID, start, end)
+
 	return args.Get(0).([]domain.UsageSummary), args.Error(1)
 }
 
@@ -27,7 +28,7 @@ func TestUsageHandler_HandleGetUsageSummary(t *testing.T) {
 	h := NewUsageHandler(mockRepo)
 
 	t.Run("success", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/admin/usage/summary?start=2023-01-01&end=2023-01-02", nil)
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/admin/usage/summary?start=2023-01-01&end=2023-01-02", nil)
 		rec := httptest.NewRecorder()
 
 		summaries := []domain.UsageSummary{

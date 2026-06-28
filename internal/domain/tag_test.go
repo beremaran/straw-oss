@@ -53,6 +53,7 @@ func TestParseTag(t *testing.T) {
 			got, err := ParseTag(tt.input)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ParseTag() error = %v, wantErr %v", err, tt.wantErr)
+
 				return
 			}
 			if !tt.wantErr && (got.Key != tt.want.Key || got.Value != tt.want.Value) {
@@ -99,6 +100,7 @@ func TestParseTags(t *testing.T) {
 			got, err := ParseTags(tt.input)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ParseTags() error = %v, wantErr %v", err, tt.wantErr)
+
 				return
 			}
 			if !tt.wantErr && len(got) != len(tt.want) {

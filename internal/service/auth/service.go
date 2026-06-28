@@ -26,15 +26,14 @@ func NewAuthService(repo domain.ApiKeyRepository, cache *Cache) *Service {
 }
 
 func (s *Service) ValidateKey(ctx context.Context, rawToken string) (*domain.ApiKey, error) {
-
 	tokenHash := sha256Hash(rawToken)
 
 	if s.cache != nil {
-		if cachedKey, err := s.cache.GetKey(ctx, tokenHash); err == nil && cachedKey != nil {
+		cachedKey, err := s.cache.GetKey(ctx, tokenHash)
+		if err == nil && cachedKey != nil {
 			if cachedKey.IsValid() {
 				return cachedKey, nil
 			}
-
 		}
 	}
 
@@ -51,9 +50,7 @@ func (s *Service) ValidateKey(ctx context.Context, rawToken string) (*domain.Api
 	}
 
 	if s.cache != nil {
-		if err := s.cache.SetKey(ctx, tokenHash, apiKey); err != nil {
-
-		}
+		_ = s.cache.SetKey(ctx, tokenHash, apiKey)
 	}
 
 	return apiKey, nil
@@ -64,15 +61,16 @@ func (s *Service) InvalidateKey(ctx context.Context, rawToken string) error {
 		return nil
 	}
 	tokenHash := sha256Hash(rawToken)
+
 	return s.cache.InvalidateKey(ctx, tokenHash)
 }
 
 func (s *Service) InvalidateKeyByID(ctx context.Context, keyID string) error {
-
 	return nil
 }
 
 func sha256Hash(s string) string {
 	hash := sha256.Sum256([]byte(s))
+
 	return hex.EncodeToString(hash[:])
 }

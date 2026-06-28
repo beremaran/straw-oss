@@ -114,7 +114,6 @@ func TestGenerateQuotaKey(t *testing.T) {
 }
 
 func TestGenerateQuotaKey_NilRule(t *testing.T) {
-
 	t.Run("Panics with nil rule", func(t *testing.T) {
 		assert.Panics(t, func() {
 			ratelimit.GenerateQuotaKey(nil, "key-abc")
