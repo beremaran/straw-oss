@@ -171,42 +171,8 @@ func (h *RelayHandler) Handle(w http.ResponseWriter, r *http.Request) {
 
 	req.Fingerprint = rule.FingerprintPreset
 
-	limitPerSecond := rule.RateLimitPerSecond
-	if apiKey != nil && apiKey.RateLimitOverride != nil {
-		limitPerSecond = *apiKey.RateLimitOverride
-	}
-
-	if limitPerSecond > 0 || rule.RateLimitPerMinute > 0 {
-		quotaKey := rule.QuotaKey
-		if quotaKey == "" {
-			quotaKey = rule.ID
-		}
-
-		allowed, result, err := h.rateLimiter.Allow(ctx, quotaKey, limitPerSecond, rule.RateLimitPerMinute)
-		if err != nil {
-			slog.ErrorContext(ctx, "rate limit check failed", "error", err)
-			helper.WriteError(w, http.StatusInternalServerError, "rate limit check failed")
-
-			return
-		}
-
-		if result.Limit > 0 {
-			w.Header().Set("X-RateLimit-Limit", strconv.Itoa(result.Limit))
-			w.Header().Set("X-RateLimit-Remaining", strconv.Itoa(result.Remaining))
-			w.Header().Set("X-RateLimit-Reset", fmt.Sprintf("%.0f", result.Reset.Seconds()))
-		}
-
-		if !allowed {
-			slog.WarnContext(ctx, "rate limit exceeded",
-				"rule_id", rule.ID,
-				"quota_key", quotaKey,
-				"retry_after", result.Reset,
-			)
-			w.Header().Set("Retry-After", fmt.Sprintf("%.0f", result.Reset.Seconds()))
-			helper.WriteError(w, http.StatusTooManyRequests, "rate limit exceeded")
-
-			return
-		}
+	if err := h.checkRateLimit(w, r, rule, apiKey); err != nil {
+		return
 	}
 
 	filterReq := filter.NewFilterRequest(
@@ -336,4 +302,50 @@ func (h *RelayHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_ = h.responseBuilder.WriteResponse(w, res, meta)
+}
+
+func (h *RelayHandler) checkRateLimit(w http.ResponseWriter, r *http.Request, rule *domain.RoutingRule, apiKey *domain.ApiKey) error {
+	ctx := r.Context()
+
+	limitPerSecond := rule.RateLimitPerSecond
+	if apiKey != nil && apiKey.RateLimitOverride != nil {
+		limitPerSecond = *apiKey.RateLimitOverride
+	}
+
+	if limitPerSecond <= 0 && rule.RateLimitPerMinute <= 0 {
+		return nil
+	}
+
+	quotaKey := rule.QuotaKey
+	if quotaKey == "" {
+		quotaKey = rule.ID
+	}
+
+	allowed, result, err := h.rateLimiter.Allow(ctx, quotaKey, limitPerSecond, rule.RateLimitPerMinute)
+	if err != nil {
+		slog.ErrorContext(ctx, "rate limit check failed", "error", err)
+		helper.WriteError(w, http.StatusInternalServerError, "rate limit check failed")
+
+		return err
+	}
+
+	if result.Limit > 0 {
+		w.Header().Set("X-RateLimit-Limit", strconv.Itoa(result.Limit))
+		w.Header().Set("X-RateLimit-Remaining", strconv.Itoa(result.Remaining))
+		w.Header().Set("X-RateLimit-Reset", fmt.Sprintf("%.0f", result.Reset.Seconds()))
+	}
+
+	if !allowed {
+		slog.WarnContext(ctx, "rate limit exceeded",
+			"rule_id", rule.ID,
+			"quota_key", quotaKey,
+			"retry_after", result.Reset,
+		)
+		w.Header().Set("Retry-After", fmt.Sprintf("%.0f", result.Reset.Seconds()))
+		helper.WriteError(w, http.StatusTooManyRequests, "rate limit exceeded")
+
+		return err
+	}
+
+	return nil
 }
