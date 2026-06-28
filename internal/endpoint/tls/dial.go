@@ -99,36 +99,33 @@ func Dial(ctx context.Context, network, addr string, presetID string, opts ...Di
 	}, clientHelloID)
 
 	if options.HandshakeTimeout > 0 {
-		deadline := time.Now().Add(options.HandshakeTimeout)
-		err := uConn.SetDeadline(deadline)
-		if err != nil {
-			_ = rawConn.Close()
-
-			return nil, &HandshakeError{
-				Addr: addr,
-				Err:  err,
-			}
-		}
+		err = dialWithTimeout(uConn, rawConn, addr, ctx, options.HandshakeTimeout)
+	} else {
+		err = uConn.HandshakeContext(ctx)
 	}
 
-	if err := uConn.HandshakeContext(ctx); err != nil {
+	if err != nil {
 		_ = rawConn.Close()
-
 		return nil, classifyHandshakeError(addr, err)
-	}
-
-	if options.HandshakeTimeout > 0 {
-		err := uConn.SetDeadline(time.Time{})
-		if err != nil {
-			_ = uConn.Close()
-
-			return nil, err
-		}
 	}
 
 	metrics.TLSFingerprintUsed.WithLabelValues(presetID).Inc()
 
 	return uConn, nil
+}
+
+func dialWithTimeout(uConn *utls.UConn, rawConn net.Conn, addr string, ctx context.Context, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	if err := uConn.SetDeadline(deadline); err != nil {
+		_ = rawConn.Close()
+		return &HandshakeError{Addr: addr, Err: err}
+	}
+	if err := uConn.HandshakeContext(ctx); err != nil {
+		_ = uConn.SetDeadline(time.Time{})
+		return err
+	}
+	_ = uConn.SetDeadline(time.Time{})
+	return nil
 }
 
 func classifyHandshakeError(addr string, err error) error {

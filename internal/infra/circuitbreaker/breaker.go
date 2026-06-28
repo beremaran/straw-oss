@@ -75,32 +75,28 @@ func (cb *CircuitBreaker) Allow() bool {
 	cb.mu.RUnlock()
 
 	switch state {
-	case StateClosed:
-		return true
-	case StateHalfOpen:
+	case StateClosed, StateHalfOpen:
 		return true
 	case StateOpen:
 		if time.Since(lastFailure) > cb.resetTimeout {
-			cb.mu.Lock()
-			defer cb.mu.Unlock()
-
-			if cb.state == StateOpen {
-				if time.Since(cb.lastFailure) > cb.resetTimeout {
-					cb.state = StateHalfOpen
-
-					return true
-				}
-
-				return false
-			}
-
-			return true
+			return cb.tryOpenToHalfOpen()
 		}
-
 		return false
 	}
 
 	return false
+}
+
+func (cb *CircuitBreaker) tryOpenToHalfOpen() bool {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+
+	if cb.state == StateOpen && time.Since(cb.lastFailure) > cb.resetTimeout {
+		cb.state = StateHalfOpen
+		return true
+	}
+
+	return cb.state != StateOpen
 }
 
 func (cb *CircuitBreaker) ReportSuccess() {

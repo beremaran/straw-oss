@@ -142,28 +142,16 @@ func (s *EndpointHealthStore) ListHealthyByTags(ctx context.Context, tags []stri
 
 	healthy := make([]*EndpointHealth, 0)
 	for _, result := range results {
-		if result == nil {
-			continue
-		}
-
-		str, ok := result.(string)
+		h, ok := parseHealthRecord(result)
 		if !ok {
 			continue
 		}
 
-		var health EndpointHealth
-		err := json.Unmarshal([]byte(str), &health)
-		if err != nil {
+		if !isEligible(h, tags) {
 			continue
 		}
 
-		if health.State != HealthStateHealthy && health.State != HealthStateSuspect {
-			continue
-		}
-
-		if matchesTags(&health, tags) {
-			healthy = append(healthy, &health)
-		}
+		healthy = append(healthy, h)
 	}
 
 	return healthy, nil
@@ -229,6 +217,28 @@ func (s *EndpointHealthStore) DeleteHealth(ctx context.Context, endpointID strin
 	}
 
 	return nil
+}
+
+func parseHealthRecord(result any) (*EndpointHealth, bool) {
+	if result == nil {
+		return nil, false
+	}
+	str, ok := result.(string)
+	if !ok {
+		return nil, false
+	}
+	var health EndpointHealth
+	if err := json.Unmarshal([]byte(str), &health); err != nil {
+		return nil, false
+	}
+	return &health, true
+}
+
+func isEligible(health *EndpointHealth, tags []string) bool {
+	if health.State != HealthStateHealthy && health.State != HealthStateSuspect {
+		return false
+	}
+	return matchesTags(health, tags)
 }
 
 func matchesTags(health *EndpointHealth, requiredTags []string) bool {
