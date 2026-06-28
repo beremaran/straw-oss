@@ -31,6 +31,7 @@ func (c *Cache) GetKey(ctx context.Context, keyHash string) (*domain.ApiKey, err
 		if errors.Is(err, redis.ErrCacheMiss) {
 			return nil, nil
 		}
+
 		return nil, err
 	}
 
@@ -39,10 +40,12 @@ func (c *Cache) GetKey(ctx context.Context, keyHash string) (*domain.ApiKey, err
 
 func (c *Cache) SetKey(ctx context.Context, keyHash string, apiKey *domain.ApiKey) error {
 	key := fmt.Sprintf("auth:valid:%s", keyHash)
+
 	return c.client.Set(ctx, key, apiKey, c.ttl)
 }
 
 func (c *Cache) InvalidateKey(ctx context.Context, keyHash string) error {
 	key := fmt.Sprintf("auth:valid:%s", keyHash)
+
 	return c.client.Delete(ctx, key)
 }

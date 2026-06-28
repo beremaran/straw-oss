@@ -54,7 +54,6 @@ func TestClassifyHandshakeError(t *testing.T) {
 					t.Errorf("classifyHandshakeError(%v) = %v; want %v", tt.err, classified, tt.expected)
 				}
 			} else {
-
 				var hsErr *HandshakeError
 				if !errors.As(classified, &hsErr) {
 					t.Errorf("expected HandshakeError, got %T", classified)

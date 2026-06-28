@@ -74,6 +74,7 @@ func NewClient(registry *fingerprint.Registry, transportProvider TransportProvid
 	for _, opt := range opts {
 		opt(c)
 	}
+
 	return c
 }
 
@@ -99,6 +100,7 @@ func mapPresetToProfile(presetID string) (profiles.ClientProfile, bool) {
 	if !ok {
 		return profiles.Chrome_133, false
 	}
+
 	return profile, true
 }
 
@@ -129,11 +131,11 @@ func (c *Client) getTLSClient(presetID string, timeout time.Duration, dialContex
 	}
 
 	c.tlsClients[key] = client
+
 	return client, nil
 }
 
 func (c *Client) Do(ctx context.Context, req *protocol.Request) (*protocol.Response, error) {
-
 	ctx, span := otel.Tracer("internal/endpoint/http").Start(ctx, "upstream.request")
 	defer span.End()
 
@@ -156,7 +158,6 @@ func (c *Client) Do(ctx context.Context, req *protocol.Request) (*protocol.Respo
 	if ok {
 		metrics.TLSFingerprintUsed.WithLabelValues(req.Fingerprint).Inc()
 	} else {
-
 		preset, ok = c.registry.Get("chrome-133")
 		if !ok {
 			err := &ClientError{
@@ -165,6 +166,7 @@ func (c *Client) Do(ctx context.Context, req *protocol.Request) (*protocol.Respo
 			}
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
+
 			return nil, err
 		}
 	}
@@ -173,12 +175,12 @@ func (c *Client) Do(ctx context.Context, req *protocol.Request) (*protocol.Respo
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "failed to build request")
+
 		return nil, err
 	}
 
 	host := fhttpReq.URL.Host
 	if host == "" {
-
 		if u, err := url.Parse(req.URL); err == nil {
 			host = u.Host
 		}
@@ -197,6 +199,7 @@ func (c *Client) Do(ctx context.Context, req *protocol.Request) (*protocol.Respo
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "failed to get tls client: "+err.Error())
+
 		return nil, err
 	}
 
@@ -256,6 +259,7 @@ func (c *Client) getTimeout(req *protocol.Request) time.Duration {
 	if req.Timeout > 0 {
 		return req.Timeout
 	}
+
 	return c.defaultTimeout
 }
 
@@ -288,6 +292,7 @@ func (c *Client) Close() error {
 		client.CloseIdleConnections()
 	}
 	c.tlsClients = make(map[string]tls_client.HttpClient)
+
 	return nil
 }
 

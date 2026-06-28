@@ -16,9 +16,7 @@ import (
 )
 
 func InitTracerProvider(ctx context.Context, serviceName, serviceVersion string) (func(context.Context) error, error) {
-
 	if strings.EqualFold(os.Getenv("OTEL_SDK_DISABLED"), "true") {
-
 		return func(context.Context) error { return nil }, nil
 	}
 
@@ -55,10 +53,11 @@ func InitTracerProvider(ctx context.Context, serviceName, serviceVersion string)
 	))
 
 	shutdown := func(ctx context.Context) error {
-
-		if err := tracerProvider.Shutdown(ctx); err != nil {
+		err := tracerProvider.Shutdown(ctx)
+		if err != nil {
 			return fmt.Errorf("failed to shutdown tracer provider: %w", err)
 		}
+
 		return nil
 	}
 

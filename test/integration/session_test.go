@@ -188,7 +188,6 @@ func TestSession_Migration(t *testing.T) {
 }
 
 func TestSession_Expiration(t *testing.T) {
-
 	suite := GetSuite(t)
 	ctx := context.Background()
 	tc := setupTestServer(t, suite)
@@ -231,7 +230,7 @@ func TestSession_Expiration(t *testing.T) {
 	require.NoError(t, err)
 
 	newSessionID := resp2.Headers.Get(middleware.HeaderSessionID)
-	if resp2.StatusCode == 410 {
+	if resp2.StatusCode == http.StatusGone {
 		t.Log("Got 410 Session Expired")
 	} else {
 		t.Logf("Got status %d, New session: %s", resp2.StatusCode, newSessionID)

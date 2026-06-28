@@ -21,6 +21,7 @@ func (m *mockTransportProvider) GetTransport(host string, preset fingerprint.Pre
 	if m.transport != nil {
 		return m.transport
 	}
+
 	return &fhttp.Transport{}
 }
 
@@ -81,7 +82,7 @@ func TestClient_Close(t *testing.T) {
 func TestNewRequest(t *testing.T) {
 	req := NewRequest("GET", "https://example.com", nil)
 
-	if req.Method != "GET" {
+	if req.Method != http.MethodGet {
 		t.Errorf("expected method GET, got %s", req.Method)
 	}
 
@@ -98,7 +99,7 @@ func TestNewRequest_WithBody(t *testing.T) {
 	body := []byte(`{"key": "value"}`)
 	req := NewRequest("POST", "https://example.com/api", body)
 
-	if req.Method != "POST" {
+	if req.Method != http.MethodPost {
 		t.Errorf("expected method POST, got %s", req.Method)
 	}
 
@@ -108,7 +109,6 @@ func TestNewRequest_WithBody(t *testing.T) {
 }
 
 func TestClient_Do_MockServer(t *testing.T) {
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)

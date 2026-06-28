@@ -86,18 +86,21 @@ func (i *Installer) Install(ctx context.Context, manifest *VersionManifest) erro
 		binaryPath, err = os.Executable()
 		if err != nil {
 			_ = os.Remove(tmpPath)
-			return fmt.Errorf("%w: failed to get executable path: %v", ErrInstallFailed, err)
+
+			return fmt.Errorf("%w: failed to get executable path: %w", ErrInstallFailed, err)
 		}
 
 		binaryPath, err = filepath.EvalSymlinks(binaryPath)
 		if err != nil {
 			_ = os.Remove(tmpPath)
-			return fmt.Errorf("%w: failed to resolve symlinks: %v", ErrInstallFailed, err)
+
+			return fmt.Errorf("%w: failed to resolve symlinks: %w", ErrInstallFailed, err)
 		}
 	}
 
 	if err := i.atomicReplace(tmpPath, binaryPath); err != nil {
 		_ = os.Remove(tmpPath)
+
 		return err
 	}
 
@@ -117,7 +120,7 @@ func (i *Installer) DownloadAndVerify(ctx context.Context, manifest *VersionMani
 
 	tmpFile, err := os.CreateTemp("", "straw-update-*")
 	if err != nil {
-		return "", fmt.Errorf("%w: failed to create temp file: %v", ErrDownloadFailed, err)
+		return "", fmt.Errorf("%w: failed to create temp file: %w", ErrDownloadFailed, err)
 	}
 	tmpPath := tmpFile.Name()
 
@@ -131,12 +134,12 @@ func (i *Installer) DownloadAndVerify(ctx context.Context, manifest *VersionMani
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, manifest.URL, nil)
 	if err != nil {
-		return "", fmt.Errorf("%w: failed to create request: %v", ErrDownloadFailed, err)
+		return "", fmt.Errorf("%w: failed to create request: %w", ErrDownloadFailed, err)
 	}
 
 	resp, err := i.httpClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("%w: HTTP request failed: %v", ErrDownloadFailed, err)
+		return "", fmt.Errorf("%w: HTTP request failed: %w", ErrDownloadFailed, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -159,7 +162,7 @@ func (i *Installer) DownloadAndVerify(ctx context.Context, manifest *VersionMani
 	multiWriter := io.MultiWriter(tmpFile, hasher)
 	downloaded, err = io.Copy(multiWriter, reader)
 	if err != nil {
-		return "", fmt.Errorf("%w: failed to download: %v", ErrDownloadFailed, err)
+		return "", fmt.Errorf("%w: failed to download: %w", ErrDownloadFailed, err)
 	}
 
 	i.logger.Debug("download complete", "bytes", downloaded)
@@ -174,35 +177,36 @@ func (i *Installer) DownloadAndVerify(ctx context.Context, manifest *VersionMani
 	i.logger.Debug("checksum verified", "sha256", actualSum)
 
 	if err := tmpFile.Chmod(0755); err != nil {
-		return "", fmt.Errorf("%w: failed to set permissions: %v", ErrInstallFailed, err)
+		return "", fmt.Errorf("%w: failed to set permissions: %w", ErrInstallFailed, err)
 	}
 
 	success = true
+
 	return tmpPath, nil
 }
 
 func (i *Installer) atomicReplace(srcPath, dstPath string) error {
-
 	if runtime.GOOS == "windows" {
-
 		oldPath := dstPath + ".old"
 		_ = os.Remove(oldPath)
 
-		if err := os.Rename(dstPath, oldPath); err != nil {
-			return fmt.Errorf("%w: failed to backup current binary: %v", ErrInstallFailed, err)
+		err := os.Rename(dstPath, oldPath)
+		if err != nil {
+			return fmt.Errorf("%w: failed to backup current binary: %w", ErrInstallFailed, err)
 		}
 
-		if err := os.Rename(srcPath, dstPath); err != nil {
-
+		err := os.Rename(srcPath, dstPath)
+		if err != nil {
 			_ = os.Rename(oldPath, dstPath)
-			return fmt.Errorf("%w: failed to install new binary: %v", ErrInstallFailed, err)
+
+			return fmt.Errorf("%w: failed to install new binary: %w", ErrInstallFailed, err)
 		}
 
 		_ = os.Remove(oldPath)
 	} else {
-
-		if err := os.Rename(srcPath, dstPath); err != nil {
-			return fmt.Errorf("%w: failed to install new binary: %v", ErrInstallFailed, err)
+		err := os.Rename(srcPath, dstPath)
+		if err != nil {
+			return fmt.Errorf("%w: failed to install new binary: %w", ErrInstallFailed, err)
 		}
 	}
 
@@ -240,5 +244,6 @@ func (pr *progressReader) Read(p []byte) (int, error) {
 	if pr.onProgress != nil {
 		pr.onProgress(pr.downloaded, pr.total)
 	}
+
 	return n, err
 }

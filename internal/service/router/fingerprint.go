@@ -49,6 +49,7 @@ func (fm *FingerprintManager) selectFromAB(ruleID string, config *domain.ABConfi
 
 func (fm *FingerprintManager) selectRandom(variants []domain.ABVariant) string {
 	idx := safeRandInt(len(variants))
+
 	return variants[idx].Fingerprint
 }
 
@@ -59,7 +60,6 @@ func (fm *FingerprintManager) selectWeighted(variants []domain.ABVariant) string
 	}
 
 	if totalWeight <= 0 {
-
 		return fm.selectRandom(variants)
 	}
 
@@ -76,19 +76,18 @@ func (fm *FingerprintManager) selectWeighted(variants []domain.ABVariant) string
 }
 
 func (fm *FingerprintManager) selectRoundRobin(ruleID string, variants []domain.ABVariant) string {
-
 	val, loaded := fm.rrCounters.LoadOrStore(ruleID, new(uint64))
 	counter := val.(*uint64)
 
 	var nextVal uint64
 	if !loaded {
-
 		nextVal = atomic.AddUint64(counter, 1)
 	} else {
 		nextVal = atomic.AddUint64(counter, 1)
 	}
 
 	idx := int((nextVal - 1) % uint64(len(variants)))
+
 	return variants[idx].Fingerprint
 }
 
@@ -98,8 +97,8 @@ func safeRandInt(max int) int {
 	}
 	n, err := rand.Int(rand.Reader, big.NewInt(int64(max)))
 	if err != nil {
-
 		return 0
 	}
+
 	return int(n.Int64())
 }

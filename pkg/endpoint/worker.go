@@ -54,6 +54,7 @@ func NewWorker(cfg *config.EndpointConfig, opts ...WorkerOption) *Worker {
 	for _, opt := range opts {
 		opt(w)
 	}
+
 	return w
 }
 
@@ -120,7 +121,8 @@ func (w *Worker) Start(ctx context.Context) error {
 		logger.Warn("failed to initialize tracer provider", "error", err)
 	} else {
 		defer func() {
-			if err := shutdownTracer(context.Background()); err != nil {
+			err := shutdownTracer(context.Background())
+			if err != nil {
 				logger.Error("failed to shutdown tracer provider", "error", err)
 			}
 		}()
@@ -195,20 +197,25 @@ func (w *Worker) Start(ctx context.Context) error {
 				updateCtx, msgCancel := context.WithTimeout(context.Background(), 5*time.Minute)
 				defer msgCancel()
 
-				if err := installer.Install(updateCtx, &update.VersionManifest{
+				err := installer.Install(updateCtx, &update.VersionManifest{
 					Version: r.NewVersion,
 					URL:     r.DownloadURL,
 					SHA256:  r.Checksum,
-				}); err != nil {
+				})
+				if err != nil {
 					logger.Error("failed to install update", "error", err)
+
 					return false
 				}
 
 				logger.Info("update installed, restarting...")
-				if err := installer.ReplaceAndRestart(); err != nil {
+				err := installer.ReplaceAndRestart()
+				if err != nil {
 					logger.Error("failed to restart", "error", err)
+
 					return false
 				}
+
 				return true
 			}),
 		)
@@ -243,7 +250,8 @@ func (w *Worker) Start(ctx context.Context) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := taskConsumer.Start(ctx); err != nil {
+		err := taskConsumer.Start(ctx)
+		if err != nil {
 			logger.Error("consumer stopped with error", "error", err)
 		}
 	}()
@@ -258,7 +266,8 @@ func (w *Worker) Start(ctx context.Context) error {
 	go func() {
 		defer wg.Done()
 		logger.Info("starting health/metrics server", "addr", healthServer.Addr)
-		if err := healthServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		err := healthServer.ListenAndServe()
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Error("health server failed", "error", err)
 		}
 	}()
@@ -296,5 +305,6 @@ func setupHealthHandler() http.Handler {
 	})
 	mux.Handle("/metrics", obsmetrics.Handler())
 	obsmetrics.RegisterPprof(mux)
+
 	return mux
 }

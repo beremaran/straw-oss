@@ -32,22 +32,28 @@ func (h *CacheHandler) HandleClearCache(w http.ResponseWriter, r *http.Request) 
 	for iter.Next(ctx) {
 		keys = append(keys, iter.Val())
 		if len(keys) >= 100 {
-			if err := red.Del(ctx, keys...).Err(); err != nil {
+			err := red.Del(ctx, keys...).Err()
+			if err != nil {
 				helper.WriteError(w, http.StatusInternalServerError, "failed to delete keys")
+
 				return
 			}
 			count += len(keys)
 			keys = nil
 		}
 	}
-	if err := iter.Err(); err != nil {
+	err := iter.Err()
+	if err != nil {
 		helper.WriteError(w, http.StatusInternalServerError, "failed to scan keys")
+
 		return
 	}
 
 	if len(keys) > 0 {
-		if err := red.Del(ctx, keys...).Err(); err != nil {
+		err := red.Del(ctx, keys...).Err()
+		if err != nil {
 			helper.WriteError(w, http.StatusInternalServerError, "failed to delete keys")
+
 			return
 		}
 		count += len(keys)
@@ -65,6 +71,7 @@ func (h *CacheHandler) HandleGetCacheStats(w http.ResponseWriter, r *http.Reques
 	info, err := h.redisClient.Client.Info(ctx).Result()
 	if err != nil {
 		helper.WriteError(w, http.StatusInternalServerError, "failed to get redis info")
+
 		return
 	}
 

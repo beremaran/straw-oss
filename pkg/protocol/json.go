@@ -10,6 +10,7 @@ func MarshalCompressed(v any) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal JSON: %w", err)
 	}
+
 	return Compress(jsonData)
 }
 
@@ -21,5 +22,6 @@ func UnmarshalCompressed(data []byte, v any) error {
 	if err := json.Unmarshal(jsonData, v); err != nil {
 		return fmt.Errorf("failed to unmarshal JSON: %w", err)
 	}
+
 	return nil
 }

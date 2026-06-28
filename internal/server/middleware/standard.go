@@ -16,7 +16,6 @@ func RequestID() func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			reqID := r.Header.Get("X-Request-ID")
 			if reqID == "" {
-
 				bytes := make([]byte, 16)
 				if _, err := rand.Read(bytes); err == nil {
 					reqID = hex.EncodeToString(bytes)
@@ -54,8 +53,9 @@ func CORS() func(http.Handler) http.Handler {
 			w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
 			w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, X-Session-ID, X-Session-End")
 
-			if r.Method == "OPTIONS" {
+			if r.Method == http.MethodOptions {
 				w.WriteHeader(http.StatusOK)
+
 				return
 			}
 
@@ -70,6 +70,7 @@ func BodyLimit(maxBytes int64) func(http.Handler) http.Handler {
 			if maxBytes > 0 {
 				if r.ContentLength > maxBytes {
 					helper.WriteError(w, http.StatusRequestEntityTooLarge, "request body too large")
+
 					return
 				}
 				if r.Body != nil {

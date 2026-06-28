@@ -117,7 +117,6 @@ func NewRetryExecutor(
 }
 
 func (r *RetryExecutor) Start(ctx context.Context) error {
-
 	return r.broker.Subscribe(ctx, SharedResultQueue, r.handleResult, broker.WithTransient(), broker.WithMaxAckPending(5000))
 }
 
@@ -125,22 +124,23 @@ func (r *RetryExecutor) handleResult(ctx context.Context, body []byte) error {
 	res, err := r.parseResult(body)
 	if err != nil {
 		r.logger.Error("failed to parse result message", "error", err)
+
 		return nil
 	}
 
 	requestID := res.RequestID
 	if requestID == "" {
-
 		r.logger.Warn("received result without request_id")
 		ReleaseResultMessage(res)
+
 		return nil
 	}
 
 	val, ok := r.responseChans.Load(requestID)
 	if !ok {
-
 		r.logger.Debug("received result for unknown or timed-out request", "request_id", requestID)
 		ReleaseResultMessage(res)
+
 		return nil
 	}
 
@@ -169,7 +169,6 @@ func (r *RetryExecutor) Execute(
 
 	pools := r.getPoolTiers(rule)
 	if len(pools) == 0 {
-
 		pools = []int{1}
 	}
 
@@ -202,10 +201,10 @@ func (r *RetryExecutor) Execute(
 		if err == nil {
 			failure := ClassifyFailure(response)
 			if failure == FailureNone {
-
 				result.Success = true
 				result.Response = response
 				result.FinalPool = attemptPoolTier
+
 				return result, nil
 			}
 
@@ -230,7 +229,6 @@ func (r *RetryExecutor) Execute(
 
 			ReleaseResultMessage(response)
 		} else {
-
 			r.logger.WarnContext(ctx, "sticky endpoint execution error", "error", err)
 			excludedEndpoints = append(excludedEndpoints, preferredEndpointID)
 		}
@@ -241,7 +239,6 @@ func (r *RetryExecutor) Execute(
 		maxRetries := r.getMaxRetries(poolConfig, poolTier)
 
 		for attempt := 1; attempt <= maxRetries; attempt++ {
-
 			if ctx.Err() != nil {
 				return result, ctx.Err()
 			}
@@ -252,7 +249,6 @@ func (r *RetryExecutor) Execute(
 			attemptDuration := time.Since(attemptStart)
 
 			if err != nil {
-
 				attemptErr := AttemptError{
 					Pool:          poolTier,
 					Attempt:       attempt,
@@ -282,7 +278,6 @@ func (r *RetryExecutor) Execute(
 			failure := ClassifyFailure(response)
 
 			if failure == FailureNone {
-
 				result.Success = true
 				result.Response = response
 				result.FinalPool = poolTier
@@ -327,13 +322,14 @@ func (r *RetryExecutor) Execute(
 					"failure", failure.String(),
 				)
 				ReleaseResultMessage(response)
+
 				break
 			}
 
 			if !failure.ShouldRetry() {
-
 				result.Response = response
 				result.FinalPool = poolTier
+
 				return result, nil
 			}
 
@@ -384,7 +380,6 @@ func (r *RetryExecutor) executeAttempt(
 	if specificEndpointID != "" {
 		endpointID = specificEndpointID
 	} else {
-
 		endpointID, err = r.poolManager.GetEndpointFromPool(ctx, rule, poolTier, excludedEndpoints)
 		if err != nil {
 			return nil, "", fmt.Errorf("failed to select endpoint from pool %d: %w", poolTier, err)
@@ -408,10 +403,12 @@ func (r *RetryExecutor) executeAttempt(
 					"result_endpoint", result.EndpointID,
 				)
 				ReleaseResultMessage(result)
+
 				continue
 			}
 
 			result.EndpointID = endpointID
+
 			return result, endpointID, nil
 		}
 	}
@@ -419,10 +416,13 @@ func (r *RetryExecutor) executeAttempt(
 
 func (r *RetryExecutor) parseResult(body []byte) (*ResultMessage, error) {
 	result := AcquireResultMessage()
-	if err := json.Unmarshal(body, result); err != nil {
+	err := json.Unmarshal(body, result)
+	if err != nil {
 		ReleaseResultMessage(result)
+
 		return nil, fmt.Errorf("failed to unmarshal result: %w", err)
 	}
+
 	return result, nil
 }
 
@@ -465,9 +465,11 @@ func (r *RetryExecutor) calculateBackoff(attempt int) time.Duration {
 		backoff = time.Duration(float64(backoff) * r.backoffFactor)
 		if backoff > r.maxBackoff {
 			backoff = r.maxBackoff
+
 			break
 		}
 	}
+
 	return backoff
 }
 
@@ -475,6 +477,7 @@ func (r *RetryExecutor) getFailureMessage(result *ResultMessage) string {
 	if result.Error != nil {
 		return result.Error.Message
 	}
+
 	return fmt.Sprintf("HTTP %d", result.StatusCode)
 }
 

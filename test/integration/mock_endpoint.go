@@ -78,6 +78,7 @@ func NewMockEndpoint(b broker.MessageBroker, config MockEndpointConfig) *MockEnd
 	if config.HeartbeatInterval == 0 {
 		config.HeartbeatInterval = 1 * time.Second
 	}
+
 	return &MockEndpoint{
 		config:     config,
 		broker:     b,
@@ -116,11 +117,13 @@ func (m *MockEndpoint) Start(ctx context.Context) error {
 
 		if err := m.broker.DeclareQueue(ctx, m.config.QueueName); err != nil {
 			m.logger.Error("failed to declare queue", "error", err)
+
 			return
 		}
 
 		if err := m.broker.BindQueue(ctx, m.config.QueueName, "tasks", m.config.QueueName); err != nil {
 			m.logger.Error("failed to bind queue", "error", err)
+
 			return
 		}
 
@@ -134,7 +137,6 @@ func (m *MockEndpoint) Start(ctx context.Context) error {
 }
 
 func (m *MockEndpoint) Stop() {
-
 	if m.heartbeatSender != nil {
 		m.heartbeatSender.Stop()
 	}
@@ -174,6 +176,7 @@ func (m *MockEndpoint) GetRequests() []EndpointRequestRecord {
 	defer m.mu.RUnlock()
 	result := make([]EndpointRequestRecord, len(m.requests))
 	copy(result, m.requests)
+
 	return result
 }
 
@@ -186,6 +189,7 @@ func (m *MockEndpoint) ClearRequests() {
 func (m *MockEndpoint) RequestCount() int {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+
 	return len(m.requests)
 }
 
@@ -194,16 +198,17 @@ func (m *MockEndpoint) EndpointID() string {
 }
 
 func (m *MockEndpoint) handleMessage(ctx context.Context, body []byte) error {
-
 	var signedTask protocol.SignedTask
 	if err := json.Unmarshal(body, &signedTask); err != nil {
 		m.logger.Error("failed to unmarshal signed task", "error", err)
+
 		return err
 	}
 
 	req, err := protocol.ValidateSignedTask(&signedTask, m.config.Secret, 60*time.Second)
 	if err != nil {
 		m.logger.Error("failed to validate signed task", "error", err)
+
 		return err
 	}
 
@@ -235,11 +240,13 @@ func (m *MockEndpoint) handleMessage(ctx context.Context, body []byte) error {
 	respBody, err := json.Marshal(resultMsg)
 	if err != nil {
 		m.logger.Error("failed to marshal response", "error", err)
+
 		return err
 	}
 
 	if err := m.broker.Publish(ctx, "", respQueueName, respBody); err != nil {
 		m.logger.Error("failed to publish response", "error", err)
+
 		return err
 	}
 
@@ -253,7 +260,6 @@ func (m *MockEndpoint) handleMessage(ctx context.Context, body []byte) error {
 }
 
 func (m *MockEndpoint) buildResponse(ctx context.Context, req *protocol.Request) *MockEndpointResponse {
-
 	if failuresLeft := atomic.AddInt32(&m.failuresLeft, -1); failuresLeft >= 0 {
 		return &MockEndpointResponse{
 			StatusCode: 503,
@@ -279,6 +285,7 @@ func (m *MockEndpoint) buildResponse(ctx context.Context, req *protocol.Request)
 		if response.Delay > 0 {
 			time.Sleep(response.Delay)
 		}
+
 		return response
 	}
 
@@ -296,7 +303,6 @@ func (m *MockEndpoint) buildResponse(ctx context.Context, req *protocol.Request)
 }
 
 func (m *MockEndpoint) forwardRequest(ctx context.Context, req *protocol.Request, targetBase string) *MockEndpointResponse {
-
 	httpReq, err := http.NewRequestWithContext(ctx, req.Method, req.URL, nil)
 	if err != nil {
 		return &MockEndpointResponse{

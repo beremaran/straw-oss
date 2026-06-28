@@ -108,6 +108,7 @@ func (s *EndpointHealthStore) GetHealth(ctx context.Context, endpointID string) 
 		if errors.Is(err, redis.Nil) {
 			return nil, ErrCacheMiss
 		}
+
 		return nil, fmt.Errorf("failed to get health: %w", err)
 	}
 
@@ -120,7 +121,6 @@ func (s *EndpointHealthStore) GetHealth(ctx context.Context, endpointID string) 
 }
 
 func (s *EndpointHealthStore) ListHealthyByTags(ctx context.Context, tags []string) ([]*EndpointHealth, error) {
-
 	endpointIDs, err := s.client.Client.ZRange(ctx, endpointHealthIndexKey, 0, -1).Result()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list endpoint IDs: %w", err)
@@ -152,7 +152,8 @@ func (s *EndpointHealthStore) ListHealthyByTags(ctx context.Context, tags []stri
 		}
 
 		var health EndpointHealth
-		if err := json.Unmarshal([]byte(str), &health); err != nil {
+		err := json.Unmarshal([]byte(str), &health)
+		if err != nil {
 			continue
 		}
 
@@ -169,7 +170,6 @@ func (s *EndpointHealthStore) ListHealthyByTags(ctx context.Context, tags []stri
 }
 
 func (s *EndpointHealthStore) ListAllEndpoints(ctx context.Context) ([]*EndpointHealth, error) {
-
 	endpointIDs, err := s.client.Client.ZRange(ctx, endpointHealthIndexKey, 0, -1).Result()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list endpoint IDs: %w", err)
@@ -201,7 +201,8 @@ func (s *EndpointHealthStore) ListAllEndpoints(ctx context.Context) ([]*Endpoint
 		}
 
 		var health EndpointHealth
-		if err := json.Unmarshal([]byte(str), &health); err != nil {
+		err := json.Unmarshal([]byte(str), &health)
+		if err != nil {
 			continue
 		}
 
@@ -257,6 +258,7 @@ func (s *EndpointHealthStore) SetDraining(ctx context.Context, endpointID string
 	if draining {
 		return s.client.Client.SAdd(ctx, endpointDrainingSetKey, endpointID).Err()
 	}
+
 	return s.client.Client.SRem(ctx, endpointDrainingSetKey, endpointID).Err()
 }
 

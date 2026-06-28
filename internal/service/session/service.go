@@ -41,8 +41,8 @@ func (s *Service) GetSession(ctx context.Context, id string) (*domain.Session, e
 	}
 
 	if session.IsExpired(domain.DefaultSessionTTL) {
-
 		_ = s.store.Delete(ctx, id)
+
 		return nil, domain.ErrSessionExpired
 	}
 
@@ -54,7 +54,6 @@ func (s *Service) TouchSession(ctx context.Context, id string) error {
 }
 
 func (s *Service) MigrateSession(ctx context.Context, id string, newEndpointID string) (*domain.Session, error) {
-
 	session, err := s.GetSession(ctx, id)
 	if err != nil {
 		return nil, err
@@ -80,5 +79,6 @@ func generateRandomID(bytes int) (string, error) {
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
+
 	return hex.EncodeToString(b), nil
 }

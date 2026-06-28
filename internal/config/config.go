@@ -80,6 +80,7 @@ func getEnv(key, defaultVal string) string {
 	if val == "" {
 		return defaultVal
 	}
+
 	return val
 }
 
@@ -92,6 +93,7 @@ func getEnvBool(key string, defaultVal bool) bool {
 	if err != nil {
 		return defaultVal
 	}
+
 	return b
 }
 
@@ -104,6 +106,7 @@ func getEnvInt(key string, defaultVal int) int {
 	if err != nil {
 		return defaultVal
 	}
+
 	return n
 }
 
@@ -116,6 +119,7 @@ func getEnvDuration(key string, defaultVal time.Duration) time.Duration {
 	if err != nil {
 		return defaultVal
 	}
+
 	return d
 }
 
@@ -136,7 +140,8 @@ func LoadServerConfig() (*ServerConfig, error) {
 		AllowPrivateIPs:       getEnvBool("ALLOW_PRIVATE_IPS", false),
 	}
 
-	if err := validateServerConfig(cfg); err != nil {
+	err := validateServerConfig(cfg)
+	if err != nil {
 		return nil, err
 	}
 
@@ -202,7 +207,8 @@ func LoadEndpointConfig() (*EndpointConfig, error) {
 		IdleConnTimeout:    getEnvDuration("IDLE_CONN_TIMEOUT", 90*time.Second),
 	}
 
-	if err := validateEndpointConfig(cfg); err != nil {
+	err := validateEndpointConfig(cfg)
+	if err != nil {
 		return nil, err
 	}
 
@@ -225,6 +231,7 @@ func validateServerConfig(cfg *ServerConfig) error {
 	if len(errs) > 0 {
 		return &ValidationError{Errors: errs}
 	}
+
 	return nil
 }
 
@@ -247,6 +254,7 @@ func validateEndpointConfig(cfg *EndpointConfig) error {
 	if len(errs) > 0 {
 		return &ValidationError{Errors: errs}
 	}
+
 	return nil
 }
 
@@ -270,5 +278,6 @@ func parseCommaSeparated(s string) []string {
 			result = append(result, part)
 		}
 	}
+
 	return result
 }

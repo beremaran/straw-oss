@@ -44,7 +44,6 @@ func TestReplayProtection_StaleTimestamp(t *testing.T) {
 	})
 
 	t.Run("StaleTimestamp_TooOld", func(t *testing.T) {
-
 		ts := time.Now().Add(-maxAge - 10*time.Second).Unix()
 		task := createTask(ts)
 
@@ -59,7 +58,6 @@ func TestReplayProtection_StaleTimestamp(t *testing.T) {
 	})
 
 	t.Run("FutureTimestamp_ClockSkew", func(t *testing.T) {
-
 		ts := time.Now().Add(maxAge + 10*time.Second).Unix()
 		task := createTask(ts)
 

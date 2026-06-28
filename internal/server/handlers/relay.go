@@ -64,6 +64,7 @@ func NewRelayHandler(
 	for _, opt := range opts {
 		opt(h)
 	}
+
 	return h
 }
 
@@ -75,20 +76,24 @@ func (h *RelayHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) || strings.Contains(err.Error(), "request body too large") {
 			helper.WriteError(w, http.StatusRequestEntityTooLarge, "request body too large")
+
 			return
 		}
 		helper.WriteError(w, http.StatusBadRequest, "invalid request body")
+
 		return
 	}
 
 	req, err := reqDTO.ToProtocolRequest()
 	if err != nil {
 		helper.WriteError(w, http.StatusBadRequest, err.Error())
+
 		return
 	}
 
 	if req.URL == "" {
 		helper.WriteError(w, http.StatusBadRequest, "missing url")
+
 		return
 	}
 	if req.Method == "" {
@@ -106,6 +111,7 @@ func (h *RelayHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	if err := validator.ValidateTargetURL(req.URL, validationOpts...); err != nil {
 		slog.WarnContext(ctx, "target url validation failed", "url", req.URL, "error", err)
 		helper.WriteError(w, http.StatusForbidden, fmt.Sprintf("invalid target url: %v", err))
+
 		return
 	}
 
@@ -119,6 +125,7 @@ func (h *RelayHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	parseResult, err := h.tagParser.ParseTags(r, apiKey)
 	if err != nil {
 		helper.WriteError(w, http.StatusBadRequest, "invalid tags")
+
 		return
 	}
 
@@ -134,6 +141,7 @@ func (h *RelayHandler) Handle(w http.ResponseWriter, r *http.Request) {
 					"tag", tag.String(),
 				)
 				helper.WriteError(w, http.StatusForbidden, fmt.Sprintf("tag '%s' not allowed by api key scopes", tag.String()))
+
 				return
 			}
 		}
@@ -157,6 +165,7 @@ func (h *RelayHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	span.End()
 	if rule == nil {
 		helper.WriteError(w, http.StatusNotFound, "no matching routing rule found")
+
 		return
 	}
 
@@ -177,6 +186,7 @@ func (h *RelayHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			slog.ErrorContext(ctx, "rate limit check failed", "error", err)
 			helper.WriteError(w, http.StatusInternalServerError, "rate limit check failed")
+
 			return
 		}
 
@@ -194,6 +204,7 @@ func (h *RelayHandler) Handle(w http.ResponseWriter, r *http.Request) {
 			)
 			w.Header().Set("Retry-After", fmt.Sprintf("%.0f", result.Reset.Seconds()))
 			helper.WriteError(w, http.StatusTooManyRequests, "rate limit exceeded")
+
 			return
 		}
 	}
@@ -208,11 +219,13 @@ func (h *RelayHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	shouldBlock, err := h.filter.ShouldBlock(ctx, filterReq, rule.RequestFilters)
 	if err != nil {
 		helper.WriteError(w, http.StatusInternalServerError, "filter check failed")
+
 		return
 	}
 
 	if shouldBlock.Blocked {
 		helper.WriteError(w, http.StatusForbidden, fmt.Sprintf("request blocked: %s", shouldBlock.Reason))
+
 		return
 	}
 
@@ -232,6 +245,7 @@ func (h *RelayHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	result, err := h.executor.Execute(ctx, req, rule, sessionID, preferredEndpointID)
 	if err != nil {
 		helper.WriteError(w, http.StatusBadGateway, "execution failed")
+
 		return
 	}
 	defer func() {
@@ -262,7 +276,6 @@ func (h *RelayHandler) Handle(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	} else if currentSession == nil && result.Success && result.Response != nil && result.Response.EndpointID != "" {
-
 		tagStrings := make([]string, len(parseResult.Tags))
 		for i, t := range parseResult.Tags {
 			tagStrings[i] = t.String()
@@ -286,6 +299,7 @@ func (h *RelayHandler) Handle(w http.ResponseWriter, r *http.Request) {
 				AttemptErrors: result.AttemptErrors,
 			}
 			_ = h.responseBuilder.WriteResponse(w, result.Response, meta)
+
 			return
 		}
 
@@ -294,6 +308,7 @@ func (h *RelayHandler) Handle(w http.ResponseWriter, r *http.Request) {
 			msg = result.AttemptErrors[len(result.AttemptErrors)-1].Message
 		}
 		helper.WriteError(w, http.StatusBadGateway, msg)
+
 		return
 	}
 
@@ -307,6 +322,7 @@ func (h *RelayHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		} else {
 			slog.WarnContext(ctx, "failed to decompress response body", "error", err)
 			helper.WriteError(w, http.StatusBadGateway, "failed to decompress response")
+
 			return
 		}
 	}

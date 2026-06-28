@@ -23,6 +23,7 @@ func newTestRedis(t *testing.T) (*redis.Client, *miniredis.Miniredis) {
 	rdb := goredis.NewClient(&goredis.Options{
 		Addr: mr.Addr(),
 	})
+
 	return &redis.Client{Client: rdb}, mr
 }
 

@@ -20,12 +20,10 @@ func loadSchema(t *testing.T, filename string) *gojsonschema.Schema {
 
 	path := filepath.Join(wd, "schemas", filename)
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-
 		path = filepath.Join(wd, "test", "contract", "schemas", filename)
 	}
 
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-
 		path = filepath.Join("test", "contract", "schemas", filename)
 	}
 
@@ -35,6 +33,7 @@ func loadSchema(t *testing.T, filename string) *gojsonschema.Schema {
 	loader := gojsonschema.NewReferenceLoader(fmt.Sprintf("file://%s", absPath))
 	schema, err := gojsonschema.NewSchema(loader)
 	require.NoError(t, err, "failed to load schema %s", filename)
+
 	return schema
 }
 
@@ -85,7 +84,6 @@ func TestRequestSchema(t *testing.T) {
 	})
 
 	t.Run("InvalidRequest_MissingRequired", func(t *testing.T) {
-
 		invalidReq := map[string]interface{}{
 			"id": "req-bad",
 		}

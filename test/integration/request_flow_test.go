@@ -182,6 +182,7 @@ func (tc *testServerContext) WaitForEndpoint(ctx context.Context, endpointID str
 		if health.State != infraredis.HealthStateHealthy {
 			return fmt.Errorf("endpoint %s is %s", endpointID, health.State)
 		}
+
 		return nil
 	}, 100*time.Millisecond, 10*time.Second)
 }
@@ -481,6 +482,7 @@ func TestRequestFlow_RateLimitExceeded(t *testing.T) {
 		require.NoError(t, err)
 		if resp.StatusCode == http.StatusTooManyRequests {
 			resp2 = resp
+
 			break
 		}
 		time.Sleep(10 * time.Millisecond)

@@ -95,7 +95,6 @@ func TestABPMatcher_Match_NonexistentList(t *testing.T) {
 }
 
 func TestABPMatcher_LoadList_FromServer(t *testing.T) {
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(sampleABPList))
@@ -117,7 +116,6 @@ func TestABPMatcher_LoadList_FromServer(t *testing.T) {
 }
 
 func TestABPMatcher_LoadList_HTTPError(t *testing.T) {
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
@@ -192,7 +190,6 @@ func TestExtractDomain(t *testing.T) {
 }
 
 func TestDefaultLists(t *testing.T) {
-
 	assert.Contains(t, DefaultLists, "easylist")
 	assert.Contains(t, DefaultLists, "easyprivacy")
 	assert.Contains(t, DefaultLists, "ublock")

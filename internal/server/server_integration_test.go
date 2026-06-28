@@ -33,6 +33,7 @@ func (m *MockApiKeyRepo) GetByID(ctx context.Context, id string) (*domain.ApiKey
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
+
 	return args.Get(0).(*domain.ApiKey), args.Error(1)
 }
 func (m *MockApiKeyRepo) GetByTokenHash(ctx context.Context, tokenHash string) (*domain.ApiKey, error) {
@@ -40,6 +41,7 @@ func (m *MockApiKeyRepo) GetByTokenHash(ctx context.Context, tokenHash string) (
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
+
 	return args.Get(0).(*domain.ApiKey), args.Error(1)
 }
 func (m *MockApiKeyRepo) Create(ctx context.Context, key *domain.ApiKey) error { return nil }
@@ -60,6 +62,7 @@ func (m *MockKeyCache) GetKey(ctx context.Context, hash string) (*domain.ApiKey,
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
+
 	return args.Get(0).(*domain.ApiKey), args.Error(1)
 }
 func (m *MockKeyCache) SetKey(ctx context.Context, hash string, key *domain.ApiKey) error {
@@ -78,6 +81,7 @@ type MockRuleRepo struct {
 
 func (m *MockRuleRepo) GetActiveRules(ctx context.Context) ([]domain.RoutingRule, error) {
 	args := m.Called(ctx)
+
 	return args.Get(0).([]domain.RoutingRule), args.Error(1)
 }
 func (m *MockRuleRepo) CreateRule(ctx context.Context, rule *domain.RoutingRule) error { return nil }
@@ -96,10 +100,12 @@ type MockRuleCache struct {
 
 func (m *MockRuleCache) GetRulesVersion(ctx context.Context) (int64, error) {
 	args := m.Called(ctx)
+
 	return args.Get(0).(int64), args.Error(1)
 }
 func (m *MockRuleCache) GetRulesByVersion(ctx context.Context, version int64) ([]domain.RoutingRule, error) {
 	args := m.Called(ctx, version)
+
 	return args.Get(0).([]domain.RoutingRule), args.Error(1)
 }
 func (m *MockRuleCache) SetRulesByVersion(ctx context.Context, version int64, rules []domain.RoutingRule) error {
@@ -112,10 +118,12 @@ type MockEndpointSelector struct {
 
 func (m *MockEndpointSelector) Select(ctx context.Context, rule *domain.RoutingRule) (string, error) {
 	args := m.Called(ctx, rule)
+
 	return args.String(0), args.Error(1)
 }
 func (m *MockEndpointSelector) SelectWithSession(ctx context.Context, sessionID string) (string, error) {
 	args := m.Called(ctx, sessionID)
+
 	return args.String(0), args.Error(1)
 }
 
@@ -125,6 +133,7 @@ type MockPoolManager struct {
 
 func (m *MockPoolManager) GetEndpointFromPool(ctx context.Context, rule *domain.RoutingRule, poolTier int, exclude []string) (string, error) {
 	args := m.Called(ctx, rule, poolTier, exclude)
+
 	return args.String(0), args.Error(1)
 }
 func (m *MockPoolManager) GetPoolConfig(rule *domain.RoutingRule, poolTier int) *domain.EndpointPool {
@@ -137,18 +146,22 @@ type MockBroker struct {
 
 func (m *MockBroker) Publish(ctx context.Context, exchange, queue string, body []byte) error {
 	args := m.Called(ctx, exchange, queue, body)
+
 	return args.Error(0)
 }
 func (m *MockBroker) Consume(ctx context.Context, queue string, handler broker.Handler) error {
 	args := m.Called(ctx, queue, handler)
+
 	return args.Error(0)
 }
 func (m *MockBroker) Subscribe(ctx context.Context, queue string, handler broker.Handler, opts ...broker.SubscribeOption) error {
 	args := m.Called(ctx, queue, handler, opts)
+
 	return args.Error(0)
 }
 func (m *MockBroker) SubscribeTemporary(ctx context.Context, queue string, handler broker.Handler) error {
 	args := m.Called(ctx, queue, handler)
+
 	return args.Error(0)
 }
 func (m *MockBroker) ConsumeOnce(ctx context.Context, queue string, timeout time.Duration) ([]byte, error) {
@@ -156,6 +169,7 @@ func (m *MockBroker) ConsumeOnce(ctx context.Context, queue string, timeout time
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
+
 	return args.Get(0).([]byte), args.Error(1)
 }
 func (m *MockBroker) Close() error                                                     { return nil }
@@ -167,6 +181,7 @@ func (m *MockBroker) QueueDepth(ctx context.Context, name string) (int, error)  
 
 func sha256Hash(s string) string {
 	hash := sha256.Sum256([]byte(s))
+
 	return hex.EncodeToString(hash[:])
 }
 
@@ -216,22 +231,24 @@ func TestServer_RelayRequest_Success(t *testing.T) {
 
 	mockBroker.On("Subscribe", mock.Anything, orchestrator.SharedResultQueue, mock.MatchedBy(func(h broker.Handler) bool {
 		sharedQueueHandler = h
+
 		return true
 	}), mock.Anything).Return(nil)
 
 	var capturedRequestID string
 	mockBroker.On("Publish", mock.Anything, mock.Anything, mock.AnythingOfType("string"), mock.Anything).Run(func(args mock.Arguments) {
-
 		body := args.Get(3).([]byte)
 		var signedTask protocol.SignedTask
 		if err := json.Unmarshal(body, &signedTask); err != nil {
 			t.Logf("DEBUG: Failed to unmarshal signed task: %v", err)
+
 			return
 		}
 
 		req, err := protocol.ValidateSignedTask(&signedTask, []byte("secret"), time.Minute)
 		if err != nil {
 			t.Logf("DEBUG: Failed to validate signed task: %v", err)
+
 			return
 		}
 		capturedRequestID = req.ID
@@ -281,12 +298,12 @@ func TestServer_RelayRequest_Success(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 		if capturedRequestID != "" {
 			requestIDCaptured = true
+
 			break
 		}
 	}
 
 	if sharedQueueHandler != nil && requestIDCaptured {
-
 		result := orchestrator.ResultMessage{
 			RequestID:  capturedRequestID,
 			EndpointID: "ep-1",
