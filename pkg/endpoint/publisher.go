@@ -145,7 +145,6 @@ func (p *Publisher) PublishError(ctx context.Context, requestID, endpointID stri
 		StatusCode: 0,
 		Error:      errInfo,
 	}
-
 	return p.Publish(ctx, resp, replyTo)
 }
 
@@ -167,7 +166,6 @@ func NewTLSError(message string) *protocol.ErrorInfo {
 
 func NewHTTPError(statusCode int, message string) *protocol.ErrorInfo {
 	retryable := statusCode >= 500 && statusCode < 600
-
 	return &protocol.ErrorInfo{
 		Code:      protocol.ErrCodeUpstreamError,
 		Message:   fmt.Sprintf("http error %d: %s", statusCode, message),

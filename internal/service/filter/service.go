@@ -38,6 +38,7 @@ func NewService(abpMatcher *ABPMatcher) *Service {
 }
 
 func (s *Service) ShouldBlock(ctx context.Context, req *Request, filter *domain.RequestFilter) (*Result, error) {
+
 	if filter == nil {
 		return &Result{Blocked: false}, nil
 	}
@@ -150,15 +151,16 @@ func (s *Service) checkABP(req *Request, lists []string) *Result {
 }
 
 func matchGlob(s, pattern string) bool {
+
 	matched, err := path.Match(pattern, s)
 	if err != nil {
 		return false
 	}
-
 	return matched
 }
 
 func matchURLPattern(rawURL, pattern string) bool {
+
 	parsedURL, err := url.Parse(rawURL)
 	if err != nil {
 		return false
@@ -167,6 +169,7 @@ func matchURLPattern(rawURL, pattern string) bool {
 	matchStr := parsedURL.Host + parsedURL.Path
 
 	if strings.HasPrefix(pattern, "*.") {
+
 		suffix := pattern[1:]
 		if strings.HasSuffix(matchStr, suffix) || strings.Contains(matchStr, suffix) {
 			return true
@@ -174,6 +177,7 @@ func matchURLPattern(rawURL, pattern string) bool {
 	}
 
 	if strings.Contains(pattern, "*") {
+
 		parts := strings.Split(pattern, "*")
 		remaining := matchStr
 
@@ -187,7 +191,6 @@ func matchURLPattern(rawURL, pattern string) bool {
 			}
 			remaining = remaining[idx+len(part):]
 		}
-
 		return true
 	}
 
@@ -195,13 +198,13 @@ func matchURLPattern(rawURL, pattern string) bool {
 }
 
 func matchDomain(host, pattern string) bool {
+
 	if host == pattern {
 		return true
 	}
 
 	if strings.HasPrefix(pattern, "*.") {
 		suffix := pattern[1:]
-
 		return strings.HasSuffix(host, suffix)
 	}
 

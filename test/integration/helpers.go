@@ -94,8 +94,10 @@ func CleanDatabase(ctx context.Context, dsn string) error {
 	}
 
 	for _, table := range tables {
+
 		query := fmt.Sprintf("TRUNCATE TABLE %s CASCADE", table)
 		if _, err := db.ExecContext(ctx, query); err != nil {
+
 			continue
 		}
 	}
@@ -111,8 +113,7 @@ func WaitForHealthy(ctx context.Context, healthCheck func() error, interval, tim
 	deadline := time.Now().Add(timeout)
 
 	for time.Now().Before(deadline) {
-		err := healthCheck()
-		if err == nil {
+		if err := healthCheck(); err == nil {
 			return nil
 		}
 
@@ -120,6 +121,7 @@ func WaitForHealthy(ctx context.Context, healthCheck func() error, interval, tim
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-time.After(interval):
+
 		}
 	}
 
@@ -307,7 +309,6 @@ func CreateTestEndpoint(ctx context.Context, dsn string, endpoint *TestEndpoint)
 
 func sha256Hash(s string) string {
 	hash := sha256.Sum256([]byte(s))
-
 	return hex.EncodeToString(hash[:])
 }
 
@@ -368,7 +369,7 @@ func (c *HTTPTestClient) SendRequest(ctx context.Context, req *ProxyRequest) (*P
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/v1/request", bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.BaseURL+"/v1/request", bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -409,7 +410,6 @@ func NewTestRedisClient(t testing.TB, addr string) *redis.Client {
 	t.Cleanup(func() {
 		client.Close()
 	})
-
 	return client
 }
 
@@ -419,7 +419,6 @@ func NewTestAuthRepo(t testing.TB, dsn string) domain.ApiKeyRepository {
 	t.Cleanup(func() {
 		client.Close()
 	})
-
 	return postgres.NewApiKeyRepository(client)
 }
 
@@ -429,7 +428,6 @@ func NewTestRuleRepo(t testing.TB, dsn string) domain.RoutingRuleRepository {
 	t.Cleanup(func() {
 		client.Close()
 	})
-
 	return postgres.NewRoutingRuleRepository(client)
 }
 

@@ -83,15 +83,13 @@ func SetupSuite(ctx context.Context) (*TestSuite, error) {
 	wg.Wait()
 
 	if pgErr != nil || redisErr != nil || natsErr != nil {
-		s.Teardown(ctx)
 
-		return nil, fmt.Errorf("failed to start containers: postgres=%w, redis=%w, nats=%w", pgErr, redisErr, natsErr)
+		s.Teardown(ctx)
+		return nil, fmt.Errorf("failed to start containers: postgres=%v, redis=%v, nats=%v", pgErr, redisErr, natsErr)
 	}
 
-	err := s.Postgres.RunMigrations()
-	if err != nil {
+	if err := s.Postgres.RunMigrations(); err != nil {
 		s.Teardown(ctx)
-
 		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}
 
@@ -108,22 +106,19 @@ func (s *TestSuite) Teardown(ctx context.Context) {
 	defer s.mu.Unlock()
 
 	if s.Postgres != nil {
-		err := s.Postgres.Terminate(ctx)
-		if err != nil {
+		if err := s.Postgres.Terminate(ctx); err != nil {
 			log.Printf("Warning: failed to terminate postgres: %v", err)
 		}
 	}
 
 	if s.Redis != nil {
-		err := s.Redis.Terminate(ctx)
-		if err != nil {
+		if err := s.Redis.Terminate(ctx); err != nil {
 			log.Printf("Warning: failed to terminate redis: %v", err)
 		}
 	}
 
 	if s.Nats != nil {
-		err := s.Nats.Terminate(ctx)
-		if err != nil {
+		if err := s.Nats.Terminate(ctx); err != nil {
 			log.Printf("Warning: failed to terminate nats: %v", err)
 		}
 	}
@@ -135,14 +130,12 @@ func (s *TestSuite) CleanupForTest(t *testing.T) {
 	t.Helper()
 
 	ctx := context.Background()
-	err := CleanDatabase(ctx, s.Postgres.DSN())
-	if err != nil {
+	if err := CleanDatabase(ctx, s.Postgres.DSN()); err != nil {
 		t.Logf("Warning: failed to clean database: %v", err)
 	}
 
 	t.Cleanup(func() {
-		err := CleanDatabase(ctx, s.Postgres.DSN())
-		if err != nil {
+		if err := CleanDatabase(ctx, s.Postgres.DSN()); err != nil {
 			t.Logf("Warning: failed to clean database after test: %v", err)
 		}
 	})
@@ -152,7 +145,6 @@ func (s *TestSuite) PostgresDSN() string {
 	if s.Postgres == nil {
 		return ""
 	}
-
 	return s.Postgres.DSN()
 }
 
@@ -160,7 +152,6 @@ func (s *TestSuite) RedisAddr() string {
 	if s.Redis == nil {
 		return ""
 	}
-
 	return s.Redis.Addr()
 }
 
@@ -168,11 +159,11 @@ func (s *TestSuite) NatsURL() string {
 	if s.Nats == nil {
 		return ""
 	}
-
 	return s.Nats.URL()
 }
 
 func RunTestMain(m *testing.M) {
+
 	flag.Parse()
 
 	if testing.Short() {

@@ -13,8 +13,7 @@ var (
 
 func main() {
 	endpoint.Version = Version
-	err := endpoint.Run()
-	if err != nil {
+	if err := endpoint.Run(); err != nil {
 		slog.Error("fatal error", "error", err)
 		os.Exit(1)
 	}

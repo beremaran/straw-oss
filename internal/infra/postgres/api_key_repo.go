@@ -42,7 +42,6 @@ func (r *ApiKeyRepository) GetByID(ctx context.Context, id string) (*domain.ApiK
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
-
 		return nil, fmt.Errorf("failed to get api key by id: %w", err)
 	}
 
@@ -74,7 +73,6 @@ func (r *ApiKeyRepository) GetByTokenHash(ctx context.Context, tokenHash string)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
-
 		return nil, fmt.Errorf("failed to get api key by token hash: %w", err)
 	}
 
@@ -102,7 +100,6 @@ func (r *ApiKeyRepository) Create(ctx context.Context, key *domain.ApiKey) error
 			key.CreatedAt,
 			key.ExpiresAt,
 		)
-
 		return err
 	})
 
@@ -114,6 +111,7 @@ func (r *ApiKeyRepository) Create(ctx context.Context, key *domain.ApiKey) error
 }
 
 func (r *ApiKeyRepository) List(ctx context.Context, limit, offset int) ([]domain.ApiKey, int, error) {
+
 	var total int
 	countQuery := `SELECT COUNT(*) FROM api_keys`
 	err := r.client.Pool.QueryRow(ctx, countQuery).Scan(&total)
@@ -137,7 +135,7 @@ func (r *ApiKeyRepository) List(ctx context.Context, limit, offset int) ([]domai
 	var keys []domain.ApiKey
 	for rows.Next() {
 		var k domain.ApiKey
-		err := rows.Scan(
+		if err := rows.Scan(
 			&k.ID,
 			&k.TokenHash,
 			&k.Name,
@@ -146,8 +144,7 @@ func (r *ApiKeyRepository) List(ctx context.Context, limit, offset int) ([]domai
 			&k.IsActive,
 			&k.CreatedAt,
 			&k.ExpiresAt,
-		)
-		if err != nil {
+		); err != nil {
 			return nil, 0, fmt.Errorf("failed to scan api key: %w", err)
 		}
 		keys = append(keys, k)
@@ -167,7 +164,6 @@ func (r *ApiKeyRepository) Exists(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("failed to check api keys existence: %w", err)
 	}
-
 	return exists, nil
 }
 

@@ -7,6 +7,7 @@ import (
 )
 
 func registerBuiltinPresets(r *Registry) {
+
 	registerChromePresets(r)
 
 	registerFirefoxPresets(r)
@@ -25,6 +26,7 @@ var (
 )
 
 func registerChromePresets(r *Registry) {
+
 	r.MustRegister(Preset{
 		ID:             "chrome-133",
 		TLSClientHello: utls.HelloChrome_133,
@@ -138,6 +140,7 @@ func registerChromePresets(r *Registry) {
 }
 
 func registerFirefoxPresets(r *Registry) {
+
 	r.MustRegister(Preset{
 		ID:             "firefox-133",
 		TLSClientHello: utls.HelloFirefox_120,
@@ -208,6 +211,7 @@ func registerFirefoxPresets(r *Registry) {
 }
 
 func registerSafariPresets(r *Registry) {
+
 	r.MustRegister(Preset{
 		ID:             "safari-18",
 		TLSClientHello: utls.HelloSafari_Auto,
@@ -274,6 +278,7 @@ func registerSafariPresets(r *Registry) {
 }
 
 func registerEdgePresets(r *Registry) {
+
 	r.MustRegister(Preset{
 		ID:             "edge-130",
 		TLSClientHello: utls.HelloEdge_Auto,

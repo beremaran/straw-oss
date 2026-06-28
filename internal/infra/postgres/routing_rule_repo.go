@@ -48,7 +48,6 @@ func (r *RoutingRuleRepository) GetActiveRules(ctx context.Context) ([]domain.Ro
 	var err error
 	err = r.client.Execute(func() error {
 		rows, err = r.client.Pool.Query(ctx, query)
-
 		return err
 	})
 	if err != nil {
@@ -72,17 +71,15 @@ func (r *RoutingRuleRepository) GetActiveRules(ctx context.Context) ([]domain.Ro
 			updatedAt    time.Time
 		)
 
-		err := rows.Scan(
+		if err := rows.Scan(
 			&id, &name, &priority, &reqTagsJSON, &exclTagsJSON, &configJSON,
 			&isActive, &version, &createdAt, &updatedAt,
-		)
-		if err != nil {
+		); err != nil {
 			return nil, fmt.Errorf("failed to scan routing rule row: %w", err)
 		}
 
 		var rule domain.RoutingRule
-		err := json.Unmarshal(configJSON, &rule)
-		if err != nil {
+		if err := json.Unmarshal(configJSON, &rule); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal routing rule config for ruled %s: %w", id, err)
 		}
 
@@ -95,15 +92,13 @@ func (r *RoutingRuleRepository) GetActiveRules(ctx context.Context) ([]domain.Ro
 		rule.UpdatedAt = updatedAt
 
 		var reqTags []string
-		err := json.Unmarshal(reqTagsJSON, &reqTags)
-		if err != nil {
+		if err := json.Unmarshal(reqTagsJSON, &reqTags); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal required tags for rule %s: %w", id, err)
 		}
 		rule.RequiredTags = reqTags
 
 		var exclTags []string
-		err := json.Unmarshal(exclTagsJSON, &exclTags)
-		if err != nil {
+		if err := json.Unmarshal(exclTagsJSON, &exclTags); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal excluded tags for rule %s: %w", id, err)
 		}
 		rule.ExcludedTags = exclTags
@@ -172,7 +167,6 @@ func (r *RoutingRuleRepository) CreateRule(ctx context.Context, rule *domain.Rou
 			rule.ID, rule.Name, rule.Priority, reqTagsJSON, exclTagsJSON, configJSON,
 			rule.IsActive, rule.Version, rule.CreatedAt, rule.UpdatedAt,
 		)
-
 		return err
 	})
 
@@ -218,7 +212,6 @@ func (r *RoutingRuleRepository) GetRuleByID(ctx context.Context, id string) (*do
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
-
 		return nil, fmt.Errorf("failed to get routing rule %s: %w", id, err)
 	}
 
@@ -306,7 +299,6 @@ func (r *RoutingRuleRepository) UpdateRule(ctx context.Context, rule *domain.Rou
 			rule.IsActive, newVersion, rule.UpdatedAt,
 			rule.ID, rule.Version,
 		)
-
 		return err
 	})
 
@@ -341,7 +333,6 @@ func (r *RoutingRuleRepository) DeleteRule(ctx context.Context, id string) error
 	err := r.client.Execute(func() error {
 		var err error
 		res, err = r.client.Pool.Exec(ctx, query, id)
-
 		return err
 	})
 	if err != nil {
@@ -384,7 +375,6 @@ func (r *RoutingRuleRepository) ListRules(ctx context.Context, limit, offset int
 	var rows pgx.Rows
 	err = r.client.Execute(func() error {
 		rows, err = r.client.Pool.Query(ctx, query, limit, offset)
-
 		return err
 	})
 	if err != nil {
@@ -408,17 +398,15 @@ func (r *RoutingRuleRepository) ListRules(ctx context.Context, limit, offset int
 			updatedAt    time.Time
 		)
 
-		err := rows.Scan(
+		if err := rows.Scan(
 			&id, &name, &priority, &reqTagsJSON, &exclTagsJSON, &configJSON,
 			&isActive, &version, &createdAt, &updatedAt,
-		)
-		if err != nil {
+		); err != nil {
 			return nil, 0, fmt.Errorf("failed to scan routing rule row: %w", err)
 		}
 
 		var rule domain.RoutingRule
-		err := json.Unmarshal(configJSON, &rule)
-		if err != nil {
+		if err := json.Unmarshal(configJSON, &rule); err != nil {
 			return nil, 0, fmt.Errorf("failed to unmarshal routing rule config for ruled %s: %w", id, err)
 		}
 

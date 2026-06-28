@@ -125,6 +125,7 @@ func TestDial_UnknownFingerprint(t *testing.T) {
 }
 
 func TestDial_ContextCancellation(t *testing.T) {
+
 	addr := "10.255.255.1:443"
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -136,6 +137,7 @@ func TestDial_ContextCancellation(t *testing.T) {
 	}
 
 	if !errors.Is(err, context.Canceled) {
+
 		var dialErr *DialError
 		if errors.As(err, &dialErr) {
 			if !errors.Is(dialErr.Err, context.Canceled) {
@@ -146,6 +148,7 @@ func TestDial_ContextCancellation(t *testing.T) {
 }
 
 func TestDial_ConnectionRefused(t *testing.T) {
+
 	addr := "127.0.0.1:1"
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -159,6 +162,7 @@ func TestDial_ConnectionRefused(t *testing.T) {
 	var dialErr *DialError
 	if !errors.As(err, &dialErr) {
 		t.Logf("got error type: %T, error: %v", err, err)
+
 	}
 }
 
@@ -196,6 +200,7 @@ func TestDial_WithHandshakeTimeout(t *testing.T) {
 }
 
 func TestErrorTypes(t *testing.T) {
+
 	fpErr := &FingerprintError{
 		Fingerprint: "test-fp",
 		Err:         ErrUnknownFingerprint,
@@ -222,6 +227,7 @@ func TestErrorTypes(t *testing.T) {
 }
 
 func TestDial_AllPresets(t *testing.T) {
+
 	if testing.Short() {
 		t.Skip("skipping preset validation in short mode")
 	}
@@ -231,6 +237,7 @@ func TestDial_AllPresets(t *testing.T) {
 
 	for _, name := range fingerprint.List() {
 		t.Run(name, func(t *testing.T) {
+
 			if name == "randomized" {
 				t.Skip("randomized preset may generate unsupported curves")
 			}
@@ -241,7 +248,6 @@ func TestDial_AllPresets(t *testing.T) {
 			conn, err := Dial(ctx, "tcp", addr, name, WithInsecureSkipVerify(true))
 			if err != nil {
 				t.Errorf("Dial with preset %q failed: %v", name, err)
-
 				return
 			}
 			conn.Close()

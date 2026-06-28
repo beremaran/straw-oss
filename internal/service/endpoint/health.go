@@ -66,7 +66,6 @@ func (s *HealthService) Start(ctx context.Context) error {
 
 	if s.running {
 		s.logger.Warn("health service already running")
-
 		return nil
 	}
 
@@ -85,7 +84,6 @@ func (s *HealthService) Stop() {
 	s.mu.Lock()
 	if !s.running {
 		s.mu.Unlock()
-
 		return
 	}
 	cancel := s.cancel
@@ -110,7 +108,6 @@ func (s *HealthService) Stop() {
 func (s *HealthService) IsRunning() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
 	return s.running
 }
 
@@ -120,7 +117,6 @@ func (s *HealthService) run(ctx context.Context) {
 	err := s.broker.Subscribe(ctx, s.queue, s.handleHeartbeat)
 	if err != nil {
 		s.logger.Error("failed to subscribe to heartbeats", "error", err)
-
 		return
 	}
 
@@ -131,13 +127,11 @@ func (s *HealthService) handleHeartbeat(ctx context.Context, body []byte) error 
 	var msg HeartbeatMessage
 	if err := json.Unmarshal(body, &msg); err != nil {
 		s.logger.Error("failed to unmarshal heartbeat", "error", err)
-
 		return nil
 	}
 
 	if msg.EndpointID == "" {
 		s.logger.Warn("received heartbeat with empty endpoint_id")
-
 		return nil
 	}
 
@@ -164,7 +158,6 @@ func (s *HealthService) handleHeartbeat(ctx context.Context, body []byte) error 
 			"endpoint_id", msg.EndpointID,
 			"error", err,
 		)
-
 		return err
 	}
 

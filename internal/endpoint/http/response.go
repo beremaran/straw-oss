@@ -20,6 +20,7 @@ func BuildResponse(
 	endpointID string,
 	sessionID string,
 ) (*protocol.Response, error) {
+
 	body, err := readResponseBody(resp, maxBodySize)
 	if err != nil {
 		return &protocol.Response{
@@ -70,7 +71,6 @@ func BuildResponseWithOptions(
 	if maxSize <= 0 {
 		maxSize = DefaultMaxBodySize
 	}
-
 	return BuildResponse(requestID, resp, timing, maxSize, endpointID, sessionID)
 }
 
@@ -81,6 +81,7 @@ func buildStreamingResponse(
 	endpointID string,
 	sessionID string,
 ) (*protocol.Response, error) {
+
 	return &protocol.Response{
 		RequestID:   requestID,
 		StatusCode:  resp.StatusCode,
@@ -118,14 +119,15 @@ func readResponseBody(resp *fhttp.Response, maxSize int64) ([]byte, error) {
 		if len(rawBody) >= 2 && rawBody[0] == 0x1f && rawBody[1] == 0x8b {
 			gzReader, err := gzip.NewReader(bytes.NewReader(rawBody))
 			if err != nil {
+
 				return rawBody, nil
 			}
 			defer func() { _ = gzReader.Close() }()
 			decompressed, err := io.ReadAll(gzReader)
 			if err != nil {
+
 				return rawBody, nil
 			}
-
 			return decompressed, nil
 		}
 
@@ -136,9 +138,9 @@ func readResponseBody(resp *fhttp.Response, maxSize int64) ([]byte, error) {
 		brReader := brotli.NewReader(bytes.NewReader(rawBody))
 		decompressed, err := io.ReadAll(brReader)
 		if err != nil {
+
 			return rawBody, nil
 		}
-
 		return decompressed, nil
 
 	case "identity", "":

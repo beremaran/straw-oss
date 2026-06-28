@@ -10,6 +10,7 @@ import (
 )
 
 func TestServer_HealthCheck(t *testing.T) {
+
 	cfg := config.ServerConfig{AdminPort: 8081}
 	s := New(cfg, nil, nil, nil, nil)
 

@@ -16,6 +16,7 @@ func TestInit(t *testing.T) {
 	assert.NotNil(t, CacheMisses)
 	assert.NotNil(t, ActiveSessions)
 	assert.NotNil(t, RateLimitExceeded)
+
 }
 
 func TestMetricsRecording(t *testing.T) {

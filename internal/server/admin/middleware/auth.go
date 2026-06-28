@@ -15,20 +15,17 @@ func KeyAuth(cfg config.ServerConfig) func(http.Handler) http.Handler {
 			authHeader := r.Header.Get("Authorization")
 			if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
 				helper.WriteError(w, http.StatusUnauthorized, "missing admin token")
-
 				return
 			}
 
 			receivedKey := strings.TrimPrefix(authHeader, "Bearer ")
 			if receivedKey == "" {
 				helper.WriteError(w, http.StatusUnauthorized, "missing admin token")
-
 				return
 			}
 
 			if subtle.ConstantTimeCompare([]byte(receivedKey), []byte(cfg.AdminAPIKey)) != 1 {
 				helper.WriteError(w, http.StatusUnauthorized, "invalid admin token")
-
 				return
 			}
 

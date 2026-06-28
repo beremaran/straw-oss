@@ -20,7 +20,6 @@ func (m *MockRepo) GetByID(ctx context.Context, id string) (*domain.ApiKey, erro
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-
 	return args.Get(0).(*domain.ApiKey), args.Error(1)
 }
 
@@ -29,13 +28,11 @@ func (m *MockRepo) GetByTokenHash(ctx context.Context, tokenHash string) (*domai
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-
 	return args.Get(0).(*domain.ApiKey), args.Error(1)
 }
 
 func (m *MockRepo) Create(ctx context.Context, key *domain.ApiKey) error {
 	args := m.Called(ctx, key)
-
 	return args.Error(0)
 }
 
@@ -44,19 +41,16 @@ func (m *MockRepo) List(ctx context.Context, limit, offset int) ([]domain.ApiKey
 	if args.Get(0) == nil {
 		return nil, 0, args.Error(2)
 	}
-
 	return args.Get(0).([]domain.ApiKey), args.Int(1), args.Error(2)
 }
 
 func (m *MockRepo) Exists(ctx context.Context) (bool, error) {
 	args := m.Called(ctx)
-
 	return args.Bool(0), args.Error(1)
 }
 
 func (m *MockRepo) Revoke(ctx context.Context, id string) error {
 	args := m.Called(ctx, id)
-
 	return args.Error(0)
 }
 
@@ -308,6 +302,7 @@ func TestAuthService_InvalidateKeyByID(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("InvalidateKeyByID Returns Nil", func(t *testing.T) {
+
 		err := service.InvalidateKeyByID(ctx, "test-id")
 		assert.NoError(t, err)
 	})

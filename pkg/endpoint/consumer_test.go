@@ -38,7 +38,6 @@ func (m *mockBroker) Publish(ctx context.Context, exchange, routingKey string, b
 		RoutingKey: routingKey,
 		Body:       body,
 	})
-
 	return nil
 }
 
@@ -47,7 +46,6 @@ func (m *mockBroker) Subscribe(ctx context.Context, queue string, handler broker
 	m.subscribeHandler = handler
 
 	<-ctx.Done()
-
 	return nil
 }
 
@@ -56,7 +54,6 @@ func (m *mockBroker) SubscribeTemporary(ctx context.Context, queue string, handl
 	m.subscribeHandler = handler
 
 	<-ctx.Done()
-
 	return nil
 }
 
@@ -96,7 +93,6 @@ func (m *mockTransportProvider) GetTransport(host string, preset fingerprint.Pre
 	if m.transport != nil {
 		return m.transport
 	}
-
 	return &fhttp.Transport{}
 }
 
@@ -343,7 +339,6 @@ func TestConsumer_ResultHandler(t *testing.T) {
 	var receivedResponse *protocol.Response
 	handler := func(ctx context.Context, resp *protocol.Response, replyTo string) error {
 		receivedResponse = resp
-
 		return nil
 	}
 

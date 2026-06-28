@@ -21,10 +21,10 @@ const (
 func AuthMiddleware(validator *auth.Service) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
 			token := extractBearerToken(r)
 			if token == "" {
 				helper.WriteError(w, http.StatusUnauthorized, "missing bearer token")
-
 				return
 			}
 
@@ -32,12 +32,10 @@ func AuthMiddleware(validator *auth.Service) func(http.Handler) http.Handler {
 			if err != nil {
 				if errors.Is(err, auth.ErrInvalidKey) {
 					helper.WriteError(w, http.StatusUnauthorized, "invalid bearer token")
-
 					return
 				}
 
 				helper.WriteError(w, http.StatusInternalServerError, "internal auth error")
-
 				return
 			}
 
@@ -53,7 +51,6 @@ func extractBearerToken(r *http.Request) string {
 	if strings.HasPrefix(authHeader, "Bearer ") {
 		return strings.TrimPrefix(authHeader, "Bearer ")
 	}
-
 	return ""
 }
 

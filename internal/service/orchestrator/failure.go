@@ -100,7 +100,6 @@ func classifyErrorInfo(errInfo *protocol.ErrorInfo) FailureType {
 		if strings.Contains(msg, "connection refused") || strings.Contains(msg, "connection reset") {
 			return FailureConnection
 		}
-
 		return FailureUpstream
 	default:
 		return FailureInternal
@@ -132,7 +131,6 @@ func classifyStatusCode(statusCode int) FailureType {
 
 func IsRetryableStatusCode(statusCode int) bool {
 	failure := classifyStatusCode(statusCode)
-
 	return failure.ShouldRetry()
 }
 

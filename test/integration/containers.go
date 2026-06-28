@@ -38,7 +38,6 @@ func NewPostgresContainer(ctx context.Context) (*PostgresContainer, error) {
 	dsn, err := container.ConnectionString(ctx, "sslmode=disable")
 	if err != nil {
 		_ = container.Terminate(ctx)
-
 		return nil, fmt.Errorf("failed to get postgres connection string: %w", err)
 	}
 
@@ -60,7 +59,6 @@ func (c *PostgresContainer) Terminate(ctx context.Context) error {
 	if c.container != nil {
 		return c.container.Terminate(ctx)
 	}
-
 	return nil
 }
 
@@ -84,14 +82,12 @@ func NewRedisContainer(ctx context.Context) (*RedisContainer, error) {
 	host, err := container.Host(ctx)
 	if err != nil {
 		_ = container.Terminate(ctx)
-
 		return nil, fmt.Errorf("failed to get redis host: %w", err)
 	}
 
 	port, err := container.MappedPort(ctx, "6379")
 	if err != nil {
 		_ = container.Terminate(ctx)
-
 		return nil, fmt.Errorf("failed to get redis port: %w", err)
 	}
 
@@ -109,7 +105,6 @@ func (c *RedisContainer) Terminate(ctx context.Context) error {
 	if c.container != nil {
 		return c.container.Terminate(ctx)
 	}
-
 	return nil
 }
 
@@ -130,7 +125,6 @@ func NewNatsContainer(ctx context.Context) (*NatsContainer, error) {
 	url, err := container.ConnectionString(ctx)
 	if err != nil {
 		_ = container.Terminate(ctx)
-
 		return nil, fmt.Errorf("failed to get nats connection string: %w", err)
 	}
 
@@ -148,6 +142,5 @@ func (c *NatsContainer) Terminate(ctx context.Context) error {
 	if c.container != nil {
 		return c.container.Terminate(ctx)
 	}
-
 	return nil
 }

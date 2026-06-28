@@ -58,7 +58,6 @@ func (r *Registry) Get(presetID string) (Preset, bool) {
 	defer r.mu.RUnlock()
 
 	preset, ok := r.presets[presetID]
-
 	return preset, ok
 }
 
@@ -71,13 +70,11 @@ func (r *Registry) Register(preset Preset) error {
 	}
 
 	r.presets[preset.ID] = preset
-
 	return nil
 }
 
 func (r *Registry) MustRegister(preset Preset) {
-	err := r.Register(preset)
-	if err != nil {
+	if err := r.Register(preset); err != nil {
 		panic(err)
 	}
 }
@@ -90,7 +87,6 @@ func (r *Registry) List() []string {
 	for id := range r.presets {
 		ids = append(ids, id)
 	}
-
 	return ids
 }
 

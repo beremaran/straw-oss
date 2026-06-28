@@ -51,11 +51,11 @@ func getSessionCache() utls.ClientSessionCache {
 	sessionCacheInit.Do(func() {
 		sessionCache = utls.NewLRUClientSessionCache(1000)
 	})
-
 	return sessionCache
 }
 
 func Dial(ctx context.Context, network, addr string, presetID string, opts ...DialOption) (net.Conn, error) {
+
 	options := &DialOptions{}
 	for _, opt := range opts {
 		opt(options)
@@ -72,6 +72,7 @@ func Dial(ctx context.Context, network, addr string, presetID string, opts ...Di
 
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
+
 		host = addr
 	}
 	if options.ServerName != "" {
@@ -100,10 +101,8 @@ func Dial(ctx context.Context, network, addr string, presetID string, opts ...Di
 
 	if options.HandshakeTimeout > 0 {
 		deadline := time.Now().Add(options.HandshakeTimeout)
-		err := uConn.SetDeadline(deadline)
-		if err != nil {
+		if err := uConn.SetDeadline(deadline); err != nil {
 			_ = rawConn.Close()
-
 			return nil, &HandshakeError{
 				Addr: addr,
 				Err:  err,
@@ -113,15 +112,12 @@ func Dial(ctx context.Context, network, addr string, presetID string, opts ...Di
 
 	if err := uConn.HandshakeContext(ctx); err != nil {
 		_ = rawConn.Close()
-
 		return nil, classifyHandshakeError(addr, err)
 	}
 
 	if options.HandshakeTimeout > 0 {
-		err := uConn.SetDeadline(time.Time{})
-		if err != nil {
+		if err := uConn.SetDeadline(time.Time{}); err != nil {
 			_ = uConn.Close()
-
 			return nil, err
 		}
 	}
@@ -132,6 +128,7 @@ func Dial(ctx context.Context, network, addr string, presetID string, opts ...Di
 }
 
 func classifyHandshakeError(addr string, err error) error {
+
 	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 		return &HandshakeError{
 			Addr: addr,

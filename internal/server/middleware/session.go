@@ -34,13 +34,13 @@ func SessionMiddleware(service *session.Service) func(http.Handler) http.Handler
 					_ = service.EndSession(ctx, sessionID)
 				}
 				next.ServeHTTP(w, r)
-
 				return
 			}
 
 			if sessionID != "" {
 				sess, err := service.GetSession(ctx, sessionID)
 				if err == nil {
+
 					_ = service.TouchSession(ctx, sessionID)
 
 					r = r.WithContext(context.WithValue(ctx, SessionContextKey, sess))
@@ -51,13 +51,13 @@ func SessionMiddleware(service *session.Service) func(http.Handler) http.Handler
 						w.Header().Set(HeaderSessionMigrationCount, strconv.Itoa(sess.MigrationCount))
 					}
 				} else {
+
 					if errors.Is(err, domain.ErrSessionExpired) {
 						requestID := r.Header.Get("X-Request-ID")
 						if requestID == "" {
 							requestID = w.Header().Get("X-Request-ID")
 						}
 						helper.WriteJSON(w, domain.ErrSessionExpired.HTTPCode, domain.ErrSessionExpired.ToResponse(requestID, ""))
-
 						return
 					}
 				}
@@ -73,6 +73,5 @@ func GetSessionFromContext(ctx context.Context) *domain.Session {
 	if !ok {
 		return nil
 	}
-
 	return sess
 }

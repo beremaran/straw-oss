@@ -24,6 +24,7 @@ import (
 )
 
 func TestAuthentication_SecurityScenarios(t *testing.T) {
+
 	s := integration.GetSuite(t)
 	s.CleanupForTest(t)
 
@@ -76,7 +77,6 @@ func TestAuthentication_SecurityScenarios(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 		srv.GetHandler().ServeHTTP(rec, req)
-
 		return rec
 	}
 
@@ -88,6 +88,7 @@ func TestAuthentication_SecurityScenarios(t *testing.T) {
 	})
 
 	t.Run("RevokedKey_ImmediateRejection", func(t *testing.T) {
+
 		key, err := integration.CreateTestAPIKey(ctx, s.PostgresDSN(), "To Be Revoked", []string{"*"})
 		require.NoError(t, err)
 
@@ -104,6 +105,7 @@ func TestAuthentication_SecurityScenarios(t *testing.T) {
 	})
 
 	t.Run("KeyRotation_GracePeriod", func(t *testing.T) {
+
 		key, err := integration.CreateTestAPIKey(ctx, s.PostgresDSN(), "Rotation Test", []string{"*"})
 		require.NoError(t, err)
 

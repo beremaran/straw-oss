@@ -32,7 +32,6 @@ func (m *MockRuleRepo) GetActiveRules(ctx context.Context) ([]domain.RoutingRule
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-
 	return args.Get(0).([]domain.RoutingRule), args.Error(1)
 }
 
@@ -47,6 +46,7 @@ func (m *MockRuleRepo) ListRules(ctx context.Context, limit, offset int) ([]doma
 }
 
 func TestRateLimitMiddleware(t *testing.T) {
+
 	s, err := miniredis.Run()
 	require.NoError(t, err)
 	defer s.Close()
@@ -91,7 +91,6 @@ func TestRateLimitMiddleware(t *testing.T) {
 		if rule == nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			_, _ = w.Write([]byte("no rule in context"))
-
 			return
 		}
 		w.WriteHeader(http.StatusOK)
@@ -129,6 +128,7 @@ func TestRateLimitMiddleware(t *testing.T) {
 			if i < 2 {
 				assert.Equal(t, http.StatusOK, rec.Code)
 			} else {
+
 				assert.Equal(t, http.StatusTooManyRequests, rec.Code)
 				assert.Contains(t, rec.Body.String(), "RATE_LIMIT_EXCEEDED")
 				assert.Equal(t, "0", rec.Header().Get("X-RateLimit-Remaining"))

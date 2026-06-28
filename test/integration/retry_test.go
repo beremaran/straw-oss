@@ -73,6 +73,7 @@ func TestRetry_SamePool(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
 }
 
 func TestRetry_Escalation(t *testing.T) {

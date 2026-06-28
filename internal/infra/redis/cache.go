@@ -17,7 +17,6 @@ func (c *Client) Get(ctx context.Context, key string, v interface{}) error {
 		if errors.Is(err, redis.Nil) {
 			return ErrCacheMiss
 		}
-
 		return err
 	}
 

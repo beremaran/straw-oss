@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -46,6 +45,7 @@ func intPtr(i int) *int {
 }
 
 func main() {
+
 	cfg, err := config.LoadServerConfig()
 	if err != nil {
 		slog.Error("Failed to load config", "error", err)
@@ -66,8 +66,7 @@ func main() {
 		slog.Warn("Failed to initialize tracer provider", "error", err)
 	} else {
 		defer func() {
-			err := shutdownTracer(ctx)
-			if err != nil {
+			if err := shutdownTracer(ctx); err != nil {
 				slog.Error("Failed to shutdown tracer provider", "error", err)
 			}
 		}()
@@ -98,8 +97,7 @@ func main() {
 
 	if cfg.Database.AutoMigrate {
 		slog.Info("Applying pending migrations...")
-		err := postgres.RunEmbeddedMigrations(cfg.Database.DSN)
-		if err != nil {
+		if err := postgres.RunEmbeddedMigrations(cfg.Database.DSN); err != nil {
 			slog.Error("Failed to run migrations", "error", err)
 			os.Exit(1)
 		}
@@ -220,8 +218,7 @@ func main() {
 		adminKey := domain.NewApiKey(uuid.New().String(), tokenHash, "Default Administrator Key", []string{"target:*", "type:*", "region:*"})
 		adminKey.RateLimitOverride = intPtr(100)
 
-		err := apiKeyRepo.Create(ctx, adminKey)
-		if err != nil {
+		if err := apiKeyRepo.Create(ctx, adminKey); err != nil {
 			slog.Error("Failed to create initial admin API key", "error", err)
 			os.Exit(1)
 		}
@@ -246,15 +243,13 @@ func main() {
 	adminSrv := admin.New(*cfg, pgClient, redisClient, healthService, natsBroker)
 
 	go func() {
-		err := srv.Start()
-		if err != nil {
+		if err := srv.Start(); err != nil {
 			slog.Error("Server shutting down", "error", err)
 		}
 	}()
 
 	go func() {
-		err := adminSrv.Start()
-		if err != nil {
+		if err := adminSrv.Start(); err != nil {
 			slog.Error("Admin Server shutting down", "error", err)
 		}
 	}()
@@ -274,8 +269,7 @@ func main() {
 
 		go func() {
 			slog.Info("Starting metrics server", "addr", metricsSrv.Addr)
-			err := metricsSrv.ListenAndServe()
-			if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			if err := metricsSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 				slog.Error("Metrics Server shutting down", "error", err)
 			}
 		}()
@@ -299,8 +293,7 @@ func main() {
 	}
 
 	if metricsSrv != nil {
-		err := metricsSrv.Shutdown(ctx)
-		if err != nil {
+		if err := metricsSrv.Shutdown(ctx); err != nil {
 			slog.Error("Metrics Server forced to shutdown", "error", err)
 		}
 	}

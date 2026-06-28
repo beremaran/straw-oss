@@ -41,7 +41,6 @@ func (m *retryMockBroker) Publish(ctx context.Context, exchange, routingKey stri
 			}
 		}()
 	}
-
 	return nil
 }
 
@@ -53,7 +52,6 @@ func (m *retryMockBroker) SubscribeTemporary(ctx context.Context, queue string, 
 	m.mu.Lock()
 	m.subscriptions["temp-reply-queue"] = handler
 	m.mu.Unlock()
-
 	return nil
 }
 
@@ -98,7 +96,6 @@ func (m *mockPoolManager) GetEndpointFromPool(ctx context.Context, rule *domain.
 		for _, ex := range exclude {
 			if ep == ex {
 				excluded = true
-
 				break
 			}
 		}
@@ -106,7 +103,6 @@ func (m *mockPoolManager) GetEndpointFromPool(ctx context.Context, rule *domain.
 			return ep, nil
 		}
 	}
-
 	return "", errors.New("all endpoints excluded")
 }
 

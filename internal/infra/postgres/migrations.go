@@ -10,6 +10,7 @@ import (
 )
 
 func RunEmbeddedMigrations(dsn string) error {
+
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return fmt.Errorf("failed to open db for migrations: %w", err)
