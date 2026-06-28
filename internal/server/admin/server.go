@@ -28,7 +28,7 @@ type Server struct {
 	broker        broker.MessageBroker
 }
 
-func New(conf config.ServerConfig, client *postgres.Client, redisClient *redis.Client, healthService *endpoint.HealthService, broker broker.MessageBroker) *Server {
+func New(ctx context.Context, conf config.ServerConfig, client *postgres.Client, redisClient *redis.Client, healthService *endpoint.HealthService, broker broker.MessageBroker) *Server {
 	mux := http.NewServeMux()
 
 	s := &Server{
@@ -41,14 +41,14 @@ func New(conf config.ServerConfig, client *postgres.Client, redisClient *redis.C
 	}
 
 	s.registerRoutes()
-	s.setupBroker()
+	s.setupBroker(ctx)
 
 	handler := applyMiddlewares(mux,
 		mw.Recover(),
 		mw.RequestID(),
 		mw.LoggerMiddleware(),
 		mw.CORS(),
-		adminGlobalMiddleware(conf, client),
+		adminGlobalMiddleware(ctx, conf, client),
 	)
 
 	s.server = &http.Server{
@@ -58,9 +58,9 @@ func New(conf config.ServerConfig, client *postgres.Client, redisClient *redis.C
 	return s
 }
 
-func (s *Server) setupBroker() {
+func (s *Server) setupBroker(ctx context.Context) {
 	if s.broker != nil {
-		_ = s.broker.DeclareExchange(context.Background(), "fingerprint_broadcast", "fanout")
+		_ = s.broker.DeclareExchange(ctx, "fingerprint_broadcast", "fanout")
 	}
 }
 
@@ -147,11 +147,11 @@ func applyMiddlewares(handler http.Handler, middlewares ...func(http.Handler) ht
 	return handler
 }
 
-func adminGlobalMiddleware(cfg config.ServerConfig, client *postgres.Client) func(http.Handler) http.Handler {
+func adminGlobalMiddleware(ctx context.Context, cfg config.ServerConfig, client *postgres.Client) func(http.Handler) http.Handler {
 	keyAuth := middleware.KeyAuth(cfg)
 	var auditLog func(http.Handler) http.Handler
 	if client != nil && client.Pool != nil {
-		auditLogger := middleware.NewAuditLogger(client.Pool, 0, 0)
+		auditLogger := middleware.NewAuditLogger(ctx, client.Pool, 0, 0)
 		auditLog = middleware.AuditLog(auditLogger)
 	}
 

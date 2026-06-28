@@ -27,7 +27,7 @@ func (m *MockExecer) Exec(ctx context.Context, sql string, arguments ...any) (pg
 func TestAuditLog(t *testing.T) {
 	mockDB := new(MockExecer)
 
-	auditLogger := NewAuditLogger(mockDB, 10, 1)
+	auditLogger := NewAuditLogger(context.Background(), mockDB, 10, 1)
 	defer auditLogger.Stop()
 	mw := AuditLog(auditLogger)
 
@@ -53,7 +53,7 @@ func TestAuditLog(t *testing.T) {
 func TestAuditLog_SkipGet(t *testing.T) {
 	mockDB := new(MockExecer)
 
-	auditLogger := NewAuditLogger(mockDB, 10, 1)
+	auditLogger := NewAuditLogger(context.Background(), mockDB, 10, 1)
 	defer auditLogger.Stop()
 	mw := AuditLog(auditLogger)
 
@@ -94,7 +94,7 @@ func TestAuditLogger_BufferFull(t *testing.T) {
 
 func TestAuditLogger_Closed(t *testing.T) {
 	mockDB := new(MockExecer)
-	auditLogger := NewAuditLogger(mockDB, 10, 1)
+	auditLogger := NewAuditLogger(context.Background(), mockDB, 10, 1)
 	auditLogger.Stop()
 
 	entry := AuditEntry{

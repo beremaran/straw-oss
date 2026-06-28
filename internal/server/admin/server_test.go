@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -11,7 +12,7 @@ import (
 
 func TestServer_HealthCheck(t *testing.T) {
 	cfg := config.ServerConfig{AdminPort: 8081}
-	s := New(cfg, nil, nil, nil, nil)
+	s := New(context.Background(), cfg, nil, nil, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	rec := httptest.NewRecorder()
@@ -27,7 +28,7 @@ func TestServer_AuthProtection(t *testing.T) {
 		AdminPort:   8081,
 		AdminAPIKey: "admin-secret",
 	}
-	s := New(cfg, nil, nil, nil, nil)
+	s := New(context.Background(), cfg, nil, nil, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/some-resource", nil)
 	rec := httptest.NewRecorder()
