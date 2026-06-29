@@ -47,13 +47,14 @@ type ServerConfig struct {
 	Security      SecurityConfig
 	Observability ObservabilityConfig
 
-	HTTPPort              int
-	ManagementPort        int
-	ShutdownTimeout       time.Duration
-	ManagementAPIKey      string
-	ResultTimeout         time.Duration
-	MaxBodySize           string
-	MaxConcurrentRequests int
+	HTTPPort                      int
+	ManagementPort                int
+	ShutdownTimeout               time.Duration
+	ManagementAPIKey              string
+	ManagementLegacyTokenDisabled bool
+	ResultTimeout                 time.Duration
+	MaxBodySize                   string
+	MaxConcurrentRequests         int
 
 	AllowPrivateIPs bool
 }
@@ -125,19 +126,20 @@ func getEnvDuration(key string, defaultVal time.Duration) time.Duration {
 
 func LoadServerConfig() (*ServerConfig, error) {
 	cfg := &ServerConfig{
-		Database:              LoadDatabaseConfig(),
-		Redis:                 LoadRedisConfig(),
-		NATS:                  LoadNATSConfig(),
-		Security:              LoadSecurityConfig(),
-		Observability:         LoadObservabilityConfig(),
-		HTTPPort:              getEnvInt("HTTP_PORT", 8080),
-		ManagementPort:        getEnvInt("MANAGEMENT_PORT", 8081),
-		ShutdownTimeout:       getEnvDuration("SHUTDOWN_TIMEOUT", 30*time.Second),
-		ManagementAPIKey:      getEnv("MANAGEMENT_API_KEY", ""),
-		ResultTimeout:         getEnvDuration("RESULT_TIMEOUT", 30*time.Second),
-		MaxBodySize:           getEnv("MAX_BODY_SIZE", "2M"),
-		MaxConcurrentRequests: getEnvInt("MAX_CONCURRENT_REQUESTS", 50),
-		AllowPrivateIPs:       getEnvBool("ALLOW_PRIVATE_IPS", false),
+		Database:                      LoadDatabaseConfig(),
+		Redis:                         LoadRedisConfig(),
+		NATS:                          LoadNATSConfig(),
+		Security:                      LoadSecurityConfig(),
+		Observability:                 LoadObservabilityConfig(),
+		HTTPPort:                      getEnvInt("HTTP_PORT", 8080),
+		ManagementPort:                getEnvInt("MANAGEMENT_PORT", 8081),
+		ShutdownTimeout:               getEnvDuration("SHUTDOWN_TIMEOUT", 30*time.Second),
+		ManagementAPIKey:              getEnv("MANAGEMENT_API_KEY", ""),
+		ManagementLegacyTokenDisabled: !getEnvBool("MANAGEMENT_LEGACY_TOKEN_ENABLED", true),
+		ResultTimeout:                 getEnvDuration("RESULT_TIMEOUT", 30*time.Second),
+		MaxBodySize:                   getEnv("MAX_BODY_SIZE", "2M"),
+		MaxConcurrentRequests:         getEnvInt("MAX_CONCURRENT_REQUESTS", 50),
+		AllowPrivateIPs:               getEnvBool("ALLOW_PRIVATE_IPS", false),
 	}
 
 	err := validateServerConfig(cfg)

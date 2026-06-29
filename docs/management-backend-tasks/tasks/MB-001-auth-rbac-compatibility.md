@@ -1,6 +1,6 @@
 # MB-001: Auth And RBAC Compatibility Foundation
 
-Status: not-started
+Status: done
 Phase: 1
 Depends on: none
 Search tags: auth, rbac, legacy token, permissions, actor context, `MANAGEMENT_LEGACY_TOKEN_ENABLED`
@@ -28,15 +28,15 @@ Replace the management-only static-token assumption with a shared authentication
 
 ## Implementation Tasks
 
-- [ ] Define actor and permission context helpers.
-- [ ] Convert management auth middleware to resolve either legacy token or user session.
-- [ ] Add permission middleware usable per route.
-- [ ] Register existing routes with equivalent permissions from the spec.
-- [ ] Keep legacy token tests passing and add denial tests for missing permissions.
+- [x] Define actor and permission context helpers.
+- [x] Convert management auth middleware to resolve either legacy token or user session.
+- [x] Add permission middleware usable per route.
+- [x] Register existing routes with equivalent permissions from the spec.
+- [x] Keep legacy token tests passing and add denial tests for missing permissions.
 
 ## Done Criteria
 
-- [ ] Existing management routes still accept the current legacy bearer token by default.
-- [ ] A request with no valid management auth still returns `401`.
-- [ ] A request with a valid actor but missing permission returns `403`.
-- [ ] Handlers and audit logging can read actor metadata from request context.
+- [x] Existing management routes still accept the current legacy bearer token by default.
+- [x] A request with no valid management auth still returns `401`.
+- [x] A request with a valid actor but missing permission returns `403`.
+- [x] Handlers and audit logging can read actor metadata from request context.

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/beremaran/straw/internal/config"
+	"github.com/beremaran/straw/internal/server/admin/middleware"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -42,4 +43,24 @@ func TestServer_AuthProtection(t *testing.T) {
 	s.GetHandler().ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestManagementGlobalMiddleware_MissingPermission(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.Handle("GET /management/protected", middleware.RequirePermission(middleware.PermissionAPIKeysRead)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})))
+	h := managementGlobalMiddleware(config.ServerConfig{}, nil)(mux)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/management/protected", nil)
+	req = req.WithContext(middleware.ContextWithActor(req.Context(), middleware.Actor{
+		Type:        middleware.ActorTypeUser,
+		ID:          "user-1",
+		Permissions: []string{middleware.PermissionUsageRead},
+	}))
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusForbidden, rec.Code)
 }

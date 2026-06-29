@@ -107,30 +107,34 @@ func (s *Server) registerRoutes() {
 		cacheHandler = handlers.NewCacheHandler(s.redisClient)
 	}
 
-	s.mux.HandleFunc("POST /management/api-keys", apiKeyHandler.HandleCreateApiKey)
-	s.mux.HandleFunc("GET /management/api-keys", apiKeyHandler.HandleListApiKeys)
-	s.mux.HandleFunc("DELETE /management/api-keys/{id}", apiKeyHandler.HandleRevokeApiKey)
+	s.management("POST /management/api-keys", middleware.PermissionAPIKeysWrite, apiKeyHandler.HandleCreateApiKey)
+	s.management("GET /management/api-keys", middleware.PermissionAPIKeysRead, apiKeyHandler.HandleListApiKeys)
+	s.management("DELETE /management/api-keys/{id}", middleware.PermissionAPIKeysRevoke, apiKeyHandler.HandleRevokeApiKey)
 
-	s.mux.HandleFunc("POST /management/rules", routingRuleHandler.HandleCreateRoutingRule)
-	s.mux.HandleFunc("GET /management/rules", routingRuleHandler.HandleListRoutingRules)
-	s.mux.HandleFunc("GET /management/rules/{id}", routingRuleHandler.HandleGetRoutingRule)
-	s.mux.HandleFunc("PUT /management/rules/{id}", routingRuleHandler.HandleUpdateRoutingRule)
-	s.mux.HandleFunc("DELETE /management/rules/{id}", routingRuleHandler.HandleDeleteRoutingRule)
+	s.management("POST /management/rules", middleware.PermissionRoutingRulesWrite, routingRuleHandler.HandleCreateRoutingRule)
+	s.management("GET /management/rules", middleware.PermissionRoutingRulesRead, routingRuleHandler.HandleListRoutingRules)
+	s.management("GET /management/rules/{id}", middleware.PermissionRoutingRulesRead, routingRuleHandler.HandleGetRoutingRule)
+	s.management("PUT /management/rules/{id}", middleware.PermissionRoutingRulesWrite, routingRuleHandler.HandleUpdateRoutingRule)
+	s.management("DELETE /management/rules/{id}", middleware.PermissionRoutingRulesWrite, routingRuleHandler.HandleDeleteRoutingRule)
 
-	s.mux.HandleFunc("GET /management/endpoints", endpointHandler.HandleListEndpoints)
-	s.mux.HandleFunc("POST /management/endpoints/{id}/drain", endpointHandler.HandleDrainEndpoint)
+	s.management("GET /management/endpoints", middleware.PermissionEndpointsRead, endpointHandler.HandleListEndpoints)
+	s.management("POST /management/endpoints/{id}/drain", middleware.PermissionEndpointsControl, endpointHandler.HandleDrainEndpoint)
 
-	s.mux.HandleFunc("GET /management/fingerprints", fingerprintHandler.HandleListPresets)
-	s.mux.HandleFunc("POST /management/fingerprints", fingerprintHandler.HandleCreatePreset)
-	s.mux.HandleFunc("POST /management/fingerprints/broadcast", fingerprintHandler.HandleBroadcastPresets)
+	s.management("GET /management/fingerprints", middleware.PermissionFingerprintsRead, fingerprintHandler.HandleListPresets)
+	s.management("POST /management/fingerprints", middleware.PermissionFingerprintsWrite, fingerprintHandler.HandleCreatePreset)
+	s.management("POST /management/fingerprints/broadcast", middleware.PermissionFingerprintsBroadcast, fingerprintHandler.HandleBroadcastPresets)
 
-	s.mux.HandleFunc("GET /management/usage/summary", usageHandler.HandleGetUsageSummary)
-	s.mux.HandleFunc("GET /management/billing/estimate", usageHandler.HandleGetBillingEstimate)
+	s.management("GET /management/usage/summary", middleware.PermissionUsageRead, usageHandler.HandleGetUsageSummary)
+	s.management("GET /management/billing/estimate", middleware.PermissionBillingRead, usageHandler.HandleGetBillingEstimate)
 
 	if cacheHandler != nil {
-		s.mux.HandleFunc("POST /management/cache/clear", cacheHandler.HandleClearCache)
-		s.mux.HandleFunc("GET /management/cache/stats", cacheHandler.HandleGetCacheStats)
+		s.management("POST /management/cache/clear", middleware.PermissionCacheWrite, cacheHandler.HandleClearCache)
+		s.management("GET /management/cache/stats", middleware.PermissionCacheRead, cacheHandler.HandleGetCacheStats)
 	}
+}
+
+func (s *Server) management(pattern, permission string, handler http.HandlerFunc) {
+	s.mux.Handle(pattern, middleware.RequirePermission(permission)(handler))
 }
 
 func (s *Server) healthCheck(w http.ResponseWriter, r *http.Request) {

@@ -26,15 +26,19 @@ type Execer interface {
 }
 
 type AuditEntry struct {
-	Timestamp time.Time
-	Method    string
-	Path      string
-	Query     string
-	Body      string
-	IP        string
-	UserAgent string
-	Status    int
-	Error     string
+	Timestamp        time.Time
+	ActorType        string
+	ActorID          string
+	ActorDisplayName string
+	SessionID        string
+	Method           string
+	Path             string
+	Query            string
+	Body             string
+	IP               string
+	UserAgent        string
+	Status           int
+	Error            string
 }
 
 type AuditLogger struct {
@@ -178,20 +182,25 @@ func AuditLog(auditLogger *AuditLogger) func(http.Handler) http.Handler {
 			ip := getRealIP(r)
 			userAgent := r.UserAgent()
 			timestamp := time.Now()
+			actor, _ := ActorFromContext(r.Context())
 
 			sw := &statusResponseWriter{ResponseWriter: w, status: http.StatusOK}
 			next.ServeHTTP(sw, r)
 
 			auditLogger.Log(AuditEntry{
-				Timestamp: timestamp,
-				Method:    method,
-				Path:      path,
-				Query:     queryStr,
-				Body:      bodyStr,
-				IP:        ip,
-				UserAgent: userAgent,
-				Status:    sw.status,
-				Error:     "",
+				Timestamp:        timestamp,
+				ActorType:        actor.Type,
+				ActorID:          actor.ID,
+				ActorDisplayName: actor.DisplayName,
+				SessionID:        actor.SessionID,
+				Method:           method,
+				Path:             path,
+				Query:            queryStr,
+				Body:             bodyStr,
+				IP:               ip,
+				UserAgent:        userAgent,
+				Status:           sw.status,
+				Error:            "",
 			})
 		})
 	}
