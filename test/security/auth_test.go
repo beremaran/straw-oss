@@ -33,10 +33,11 @@ func TestAuthentication_SecurityScenarios(t *testing.T) {
 	serverConf := integration.NewTestServerConfig(s.PostgresDSN(), s.RedisAddr(), s.NatsURL())
 
 	authRepo := integration.NewTestAuthRepo(t, s.PostgresDSN())
+	authTokenRepo := integration.NewTestAuthTokenRepo(t, s.PostgresDSN())
 
 	rlRedis := integration.NewTestRedisClient(t, ctx, s.RedisAddr())
 	authCache := auth.NewAuthCache(rlRedis, 10*time.Second)
-	authService := auth.NewAuthService(authRepo, authCache)
+	authService := auth.NewAuthService(authRepo, authTokenRepo, authCache)
 
 	sessionRepo := session.NewRedisStore(rlRedis)
 	sessionService := session.NewService(sessionRepo)
@@ -114,12 +115,19 @@ func TestAuthentication_SecurityScenarios(t *testing.T) {
 		newHashBytes := sha256.Sum256([]byte(newToken))
 		newHash := hex.EncodeToString(newHashBytes[:])
 
-		integration.ExecuteSQL(t, ctx, s.PostgresDSN(), "UPDATE api_keys SET token_hash = $1 WHERE id = $2", newHash, key.ID)
+		integration.ExecuteSQL(t, ctx, s.PostgresDSN(), "INSERT INTO api_key_tokens (api_key_id, token_hash, status) VALUES ($1, $2, 'active')", key.ID, newHash)
+		integration.ExecuteSQL(t, ctx, s.PostgresDSN(), "UPDATE api_key_tokens SET status = 'grace', expires_at = NOW() + INTERVAL '1 hour' WHERE api_key_id = $1 AND token_hash != $2", key.ID, newHash)
 
 		require.NoError(t, authService.InvalidateKey(ctx, key.RawKey))
 
 		rec = sendRequest("POST", "/v1/request", key.RawKey)
-		assert.Equal(t, http.StatusUnauthorized, rec.Code, "Old token should fail after rotation")
+		assert.NotEqual(t, http.StatusUnauthorized, rec.Code, "Old token should work during grace period")
+
+		integration.ExecuteSQL(t, ctx, s.PostgresDSN(), "UPDATE api_key_tokens SET expires_at = NOW() - INTERVAL '1 hour' WHERE api_key_id = $1 AND token_hash != $2", key.ID, newHash)
+		require.NoError(t, authService.InvalidateKey(ctx, key.RawKey))
+
+		rec = sendRequest("POST", "/v1/request", key.RawKey)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code, "Old token should fail after grace period expires")
 
 		rec = sendRequest("POST", "/v1/request", newToken)
 		assert.NotEqual(t, http.StatusUnauthorized, rec.Code, "New token should work")

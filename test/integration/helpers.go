@@ -178,6 +178,14 @@ func CreateTestAPIKey(ctx context.Context, dsn string, name string, scopes []str
 		VALUES ($1, $2, $3, $4, true)
 	`, id, name, tokenHash, scopesJSON)
 	if err != nil {
+		return nil, fmt.Errorf("failed to insert api key: %w", err)
+	}
+
+	_, err = db.ExecContext(ctx, `
+		INSERT INTO api_key_tokens (api_key_id, token_hash, status)
+		VALUES ($1, $2, 'active')
+	`, id, tokenHash)
+	if err != nil {
 		return nil, fmt.Errorf("failed to create API key: %w", err)
 	}
 
@@ -505,6 +513,16 @@ func NewTestAuthRepo(t testing.TB, dsn string) domain.ApiKeyRepository {
 	})
 
 	return postgres.NewApiKeyRepository(client)
+}
+
+func NewTestAuthTokenRepo(t testing.TB, dsn string) domain.ApiKeyTokenRepository {
+	client, err := postgres.NewClient(context.Background(), dsn, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		client.Close()
+	})
+
+	return postgres.NewApiKeyTokenRepository(client)
 }
 
 func NewTestRuleRepo(t testing.TB, dsn string) domain.RoutingRuleRepository {

@@ -14,14 +14,16 @@ var (
 )
 
 type Service struct {
-	repo  domain.ApiKeyRepository
-	cache *Cache
+	repo      domain.ApiKeyRepository
+	tokenRepo domain.ApiKeyTokenRepository
+	cache     *Cache
 }
 
-func NewAuthService(repo domain.ApiKeyRepository, cache *Cache) *Service {
+func NewAuthService(repo domain.ApiKeyRepository, tokenRepo domain.ApiKeyTokenRepository, cache *Cache) *Service {
 	return &Service{
-		repo:  repo,
-		cache: cache,
+		repo:      repo,
+		tokenRepo: tokenRepo,
+		cache:     cache,
 	}
 }
 
@@ -37,7 +39,15 @@ func (s *Service) ValidateKey(ctx context.Context, rawToken string) (*domain.Api
 		}
 	}
 
-	apiKey, err := s.repo.GetByTokenHash(ctx, tokenHash)
+	token, err := s.tokenRepo.GetByTokenHash(ctx, tokenHash)
+	if err != nil {
+		return nil, err
+	}
+	if token == nil || !token.IsValid() {
+		return nil, ErrInvalidKey
+	}
+
+	apiKey, err := s.repo.GetByID(ctx, token.ApiKeyID)
 	if err != nil {
 		return nil, err
 	}

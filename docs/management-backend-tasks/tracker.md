@@ -29,7 +29,7 @@ Status values: `not-started`, `in-progress`, `blocked`, `done`.
 
 | Done | ID | Status | Task |
 | --- | --- | --- | --- |
-| [ ] | [MB-008](tasks/MB-008-api-key-token-history.md) | not-started | API key token history and auth lookup migration |
+| [x] | [MB-008](tasks/MB-008-api-key-token-history.md) | done | API key token history and auth lookup migration |
 | [ ] | [MB-009](tasks/MB-009-api-key-lifecycle-apis.md) | not-started | API key detail, update, rotate, reactivate, revoke APIs |
 | [ ] | [MB-010](tasks/MB-010-fingerprint-delete.md) | not-started | Fingerprint detail and protected delete |
 

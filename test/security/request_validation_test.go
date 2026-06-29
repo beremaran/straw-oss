@@ -32,9 +32,11 @@ func TestRequestValidation_SecurityScenarios(t *testing.T) {
 	serverConf := integration.NewTestServerConfig(s.PostgresDSN(), s.RedisAddr(), s.NatsURL())
 
 	authRepo := integration.NewTestAuthRepo(t, s.PostgresDSN())
+	authTokenRepo := integration.NewTestAuthTokenRepo(t, s.PostgresDSN())
+	
 	rlRedis := integration.NewTestRedisClient(t, ctx, s.RedisAddr())
 	authCache := auth.NewAuthCache(rlRedis, 10*time.Second)
-	authService := auth.NewAuthService(authRepo, authCache)
+	authService := auth.NewAuthService(authRepo, authTokenRepo, authCache)
 	sessionRepo := session.NewRedisStore(rlRedis)
 	sessionService := session.NewService(sessionRepo)
 	ruleRepo := integration.NewTestRuleRepo(t, s.PostgresDSN())
