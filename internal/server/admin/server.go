@@ -18,6 +18,7 @@ import (
 	mw "github.com/beremaran/straw/internal/server/middleware"
 	adminauth "github.com/beremaran/straw/internal/service/auth"
 	"github.com/beremaran/straw/internal/service/endpoint"
+	reportservice "github.com/beremaran/straw/internal/service/report"
 	"github.com/beremaran/straw/internal/service/router"
 	"github.com/beremaran/straw/pkg/broker"
 )
@@ -29,15 +30,16 @@ const (
 
 // Server is the management HTTP server.
 type Server struct {
-	mux           *http.ServeMux
-	server        *http.Server
-	conf          config.ServerConfig
-	client        *postgres.Client
-	redisClient   *redis.Client
-	healthService *endpoint.HealthService
-	broker        broker.MessageBroker
-	authService   *adminauth.AdminService
-	apiKeyAuth    *adminauth.Service
+	mux             *http.ServeMux
+	server          *http.Server
+	conf            config.ServerConfig
+	client          *postgres.Client
+	redisClient     *redis.Client
+	healthService   *endpoint.HealthService
+	broker          broker.MessageBroker
+	authService     *adminauth.AdminService
+	apiKeyAuth      *adminauth.Service
+	reportScheduler *reportservice.Scheduler
 }
 
 // New creates a new management server.
@@ -89,12 +91,17 @@ func (s *Server) Start() error {
 	addr := fmt.Sprintf(":%d", s.conf.ManagementPort)
 	s.server.Addr = addr
 	s.warnNoActiveOwner()
+	_ = s.startReportScheduler(context.Background())
 
 	return fmt.Errorf("listen: %w", s.server.ListenAndServe())
 }
 
 // Stop gracefully stops the management server.
 func (s *Server) Stop(ctx context.Context) error {
+	if s.reportScheduler != nil {
+		s.reportScheduler.Stop()
+	}
+
 	return fmt.Errorf("shutdown: %w", s.server.Shutdown(ctx))
 }
 
@@ -129,8 +136,6 @@ func (s *Server) registerAllSubRoutes() {
 	identityRepo := postgres.NewIdentityRepository(s.client)
 	usageRepo := postgres.NewUsageRepository(s.client)
 	costMultiplierRepo := postgres.NewCostMultiplierRepository(s.client)
-	reportRepo := postgres.NewSavedReportRepository(s.client)
-	reportRunRepo := postgres.NewReportRunRepository(s.client)
 
 	var auditRepo domain.ManagementAuditRepository
 	if s.client != nil {
@@ -166,13 +171,38 @@ func (s *Server) registerAllSubRoutes() {
 	s.registerFingerprintRoutes(handlers.NewFingerprintHandler(fingerprintRepo, routingRuleRepo, identityRepo, s.broker, auditRepo))
 	s.registerUsageRoutes(handlers.NewUsageHandler(usageRepo, costMultiplierRepo))
 	s.registerCostMultiplierRoutes(handlers.NewCostMultiplierHandler(costMultiplierRepo, auditRepo))
-	s.registerReportRoutes(handlers.NewReportHandler(reportRepo, reportRunRepo, usageRepo, apiKeyRepo, endpointRepo, auditRepo, costMultiplierRepo, s.conf.ReportArtifactDir))
+	s.registerReportFeatures(usageRepo, apiKeyRepo, endpointRepo, auditRepo, costMultiplierRepo)
 
 	if s.redisClient != nil {
 		s.registerCacheRoutes(handlers.NewCacheHandler(s.redisClient, auditRepo))
 	}
 
 	s.registerAuditRoutes(handlers.NewAuditHandler(auditRepo, identityRepo))
+}
+
+func (s *Server) registerReportFeatures(
+	usageRepo domain.UsageRepository,
+	apiKeyRepo domain.APIKeyRepository,
+	endpointRepo domain.EndpointRepository,
+	auditRepo domain.ManagementAuditRepository,
+	costMultiplierRepo domain.CostMultiplierRepository,
+) {
+	reportRepo := postgres.NewSavedReportRepository(s.client)
+	reportRunRepo := postgres.NewReportRunRepository(s.client)
+	reportScheduleRepo := postgres.NewReportScheduleRepository(s.client)
+	reportHandler := handlers.NewReportHandler(
+		reportRepo,
+		reportRunRepo,
+		usageRepo,
+		apiKeyRepo,
+		endpointRepo,
+		auditRepo,
+		costMultiplierRepo,
+		s.conf.ReportArtifactDir,
+		reportScheduleRepo,
+	)
+	s.registerReportRoutes(reportHandler)
+	s.reportScheduler = reportservice.NewScheduler(reportScheduleRepo, reportHandler, s.conf.ReportSchedulerInterval)
 }
 
 func (s *Server) registerIdentityAndAuthRoutes(user *handlers.UserHandler, role *handlers.RoleHandler, idp *handlers.IdentityProviderHandler, auth *handlers.AuthHandler) {
@@ -281,6 +311,25 @@ func (s *Server) registerReportRoutes(reportHandler *handlers.ReportHandler) {
 	s.management("GET /management/reports/{id}/runs", middleware.PermissionReportsRead, reportHandler.HandleListReportRuns)
 	s.management("GET /management/report-runs/{run_id}", middleware.PermissionReportsRead, reportHandler.HandleGetReportRun)
 	s.management("GET /management/report-runs/{run_id}/download", middleware.PermissionReportsRead, reportHandler.HandleDownloadReportRun)
+	s.management("GET /management/report-schedules", middleware.PermissionReportsRead, reportHandler.HandleListReportSchedules)
+	s.management("POST /management/report-schedules", middleware.PermissionReportsWrite, reportHandler.HandleCreateReportSchedule)
+	s.management("PATCH /management/report-schedules/{id}", middleware.PermissionReportsWrite, reportHandler.HandleUpdateReportSchedule)
+	s.management("DELETE /management/report-schedules/{id}", middleware.PermissionReportsWrite, reportHandler.HandleDeleteReportSchedule)
+}
+
+func (s *Server) startReportScheduler(ctx context.Context) error {
+	if s.reportScheduler == nil {
+		return nil
+	}
+
+	err := s.reportScheduler.Start(ctx)
+	if err != nil {
+		slog.Warn("failed to start report scheduler", "error", err)
+
+		return fmt.Errorf("start report scheduler: %w", err)
+	}
+
+	return nil
 }
 
 func (s *Server) registerCacheRoutes(cacheHandler *handlers.CacheHandler) {

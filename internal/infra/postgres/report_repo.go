@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -443,4 +444,327 @@ func nullableString(value string) any {
 	}
 
 	return value
+}
+
+// ReportScheduleRepository persists report schedules.
+type ReportScheduleRepository struct {
+	client *Client
+}
+
+// NewReportScheduleRepository creates a new ReportScheduleRepository.
+func NewReportScheduleRepository(client *Client) *ReportScheduleRepository {
+	return &ReportScheduleRepository{client: client}
+}
+
+// Create inserts a report schedule.
+func (r *ReportScheduleRepository) Create(ctx context.Context, schedule *domain.ReportSchedule) error {
+	query := `
+		INSERT INTO report_schedules (
+			id, report_id, cron, timezone, destination_channel_id, is_active,
+			next_run_at, last_run_at, created_at, updated_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+	`
+
+	err := r.client.Execute(func() error {
+		_, execErr := r.client.Pool.Exec(ctx, query,
+			schedule.ID,
+			schedule.ReportID,
+			schedule.Cron,
+			schedule.Timezone,
+			nullableString(schedule.DestinationChannelID),
+			schedule.IsActive,
+			schedule.NextRunAt,
+			schedule.LastRunAt,
+			schedule.CreatedAt,
+			schedule.UpdatedAt,
+		)
+		if execErr != nil {
+			return fmt.Errorf("insert report schedule: %w", execErr)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("create report schedule: %w", err)
+	}
+
+	return nil
+}
+
+// Update modifies a report schedule.
+func (r *ReportScheduleRepository) Update(ctx context.Context, schedule *domain.ReportSchedule) error {
+	query := `
+		UPDATE report_schedules
+		SET cron = $2,
+			timezone = $3,
+			destination_channel_id = $4,
+			is_active = $5,
+			next_run_at = $6,
+			updated_at = $7
+		WHERE id = $1
+	`
+
+	var rows int64
+
+	err := r.client.Execute(func() error {
+		res, execErr := r.client.Pool.Exec(ctx, query,
+			schedule.ID,
+			schedule.Cron,
+			schedule.Timezone,
+			nullableString(schedule.DestinationChannelID),
+			schedule.IsActive,
+			schedule.NextRunAt,
+			schedule.UpdatedAt,
+		)
+		if execErr != nil {
+			return fmt.Errorf("update report schedule: %w", execErr)
+		}
+
+		rows = res.RowsAffected()
+
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("update report schedule: %w", err)
+	}
+
+	if rows == 0 {
+		return domain.ErrReportScheduleNotFound
+	}
+
+	return nil
+}
+
+// Disable marks a report schedule inactive.
+func (r *ReportScheduleRepository) Disable(ctx context.Context, id string) error {
+	var rows int64
+
+	err := r.client.Execute(func() error {
+		res, execErr := r.client.Pool.Exec(ctx, `
+			UPDATE report_schedules
+			SET is_active = false,
+				updated_at = now()
+			WHERE id = $1
+		`, id)
+		if execErr != nil {
+			return fmt.Errorf("disable report schedule: %w", execErr)
+		}
+
+		rows = res.RowsAffected()
+
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("disable report schedule: %w", err)
+	}
+
+	if rows == 0 {
+		return domain.ErrReportScheduleNotFound
+	}
+
+	return nil
+}
+
+// GetByID returns a report schedule by ID.
+func (r *ReportScheduleRepository) GetByID(ctx context.Context, id string) (*domain.ReportSchedule, error) {
+	query := `
+		SELECT id, report_id, cron, timezone, COALESCE(destination_channel_id::text, ''),
+		       is_active, next_run_at, last_run_at, created_at, updated_at
+		FROM report_schedules
+		WHERE id = $1
+	`
+
+	var schedule domain.ReportSchedule
+
+	err := r.client.Execute(func() error {
+		return scanReportSchedule(r.client.Pool.QueryRow(ctx, query, id), &schedule)
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+
+		return nil, fmt.Errorf("get report schedule: %w", err)
+	}
+
+	return &schedule, nil
+}
+
+// List returns report schedules.
+func (r *ReportScheduleRepository) List(ctx context.Context, limit, offset int) ([]domain.ReportSchedule, int, error) {
+	var total int
+
+	err := r.client.Execute(func() error {
+		return r.client.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM report_schedules`).Scan(&total)
+	})
+	if err != nil {
+		return nil, 0, fmt.Errorf("count report schedules: %w", err)
+	}
+
+	query := `
+		SELECT id, report_id, cron, timezone, COALESCE(destination_channel_id::text, ''),
+		       is_active, next_run_at, last_run_at, created_at, updated_at
+		FROM report_schedules
+		ORDER BY created_at DESC
+		LIMIT $1 OFFSET $2
+	`
+
+	var rows pgx.Rows
+
+	err = r.client.Execute(func() error {
+		var queryErr error
+
+		rows, queryErr = r.client.Pool.Query(ctx, query, limit, offset)
+		if queryErr != nil {
+			return fmt.Errorf("query report schedules: %w", queryErr)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, 0, fmt.Errorf("list report schedules: %w", err)
+	}
+	defer rows.Close()
+
+	schedules, err := scanReportSchedules(rows)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return schedules, total, nil
+}
+
+// ClaimDue claims due schedules using row locking.
+func (r *ReportScheduleRepository) ClaimDue(ctx context.Context, now time.Time, limit int) ([]domain.ReportSchedule, error) {
+	tx, err := r.client.Pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin report schedule claim: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	rows, err := tx.Query(ctx, `
+		SELECT id, report_id, cron, timezone, COALESCE(destination_channel_id::text, ''),
+		       is_active, next_run_at, last_run_at, created_at, updated_at
+		FROM report_schedules
+		WHERE is_active = true
+			AND next_run_at IS NOT NULL
+			AND next_run_at <= $1
+		ORDER BY next_run_at ASC
+		LIMIT $2
+		FOR UPDATE SKIP LOCKED
+	`, now, limit)
+	if err != nil {
+		return nil, fmt.Errorf("query due report schedules: %w", err)
+	}
+	defer rows.Close()
+
+	schedules, err := scanReportSchedules(rows)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, schedule := range schedules {
+		_, err = tx.Exec(ctx, `
+			UPDATE report_schedules
+			SET next_run_at = NULL,
+				updated_at = $2
+			WHERE id = $1
+		`, schedule.ID, now)
+		if err != nil {
+			return nil, fmt.Errorf("mark report schedule claimed: %w", err)
+		}
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("commit report schedule claim: %w", err)
+	}
+
+	return schedules, nil
+}
+
+// MarkRun records schedule run timestamps.
+func (r *ReportScheduleRepository) MarkRun(ctx context.Context, id string, lastRunAt time.Time, nextRunAt time.Time) error {
+	var rows int64
+
+	err := r.client.Execute(func() error {
+		res, execErr := r.client.Pool.Exec(ctx, `
+			UPDATE report_schedules
+			SET last_run_at = $2,
+				next_run_at = $3,
+				updated_at = $2
+			WHERE id = $1
+		`, id, lastRunAt, nextRunAt)
+		if execErr != nil {
+			return fmt.Errorf("mark report schedule run: %w", execErr)
+		}
+
+		rows = res.RowsAffected()
+
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("mark report schedule run: %w", err)
+	}
+
+	if rows == 0 {
+		return domain.ErrReportScheduleNotFound
+	}
+
+	return nil
+}
+
+func scanReportSchedules(rows pgx.Rows) ([]domain.ReportSchedule, error) {
+	var schedules []domain.ReportSchedule
+
+	for rows.Next() {
+		var schedule domain.ReportSchedule
+
+		err := scanReportSchedule(rows, &schedule)
+		if err != nil {
+			return nil, err
+		}
+
+		schedules = append(schedules, schedule)
+	}
+
+	err := rows.Err()
+	if err != nil {
+		return nil, fmt.Errorf("iterate report schedules: %w", err)
+	}
+
+	return schedules, nil
+}
+
+func scanReportSchedule(row scanner, schedule *domain.ReportSchedule) error {
+	var (
+		nextRunAt sql.NullTime
+		lastRunAt sql.NullTime
+	)
+
+	err := row.Scan(
+		&schedule.ID,
+		&schedule.ReportID,
+		&schedule.Cron,
+		&schedule.Timezone,
+		&schedule.DestinationChannelID,
+		&schedule.IsActive,
+		&nextRunAt,
+		&lastRunAt,
+		&schedule.CreatedAt,
+		&schedule.UpdatedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("scan report schedule: %w", err)
+	}
+
+	if nextRunAt.Valid {
+		schedule.NextRunAt = &nextRunAt.Time
+	}
+
+	if lastRunAt.Valid {
+		schedule.LastRunAt = &lastRunAt.Time
+	}
+
+	return nil
 }
