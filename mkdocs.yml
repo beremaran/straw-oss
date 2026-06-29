@@ -62,6 +62,8 @@ nav:
   - Architecture: architecture.md
   - Configuration Reference: configuration.md
   - Management API: management-api.md
+  - Management UI Spec: management-ui-spec.md
+  - Management Backend Spec: management-backend-spec.md
   - API Reference: api-reference.html
   - Custom Endpoint SDK: custom-endpoint.md
   - Contributing: contributing.md
