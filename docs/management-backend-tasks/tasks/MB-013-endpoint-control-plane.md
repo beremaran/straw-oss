@@ -1,6 +1,6 @@
 # MB-013: Endpoint Control Plane And Worker Commands
 
-Status: not-started
+Status: done
 Phase: 3
 Depends on: MB-011, MB-012
 Search tags: endpoint_control, NATS, worker subscriber, drain, undrain, restart, ack
@@ -29,16 +29,16 @@ Publish endpoint control commands and teach workers to acknowledge and execute t
 
 ## Implementation Tasks
 
-- [ ] Add command payload types shared by relay and worker.
-- [ ] Add broker stream declaration for endpoint control.
-- [ ] Publish commands when endpoint control handlers accept work.
-- [ ] Add worker subscription and handlers for required commands.
-- [ ] Add acknowledgement consumer that updates `endpoint_commands`.
-- [ ] Add timeout handling for commands without acknowledgement or completion.
+- [x] Add command payload types shared by relay and worker.
+- [x] Add broker stream declaration for endpoint control.
+- [x] Publish commands when endpoint control handlers accept work.
+- [x] Add worker subscription and handlers for required commands.
+- [x] Add acknowledgement consumer that updates `endpoint_commands`.
+- [x] Add timeout handling for commands without acknowledgement or completion.
 
 ## Done Criteria
 
-- [ ] Successful control API calls create command records and publish command messages.
-- [ ] Worker publishes acknowledgement before long-running operations.
-- [ ] Command status updates from worker acknowledgement messages.
-- [ ] Restart uses existing worker update/restart primitives where possible.
+- [x] Successful control API calls create command records and publish command messages.
+- [x] Worker publishes acknowledgement before long-running operations.
+- [x] Command status updates from worker acknowledgement messages.
+- [x] Restart uses existing worker update/restart primitives where possible.
