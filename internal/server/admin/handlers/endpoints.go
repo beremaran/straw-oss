@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -23,6 +24,7 @@ type EndpointHandler struct {
 	commandRepo   domain.EndpointCommandRepository
 	broker        broker.MessageBroker
 	auditRepo     domain.ManagementAuditRepository
+	logRepo       domain.EndpointLogRepository
 }
 
 func NewEndpointHandler(
@@ -31,6 +33,7 @@ func NewEndpointHandler(
 	commandRepo domain.EndpointCommandRepository,
 	broker broker.MessageBroker,
 	auditRepo domain.ManagementAuditRepository,
+	logRepo domain.EndpointLogRepository,
 ) *EndpointHandler {
 	return &EndpointHandler{
 		healthService: healthService,
@@ -38,6 +41,7 @@ func NewEndpointHandler(
 		commandRepo:   commandRepo,
 		broker:        broker,
 		auditRepo:     auditRepo,
+		logRepo:       logRepo,
 	}
 }
 
@@ -406,6 +410,112 @@ func (h *EndpointHandler) HandleCommandDispatch(w http.ResponseWriter, r *http.R
 	}
 
 	helper.WriteError(w, http.StatusNotFound, "path not found")
+}
+
+func (h *EndpointHandler) HandleGetEndpointLogs(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		helper.WriteError(w, http.StatusBadRequest, "id is required")
+
+		return
+	}
+
+	if h.logRepo == nil {
+		helper.WriteError(w, http.StatusNotImplemented, "persistence is disabled")
+
+		return
+	}
+
+	filter, err := h.parseLogFilterParams(w, r)
+	if err != nil {
+		return
+	}
+
+	entries, err := h.logRepo.Query(r.Context(), id, filter)
+	if err != nil {
+		helper.WriteError(w, http.StatusInternalServerError, "failed to query logs")
+
+		return
+	}
+
+	limit := filter.Limit - 1
+	hasMore := len(entries) > limit
+	var responseEntries []domain.EndpointLogEntry
+	if hasMore {
+		responseEntries = entries[:limit]
+	} else {
+		responseEntries = entries
+	}
+
+	data := make([]dto.EndpointLogDTO, len(responseEntries))
+	for i, entry := range responseEntries {
+		data[i] = dto.EndpointLogDTO{
+			ID:         entry.ID,
+			EndpointID: entry.EndpointID,
+			ObservedAt: entry.ObservedAt.Format(time.RFC3339),
+			Level:      entry.Level,
+			Message:    entry.Message,
+			Attrs:      entry.Attrs,
+			TraceID:    entry.TraceID,
+			RequestID:  entry.RequestID,
+		}
+	}
+
+	var nextCursor string
+	if hasMore && len(responseEntries) > 0 {
+		nextCursor = strconv.FormatInt(responseEntries[len(responseEntries)-1].ID, 10)
+	}
+
+	resp := dto.EndpointLogListResponse{
+		Data:       data,
+		NextCursor: nextCursor,
+		HasMore:    hasMore,
+	}
+
+	helper.WriteJSON(w, http.StatusOK, resp)
+}
+
+func (h *EndpointHandler) HandleStreamEndpointLogs(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		helper.WriteError(w, http.StatusBadRequest, "id is required")
+
+		return
+	}
+
+	if h.broker == nil {
+		helper.WriteError(w, http.StatusNotImplemented, "message broker is disabled")
+
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		helper.WriteError(w, http.StatusInternalServerError, "streaming not supported")
+
+		return
+	}
+
+	flusher.Flush()
+
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+
+	subject := "endpoint.logs." + id
+	err := h.broker.Subscribe(ctx, subject, h.makeStreamHandler(w, flusher, cancel), broker.WithTransient())
+	if err != nil {
+		_, _ = fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error())
+		flusher.Flush()
+
+		return
+	}
+
+	<-ctx.Done()
 }
 
 // Helpers and unexported methods placed after exported ones.
@@ -791,4 +901,111 @@ func (h *EndpointHandler) mapCommand(c *domain.EndpointCommand) dto.EndpointComm
 	}
 
 	return dtoCmd
+}
+
+func (h *EndpointHandler) parseLogFilterParams(w http.ResponseWriter, r *http.Request) (domain.LogFilter, error) {
+	q := r.URL.Query()
+	filter := domain.LogFilter{}
+
+	t, err := parseLogTimeParam(q.Get("start"))
+	if err != nil {
+		helper.WriteError(w, http.StatusBadRequest, "invalid start timestamp format, must be RFC3339")
+
+		return filter, err
+	}
+	filter.Start = t
+
+	t, err = parseLogTimeParam(q.Get("end"))
+	if err != nil {
+		helper.WriteError(w, http.StatusBadRequest, "invalid end timestamp format, must be RFC3339")
+
+		return filter, err
+	}
+	filter.End = t
+
+	filter.Level = q.Get("level")
+	filter.Q = q.Get("q")
+	filter.TraceID = q.Get("trace_id")
+	filter.RequestID = q.Get("request_id")
+
+	if cursorStr := q.Get("cursor"); cursorStr != "" {
+		c, err := strconv.ParseInt(cursorStr, 10, 64)
+		if err != nil {
+			helper.WriteError(w, http.StatusBadRequest, "invalid cursor, must be an integer")
+
+			return filter, err
+		}
+
+		filter.Cursor = c
+	}
+
+	limit := 50
+	if limitStr := q.Get("limit"); limitStr != "" {
+		l, err := strconv.Atoi(limitStr)
+		if err == nil && l > 0 {
+			limit = l
+		}
+	}
+
+	if limit > 500 {
+		limit = 500
+	}
+
+	filter.Limit = limit + 1
+
+	return filter, nil
+}
+
+func (h *EndpointHandler) makeStreamHandler(w http.ResponseWriter, flusher http.Flusher, cancel context.CancelFunc) broker.Handler {
+	return func(ctx context.Context, body []byte) error {
+		var entry protocol.LogEntry
+		err := json.Unmarshal(body, &entry)
+		if err != nil {
+			return nil
+		}
+
+		dtoEntry := dto.EndpointLogDTO{
+			EndpointID: entry.EndpointID,
+			ObservedAt: entry.ObservedAt.Format(time.RFC3339),
+			Level:      entry.Level,
+			Message:    entry.Message,
+			Attrs:      entry.Attrs,
+		}
+		if entry.TraceID != "" {
+			dtoEntry.TraceID = &entry.TraceID
+		}
+
+		if entry.RequestID != "" {
+			dtoEntry.RequestID = &entry.RequestID
+		}
+
+		respBytes, err := json.Marshal(dtoEntry)
+		if err != nil {
+			return nil
+		}
+
+		_, err = fmt.Fprintf(w, "data: %s\n\n", string(respBytes))
+		if err != nil {
+			cancel()
+
+			return err
+		}
+
+		flusher.Flush()
+
+		return nil
+	}
+}
+
+func parseLogTimeParam(val string) (*time.Time, error) {
+	if val == "" {
+		return nil, nil
+	}
+
+	t, err := time.Parse(time.RFC3339, val)
+	if err != nil {
+		return nil, err
+	}
+
+	return &t, nil
 }

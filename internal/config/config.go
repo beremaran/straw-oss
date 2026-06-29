@@ -71,6 +71,7 @@ type EndpointConfig struct {
 	MaxPoolHosts       int
 	IdleConnsPerHost   int
 	IdleConnTimeout    time.Duration
+	LogStreamEnabled   bool
 }
 
 func getEnv(key, defaultVal string) string {
@@ -206,6 +207,7 @@ func LoadEndpointConfig() (*EndpointConfig, error) {
 		MaxPoolHosts:       getEnvInt("MAX_POOL_HOSTS", 1000),
 		IdleConnsPerHost:   getEnvInt("IDLE_CONNS_PER_HOST", 10),
 		IdleConnTimeout:    getEnvDuration("IDLE_CONN_TIMEOUT", 90*time.Second),
+		LogStreamEnabled:   getEnvBool("ENDPOINT_LOG_STREAM_ENABLED", false),
 	}
 
 	err := validateEndpointConfig(cfg)

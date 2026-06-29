@@ -138,7 +138,20 @@ type EndpointCommandRepository interface {
 	ListPending(ctx context.Context, before time.Time) ([]EndpointCommand, error)
 }
 
+type LogFilter struct {
+	Start     *time.Time
+	End       *time.Time
+	Level     string
+	Q         string
+	TraceID   string
+	RequestID string
+	Cursor    int64
+	Limit     int
+}
+
 type EndpointLogRepository interface {
 	Create(ctx context.Context, entry *EndpointLogEntry) error
 	ListByEndpointID(ctx context.Context, endpointID string, beforeID int64, limit int) ([]EndpointLogEntry, error)
+	Query(ctx context.Context, endpointID string, filter LogFilter) ([]EndpointLogEntry, error)
+	Cleanup(ctx context.Context, maxAge time.Duration, maxSizeBytes int64) error
 }

@@ -222,7 +222,7 @@ func TestEndpointHandler_List_LegacyFallback(t *testing.T) {
 	}
 	healthService := endpoint.NewHealthService(nil, store)
 
-	h := NewEndpointHandler(healthService, nil, nil, nil, nil)
+	h := NewEndpointHandler(healthService, nil, nil, nil, nil, nil)
 
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/management/endpoints", nil)
 	rec := httptest.NewRecorder()
@@ -250,7 +250,7 @@ func TestEndpointHandler_Lifecycle(t *testing.T) {
 	cmdRepo := &mockCommandRepo{commands: make(map[string]*domain.EndpointCommand)}
 	mb := &mockEndpointBroker{published: make(map[string][]byte)}
 
-	h := NewEndpointHandler(healthService, epRepo, cmdRepo, mb, nil)
+	h := NewEndpointHandler(healthService, epRepo, cmdRepo, mb, nil, nil)
 
 	// 1. Create Endpoint
 	reqBody := `{"id":"ep-1","tags":["type:residential","region:us"],"desired_state":"active"}`
@@ -349,4 +349,61 @@ func TestEndpointHandler_Lifecycle(t *testing.T) {
 	var cmdListResp dto.EndpointCommandListResponse
 	assert.NoError(t, json.Unmarshal(rec.Body.Bytes(), &cmdListResp))
 	assert.NotEmpty(t, cmdListResp.Data)
+}
+
+type mockLogRepo struct {
+	logs []*domain.EndpointLogEntry
+}
+
+func (m *mockLogRepo) Create(ctx context.Context, entry *domain.EndpointLogEntry) error {
+	m.logs = append(m.logs, entry)
+	entry.ID = int64(len(m.logs))
+
+	return nil
+}
+
+func (m *mockLogRepo) ListByEndpointID(ctx context.Context, endpointID string, beforeID int64, limit int) ([]domain.EndpointLogEntry, error) {
+	return nil, nil
+}
+
+func (m *mockLogRepo) Query(ctx context.Context, endpointID string, filter domain.LogFilter) ([]domain.EndpointLogEntry, error) {
+	var res []domain.EndpointLogEntry
+	for _, l := range m.logs {
+		if l.EndpointID == endpointID {
+			res = append(res, *l)
+		}
+	}
+
+	return res, nil
+}
+
+func (m *mockLogRepo) Cleanup(ctx context.Context, maxAge time.Duration, maxSizeBytes int64) error {
+	return nil
+}
+
+func TestEndpointHandler_Logs(t *testing.T) {
+	logRepo := &mockLogRepo{logs: []*domain.EndpointLogEntry{
+		{
+			ID:         1,
+			EndpointID: "ep-1",
+			ObservedAt: time.Now(),
+			Level:      "info",
+			Message:    "hello test log",
+		},
+	}}
+	h := NewEndpointHandler(nil, nil, nil, nil, nil, logRepo)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/management/endpoints/ep-1/logs", nil)
+	req.SetPathValue("id", "ep-1")
+	rec := httptest.NewRecorder()
+
+	h.HandleGetEndpointLogs(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	var resp dto.EndpointLogListResponse
+	err := json.Unmarshal(rec.Body.Bytes(), &resp)
+	assert.NoError(t, err)
+	assert.Len(t, resp.Data, 1)
+	assert.Equal(t, "hello test log", resp.Data[0].Message)
 }
