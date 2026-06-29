@@ -11,13 +11,17 @@ import (
 	"github.com/beremaran/straw/pkg/broker"
 )
 
+const (
+	testResidentialTag = "type:residential"
+)
+
 type mockHeartbeatBroker struct {
 	publishedMsgs []publishedMsg
 	mu            sync.Mutex
 	publishErr    error
 }
 
-func (m *mockHeartbeatBroker) Publish(ctx context.Context, subject string, body []byte) error {
+func (m *mockHeartbeatBroker) Publish(_ context.Context, subject string, body []byte) error {
 	if m.publishErr != nil {
 		return m.publishErr
 	}
@@ -30,11 +34,12 @@ func (m *mockHeartbeatBroker) Publish(ctx context.Context, subject string, body 
 
 	return nil
 }
-func (m *mockHeartbeatBroker) Subscribe(ctx context.Context, subject string, handler broker.Handler, opts ...broker.SubscribeOption) error {
+
+func (m *mockHeartbeatBroker) Subscribe(_ context.Context, _ string, _ broker.Handler, _ ...broker.SubscribeOption) error {
 	return nil
 }
 
-func (m *mockHeartbeatBroker) ConsumeOnce(ctx context.Context, subject string, timeout time.Duration) ([]byte, error) {
+func (m *mockHeartbeatBroker) ConsumeOnce(_ context.Context, _ string, _ time.Duration) ([]byte, error) {
 	return nil, nil
 }
 
@@ -42,7 +47,7 @@ func (m *mockHeartbeatBroker) Close() error {
 	return nil
 }
 
-func (m *mockHeartbeatBroker) DeclareStream(ctx context.Context, name string, subjects ...string) error {
+func (m *mockHeartbeatBroker) DeclareStream(_ context.Context, _ string, _ ...string) error {
 	return nil
 }
 
@@ -73,7 +78,7 @@ func TestSender_New(t *testing.T) {
 	}
 
 	if s.endpointID != "endpoint-001" {
-		t.Errorf("expected endpoint ID 'endpoint-001', got %q", s.endpointID)
+		t.Errorf("expected endpoint ID %q, got %q", "endpoint-001", s.endpointID)
 	}
 
 	if s.interval != DefaultHeartbeatInterval {
@@ -88,7 +93,7 @@ func TestSender_New(t *testing.T) {
 func TestSender_NewWithOptions(t *testing.T) {
 	mb := &mockHeartbeatBroker{}
 	customInterval := 5 * time.Second
-	tags := []string{"type:residential", "region:us"}
+	tags := []string{testResidentialTag, "region:us"}
 
 	activeCount := 42
 	s := NewHeartbeatSender(mb, "endpoint-002",
@@ -126,8 +131,7 @@ func TestSender_HeartbeatMessageFormat(t *testing.T) {
 		WithHeartbeatActiveTasksFunc(func() int { return 5 }),
 	)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	s.Start(ctx)
 
@@ -180,8 +184,7 @@ func TestSender_PeriodicSending(t *testing.T) {
 		WithHeartbeatInterval(50*time.Millisecond),
 	)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	s.Start(ctx)
 
@@ -261,8 +264,7 @@ func TestSender_ActiveTasksCallback(t *testing.T) {
 		WithHeartbeatActiveTasksFunc(func() int { return int(taskCount.Load()) }),
 	)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	s.Start(ctx)
 
@@ -329,8 +331,7 @@ func TestSender_PublishErrorDoesNotCrash(t *testing.T) {
 		WithHeartbeatInterval(50*time.Millisecond),
 	)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	s.Start(ctx)
 

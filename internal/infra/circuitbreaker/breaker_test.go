@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCircuitBreaker_StateTransitions(t *testing.T) {
@@ -65,7 +66,7 @@ func TestCircuitBreaker_Execute(t *testing.T) {
 	cb := New(Config{FailureThreshold: 1, ResetTimeout: time.Second})
 
 	err := cb.Execute(func() error { return nil })
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	failErr := errors.New("fail")
 	err = cb.Execute(func() error { return failErr })

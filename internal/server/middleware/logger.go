@@ -7,6 +7,7 @@ import (
 	"time"
 )
 
+// LoggerMiddleware logs request details including method, URI, status, and latency.
 func LoggerMiddleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -42,7 +43,7 @@ func LoggerMiddleware() func(http.Handler) http.Handler {
 				attrs = append(attrs, slog.String("request_id", reqID))
 			}
 
-			if sw.Status >= 500 {
+			if sw.Status >= http.StatusInternalServerError {
 				slog.LogAttrs(ctx, slog.LevelError, "request completed with error", attrs...)
 			} else {
 				slog.LogAttrs(ctx, slog.LevelInfo, "request completed", attrs...)

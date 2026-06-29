@@ -3,8 +3,15 @@ package router
 import (
 	"testing"
 
-	"github.com/beremaran/straw/internal/domain"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/beremaran/straw/internal/domain"
+)
+
+const (
+	testStrategyWeighted   = "weighted"
+	testStrategyRoundRobin = "round_robin"
+	testFingerprintRuleID  = "rule-1"
 )
 
 func TestFingerprintManager_SelectFingerprint(t *testing.T) {
@@ -12,7 +19,7 @@ func TestFingerprintManager_SelectFingerprint(t *testing.T) {
 
 	t.Run("Static Preset", func(t *testing.T) {
 		rule := &domain.RoutingRule{
-			ID:                "rule-1",
+			ID:                testFingerprintRuleID,
 			FingerprintPreset: "chrome-100",
 		}
 		fp := fm.SelectFingerprint(rule)
@@ -21,7 +28,7 @@ func TestFingerprintManager_SelectFingerprint(t *testing.T) {
 
 	t.Run("Nil Rule", func(t *testing.T) {
 		fp := fm.SelectFingerprint(nil)
-		assert.Equal(t, "", fp)
+		assert.Empty(t, fp)
 	})
 
 	t.Run("AB Test - Random", func(t *testing.T) {
@@ -37,7 +44,7 @@ func TestFingerprintManager_SelectFingerprint(t *testing.T) {
 		}
 
 		counts := make(map[string]int)
-		for i := 0; i < 100; i++ {
+		for range 100 {
 			fp := fm.SelectFingerprint(rule)
 			counts[fp]++
 		}
@@ -50,7 +57,7 @@ func TestFingerprintManager_SelectFingerprint(t *testing.T) {
 		rule := &domain.RoutingRule{
 			ID: "rule-weighted",
 			FingerprintABTest: &domain.ABConfig{
-				Strategy: "weighted",
+				Strategy: testStrategyWeighted,
 				Variants: []domain.ABVariant{
 					{Fingerprint: "heavy", Weight: 90},
 					{Fingerprint: "light", Weight: 10},
@@ -60,7 +67,7 @@ func TestFingerprintManager_SelectFingerprint(t *testing.T) {
 
 		heavyCount := 0
 		total := 1000
-		for i := 0; i < total; i++ {
+		for range total {
 			fp := fm.SelectFingerprint(rule)
 			if fp == "heavy" {
 				heavyCount++
@@ -74,7 +81,7 @@ func TestFingerprintManager_SelectFingerprint(t *testing.T) {
 		rule := &domain.RoutingRule{
 			ID: "rule-rr",
 			FingerprintABTest: &domain.ABConfig{
-				Strategy: "round_robin",
+				Strategy: testStrategyRoundRobin,
 				Variants: []domain.ABVariant{
 					{Fingerprint: "A"},
 					{Fingerprint: "B"},
@@ -93,7 +100,7 @@ func TestFingerprintManager_SelectFingerprint(t *testing.T) {
 		rule := &domain.RoutingRule{
 			ID: "rule-rr-conc",
 			FingerprintABTest: &domain.ABConfig{
-				Strategy: "round_robin",
+				Strategy: testStrategyRoundRobin,
 				Variants: []domain.ABVariant{
 					{Fingerprint: "A"},
 					{Fingerprint: "B"},
@@ -106,13 +113,13 @@ func TestFingerprintManager_SelectFingerprint(t *testing.T) {
 
 		results := make(chan string, 100)
 
-		for i := 0; i < 100; i++ {
+		for range 100 {
 			go func() {
 				results <- fm.SelectFingerprint(rule)
 			}()
 		}
 
-		for i := 0; i < 100; i++ {
+		for range 100 {
 			res := <-results
 			if res == "A" {
 				countA++
@@ -129,7 +136,7 @@ func TestFingerprintManager_SelectFingerprint(t *testing.T) {
 		rule := &domain.RoutingRule{
 			ID: "rule-weighted-zero",
 			FingerprintABTest: &domain.ABConfig{
-				Strategy: "weighted",
+				Strategy: testStrategyWeighted,
 				Variants: []domain.ABVariant{
 					{Fingerprint: "A", Weight: 0},
 					{Fingerprint: "B", Weight: 0},
@@ -138,7 +145,7 @@ func TestFingerprintManager_SelectFingerprint(t *testing.T) {
 		}
 
 		counts := make(map[string]int)
-		for i := 0; i < 50; i++ {
+		for range 50 {
 			fp := fm.SelectFingerprint(rule)
 			counts[fp]++
 		}
@@ -165,6 +172,6 @@ func TestFingerprintManager_SelectFingerprint(t *testing.T) {
 			},
 		}
 		fp := fm.SelectFingerprint(rule)
-		assert.Equal(t, "", fp)
+		assert.Empty(t, fp)
 	})
 }

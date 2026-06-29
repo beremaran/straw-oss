@@ -1,3 +1,4 @@
+// Package metrics provides a Prometheus registry with HTTP handler support.
 package metrics
 
 import (
@@ -15,6 +16,7 @@ var (
 	once     sync.Once
 )
 
+// Init initializes the global Prometheus registry with Go and process collectors.
 func Init() *prometheus.Registry {
 	once.Do(func() {
 		registry = prometheus.NewRegistry()
@@ -26,6 +28,7 @@ func Init() *prometheus.Registry {
 	return registry
 }
 
+// GetRegistry returns the global Prometheus registry, initializing it if needed.
 func GetRegistry() *prometheus.Registry {
 	if registry == nil {
 		return Init()
@@ -34,12 +37,14 @@ func GetRegistry() *prometheus.Registry {
 	return registry
 }
 
+// Handler returns an HTTP handler for serving Prometheus metrics.
 func Handler() http.Handler {
 	return promhttp.HandlerFor(GetRegistry(), promhttp.HandlerOpts{
 		Registry: GetRegistry(),
 	})
 }
 
+// RegisterPprof registers pprof debug endpoints on the given mux.
 func RegisterPprof(mux *http.ServeMux) {
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
 	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)

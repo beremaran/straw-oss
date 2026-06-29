@@ -6,9 +6,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/beremaran/straw/internal/config"
 	"github.com/beremaran/straw/internal/server/admin/middleware"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestServer_HealthCheck(t *testing.T) {
@@ -47,7 +48,7 @@ func TestServer_AuthProtection(t *testing.T) {
 
 func TestManagementGlobalMiddleware_MissingPermission(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.Handle("GET /management/protected", middleware.RequirePermission(middleware.PermissionAPIKeysRead)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("GET /management/protected", middleware.RequirePermission(middleware.PermissionAPIKeysRead)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})))
 	h := managementGlobalMiddleware(config.ServerConfig{}, nil)(mux)

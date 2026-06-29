@@ -2,7 +2,6 @@ package filter
 
 import (
 	"context"
-	"fmt"
 	"net/url"
 	"path"
 	"strings"
@@ -10,32 +9,41 @@ import (
 	"github.com/beremaran/straw/internal/domain"
 )
 
+// Type identifies the kind of filter that matched.
 type Type string
 
 const (
+	// TypeContentType matches on request content-type.
 	TypeContentType Type = "content-type"
-	TypeURLPattern  Type = "url-pattern"
-	TypeDomain      Type = "domain"
-	TypeABP         Type = "abp"
+	// TypeURLPattern matches on request URL patterns.
+	TypeURLPattern Type = "url-pattern"
+	// TypeDomain matches on request host domain.
+	TypeDomain Type = "domain"
+	// TypeABP matches via ADBlock Plus filter lists.
+	TypeABP Type = "abp"
 )
 
+// Result contains the outcome of a filter check.
 type Result struct {
 	Blocked    bool
 	Reason     string
 	FilterType Type
 }
 
+// Service applies request filters to determine if requests should be blocked.
 type Service struct {
 	abpMatcher *ABPMatcher
 }
 
+// NewService creates a new Service with the given ADBlock Plus matcher.
 func NewService(abpMatcher *ABPMatcher) *Service {
 	return &Service{
 		abpMatcher: abpMatcher,
 	}
 }
 
-func (s *Service) ShouldBlock(ctx context.Context, req *Request, filter *domain.RequestFilter) (*Result, error) {
+// ShouldBlock evaluates a request against a filter and returns the result.
+func (s *Service) ShouldBlock(_ context.Context, req *Request, filter *domain.RequestFilter) (*Result, error) {
 	if filter == nil {
 		return &Result{Blocked: false}, nil
 	}
@@ -74,7 +82,7 @@ func (s *Service) checkContentType(req *Request, patterns []string) *Result {
 		if matchGlob(contentType, pattern) {
 			return &Result{
 				Blocked:    true,
-				Reason:     fmt.Sprintf("content-type:%s", pattern),
+				Reason:     "content-type:" + pattern,
 				FilterType: TypeContentType,
 			}
 		}
@@ -93,7 +101,7 @@ func (s *Service) checkURLPatterns(req *Request, patterns []string) *Result {
 		if matchURLPattern(req.URL, pattern) {
 			return &Result{
 				Blocked:    true,
-				Reason:     fmt.Sprintf("url-pattern:%s", pattern),
+				Reason:     "url-pattern:" + pattern,
 				FilterType: TypeURLPattern,
 			}
 		}
@@ -113,12 +121,12 @@ func (s *Service) checkDomains(req *Request, domains []string) *Result {
 		host = host[:idx]
 	}
 
-	for _, domain_ := range domains {
-		domain_ = strings.ToLower(strings.TrimSpace(domain_))
-		if matchDomain(host, domain_) {
+	for _, domain := range domains {
+		domain = strings.ToLower(strings.TrimSpace(domain))
+		if matchDomain(host, domain) {
 			return &Result{
 				Blocked:    true,
-				Reason:     fmt.Sprintf("domain:%s", domain_),
+				Reason:     "domain:" + domain,
 				FilterType: TypeDomain,
 			}
 		}
@@ -139,7 +147,7 @@ func (s *Service) checkABP(req *Request, lists []string) *Result {
 	if blocked, rule := s.abpMatcher.Match(req.URL, lists); blocked {
 		return &Result{
 			Blocked:    true,
-			Reason:     fmt.Sprintf("abp:%s", rule),
+			Reason:     "abp:" + rule,
 			FilterType: TypeABP,
 		}
 	}
@@ -179,10 +187,12 @@ func matchURLPattern(rawURL, pattern string) bool {
 			if part == "" {
 				continue
 			}
+
 			idx := strings.Index(remaining, part)
 			if idx == -1 {
 				return false
 			}
+
 			remaining = remaining[idx+len(part):]
 		}
 

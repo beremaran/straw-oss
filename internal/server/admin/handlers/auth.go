@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/beremaran/straw/internal/domain"
@@ -14,22 +15,32 @@ import (
 	adminauth "github.com/beremaran/straw/internal/service/auth"
 )
 
+const (
+	ssoStateCookieMaxAge = 300
+	ssoStateParts        = 3
+)
+
+// AuthHandler manages admin authentication operations.
 type AuthHandler struct {
 	service *adminauth.AdminService
 }
 
+// NewAuthHandler creates a new AuthHandler.
 func NewAuthHandler(service *adminauth.AdminService) *AuthHandler {
 	return &AuthHandler{service: service}
 }
 
+// HandleLogin authenticates an admin user.
 func (h *AuthHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	var req dto.AdminLoginRequest
+
 	err := helper.ReadJSON(r, &req)
 	if err != nil {
 		helper.WriteError(w, http.StatusBadRequest, "invalid request body")
 
 		return
 	}
+
 	if strings.TrimSpace(req.Email) == "" || req.Password == "" {
 		helper.WriteError(w, http.StatusBadRequest, "email and password are required")
 
@@ -42,6 +53,7 @@ func (h *AuthHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+
 	if err != nil {
 		helper.WriteError(w, http.StatusInternalServerError, "failed to login")
 
@@ -51,14 +63,17 @@ func (h *AuthHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	helper.WriteJSON(w, http.StatusOK, authResponse(tokens))
 }
 
+// HandleRefresh refreshes an admin session.
 func (h *AuthHandler) HandleRefresh(w http.ResponseWriter, r *http.Request) {
 	var req dto.AdminRefreshRequest
+
 	err := helper.ReadJSON(r, &req)
 	if err != nil {
 		helper.WriteError(w, http.StatusBadRequest, "invalid request body")
 
 		return
 	}
+
 	if req.RefreshToken == "" {
 		helper.WriteError(w, http.StatusBadRequest, "refresh_token is required")
 
@@ -71,6 +86,7 @@ func (h *AuthHandler) HandleRefresh(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+
 	if err != nil {
 		helper.WriteError(w, http.StatusInternalServerError, "failed to refresh token")
 
@@ -80,6 +96,7 @@ func (h *AuthHandler) HandleRefresh(w http.ResponseWriter, r *http.Request) {
 	helper.WriteJSON(w, http.StatusOK, authResponse(tokens))
 }
 
+// HandleLogout ends an admin session.
 func (h *AuthHandler) HandleLogout(w http.ResponseWriter, r *http.Request) {
 	actor, ok := middleware.ActorFromContext(r.Context())
 	if !ok || actor.Type != middleware.ActorTypeUser {
@@ -98,6 +115,7 @@ func (h *AuthHandler) HandleLogout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// HandleMe returns the current admin user's details.
 func (h *AuthHandler) HandleMe(w http.ResponseWriter, r *http.Request) {
 	actor, ok := middleware.ActorFromContext(r.Context())
 	if !ok || actor.Type != middleware.ActorTypeUser {
@@ -118,6 +136,7 @@ func (h *AuthHandler) HandleMe(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// HandleBootstrapOwner creates the initial owner user.
 func (h *AuthHandler) HandleBootstrapOwner(w http.ResponseWriter, r *http.Request) {
 	actor, ok := middleware.ActorFromContext(r.Context())
 	if !ok || actor.Type != middleware.ActorTypeLegacy {
@@ -127,12 +146,14 @@ func (h *AuthHandler) HandleBootstrapOwner(w http.ResponseWriter, r *http.Reques
 	}
 
 	var req dto.BootstrapOwnerRequest
+
 	err := helper.ReadJSON(r, &req)
 	if err != nil {
 		helper.WriteError(w, http.StatusBadRequest, "invalid request body")
 
 		return
 	}
+
 	if strings.TrimSpace(req.Email) == "" || req.Password == "" {
 		helper.WriteError(w, http.StatusBadRequest, "email and password are required")
 
@@ -145,11 +166,13 @@ func (h *AuthHandler) HandleBootstrapOwner(w http.ResponseWriter, r *http.Reques
 
 		return
 	}
+
 	if errors.Is(err, adminauth.ErrWeakPassword) {
 		helper.WriteError(w, http.StatusBadRequest, err.Error())
 
 		return
 	}
+
 	if err != nil {
 		helper.WriteError(w, http.StatusInternalServerError, "failed to bootstrap owner")
 
@@ -195,8 +218,46 @@ func clientIP(r *http.Request) string {
 	return host
 }
 
+func redirectURL(target string) (*url.URL, bool) {
+	u, err := url.Parse(target)
+	if err != nil {
+		return nil, false
+	}
+
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return nil, false
+	}
+
+	if u.Host == "" {
+		return nil, false
+	}
+
+	return u, true
+}
+
+func redirectWithTokens(target string, tokens *adminauth.TokenPair) (*url.URL, bool) {
+	u, ok := redirectURL(target)
+	if !ok {
+		return nil, false
+	}
+
+	fragment := url.Values{}
+	fragment.Set("access_token", tokens.AccessToken)
+	fragment.Set("refresh_token", tokens.RefreshToken)
+	u.Fragment = fragment.Encode()
+
+	return u, true
+}
+
+func performRedirect(w http.ResponseWriter, u *url.URL) {
+	w.Header().Set("Location", u.String())
+	w.WriteHeader(http.StatusFound)
+}
+
+// HandleSSOStart begins the SSO OAuth flow.
 func (h *AuthHandler) HandleSSOStart(w http.ResponseWriter, r *http.Request) {
 	providerName := r.PathValue("provider")
+
 	redirectURI := r.URL.Query().Get("redirect_uri")
 	if redirectURI == "" {
 		helper.WriteError(w, http.StatusBadRequest, "redirect_uri is required")
@@ -211,11 +272,13 @@ func (h *AuthHandler) HandleSSOStart(w http.ResponseWriter, r *http.Request) {
 
 			return
 		}
+
 		if errors.Is(err, adminauth.ErrProviderDisabled) {
 			helper.WriteError(w, http.StatusForbidden, "provider is disabled")
 
 			return
 		}
+
 		helper.WriteError(w, http.StatusInternalServerError, "failed to start sso")
 
 		return
@@ -227,14 +290,23 @@ func (h *AuthHandler) HandleSSOStart(w http.ResponseWriter, r *http.Request) {
 		Name:     "sso_state",
 		Value:    cookiePayload,
 		Path:     "/management/auth/sso",
-		MaxAge:   300,
+		MaxAge:   ssoStateCookieMaxAge,
+		Secure:   true,
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	})
 
-	http.Redirect(w, r, authURL, http.StatusFound)
+	target, ok := redirectURL(authURL)
+	if !ok {
+		helper.WriteError(w, http.StatusInternalServerError, "invalid auth url")
+
+		return
+	}
+
+	performRedirect(w, target)
 }
 
+// HandleSSOCallback completes the SSO OAuth flow.
 func (h *AuthHandler) HandleSSOCallback(w http.ResponseWriter, r *http.Request) {
 	providerName := r.PathValue("provider")
 	code := r.URL.Query().Get("code")
@@ -256,7 +328,7 @@ func (h *AuthHandler) HandleSSOCallback(w http.ResponseWriter, r *http.Request) 
 	}
 
 	parts := strings.Split(cookie.Value, ":")
-	if len(parts) != 3 {
+	if len(parts) != ssoStateParts {
 		helper.WriteError(w, http.StatusBadRequest, "invalid state cookie format")
 
 		return
@@ -264,23 +336,34 @@ func (h *AuthHandler) HandleSSOCallback(w http.ResponseWriter, r *http.Request) 
 
 	expectedState := parts[0]
 	expectedNonce := parts[1]
+
 	redirectURIRaw, err := base64.RawURLEncoding.DecodeString(parts[2])
 	if err != nil {
 		helper.WriteError(w, http.StatusBadRequest, "invalid redirect_uri in cookie")
 
 		return
 	}
+
 	redirectURI := string(redirectURIRaw)
 
+	h.clearSSOStateCookie(w)
+
+	h.processSSOCallback(w, r, providerName, redirectURI, code, expectedState, expectedNonce, actualState)
+}
+
+func (h *AuthHandler) clearSSOStateCookie(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     "sso_state",
 		Value:    "",
 		Path:     "/management/auth/sso",
 		MaxAge:   -1,
+		Secure:   true,
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	})
+}
 
+func (h *AuthHandler) processSSOCallback(w http.ResponseWriter, r *http.Request, providerName, redirectURI, code, expectedState, expectedNonce, actualState string) {
 	tokens, err := h.service.CallbackSSO(r.Context(), providerName, redirectURI, code, expectedState, expectedNonce, actualState, r.UserAgent(), clientIP(r))
 	if err != nil {
 		helper.WriteError(w, http.StatusUnauthorized, "sso failed: "+err.Error())
@@ -288,6 +371,12 @@ func (h *AuthHandler) HandleSSOCallback(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	targetURL := redirectURI + "#access_token=" + tokens.AccessToken + "&refresh_token=" + tokens.RefreshToken
-	http.Redirect(w, r, targetURL, http.StatusFound)
+	target, ok := redirectWithTokens(redirectURI, tokens)
+	if !ok {
+		helper.WriteError(w, http.StatusBadRequest, "invalid redirect url")
+
+		return
+	}
+
+	performRedirect(w, target)
 }

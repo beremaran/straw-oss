@@ -6,7 +6,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/beremaran/straw/internal/server/middleware"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
@@ -14,6 +13,8 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+
+	"github.com/beremaran/straw/internal/server/middleware"
 )
 
 func TestTracingMiddleware(t *testing.T) {
@@ -25,11 +26,11 @@ func TestTracingMiddleware(t *testing.T) {
 	otel.SetTextMapPropagator(propagation.TraceContext{})
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /test", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /test", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
-	mux.HandleFunc("GET /error", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /error", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte("fail"))
 	})

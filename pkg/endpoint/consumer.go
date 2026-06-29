@@ -1,9 +1,12 @@
+// Package endpoint provides the endpoint worker implementation that manages
+// task consumption, result publishing, heartbeat signaling, and health monitoring.
 package endpoint
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -13,8 +16,12 @@ import (
 	"github.com/beremaran/straw/pkg/protocol"
 )
 
-const DefaultMaxTaskAge = 60 * time.Second
-const DefaultConcurrencyLimit = 25
+const (
+	// DefaultMaxTaskAge is the maximum age a task can have before it is considered stale.
+	DefaultMaxTaskAge = 60 * time.Second
+	// DefaultConcurrencyLimit is the default maximum number of concurrent tasks.
+	DefaultConcurrencyLimit = 25
+)
 
 // RequestExecutor defines the interface for executing a proxy request.
 // This allows users to supply their own request executors or HTTP clients.
@@ -22,6 +29,7 @@ type RequestExecutor interface {
 	Do(ctx context.Context, req *protocol.Request) (*protocol.Response, error)
 }
 
+// Consumer manages task consumption from a message broker and execution of proxy requests.
 type Consumer struct {
 	broker           broker.MessageBroker
 	httpClient       RequestExecutor
@@ -42,6 +50,7 @@ type Consumer struct {
 	subCancel        context.CancelFunc
 }
 
+// TaskResult holds metrics from a completed task.
 type TaskResult struct {
 	RequestID     string
 	StatusCode    int
@@ -51,8 +60,10 @@ type TaskResult struct {
 	HasError      bool
 }
 
+// Option configures a Consumer.
 type Option func(*Consumer)
 
+// WithConcurrencyLimit sets the maximum number of concurrent tasks the Consumer will process.
 func WithConcurrencyLimit(n int) Option {
 	return func(c *Consumer) {
 		if n > 0 {
@@ -61,6 +72,7 @@ func WithConcurrencyLimit(n int) Option {
 	}
 }
 
+// WithMaxTaskAge sets the maximum age for tasks before they are considered stale.
 func WithMaxTaskAge(d time.Duration) Option {
 	return func(c *Consumer) {
 		if d > 0 {
@@ -69,24 +81,28 @@ func WithMaxTaskAge(d time.Duration) Option {
 	}
 }
 
+// WithResultHandler sets a callback invoked when a task result is ready to be published.
 func WithResultHandler(h func(ctx context.Context, resp *protocol.Response, replyTo string) error) Option {
 	return func(c *Consumer) {
 		c.resultHandler = h
 	}
 }
 
+// WithLogger sets the logger used by the Consumer.
 func WithLogger(logger *slog.Logger) Option {
 	return func(c *Consumer) {
 		c.logger = logger
 	}
 }
 
+// WithStatsCallback sets a callback invoked with task completion statistics.
 func WithStatsCallback(h func(TaskResult)) Option {
 	return func(c *Consumer) {
 		c.onTaskCompleted = h
 	}
 }
 
+// NewConsumer creates a new Consumer with the given broker, executor, and options.
 func NewConsumer(
 	b broker.MessageBroker,
 	httpClient RequestExecutor,
@@ -114,6 +130,7 @@ func NewConsumer(
 	return c
 }
 
+// Start begins consuming tasks and blocks until the context is canceled.
 func (c *Consumer) Start(ctx context.Context) error {
 	c.ctx, c.cancel = context.WithCancel(ctx)
 
@@ -138,12 +155,14 @@ func (c *Consumer) Start(ctx context.Context) error {
 	return nil
 }
 
+// Stop signals the Consumer to stop consuming tasks.
 func (c *Consumer) Stop() {
 	if c.cancel != nil {
 		c.cancel()
 	}
 }
 
+// Resume subscribes the Consumer to its task subject if not already subscribed.
 func (c *Consumer) Resume(ctx context.Context) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -163,12 +182,13 @@ func (c *Consumer) Resume(ctx context.Context) error {
 		subCancel()
 		c.subCancel = nil
 
-		return err
+		return fmt.Errorf("subscribe to %s: %w", c.taskSubject, err)
 	}
 
 	return nil
 }
 
+// Drain unsubscribes the Consumer and waits for in-flight tasks to complete.
 func (c *Consumer) Drain() {
 	c.mu.Lock()
 	if c.subCancel != nil {
@@ -181,6 +201,7 @@ func (c *Consumer) Drain() {
 	c.wg.Wait()
 }
 
+// TaskError represents a recoverable task processing error.
 type TaskError struct {
 	Code    string
 	Message string
@@ -190,10 +211,12 @@ func (e *TaskError) Error() string {
 	return e.Code + ": " + e.Message
 }
 
+// TaskSubject returns the NATS subject on which tasks are consumed.
 func (c *Consumer) TaskSubject() string {
 	return c.taskSubject
 }
 
+// ConcurrencyLimit returns the maximum number of concurrent tasks.
 func (c *Consumer) ConcurrencyLimit() int {
 	return c.concurrencyLimit
 }
@@ -205,12 +228,10 @@ func (c *Consumer) handleMessage(ctx context.Context, body []byte) error {
 	select {
 	case c.semaphore <- struct{}{}:
 	case <-ctx.Done():
-		return ctx.Err()
+		return fmt.Errorf("context done: %w", ctx.Err())
 	}
 
-	c.wg.Add(1)
-	go func() {
-		defer c.wg.Done()
+	c.wg.Go(func() {
 		defer func() { <-c.semaphore }()
 
 		err := c.processTask(ctx, body)
@@ -220,7 +241,7 @@ func (c *Consumer) handleMessage(ctx context.Context, body []byte) error {
 				"endpoint_id", c.endpointID,
 			)
 		}
-	}()
+	})
 
 	return nil
 }
@@ -248,6 +269,7 @@ func (c *Consumer) processTask(ctx context.Context, body []byte) error {
 
 func (c *Consumer) parseTask(body []byte) (*protocol.Request, error) {
 	var signedTask protocol.SignedTask
+
 	err := json.Unmarshal(body, &signedTask)
 	if err != nil {
 		c.logger.Warn("failed to unmarshal signed task",
@@ -319,8 +341,10 @@ func (c *Consumer) recordTaskCompletion(req *protocol.Request, resp *protocol.Re
 	status := "success"
 	if resp.Error != nil {
 		status = "failed"
+
 		metrics.TasksFailed.WithLabelValues(resp.Error.Code).Inc()
 	}
+
 	metrics.TasksProcessed.WithLabelValues(status).Inc()
 
 	bytesSent := req.EstimateWireSize()

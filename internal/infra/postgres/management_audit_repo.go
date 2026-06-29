@@ -5,22 +5,28 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/beremaran/straw/internal/domain"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/beremaran/straw/internal/domain"
 )
 
+// ManagementAuditRepository persists and retrieves management audit events and requests.
 type ManagementAuditRepository struct {
 	db *pgxpool.Pool
 }
 
+// NewManagementAuditRepository creates a new ManagementAuditRepository backed by the given pool.
 func NewManagementAuditRepository(db *pgxpool.Pool) *ManagementAuditRepository {
 	return &ManagementAuditRepository{db: db}
 }
 
+// Create inserts a new management audit event.
 func (r *ManagementAuditRepository) Create(ctx context.Context, event *domain.ManagementAuditEvent) error {
-	var oldValBytes, newValBytes []byte
-	var err error
+	var (
+		oldValBytes, newValBytes []byte
+		err                      error
+	)
 
 	if event.OldValue != nil {
 		oldValBytes, err = json.Marshal(event.OldValue)
@@ -59,7 +65,6 @@ func (r *ManagementAuditRepository) Create(ctx context.Context, event *domain.Ma
 		event.IP,
 		event.UserAgent,
 	).Scan(&event.ID, &event.OccurredAt)
-
 	if err != nil {
 		return fmt.Errorf("failed to insert management audit event: %w", err)
 	}
@@ -67,6 +72,7 @@ func (r *ManagementAuditRepository) Create(ctx context.Context, event *domain.Ma
 	return nil
 }
 
+// GetEventByID returns the management audit event with the given ID.
 func (r *ManagementAuditRepository) GetEventByID(ctx context.Context, id int64) (*domain.ManagementAuditEvent, error) {
 	const query = `
 		SELECT id, occurred_at, actor_type, actor_id, actor_display, action, entity_type, entity_id,
@@ -74,8 +80,12 @@ func (r *ManagementAuditRepository) GetEventByID(ctx context.Context, id int64) 
 		FROM management_audit_events
 		WHERE id = $1
 	`
-	var event domain.ManagementAuditEvent
-	var oldValBytes, newValBytes []byte
+
+	var (
+		event                    domain.ManagementAuditEvent
+		oldValBytes, newValBytes []byte
+	)
+
 	err := r.db.QueryRow(ctx, query, id).Scan(
 		&event.ID, &event.OccurredAt, &event.ActorType, &event.ActorID, &event.ActorDisplay,
 		&event.Action, &event.EntityType, &event.EntityID,
@@ -88,6 +98,7 @@ func (r *ManagementAuditRepository) GetEventByID(ctx context.Context, id int64) 
 	if len(oldValBytes) > 0 {
 		_ = json.Unmarshal(oldValBytes, &event.OldValue)
 	}
+
 	if len(newValBytes) > 0 {
 		_ = json.Unmarshal(newValBytes, &event.NewValue)
 	}
@@ -95,11 +106,14 @@ func (r *ManagementAuditRepository) GetEventByID(ctx context.Context, id int64) 
 	return &event, nil
 }
 
+// ListEvents returns a paginated list of management audit events matching the filter.
 func (r *ManagementAuditRepository) ListEvents(ctx context.Context, filter domain.AuditEventFilter) ([]*domain.ManagementAuditEvent, int, error) {
 	whereClause, args := buildEventFilterQuery(filter)
 
-	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM management_audit_events %s", whereClause)
+	countQuery := "SELECT COUNT(*) FROM management_audit_events " + whereClause
+
 	var totalCount int
+
 	err := r.db.QueryRow(ctx, countQuery, args...).Scan(&totalCount)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to get total count: %w", err)
@@ -122,11 +136,13 @@ func (r *ManagementAuditRepository) ListEvents(ctx context.Context, filter domai
 	defer rows.Close()
 
 	var events []*domain.ManagementAuditEvent
+
 	for rows.Next() {
 		event, err := scanManagementAuditEvent(rows)
 		if err != nil {
 			return nil, 0, fmt.Errorf("failed to scan audit event: %w", err)
 		}
+
 		events = append(events, event)
 	}
 
@@ -138,11 +154,14 @@ func (r *ManagementAuditRepository) ListEvents(ctx context.Context, filter domai
 	return events, totalCount, nil
 }
 
+// ListRequests returns a paginated list of audit log requests matching the filter.
 func (r *ManagementAuditRepository) ListRequests(ctx context.Context, filter domain.AuditEventFilter, includeBody bool) ([]*domain.ManagementAuditRequest, int, error) {
 	whereClause, args := buildRequestFilterQuery(filter)
 
-	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM admin_audit_log %s", whereClause)
+	countQuery := "SELECT COUNT(*) FROM admin_audit_log " + whereClause
+
 	var totalCount int
+
 	err := r.db.QueryRow(ctx, countQuery, args...).Scan(&totalCount)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to get total request count: %w", err)
@@ -171,11 +190,13 @@ func (r *ManagementAuditRepository) ListRequests(ctx context.Context, filter dom
 	defer rows.Close()
 
 	var reqs []*domain.ManagementAuditRequest
+
 	for rows.Next() {
 		req, err := scanManagementAuditRequest(rows)
 		if err != nil {
 			return nil, 0, fmt.Errorf("failed to scan audit request: %w", err)
 		}
+
 		reqs = append(reqs, req)
 	}
 
@@ -187,16 +208,19 @@ func (r *ManagementAuditRepository) ListRequests(ctx context.Context, filter dom
 	return reqs, totalCount, nil
 }
 
-func appendPagination(query string, args []interface{}, limit, offset int) (string, []interface{}) {
+func appendPagination(query string, args []any, limit, offset int) (string, []any) {
 	argID := len(args) + 1
 
 	if limit > 0 {
 		query += fmt.Sprintf(" LIMIT $%d", argID)
+
 		args = append(args, limit)
 		argID++
 	}
+
 	if offset > 0 {
 		query += fmt.Sprintf(" OFFSET $%d", argID)
+
 		args = append(args, offset)
 	}
 
@@ -204,20 +228,24 @@ func appendPagination(query string, args []interface{}, limit, offset int) (stri
 }
 
 func scanManagementAuditEvent(rows pgx.Rows) (*domain.ManagementAuditEvent, error) {
-	var event domain.ManagementAuditEvent
-	var oldValBytes, newValBytes []byte
+	var (
+		event                    domain.ManagementAuditEvent
+		oldValBytes, newValBytes []byte
+	)
+
 	err := rows.Scan(
 		&event.ID, &event.OccurredAt, &event.ActorType, &event.ActorID, &event.ActorDisplay,
 		&event.Action, &event.EntityType, &event.EntityID,
 		&oldValBytes, &newValBytes, &event.RequestID, &event.TraceID, &event.IP, &event.UserAgent,
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to scan audit event: %w", err)
 	}
 
 	if len(oldValBytes) > 0 {
 		_ = json.Unmarshal(oldValBytes, &event.OldValue)
 	}
+
 	if len(newValBytes) > 0 {
 		_ = json.Unmarshal(newValBytes, &event.NewValue)
 	}
@@ -227,63 +255,80 @@ func scanManagementAuditEvent(rows pgx.Rows) (*domain.ManagementAuditEvent, erro
 
 func scanManagementAuditRequest(rows pgx.Rows) (*domain.ManagementAuditRequest, error) {
 	var req domain.ManagementAuditRequest
+
 	err := rows.Scan(
 		&req.ID, &req.Timestamp, &req.Method, &req.Path, &req.Query, &req.Body, &req.IP,
 		&req.UserAgent, &req.Status, &req.Error, &req.ActorType, &req.ActorID,
 		&req.ActorDisplayName, &req.SessionID, &req.RequestID, &req.TraceID,
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to scan audit request: %w", err)
 	}
 
 	return &req, nil
 }
 
-func buildRequestFilterQuery(filter domain.AuditEventFilter) (string, []interface{}) {
+func buildRequestFilterQuery(filter domain.AuditEventFilter) (string, []any) {
 	whereClause := "WHERE 1=1"
-	var args []interface{}
+
+	var args []any
+
 	argID := 1
 
 	if filter.StartDate != nil {
 		whereClause += fmt.Sprintf(" AND timestamp >= $%d", argID)
+
 		args = append(args, *filter.StartDate)
 		argID++
 	}
+
 	if filter.EndDate != nil {
 		whereClause += fmt.Sprintf(" AND timestamp <= $%d", argID)
+
 		args = append(args, *filter.EndDate)
 		argID++
 	}
+
 	if filter.ActorID != nil {
 		whereClause += fmt.Sprintf(" AND actor_id = $%d", argID)
+
 		args = append(args, *filter.ActorID)
 	}
 
 	return whereClause, args
 }
 
-func buildEventFilterQuery(filter domain.AuditEventFilter) (string, []interface{}) {
+func buildEventFilterQuery(filter domain.AuditEventFilter) (string, []any) {
 	whereClause := "WHERE 1=1"
-	var args []interface{}
+
+	var args []any
+
 	argID := 1
 
 	if filter.StartDate != nil {
 		whereClause += fmt.Sprintf(" AND occurred_at >= $%d", argID)
+
 		args = append(args, *filter.StartDate)
 		argID++
 	}
+
 	if filter.EndDate != nil {
 		whereClause += fmt.Sprintf(" AND occurred_at <= $%d", argID)
+
 		args = append(args, *filter.EndDate)
 		argID++
 	}
+
 	if filter.ActorID != nil {
 		whereClause += fmt.Sprintf(" AND actor_id = $%d", argID)
+
 		args = append(args, *filter.ActorID)
 		argID++
 	}
+
 	if filter.Action != nil {
 		whereClause += fmt.Sprintf(" AND action = $%d", argID)
+
 		args = append(args, *filter.Action)
 	}
 

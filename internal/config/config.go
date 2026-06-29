@@ -1,29 +1,51 @@
+// Package config provides application configuration loading and validation.
 package config
 
 import (
-	"fmt"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 )
 
+const (
+	defaultHTTPPort                  = 8080
+	defaultManagementPort            = 8081
+	defaultShutdownTimeout           = 30 * time.Second
+	defaultManagementAccessTokenTTL  = 15 * time.Minute
+	defaultResultTimeout             = 30 * time.Second
+	defaultMaxConcurrentRequests     = 50
+	defaultRedisPoolSize             = 100
+	defaultRedisMinIdleConns         = 10
+	defaultMetricsPort               = 9090
+	defaultConcurrencyLimit          = 25
+	defaultSelfUpdateInterval        = 5 * time.Minute
+	defaultMaxPoolHosts              = 1000
+	defaultIdleConnsPerHost          = 10
+	defaultIdleConnTimeout           = 90 * time.Second
+	defaultManagementRefreshTokenTTL = 7 * 24 * time.Hour
+)
+
+// NATSConfig holds NATS connection settings.
 type NATSConfig struct {
 	URL   string
 	Token string
 }
 
+// DatabaseConfig holds database connection settings.
 type DatabaseConfig struct {
 	DSN         string
 	AutoMigrate bool
 }
 
+// RedisConfig holds Redis connection settings.
 type RedisConfig struct {
 	Addr         string
 	PoolSize     int
 	MinIdleConns int
 }
 
+// SecurityConfig holds security-related settings.
 type SecurityConfig struct {
 	HMACSecret  string
 	TLSCertFile string
@@ -31,6 +53,7 @@ type SecurityConfig struct {
 	VaultAddr   string
 }
 
+// ObservabilityConfig holds observability settings (logging, metrics, tracing).
 type ObservabilityConfig struct {
 	LogLevel       string
 	LogFormat      string
@@ -39,6 +62,7 @@ type ObservabilityConfig struct {
 	OTELEndpoint   string
 }
 
+// ServerConfig holds server configuration.
 type ServerConfig struct {
 	NATS                          NATSConfig
 	Database                      DatabaseConfig
@@ -58,6 +82,7 @@ type ServerConfig struct {
 	AllowPrivateIPs               bool
 }
 
+// EndpointConfig holds endpoint-specific configuration.
 type EndpointConfig struct {
 	NATS               NATSConfig
 	Security           SecurityConfig
@@ -88,6 +113,7 @@ func getEnvBool(key string, defaultVal bool) bool {
 	if val == "" {
 		return defaultVal
 	}
+
 	b, err := strconv.ParseBool(val)
 	if err != nil {
 		return defaultVal
@@ -101,6 +127,7 @@ func getEnvInt(key string, defaultVal int) int {
 	if val == "" {
 		return defaultVal
 	}
+
 	n, err := strconv.Atoi(val)
 	if err != nil {
 		return defaultVal
@@ -114,6 +141,7 @@ func getEnvDuration(key string, defaultVal time.Duration) time.Duration {
 	if val == "" {
 		return defaultVal
 	}
+
 	d, err := time.ParseDuration(val)
 	if err != nil {
 		return defaultVal
@@ -122,6 +150,7 @@ func getEnvDuration(key string, defaultVal time.Duration) time.Duration {
 	return d
 }
 
+// LoadServerConfig loads server configuration from environment variables.
 func LoadServerConfig() (*ServerConfig, error) {
 	cfg := &ServerConfig{
 		Database:                      LoadDatabaseConfig(),
@@ -129,16 +158,16 @@ func LoadServerConfig() (*ServerConfig, error) {
 		NATS:                          LoadNATSConfig(),
 		Security:                      LoadSecurityConfig(),
 		Observability:                 LoadObservabilityConfig(),
-		HTTPPort:                      getEnvInt("HTTP_PORT", 8080),
-		ManagementPort:                getEnvInt("MANAGEMENT_PORT", 8081),
-		ShutdownTimeout:               getEnvDuration("SHUTDOWN_TIMEOUT", 30*time.Second),
+		HTTPPort:                      getEnvInt("HTTP_PORT", defaultHTTPPort),
+		ManagementPort:                getEnvInt("MANAGEMENT_PORT", defaultManagementPort),
+		ShutdownTimeout:               getEnvDuration("SHUTDOWN_TIMEOUT", defaultShutdownTimeout),
 		ManagementAPIKey:              getEnv("MANAGEMENT_API_KEY", ""),
 		ManagementLegacyTokenDisabled: !getEnvBool("MANAGEMENT_LEGACY_TOKEN_ENABLED", true),
-		ManagementAccessTokenTTL:      getEnvDuration("MANAGEMENT_ACCESS_TOKEN_TTL", 15*time.Minute),
-		ManagementRefreshTokenTTL:     getEnvDuration("MANAGEMENT_REFRESH_TOKEN_TTL", 7*24*time.Hour),
-		ResultTimeout:                 getEnvDuration("RESULT_TIMEOUT", 30*time.Second),
+		ManagementAccessTokenTTL:      getEnvDuration("MANAGEMENT_ACCESS_TOKEN_TTL", defaultManagementAccessTokenTTL),
+		ManagementRefreshTokenTTL:     getEnvDuration("MANAGEMENT_REFRESH_TOKEN_TTL", defaultManagementRefreshTokenTTL),
+		ResultTimeout:                 getEnvDuration("RESULT_TIMEOUT", defaultResultTimeout),
 		MaxBodySize:                   getEnv("MAX_BODY_SIZE", "2M"),
-		MaxConcurrentRequests:         getEnvInt("MAX_CONCURRENT_REQUESTS", 50),
+		MaxConcurrentRequests:         getEnvInt("MAX_CONCURRENT_REQUESTS", defaultMaxConcurrentRequests),
 		AllowPrivateIPs:               getEnvBool("ALLOW_PRIVATE_IPS", false),
 	}
 
@@ -150,14 +179,16 @@ func LoadServerConfig() (*ServerConfig, error) {
 	return cfg, nil
 }
 
+// LoadRedisConfig loads Redis configuration from environment variables.
 func LoadRedisConfig() RedisConfig {
 	return RedisConfig{
 		Addr:         getEnv("REDIS_ADDR", "localhost:6379"),
-		PoolSize:     getEnvInt("REDIS_POOL_SIZE", 100),
-		MinIdleConns: getEnvInt("REDIS_MIN_IDLE_CONNS", 10),
+		PoolSize:     getEnvInt("REDIS_POOL_SIZE", defaultRedisPoolSize),
+		MinIdleConns: getEnvInt("REDIS_MIN_IDLE_CONNS", defaultRedisMinIdleConns),
 	}
 }
 
+// LoadDatabaseConfig loads database configuration from environment variables.
 func LoadDatabaseConfig() DatabaseConfig {
 	return DatabaseConfig{
 		DSN:         getEnv("POSTGRES_DSN", ""),
@@ -165,16 +196,18 @@ func LoadDatabaseConfig() DatabaseConfig {
 	}
 }
 
+// LoadObservabilityConfig loads observability configuration from environment variables.
 func LoadObservabilityConfig() ObservabilityConfig {
 	return ObservabilityConfig{
 		LogLevel:       getEnv("LOG_LEVEL", "info"),
 		LogFormat:      getEnv("LOG_FORMAT", "json"),
 		OTELEndpoint:   getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", ""),
 		MetricsEnabled: getEnvBool("METRICS_ENABLED", true),
-		MetricsPort:    getEnvInt("METRICS_PORT", 9090),
+		MetricsPort:    getEnvInt("METRICS_PORT", defaultMetricsPort),
 	}
 }
 
+// LoadSecurityConfig loads security configuration from environment variables.
 func LoadSecurityConfig() SecurityConfig {
 	return SecurityConfig{
 		HMACSecret:  getEnv("HMAC_SECRET", ""),
@@ -184,6 +217,7 @@ func LoadSecurityConfig() SecurityConfig {
 	}
 }
 
+// LoadNATSConfig loads NATS configuration from environment variables.
 func LoadNATSConfig() NATSConfig {
 	return NATSConfig{
 		URL:   getEnv("NATS_URL", "nats://localhost:4222"),
@@ -191,6 +225,7 @@ func LoadNATSConfig() NATSConfig {
 	}
 }
 
+// LoadEndpointConfig loads endpoint configuration from environment variables.
 func LoadEndpointConfig() (*EndpointConfig, error) {
 	tagsStr := getEnv("ENDPOINT_TAGS", "")
 
@@ -200,13 +235,13 @@ func LoadEndpointConfig() (*EndpointConfig, error) {
 		Observability:      LoadObservabilityConfig(),
 		ID:                 getEnv("ENDPOINT_ID", ""),
 		Tags:               parseCommaSeparated(tagsStr),
-		ConcurrencyLimit:   getEnvInt("CONCURRENCY_LIMIT", 25),
+		ConcurrencyLimit:   getEnvInt("CONCURRENCY_LIMIT", defaultConcurrencyLimit),
 		SelfUpdateURL:      getEnv("SELF_UPDATE_URL", ""),
-		SelfUpdateInterval: getEnvDuration("SELF_UPDATE_INTERVAL", 5*time.Minute),
+		SelfUpdateInterval: getEnvDuration("SELF_UPDATE_INTERVAL", defaultSelfUpdateInterval),
 		SelfUpdateEnabled:  getEnvBool("SELF_UPDATE_ENABLED", true),
-		MaxPoolHosts:       getEnvInt("MAX_POOL_HOSTS", 1000),
-		IdleConnsPerHost:   getEnvInt("IDLE_CONNS_PER_HOST", 10),
-		IdleConnTimeout:    getEnvDuration("IDLE_CONN_TIMEOUT", 90*time.Second),
+		MaxPoolHosts:       getEnvInt("MAX_POOL_HOSTS", defaultMaxPoolHosts),
+		IdleConnsPerHost:   getEnvInt("IDLE_CONNS_PER_HOST", defaultIdleConnsPerHost),
+		IdleConnTimeout:    getEnvDuration("IDLE_CONN_TIMEOUT", defaultIdleConnTimeout),
 		LogStreamEnabled:   getEnvBool("ENDPOINT_LOG_STREAM_ENABLED", false),
 	}
 
@@ -224,9 +259,11 @@ func validateServerConfig(cfg *ServerConfig) error {
 	if cfg.Database.DSN == "" {
 		errs = append(errs, "POSTGRES_DSN is required")
 	}
+
 	if cfg.NATS.URL == "" {
 		errs = append(errs, "NATS_URL is required")
 	}
+
 	if cfg.Security.HMACSecret == "" {
 		errs = append(errs, "HMAC_SECRET is required")
 	}
@@ -244,12 +281,15 @@ func validateEndpointConfig(cfg *EndpointConfig) error {
 	if cfg.ID == "" {
 		errs = append(errs, "ENDPOINT_ID is required")
 	}
+
 	if cfg.NATS.URL == "" {
 		errs = append(errs, "NATS_URL is required")
 	}
+
 	if cfg.Security.HMACSecret == "" {
 		errs = append(errs, "HMAC_SECRET is required")
 	}
+
 	if cfg.ConcurrencyLimit <= 0 {
 		errs = append(errs, "CONCURRENCY_LIMIT must be positive")
 	}
@@ -261,19 +301,22 @@ func validateEndpointConfig(cfg *EndpointConfig) error {
 	return nil
 }
 
+// ValidationError represents a configuration validation error.
 type ValidationError struct {
 	Errors []string
 }
 
 func (e *ValidationError) Error() string {
-	return fmt.Sprintf("configuration validation failed: %s", strings.Join(e.Errors, "; "))
+	return "configuration validation failed: " + strings.Join(e.Errors, "; ")
 }
 
 func parseCommaSeparated(s string) []string {
 	if s == "" {
 		return nil
 	}
+
 	parts := strings.Split(s, ",")
+
 	result := make([]string, 0, len(parts))
 	for _, part := range parts {
 		part = strings.TrimSpace(part)

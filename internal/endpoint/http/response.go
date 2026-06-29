@@ -12,6 +12,7 @@ import (
 	"github.com/beremaran/straw/pkg/protocol"
 )
 
+// BuildResponse creates a protocol response from an fhttp response.
 func BuildResponse(
 	requestID string,
 	resp *fhttp.Response,
@@ -34,7 +35,7 @@ func BuildResponse(
 				Message:   "failed to read response body: " + err.Error(),
 				Retryable: false,
 			},
-		}, nil
+		}, err
 	}
 
 	return &protocol.Response{
@@ -48,11 +49,13 @@ func BuildResponse(
 	}, nil
 }
 
+// ResponseOptions configures response building behavior.
 type ResponseOptions struct {
 	MaxBodySize    int64
 	StreamResponse bool
 }
 
+// BuildResponseWithOptions creates a protocol response with custom options.
 func BuildResponseWithOptions(
 	requestID string,
 	resp *fhttp.Response,
@@ -106,6 +109,7 @@ func readRawResponseBody(resp *fhttp.Response, maxSize int64) ([]byte, error) {
 	}
 
 	limitReader := io.LimitReader(resp.Body, maxSize+1)
+
 	rawBody, err := io.ReadAll(limitReader)
 	if err != nil {
 		return nil, &ClientError{
@@ -153,6 +157,7 @@ func decodeGzipBody(rawBody []byte) []byte {
 
 func decodeBrotliBody(rawBody []byte) []byte {
 	brReader := brotli.NewReader(bytes.NewReader(rawBody))
+
 	decompressed, err := io.ReadAll(brReader)
 	if err != nil {
 		return rawBody
@@ -161,39 +166,40 @@ func decodeBrotliBody(rawBody []byte) []byte {
 	return decompressed
 }
 
+// IsSuccessStatus reports whether the status code indicates success.
 func IsSuccessStatus(statusCode int) bool {
 	return statusCode >= 200 && statusCode < 300
 }
 
+// IsRedirectStatus reports whether the status code indicates a redirect.
 func IsRedirectStatus(statusCode int) bool {
 	return statusCode >= 300 && statusCode < 400
 }
 
+// IsClientErrorStatus reports whether the status code indicates a client error.
 func IsClientErrorStatus(statusCode int) bool {
 	return statusCode >= 400 && statusCode < 500
 }
 
+// IsServerErrorStatus reports whether the status code indicates a server error.
 func IsServerErrorStatus(statusCode int) bool {
 	return statusCode >= 500 && statusCode < 600
 }
 
+// IsRetryableStatus reports whether the status code indicates a retryable error.
 func IsRetryableStatus(statusCode int) bool {
 	switch statusCode {
-	case 429,
-		500,
-		502,
-		503,
-		504:
+	case StatusCodeRetryable429, StatusCodeRetryable500, StatusCodeRetryable502, StatusCodeRetryable503, StatusCodeRetryable504:
 		return true
 	default:
 		return false
 	}
 }
 
+// ShouldEscalatePool reports whether the status code indicates pool escalation is needed.
 func ShouldEscalatePool(statusCode int) bool {
 	switch statusCode {
-	case 403,
-		407:
+	case StatusCodeEscalate403, StatusCodeEscalate407:
 		return true
 	default:
 		return false

@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
 	"sync"
+
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/beremaran/straw/internal/observability/logging"
 	"github.com/beremaran/straw/pkg/broker"
 	"github.com/beremaran/straw/pkg/protocol"
-	"go.opentelemetry.io/otel/trace"
 )
 
 type contextKey string
@@ -29,15 +31,17 @@ type ForwardingHandler struct {
 	group      string
 }
 
+// Enabled reports whether the handler supports the given log level.
 func (h *ForwardingHandler) Enabled(ctx context.Context, level slog.Level) bool {
 	return h.Handler.Enabled(ctx, level)
 }
 
+// Handle processes a log record through the base handler and optionally forwards it.
 func (h *ForwardingHandler) Handle(ctx context.Context, record slog.Record) error {
 	err := h.Handler.Handle(ctx, record)
 
 	if !h.enabled {
-		return err
+		return fmt.Errorf("handle log record: %w", err)
 	}
 
 	h.mu.RLock()
@@ -45,11 +49,11 @@ func (h *ForwardingHandler) Handle(ctx context.Context, record slog.Record) erro
 	h.mu.RUnlock()
 
 	if br == nil {
-		return err
+		return fmt.Errorf("handle log record: %w", err)
 	}
 
 	if ctx.Value(bypassForwardingKey) != nil {
-		return err
+		return fmt.Errorf("handle log record: %w", err)
 	}
 
 	bypassCtx := context.WithValue(ctx, bypassForwardingKey, true)
@@ -67,25 +71,26 @@ func (h *ForwardingHandler) Handle(ctx context.Context, record slog.Record) erro
 
 	data, marshalErr := json.Marshal(entry)
 	if marshalErr != nil {
-		return err
+		return fmt.Errorf("handle log record: %w", err)
 	}
 
-	subject := fmt.Sprintf("endpoint.logs.%s", h.endpointID)
+	subject := "endpoint.logs." + h.endpointID
 	_ = br.Publish(bypassCtx, subject, data)
 
-	return err
+	return fmt.Errorf("handle log record: %w", err)
 }
 
+// WithAttrs returns a new Handler with additional attributes.
 func (h *ForwardingHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	newAttrs := make(map[string]any, len(h.attrs)+len(attrs))
-	for k, v := range h.attrs {
-		newAttrs[k] = v
-	}
+	maps.Copy(newAttrs, h.attrs)
+
 	for _, attr := range attrs {
 		key := attr.Key
 		if h.group != "" {
 			key = h.group + "." + key
 		}
+
 		newAttrs[key] = attr.Value.Any()
 	}
 
@@ -100,6 +105,7 @@ func (h *ForwardingHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	}
 }
 
+// WithGroup returns a new Handler for a named group of attributes.
 func (h *ForwardingHandler) WithGroup(name string) slog.Handler {
 	newGroup := name
 	if h.group != "" {
@@ -119,21 +125,21 @@ func (h *ForwardingHandler) WithGroup(name string) slog.Handler {
 
 func (h *ForwardingHandler) extractLogMetadata(ctx context.Context, record slog.Record) (map[string]any, string, string) {
 	attrs := make(map[string]any, len(h.attrs)+record.NumAttrs())
-	for k, v := range h.attrs {
-		attrs[k] = v
-	}
+	maps.Copy(attrs, h.attrs)
 
 	record.Attrs(func(attr slog.Attr) bool {
 		key := attr.Key
 		if h.group != "" {
 			key = h.group + "." + key
 		}
+
 		attrs[key] = attr.Value.Any()
 
 		return true
 	})
 
 	var traceID, requestID string
+
 	span := trace.SpanFromContext(ctx)
 	if span.SpanContext().IsValid() {
 		traceID = span.SpanContext().TraceID().String()

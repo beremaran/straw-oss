@@ -12,12 +12,16 @@ import (
 	"github.com/beremaran/straw/internal/server/helper"
 )
 
+const requestIDByteLength = 16
+
+// RequestID generates or extracts a request ID and sets it in request/response headers.
 func RequestID() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			reqID := r.Header.Get("X-Request-ID")
 			if reqID == "" {
-				bytes := make([]byte, 16)
+				bytes := make([]byte, requestIDByteLength)
+
 				_, err := rand.Read(bytes)
 				if err == nil {
 					reqID = hex.EncodeToString(bytes)
@@ -25,6 +29,7 @@ func RequestID() func(http.Handler) http.Handler {
 					reqID = fmt.Sprintf("req_%d", r.Context().Done())
 				}
 			}
+
 			r.Header.Set("X-Request-ID", reqID)
 			w.Header().Set("X-Request-ID", reqID)
 			next.ServeHTTP(w, r)
@@ -32,6 +37,7 @@ func RequestID() func(http.Handler) http.Handler {
 	}
 }
 
+// Recover recovers from panics and logs the error with a stack trace.
 func Recover() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -45,11 +51,13 @@ func Recover() func(http.Handler) http.Handler {
 					helper.WriteError(w, http.StatusInternalServerError, "Internal Server Error")
 				}
 			}(ctx)
+
 			next.ServeHTTP(w, r)
 		})
 	}
 }
 
+// CORS adds CORS headers to all responses.
 func CORS() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -68,6 +76,7 @@ func CORS() func(http.Handler) http.Handler {
 	}
 }
 
+// BodyLimit restricts the maximum size of the request body.
 func BodyLimit(maxBytes int64) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -77,10 +86,12 @@ func BodyLimit(maxBytes int64) func(http.Handler) http.Handler {
 
 					return
 				}
+
 				if r.Body != nil {
 					r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
 				}
 			}
+
 			next.ServeHTTP(w, r)
 		})
 	}

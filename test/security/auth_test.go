@@ -9,6 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/beremaran/straw/internal/infra/circuitbreaker"
 	"github.com/beremaran/straw/internal/server"
 	"github.com/beremaran/straw/internal/service/auth"
@@ -19,8 +22,6 @@ import (
 	"github.com/beremaran/straw/internal/service/session"
 	"github.com/beremaran/straw/pkg/broker"
 	"github.com/beremaran/straw/test/integration"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestAuthentication_SecurityScenarios(t *testing.T) {
@@ -35,7 +36,7 @@ func TestAuthentication_SecurityScenarios(t *testing.T) {
 	authRepo := integration.NewTestAuthRepo(t, s.PostgresDSN())
 	authTokenRepo := integration.NewTestAuthTokenRepo(t, s.PostgresDSN())
 
-	rlRedis := integration.NewTestRedisClient(t, ctx, s.RedisAddr())
+	rlRedis := integration.NewTestRedisClient(ctx, t, s.RedisAddr())
 	authCache := auth.NewAuthCache(rlRedis, 10*time.Second)
 	authService := auth.NewAuthService(authRepo, authTokenRepo, authCache)
 
@@ -82,7 +83,7 @@ func TestAuthentication_SecurityScenarios(t *testing.T) {
 	}
 
 	t.Run("BruteForceProtection_InvalidKeys", func(t *testing.T) {
-		for i := 0; i < 20; i++ {
+		for range 20 {
 			rec := sendRequest("POST", "/v1/request", "invalid-key")
 			assert.Equal(t, http.StatusUnauthorized, rec.Code)
 		}
@@ -95,7 +96,7 @@ func TestAuthentication_SecurityScenarios(t *testing.T) {
 		rec := sendRequest("POST", "/v1/request", key.RawKey)
 		assert.NotEqual(t, http.StatusUnauthorized, rec.Code, "Key should be valid initially")
 
-		integration.ExecuteSQL(t, ctx, s.PostgresDSN(), "UPDATE api_keys SET is_active = false WHERE id = $1", key.ID)
+		integration.ExecuteSQL(ctx, t, s.PostgresDSN(), "UPDATE api_keys SET is_active = false WHERE id = $1", key.ID)
 
 		err = authService.InvalidateKey(ctx, key.RawKey)
 		require.NoError(t, err)
@@ -115,15 +116,15 @@ func TestAuthentication_SecurityScenarios(t *testing.T) {
 		newHashBytes := sha256.Sum256([]byte(newToken))
 		newHash := hex.EncodeToString(newHashBytes[:])
 
-		integration.ExecuteSQL(t, ctx, s.PostgresDSN(), "INSERT INTO api_key_tokens (api_key_id, token_hash, status) VALUES ($1, $2, 'active')", key.ID, newHash)
-		integration.ExecuteSQL(t, ctx, s.PostgresDSN(), "UPDATE api_key_tokens SET status = 'grace', expires_at = NOW() + INTERVAL '1 hour' WHERE api_key_id = $1 AND token_hash != $2", key.ID, newHash)
+		integration.ExecuteSQL(ctx, t, s.PostgresDSN(), "INSERT INTO api_key_tokens (api_key_id, token_hash, status) VALUES ($1, $2, 'active')", key.ID, newHash)
+		integration.ExecuteSQL(ctx, t, s.PostgresDSN(), "UPDATE api_key_tokens SET status = 'grace', expires_at = NOW() + INTERVAL '1 hour' WHERE api_key_id = $1 AND token_hash != $2", key.ID, newHash)
 
 		require.NoError(t, authService.InvalidateKey(ctx, key.RawKey))
 
 		rec = sendRequest("POST", "/v1/request", key.RawKey)
 		assert.NotEqual(t, http.StatusUnauthorized, rec.Code, "Old token should work during grace period")
 
-		integration.ExecuteSQL(t, ctx, s.PostgresDSN(), "UPDATE api_key_tokens SET expires_at = NOW() - INTERVAL '1 hour' WHERE api_key_id = $1 AND token_hash != $2", key.ID, newHash)
+		integration.ExecuteSQL(ctx, t, s.PostgresDSN(), "UPDATE api_key_tokens SET expires_at = NOW() - INTERVAL '1 hour' WHERE api_key_id = $1 AND token_hash != $2", key.ID, newHash)
 		require.NoError(t, authService.InvalidateKey(ctx, key.RawKey))
 
 		rec = sendRequest("POST", "/v1/request", key.RawKey)

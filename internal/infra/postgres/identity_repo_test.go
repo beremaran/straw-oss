@@ -2,16 +2,16 @@ package postgres
 
 import (
 	"context"
-	"errors"
 	"os"
 	"testing"
 	"time"
 
-	"github.com/beremaran/straw/internal/domain"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/beremaran/straw/internal/domain"
 )
 
 func TestIdentityRepository(t *testing.T) {
@@ -125,9 +125,9 @@ func TestIdentityRepository(t *testing.T) {
 		IsEnabled: true,
 		Config:    domain.ConfigMap{"client_secret": "plaintext"},
 	})
-	assert.True(t, errors.Is(err, ErrPlaintextProviderSecret))
+	require.ErrorIs(t, err, ErrPlaintextProviderSecret)
 
 	require.NoError(t, repo.DeleteRole(ctx, customRole.ID))
 	err = repo.DeleteRole(ctx, ownerRole.ID)
-	assert.True(t, errors.Is(err, ErrBuiltinRoleProtected))
+	assert.ErrorIs(t, err, ErrBuiltinRoleProtected)
 }

@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -9,10 +10,12 @@ import (
 	"github.com/beremaran/straw/pkg/protocol"
 )
 
+// ResponseBuilder constructs HTTP responses from endpoint results.
 type ResponseBuilder struct {
 	FilterHeaders []string
 }
 
+// NewResponseBuilder creates a ResponseBuilder with default filtered headers.
 func NewResponseBuilder() *ResponseBuilder {
 	return &ResponseBuilder{
 		FilterHeaders: defaultFilteredHeaders,
@@ -32,6 +35,7 @@ var defaultFilteredHeaders = []string{
 	"Content-Encoding",
 }
 
+// RelayMetadata carries relay-side context for response headers.
 type RelayMetadata struct {
 	Retries       int
 	Pool          string
@@ -43,6 +47,7 @@ type RelayMetadata struct {
 	AttemptErrors []AttemptError
 }
 
+// WriteResponse writes an HTTP response from an endpoint result and relay metadata.
 func (b *ResponseBuilder) WriteResponse(w http.ResponseWriter, result *ResultMessage, meta *RelayMetadata) error {
 	statusCode := result.StatusCode
 	if statusCode == 0 {
@@ -63,12 +68,17 @@ func (b *ResponseBuilder) WriteResponse(w http.ResponseWriter, result *ResultMes
 
 	w.Header().Set("Content-Type", result.Headers.Get("Content-Type"))
 	w.WriteHeader(statusCode)
+
 	if len(result.CompressedBody) == 0 {
 		return nil
 	}
-	_, err := w.Write(result.CompressedBody)
 
-	return err
+	_, err := w.Write(result.CompressedBody)
+	if err != nil {
+		return fmt.Errorf("write response body: %w", err)
+	}
+
+	return nil
 }
 
 func (b *ResponseBuilder) copyHeaders(resp http.Header, headers protocol.HeaderMap) {
@@ -76,6 +86,7 @@ func (b *ResponseBuilder) copyHeaders(resp http.Header, headers protocol.HeaderM
 		if b.isFiltered(h.Key) {
 			continue
 		}
+
 		resp.Add(h.Key, h.Value)
 	}
 }
@@ -130,8 +141,8 @@ func (b *ResponseBuilder) addRelayHeaders(resp http.Header, meta *RelayMetadata)
 
 func (b *ResponseBuilder) writeErrorResponse(w http.ResponseWriter, statusCode int, errInfo *protocol.ErrorInfo) error {
 	requestID := w.Header().Get("X-Request-ID")
-	response := map[string]interface{}{
-		"error": map[string]interface{}{
+	response := map[string]any{
+		"error": map[string]any{
 			"code":       errInfo.Code,
 			"message":    errInfo.Message,
 			"retryable":  errInfo.Retryable,
@@ -140,14 +151,19 @@ func (b *ResponseBuilder) writeErrorResponse(w http.ResponseWriter, statusCode i
 	}
 
 	if errInfo.RetryAfter > 0 {
-		response["error"].(map[string]interface{})["retry_after_seconds"] = int(errInfo.RetryAfter.Seconds())
+		response["error"].(map[string]any)["retry_after_seconds"] = int(errInfo.RetryAfter.Seconds())
 		w.Header().Set("Retry-After", strconv.Itoa(int(errInfo.RetryAfter.Seconds())))
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 
-	return json.NewEncoder(w).Encode(response)
+	encodeErr := json.NewEncoder(w).Encode(response)
+	if encodeErr != nil {
+		return fmt.Errorf("encode error response: %w", encodeErr)
+	}
+
+	return nil
 }
 
 func formatTiming(t *protocol.TimingInfo) string {
@@ -162,14 +178,17 @@ func equalFoldASCII(a, b string) bool {
 	if len(a) != len(b) {
 		return false
 	}
+
 	for i := 0; i < len(a); i++ {
 		ca, cb := a[i], b[i]
 		if ca >= 'A' && ca <= 'Z' {
 			ca += 'a' - 'A'
 		}
+
 		if cb >= 'A' && cb <= 'Z' {
 			cb += 'a' - 'A'
 		}
+
 		if ca != cb {
 			return false
 		}
@@ -178,19 +197,27 @@ func equalFoldASCII(a, b string) bool {
 	return true
 }
 
+// WriteTimeoutResponse writes a 504 Gateway Timeout response.
 func WriteTimeoutResponse(w http.ResponseWriter, requestID string) error {
 	w.Header().Set("X-Request-ID", requestID)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusGatewayTimeout)
 
-	return json.NewEncoder(w).Encode(map[string]interface{}{
-		"error": map[string]interface{}{
+	timeoutBody := map[string]any{
+		"error": map[string]any{
 			"code":       protocol.ErrCodeEndpointTimeout,
 			"message":    "Endpoint did not respond in time",
 			"retryable":  true,
 			"request_id": requestID,
 		},
-	})
+	}
+
+	encodeErr := json.NewEncoder(w).Encode(timeoutBody)
+	if encodeErr != nil {
+		return fmt.Errorf("encode timeout response: %w", encodeErr)
+	}
+
+	return nil
 }
 
 type attemptErrorSummary struct {
@@ -201,6 +228,8 @@ type attemptErrorSummary struct {
 	Message  string `json:"m,omitempty"`
 }
 
+const defaultMaxMessageLen = 50
+
 func formatAttemptErrors(errors []AttemptError) []attemptErrorSummary {
 	summaries := make([]attemptErrorSummary, 0, len(errors))
 	for _, e := range errors {
@@ -209,7 +238,7 @@ func formatAttemptErrors(errors []AttemptError) []attemptErrorSummary {
 			Attempt:  e.Attempt,
 			Endpoint: e.EndpointID,
 			Failure:  e.FailureString,
-			Message:  truncateMessage(e.Message, 50),
+			Message:  truncateMessage(e.Message, defaultMaxMessageLen),
 		})
 	}
 

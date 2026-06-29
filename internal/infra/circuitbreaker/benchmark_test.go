@@ -1,3 +1,4 @@
+// Package circuitbreaker provides a circuit breaker implementation.
 package circuitbreaker
 
 import (

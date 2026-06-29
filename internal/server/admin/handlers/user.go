@@ -3,44 +3,58 @@ package handlers
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/google/uuid"
 
 	"github.com/beremaran/straw/internal/domain"
 	"github.com/beremaran/straw/internal/server/dto"
 	"github.com/beremaran/straw/internal/server/helper"
 	"github.com/beremaran/straw/internal/service/auth"
-	"github.com/google/uuid"
 )
 
 var (
-	ErrVerifyOwner         = errors.New("failed to verify active owner state")
+	// ErrVerifyOwner indicates failure to verify active owner state.
+	ErrVerifyOwner = errors.New("failed to verify active owner state")
+	// ErrDeactivateLastOwner indicates cannot deactivate the last active owner.
 	ErrDeactivateLastOwner = errors.New("cannot deactivate the last active owner")
-	ErrFetchOwnerRole      = errors.New("failed to fetch owner role")
-	ErrFetchCurrentRoles   = errors.New("failed to fetch current roles")
+	// ErrFetchOwnerRole indicates failure to fetch owner role.
+	ErrFetchOwnerRole = errors.New("failed to fetch owner role")
+	// ErrFetchCurrentRoles indicates failure to fetch current roles.
+	ErrFetchCurrentRoles = errors.New("failed to fetch current roles")
+	// ErrRemoveLastOwnerRole indicates cannot remove the Owner role from the last active owner.
 	ErrRemoveLastOwnerRole = errors.New("cannot remove the Owner role from the last active owner")
-	ErrEmailEmpty          = errors.New("email cannot be empty")
+	// ErrEmailEmpty indicates email cannot be empty.
+	ErrEmailEmpty = errors.New("email cannot be empty")
 )
 
+// UserHandler manages admin user operations.
 type UserHandler struct {
 	repo domain.IdentityRepository
 }
 
+// NewUserHandler creates a new UserHandler.
 func NewUserHandler(repo domain.IdentityRepository) *UserHandler {
 	return &UserHandler{repo: repo}
 }
 
+// HandleListUsers lists all admin users.
 func (h *UserHandler) HandleListUsers(w http.ResponseWriter, r *http.Request) {
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	if page < 1 {
 		page = 1
 	}
+
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	if limit < 1 || limit > 100 {
 		limit = 20
 	}
+
 	offset := (page - 1) * limit
 
 	users, total, err := h.repo.ListUsers(r.Context(), limit, offset)
@@ -63,8 +77,10 @@ func (h *UserHandler) HandleListUsers(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// HandleCreateUser creates a new admin user.
 func (h *UserHandler) HandleCreateUser(w http.ResponseWriter, r *http.Request) {
 	var req dto.CreateUserRequest
+
 	err := helper.ReadJSON(r, &req)
 	if err != nil {
 		helper.WriteError(w, http.StatusBadRequest, "invalid request body")
@@ -122,6 +138,7 @@ func (h *UserHandler) HandleCreateUser(w http.ResponseWriter, r *http.Request) {
 	helper.WriteJSON(w, http.StatusCreated, dto.FromDomainUser(*user))
 }
 
+// HandleGetUser retrieves a single admin user.
 func (h *UserHandler) HandleGetUser(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if id == "" {
@@ -136,6 +153,7 @@ func (h *UserHandler) HandleGetUser(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+
 	if user == nil {
 		helper.WriteError(w, http.StatusNotFound, "user not found")
 
@@ -167,6 +185,7 @@ func (h *UserHandler) HandleGetUser(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// HandleUpdateUser updates an admin user.
 func (h *UserHandler) HandleUpdateUser(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if id == "" {
@@ -181,6 +200,7 @@ func (h *UserHandler) HandleUpdateUser(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+
 	if user == nil {
 		helper.WriteError(w, http.StatusNotFound, "user not found")
 
@@ -188,6 +208,7 @@ func (h *UserHandler) HandleUpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req dto.UpdateUserRequest
+
 	err = helper.ReadJSON(r, &req)
 	if err != nil {
 		helper.WriteError(w, http.StatusBadRequest, "invalid request body")
@@ -223,9 +244,10 @@ func (h *UserHandler) HandleUpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	logUserUpdate(r.Context(), id, oldUser, user)
-	h.writeUserDetail(w, r.Context(), id, user, "failed to fetch updated user roles")
+	h.writeUserDetail(r.Context(), w, id, user, "failed to fetch updated user roles")
 }
 
+// HandleDeactivateUser deactivates an admin user.
 func (h *UserHandler) HandleDeactivateUser(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if id == "" {
@@ -240,6 +262,7 @@ func (h *UserHandler) HandleDeactivateUser(w http.ResponseWriter, r *http.Reques
 
 		return
 	}
+
 	if user == nil {
 		helper.WriteError(w, http.StatusNotFound, "user not found")
 
@@ -253,6 +276,7 @@ func (h *UserHandler) HandleDeactivateUser(w http.ResponseWriter, r *http.Reques
 
 			return
 		}
+
 		if isLast {
 			helper.WriteError(w, http.StatusBadRequest, "cannot deactivate the last active owner")
 
@@ -260,6 +284,7 @@ func (h *UserHandler) HandleDeactivateUser(w http.ResponseWriter, r *http.Reques
 		}
 
 		user.IsActive = false
+
 		err = h.repo.UpdateUser(r.Context(), user)
 		if err != nil {
 			helper.WriteError(w, http.StatusInternalServerError, "failed to deactivate user")
@@ -285,6 +310,7 @@ func (h *UserHandler) applyUserUpdate(ctx context.Context, id string, user *doma
 		if email == "" {
 			return ErrEmailEmpty
 		}
+
 		user.Email = email
 	}
 
@@ -295,8 +321,9 @@ func (h *UserHandler) applyUserUpdate(ctx context.Context, id string, user *doma
 	if req.Password != nil {
 		passwordHash, err := auth.HashAdminPassword(*req.Password)
 		if err != nil {
-			return err
+			return fmt.Errorf("hashing admin password: %w", err)
 		}
+
 		user.PasswordHash = passwordHash
 	}
 
@@ -313,6 +340,7 @@ func (h *UserHandler) applyUserUpdate(ctx context.Context, id string, user *doma
 	if req.IsActive != nil {
 		user.IsActive = *req.IsActive
 	}
+
 	if req.IsSuperAdmin != nil {
 		user.IsSuperAdmin = *req.IsSuperAdmin
 	}
@@ -329,6 +357,7 @@ func (h *UserHandler) ensureCanSetActive(ctx context.Context, id string, user *d
 	if err != nil {
 		return ErrVerifyOwner
 	}
+
 	if isLast {
 		return ErrDeactivateLastOwner
 	}
@@ -336,7 +365,7 @@ func (h *UserHandler) ensureCanSetActive(ctx context.Context, id string, user *d
 	return nil
 }
 
-func (h *UserHandler) writeUserDetail(w http.ResponseWriter, ctx context.Context, id string, user *domain.AdminUser, roleErrMsg string) {
+func (h *UserHandler) writeUserDetail(ctx context.Context, w http.ResponseWriter, id string, user *domain.AdminUser, roleErrMsg string) {
 	roles, err := h.repo.ListUserRoles(ctx, id)
 	if err != nil {
 		helper.WriteError(w, http.StatusInternalServerError, roleErrMsg)
@@ -367,13 +396,13 @@ func (h *UserHandler) saveUpdatedUserRoles(ctx context.Context, id string, req d
 		return nil
 	}
 
-	return h.repo.SetUserRoles(ctx, id, *req.RoleIDs)
+	return fmt.Errorf("setting user roles: %w", h.repo.SetUserRoles(ctx, id, *req.RoleIDs))
 }
 
 func (h *UserHandler) checkLastActiveOwner(ctx context.Context, userID string) (bool, error) {
 	roles, err := h.repo.ListUserRoles(ctx, userID)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("listing user roles: %w", err)
 	}
 
 	if !hasRoleName(roles, domain.RoleOwner) {
@@ -382,7 +411,7 @@ func (h *UserHandler) checkLastActiveOwner(ctx context.Context, userID string) (
 
 	count, err := h.repo.CountActiveOwners(ctx)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("counting active owners: %w", err)
 	}
 
 	return count <= 1, nil
@@ -392,10 +421,12 @@ func (h *UserHandler) validateRoleUpdate(ctx context.Context, id string, user *d
 	if req.RoleIDs == nil {
 		return nil
 	}
+
 	ownerRole, err := h.repo.GetRoleByName(ctx, domain.RoleOwner)
 	if err != nil {
 		return ErrFetchOwnerRole
 	}
+
 	if ownerRole == nil {
 		return nil
 	}
@@ -413,6 +444,7 @@ func (h *UserHandler) validateRoleUpdate(ctx context.Context, id string, user *d
 	if err != nil {
 		return ErrVerifyOwner
 	}
+
 	if isLast {
 		return ErrRemoveLastOwnerRole
 	}
@@ -425,7 +457,12 @@ func hashOptionalAdminPassword(password string) (string, error) {
 		return "", nil
 	}
 
-	return auth.HashAdminPassword(password)
+	hash, err := auth.HashAdminPassword(password)
+	if err != nil {
+		return "", fmt.Errorf("hashing admin password: %w", err)
+	}
+
+	return hash, nil
 }
 
 func writePasswordHashError(w http.ResponseWriter, err error) {
@@ -444,6 +481,7 @@ func writeUserUpdateError(w http.ResponseWriter, err error) {
 
 		return
 	}
+
 	if errors.Is(err, auth.ErrWeakPassword) {
 		writePasswordHashError(w, err)
 
@@ -478,13 +516,7 @@ func hasRoleID(roles []domain.AdminRole, id string) bool {
 }
 
 func stringSliceContains(values []string, value string) bool {
-	for _, existing := range values {
-		if existing == value {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(values, value)
 }
 
 func userActiveAfterUpdate(user *domain.AdminUser, req dto.UpdateUserRequest) bool {

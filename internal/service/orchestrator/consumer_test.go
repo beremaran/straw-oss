@@ -13,6 +13,11 @@ import (
 	"github.com/beremaran/straw/pkg/protocol"
 )
 
+const (
+	testRequestIDCons  = "test-req-123"
+	testEndpointIDCons = "endpoint-001"
+)
+
 type consumeOnceMockBroker struct {
 	response      []byte
 	responseErr   error
@@ -20,15 +25,15 @@ type consumeOnceMockBroker struct {
 	calledTimeout time.Duration
 }
 
-func (m *consumeOnceMockBroker) Publish(ctx context.Context, subject string, body []byte) error {
+func (m *consumeOnceMockBroker) Publish(_ context.Context, _ string, _ []byte) error {
 	return nil
 }
 
-func (m *consumeOnceMockBroker) Subscribe(ctx context.Context, subject string, handler broker.Handler, opts ...broker.SubscribeOption) error {
+func (m *consumeOnceMockBroker) Subscribe(_ context.Context, _ string, _ broker.Handler, _ ...broker.SubscribeOption) error {
 	return nil
 }
 
-func (m *consumeOnceMockBroker) ConsumeOnce(ctx context.Context, subject string, timeout time.Duration) ([]byte, error) {
+func (m *consumeOnceMockBroker) ConsumeOnce(_ context.Context, subject string, timeout time.Duration) ([]byte, error) {
 	m.calledSubject = subject
 	m.calledTimeout = timeout
 
@@ -43,7 +48,7 @@ func (m *consumeOnceMockBroker) Close() error {
 	return nil
 }
 
-func (m *consumeOnceMockBroker) DeclareStream(ctx context.Context, name string, subjects ...string) error {
+func (m *consumeOnceMockBroker) DeclareStream(_ context.Context, _ string, _ ...string) error {
 	return nil
 }
 
@@ -88,10 +93,10 @@ func TestConsumer_WithConsumerLogger(t *testing.T) {
 
 func TestConsumer_WaitForResult_Success(t *testing.T) {
 	result := ResultMessage{
-		RequestID:      "test-req-123",
-		EndpointID:     "endpoint-001",
+		RequestID:      testRequestIDCons,
+		EndpointID:     testEndpointIDCons,
 		StatusCode:     200,
-		Headers:        protocol.HeaderMap{{Key: "Content-Type", Value: "application/json"}},
+		Headers:        protocol.HeaderMap{{Key: contentTypeValue, Value: jsonContentType}},
 		CompressedBody: []byte(`{"success": true}`),
 		BodyCompressed: false,
 	}
@@ -111,8 +116,8 @@ func TestConsumer_WaitForResult_Success(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if got.RequestID != "test-req-123" {
-		t.Errorf("expected request ID 'test-req-123', got %q", got.RequestID)
+	if got.RequestID != testRequestIDCons {
+		t.Errorf("expected request ID %q, got %q", testRequestIDCons, got.RequestID)
 	}
 
 	if got.StatusCode != http.StatusOK {
@@ -185,10 +190,10 @@ func TestConsumer_WaitForResult_Decompression(t *testing.T) {
 func TestConsumer_WaitForResult_ErrorResponse(t *testing.T) {
 	result := ResultMessage{
 		RequestID:  "test-req-error",
-		EndpointID: "endpoint-001",
+		EndpointID: testEndpointIDCons,
 		Error: &protocol.ErrorInfo{
 			Code:      protocol.ErrCodeUpstreamError,
-			Message:   "connection refused",
+			Message:   errConnectionRefused,
 			Retryable: true,
 		},
 	}
@@ -231,8 +236,8 @@ func TestConsumer_WaitForResult_InvalidJSON(t *testing.T) {
 
 func TestResultMessage_ToResponse(t *testing.T) {
 	result := &ResultMessage{
-		RequestID:      "test-req-123",
-		EndpointID:     "endpoint-001",
+		RequestID:      testRequestIDCons,
+		EndpointID:     testEndpointIDCons,
 		SessionID:      "session-567",
 		StatusCode:     201,
 		Headers:        protocol.HeaderMap{{Key: "X-Custom", Value: "value"}},
@@ -248,12 +253,12 @@ func TestResultMessage_ToResponse(t *testing.T) {
 
 	resp := result.ToResponse()
 
-	if resp.RequestID != "test-req-123" {
-		t.Errorf("expected request ID 'test-req-123', got %q", resp.RequestID)
+	if resp.RequestID != testRequestIDCons {
+		t.Errorf("expected request ID %q, got %q", testRequestIDCons, resp.RequestID)
 	}
 
-	if resp.EndpointID != "endpoint-001" {
-		t.Errorf("expected endpoint ID 'endpoint-001', got %q", resp.EndpointID)
+	if resp.EndpointID != testEndpointIDCons {
+		t.Errorf("expected endpoint ID %q, got %q", testEndpointIDCons, resp.EndpointID)
 	}
 
 	if resp.SessionID != "session-567" {

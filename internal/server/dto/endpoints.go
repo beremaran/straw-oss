@@ -1,5 +1,6 @@
 package dto
 
+// EndpointMetadataDTO contains metadata about an endpoint.
 type EndpointMetadataDTO struct {
 	Version        string `json:"version,omitempty"`
 	IP             string `json:"ip,omitempty"`
@@ -8,6 +9,7 @@ type EndpointMetadataDTO struct {
 	Provider       string `json:"provider,omitempty"`
 }
 
+// CreateEndpointRequest is the request body for creating an endpoint.
 type CreateEndpointRequest struct {
 	ID           string               `json:"id"`
 	Tags         []string             `json:"tags,omitempty"`
@@ -15,6 +17,7 @@ type CreateEndpointRequest struct {
 	DesiredState string               `json:"desired_state,omitempty"`
 }
 
+// PatchEndpointRequest is the request body for patching an endpoint.
 type PatchEndpointRequest struct {
 	Tags         *[]string            `json:"tags,omitempty"`
 	Metadata     *EndpointMetadataDTO `json:"metadata,omitempty"`
@@ -22,6 +25,7 @@ type PatchEndpointRequest struct {
 	IsRegistered *bool                `json:"is_registered,omitempty"`
 }
 
+// EndpointResponse represents an endpoint in API responses.
 type EndpointResponse struct {
 	ID             string               `json:"id"`
 	Tags           []string             `json:"tags"`
@@ -37,6 +41,7 @@ type EndpointResponse struct {
 	RecentCommands []EndpointCommandDTO `json:"recent_commands,omitempty"`
 }
 
+// EndpointHealthDTO contains health information for an endpoint.
 type EndpointHealthDTO struct {
 	EndpointID  string   `json:"endpoint_id"`
 	State       string   `json:"state"`
@@ -46,6 +51,7 @@ type EndpointHealthDTO struct {
 	LastSeen    string   `json:"last_seen"`
 }
 
+// EndpointCommandDTO represents a command sent to an endpoint.
 type EndpointCommandDTO struct {
 	ID          string         `json:"id"`
 	EndpointID  string         `json:"endpoint_id"`
@@ -59,12 +65,14 @@ type EndpointCommandDTO struct {
 	Error       *string        `json:"error,omitempty"`
 }
 
+// EndpointDrainResponse is the response for draining an endpoint.
 type EndpointDrainResponse struct {
 	EndpointID   string `json:"endpoint_id"`
 	DesiredState string `json:"desired_state"`
 	CommandID    string `json:"command_id,omitempty"`
 }
 
+// EndpointCommandListResponse is a paginated list of endpoint commands.
 type EndpointCommandListResponse struct {
 	Data  []EndpointCommandDTO `json:"data"`
 	Total int                  `json:"total"`
@@ -72,6 +80,7 @@ type EndpointCommandListResponse struct {
 	Limit int                  `json:"limit"`
 }
 
+// EndpointListResponse is a paginated list of endpoints.
 type EndpointListResponse struct {
 	Data  []EndpointResponse `json:"data"`
 	Total int                `json:"total"`
@@ -79,6 +88,7 @@ type EndpointListResponse struct {
 	Limit int                `json:"limit"`
 }
 
+// EndpointLogDTO represents a log entry from an endpoint.
 type EndpointLogDTO struct {
 	ID         int64          `json:"id"`
 	EndpointID string         `json:"endpoint_id"`
@@ -90,6 +100,7 @@ type EndpointLogDTO struct {
 	RequestID  *string        `json:"request_id,omitempty"`
 }
 
+// EndpointLogListResponse is a paginated list of endpoint logs.
 type EndpointLogListResponse struct {
 	Data       []EndpointLogDTO `json:"data"`
 	NextCursor string           `json:"next_cursor,omitempty"`

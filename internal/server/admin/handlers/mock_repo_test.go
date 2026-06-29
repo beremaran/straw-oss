@@ -4,100 +4,101 @@ import (
 	"context"
 	"time"
 
-	"github.com/beremaran/straw/internal/domain"
 	"github.com/stretchr/testify/mock"
+
+	"github.com/beremaran/straw/internal/domain"
 )
 
-type MockApiKeyRepo struct {
+type MockAPIKeyRepo struct {
 	mock.Mock
 }
 
-func (m *MockApiKeyRepo) GetByID(ctx context.Context, id string) (*domain.ApiKey, error) {
+func (m *MockAPIKeyRepo) GetByID(ctx context.Context, id string) (*domain.APIKey, error) {
 	args := m.Called(ctx, id)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 
-	return args.Get(0).(*domain.ApiKey), args.Error(1)
+	return args.Get(0).(*domain.APIKey), args.Error(1)
 }
 
-func (m *MockApiKeyRepo) Create(ctx context.Context, key *domain.ApiKey) error {
+func (m *MockAPIKeyRepo) Create(ctx context.Context, key *domain.APIKey) error {
 	args := m.Called(ctx, key)
 
 	return args.Error(0)
 }
 
-func (m *MockApiKeyRepo) Update(ctx context.Context, key *domain.ApiKey) error {
+func (m *MockAPIKeyRepo) Update(ctx context.Context, key *domain.APIKey) error {
 	args := m.Called(ctx, key)
 
 	return args.Error(0)
 }
 
-func (m *MockApiKeyRepo) List(ctx context.Context, limit, offset int) ([]domain.ApiKey, int, error) {
+func (m *MockAPIKeyRepo) List(ctx context.Context, limit, offset int) ([]domain.APIKey, int, error) {
 	args := m.Called(ctx, limit, offset)
 	if args.Get(0) == nil {
 		return nil, 0, args.Error(2)
 	}
 
-	return args.Get(0).([]domain.ApiKey), args.Int(1), args.Error(2)
+	return args.Get(0).([]domain.APIKey), args.Int(1), args.Error(2)
 }
 
-func (m *MockApiKeyRepo) Exists(ctx context.Context) (bool, error) {
+func (m *MockAPIKeyRepo) Exists(ctx context.Context) (bool, error) {
 	args := m.Called(ctx)
 
 	return args.Bool(0), args.Error(1)
 }
 
-func (m *MockApiKeyRepo) Revoke(ctx context.Context, id string) error {
+func (m *MockAPIKeyRepo) Revoke(ctx context.Context, id string) error {
 	args := m.Called(ctx, id)
 
 	return args.Error(0)
 }
 
-func (m *MockApiKeyRepo) GetByTokenHash(ctx context.Context, tokenHash string) (*domain.ApiKey, error) {
+func (m *MockAPIKeyRepo) GetByTokenHash(ctx context.Context, tokenHash string) (*domain.APIKey, error) {
 	args := m.Called(ctx, tokenHash)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 
-	return args.Get(0).(*domain.ApiKey), args.Error(1)
+	return args.Get(0).(*domain.APIKey), args.Error(1)
 }
 
-type MockApiKeyTokenRepo struct {
+type MockAPIKeyTokenRepo struct {
 	mock.Mock
 }
 
-func (m *MockApiKeyTokenRepo) GetByTokenHash(ctx context.Context, tokenHash string) (*domain.ApiKeyToken, error) {
+func (m *MockAPIKeyTokenRepo) GetByTokenHash(ctx context.Context, tokenHash string) (*domain.APIKeyToken, error) {
 	args := m.Called(ctx, tokenHash)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 
-	return args.Get(0).(*domain.ApiKeyToken), args.Error(1)
+	return args.Get(0).(*domain.APIKeyToken), args.Error(1)
 }
 
-func (m *MockApiKeyTokenRepo) Create(ctx context.Context, token *domain.ApiKeyToken) error {
+func (m *MockAPIKeyTokenRepo) Create(ctx context.Context, token *domain.APIKeyToken) error {
 	args := m.Called(ctx, token)
 
 	return args.Error(0)
 }
 
-func (m *MockApiKeyTokenRepo) ListByApiKeyID(ctx context.Context, apiKeyID string) ([]domain.ApiKeyToken, error) {
+func (m *MockAPIKeyTokenRepo) ListByAPIKeyID(ctx context.Context, apiKeyID string) ([]domain.APIKeyToken, error) {
 	args := m.Called(ctx, apiKeyID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 
-	return args.Get(0).([]domain.ApiKeyToken), args.Error(1)
+	return args.Get(0).([]domain.APIKeyToken), args.Error(1)
 }
 
-func (m *MockApiKeyTokenRepo) Rotate(ctx context.Context, apiKeyID string, token *domain.ApiKeyToken, graceUntil *time.Time, revokeExisting bool) error {
+func (m *MockAPIKeyTokenRepo) Rotate(ctx context.Context, apiKeyID string, token *domain.APIKeyToken, graceUntil *time.Time, revokeExisting bool) error {
 	args := m.Called(ctx, apiKeyID, token, graceUntil, revokeExisting)
 
 	return args.Error(0)
 }
 
-func (m *MockApiKeyTokenRepo) UpdateStatus(ctx context.Context, id string, status domain.TokenStatus) error {
+func (m *MockAPIKeyTokenRepo) UpdateStatus(ctx context.Context, id string, status domain.TokenStatus) error {
 	args := m.Called(ctx, id, status)
 
 	return args.Error(0)

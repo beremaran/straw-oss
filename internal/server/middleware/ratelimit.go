@@ -14,14 +14,20 @@ import (
 	"github.com/beremaran/straw/internal/service/router"
 )
 
+// ContextTagKey is the context key type for storing parsed tags.
 type ContextTagKey struct {
 	Value string
 }
 
+// ContextRoutingRuleKey is the context key type for storing the routing rule.
 type ContextRoutingRuleKey struct {
 	Value string
 }
 
+// RoutingRuleContextKey is the context value key for the routing rule.
+const RoutingRuleContextKey = "routing_rule"
+
+// RateLimitMiddleware applies rate limiting based on matched routing rules.
 func RateLimitMiddleware(limiter *ratelimit.RateLimiter, matcher *router.Matcher) func(http.Handler) http.Handler {
 	tagParser := router.NewTagParser()
 
@@ -41,6 +47,7 @@ func handleRateLimitRequest(
 	r *http.Request,
 ) {
 	apiKey := apiKeyFromRequest(r)
+
 	parseResult, err := tagParser.ParseTags(r, apiKey)
 	if err != nil {
 		helper.WriteError(w, http.StatusBadRequest, "invalid tags")
@@ -49,13 +56,15 @@ func handleRateLimitRequest(
 	}
 
 	ctx := context.WithValue(r.Context(), ContextTagKey{Value: "tags"}, parseResult.Tags)
+
 	rule := matcher.Match(parseResult.Tags)
 	if rule == nil {
 		helper.WriteError(w, http.StatusServiceUnavailable, "no matching routing rule found")
 
 		return
 	}
-	ctx = context.WithValue(ctx, ContextRoutingRuleKey{Value: "routing_rule"}, rule)
+
+	ctx = context.WithValue(ctx, ContextRoutingRuleKey{Value: RoutingRuleContextKey}, rule)
 
 	limitPerSecond, limitPerMinute := rateLimits(rule, apiKey)
 	if limitPerMinute <= 0 && limitPerSecond <= 0 {
@@ -65,6 +74,7 @@ func handleRateLimitRequest(
 	}
 
 	quotaKey := ratelimit.GenerateQuotaKey(rule, apiKeyID(apiKey))
+
 	allowed, res, err := limiter.Allow(r.Context(), quotaKey, limitPerSecond, limitPerMinute)
 	if err != nil {
 		helper.WriteError(w, http.StatusInternalServerError, "internal rate limit error")
@@ -73,6 +83,7 @@ func handleRateLimitRequest(
 	}
 
 	setRateLimitHeaders(w, res)
+
 	if !allowed {
 		writeRateLimitExceeded(w, quotaKey, res)
 
@@ -82,19 +93,20 @@ func handleRateLimitRequest(
 	next.ServeHTTP(w, r.WithContext(ctx))
 }
 
-func apiKeyFromRequest(r *http.Request) *domain.ApiKey {
+func apiKeyFromRequest(r *http.Request) *domain.APIKey {
 	key := GetAPIKey(r)
 	if key == nil {
 		return nil
 	}
 
-	apiKey, _ := key.(*domain.ApiKey)
+	apiKey, _ := key.(*domain.APIKey)
 
 	return apiKey
 }
 
-func rateLimits(rule *domain.RoutingRule, apiKey *domain.ApiKey) (int, int) {
+func rateLimits(rule *domain.RoutingRule, apiKey *domain.APIKey) (int, int) {
 	limitPerSecond := rule.RateLimitPerSecond
+
 	limitPerMinute := rule.RateLimitPerMinute
 	if apiKey != nil && apiKey.RateLimitOverride != nil && *apiKey.RateLimitOverride > 0 {
 		limitPerMinute = *apiKey.RateLimitOverride
@@ -103,7 +115,7 @@ func rateLimits(rule *domain.RoutingRule, apiKey *domain.ApiKey) (int, int) {
 	return limitPerSecond, limitPerMinute
 }
 
-func apiKeyID(apiKey *domain.ApiKey) string {
+func apiKeyID(apiKey *domain.APIKey) string {
 	if apiKey == nil {
 		return "anon"
 	}
@@ -121,14 +133,13 @@ func writeRateLimitExceeded(w http.ResponseWriter, quotaKey string, res ratelimi
 	if metrics.RateLimitExceeded != nil {
 		metrics.RateLimitExceeded.WithLabelValues(quotaKey).Inc()
 	}
-	retryAfter := int(res.Reset.Seconds())
-	if retryAfter < 1 {
-		retryAfter = 1
-	}
+
+	retryAfter := max(int(res.Reset.Seconds()), 1)
+
 	w.Header().Set("Retry-After", strconv.Itoa(retryAfter))
 
-	helper.WriteJSON(w, http.StatusTooManyRequests, map[string]interface{}{
-		"error": map[string]interface{}{
+	helper.WriteJSON(w, http.StatusTooManyRequests, map[string]any{
+		"error": map[string]any{
 			"code":                "RATE_LIMIT_EXCEEDED",
 			"message":             fmt.Sprintf("Rate limit exceeded for quota key '%s'", quotaKey),
 			"retryable":           true,
@@ -137,8 +148,9 @@ func writeRateLimitExceeded(w http.ResponseWriter, quotaKey string, res ratelimi
 	})
 }
 
+// GetRoutingRule retrieves the matched routing rule from the request context.
 func GetRoutingRule(r *http.Request) *domain.RoutingRule {
-	if rule, ok := r.Context().Value(ContextRoutingRuleKey{Value: "routing_rule"}).(*domain.RoutingRule); ok {
+	if rule, ok := r.Context().Value(ContextRoutingRuleKey{Value: RoutingRuleContextKey}).(*domain.RoutingRule); ok {
 		return rule
 	}
 

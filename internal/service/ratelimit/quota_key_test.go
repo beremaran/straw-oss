@@ -3,9 +3,10 @@ package ratelimit_test
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/beremaran/straw/internal/domain"
 	"github.com/beremaran/straw/internal/service/ratelimit"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestGenerateQuotaKey(t *testing.T) {
@@ -79,11 +80,11 @@ func TestGenerateQuotaKey(t *testing.T) {
 		{
 			name: "Handles UUID-style IDs",
 			rule: &domain.RoutingRule{
-				ID:       "550e8400-e29b-41d4-a716-446655440000",
+				ID:       "rule-abcdefghij1234567890abcdefghij12",
 				QuotaKey: "quota:custom",
 			},
-			apiKeyID: "660e8400-e29b-41d4-a716-446655440001",
-			want:     "quota:custom:660e8400-e29b-41d4-a716-446655440001",
+			apiKeyID: "key-zyxwvutsrq1234567890zyxwvutsrq12",
+			want:     "quota:custom:key-zyxwvutsrq1234567890zyxwvutsrq12",
 		},
 		{
 			name: "Handles numeric IDs",

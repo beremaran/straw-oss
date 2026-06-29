@@ -7,8 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/beremaran/straw/internal/domain"
 	"golang.org/x/crypto/bcrypt"
+
+	"github.com/beremaran/straw/internal/domain"
 )
 
 type fakeAdminRepo struct {
@@ -45,29 +46,29 @@ func newFakeAdminRepo(t *testing.T) *fakeAdminRepo {
 	}
 }
 
-func (r *fakeAdminRepo) CreateUser(ctx context.Context, user *domain.AdminUser) error {
+func (r *fakeAdminRepo) CreateUser(_ context.Context, user *domain.AdminUser) error {
 	r.usersByID[user.ID] = user
 	r.usersByEmail[strings.ToLower(user.Email)] = user
 
 	return nil
 }
 
-func (r *fakeAdminRepo) UpdateUser(ctx context.Context, user *domain.AdminUser) error {
+func (r *fakeAdminRepo) UpdateUser(_ context.Context, user *domain.AdminUser) error {
 	r.usersByID[user.ID] = user
 	r.usersByEmail[strings.ToLower(user.Email)] = user
 
 	return nil
 }
 
-func (r *fakeAdminRepo) GetUserByID(ctx context.Context, id string) (*domain.AdminUser, error) {
+func (r *fakeAdminRepo) GetUserByID(_ context.Context, id string) (*domain.AdminUser, error) {
 	return r.usersByID[id], nil
 }
 
-func (r *fakeAdminRepo) GetUserByEmail(ctx context.Context, email string) (*domain.AdminUser, error) {
+func (r *fakeAdminRepo) GetUserByEmail(_ context.Context, email string) (*domain.AdminUser, error) {
 	return r.usersByEmail[strings.ToLower(email)], nil
 }
 
-func (r *fakeAdminRepo) SetUserRoles(ctx context.Context, userID string, roleIDs []string) error {
+func (r *fakeAdminRepo) SetUserRoles(_ context.Context, _ string, roleIDs []string) error {
 	if len(roleIDs) > 0 && roleIDs[0] == r.role.ID {
 		r.ownerExists = true
 	}
@@ -75,15 +76,15 @@ func (r *fakeAdminRepo) SetUserRoles(ctx context.Context, userID string, roleIDs
 	return nil
 }
 
-func (r *fakeAdminRepo) EffectivePermissions(ctx context.Context, userID string) ([]string, error) {
+func (r *fakeAdminRepo) EffectivePermissions(_ context.Context, _ string) ([]string, error) {
 	return append([]string(nil), r.permissions...), nil
 }
 
-func (r *fakeAdminRepo) ActiveOwnerExists(ctx context.Context) (bool, error) {
+func (r *fakeAdminRepo) ActiveOwnerExists(_ context.Context) (bool, error) {
 	return r.ownerExists, nil
 }
 
-func (r *fakeAdminRepo) GetRoleByName(ctx context.Context, name string) (*domain.AdminRole, error) {
+func (r *fakeAdminRepo) GetRoleByName(_ context.Context, name string) (*domain.AdminRole, error) {
 	if name == r.role.Name {
 		return r.role, nil
 	}
@@ -91,21 +92,21 @@ func (r *fakeAdminRepo) GetRoleByName(ctx context.Context, name string) (*domain
 	return nil, nil
 }
 
-func (r *fakeAdminRepo) GetIdentityProviderByName(ctx context.Context, name string) (*domain.AdminIdentityProvider, error) {
+func (r *fakeAdminRepo) GetIdentityProviderByName(_ context.Context, _ string) (*domain.AdminIdentityProvider, error) {
 	return nil, nil
 }
 
-func (r *fakeAdminRepo) CreateSession(ctx context.Context, session *domain.AdminSession) error {
+func (r *fakeAdminRepo) CreateSession(_ context.Context, session *domain.AdminSession) error {
 	r.sessions[session.ID] = session
 
 	return nil
 }
 
-func (r *fakeAdminRepo) GetSessionByID(ctx context.Context, id string) (*domain.AdminSession, error) {
+func (r *fakeAdminRepo) GetSessionByID(_ context.Context, id string) (*domain.AdminSession, error) {
 	return r.sessions[id], nil
 }
 
-func (r *fakeAdminRepo) UpdateSessionRefreshHash(ctx context.Context, id, hash string) error {
+func (r *fakeAdminRepo) UpdateSessionRefreshHash(_ context.Context, id, hash string) error {
 	session := r.sessions[id]
 	if session == nil {
 		return errors.New("missing session")
@@ -116,7 +117,7 @@ func (r *fakeAdminRepo) UpdateSessionRefreshHash(ctx context.Context, id, hash s
 	return nil
 }
 
-func (r *fakeAdminRepo) RevokeSession(ctx context.Context, id string) error {
+func (r *fakeAdminRepo) RevokeSession(_ context.Context, id string) error {
 	session := r.sessions[id]
 	if session == nil {
 		return errors.New("missing session")

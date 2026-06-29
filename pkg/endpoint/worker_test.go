@@ -12,6 +12,8 @@ import (
 	"github.com/beremaran/straw/pkg/protocol"
 )
 
+const testWorkerID = "test-worker-1"
+
 type workerMockBroker struct {
 	mu            sync.Mutex
 	subs          map[string]broker.Handler
@@ -24,7 +26,7 @@ func newWorkerMockBroker() *workerMockBroker {
 	}
 }
 
-func (m *workerMockBroker) Publish(ctx context.Context, subject string, body []byte) error {
+func (m *workerMockBroker) Publish(_ context.Context, subject string, body []byte) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.publishedMsgs = append(m.publishedMsgs, publishedMsg{
@@ -35,7 +37,7 @@ func (m *workerMockBroker) Publish(ctx context.Context, subject string, body []b
 	return nil
 }
 
-func (m *workerMockBroker) Subscribe(ctx context.Context, subject string, handler broker.Handler, opts ...broker.SubscribeOption) error {
+func (m *workerMockBroker) Subscribe(_ context.Context, subject string, handler broker.Handler, _ ...broker.SubscribeOption) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.subs[subject] = handler
@@ -43,11 +45,11 @@ func (m *workerMockBroker) Subscribe(ctx context.Context, subject string, handle
 	return nil
 }
 
-func (m *workerMockBroker) ConsumeOnce(ctx context.Context, subject string, timeout time.Duration) ([]byte, error) {
+func (m *workerMockBroker) ConsumeOnce(_ context.Context, _ string, _ time.Duration) ([]byte, error) {
 	return nil, nil
 }
 
-func (m *workerMockBroker) DeclareStream(ctx context.Context, name string, subjects ...string) error {
+func (m *workerMockBroker) DeclareStream(_ context.Context, _ string, _ ...string) error {
 	return nil
 }
 
@@ -61,7 +63,7 @@ func (m *workerMockBroker) Close() error {
 
 type dummyExecutor struct{}
 
-func (d *dummyExecutor) Do(ctx context.Context, req *protocol.Request) (*protocol.Response, error) {
+func (d *dummyExecutor) Do(_ context.Context, req *protocol.Request) (*protocol.Response, error) {
 	return &protocol.Response{
 		RequestID:  req.ID,
 		StatusCode: 200,
@@ -70,22 +72,21 @@ func (d *dummyExecutor) Do(ctx context.Context, req *protocol.Request) (*protoco
 
 func TestWorker_HandleControlCommands(t *testing.T) {
 	cfg := &config.EndpointConfig{
-		ID:            "test-worker-1",
+		ID:            testWorkerID,
 		Security:      config.SecurityConfig{HMACSecret: "test-secret"},
 		Observability: config.ObservabilityConfig{MetricsPort: 9099},
 	}
 	w := NewWorker(cfg)
 	mb := newWorkerMockBroker()
-	consumer := NewConsumer(mb, &dummyExecutor{}, []byte("test-secret"), "test-worker-1")
+	consumer := NewConsumer(mb, &dummyExecutor{}, []byte("test-secret"), testWorkerID)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	w.handleControlCommands(ctx, mb, consumer, setupWorkerLogger(cfg))
 
 	// Get registered handler
 	mb.mu.Lock()
-	handler := mb.subs["endpoint.control.test-worker-1"]
+	handler := mb.subs["endpoint.control."+testWorkerID]
 	mb.mu.Unlock()
 
 	if handler == nil {
@@ -95,7 +96,7 @@ func TestWorker_HandleControlCommands(t *testing.T) {
 	// Send a drain command
 	cmd := protocol.ControlCommand{
 		CommandID:  "cmd-drain",
-		EndpointID: "test-worker-1",
+		EndpointID: testWorkerID,
 		Command:    "drain",
 		IssuedAt:   time.Now(),
 	}
@@ -146,7 +147,7 @@ func TestWorker_HandleControlCommands(t *testing.T) {
 		t.Error("expected succeeded ack status message")
 	}
 
-	if ack1.CommandID != "cmd-drain" || ack1.EndpointID != "test-worker-1" {
+	if ack1.CommandID != "cmd-drain" || ack1.EndpointID != testWorkerID {
 		t.Errorf("ack properties incorrect: %+v", ack1)
 	}
 }

@@ -5,12 +5,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/beremaran/straw/internal/domain"
-	"github.com/beremaran/straw/internal/infra/postgres"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/beremaran/straw/internal/domain"
+	"github.com/beremaran/straw/internal/infra/postgres"
 )
 
 func TestEndpointIntegration(t *testing.T) {
@@ -22,9 +23,9 @@ func TestEndpointIntegration(t *testing.T) {
 	defer pool.Close()
 
 	client := &postgres.Client{Pool: pool}
-	epRepo := postgres.NewPostgresEndpointRepository(client)
-	cmdRepo := postgres.NewPostgresEndpointCommandRepository(client)
-	logRepo := postgres.NewPostgresEndpointLogRepository(client)
+	epRepo := postgres.NewEndpointRepository(client)
+	cmdRepo := postgres.NewEndpointCommandRepository(client)
+	logRepo := postgres.NewEndpointLogRepository(client)
 
 	t.Run("Endpoint Registry and Logs Integration", func(t *testing.T) {
 		epID := "ep-int-" + uuid.New().String()
@@ -82,7 +83,7 @@ func TestEndpointIntegration(t *testing.T) {
 		}
 		err = logRepo.Create(ctx, logEntry)
 		require.NoError(t, err)
-		assert.Greater(t, logEntry.ID, int64(0))
+		assert.Positive(t, logEntry.ID)
 
 		// Query logs
 		logs, err := logRepo.ListByEndpointID(ctx, epID, 0, 10)

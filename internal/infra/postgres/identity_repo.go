@@ -9,33 +9,43 @@ import (
 	"strings"
 	"time"
 
-	"github.com/beremaran/straw/internal/domain"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/beremaran/straw/internal/domain"
 )
 
 var (
-	ErrIdentityNotFound        = errors.New("identity row not found")
-	ErrBuiltinRoleProtected    = errors.New("built-in role cannot be deleted")
+	// ErrIdentityNotFound is returned when an identity row is not found.
+	ErrIdentityNotFound = errors.New("identity row not found")
+	// ErrBuiltinRoleProtected is returned when attempting to delete a built-in role.
+	ErrBuiltinRoleProtected = errors.New("built-in role cannot be deleted")
+	// ErrPlaintextProviderSecret is returned when an identity provider config contains a plaintext secret.
 	ErrPlaintextProviderSecret = errors.New("identity provider config must not contain secrets")
 )
 
+// IdentityRepository persists and retrieves admin identities (users, roles, sessions, identity providers).
 type IdentityRepository struct {
 	client *Client
 }
 
+// NewIdentityRepository creates a new IdentityRepository backed by the given client.
 func NewIdentityRepository(client *Client) *IdentityRepository {
 	return &IdentityRepository{client: client}
 }
 
+// CreateUser inserts a new admin user.
 func (r *IdentityRepository) CreateUser(ctx context.Context, user *domain.AdminUser) error {
 	now := time.Now()
+
 	if user.ID == "" {
 		user.ID = uuid.New().String()
 	}
+
 	if user.CreatedAt.IsZero() {
 		user.CreatedAt = now
 	}
+
 	if user.UpdatedAt.IsZero() {
 		user.UpdatedAt = now
 	}
@@ -59,8 +69,11 @@ func (r *IdentityRepository) CreateUser(ctx context.Context, user *domain.AdminU
 			user.CreatedAt,
 			user.UpdatedAt,
 		)
+		if err != nil {
+			return fmt.Errorf("failed to insert user: %w", err)
+		}
 
-		return err
+		return nil
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create admin user: %w", err)
@@ -69,6 +82,7 @@ func (r *IdentityRepository) CreateUser(ctx context.Context, user *domain.AdminU
 	return nil
 }
 
+// UpdateUser modifies an existing admin user.
 func (r *IdentityRepository) UpdateUser(ctx context.Context, user *domain.AdminUser) error {
 	user.UpdatedAt = time.Now()
 	query := `
@@ -84,6 +98,7 @@ func (r *IdentityRepository) UpdateUser(ctx context.Context, user *domain.AdminU
 	`
 
 	var rows int64
+
 	err := r.client.Execute(func() error {
 		res, err := r.client.Pool.Exec(ctx, query,
 			user.ID,
@@ -95,13 +110,18 @@ func (r *IdentityRepository) UpdateUser(ctx context.Context, user *domain.AdminU
 			user.LastLoginAt,
 			user.UpdatedAt,
 		)
+		if err != nil {
+			return fmt.Errorf("failed to execute update: %w", err)
+		}
+
 		rows = res.RowsAffected()
 
-		return err
+		return nil
 	})
 	if err != nil {
 		return fmt.Errorf("failed to update admin user: %w", err)
 	}
+
 	if rows == 0 {
 		return ErrIdentityNotFound
 	}
@@ -109,20 +129,24 @@ func (r *IdentityRepository) UpdateUser(ctx context.Context, user *domain.AdminU
 	return nil
 }
 
+// GetUserByID returns the admin user with the given ID.
 func (r *IdentityRepository) GetUserByID(ctx context.Context, id string) (*domain.AdminUser, error) {
 	query := userSelectSQL() + ` WHERE id = $1`
 
 	return r.getUser(ctx, query, id)
 }
 
+// GetUserByEmail returns the admin user with the given email.
 func (r *IdentityRepository) GetUserByEmail(ctx context.Context, email string) (*domain.AdminUser, error) {
 	query := userSelectSQL() + ` WHERE lower(email) = lower($1)`
 
 	return r.getUser(ctx, query, email)
 }
 
+// ListUsers returns a paginated list of admin users.
 func (r *IdentityRepository) ListUsers(ctx context.Context, limit, offset int) ([]domain.AdminUser, int, error) {
 	var total int
+
 	err := r.client.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM admin_users`).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to count admin users: %w", err)
@@ -140,13 +164,16 @@ func (r *IdentityRepository) ListUsers(ctx context.Context, limit, offset int) (
 	defer rows.Close()
 
 	var users []domain.AdminUser
+
 	for rows.Next() {
 		user, err := scanAdminUser(rows.Scan)
 		if err != nil {
 			return nil, 0, fmt.Errorf("failed to scan admin user: %w", err)
 		}
+
 		users = append(users, user)
 	}
+
 	err = rows.Err()
 	if err != nil {
 		return nil, 0, fmt.Errorf("error iterating admin users: %w", err)
@@ -155,6 +182,7 @@ func (r *IdentityRepository) ListUsers(ctx context.Context, limit, offset int) (
 	return users, total, nil
 }
 
+// SetUserRoles replaces all roles assigned to the given user.
 func (r *IdentityRepository) SetUserRoles(ctx context.Context, userID string, roleIDs []string) error {
 	return r.client.Execute(func() error {
 		tx, err := r.client.Pool.Begin(ctx)
@@ -179,6 +207,7 @@ func (r *IdentityRepository) SetUserRoles(ctx context.Context, userID string, ro
 	})
 }
 
+// ListUserRoles returns all roles assigned to the given user.
 func (r *IdentityRepository) ListUserRoles(ctx context.Context, userID string) ([]domain.AdminRole, error) {
 	query := roleSelectSQL() + `
 		JOIN admin_user_roles ur ON ur.role_id = r.id
@@ -190,8 +219,10 @@ func (r *IdentityRepository) ListUserRoles(ctx context.Context, userID string) (
 	return r.listRoles(ctx, query, userID)
 }
 
+// EffectivePermissions returns all permissions held by the given user, including those from super-admin status.
 func (r *IdentityRepository) EffectivePermissions(ctx context.Context, userID string) ([]string, error) {
 	var isSuperAdmin bool
+
 	err := r.client.Pool.QueryRow(ctx,
 		`SELECT is_super_admin FROM admin_users WHERE id = $1 AND is_active = true`,
 		userID,
@@ -203,6 +234,7 @@ func (r *IdentityRepository) EffectivePermissions(ctx context.Context, userID st
 
 		return nil, fmt.Errorf("failed to load admin user permissions: %w", err)
 	}
+
 	if isSuperAdmin {
 		return domain.AllPermissions(), nil
 	}
@@ -219,6 +251,7 @@ func (r *IdentityRepository) EffectivePermissions(ctx context.Context, userID st
 	`
 
 	var permissions []string
+
 	err = r.client.Pool.QueryRow(ctx, query, userID).Scan(&permissions)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query effective permissions: %w", err)
@@ -227,6 +260,7 @@ func (r *IdentityRepository) EffectivePermissions(ctx context.Context, userID st
 	return permissions, nil
 }
 
+// ActiveOwnerExists returns whether any active user has the owner role.
 func (r *IdentityRepository) ActiveOwnerExists(ctx context.Context) (bool, error) {
 	query := `
 		SELECT EXISTS(
@@ -239,6 +273,7 @@ func (r *IdentityRepository) ActiveOwnerExists(ctx context.Context) (bool, error
 	`
 
 	var exists bool
+
 	err := r.client.Pool.QueryRow(ctx, query, domain.RoleOwner).Scan(&exists)
 	if err != nil {
 		return false, fmt.Errorf("failed to check active owner: %w", err)
@@ -247,6 +282,7 @@ func (r *IdentityRepository) ActiveOwnerExists(ctx context.Context) (bool, error
 	return exists, nil
 }
 
+// CountActiveOwners returns the number of active users with the owner role.
 func (r *IdentityRepository) CountActiveOwners(ctx context.Context) (int, error) {
 	query := `
 		SELECT COUNT(*)
@@ -257,6 +293,7 @@ func (r *IdentityRepository) CountActiveOwners(ctx context.Context) (int, error)
 	`
 
 	var count int
+
 	err := r.client.Pool.QueryRow(ctx, query, domain.RoleOwner).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("failed to count active owners: %w", err)
@@ -265,14 +302,18 @@ func (r *IdentityRepository) CountActiveOwners(ctx context.Context) (int, error)
 	return count, nil
 }
 
+// CreateRole inserts a new admin role with its permissions.
 func (r *IdentityRepository) CreateRole(ctx context.Context, role *domain.AdminRole) error {
 	now := time.Now()
+
 	if role.ID == "" {
 		role.ID = uuid.New().String()
 	}
+
 	if role.CreatedAt.IsZero() {
 		role.CreatedAt = now
 	}
+
 	if role.UpdatedAt.IsZero() {
 		role.UpdatedAt = now
 	}
@@ -301,6 +342,7 @@ func (r *IdentityRepository) CreateRole(ctx context.Context, role *domain.AdminR
 	})
 }
 
+// UpdateRole modifies an existing admin role and its permissions.
 func (r *IdentityRepository) UpdateRole(ctx context.Context, role *domain.AdminRole) error {
 	role.UpdatedAt = time.Now()
 
@@ -319,6 +361,7 @@ func (r *IdentityRepository) UpdateRole(ctx context.Context, role *domain.AdminR
 		if err != nil {
 			return fmt.Errorf("failed to update admin role: %w", err)
 		}
+
 		if res.RowsAffected() == 0 {
 			return ErrIdentityNotFound
 		}
@@ -332,20 +375,25 @@ func (r *IdentityRepository) UpdateRole(ctx context.Context, role *domain.AdminR
 	})
 }
 
+// DeleteRole removes a non-builtin admin role by ID.
 func (r *IdentityRepository) DeleteRole(ctx context.Context, id string) error {
 	res, err := r.client.Pool.Exec(ctx, `DELETE FROM admin_roles WHERE id = $1 AND is_builtin = false`, id)
 	if err != nil {
 		return fmt.Errorf("failed to delete admin role: %w", err)
 	}
+
 	if res.RowsAffected() == 0 {
 		var builtin bool
+
 		err = r.client.Pool.QueryRow(ctx, `SELECT is_builtin FROM admin_roles WHERE id = $1`, id).Scan(&builtin)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrIdentityNotFound
 		}
+
 		if err != nil {
 			return fmt.Errorf("failed to check admin role: %w", err)
 		}
+
 		if builtin {
 			return ErrBuiltinRoleProtected
 		}
@@ -354,6 +402,7 @@ func (r *IdentityRepository) DeleteRole(ctx context.Context, id string) error {
 	return nil
 }
 
+// GetRoleByID returns the admin role with the given ID.
 func (r *IdentityRepository) GetRoleByID(ctx context.Context, id string) (*domain.AdminRole, error) {
 	query := roleSelectSQL() + `
 		WHERE r.id = $1
@@ -363,6 +412,7 @@ func (r *IdentityRepository) GetRoleByID(ctx context.Context, id string) (*domai
 	return r.getRole(ctx, query, id)
 }
 
+// GetRoleByName returns the admin role with the given name.
 func (r *IdentityRepository) GetRoleByName(ctx context.Context, name string) (*domain.AdminRole, error) {
 	query := roleSelectSQL() + `
 		WHERE r.name = $1
@@ -372,6 +422,7 @@ func (r *IdentityRepository) GetRoleByName(ctx context.Context, name string) (*d
 	return r.getRole(ctx, query, name)
 }
 
+// ListRoles returns all admin roles ordered by builtin status and name.
 func (r *IdentityRepository) ListRoles(ctx context.Context) ([]domain.AdminRole, error) {
 	query := roleSelectSQL() + `
 		GROUP BY r.id
@@ -381,14 +432,18 @@ func (r *IdentityRepository) ListRoles(ctx context.Context) ([]domain.AdminRole,
 	return r.listRoles(ctx, query)
 }
 
+// CreateSession inserts a new admin session.
 func (r *IdentityRepository) CreateSession(ctx context.Context, session *domain.AdminSession) error {
 	now := time.Now()
+
 	if session.ID == "" {
 		session.ID = uuid.New().String()
 	}
+
 	if session.CreatedAt.IsZero() {
 		session.CreatedAt = now
 	}
+
 	if session.LastUsedAt.IsZero() {
 		session.LastUsedAt = now
 	}
@@ -412,8 +467,11 @@ func (r *IdentityRepository) CreateSession(ctx context.Context, session *domain.
 			session.CreatedAt,
 			session.LastUsedAt,
 		)
+		if err != nil {
+			return fmt.Errorf("failed to insert session: %w", err)
+		}
 
-		return err
+		return nil
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create admin session: %w", err)
@@ -422,12 +480,15 @@ func (r *IdentityRepository) CreateSession(ctx context.Context, session *domain.
 	return nil
 }
 
+// GetSessionByID returns the admin session with the given ID.
 func (r *IdentityRepository) GetSessionByID(ctx context.Context, id string) (*domain.AdminSession, error) {
 	query := sessionSelectSQL() + ` WHERE id = $1`
 
 	var session domain.AdminSession
+
 	err := r.client.Execute(func() error {
 		var scanErr error
+
 		session, scanErr = scanAdminSession(r.client.Pool.QueryRow(ctx, query, id).Scan)
 
 		return scanErr
@@ -443,12 +504,15 @@ func (r *IdentityRepository) GetSessionByID(ctx context.Context, id string) (*do
 	return &session, nil
 }
 
+// GetSessionByRefreshTokenHash returns the admin session with the given refresh token hash.
 func (r *IdentityRepository) GetSessionByRefreshTokenHash(ctx context.Context, hash string) (*domain.AdminSession, error) {
 	query := sessionSelectSQL() + ` WHERE refresh_token_hash = $1`
 
 	var session domain.AdminSession
+
 	err := r.client.Execute(func() error {
 		var scanErr error
+
 		session, scanErr = scanAdminSession(r.client.Pool.QueryRow(ctx, query, hash).Scan)
 
 		return scanErr
@@ -464,6 +528,7 @@ func (r *IdentityRepository) GetSessionByRefreshTokenHash(ctx context.Context, h
 	return &session, nil
 }
 
+// UpdateSessionRefreshHash updates the refresh token hash for a session.
 func (r *IdentityRepository) UpdateSessionRefreshHash(ctx context.Context, id, hash string) error {
 	res, err := r.client.Pool.Exec(ctx, `
 		UPDATE admin_sessions
@@ -473,6 +538,7 @@ func (r *IdentityRepository) UpdateSessionRefreshHash(ctx context.Context, id, h
 	if err != nil {
 		return fmt.Errorf("failed to update admin session hash: %w", err)
 	}
+
 	if res.RowsAffected() == 0 {
 		return ErrIdentityNotFound
 	}
@@ -480,32 +546,25 @@ func (r *IdentityRepository) UpdateSessionRefreshHash(ctx context.Context, id, h
 	return nil
 }
 
+// RevokeSession revokes a single admin session by ID.
 func (r *IdentityRepository) RevokeSession(ctx context.Context, id string) error {
 	return r.revokeSessions(ctx, `id = $1`, id)
 }
 
+// RevokeUserSessions revokes all sessions for a given user.
 func (r *IdentityRepository) RevokeUserSessions(ctx context.Context, userID string) error {
 	return r.revokeSessions(ctx, `user_id = $1`, userID)
 }
 
+// CreateIdentityProvider inserts a new identity provider after validating its config.
 func (r *IdentityRepository) CreateIdentityProvider(ctx context.Context, provider *domain.AdminIdentityProvider) error {
 	err := validateProviderConfig(provider.Config)
 	if err != nil {
 		return err
 	}
-	now := time.Now()
-	if provider.ID == "" {
-		provider.ID = uuid.New().String()
-	}
-	if provider.CreatedAt.IsZero() {
-		provider.CreatedAt = now
-	}
-	if provider.UpdatedAt.IsZero() {
-		provider.UpdatedAt = now
-	}
-	if provider.Scopes == nil {
-		provider.Scopes = []string{"openid", "email", "profile"}
-	}
+
+	prepareIdentityProvider(provider)
+
 	config, err := json.Marshal(provider.Config)
 	if err != nil {
 		return fmt.Errorf("failed to marshal identity provider config: %w", err)
@@ -536,8 +595,11 @@ func (r *IdentityRepository) CreateIdentityProvider(ctx context.Context, provide
 			provider.CreatedAt,
 			provider.UpdatedAt,
 		)
+		if err != nil {
+			return fmt.Errorf("failed to insert identity provider: %w", err)
+		}
 
-		return err
+		return nil
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create identity provider: %w", err)
@@ -546,12 +608,35 @@ func (r *IdentityRepository) CreateIdentityProvider(ctx context.Context, provide
 	return nil
 }
 
+func prepareIdentityProvider(provider *domain.AdminIdentityProvider) {
+	now := time.Now()
+
+	if provider.ID == "" {
+		provider.ID = uuid.New().String()
+	}
+
+	if provider.CreatedAt.IsZero() {
+		provider.CreatedAt = now
+	}
+
+	if provider.UpdatedAt.IsZero() {
+		provider.UpdatedAt = now
+	}
+
+	if provider.Scopes == nil {
+		provider.Scopes = []string{"openid", "email", "profile"}
+	}
+}
+
+// UpdateIdentityProvider modifies an existing identity provider after validating its config.
 func (r *IdentityRepository) UpdateIdentityProvider(ctx context.Context, provider *domain.AdminIdentityProvider) error {
 	err := validateProviderConfig(provider.Config)
 	if err != nil {
 		return err
 	}
+
 	provider.UpdatedAt = time.Now()
+
 	config, err := json.Marshal(provider.Config)
 	if err != nil {
 		return fmt.Errorf("failed to marshal identity provider config: %w", err)
@@ -590,6 +675,7 @@ func (r *IdentityRepository) UpdateIdentityProvider(ctx context.Context, provide
 	if err != nil {
 		return fmt.Errorf("failed to update identity provider: %w", err)
 	}
+
 	if res.RowsAffected() == 0 {
 		return ErrIdentityNotFound
 	}
@@ -597,12 +683,15 @@ func (r *IdentityRepository) UpdateIdentityProvider(ctx context.Context, provide
 	return nil
 }
 
+// GetIdentityProviderByID returns the identity provider with the given ID.
 func (r *IdentityRepository) GetIdentityProviderByID(ctx context.Context, id string) (*domain.AdminIdentityProvider, error) {
 	query := providerSelectSQL() + ` WHERE id = $1`
 
 	var provider domain.AdminIdentityProvider
+
 	err := r.client.Execute(func() error {
 		var scanErr error
+
 		provider, scanErr = scanIdentityProvider(r.client.Pool.QueryRow(ctx, query, id).Scan)
 
 		return scanErr
@@ -618,12 +707,15 @@ func (r *IdentityRepository) GetIdentityProviderByID(ctx context.Context, id str
 	return &provider, nil
 }
 
+// GetIdentityProviderByName returns the identity provider with the given name.
 func (r *IdentityRepository) GetIdentityProviderByName(ctx context.Context, name string) (*domain.AdminIdentityProvider, error) {
 	query := providerSelectSQL() + ` WHERE name = $1`
 
 	var provider domain.AdminIdentityProvider
+
 	err := r.client.Execute(func() error {
 		var scanErr error
+
 		provider, scanErr = scanIdentityProvider(r.client.Pool.QueryRow(ctx, query, name).Scan)
 
 		return scanErr
@@ -639,6 +731,7 @@ func (r *IdentityRepository) GetIdentityProviderByName(ctx context.Context, name
 	return &provider, nil
 }
 
+// ListIdentityProviders returns all identity providers ordered by name.
 func (r *IdentityRepository) ListIdentityProviders(ctx context.Context) ([]domain.AdminIdentityProvider, error) {
 	rows, err := r.client.Pool.Query(ctx, providerSelectSQL()+` ORDER BY name ASC`)
 	if err != nil {
@@ -647,13 +740,16 @@ func (r *IdentityRepository) ListIdentityProviders(ctx context.Context) ([]domai
 	defer rows.Close()
 
 	var providers []domain.AdminIdentityProvider
+
 	for rows.Next() {
 		provider, err := scanIdentityProvider(rows.Scan)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan identity provider: %w", err)
 		}
+
 		providers = append(providers, provider)
 	}
+
 	err = rows.Err()
 	if err != nil {
 		return nil, fmt.Errorf("error iterating identity providers: %w", err)
@@ -662,6 +758,7 @@ func (r *IdentityRepository) ListIdentityProviders(ctx context.Context) ([]domai
 	return providers, nil
 }
 
+// DisableIdentityProvider disables an identity provider by ID.
 func (r *IdentityRepository) DisableIdentityProvider(ctx context.Context, id string) error {
 	res, err := r.client.Pool.Exec(ctx, `
 		UPDATE admin_identity_providers
@@ -671,6 +768,7 @@ func (r *IdentityRepository) DisableIdentityProvider(ctx context.Context, id str
 	if err != nil {
 		return fmt.Errorf("failed to disable identity provider: %w", err)
 	}
+
 	if res.RowsAffected() == 0 {
 		return ErrIdentityNotFound
 	}
@@ -678,10 +776,12 @@ func (r *IdentityRepository) DisableIdentityProvider(ctx context.Context, id str
 	return nil
 }
 
-func (r *IdentityRepository) getUser(ctx context.Context, query string, args ...interface{}) (*domain.AdminUser, error) {
+func (r *IdentityRepository) getUser(ctx context.Context, query string, args ...any) (*domain.AdminUser, error) {
 	var user domain.AdminUser
+
 	err := r.client.Execute(func() error {
 		var scanErr error
+
 		user, scanErr = scanAdminUser(r.client.Pool.QueryRow(ctx, query, args...).Scan)
 
 		return scanErr
@@ -697,11 +797,12 @@ func (r *IdentityRepository) getUser(ctx context.Context, query string, args ...
 	return &user, nil
 }
 
-func (r *IdentityRepository) getRole(ctx context.Context, query string, args ...interface{}) (*domain.AdminRole, error) {
+func (r *IdentityRepository) getRole(ctx context.Context, query string, args ...any) (*domain.AdminRole, error) {
 	roles, err := r.listRoles(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
+
 	if len(roles) == 0 {
 		return nil, nil
 	}
@@ -709,7 +810,7 @@ func (r *IdentityRepository) getRole(ctx context.Context, query string, args ...
 	return &roles[0], nil
 }
 
-func (r *IdentityRepository) listRoles(ctx context.Context, query string, args ...interface{}) ([]domain.AdminRole, error) {
+func (r *IdentityRepository) listRoles(ctx context.Context, query string, args ...any) ([]domain.AdminRole, error) {
 	rows, err := r.client.Pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query admin roles: %w", err)
@@ -717,13 +818,16 @@ func (r *IdentityRepository) listRoles(ctx context.Context, query string, args .
 	defer rows.Close()
 
 	var roles []domain.AdminRole
+
 	for rows.Next() {
 		role, err := scanAdminRole(rows.Scan)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan admin role: %w", err)
 		}
+
 		roles = append(roles, role)
 	}
+
 	err = rows.Err()
 	if err != nil {
 		return nil, fmt.Errorf("error iterating admin roles: %w", err)
@@ -740,6 +844,7 @@ func (r *IdentityRepository) revokeSessions(ctx context.Context, where string, a
 	if err != nil {
 		return fmt.Errorf("failed to revoke admin session: %w", err)
 	}
+
 	if res.RowsAffected() == 0 {
 		return ErrIdentityNotFound
 	}
@@ -784,10 +889,12 @@ func providerSelectSQL() string {
 	`
 }
 
-func scanAdminUser(scan func(dest ...interface{}) error) (domain.AdminUser, error) {
-	var user domain.AdminUser
-	var passwordHash sql.NullString
-	var lastLoginAt sql.NullTime
+func scanAdminUser(scan func(dest ...any) error) (domain.AdminUser, error) {
+	var (
+		user         domain.AdminUser
+		passwordHash sql.NullString
+		lastLoginAt  sql.NullTime
+	)
 
 	err := scan(
 		&user.ID,
@@ -812,9 +919,11 @@ func scanAdminUser(scan func(dest ...interface{}) error) (domain.AdminUser, erro
 	return user, nil
 }
 
-func scanAdminRole(scan func(dest ...interface{}) error) (domain.AdminRole, error) {
-	var role domain.AdminRole
-	var description sql.NullString
+func scanAdminRole(scan func(dest ...any) error) (domain.AdminRole, error) {
+	var (
+		role        domain.AdminRole
+		description sql.NullString
+	)
 
 	err := scan(
 		&role.ID,
@@ -834,11 +943,13 @@ func scanAdminRole(scan func(dest ...interface{}) error) (domain.AdminRole, erro
 	return role, nil
 }
 
-func scanAdminSession(scan func(dest ...interface{}) error) (domain.AdminSession, error) {
-	var session domain.AdminSession
-	var userAgent sql.NullString
-	var ip sql.NullString
-	var revokedAt sql.NullTime
+func scanAdminSession(scan func(dest ...any) error) (domain.AdminSession, error) {
+	var (
+		session   domain.AdminSession
+		userAgent sql.NullString
+		ip        sql.NullString
+		revokedAt sql.NullTime
+	)
 
 	err := scan(
 		&session.ID,
@@ -856,6 +967,7 @@ func scanAdminSession(scan func(dest ...interface{}) error) (domain.AdminSession
 	}
 
 	session.UserAgent = userAgent.String
+
 	session.IP = ip.String
 	if revokedAt.Valid {
 		session.RevokedAt = &revokedAt.Time
@@ -864,15 +976,17 @@ func scanAdminSession(scan func(dest ...interface{}) error) (domain.AdminSession
 	return session, nil
 }
 
-func scanIdentityProvider(scan func(dest ...interface{}) error) (domain.AdminIdentityProvider, error) {
-	var provider domain.AdminIdentityProvider
-	var issuerURL sql.NullString
-	var clientID sql.NullString
-	var clientSecretRef sql.NullString
-	var jwksURL sql.NullString
-	var roleClaim sql.NullString
-	var defaultRoleID sql.NullString
-	var config []byte
+func scanIdentityProvider(scan func(dest ...any) error) (domain.AdminIdentityProvider, error) {
+	var (
+		provider        domain.AdminIdentityProvider
+		issuerURL       sql.NullString
+		clientID        sql.NullString
+		clientSecretRef sql.NullString
+		jwksURL         sql.NullString
+		roleClaim       sql.NullString
+		defaultRoleID   sql.NullString
+		config          []byte
+	)
 
 	err := scan(
 		&provider.ID,
@@ -907,6 +1021,7 @@ func scanIdentityProvider(scan func(dest ...interface{}) error) (domain.AdminIde
 			return domain.AdminIdentityProvider{}, fmt.Errorf("failed to unmarshal identity provider config: %w", err)
 		}
 	}
+
 	if provider.Config == nil {
 		provider.Config = domain.ConfigMap{}
 	}
@@ -934,7 +1049,7 @@ func replaceRolePermissions(ctx context.Context, tx pgx.Tx, roleID string, permi
 	return nil
 }
 
-func nilString(value string) interface{} {
+func nilString(value string) any {
 	if value == "" {
 		return nil
 	}
@@ -947,6 +1062,7 @@ func validateProviderConfig(config domain.ConfigMap) error {
 		if strings.Contains(strings.ToLower(key), "secret") {
 			return ErrPlaintextProviderSecret
 		}
+
 		err := validateValue(value)
 		if err != nil {
 			return err
@@ -956,15 +1072,15 @@ func validateProviderConfig(config domain.ConfigMap) error {
 	return nil
 }
 
-func validateValue(value interface{}) error {
+func validateValue(value any) error {
 	switch v := value.(type) {
-	case map[string]interface{}:
+	case map[string]any:
 		return validateProviderConfig(domain.ConfigMap(v))
 	case domain.ConfigMap:
 		return validateProviderConfig(v)
-	case []interface{}:
+	case []any:
 		for _, item := range v {
-			if nested, ok := item.(map[string]interface{}); ok {
+			if nested, ok := item.(map[string]any); ok {
 				err := validateProviderConfig(domain.ConfigMap(nested))
 				if err != nil {
 					return err

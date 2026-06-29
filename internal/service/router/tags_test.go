@@ -6,8 +6,18 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/beremaran/straw/internal/domain"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/beremaran/straw/internal/domain"
+)
+
+const (
+	testTagsTarget = "target"
+	testTagsType   = "type"
+	testTagsAmazon = "amazon"
+	testTagsSearch = "search"
+	testTagsRegion = "region"
 )
 
 func TestParseTags(t *testing.T) {
@@ -16,7 +26,7 @@ func TestParseTags(t *testing.T) {
 	tests := []struct {
 		name          string
 		headers       map[string]string
-		apiKey        *domain.ApiKey
+		apiKey        *domain.APIKey
 		expectedTags  []domain.Tag
 		expectedWarns int
 		expectError   bool
@@ -27,8 +37,8 @@ func TestParseTags(t *testing.T) {
 				HeaderRelayTags: "target:amazon, type:search",
 			},
 			expectedTags: []domain.Tag{
-				{Key: "target", Value: "amazon"},
-				{Key: "type", Value: "search"},
+				{Key: "target", Value: testTagsAmazon},
+				{Key: "type", Value: testTagsSearch},
 			},
 		},
 		{
@@ -37,7 +47,7 @@ func TestParseTags(t *testing.T) {
 				HeaderRelayTags: "target=google,  capability: stealth ",
 			},
 			expectedTags: []domain.Tag{
-				{Key: "target", Value: "google"},
+				{Key: testTagsTarget, Value: "google"},
 				{Key: "capability", Value: "stealth"},
 			},
 		},
@@ -49,9 +59,9 @@ func TestParseTags(t *testing.T) {
 				HeaderLegacyCountry:  "us",
 			},
 			expectedTags: []domain.Tag{
-				{Key: "target", Value: "amazon"},
-				{Key: "type", Value: "search"},
-				{Key: "region", Value: "us"},
+				{Key: "target", Value: testTagsAmazon},
+				{Key: "type", Value: testTagsSearch},
+				{Key: testTagsRegion, Value: "us"},
 			},
 			expectedWarns: 3,
 		},
@@ -59,17 +69,17 @@ func TestParseTags(t *testing.T) {
 			name: "Mixed Sources (Legacy + Modern)",
 			headers: map[string]string{
 				HeaderRelayTags:      "capability:fast",
-				HeaderLegacyRetailer: "amazon",
+				HeaderLegacyRetailer: testTagsAmazon,
 			},
 			expectedTags: []domain.Tag{
 				{Key: "capability", Value: "fast"},
-				{Key: "target", Value: "amazon"},
+				{Key: testTagsTarget, Value: testTagsAmazon},
 			},
 			expectedWarns: 1,
 		},
 		{
 			name: "API Key Scopes",
-			apiKey: &domain.ApiKey{
+			apiKey: &domain.APIKey{
 				Scopes: []string{"customer:vip", "tier:gold"},
 			},
 			expectedTags: []domain.Tag{
@@ -83,13 +93,13 @@ func TestParseTags(t *testing.T) {
 				HeaderRelayTags:     "target:amazon, type:search",
 				HeaderLegacyCountry: "us",
 			},
-			apiKey: &domain.ApiKey{
-				Scopes: []string{"customer:vip", "target:amazon"},
+			apiKey: &domain.APIKey{
+				Scopes: []string{"customer:vip", "target:" + testTagsAmazon},
 			},
 			expectedTags: []domain.Tag{
-				{Key: "target", Value: "amazon"},
-				{Key: "type", Value: "search"},
-				{Key: "region", Value: "us"},
+				{Key: testTagsTarget, Value: testTagsAmazon},
+				{Key: testTagsType, Value: testTagsSearch},
+				{Key: testTagsRegion, Value: "us"},
 				{Key: "customer", Value: "vip"},
 			},
 			expectedWarns: 1,
@@ -103,7 +113,7 @@ func TestParseTags(t *testing.T) {
 		},
 		{
 			name: "Invalid API Key Scopes",
-			apiKey: &domain.ApiKey{
+			apiKey: &domain.APIKey{
 				Scopes: []string{"invalid-scope-format"},
 			},
 			expectError: true,
@@ -133,12 +143,12 @@ func TestParseTags(t *testing.T) {
 
 			result, err := parser.ParseTags(req, tt.apiKey)
 			if tt.expectError {
-				assert.Error(t, err)
+				require.Error(t, err)
 
 				return
 			}
 
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Len(t, result.Warnings, tt.expectedWarns)
 
 			assert.ElementsMatch(t, tt.expectedTags, result.Tags)

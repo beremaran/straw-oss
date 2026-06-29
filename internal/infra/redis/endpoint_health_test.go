@@ -19,7 +19,7 @@ func TestEndpointHealthStore_UpdateAndGetHealth(t *testing.T) {
 	health := &EndpointHealth{
 		EndpointID:  "test-endpoint-1",
 		State:       HealthStateHealthy,
-		Tags:        []string{"type:residential", "region:us"},
+		Tags:        []string{tagTypeResidential, tagRegionUS},
 		Version:     "1.0.0",
 		ActiveTasks: 5,
 		LastSeen:    time.Now(),
@@ -71,27 +71,27 @@ func TestEndpointHealthStore_ListHealthyByTags(t *testing.T) {
 
 	endpoints := []*EndpointHealth{
 		{
-			EndpointID: "ep-1",
-			State:      HealthStateHealthy,
-			Tags:       []string{"type:residential", "region:us"},
-			LastSeen:   time.Now(),
-		},
-		{
 			EndpointID: "ep-2",
 			State:      HealthStateHealthy,
-			Tags:       []string{"type:residential", "region:eu"},
+			Tags:       []string{tagTypeResidential, "region:eu"},
 			LastSeen:   time.Now(),
 		},
 		{
-			EndpointID: "ep-3",
+			EndpointID: testEp2,
+			State:      HealthStateHealthy,
+			Tags:       []string{tagTypeResidential, "region:eu"},
+			LastSeen:   time.Now(),
+		},
+		{
+			EndpointID: testEp2,
 			State:      HealthStateUnhealthy,
-			Tags:       []string{"type:residential", "region:us"},
+			Tags:       []string{tagTypeResidential, tagRegionUS},
 			LastSeen:   time.Now(),
 		},
 		{
 			EndpointID: "ep-4",
 			State:      HealthStateSuspect,
-			Tags:       []string{"type:datacenter", "region:us"},
+			Tags:       []string{"type:datacenter", tagRegionUS},
 			LastSeen:   time.Now(),
 		},
 	}
@@ -110,17 +110,17 @@ func TestEndpointHealthStore_ListHealthyByTags(t *testing.T) {
 	}{
 		{
 			name:     "filter by type:residential",
-			tags:     []string{"type:residential"},
+			tags:     []string{tagTypeResidential},
 			expected: 2,
 		},
 		{
 			name:     "filter by region:us",
-			tags:     []string{"region:us"},
+			tags:     []string{tagRegionUS},
 			expected: 2,
 		},
 		{
 			name:     "filter by residential AND us",
-			tags:     []string{"type:residential", "region:us"},
+			tags:     []string{tagTypeResidential, tagRegionUS},
 			expected: 1,
 		},
 		{
@@ -157,7 +157,7 @@ func TestEndpointHealthStore_ListAllEndpoints(t *testing.T) {
 
 	endpoints := []*EndpointHealth{
 		{EndpointID: "ep-1", State: HealthStateHealthy, LastSeen: time.Now()},
-		{EndpointID: "ep-2", State: HealthStateUnhealthy, LastSeen: time.Now()},
+		{EndpointID: testEp2, State: HealthStateUnhealthy, LastSeen: time.Now()},
 		{EndpointID: "ep-3", State: HealthStateSuspect, LastSeen: time.Now()},
 	}
 

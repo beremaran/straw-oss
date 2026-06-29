@@ -6,8 +6,12 @@ import (
 	"net"
 	"net/http"
 	"testing"
+	"time"
 
 	fhttp "github.com/bogdanfinn/fhttp"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -16,8 +20,6 @@ import (
 
 	"github.com/beremaran/straw/internal/endpoint/fingerprint"
 	"github.com/beremaran/straw/pkg/protocol"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 )
 
 type MockTransportProvider struct {
@@ -64,7 +66,7 @@ func TestClient_Do_Tracing(t *testing.T) {
 	registry := fingerprint.DefaultRegistry()
 
 	server := http.NewServeMux()
-	server.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	server.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
@@ -76,10 +78,16 @@ func TestClient_Do_Tracing(t *testing.T) {
 	}
 	defer func() { _ = l.Close() }()
 
-	go func() { _ = http.Serve(l, server) }()
+	go func() {
+		srv := &http.Server{
+			Handler:           server,
+			ReadHeaderTimeout: 10 * time.Second,
+		}
+		_ = srv.Serve(l)
+	}()
 
 	transport := &fhttp.Transport{
-		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+		DialContext: func(ctx context.Context, _ string, _ string) (net.Conn, error) {
 			dialer := &net.Dialer{}
 
 			return dialer.DialContext(ctx, "tcp", l.Addr().String())
@@ -93,7 +101,7 @@ func TestClient_Do_Tracing(t *testing.T) {
 
 	req := &protocol.Request{
 		ID:          "req-1",
-		Method:      "GET",
+		Method:      getMethod,
 		URL:         "http://example.com/foo",
 		Fingerprint: "chrome-133",
 	}
@@ -102,7 +110,7 @@ func TestClient_Do_Tracing(t *testing.T) {
 
 	resp, err := client.Do(ctx, req)
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, resp)
 	assert.Equal(t, 200, resp.StatusCode)
 
@@ -114,7 +122,7 @@ func TestClient_Do_Tracing(t *testing.T) {
 	assert.Equal(t, "internal/endpoint/http", span.InstrumentationScope.Name)
 
 	attrs := span.Attributes
-	attrMap := make(map[string]interface{})
+	attrMap := make(map[string]any)
 	for _, a := range attrs {
 		attrMap[string(a.Key)] = a.Value.AsInterface()
 	}
@@ -142,8 +150,8 @@ func TestClient_Do_Tracing_Error(t *testing.T) {
 	registry := fingerprint.DefaultRegistry()
 
 	transport := &fhttp.Transport{
-		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			return nil, errors.New("connection refused")
+		DialContext: func(_ context.Context, _ string, addr string) (net.Conn, error) {
+			return nil, errors.New("connection refused: " + addr)
 		},
 	}
 
@@ -154,14 +162,14 @@ func TestClient_Do_Tracing_Error(t *testing.T) {
 
 	req := &protocol.Request{
 		ID:          "req-2",
-		Method:      "GET",
+		Method:      getMethod,
 		URL:         "http://example.com/error",
 		Fingerprint: "chrome-133",
 	}
 
 	resp, err := client.Do(context.Background(), req)
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, resp)
 	assert.NotNil(t, resp.Error)
 	assert.Equal(t, protocol.ErrCodeUpstreamError, resp.Error.Code)

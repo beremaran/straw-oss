@@ -5,30 +5,38 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
-	"github.com/beremaran/straw/internal/domain"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/beremaran/straw/internal/domain"
 )
 
 var (
+	// ErrEndpointNotFound is returned when an endpoint is not found.
 	ErrEndpointNotFound = errors.New("endpoint not found")
-	ErrCommandNotFound  = errors.New("command not found")
+	// ErrCommandNotFound is returned when a command is not found.
+	ErrCommandNotFound = errors.New("command not found")
 )
 
-type PostgresEndpointRepository struct {
+// EndpointRepository persists and retrieves endpoints.
+type EndpointRepository struct {
 	client *Client
 }
 
-func NewPostgresEndpointRepository(client *Client) *PostgresEndpointRepository {
-	return &PostgresEndpointRepository{client: client}
+// NewEndpointRepository creates a new EndpointRepository backed by the given client.
+func NewEndpointRepository(client *Client) *EndpointRepository {
+	return &EndpointRepository{client: client}
 }
 
-func (r *PostgresEndpointRepository) Create(ctx context.Context, ep *domain.Endpoint) error {
+// Create inserts a new endpoint.
+func (r *EndpointRepository) Create(ctx context.Context, ep *domain.Endpoint) error {
 	tagsJSON, err := json.Marshal(ep.Tags)
 	if err != nil {
 		return fmt.Errorf("failed to marshal tags: %w", err)
 	}
+
 	metadataJSON, err := json.Marshal(ep.Metadata)
 	if err != nil {
 		return fmt.Errorf("failed to marshal metadata: %w", err)
@@ -54,10 +62,12 @@ func (r *PostgresEndpointRepository) Create(ctx context.Context, ep *domain.Endp
 			ep.CreatedAt,
 			ep.UpdatedAt,
 		)
+		if err != nil {
+			return fmt.Errorf("failed to insert endpoint: %w", err)
+		}
 
-		return err
+		return nil
 	})
-
 	if err != nil {
 		return fmt.Errorf("failed to create endpoint: %w", err)
 	}
@@ -65,7 +75,8 @@ func (r *PostgresEndpointRepository) Create(ctx context.Context, ep *domain.Endp
 	return nil
 }
 
-func (r *PostgresEndpointRepository) GetByID(ctx context.Context, id string) (*domain.Endpoint, error) {
+// GetByID returns the endpoint with the given ID.
+func (r *EndpointRepository) GetByID(ctx context.Context, id string) (*domain.Endpoint, error) {
 	query := `
 		SELECT id, tags, last_heartbeat, is_healthy, metadata,
 		       desired_state, is_registered, deleted_at, created_at, updated_at
@@ -73,10 +84,12 @@ func (r *PostgresEndpointRepository) GetByID(ctx context.Context, id string) (*d
 		WHERE id = $1
 	`
 
-	var ep domain.Endpoint
-	var tagsJSON []byte
-	var metadataJSON []byte
-	var desiredStateStr string
+	var (
+		ep              domain.Endpoint
+		tagsJSON        []byte
+		metadataJSON    []byte
+		desiredStateStr string
+	)
 
 	err := r.client.Execute(func() error {
 		return r.client.Pool.QueryRow(ctx, query, id).Scan(
@@ -92,7 +105,6 @@ func (r *PostgresEndpointRepository) GetByID(ctx context.Context, id string) (*d
 			&ep.UpdatedAt,
 		)
 	})
-
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
@@ -110,20 +122,24 @@ func (r *PostgresEndpointRepository) GetByID(ctx context.Context, id string) (*d
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal metadata: %w", err)
 	}
+
 	ep.DesiredState = domain.DesiredState(desiredStateStr)
 
 	return &ep, nil
 }
 
-func (r *PostgresEndpointRepository) Update(ctx context.Context, ep *domain.Endpoint) error {
+// Update modifies an existing endpoint.
+func (r *EndpointRepository) Update(ctx context.Context, ep *domain.Endpoint) error {
 	tagsJSON, err := json.Marshal(ep.Tags)
 	if err != nil {
 		return fmt.Errorf("failed to marshal tags: %w", err)
 	}
+
 	metadataJSON, err := json.Marshal(ep.Metadata)
 	if err != nil {
 		return fmt.Errorf("failed to marshal metadata: %w", err)
 	}
+
 	ep.UpdatedAt = time.Now().UTC()
 
 	query := `
@@ -140,6 +156,7 @@ func (r *PostgresEndpointRepository) Update(ctx context.Context, ep *domain.Endp
 	`
 
 	var rows int64
+
 	err = r.client.Execute(func() error {
 		res, err := r.client.Pool.Exec(ctx, query,
 			ep.ID,
@@ -153,16 +170,17 @@ func (r *PostgresEndpointRepository) Update(ctx context.Context, ep *domain.Endp
 			ep.UpdatedAt,
 		)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to execute update: %w", err)
 		}
+
 		rows = res.RowsAffected()
 
 		return nil
 	})
-
 	if err != nil {
 		return fmt.Errorf("failed to update endpoint: %w", err)
 	}
+
 	if rows == 0 {
 		return ErrEndpointNotFound
 	}
@@ -170,7 +188,8 @@ func (r *PostgresEndpointRepository) Update(ctx context.Context, ep *domain.Endp
 	return nil
 }
 
-func (r *PostgresEndpointRepository) Delete(ctx context.Context, id string) error {
+// Delete soft-deletes an endpoint.
+func (r *EndpointRepository) Delete(ctx context.Context, id string) error {
 	now := time.Now().UTC()
 	query := `
 		UPDATE endpoints
@@ -182,19 +201,21 @@ func (r *PostgresEndpointRepository) Delete(ctx context.Context, id string) erro
 	`
 
 	var rows int64
+
 	err := r.client.Execute(func() error {
 		res, err := r.client.Pool.Exec(ctx, query, id, now, string(domain.DesiredStateDeleted), now)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to execute delete: %w", err)
 		}
+
 		rows = res.RowsAffected()
 
 		return nil
 	})
-
 	if err != nil {
 		return fmt.Errorf("failed to delete endpoint: %w", err)
 	}
+
 	if rows == 0 {
 		return ErrEndpointNotFound
 	}
@@ -202,10 +223,13 @@ func (r *PostgresEndpointRepository) Delete(ctx context.Context, id string) erro
 	return nil
 }
 
-func (r *PostgresEndpointRepository) List(ctx context.Context, limit, offset int, includeDeleted bool) ([]domain.Endpoint, int, error) {
-	var total int
-	var countQuery string
-	var query string
+// List returns a paginated list of endpoints.
+func (r *EndpointRepository) List(ctx context.Context, limit, offset int, includeDeleted bool) ([]domain.Endpoint, int, error) {
+	var (
+		total      int
+		countQuery string
+		query      string
+	)
 
 	if includeDeleted {
 		countQuery = `SELECT COUNT(*) FROM endpoints`
@@ -254,11 +278,14 @@ func (r *PostgresEndpointRepository) List(ctx context.Context, limit, offset int
 
 func scanEndpoints(rows pgx.Rows) ([]domain.Endpoint, error) {
 	var endpoints []domain.Endpoint
+
 	for rows.Next() {
-		var ep domain.Endpoint
-		var tagsJSON []byte
-		var metadataJSON []byte
-		var desiredStateStr string
+		var (
+			ep              domain.Endpoint
+			tagsJSON        []byte
+			metadataJSON    []byte
+			desiredStateStr string
+		)
 
 		err := rows.Scan(
 			&ep.ID,
@@ -285,6 +312,7 @@ func scanEndpoints(rows pgx.Rows) ([]domain.Endpoint, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to unmarshal metadata: %w", err)
 		}
+
 		ep.DesiredState = domain.DesiredState(desiredStateStr)
 
 		endpoints = append(endpoints, ep)
@@ -293,15 +321,18 @@ func scanEndpoints(rows pgx.Rows) ([]domain.Endpoint, error) {
 	return endpoints, nil
 }
 
-type PostgresEndpointCommandRepository struct {
+// EndpointCommandRepository persists and retrieves endpoint commands.
+type EndpointCommandRepository struct {
 	client *Client
 }
 
-func NewPostgresEndpointCommandRepository(client *Client) *PostgresEndpointCommandRepository {
-	return &PostgresEndpointCommandRepository{client: client}
+// NewEndpointCommandRepository creates a new EndpointCommandRepository backed by the given client.
+func NewEndpointCommandRepository(client *Client) *EndpointCommandRepository {
+	return &EndpointCommandRepository{client: client}
 }
 
-func (r *PostgresEndpointCommandRepository) Create(ctx context.Context, cmd *domain.EndpointCommand) error {
+// Create inserts a new endpoint command.
+func (r *EndpointCommandRepository) Create(ctx context.Context, cmd *domain.EndpointCommand) error {
 	payloadJSON, err := json.Marshal(cmd.Payload)
 	if err != nil {
 		return fmt.Errorf("failed to marshal payload: %w", err)
@@ -327,10 +358,12 @@ func (r *PostgresEndpointCommandRepository) Create(ctx context.Context, cmd *dom
 			cmd.CompletedAt,
 			cmd.Error,
 		)
+		if err != nil {
+			return fmt.Errorf("failed to insert command: %w", err)
+		}
 
-		return err
+		return nil
 	})
-
 	if err != nil {
 		return fmt.Errorf("failed to create command: %w", err)
 	}
@@ -338,7 +371,8 @@ func (r *PostgresEndpointCommandRepository) Create(ctx context.Context, cmd *dom
 	return nil
 }
 
-func (r *PostgresEndpointCommandRepository) GetByID(ctx context.Context, id string) (*domain.EndpointCommand, error) {
+// GetByID returns the endpoint command with the given ID.
+func (r *EndpointCommandRepository) GetByID(ctx context.Context, id string) (*domain.EndpointCommand, error) {
 	query := `
 		SELECT id, endpoint_id, command, status, payload, requested_by,
 		       requested_at, accepted_at, completed_at, error
@@ -346,9 +380,11 @@ func (r *PostgresEndpointCommandRepository) GetByID(ctx context.Context, id stri
 		WHERE id = $1
 	`
 
-	var cmd domain.EndpointCommand
-	var statusStr string
-	var payloadJSON []byte
+	var (
+		cmd         domain.EndpointCommand
+		statusStr   string
+		payloadJSON []byte
+	)
 
 	err := r.client.Execute(func() error {
 		return r.client.Pool.QueryRow(ctx, query, id).Scan(
@@ -364,7 +400,6 @@ func (r *PostgresEndpointCommandRepository) GetByID(ctx context.Context, id stri
 			&cmd.Error,
 		)
 	})
-
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
@@ -377,12 +412,14 @@ func (r *PostgresEndpointCommandRepository) GetByID(ctx context.Context, id stri
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal payload: %w", err)
 	}
+
 	cmd.Status = domain.CommandStatus(statusStr)
 
 	return &cmd, nil
 }
 
-func (r *PostgresEndpointCommandRepository) Update(ctx context.Context, cmd *domain.EndpointCommand) error {
+// Update modifies an existing endpoint command.
+func (r *EndpointCommandRepository) Update(ctx context.Context, cmd *domain.EndpointCommand) error {
 	payloadJSON, err := json.Marshal(cmd.Payload)
 	if err != nil {
 		return fmt.Errorf("failed to marshal payload: %w", err)
@@ -399,6 +436,7 @@ func (r *PostgresEndpointCommandRepository) Update(ctx context.Context, cmd *dom
 	`
 
 	var rows int64
+
 	err = r.client.Execute(func() error {
 		res, err := r.client.Pool.Exec(ctx, query,
 			cmd.ID,
@@ -409,16 +447,17 @@ func (r *PostgresEndpointCommandRepository) Update(ctx context.Context, cmd *dom
 			cmd.Error,
 		)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to execute update: %w", err)
 		}
+
 		rows = res.RowsAffected()
 
 		return nil
 	})
-
 	if err != nil {
 		return fmt.Errorf("failed to update command: %w", err)
 	}
+
 	if rows == 0 {
 		return ErrCommandNotFound
 	}
@@ -426,9 +465,12 @@ func (r *PostgresEndpointCommandRepository) Update(ctx context.Context, cmd *dom
 	return nil
 }
 
-func (r *PostgresEndpointCommandRepository) ListByEndpointID(ctx context.Context, endpointID string, limit, offset int) ([]domain.EndpointCommand, int, error) {
+// ListByEndpointID returns a paginated list of commands for the given endpoint.
+func (r *EndpointCommandRepository) ListByEndpointID(ctx context.Context, endpointID string, limit, offset int) ([]domain.EndpointCommand, int, error) {
 	var total int
+
 	countQuery := `SELECT COUNT(*) FROM endpoint_commands WHERE endpoint_id = $1`
+
 	err := r.client.Pool.QueryRow(ctx, countQuery, endpointID).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to count commands: %w", err)
@@ -449,64 +491,25 @@ func (r *PostgresEndpointCommandRepository) ListByEndpointID(ctx context.Context
 	}
 	defer rows.Close()
 
-	var commands []domain.EndpointCommand
-	for rows.Next() {
-		var cmd domain.EndpointCommand
-		var statusStr string
-		var payloadJSON []byte
-
-		err = rows.Scan(
-			&cmd.ID,
-			&cmd.EndpointID,
-			&cmd.Command,
-			&statusStr,
-			&payloadJSON,
-			&cmd.RequestedBy,
-			&cmd.RequestedAt,
-			&cmd.AcceptedAt,
-			&cmd.CompletedAt,
-			&cmd.Error,
-		)
-		if err != nil {
-			return nil, 0, fmt.Errorf("failed to scan command: %w", err)
-		}
-
-		err = json.Unmarshal(payloadJSON, &cmd.Payload)
-		if err != nil {
-			return nil, 0, fmt.Errorf("failed to unmarshal payload: %w", err)
-		}
-		cmd.Status = domain.CommandStatus(statusStr)
-
-		commands = append(commands, cmd)
-	}
-
-	err = rows.Err()
+	commands, err := scanEndpointCommands(rows)
 	if err != nil {
-		return nil, 0, fmt.Errorf("rows iteration error: %w", err)
+		return nil, 0, err
 	}
 
 	return commands, total, nil
 }
 
-func (r *PostgresEndpointCommandRepository) ListPending(ctx context.Context, before time.Time) ([]domain.EndpointCommand, error) {
-	query := `
-		SELECT id, endpoint_id, command, status, payload, requested_by,
-		       requested_at, accepted_at, completed_at, error
-		FROM endpoint_commands
-		WHERE status IN ('accepted', 'acknowledged', 'running') AND requested_at < $1
-	`
-
-	rows, err := r.client.Pool.Query(ctx, query, before)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query pending commands: %w", err)
-	}
-	defer rows.Close()
-
+func scanEndpointCommands(rows pgx.Rows) ([]domain.EndpointCommand, error) {
 	var commands []domain.EndpointCommand
+
+	var err error
+
 	for rows.Next() {
-		var cmd domain.EndpointCommand
-		var statusStr string
-		var payloadJSON []byte
+		var (
+			cmd         domain.EndpointCommand
+			statusStr   string
+			payloadJSON []byte
+		)
 
 		err = rows.Scan(
 			&cmd.ID,
@@ -528,6 +531,64 @@ func (r *PostgresEndpointCommandRepository) ListPending(ctx context.Context, bef
 		if err != nil {
 			return nil, fmt.Errorf("failed to unmarshal payload: %w", err)
 		}
+
+		cmd.Status = domain.CommandStatus(statusStr)
+		commands = append(commands, cmd)
+	}
+
+	err = rows.Err()
+	if err != nil {
+		return nil, fmt.Errorf("rows iteration error: %w", err)
+	}
+
+	return commands, nil
+}
+
+// ListPending returns commands that are accepted, acknowledged, or running and were requested before the given time.
+func (r *EndpointCommandRepository) ListPending(ctx context.Context, before time.Time) ([]domain.EndpointCommand, error) {
+	query := `
+		SELECT id, endpoint_id, command, status, payload, requested_by,
+		       requested_at, accepted_at, completed_at, error
+		FROM endpoint_commands
+		WHERE status IN ('accepted', 'acknowledged', 'running') AND requested_at < $1
+	`
+
+	rows, err := r.client.Pool.Query(ctx, query, before)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query pending commands: %w", err)
+	}
+	defer rows.Close()
+
+	var commands []domain.EndpointCommand
+
+	for rows.Next() {
+		var (
+			cmd         domain.EndpointCommand
+			statusStr   string
+			payloadJSON []byte
+		)
+
+		err = rows.Scan(
+			&cmd.ID,
+			&cmd.EndpointID,
+			&cmd.Command,
+			&statusStr,
+			&payloadJSON,
+			&cmd.RequestedBy,
+			&cmd.RequestedAt,
+			&cmd.AcceptedAt,
+			&cmd.CompletedAt,
+			&cmd.Error,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan command: %w", err)
+		}
+
+		err = json.Unmarshal(payloadJSON, &cmd.Payload)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal payload: %w", err)
+		}
+
 		cmd.Status = domain.CommandStatus(statusStr)
 
 		commands = append(commands, cmd)
@@ -541,15 +602,18 @@ func (r *PostgresEndpointCommandRepository) ListPending(ctx context.Context, bef
 	return commands, nil
 }
 
-type PostgresEndpointLogRepository struct {
+// EndpointLogRepository persists and retrieves endpoint log entries.
+type EndpointLogRepository struct {
 	client *Client
 }
 
-func NewPostgresEndpointLogRepository(client *Client) *PostgresEndpointLogRepository {
-	return &PostgresEndpointLogRepository{client: client}
+// NewEndpointLogRepository creates a new EndpointLogRepository backed by the given client.
+func NewEndpointLogRepository(client *Client) *EndpointLogRepository {
+	return &EndpointLogRepository{client: client}
 }
 
-func (r *PostgresEndpointLogRepository) Create(ctx context.Context, entry *domain.EndpointLogEntry) error {
+// Create inserts a new log entry.
+func (r *EndpointLogRepository) Create(ctx context.Context, entry *domain.EndpointLogEntry) error {
 	attrsJSON, err := json.Marshal(entry.Attrs)
 	if err != nil {
 		return fmt.Errorf("failed to marshal attrs: %w", err)
@@ -573,7 +637,6 @@ func (r *PostgresEndpointLogRepository) Create(ctx context.Context, entry *domai
 			entry.RequestID,
 		).Scan(&entry.ID)
 	})
-
 	if err != nil {
 		return fmt.Errorf("failed to create log entry: %w", err)
 	}
@@ -581,10 +644,13 @@ func (r *PostgresEndpointLogRepository) Create(ctx context.Context, entry *domai
 	return nil
 }
 
-func (r *PostgresEndpointLogRepository) ListByEndpointID(ctx context.Context, endpointID string, beforeID int64, limit int) ([]domain.EndpointLogEntry, error) {
-	var query string
-	var rows pgx.Rows
-	var err error
+// ListByEndpointID returns log entries for the given endpoint, optionally before a given ID.
+func (r *EndpointLogRepository) ListByEndpointID(ctx context.Context, endpointID string, beforeID int64, limit int) ([]domain.EndpointLogEntry, error) {
+	var (
+		query string
+		rows  pgx.Rows
+		err   error
+	)
 
 	if beforeID > 0 {
 		query = `
@@ -609,6 +675,7 @@ func (r *PostgresEndpointLogRepository) ListByEndpointID(ctx context.Context, en
 	if err != nil {
 		return nil, fmt.Errorf("failed to query log entries: %w", err)
 	}
+
 	defer rows.Close()
 
 	entries, err := scanLogEntries(rows)
@@ -626,9 +693,12 @@ func (r *PostgresEndpointLogRepository) ListByEndpointID(ctx context.Context, en
 
 func scanLogEntries(rows pgx.Rows) ([]domain.EndpointLogEntry, error) {
 	var entries []domain.EndpointLogEntry
+
 	for rows.Next() {
-		var entry domain.EndpointLogEntry
-		var attrsJSON []byte
+		var (
+			entry     domain.EndpointLogEntry
+			attrsJSON []byte
+		)
 
 		err := rows.Scan(
 			&entry.ID,
@@ -655,7 +725,30 @@ func scanLogEntries(rows pgx.Rows) ([]domain.EndpointLogEntry, error) {
 	return entries, nil
 }
 
-func (r *PostgresEndpointLogRepository) Query(ctx context.Context, endpointID string, f domain.LogFilter) ([]domain.EndpointLogEntry, error) {
+// Query returns log entries for the given endpoint filtered by the provided LogFilter.
+func (r *EndpointLogRepository) Query(ctx context.Context, endpointID string, f domain.LogFilter) ([]domain.EndpointLogEntry, error) {
+	query, args := buildLogQuery(endpointID, f)
+
+	rows, err := r.client.Pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query logs: %w", err)
+	}
+	defer rows.Close()
+
+	entries, err := scanLogEntries(rows)
+	if err != nil {
+		return nil, err
+	}
+
+	err = rows.Err()
+	if err != nil {
+		return nil, fmt.Errorf("rows iteration error: %w", err)
+	}
+
+	return entries, nil
+}
+
+func buildLogQuery(endpointID string, f domain.LogFilter) (string, []any) {
 	query := `
 		SELECT id, endpoint_id, observed_at, level, message, attrs, trace_id, request_id
 		FROM endpoint_log_entries
@@ -677,43 +770,22 @@ func (r *PostgresEndpointLogRepository) Query(ctx context.Context, endpointID st
 		{"id < $%d", f.Cursor, f.Cursor > 0},
 	}
 
+	var sb strings.Builder
+
 	for _, p := range params {
 		if p.active {
-			query += " AND " + fmt.Sprintf(p.cond, placeholderIndex)
+			sb.WriteString(" AND " + fmt.Sprintf(p.cond, placeholderIndex))
 			args = append(args, p.val)
 			placeholderIndex++
 		}
 	}
 
+	query += sb.String()
 	query += fmt.Sprintf(" ORDER BY observed_at DESC, id DESC LIMIT $%d", placeholderIndex)
+
 	args = append(args, sanitizeLimit(f.Limit))
 
-	var rows pgx.Rows
-	var qErr error
-	err := r.client.Execute(func() error {
-		rows, qErr = r.client.Pool.Query(ctx, query, args...)
-
-		return qErr
-	})
-	if err == nil {
-		err = qErr
-	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to query logs: %w", err)
-	}
-	defer rows.Close()
-
-	entries, err := scanLogEntries(rows)
-	if err != nil {
-		return nil, err
-	}
-
-	err = rows.Err()
-	if err != nil {
-		return nil, fmt.Errorf("rows iteration error: %w", err)
-	}
-
-	return entries, nil
+	return query, args
 }
 
 func timeOrZero(t *time.Time) time.Time {
@@ -724,31 +796,44 @@ func timeOrZero(t *time.Time) time.Time {
 	return *t
 }
 
+const maxLogQueryLimit = 500
+
 func sanitizeLimit(l int) int {
-	if l <= 0 || l > 500 {
-		return 500
+	if l <= 0 || l > maxLogQueryLimit {
+		return maxLogQueryLimit
 	}
 
 	return l
 }
 
-func (r *PostgresEndpointLogRepository) Cleanup(ctx context.Context, maxAge time.Duration, maxSizeBytes int64) error {
+// Cleanup removes log entries older than maxAge and trims the table to within maxSizeBytes.
+func (r *EndpointLogRepository) Cleanup(ctx context.Context, maxAge time.Duration, maxSizeBytes int64) error {
 	cutoff := time.Now().UTC().Add(-maxAge)
 	deleteAgeQuery := `DELETE FROM endpoint_log_entries WHERE observed_at < $1`
+
 	err := r.client.Execute(func() error {
 		_, err := r.client.Pool.Exec(ctx, deleteAgeQuery, cutoff)
+		if err != nil {
+			return fmt.Errorf("failed to delete by age: %w", err)
+		}
 
-		return err
+		return nil
 	})
 	if err != nil {
 		return fmt.Errorf("failed to delete log entries by age: %w", err)
 	}
 
+	return trimLogTableBySize(ctx, r.client, maxSizeBytes)
+}
+
+func trimLogTableBySize(ctx context.Context, c *Client, maxSizeBytes int64) error {
 	for {
 		var size int64
+
 		sizeQuery := `SELECT COALESCE(pg_total_relation_size('endpoint_log_entries'), 0)`
-		err = r.client.Execute(func() error {
-			return r.client.Pool.QueryRow(ctx, sizeQuery).Scan(&size)
+
+		err := c.Execute(func() error {
+			return c.Pool.QueryRow(ctx, sizeQuery).Scan(&size)
 		})
 		if err != nil {
 			return fmt.Errorf("failed to check log table size: %w", err)
@@ -766,12 +851,15 @@ func (r *PostgresEndpointLogRepository) Cleanup(ctx context.Context, maxAge time
 				LIMIT 10000
 			)
 		`
+
 		var chunkDeleted int64
-		err = r.client.Execute(func() error {
-			res, err := r.client.Pool.Exec(ctx, deleteSizeQuery)
+
+		err = c.Execute(func() error {
+			res, err := c.Pool.Exec(ctx, deleteSizeQuery)
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to delete chunk: %w", err)
 			}
+
 			chunkDeleted = res.RowsAffected()
 
 			return nil

@@ -9,6 +9,15 @@ import (
 	"github.com/beremaran/straw/pkg/protocol"
 )
 
+const (
+	contentTypeHeader = "Content-Type"
+	primaryPool       = "primary"
+	ep001             = "ep-001"
+	session456        = "session-456"
+	ep1               = "ep-1"
+	ep2               = "ep-2"
+)
+
 func TestResponseBuilder_New(t *testing.T) {
 	rb := NewResponseBuilder()
 
@@ -27,10 +36,10 @@ func TestResponseBuilder_WriteResponse_Success(t *testing.T) {
 	rb := NewResponseBuilder()
 
 	result := &ResultMessage{
-		RequestID:  "test-123",
+		RequestID:  testID,
 		StatusCode: 200,
 		Headers: protocol.HeaderMap{
-			{Key: "Content-Type", Value: "application/json"},
+			{Key: contentTypeHeader, Value: jsonContentType},
 			{Key: "X-Custom-Header", Value: "custom-value"},
 		},
 		CompressedBody: []byte(`{"message": "hello"}`),
@@ -38,11 +47,11 @@ func TestResponseBuilder_WriteResponse_Success(t *testing.T) {
 
 	meta := &RelayMetadata{
 		Retries:    2,
-		Pool:       "primary",
-		EndpointID: "ep-001",
+		Pool:       primaryPool,
+		EndpointID: ep001,
 	}
 
-	rec.Header().Set("X-Request-ID", "test-123")
+	rec.Header().Set("X-Request-ID", testID)
 
 	err := rb.WriteResponse(rec, result, meta)
 	if err != nil {
@@ -61,12 +70,12 @@ func TestResponseBuilder_WriteResponse_Success(t *testing.T) {
 		t.Errorf("expected X-Relay-Retries '2', got %q", rec.Header().Get("X-Relay-Retries"))
 	}
 
-	if rec.Header().Get("X-Relay-Pool") != "primary" {
-		t.Errorf("expected X-Relay-Pool 'primary', got %q", rec.Header().Get("X-Relay-Pool"))
+	if rec.Header().Get("X-Relay-Pool") != primaryPool {
+		t.Errorf("expected X-Relay-Pool %q, got %q", primaryPool, rec.Header().Get("X-Relay-Pool"))
 	}
 
-	if rec.Header().Get("X-Relay-Endpoint") != "ep-001" {
-		t.Errorf("expected X-Relay-Endpoint 'ep-001', got %q", rec.Header().Get("X-Relay-Endpoint"))
+	if rec.Header().Get("X-Relay-Endpoint") != ep001 {
+		t.Errorf("expected X-Relay-Endpoint %q, got %q", ep001, rec.Header().Get("X-Relay-Endpoint"))
 	}
 }
 
@@ -76,10 +85,10 @@ func TestResponseBuilder_WriteResponse_FilteredHeaders(t *testing.T) {
 	rb := NewResponseBuilder()
 
 	result := &ResultMessage{
-		RequestID:  "test-123",
+		RequestID:  testID,
 		StatusCode: 200,
 		Headers: protocol.HeaderMap{
-			{Key: "Content-Type", Value: "application/json"},
+			{Key: contentTypeHeader, Value: jsonContentType},
 			{Key: "Connection", Value: "keep-alive"},
 			{Key: "Transfer-Encoding", Value: "chunked"},
 			{Key: "X-Custom-Header", Value: "should-be-copied"},
@@ -111,13 +120,13 @@ func TestResponseBuilder_WriteResponse_SessionHeaders(t *testing.T) {
 	rb := NewResponseBuilder()
 
 	result := &ResultMessage{
-		RequestID:      "test-123",
+		RequestID:      testID,
 		StatusCode:     200,
 		CompressedBody: []byte(`{}`),
 	}
 
 	meta := &RelayMetadata{
-		SessionID:    "session-456",
+		SessionID:    session456,
 		Migrated:     true,
 		MigrateCount: 2,
 	}
@@ -127,7 +136,7 @@ func TestResponseBuilder_WriteResponse_SessionHeaders(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if rec.Header().Get("X-Session-ID") != "session-456" {
+	if rec.Header().Get("X-Session-ID") != session456 {
 		t.Errorf("expected X-Session-ID 'session-456', got %q", rec.Header().Get("X-Session-ID"))
 	}
 
@@ -146,7 +155,7 @@ func TestResponseBuilder_WriteResponse_TimingHeader(t *testing.T) {
 	rb := NewResponseBuilder()
 
 	result := &ResultMessage{
-		RequestID:      "test-123",
+		RequestID:      testID,
 		StatusCode:     200,
 		CompressedBody: []byte(`{}`),
 	}
@@ -174,7 +183,7 @@ func TestResponseBuilder_WriteResponse_DefaultStatusCode(t *testing.T) {
 	rb := NewResponseBuilder()
 
 	result := &ResultMessage{
-		RequestID:      "test-123",
+		RequestID:      testID,
 		StatusCode:     0,
 		CompressedBody: []byte(`{}`),
 	}
@@ -195,7 +204,7 @@ func TestResponseBuilder_WriteResponse_ErrorResponse(t *testing.T) {
 	rb := NewResponseBuilder()
 
 	result := &ResultMessage{
-		RequestID:  "test-123",
+		RequestID:  testID,
 		StatusCode: 502,
 		Error: &protocol.ErrorInfo{
 			Code:      protocol.ErrCodeUpstreamError,
@@ -241,10 +250,10 @@ func TestEqualFoldASCII(t *testing.T) {
 		a, b     string
 		expected bool
 	}{
-		{"Content-Type", "content-type", true},
+		{contentTypeHeader, "content-type", true},
 		{"CONTENT-TYPE", "content-type", true},
-		{"Content-Type", "Content-Type", true},
-		{"Content-Type", "Content-Length", false},
+		{contentTypeHeader, contentTypeHeader, true},
+		{contentTypeHeader, "Content-Length", false},
 		{"abc", "abcd", false},
 		{"", "", true},
 	}
@@ -305,19 +314,19 @@ func TestFormatAttemptErrors(t *testing.T) {
 		{
 			Pool:          1,
 			Attempt:       1,
-			EndpointID:    "ep-1",
+			EndpointID:    ep1,
 			Failure:       FailureTimeout,
-			FailureString: "timeout",
-			Message:       "request timed out",
+			FailureString: testFailureTimeoutStr,
+			Message:       testRequestTimedOut,
 			Duration:      100 * time.Millisecond,
 		},
 		{
 			Pool:          2,
 			Attempt:       1,
-			EndpointID:    "ep-2",
+			EndpointID:    ep2,
 			Failure:       FailureConnection,
-			FailureString: "connection",
-			Message:       "connection refused",
+			FailureString: testFailureConnectionStr,
+			Message:       errConnectionRefused,
 			Duration:      50 * time.Millisecond,
 		},
 	}
@@ -334,10 +343,10 @@ func TestFormatAttemptErrors(t *testing.T) {
 	if summaries[0].Attempt != 1 {
 		t.Errorf("expected attempt 1, got %d", summaries[0].Attempt)
 	}
-	if summaries[0].Endpoint != "ep-1" {
+	if summaries[0].Endpoint != ep1 {
 		t.Errorf("expected endpoint 'ep-1', got %q", summaries[0].Endpoint)
 	}
-	if summaries[0].Failure != "timeout" {
+	if summaries[0].Failure != testFailureTimeoutStr {
 		t.Errorf("expected failure 'timeout', got %q", summaries[0].Failure)
 	}
 
@@ -396,7 +405,7 @@ func TestResponseBuilder_WriteResponse_RetryAfter(t *testing.T) {
 	rb := NewResponseBuilder()
 
 	result := &ResultMessage{
-		RequestID:  "test-123",
+		RequestID:  testID,
 		StatusCode: 429,
 		Error: &protocol.ErrorInfo{
 			Code:       protocol.ErrCodeUpstreamError,
@@ -428,7 +437,7 @@ func TestResponseBuilder_WriteResponse_AttemptErrors(t *testing.T) {
 	rb := NewResponseBuilder()
 
 	result := &ResultMessage{
-		RequestID:      "test-123",
+		RequestID:      testID,
 		StatusCode:     200,
 		CompressedBody: []byte(`{}`),
 	}
@@ -438,18 +447,18 @@ func TestResponseBuilder_WriteResponse_AttemptErrors(t *testing.T) {
 			{
 				Pool:          1,
 				Attempt:       1,
-				EndpointID:    "ep-1",
+				EndpointID:    ep1,
 				Failure:       FailureTimeout,
-				FailureString: "timeout",
-				Message:       "request timed out",
+				FailureString: testFailureTimeoutStr,
+				Message:       testRequestTimedOut,
 			},
 			{
 				Pool:          1,
 				Attempt:       2,
-				EndpointID:    "ep-2",
+				EndpointID:    ep2,
 				Failure:       FailureConnection,
-				FailureString: "connection",
-				Message:       "connection refused",
+				FailureString: testFailureConnectionStr,
+				Message:       errConnectionRefused,
 			},
 		},
 	}
@@ -471,7 +480,7 @@ func TestResponseBuilder_WriteResponse_DefaultStatusCodeWithError(t *testing.T) 
 	rb := NewResponseBuilder()
 
 	result := &ResultMessage{
-		RequestID:  "test-123",
+		RequestID:  testID,
 		StatusCode: 0,
 		Error: &protocol.ErrorInfo{
 			Code:      protocol.ErrCodeUpstreamError,
@@ -496,7 +505,7 @@ func TestResponseBuilder_WriteResponse_NilMetadata(t *testing.T) {
 	rb := NewResponseBuilder()
 
 	result := &ResultMessage{
-		RequestID:      "test-123",
+		RequestID:      testID,
 		StatusCode:     200,
 		CompressedBody: []byte(`{"test": true}`),
 	}
@@ -517,16 +526,16 @@ func TestResponseBuilder_WriteResponse_AllRelayHeaders(t *testing.T) {
 	rb := NewResponseBuilder()
 
 	result := &ResultMessage{
-		RequestID:      "test-123",
+		RequestID:      testID,
 		StatusCode:     200,
 		CompressedBody: []byte(`{}`),
 	}
 
 	meta := &RelayMetadata{
 		Retries:      3,
-		Pool:         "primary",
-		EndpointID:   "ep-001",
-		SessionID:    "session-456",
+		Pool:         primaryPool,
+		EndpointID:   ep001,
+		SessionID:    session456,
 		Migrated:     true,
 		MigrateCount: 2,
 		Timing: &protocol.TimingInfo{
@@ -536,10 +545,10 @@ func TestResponseBuilder_WriteResponse_AllRelayHeaders(t *testing.T) {
 			{
 				Pool:          1,
 				Attempt:       1,
-				EndpointID:    "ep-001",
+				EndpointID:    ep001,
 				Failure:       FailureTimeout,
-				FailureString: "timeout",
-				Message:       "request timed out",
+				FailureString: testFailureTimeoutStr,
+				Message:       testRequestTimedOut,
 				Duration:      100 * time.Millisecond,
 			},
 		},
@@ -554,15 +563,15 @@ func TestResponseBuilder_WriteResponse_AllRelayHeaders(t *testing.T) {
 		t.Error("expected X-Relay-Retries header")
 	}
 
-	if rec.Header().Get("X-Relay-Pool") != "primary" {
+	if rec.Header().Get("X-Relay-Pool") != primaryPool {
 		t.Error("expected X-Relay-Pool header")
 	}
 
-	if rec.Header().Get("X-Relay-Endpoint") != "ep-001" {
+	if rec.Header().Get("X-Relay-Endpoint") != ep001 {
 		t.Error("expected X-Relay-Endpoint header")
 	}
 
-	if rec.Header().Get("X-Session-ID") != "session-456" {
+	if rec.Header().Get("X-Session-ID") != session456 {
 		t.Error("expected X-Session-ID header")
 	}
 
@@ -589,7 +598,7 @@ func TestResponseBuilder_WriteResponse_EmptyBody(t *testing.T) {
 	rb := NewResponseBuilder()
 
 	result := &ResultMessage{
-		RequestID:      "test-123",
+		RequestID:      testID,
 		StatusCode:     204,
 		CompressedBody: []byte{},
 	}
@@ -614,7 +623,7 @@ func TestResponseBuilder_WriteResponse_ErrorWithoutRetryAfter(t *testing.T) {
 	rb := NewResponseBuilder()
 
 	result := &ResultMessage{
-		RequestID:  "test-123",
+		RequestID:  testID,
 		StatusCode: 500,
 		Error: &protocol.ErrorInfo{
 			Code:      protocol.ErrCodeUpstreamError,

@@ -3,24 +3,29 @@ package handlers
 import (
 	"errors"
 	"log/slog"
+	"maps"
 	"net/http"
 	"strings"
+
+	"github.com/google/uuid"
 
 	"github.com/beremaran/straw/internal/domain"
 	"github.com/beremaran/straw/internal/infra/postgres"
 	"github.com/beremaran/straw/internal/server/dto"
 	"github.com/beremaran/straw/internal/server/helper"
-	"github.com/google/uuid"
 )
 
+// IdentityProviderHandler manages identity provider operations.
 type IdentityProviderHandler struct {
 	repo domain.IdentityRepository
 }
 
+// NewIdentityProviderHandler creates a new IdentityProviderHandler.
 func NewIdentityProviderHandler(repo domain.IdentityRepository) *IdentityProviderHandler {
 	return &IdentityProviderHandler{repo: repo}
 }
 
+// HandleListIdentityProviders lists all identity providers.
 func (h *IdentityProviderHandler) HandleListIdentityProviders(w http.ResponseWriter, r *http.Request) {
 	providers, err := h.repo.ListIdentityProviders(r.Context())
 	if err != nil {
@@ -39,8 +44,10 @@ func (h *IdentityProviderHandler) HandleListIdentityProviders(w http.ResponseWri
 	})
 }
 
+// HandleCreateIdentityProvider creates a new identity provider.
 func (h *IdentityProviderHandler) HandleCreateIdentityProvider(w http.ResponseWriter, r *http.Request) {
 	var req dto.CreateIdentityProviderRequest
+
 	err := helper.ReadJSON(r, &req)
 	if err != nil {
 		helper.WriteError(w, http.StatusBadRequest, "invalid request body")
@@ -49,6 +56,7 @@ func (h *IdentityProviderHandler) HandleCreateIdentityProvider(w http.ResponseWr
 	}
 
 	name := strings.TrimSpace(req.Name)
+
 	providerType := strings.TrimSpace(req.Type)
 	if hasIdentityProviderInputError(w, name, providerType) {
 		return
@@ -74,6 +82,7 @@ func (h *IdentityProviderHandler) HandleCreateIdentityProvider(w http.ResponseWr
 	helper.WriteJSON(w, http.StatusCreated, dto.FromDomainIdentityProvider(*provider))
 }
 
+// HandleUpdateIdentityProvider updates an identity provider.
 func (h *IdentityProviderHandler) HandleUpdateIdentityProvider(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if id == "" {
@@ -88,6 +97,7 @@ func (h *IdentityProviderHandler) HandleUpdateIdentityProvider(w http.ResponseWr
 
 		return
 	}
+
 	if provider == nil {
 		helper.WriteError(w, http.StatusNotFound, "identity provider not found")
 
@@ -95,6 +105,7 @@ func (h *IdentityProviderHandler) HandleUpdateIdentityProvider(w http.ResponseWr
 	}
 
 	var req dto.UpdateIdentityProviderRequest
+
 	err = helper.ReadJSON(r, &req)
 	if err != nil {
 		helper.WriteError(w, http.StatusBadRequest, "invalid request body")
@@ -128,6 +139,7 @@ func (h *IdentityProviderHandler) HandleUpdateIdentityProvider(w http.ResponseWr
 	helper.WriteJSON(w, http.StatusOK, dto.FromDomainIdentityProvider(*provider))
 }
 
+// HandleDeleteIdentityProvider disables an identity provider.
 func (h *IdentityProviderHandler) HandleDeleteIdentityProvider(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if id == "" {
@@ -142,6 +154,7 @@ func (h *IdentityProviderHandler) HandleDeleteIdentityProvider(w http.ResponseWr
 
 		return
 	}
+
 	if provider == nil {
 		helper.WriteError(w, http.StatusNotFound, "identity provider not found")
 
@@ -166,9 +179,7 @@ func (h *IdentityProviderHandler) HandleDeleteIdentityProvider(w http.ResponseWr
 
 func applyUpdateToProvider(provider *domain.AdminIdentityProvider, req dto.UpdateIdentityProviderRequest) {
 	config := domain.ConfigMap{}
-	for k, v := range req.Config {
-		config[k] = v
-	}
+	maps.Copy(config, req.Config)
 
 	provider.Name = strings.TrimSpace(req.Name)
 	provider.Type = strings.TrimSpace(req.Type)
@@ -185,9 +196,7 @@ func applyUpdateToProvider(provider *domain.AdminIdentityProvider, req dto.Updat
 
 func toDomainProvider(id, name, pType string, req dto.CreateIdentityProviderRequest) *domain.AdminIdentityProvider {
 	config := domain.ConfigMap{}
-	for k, v := range req.Config {
-		config[k] = v
-	}
+	maps.Copy(config, req.Config)
 
 	return &domain.AdminIdentityProvider{
 		ID:              id,
@@ -211,6 +220,7 @@ func hasIdentityProviderInputError(w http.ResponseWriter, name string, providerT
 
 		return true
 	}
+
 	if strings.TrimSpace(providerType) == "" {
 		helper.WriteError(w, http.StatusBadRequest, "identity provider type is required")
 

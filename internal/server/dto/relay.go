@@ -1,5 +1,6 @@
 package dto
 
+// RelayRequest is the request body for proxying a request through the relay.
 type RelayRequest struct {
 	ID              string            `json:"id,omitempty"`
 	Method          string            `json:"method,omitempty"`
@@ -13,6 +14,7 @@ type RelayRequest struct {
 	MaxResponseSize int64             `json:"max_response_size,omitempty"`
 }
 
+// RelayResponse is the response body from relaying a request.
 type RelayResponse struct {
 	RequestID   string            `json:"request_id"`
 	StatusCode  int               `json:"status_code"`
@@ -24,6 +26,7 @@ type RelayResponse struct {
 	IsStreaming bool              `json:"is_streaming,omitempty"`
 }
 
+// TimingDTO contains timing information for a relayed request.
 type TimingDTO struct {
 	DNSLookup    string `json:"dns_lookup,omitempty"`
 	TCPConnect   string `json:"tcp_connect,omitempty"`
@@ -32,6 +35,7 @@ type TimingDTO struct {
 	Total        string `json:"total"`
 }
 
+// RelayMetaDTO contains metadata about a relayed request.
 type RelayMetaDTO struct {
 	Retries    int      `json:"retries,omitempty"`
 	Pool       string   `json:"pool,omitempty"`

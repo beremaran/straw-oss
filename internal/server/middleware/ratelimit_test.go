@@ -2,21 +2,23 @@ package middleware_test
 
 import (
 	"context"
+	"html"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+
 	"github.com/beremaran/straw/internal/config"
 	"github.com/beremaran/straw/internal/domain"
 	"github.com/beremaran/straw/internal/infra/redis"
 	"github.com/beremaran/straw/internal/server/middleware"
 	"github.com/beremaran/straw/internal/service/ratelimit"
 	"github.com/beremaran/straw/internal/service/router"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/require"
 )
 
 func intPtr(i int) *int {
@@ -36,13 +38,13 @@ func (m *MockRuleRepo) GetActiveRules(ctx context.Context) ([]domain.RoutingRule
 	return args.Get(0).([]domain.RoutingRule), args.Error(1)
 }
 
-func (m *MockRuleRepo) CreateRule(ctx context.Context, rule *domain.RoutingRule) error { return nil }
-func (m *MockRuleRepo) GetRuleByID(ctx context.Context, id string) (*domain.RoutingRule, error) {
+func (m *MockRuleRepo) CreateRule(_ context.Context, _ *domain.RoutingRule) error { return nil }
+func (m *MockRuleRepo) GetRuleByID(_ context.Context, _ string) (*domain.RoutingRule, error) {
 	return nil, nil
 }
-func (m *MockRuleRepo) UpdateRule(ctx context.Context, rule *domain.RoutingRule) error { return nil }
-func (m *MockRuleRepo) DeleteRule(ctx context.Context, id string) error                { return nil }
-func (m *MockRuleRepo) ListRules(ctx context.Context, limit, offset int) ([]domain.RoutingRule, int, error) {
+func (m *MockRuleRepo) UpdateRule(_ context.Context, _ *domain.RoutingRule) error { return nil }
+func (m *MockRuleRepo) DeleteRule(_ context.Context, _ string) error              { return nil }
+func (m *MockRuleRepo) ListRules(_ context.Context, _, _ int) ([]domain.RoutingRule, int, error) {
 	return nil, 0, nil
 }
 
@@ -96,7 +98,7 @@ func TestRateLimitMiddleware(t *testing.T) {
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("success:" + rule.ID))
+		_, _ = w.Write([]byte("success:" + html.EscapeString(rule.ID)))
 	})
 
 	t.Run("Allows request under limit", func(t *testing.T) {
@@ -105,7 +107,7 @@ func TestRateLimitMiddleware(t *testing.T) {
 		req.Header.Set("X-Relay-Tags", "target=amazon")
 		rec := httptest.NewRecorder()
 
-		ctx := context.WithValue(req.Context(), middleware.ContextApiKey{Value: "api_key"}, &domain.ApiKey{ID: "test-user"})
+		ctx := context.WithValue(req.Context(), middleware.ContextAPIKey{Value: middleware.APIKeyContextKey}, &domain.APIKey{ID: "test-user"})
 		req = req.WithContext(ctx)
 
 		mw(handler).ServeHTTP(rec, req)
@@ -118,12 +120,12 @@ func TestRateLimitMiddleware(t *testing.T) {
 
 	t.Run("Blocks request over limit", func(t *testing.T) {
 		s.FlushAll()
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 			req.Header.Set("X-Relay-Tags", "target=amazon")
 			rec := httptest.NewRecorder()
 
-			ctx := context.WithValue(req.Context(), middleware.ContextApiKey{Value: "api_key"}, &domain.ApiKey{ID: "test-user"})
+			ctx := context.WithValue(req.Context(), middleware.ContextAPIKey{Value: middleware.APIKeyContextKey}, &domain.APIKey{ID: "test-user"})
 			req = req.WithContext(ctx)
 
 			mw(handler).ServeHTTP(rec, req)
@@ -152,7 +154,7 @@ func TestRateLimitMiddleware(t *testing.T) {
 		req.Header.Set("X-Relay-Tags", "target=amazon")
 		rec := httptest.NewRecorder()
 
-		ctx := context.WithValue(req.Context(), middleware.ContextApiKey{Value: "api_key"}, &domain.ApiKey{ID: "whale-user", RateLimitOverride: intPtr(10)})
+		ctx := context.WithValue(req.Context(), middleware.ContextAPIKey{Value: middleware.APIKeyContextKey}, &domain.APIKey{ID: "whale-user", RateLimitOverride: intPtr(10)})
 		req = req.WithContext(ctx)
 
 		mw(handler).ServeHTTP(rec, req)

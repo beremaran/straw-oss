@@ -10,15 +10,20 @@ import (
 	"github.com/beremaran/straw/internal/server/helper"
 )
 
+const scanBatchSize = 100
+
+// CacheHandler manages cache operations.
 type CacheHandler struct {
 	redisClient *redis.Client
 	auditRepo   domain.ManagementAuditRepository
 }
 
+// NewCacheHandler creates a new CacheHandler.
 func NewCacheHandler(redisClient *redis.Client, auditRepo domain.ManagementAuditRepository) *CacheHandler {
 	return &CacheHandler{redisClient: redisClient, auditRepo: auditRepo}
 }
 
+// HandleClearCache clears cache entries matching a pattern.
 func (h *CacheHandler) HandleClearCache(w http.ResponseWriter, r *http.Request) {
 	pattern := r.URL.Query().Get("pattern")
 	if pattern == "" {
@@ -30,21 +35,24 @@ func (h *CacheHandler) HandleClearCache(w http.ResponseWriter, r *http.Request) 
 
 	iter := red.Scan(ctx, 0, pattern, 0).Iterator()
 	count := 0
+
 	var keys []string
 
 	for iter.Next(ctx) {
 		keys = append(keys, iter.Val())
-		if len(keys) >= 100 {
+		if len(keys) >= scanBatchSize {
 			err := red.Del(ctx, keys...).Err()
 			if err != nil {
 				helper.WriteError(w, http.StatusInternalServerError, "failed to delete keys")
 
 				return
 			}
+
 			count += len(keys)
 			keys = nil
 		}
 	}
+
 	err := iter.Err()
 	if err != nil {
 		helper.WriteError(w, http.StatusInternalServerError, "failed to scan keys")
@@ -59,6 +67,7 @@ func (h *CacheHandler) HandleClearCache(w http.ResponseWriter, r *http.Request) 
 
 			return
 		}
+
 		count += len(keys)
 	}
 
@@ -76,8 +85,10 @@ func (h *CacheHandler) HandleClearCache(w http.ResponseWriter, r *http.Request) 
 	helper.WriteJSON(w, http.StatusOK, resp)
 }
 
+// HandleGetCacheStats returns Redis cache statistics.
 func (h *CacheHandler) HandleGetCacheStats(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+
 	info, err := h.redisClient.Client.Info(ctx).Result()
 	if err != nil {
 		helper.WriteError(w, http.StatusInternalServerError, "failed to get redis info")

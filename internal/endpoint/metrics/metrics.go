@@ -1,3 +1,4 @@
+// Package metrics provides Prometheus collectors for the endpoint service.
 package metrics
 
 import (
@@ -6,6 +7,7 @@ import (
 )
 
 var (
+	// UpstreamDuration tracks the duration of upstream HTTP requests.
 	UpstreamDuration = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "endpoint_upstream_duration_seconds",
@@ -15,6 +17,7 @@ var (
 		[]string{"target_domain", "status"},
 	)
 
+	// TLSFingerprintUsed counts TLS fingerprints used by ID.
 	TLSFingerprintUsed = promauto.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "endpoint_tls_fingerprint_used_total",
@@ -23,6 +26,7 @@ var (
 		[]string{"fingerprint"},
 	)
 
+	// FingerprintDeprecatedUsed counts deprecated fingerprints used.
 	FingerprintDeprecatedUsed = promauto.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "endpoint_fingerprint_deprecated_used_total",
@@ -31,6 +35,7 @@ var (
 		[]string{"fingerprint"},
 	)
 
+	// ConnectionsPooled tracks active connections to upstream.
 	ConnectionsPooled = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "endpoint_connections_pooled",
@@ -39,6 +44,7 @@ var (
 		[]string{"target_host"},
 	)
 
+	// TasksInFlight tracks tasks currently being processed.
 	TasksInFlight = promauto.NewGauge(
 		prometheus.GaugeOpts{
 			Name: "endpoint_tasks_in_flight",
@@ -46,6 +52,7 @@ var (
 		},
 	)
 
+	// HeartbeatsSent tracks total heartbeats sent.
 	HeartbeatsSent = promauto.NewCounter(
 		prometheus.CounterOpts{
 			Name: "endpoint_heartbeats_sent_total",
@@ -53,6 +60,7 @@ var (
 		},
 	)
 
+	// TasksProcessed tracks total tasks processed by status.
 	TasksProcessed = promauto.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "endpoint_tasks_processed_total",
@@ -61,6 +69,7 @@ var (
 		[]string{"status"},
 	)
 
+	// TasksFailed tracks total failed tasks by reason.
 	TasksFailed = promauto.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "endpoint_tasks_failed_total",
@@ -69,6 +78,7 @@ var (
 		[]string{"reason"},
 	)
 
+	// BytesSent tracks total bytes sent to upstream.
 	BytesSent = promauto.NewCounter(
 		prometheus.CounterOpts{
 			Name: "endpoint_bytes_sent_total",
@@ -76,6 +86,7 @@ var (
 		},
 	)
 
+	// BytesReceived tracks total bytes received from upstream.
 	BytesReceived = promauto.NewCounter(
 		prometheus.CounterOpts{
 			Name: "endpoint_bytes_received_total",
@@ -83,6 +94,7 @@ var (
 		},
 	)
 
+	// TasksQueued tracks tasks waiting in local queue.
 	TasksQueued = promauto.NewGauge(
 		prometheus.GaugeOpts{
 			Name: "endpoint_tasks_queued",
@@ -90,6 +102,7 @@ var (
 		},
 	)
 
+	// TasksRejected tracks tasks rejected due to capacity.
 	TasksRejected = promauto.NewCounter(
 		prometheus.CounterOpts{
 			Name: "endpoint_tasks_rejected_total",

@@ -9,17 +9,24 @@ import (
 	"github.com/beremaran/straw/internal/server/helper"
 )
 
+const costPerUnitUSD = 0.0001
+
+// UsageHandler manages usage and billing operations.
 type UsageHandler struct {
 	repo domain.UsageRepository
 }
 
+// NewUsageHandler creates a new UsageHandler.
 func NewUsageHandler(repo domain.UsageRepository) *UsageHandler {
 	return &UsageHandler{repo: repo}
 }
 
+// HandleGetUsageSummary returns usage summary data.
 func (h *UsageHandler) HandleGetUsageSummary(w http.ResponseWriter, r *http.Request) {
-	var start, end time.Time
-	var err error
+	var (
+		start, end time.Time
+		err        error
+	)
 
 	layout := "2006-01-02"
 	now := time.Now()
@@ -62,9 +69,12 @@ func (h *UsageHandler) HandleGetUsageSummary(w http.ResponseWriter, r *http.Requ
 	})
 }
 
+// HandleGetBillingEstimate returns a billing cost estimate.
 func (h *UsageHandler) HandleGetBillingEstimate(w http.ResponseWriter, r *http.Request) {
-	var start, end time.Time
-	var err error
+	var (
+		start, end time.Time
+		err        error
+	)
 
 	layout := "2006-01-02"
 	now := time.Now()
@@ -106,7 +116,7 @@ func (h *UsageHandler) HandleGetBillingEstimate(w http.ResponseWriter, r *http.R
 		totalCost += s.CostUnits
 	}
 
-	estimatedUSD := totalCost * 0.0001
+	estimatedUSD := totalCost * costPerUnitUSD
 
 	helper.WriteJSON(w, http.StatusOK, dto.BillingEstimateResponse{
 		TotalCostUnits: totalCost,

@@ -5,6 +5,7 @@ import (
 	"time"
 )
 
+// FingerprintPreset represents a named collection of fingerprinting configuration.
 type FingerprintPreset struct {
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
@@ -13,8 +14,10 @@ type FingerprintPreset struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-type ConfigMap map[string]interface{}
+// ConfigMap is a map of configuration keys to arbitrary values.
+type ConfigMap map[string]any
 
+// FingerprintRepository provides persistence operations for FingerprintPreset entities.
 type FingerprintRepository interface {
 	ListPresets(ctx context.Context) ([]FingerprintPreset, error)
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -12,13 +13,15 @@ import (
 	"github.com/beremaran/straw/pkg/protocol"
 )
 
+const testEndpointID = "endpoint-001"
+
 type mockPublisherBroker struct {
 	publishedMsgs []publishedMsg
 	mu            sync.Mutex
 	publishErr    error
 }
 
-func (m *mockPublisherBroker) Publish(ctx context.Context, subject string, body []byte) error {
+func (m *mockPublisherBroker) Publish(_ context.Context, subject string, body []byte) error {
 	if m.publishErr != nil {
 		return m.publishErr
 	}
@@ -31,11 +34,12 @@ func (m *mockPublisherBroker) Publish(ctx context.Context, subject string, body 
 
 	return nil
 }
-func (m *mockPublisherBroker) Subscribe(ctx context.Context, subject string, handler broker.Handler, opts ...broker.SubscribeOption) error {
+
+func (m *mockPublisherBroker) Subscribe(_ context.Context, _ string, _ broker.Handler, _ ...broker.SubscribeOption) error {
 	return nil
 }
 
-func (m *mockPublisherBroker) ConsumeOnce(ctx context.Context, subject string, timeout time.Duration) ([]byte, error) {
+func (m *mockPublisherBroker) ConsumeOnce(_ context.Context, _ string, _ time.Duration) ([]byte, error) {
 	return nil, nil
 }
 
@@ -43,7 +47,7 @@ func (m *mockPublisherBroker) Close() error {
 	return nil
 }
 
-func (m *mockPublisherBroker) DeclareStream(ctx context.Context, name string, subjects ...string) error {
+func (m *mockPublisherBroker) DeclareStream(_ context.Context, _ string, _ ...string) error {
 	return nil
 }
 
@@ -81,7 +85,7 @@ func TestPublisher_Publish(t *testing.T) {
 
 	resp := &protocol.Response{
 		RequestID:  "test-request-123",
-		EndpointID: "endpoint-001",
+		EndpointID: testEndpointID,
 		StatusCode: 200,
 		Headers:    protocol.HeaderMap{{Key: "Content-Type", Value: "application/json"}},
 		Body:       []byte(`{"message": "hello world"}`),
@@ -117,8 +121,8 @@ func TestPublisher_Publish(t *testing.T) {
 		t.Errorf("expected request ID 'test-request-123', got %q", result.RequestID)
 	}
 
-	if result.EndpointID != "endpoint-001" {
-		t.Errorf("expected endpoint ID 'endpoint-001', got %q", result.EndpointID)
+	if result.EndpointID != testEndpointID {
+		t.Errorf("expected endpoint ID %q, got %q", testEndpointID, result.EndpointID)
 	}
 
 	if result.StatusCode != http.StatusOK {
@@ -183,7 +187,7 @@ func TestPublisher_Publish_ErrorResponse(t *testing.T) {
 
 	resp := &protocol.Response{
 		RequestID:  "test-request-789",
-		EndpointID: "endpoint-001",
+		EndpointID: testEndpointID,
 		Error: &protocol.ErrorInfo{
 			Code:      protocol.ErrCodeUpstreamError,
 			Message:   "connection refused",
@@ -258,7 +262,7 @@ func TestPublisher_PublishError(t *testing.T) {
 		Retryable: true,
 	}
 
-	err := p.PublishError(context.Background(), "test-req", "endpoint-001", errInfo, "results.test-req")
+	err := p.PublishError(context.Background(), "test-req", testEndpointID, errInfo, "results.test-req")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -346,7 +350,7 @@ func TestNewHTTPError(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(string(rune(tt.statusCode)), func(t *testing.T) {
+		t.Run(strconv.Itoa(tt.statusCode), func(t *testing.T) {
 			err := NewHTTPError(tt.statusCode, "test error")
 
 			if err.Retryable != tt.retryable {

@@ -11,16 +11,23 @@ import (
 )
 
 var (
+	// ErrHealthCannotBeNil is returned when UpdateHealth is called with a nil health record.
 	ErrHealthCannotBeNil = errors.New("health cannot be nil")
-	ErrEmptyEndpointID   = errors.New("endpoint_id cannot be empty")
+	// ErrEmptyEndpointID is returned when an empty endpoint ID is provided.
+	ErrEmptyEndpointID = errors.New("endpoint_id cannot be empty")
 )
 
 const (
-	HealthStateHealthy   = "healthy"
-	HealthStateSuspect   = "suspect"
+	// HealthStateHealthy indicates the endpoint is operating normally.
+	HealthStateHealthy = "healthy"
+	// HealthStateSuspect indicates the endpoint may have issues.
+	HealthStateSuspect = "suspect"
+	// HealthStateUnhealthy indicates the endpoint is not functioning.
 	HealthStateUnhealthy = "unhealthy"
-	HealthStateDraining  = "draining"
-	HealthStateDeleted   = "deleted"
+	// HealthStateDraining indicates the endpoint is being drained of traffic.
+	HealthStateDraining = "draining"
+	// HealthStateDeleted indicates the endpoint has been deleted.
+	HealthStateDeleted = "deleted"
 )
 
 const (
@@ -32,6 +39,13 @@ const (
 
 const defaultHealthTTL = 60 * time.Second
 
+const tagTypeResidential = "type:residential"
+
+const tagRegionUS = "region:us"
+
+const testEp2 = "ep-2"
+
+// EndpointHealth represents the health status of a proxied endpoint.
 type EndpointHealth struct {
 	EndpointID  string    `json:"endpoint_id"`
 	State       string    `json:"state"`
@@ -41,6 +55,7 @@ type EndpointHealth struct {
 	LastSeen    time.Time `json:"last_seen"`
 }
 
+// HealthStore manages endpoint health records in Redis.
 type HealthStore interface {
 	UpdateHealth(ctx context.Context, health *EndpointHealth) error
 
@@ -61,10 +76,12 @@ type HealthStore interface {
 	IsDeleted(ctx context.Context, endpointID string) (bool, error)
 }
 
+// EndpointHealthStore implements HealthStore using Redis.
 type EndpointHealthStore struct {
 	client *Client
 }
 
+// NewEndpointHealthStore creates a new store backed by the given Redis client.
 func NewEndpointHealthStore(client *Client) *EndpointHealthStore {
 	return &EndpointHealthStore{client: client}
 }
@@ -73,10 +90,12 @@ func healthKey(endpointID string) string {
 	return endpointHealthKeyPrefix + endpointID
 }
 
+// UpdateHealth writes the health record and updates the sorted set index.
 func (s *EndpointHealthStore) UpdateHealth(ctx context.Context, health *EndpointHealth) error {
 	if health == nil {
 		return ErrHealthCannotBeNil
 	}
+
 	if health.EndpointID == "" {
 		return ErrEmptyEndpointID
 	}
@@ -103,12 +122,14 @@ func (s *EndpointHealthStore) UpdateHealth(ctx context.Context, health *Endpoint
 	return nil
 }
 
+// GetHealth retrieves a health record by endpoint ID.
 func (s *EndpointHealthStore) GetHealth(ctx context.Context, endpointID string) (*EndpointHealth, error) {
 	if endpointID == "" {
 		return nil, ErrEmptyEndpointID
 	}
 
 	key := healthKey(endpointID)
+
 	data, err := s.client.Client.Get(ctx, key).Bytes()
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
@@ -119,6 +140,7 @@ func (s *EndpointHealthStore) GetHealth(ctx context.Context, endpointID string) 
 	}
 
 	var health EndpointHealth
+
 	err = json.Unmarshal(data, &health)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal health: %w", err)
@@ -127,6 +149,7 @@ func (s *EndpointHealthStore) GetHealth(ctx context.Context, endpointID string) 
 	return &health, nil
 }
 
+// ListHealthyByTags returns healthy or suspect endpoints matching all required tags.
 func (s *EndpointHealthStore) ListHealthyByTags(ctx context.Context, tags []string) ([]*EndpointHealth, error) {
 	endpoints, err := listHealthRecords(ctx, s)
 	if err != nil {
@@ -166,11 +189,12 @@ func listHealthRecords(ctx context.Context, s *EndpointHealthStore) ([]*Endpoint
 	return decodeHealthRecords(results), nil
 }
 
+// ListAllEndpoints returns all health records in the store.
 func (s *EndpointHealthStore) ListAllEndpoints(ctx context.Context) ([]*EndpointHealth, error) {
 	return listHealthRecords(ctx, s)
 }
 
-func decodeHealthRecords(results []interface{}) []*EndpointHealth {
+func decodeHealthRecords(results []any) []*EndpointHealth {
 	endpoints := make([]*EndpointHealth, 0, len(results))
 	for _, result := range results {
 		health := decodeHealthRecord(result)
@@ -182,13 +206,14 @@ func decodeHealthRecords(results []interface{}) []*EndpointHealth {
 	return endpoints
 }
 
-func decodeHealthRecord(result interface{}) *EndpointHealth {
+func decodeHealthRecord(result any) *EndpointHealth {
 	str, ok := result.(string)
 	if !ok {
 		return nil
 	}
 
 	health := new(EndpointHealth)
+
 	err := json.Unmarshal([]byte(str), health)
 	if err != nil {
 		return nil
@@ -201,6 +226,7 @@ func isHealthyForSelection(health *EndpointHealth) bool {
 	return health.State == HealthStateHealthy || health.State == HealthStateSuspect
 }
 
+// DeleteHealth removes a health record and its index entry.
 func (s *EndpointHealthStore) DeleteHealth(ctx context.Context, endpointID string) error {
 	if endpointID == "" {
 		return ErrEmptyEndpointID
@@ -239,42 +265,72 @@ func matchesTags(health *EndpointHealth, requiredTags []string) bool {
 	return true
 }
 
+// SetDraining marks or unmarks an endpoint as draining.
 func (s *EndpointHealthStore) SetDraining(ctx context.Context, endpointID string, draining bool) error {
 	if endpointID == "" {
 		return ErrEmptyEndpointID
 	}
 
 	if draining {
-		return s.client.Client.SAdd(ctx, endpointDrainingSetKey, endpointID).Err()
+		err := s.client.Client.SAdd(ctx, endpointDrainingSetKey, endpointID).Err()
+		if err != nil {
+			return fmt.Errorf("redis sadd draining: %w", err)
+		}
+	} else {
+		err := s.client.Client.SRem(ctx, endpointDrainingSetKey, endpointID).Err()
+		if err != nil {
+			return fmt.Errorf("redis srem draining: %w", err)
+		}
 	}
 
-	return s.client.Client.SRem(ctx, endpointDrainingSetKey, endpointID).Err()
+	return nil
 }
 
+// IsDraining reports whether an endpoint is currently draining.
 func (s *EndpointHealthStore) IsDraining(ctx context.Context, endpointID string) (bool, error) {
 	if endpointID == "" {
 		return false, ErrEmptyEndpointID
 	}
 
-	return s.client.Client.SIsMember(ctx, endpointDrainingSetKey, endpointID).Result()
+	result, err := s.client.Client.SIsMember(ctx, endpointDrainingSetKey, endpointID).Result()
+	if err != nil {
+		return false, fmt.Errorf("redis sismember draining: %w", err)
+	}
+
+	return result, nil
 }
 
+// SetDeleted marks or unmarks an endpoint as deleted.
 func (s *EndpointHealthStore) SetDeleted(ctx context.Context, endpointID string, deleted bool) error {
 	if endpointID == "" {
 		return ErrEmptyEndpointID
 	}
 
 	if deleted {
-		return s.client.Client.SAdd(ctx, endpointDeletedSetKey, endpointID).Err()
+		err := s.client.Client.SAdd(ctx, endpointDeletedSetKey, endpointID).Err()
+		if err != nil {
+			return fmt.Errorf("redis sadd deleted: %w", err)
+		}
+	} else {
+		err := s.client.Client.SRem(ctx, endpointDeletedSetKey, endpointID).Err()
+		if err != nil {
+			return fmt.Errorf("redis srem deleted: %w", err)
+		}
 	}
 
-	return s.client.Client.SRem(ctx, endpointDeletedSetKey, endpointID).Err()
+	return nil
 }
 
+// IsDeleted reports whether an endpoint is marked as deleted.
 func (s *EndpointHealthStore) IsDeleted(ctx context.Context, endpointID string) (bool, error) {
 	if endpointID == "" {
 		return false, ErrEmptyEndpointID
 	}
 
-	return s.client.Client.SIsMember(ctx, endpointDeletedSetKey, endpointID).Result()
+	result, err := s.client.Client.SIsMember(ctx, endpointDeletedSetKey, endpointID).Result()
+	if err != nil {
+		return false, fmt.Errorf("redis sismember deleted: %w", err)
+	}
+
+	return result, nil
 }

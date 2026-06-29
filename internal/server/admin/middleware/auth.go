@@ -12,10 +12,12 @@ import (
 	adminauth "github.com/beremaran/straw/internal/service/auth"
 )
 
+// AccessTokenVerifier verifies access tokens.
 type AccessTokenVerifier interface {
 	VerifyAccessToken(ctx context.Context, rawToken string) (*adminauth.AccessClaims, error)
 }
 
+// SessionAuth authenticates requests using an access token from the Authorization header.
 func SessionAuth(verifier AccessTokenVerifier) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -24,6 +26,7 @@ func SessionAuth(verifier AccessTokenVerifier) func(http.Handler) http.Handler {
 
 				return
 			}
+
 			if _, ok := ActorFromContext(r.Context()); ok {
 				next.ServeHTTP(w, r)
 
@@ -45,10 +48,12 @@ func SessionAuth(verifier AccessTokenVerifier) func(http.Handler) http.Handler {
 
 						return
 					}
+
 					helper.WriteError(w, http.StatusUnauthorized, "invalid access token")
 
 					return
 				}
+
 				next.ServeHTTP(w, r)
 
 				return
@@ -66,6 +71,7 @@ func SessionAuth(verifier AccessTokenVerifier) func(http.Handler) http.Handler {
 	}
 }
 
+// KeyAuth authenticates requests using a management API key from the Authorization header.
 func KeyAuth(cfg config.ServerConfig) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -111,6 +117,7 @@ func looksLikeAccessToken(token string) bool {
 	return strings.HasPrefix(token, "eyJ") && strings.Count(token, ".") == 2
 }
 
+// RequirePermission returns a middleware that enforces the given permission.
 func RequirePermission(permission string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

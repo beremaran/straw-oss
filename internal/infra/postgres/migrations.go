@@ -5,11 +5,14 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/beremaran/straw/internal/infra/postgres/migrations"
+	// Required by goose to register the pgx driver with database/sql.
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
+
+	"github.com/beremaran/straw/internal/infra/postgres/migrations"
 )
 
+// RunEmbeddedMigrations runs all embedded SQL migrations against the database at the given DSN.
 func RunEmbeddedMigrations(ctx context.Context, dsn string) error {
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {

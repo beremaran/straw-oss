@@ -3,14 +3,25 @@ package config
 import (
 	"errors"
 	"os"
+	"slices"
 	"testing"
+)
+
+const (
+	envPostgresDSN = "POSTGRES_DSN"
+	envNatsURL     = "NATS_URL"
+	envHmacSecret  = "HMAC_SECRET"
+	envEndpointID  = "ENDPOINT_ID"
+	natsLocalURL   = "nats://localhost:4222"
+	testSecret     = "test-secret"
+	testEndpointID = "endpoint-001"
 )
 
 func TestLoadServerConfig_Defaults(t *testing.T) {
 	setEnvVars(t, map[string]string{
-		"POSTGRES_DSN": "postgres://localhost/test",
-		"NATS_URL":     "nats://localhost:4222",
-		"HMAC_SECRET":  "test-secret",
+		envPostgresDSN: "postgres://localhost/test",
+		envNatsURL:     natsLocalURL,
+		envHmacSecret:  testSecret,
 	})
 
 	cfg, err := LoadServerConfig()
@@ -46,9 +57,9 @@ func TestLoadServerConfig_Defaults(t *testing.T) {
 
 func TestLoadServerConfig_EnvOverride(t *testing.T) {
 	setEnvVars(t, map[string]string{
-		"POSTGRES_DSN":                    "postgres://custom/db",
-		"NATS_URL":                        "nats://custom:4222",
-		"HMAC_SECRET":                     "custom-secret",
+		envPostgresDSN:                    "postgres://custom/db",
+		envNatsURL:                        "nats://custom:4222",
+		envHmacSecret:                     "custom-secret",
 		"REDIS_ADDR":                      "redis.example.com:6380",
 		"LOG_LEVEL":                       "debug",
 		"METRICS_PORT":                    "9091",
@@ -90,16 +101,16 @@ func TestLoadServerConfig_MissingRequired(t *testing.T) {
 		{
 			name: "missing POSTGRES_DSN",
 			envVars: map[string]string{
-				"NATS_URL":    "nats://localhost:4222",
-				"HMAC_SECRET": "secret",
+				envNatsURL:    natsLocalURL,
+				envHmacSecret: "secret",
 			},
 			wantErr: "POSTGRES_DSN is required",
 		},
 		{
 			name: "missing HMAC_SECRET",
 			envVars: map[string]string{
-				"POSTGRES_DSN": "postgres://localhost/test",
-				"NATS_URL":     "nats://localhost:4222",
+				envPostgresDSN: "postgres://localhost/test",
+				envNatsURL:     natsLocalURL,
 			},
 			wantErr: "HMAC_SECRET is required",
 		},
@@ -120,14 +131,7 @@ func TestLoadServerConfig_MissingRequired(t *testing.T) {
 				t.Fatalf("expected ValidationError, got %T", err)
 			}
 
-			found := false
-			for _, e := range validationErr.Errors {
-				if e == tt.wantErr {
-					found = true
-
-					break
-				}
-			}
+			found := slices.Contains(validationErr.Errors, tt.wantErr)
 			if !found {
 				t.Errorf("expected error containing %q, got %v", tt.wantErr, validationErr.Errors)
 			}
@@ -137,9 +141,9 @@ func TestLoadServerConfig_MissingRequired(t *testing.T) {
 
 func TestLoadEndpointConfig_Defaults(t *testing.T) {
 	setEnvVars(t, map[string]string{
-		"ENDPOINT_ID": "endpoint-001",
-		"NATS_URL":    "nats://localhost:4222",
-		"HMAC_SECRET": "test-secret",
+		envEndpointID: testEndpointID,
+		envNatsURL:    natsLocalURL,
+		envHmacSecret: testSecret,
 	})
 
 	cfg, err := LoadEndpointConfig()
@@ -150,16 +154,16 @@ func TestLoadEndpointConfig_Defaults(t *testing.T) {
 	if cfg.ConcurrencyLimit != 25 {
 		t.Errorf("ConcurrencyLimit = %v, want 25", cfg.ConcurrencyLimit)
 	}
-	if cfg.ID != "endpoint-001" {
+	if cfg.ID != testEndpointID {
 		t.Errorf("ID = %v, want endpoint-001", cfg.ID)
 	}
 }
 
 func TestLoadEndpointConfig_TagsParsing(t *testing.T) {
 	setEnvVars(t, map[string]string{
-		"ENDPOINT_ID":   "endpoint-001",
-		"NATS_URL":      "nats://localhost:4222",
-		"HMAC_SECRET":   "test-secret",
+		envEndpointID:   testEndpointID,
+		envNatsURL:      natsLocalURL,
+		envHmacSecret:   testSecret,
 		"ENDPOINT_TAGS": "type:residential, region:us, capability:stealth",
 	})
 
@@ -188,8 +192,8 @@ func TestLoadEndpointConfig_MissingRequired(t *testing.T) {
 		{
 			name: "missing ENDPOINT_ID",
 			envVars: map[string]string{
-				"NATS_URL":    "nats://localhost:4222",
-				"HMAC_SECRET": "secret",
+				envNatsURL:    natsLocalURL,
+				envHmacSecret: "secret",
 			},
 			wantErr: "ENDPOINT_ID is required",
 		},
@@ -210,14 +214,7 @@ func TestLoadEndpointConfig_MissingRequired(t *testing.T) {
 				t.Fatalf("expected ValidationError, got %T", err)
 			}
 
-			found := false
-			for _, e := range validationErr.Errors {
-				if e == tt.wantErr {
-					found = true
-
-					break
-				}
-			}
+			found := slices.Contains(validationErr.Errors, tt.wantErr)
 			if !found {
 				t.Errorf("expected error containing %q, got %v", tt.wantErr, validationErr.Errors)
 			}
@@ -282,12 +279,12 @@ func setEnvVars(t *testing.T, vars map[string]string) {
 	t.Helper()
 
 	allVars := []string{
-		"POSTGRES_DSN", "REDIS_ADDR", "NATS_URL", "LOG_LEVEL", "LOG_FORMAT",
-		"HMAC_SECRET", "TLS_CERT_FILE", "TLS_KEY_FILE", "VAULT_ADDR",
+		envPostgresDSN, "REDIS_ADDR", envNatsURL, "LOG_LEVEL", "LOG_FORMAT",
+		envHmacSecret, "TLS_CERT_FILE", "TLS_KEY_FILE", "VAULT_ADDR",
 		"OTEL_EXPORTER_OTLP_ENDPOINT", "METRICS_ENABLED", "METRICS_PORT",
 		"HTTP_PORT", "MANAGEMENT_PORT", "SHUTDOWN_TIMEOUT", "MANAGEMENT_API_KEY",
 		"MANAGEMENT_LEGACY_TOKEN_ENABLED",
-		"ENDPOINT_ID", "ENDPOINT_TAGS", "CONCURRENCY_LIMIT", "SELF_UPDATE_URL",
+		envEndpointID, "ENDPOINT_TAGS", "CONCURRENCY_LIMIT", "SELF_UPDATE_URL",
 	}
 	for _, v := range allVars {
 		_ = os.Unsetenv(v)

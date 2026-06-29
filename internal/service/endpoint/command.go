@@ -1,8 +1,10 @@
+// Package endpoint provides services for managing endpoint commands, health, and logs.
 package endpoint
 
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -12,6 +14,9 @@ import (
 	"github.com/beremaran/straw/pkg/protocol"
 )
 
+const commandTickerInterval = 10 * time.Second
+
+// CommandService manages the lifecycle of endpoint commands received via the message broker.
 type CommandService struct {
 	broker      broker.MessageBroker
 	commandRepo domain.EndpointCommandRepository
@@ -22,6 +27,7 @@ type CommandService struct {
 	done        chan struct{}
 }
 
+// NewCommandService creates a new CommandService with the given broker, repository, and logger.
 func NewCommandService(b broker.MessageBroker, repo domain.EndpointCommandRepository, logger *slog.Logger) *CommandService {
 	if logger == nil {
 		logger = slog.Default()
@@ -34,6 +40,7 @@ func NewCommandService(b broker.MessageBroker, repo domain.EndpointCommandReposi
 	}
 }
 
+// Start begins processing commands and acks. It is safe to call multiple times.
 func (s *CommandService) Start(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -53,6 +60,7 @@ func (s *CommandService) Start(ctx context.Context) error {
 	return nil
 }
 
+// Stop signals the service to stop and waits for goroutines to exit.
 func (s *CommandService) Stop() {
 	s.mu.Lock()
 	if !s.running {
@@ -60,6 +68,7 @@ func (s *CommandService) Stop() {
 
 		return
 	}
+
 	cancel := s.cancel
 	done := s.done
 	s.mu.Unlock()
@@ -67,6 +76,7 @@ func (s *CommandService) Stop() {
 	if cancel != nil {
 		cancel()
 	}
+
 	if done != nil {
 		<-done
 	}
@@ -78,6 +88,7 @@ func (s *CommandService) Stop() {
 	s.logger.Info("command service stopped")
 }
 
+// IsRunning reports whether the service is currently running.
 func (s *CommandService) IsRunning() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -95,7 +106,7 @@ func (s *CommandService) run(ctx context.Context) {
 		return
 	}
 
-	ticker := time.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(commandTickerInterval)
 	defer ticker.Stop()
 
 	for {
@@ -110,6 +121,7 @@ func (s *CommandService) run(ctx context.Context) {
 
 func (s *CommandService) handleAck(ctx context.Context, body []byte) error {
 	var ack protocol.CommandAck
+
 	err := json.Unmarshal(body, &ack)
 	if err != nil {
 		s.logger.Error("failed to unmarshal command ack", "error", err)
@@ -127,8 +139,9 @@ func (s *CommandService) handleAck(ctx context.Context, body []byte) error {
 	if err != nil {
 		s.logger.Error("failed to retrieve command", "command_id", ack.CommandID, "error", err)
 
-		return err
+		return fmt.Errorf("get command by id: %w", err)
 	}
+
 	if cmd == nil {
 		s.logger.Warn("received ack for unknown command", "command_id", ack.CommandID)
 
@@ -140,6 +153,7 @@ func (s *CommandService) handleAck(ctx context.Context, body []byte) error {
 	}
 
 	now := time.Now().UTC()
+
 	ts := ack.Timestamp
 	if ts.IsZero() {
 		ts = now
@@ -153,7 +167,7 @@ func (s *CommandService) handleAck(ctx context.Context, body []byte) error {
 	if err != nil {
 		s.logger.Error("failed to update command status", "command_id", ack.CommandID, "error", err)
 
-		return err
+		return fmt.Errorf("update command: %w", err)
 	}
 
 	s.logger.Info("updated command status", "command_id", ack.CommandID, "status", cmd.Status)
@@ -179,6 +193,7 @@ func (s *CommandService) applyAckStatus(cmd *domain.EndpointCommand, ack *protoc
 		cmd.CompletedAt = &ts
 	case string(domain.CommandStatusFailed):
 		cmd.Status = domain.CommandStatusFailed
+
 		cmd.CompletedAt = &ts
 		if ack.Message != "" {
 			cmd.Error = &ack.Message

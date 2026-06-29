@@ -4,10 +4,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/beremaran/straw/internal/domain"
-	"github.com/beremaran/straw/pkg/protocol"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/beremaran/straw/internal/domain"
+	"github.com/beremaran/straw/pkg/protocol"
+)
+
+const (
+	contentTypeHeader    = "Content-Type"
+	targetAmazon         = "target:amazon"
+	chrome130Fingerprint = "chrome-130"
+	applicationJSON      = "application/json"
 )
 
 func TestRelayRequest_ToProtocolRequest(t *testing.T) {
@@ -16,7 +24,7 @@ func TestRelayRequest_ToProtocolRequest(t *testing.T) {
 			ID:        "test-id",
 			Method:    "POST",
 			URL:       "https://example.com/api",
-			Headers:   map[string]string{"Content-Type": "application/json", "Accept": "application/json"},
+			Headers:   map[string]string{contentTypeHeader: applicationJSON, "Accept": applicationJSON},
 			Body:      []byte(`{"key": "value"}`),
 			Timeout:   "30s",
 			SessionID: "session-123",
@@ -32,7 +40,7 @@ func TestRelayRequest_ToProtocolRequest(t *testing.T) {
 		assert.Equal(t, 30*time.Second, result.Timeout)
 		assert.Equal(t, "session-123", result.SessionID)
 		assert.Equal(t, "trace-456", result.TraceID)
-		assert.Equal(t, []byte(`{"key": "value"}`), result.Body)
+		assert.JSONEq(t, `{"key": "value"}`, string(result.Body))
 		assert.Len(t, result.Headers, 2)
 	})
 
@@ -53,7 +61,7 @@ func TestRelayRequest_ToProtocolRequest(t *testing.T) {
 		}
 
 		_, err := dto.ToProtocolRequest()
-		assert.Error(t, err)
+		require.Error(t, err)
 	})
 }
 
@@ -162,18 +170,18 @@ func TestCreateRoutingRuleRequest_ToDomain(t *testing.T) {
 	t.Run("full request", func(t *testing.T) {
 		dto := &CreateRoutingRuleRequest{
 			Name:                 "Test Rule",
-			RequiredTags:         []string{"target:amazon"},
+			RequiredTags:         []string{targetAmazon},
 			ExcludedTags:         []string{"type:blocked"},
 			Priority:             100,
 			HardTimeout:          "1m30s",
 			RateLimitPerMinute:   60,
 			RateLimitPerSecond:   5,
 			AllowedEndpointTypes: []string{"residential"},
-			FingerprintPreset:    "chrome-130",
+			FingerprintPreset:    chrome130Fingerprint,
 			FingerprintABTest: &ABConfigDTO{
 				Strategy: "weighted",
 				Variants: []ABVariantDTO{
-					{Fingerprint: "chrome-130", Weight: 80},
+					{Fingerprint: chrome130Fingerprint, Weight: 80},
 					{Fingerprint: "firefox-120", Weight: 20},
 				},
 			},
@@ -191,13 +199,13 @@ func TestCreateRoutingRuleRequest_ToDomain(t *testing.T) {
 		require.NoError(t, err)
 
 		assert.Equal(t, "Test Rule", result.Name)
-		assert.Equal(t, []string{"target:amazon"}, result.RequiredTags)
+		assert.Equal(t, []string{targetAmazon}, result.RequiredTags)
 		assert.Equal(t, 100, result.Priority)
 		assert.Equal(t, 90*time.Second, result.HardTimeout)
 		assert.Equal(t, 60, result.RateLimitPerMinute)
-		assert.Equal(t, "chrome-130", result.FingerprintPreset)
+		assert.Equal(t, chrome130Fingerprint, result.FingerprintPreset)
 		assert.NotNil(t, result.FingerprintABTest)
-		assert.Equal(t, 2, len(result.FingerprintABTest.Variants))
+		assert.Len(t, result.FingerprintABTest.Variants, 2)
 		assert.NotNil(t, result.RequestFilters)
 		assert.True(t, result.RequestFilters.EnableAdblock)
 		assert.Len(t, result.EndpointPools, 1)
@@ -211,7 +219,7 @@ func TestCreateRoutingRuleRequest_ToDomain(t *testing.T) {
 		}
 
 		_, err := dto.ToDomain()
-		assert.Error(t, err)
+		require.Error(t, err)
 	})
 }
 
@@ -221,15 +229,15 @@ func TestFromRoutingRule(t *testing.T) {
 		rule := &domain.RoutingRule{
 			ID:                 "rule-123",
 			Name:               "Test Rule",
-			RequiredTags:       []string{"target:amazon"},
+			RequiredTags:       []string{targetAmazon},
 			Priority:           100,
 			HardTimeout:        90 * time.Second,
 			RateLimitPerMinute: 60,
-			FingerprintPreset:  "chrome-130",
+			FingerprintPreset:  chrome130Fingerprint,
 			FingerprintABTest: &domain.ABConfig{
 				Strategy: "random",
 				Variants: []domain.ABVariant{
-					{Fingerprint: "chrome-130", Weight: 50},
+					{Fingerprint: chrome130Fingerprint, Weight: 50},
 				},
 			},
 			RequestFilters: &domain.RequestFilter{
@@ -262,13 +270,13 @@ func TestFromRoutingRule(t *testing.T) {
 	})
 }
 
-func TestFromApiKey(t *testing.T) {
+func TestFromAPIKey(t *testing.T) {
 	t.Run("full key", func(t *testing.T) {
 		now := time.Now()
 		expires := now.Add(24 * time.Hour)
 		rateLimit := 100
 
-		key := &domain.ApiKey{
+		key := &domain.APIKey{
 			ID:                "key-123",
 			TokenHash:         "secret-hash-should-not-leak",
 			Name:              "Test Key",
@@ -279,7 +287,7 @@ func TestFromApiKey(t *testing.T) {
 			ExpiresAt:         &expires,
 		}
 
-		result := FromApiKey(key)
+		result := FromAPIKey(key)
 
 		assert.Equal(t, "key-123", result.ID)
 		assert.Equal(t, "Test Key", result.Name)
@@ -291,32 +299,32 @@ func TestFromApiKey(t *testing.T) {
 	})
 
 	t.Run("nil key", func(t *testing.T) {
-		result := FromApiKey(nil)
+		result := FromAPIKey(nil)
 		assert.Nil(t, result)
 	})
 }
 
-func TestFromApiKeys(t *testing.T) {
-	keys := []domain.ApiKey{
+func TestFromAPIKeys(t *testing.T) {
+	keys := []domain.APIKey{
 		{ID: "key-1", Name: "Key 1", IsActive: true},
 		{ID: "key-2", Name: "Key 2", IsActive: false},
 	}
 
-	result := FromApiKeys(keys)
+	result := FromAPIKeys(keys)
 
 	assert.Len(t, result, 2)
 	assert.Equal(t, "key-1", result[0].ID)
 	assert.Equal(t, "key-2", result[1].ID)
 }
 
-func TestFromApiKeyTokens(t *testing.T) {
+func TestFromAPIKeyTokens(t *testing.T) {
 	now := time.Now()
-	tokens := []domain.ApiKeyToken{
+	tokens := []domain.APIKeyToken{
 		{ID: "token-1", Status: domain.TokenStatusActive, CreatedAt: now},
 		{ID: "token-2", Status: domain.TokenStatusGrace, CreatedAt: now.Add(-time.Minute)},
 	}
 
-	result := FromApiKeyTokens(tokens)
+	result := FromAPIKeyTokens(tokens)
 
 	assert.Len(t, result, 2)
 	assert.Equal(t, "token-1", result[0].ID)
@@ -327,17 +335,17 @@ func TestFromApiKeyTokens(t *testing.T) {
 
 func TestCreateFingerprintRequest_ToDomain(t *testing.T) {
 	dto := &CreateFingerprintRequest{
-		ID:   "chrome-130",
+		ID:   chrome130Fingerprint,
 		Name: "Chrome 130",
-		Config: map[string]interface{}{
+		Config: map[string]any{
 			"user_agent": "Mozilla/5.0...",
-			"tls":        map[string]interface{}{"version": "1.3"},
+			"tls":        map[string]any{"version": "1.3"},
 		},
 	}
 
 	result := dto.ToDomain()
 
-	assert.Equal(t, "chrome-130", result.ID)
+	assert.Equal(t, chrome130Fingerprint, result.ID)
 	assert.Equal(t, "Chrome 130", result.Name)
 	assert.Equal(t, "Mozilla/5.0...", result.Config["user_agent"])
 }
@@ -345,7 +353,7 @@ func TestCreateFingerprintRequest_ToDomain(t *testing.T) {
 func TestFromFingerprintPreset(t *testing.T) {
 	now := time.Now()
 	preset := &domain.FingerprintPreset{
-		ID:        "chrome-130",
+		ID:        chrome130Fingerprint,
 		Name:      "Chrome 130",
 		Config:    domain.ConfigMap{"tls_version": "1.3"},
 		CreatedAt: now,
@@ -354,7 +362,7 @@ func TestFromFingerprintPreset(t *testing.T) {
 
 	result := FromFingerprintPreset(preset)
 
-	assert.Equal(t, "chrome-130", result.ID)
+	assert.Equal(t, chrome130Fingerprint, result.ID)
 	assert.Equal(t, "Chrome 130", result.Name)
 	assert.Equal(t, "1.3", result.Config["tls_version"])
 	assert.Equal(t, now, result.CreatedAt)
@@ -376,7 +384,7 @@ func TestFromUsageSummary(t *testing.T) {
 	assert.Equal(t, "2026-01-05", result.Date)
 	assert.Equal(t, int64(1000), result.TotalRequests)
 	assert.Equal(t, int64(1024000), result.TotalBytes)
-	assert.Equal(t, 10.5, result.CostUnits)
+	assert.InEpsilon(t, 10.5, result.CostUnits, 0.0001)
 	assert.Len(t, result.Breakdown, 2)
 
 	assert.Nil(t, FromUsageSummary(nil))

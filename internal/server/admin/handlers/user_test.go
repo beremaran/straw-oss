@@ -8,9 +8,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/beremaran/straw/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+
+	"github.com/beremaran/straw/internal/domain"
 )
 
 func TestUserHandler_HandleListUsers(t *testing.T) {
@@ -30,10 +32,10 @@ func TestUserHandler_HandleListUsers(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 
-	var response map[string]interface{}
+	var response map[string]any
 	err := json.Unmarshal(rec.Body.Bytes(), &response)
-	assert.NoError(t, err)
-	assert.Equal(t, float64(2), response["total"])
+	require.NoError(t, err)
+	assert.InEpsilon(t, float64(2), response["total"], 0.01)
 }
 
 func TestUserHandler_HandleCreateUser(t *testing.T) {

@@ -10,6 +10,15 @@ import (
 	"time"
 )
 
+const (
+	testManifestVersion = "1.0.0"
+	testManifestURL     = "http://example.com/binary"
+	testManifestSHA256  = "abc123"
+	testNewVersion      = "2.0.0"
+	testNewVersion2     = "v2.3.4"
+	testV100            = "v1.0.0"
+)
+
 func TestChecker_New(t *testing.T) {
 	c := NewChecker("http://example.com/manifest.json", "1.0.0")
 
@@ -17,7 +26,7 @@ func TestChecker_New(t *testing.T) {
 		t.Errorf("expected update URL to be set, got %q", c.updateURL)
 	}
 
-	if c.currentVersion != "v1.0.0" {
+	if c.currentVersion != testV100 {
 		t.Errorf("expected version 'v1.0.0', got %q", c.currentVersion)
 	}
 
@@ -55,11 +64,11 @@ func TestChecker_NewWithOptions(t *testing.T) {
 }
 
 func TestChecker_CheckNow_NoUpdate(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		manifest := VersionManifest{
-			Version: "1.0.0",
-			URL:     "http://example.com/binary",
-			SHA256:  "abc123",
+			Version: testManifestVersion,
+			URL:     testManifestURL,
+			SHA256:  testManifestSHA256,
 		}
 		_ = json.NewEncoder(w).Encode(manifest)
 	}))
@@ -76,7 +85,7 @@ func TestChecker_CheckNow_NoUpdate(t *testing.T) {
 		t.Error("expected no update available")
 	}
 
-	if result.CurrentVersion != "v1.0.0" {
+	if result.CurrentVersion != testV100 {
 		t.Errorf("expected current version 'v1.0.0', got %q", result.CurrentVersion)
 	}
 
@@ -86,9 +95,9 @@ func TestChecker_CheckNow_NoUpdate(t *testing.T) {
 }
 
 func TestChecker_CheckNow_UpdateAvailable(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		manifest := VersionManifest{
-			Version: "2.0.0",
+			Version: testNewVersion,
 			URL:     "http://example.com/binary-v2",
 			SHA256:  "def456",
 		}
@@ -121,11 +130,11 @@ func TestChecker_CheckNow_UpdateAvailable(t *testing.T) {
 }
 
 func TestChecker_CheckNow_OlderVersion(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		manifest := VersionManifest{
-			Version: "1.0.0",
-			URL:     "http://example.com/binary",
-			SHA256:  "abc123",
+			Version: testManifestVersion,
+			URL:     testManifestURL,
+			SHA256:  testManifestSHA256,
 		}
 		_ = json.NewEncoder(w).Encode(manifest)
 	}))
@@ -144,7 +153,7 @@ func TestChecker_CheckNow_OlderVersion(t *testing.T) {
 }
 
 func TestChecker_CheckNow_InvalidManifest(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("not valid json"))
 	}))
 	defer server.Close()
@@ -163,13 +172,13 @@ func TestChecker_CheckNow_MissingFields(t *testing.T) {
 		manifest VersionManifest
 	}{
 		{"missing version", VersionManifest{URL: "http://x", SHA256: "abc"}},
-		{"missing url", VersionManifest{Version: "1.0.0", SHA256: "abc"}},
-		{"missing sha256", VersionManifest{Version: "1.0.0", URL: "http://x"}},
+		{"missing url", VersionManifest{Version: testManifestVersion, SHA256: "abc"}},
+		{"missing sha256", VersionManifest{Version: testManifestVersion, URL: "http://x"}},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				_ = json.NewEncoder(w).Encode(tt.manifest)
 			}))
 			defer server.Close()
@@ -185,7 +194,7 @@ func TestChecker_CheckNow_MissingFields(t *testing.T) {
 }
 
 func TestChecker_CheckNow_NetworkError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		panic("intentional panic to close connection")
 	}))
 	server.Close()
@@ -199,7 +208,7 @@ func TestChecker_CheckNow_NetworkError(t *testing.T) {
 }
 
 func TestChecker_CheckNow_NonOKStatus(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer server.Close()
@@ -215,12 +224,12 @@ func TestChecker_CheckNow_NonOKStatus(t *testing.T) {
 func TestChecker_PeriodicChecking(t *testing.T) {
 	var checkCount atomic.Int32
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		checkCount.Add(1)
 		manifest := VersionManifest{
-			Version: "1.0.0",
-			URL:     "http://example.com/binary",
-			SHA256:  "abc123",
+			Version: testManifestVersion,
+			URL:     testManifestURL,
+			SHA256:  testManifestSHA256,
 		}
 		_ = json.NewEncoder(w).Encode(manifest)
 	}))
@@ -230,8 +239,7 @@ func TestChecker_PeriodicChecking(t *testing.T) {
 		WithCheckInterval(50*time.Millisecond),
 	)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	c.Start(ctx)
 
@@ -249,11 +257,11 @@ func TestChecker_PeriodicChecking(t *testing.T) {
 }
 
 func TestChecker_GracefulShutdown(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		manifest := VersionManifest{
-			Version: "1.0.0",
-			URL:     "http://example.com/binary",
-			SHA256:  "abc123",
+			Version: testManifestVersion,
+			URL:     testManifestURL,
+			SHA256:  testManifestSHA256,
 		}
 		_ = json.NewEncoder(w).Encode(manifest)
 	}))
@@ -280,11 +288,11 @@ func TestChecker_GracefulShutdown(t *testing.T) {
 }
 
 func TestChecker_DoubleStartIsSafe(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		manifest := VersionManifest{
-			Version: "1.0.0",
-			URL:     "http://example.com/binary",
-			SHA256:  "abc123",
+			Version: testManifestVersion,
+			URL:     testManifestURL,
+			SHA256:  testManifestSHA256,
 		}
 		_ = json.NewEncoder(w).Encode(manifest)
 	}))
@@ -306,11 +314,11 @@ func TestChecker_DoubleStartIsSafe(t *testing.T) {
 }
 
 func TestChecker_ContextCancellation(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		manifest := VersionManifest{
-			Version: "1.0.0",
-			URL:     "http://example.com/binary",
-			SHA256:  "abc123",
+			Version: testManifestVersion,
+			URL:     testManifestURL,
+			SHA256:  testManifestSHA256,
 		}
 		_ = json.NewEncoder(w).Encode(manifest)
 	}))
@@ -339,11 +347,11 @@ func TestNormalizeVersion(t *testing.T) {
 		input    string
 		expected string
 	}{
-		{"1.0.0", "v1.0.0"},
+		{"1.0.0", testV100},
 		{"v1.0.0", "v1.0.0"},
 		{"", "v0.0.0"},
-		{"2.3.4", "v2.3.4"},
-		{"v2.3.4", "v2.3.4"},
+		{"2.3.4", testNewVersion2},
+		{"v2.3.4", testNewVersion2},
 	}
 
 	for _, tt := range tests {

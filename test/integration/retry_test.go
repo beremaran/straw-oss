@@ -23,7 +23,7 @@ func TestRetry_SamePool(t *testing.T) {
 	for _, id := range epIDs {
 		require.NoError(t, CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{
 			ID:        id,
-			Tags:      []string{"retry:same-pool"},
+			Tags:      []string{testRetrySamePool},
 			IsHealthy: true,
 		}))
 	}
@@ -33,7 +33,7 @@ func TestRetry_SamePool(t *testing.T) {
 		suite.PostgresDSN(),
 		"retry-same-pool-rule",
 		100,
-		[]string{"retry:same-pool"},
+		[]string{testRetrySamePool},
 		[]string{},
 		"",
 		0,
@@ -46,17 +46,17 @@ func TestRetry_SamePool(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, tc.Server.GetMatcher().LoadRules(ctx))
 
-	ep1 := NewMockEndpoint(tc.Broker, MockEndpointConfig{EndpointID: "same-pool-1", Secret: []byte(testHMACSecret), Tags: []string{"retry:same-pool"}})
+	ep1 := NewMockEndpoint(tc.Broker, MockEndpointConfig{EndpointID: "same-pool-1", Secret: []byte(testHMACSecret), Tags: []string{testRetrySamePool}})
 	ep1.SetFailures(10)
 	require.NoError(t, ep1.Start(ctx))
 	defer ep1.Stop()
 
-	ep2 := NewMockEndpoint(tc.Broker, MockEndpointConfig{EndpointID: "same-pool-2", Secret: []byte(testHMACSecret), Tags: []string{"retry:same-pool"}})
+	ep2 := NewMockEndpoint(tc.Broker, MockEndpointConfig{EndpointID: "same-pool-2", Secret: []byte(testHMACSecret), Tags: []string{testRetrySamePool}})
 	ep2.SetFailures(10)
 	require.NoError(t, ep2.Start(ctx))
 	defer ep2.Stop()
 
-	ep3 := NewMockEndpoint(tc.Broker, MockEndpointConfig{EndpointID: "same-pool-3", Secret: []byte(testHMACSecret), Tags: []string{"retry:same-pool"}})
+	ep3 := NewMockEndpoint(tc.Broker, MockEndpointConfig{EndpointID: "same-pool-3", Secret: []byte(testHMACSecret), Tags: []string{testRetrySamePool}})
 	require.NoError(t, ep3.Start(ctx))
 	defer ep3.Stop()
 
@@ -67,8 +67,8 @@ func TestRetry_SamePool(t *testing.T) {
 	client := NewHTTPTestClient(tc.ServerURL, apiKey.RawKey)
 	resp, err := client.SendRequest(ctx, &ProxyRequest{
 		URL:    tc.MockTarget.URL() + "/retry-me",
-		Method: "GET",
-		Tags:   []string{"retry:same-pool"},
+		Method: httpGet,
+		Tags:   []string{testRetrySamePool},
 	})
 	require.NoError(t, err)
 
@@ -86,10 +86,10 @@ func TestRetry_Escalation(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{
-		ID: "ep-tier-1", Tags: []string{"tier:1"}, IsHealthy: true,
+		ID: testEpTier1, Tags: []string{"tier:1"}, IsHealthy: true,
 	}))
 	require.NoError(t, CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{
-		ID: "ep-tier-2", Tags: []string{"tier:2"}, IsHealthy: true,
+		ID: testEpTier2, Tags: []string{"tier:2"}, IsHealthy: true,
 	}))
 
 	err = CreateTestRoutingRule(
@@ -97,33 +97,33 @@ func TestRetry_Escalation(t *testing.T) {
 		suite.PostgresDSN(),
 		"escalation-rule",
 		100,
-		[]string{"mode:escalation"},
+		[]string{testModeEscalation},
 		[]string{},
 		"",
 		0,
 		0,
 		"",
 		[]TestEndpointPool{
-			{Tier: 1, Endpoints: []string{"ep-tier-1"}, MaxRetries: 1},
-			{Tier: 2, Endpoints: []string{"ep-tier-2"}, MaxRetries: 1},
+			{Tier: 1, Endpoints: []string{testEpTier1}, MaxRetries: 1},
+			{Tier: 2, Endpoints: []string{testEpTier2}, MaxRetries: 1},
 		},
 	)
 	require.NoError(t, err)
 	require.NoError(t, tc.Server.GetMatcher().LoadRules(ctx))
 
 	ep1 := NewMockEndpoint(tc.Broker, MockEndpointConfig{
-		EndpointID: "ep-tier-1",
+		EndpointID: testEpTier1,
 		Secret:     []byte(testHMACSecret),
-		Tags:       []string{"tier:1", "mode:escalation"},
+		Tags:       []string{"tier:1", testModeEscalation},
 	})
 	ep1.SetFailures(100)
 	require.NoError(t, ep1.Start(ctx))
 	defer ep1.Stop()
 
 	ep2 := NewMockEndpoint(tc.Broker, MockEndpointConfig{
-		EndpointID: "ep-tier-2",
+		EndpointID: testEpTier2,
 		Secret:     []byte(testHMACSecret),
-		Tags:       []string{"tier:2", "mode:escalation"},
+		Tags:       []string{"tier:2", testModeEscalation},
 	})
 	ep2.SetResponse(&MockEndpointResponse{
 		StatusCode: 200,
@@ -132,14 +132,14 @@ func TestRetry_Escalation(t *testing.T) {
 	require.NoError(t, ep2.Start(ctx))
 	defer ep2.Stop()
 
-	require.NoError(t, tc.WaitForEndpoint(ctx, "ep-tier-1"))
-	require.NoError(t, tc.WaitForEndpoint(ctx, "ep-tier-2"))
+	require.NoError(t, tc.WaitForEndpoint(ctx, testEpTier1))
+	require.NoError(t, tc.WaitForEndpoint(ctx, testEpTier2))
 
 	client := NewHTTPTestClient(tc.ServerURL, apiKey.RawKey)
 	resp, err := client.SendRequest(ctx, &ProxyRequest{
 		URL:    tc.MockTarget.URL() + "/escalate",
-		Method: "GET",
-		Tags:   []string{"mode:escalation"},
+		Method: httpGet,
+		Tags:   []string{testModeEscalation},
 	})
 	require.NoError(t, err)
 
@@ -164,29 +164,29 @@ func TestRetry_ImmediateEscalation_403(t *testing.T) {
 	apiKey, err := CreateTestAPIKey(ctx, suite.PostgresDSN(), "blocked-client", []string{"*"})
 	require.NoError(t, err)
 
-	require.NoError(t, CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{ID: "ep-blocked", Tags: []string{"tier:blocked"}, IsHealthy: true}))
-	require.NoError(t, CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{ID: "ep-backup", Tags: []string{"tier:backup"}, IsHealthy: true}))
+	require.NoError(t, CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{ID: testEpBlocked, Tags: []string{"tier:blocked"}, IsHealthy: true}))
+	require.NoError(t, CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{ID: testEpBackup, Tags: []string{"tier:backup"}, IsHealthy: true}))
 
 	err = CreateTestRoutingRule(
 		ctx,
 		suite.PostgresDSN(),
 		"blocked-rule",
 		100,
-		[]string{"mode:blocked"},
+		[]string{testModeBlocked},
 		[]string{},
 		"",
 		0,
 		0,
 		"",
 		[]TestEndpointPool{
-			{Tier: 1, Endpoints: []string{"ep-blocked"}, MaxRetries: 3},
-			{Tier: 2, Endpoints: []string{"ep-backup"}, MaxRetries: 1},
+			{Tier: 1, Endpoints: []string{testEpBlocked}, MaxRetries: 3},
+			{Tier: 2, Endpoints: []string{testEpBackup}, MaxRetries: 1},
 		},
 	)
 	require.NoError(t, err)
 	require.NoError(t, tc.Server.GetMatcher().LoadRules(ctx))
 
-	ep1 := NewMockEndpoint(tc.Broker, MockEndpointConfig{EndpointID: "ep-blocked", Secret: []byte(testHMACSecret), Tags: []string{"tier:blocked", "mode:blocked"}})
+	ep1 := NewMockEndpoint(tc.Broker, MockEndpointConfig{EndpointID: testEpBlocked, Secret: []byte(testHMACSecret), Tags: []string{"tier:blocked", testModeBlocked}})
 	ep1.SetResponse(&MockEndpointResponse{
 		StatusCode: http.StatusForbidden,
 		Body:       []byte("Blocked by target"),
@@ -194,19 +194,19 @@ func TestRetry_ImmediateEscalation_403(t *testing.T) {
 	require.NoError(t, ep1.Start(ctx))
 	defer ep1.Stop()
 
-	ep2 := NewMockEndpoint(tc.Broker, MockEndpointConfig{EndpointID: "ep-backup", Secret: []byte(testHMACSecret), Tags: []string{"tier:backup", "mode:blocked"}})
+	ep2 := NewMockEndpoint(tc.Broker, MockEndpointConfig{EndpointID: testEpBackup, Secret: []byte(testHMACSecret), Tags: []string{"tier:backup", testModeBlocked}})
 	ep2.SetResponse(&MockEndpointResponse{StatusCode: 200, Body: []byte("Backup Success")})
 	require.NoError(t, ep2.Start(ctx))
 	defer ep2.Stop()
 
-	require.NoError(t, tc.WaitForEndpoint(ctx, "ep-blocked"))
-	require.NoError(t, tc.WaitForEndpoint(ctx, "ep-backup"))
+	require.NoError(t, tc.WaitForEndpoint(ctx, testEpBlocked))
+	require.NoError(t, tc.WaitForEndpoint(ctx, testEpBackup))
 
 	client := NewHTTPTestClient(tc.ServerURL, apiKey.RawKey)
 	resp, err := client.SendRequest(ctx, &ProxyRequest{
 		URL:    tc.MockTarget.URL() + "/blocked",
-		Method: "GET",
-		Tags:   []string{"mode:blocked"},
+		Method: httpGet,
+		Tags:   []string{testModeBlocked},
 	})
 	require.NoError(t, err)
 
@@ -228,7 +228,7 @@ func TestRetry_Exhaustion_503(t *testing.T) {
 
 	epIDs := []string{"exhaust-1", "exhaust-2"}
 	for _, id := range epIDs {
-		require.NoError(t, CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{ID: id, Tags: []string{"retry:exhaust"}, IsHealthy: true}))
+		require.NoError(t, CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{ID: id, Tags: []string{testRetryExhaust}, IsHealthy: true}))
 	}
 
 	err = CreateTestRoutingRule(
@@ -236,7 +236,7 @@ func TestRetry_Exhaustion_503(t *testing.T) {
 		suite.PostgresDSN(),
 		"exhaust-rule",
 		100,
-		[]string{"retry:exhaust"},
+		[]string{testRetryExhaust},
 		[]string{},
 		"",
 		0,
@@ -249,12 +249,12 @@ func TestRetry_Exhaustion_503(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, tc.Server.GetMatcher().LoadRules(ctx))
 
-	ep1 := NewMockEndpoint(tc.Broker, MockEndpointConfig{EndpointID: "exhaust-1", Secret: []byte(testHMACSecret), Tags: []string{"retry:exhaust"}})
+	ep1 := NewMockEndpoint(tc.Broker, MockEndpointConfig{EndpointID: "exhaust-1", Secret: []byte(testHMACSecret), Tags: []string{testRetryExhaust}})
 	ep1.SetFailures(10)
 	require.NoError(t, ep1.Start(ctx))
 	defer ep1.Stop()
 
-	ep2 := NewMockEndpoint(tc.Broker, MockEndpointConfig{EndpointID: "exhaust-2", Secret: []byte(testHMACSecret), Tags: []string{"retry:exhaust"}})
+	ep2 := NewMockEndpoint(tc.Broker, MockEndpointConfig{EndpointID: "exhaust-2", Secret: []byte(testHMACSecret), Tags: []string{testRetryExhaust}})
 	ep2.SetFailures(10)
 	require.NoError(t, ep2.Start(ctx))
 	defer ep2.Stop()
@@ -265,8 +265,8 @@ func TestRetry_Exhaustion_503(t *testing.T) {
 	client := NewHTTPTestClient(tc.ServerURL, apiKey.RawKey)
 	resp, err := client.SendRequest(ctx, &ProxyRequest{
 		URL:    tc.MockTarget.URL() + "/exhaust",
-		Method: "GET",
-		Tags:   []string{"retry:exhaust"},
+		Method: httpGet,
+		Tags:   []string{testRetryExhaust},
 	})
 	require.NoError(t, err)
 

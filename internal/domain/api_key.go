@@ -1,3 +1,4 @@
+// Package domain defines the core domain types, interfaces, and errors for Straw.
 package domain
 
 import (
@@ -6,7 +7,8 @@ import (
 	"time"
 )
 
-type ApiKey struct {
+// APIKey represents an API key for authenticating requests.
+type APIKey struct {
 	ID                string     `json:"id"`
 	TokenHash         string     `json:"token_hash"`
 	Name              string     `json:"name"`
@@ -17,8 +19,9 @@ type ApiKey struct {
 	ExpiresAt         *time.Time `json:"expires_at,omitempty"`
 }
 
-func NewApiKey(id, tokenHash, name string, scopes []string) *ApiKey {
-	return &ApiKey{
+// NewAPIKey creates a new active APIKey with the given id, token hash, name, and scopes.
+func NewAPIKey(id, tokenHash, name string, scopes []string) *APIKey {
+	return &APIKey{
 		ID:        id,
 		TokenHash: tokenHash,
 		Name:      name,
@@ -28,10 +31,12 @@ func NewApiKey(id, tokenHash, name string, scopes []string) *ApiKey {
 	}
 }
 
-func (k *ApiKey) IsValid() bool {
+// IsValid reports whether the APIKey is active and not expired.
+func (k *APIKey) IsValid() bool {
 	if !k.IsActive {
 		return false
 	}
+
 	if k.ExpiresAt != nil && time.Now().After(*k.ExpiresAt) {
 		return false
 	}
@@ -39,7 +44,8 @@ func (k *ApiKey) IsValid() bool {
 	return true
 }
 
-func (k *ApiKey) HasScope(tag Tag) bool {
+// HasScope reports whether the APIKey has a scope matching the given tag.
+func (k *APIKey) HasScope(tag Tag) bool {
 	tagStr := tag.String()
 
 	for _, scope := range k.Scopes {
@@ -51,7 +57,8 @@ func (k *ApiKey) HasScope(tag Tag) bool {
 	return false
 }
 
-func (k *ApiKey) HasScopeForTags(tags []Tag) bool {
+// HasScopeForTags reports whether the APIKey has scopes matching all the given tags.
+func (k *APIKey) HasScopeForTags(tags []Tag) bool {
 	for _, tag := range tags {
 		if !k.HasScope(tag) {
 			return false
@@ -85,12 +92,13 @@ func matchScope(scope, tag string) bool {
 	return false
 }
 
-type ApiKeyRepository interface {
-	GetByID(ctx context.Context, id string) (*ApiKey, error)
-	GetByTokenHash(ctx context.Context, tokenHash string) (*ApiKey, error)
-	Create(ctx context.Context, key *ApiKey) error
-	Update(ctx context.Context, key *ApiKey) error
-	List(ctx context.Context, limit, offset int) ([]ApiKey, int, error)
+// APIKeyRepository provides persistence operations for APIKey entities.
+type APIKeyRepository interface {
+	GetByID(ctx context.Context, id string) (*APIKey, error)
+	GetByTokenHash(ctx context.Context, tokenHash string) (*APIKey, error)
+	Create(ctx context.Context, key *APIKey) error
+	Update(ctx context.Context, key *APIKey) error
+	List(ctx context.Context, limit, offset int) ([]APIKey, int, error)
 	Exists(ctx context.Context) (bool, error)
 	Revoke(ctx context.Context, id string) error
 }

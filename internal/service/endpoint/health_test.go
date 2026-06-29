@@ -12,6 +12,16 @@ import (
 	"github.com/beremaran/straw/pkg/broker"
 )
 
+const (
+	testVersion         = "1.0.0"
+	testTypeResidential = "type:residential"
+	testSuspectID       = "suspect"
+	testUnhealthyID     = "unhealthy"
+	testEp1ID           = "ep1"
+	testEp2ID           = "ep2"
+	testEp3ID           = "ep3"
+)
+
 type mockHealthStore struct {
 	endpoints map[string]*redis.EndpointHealth
 	draining  map[string]bool
@@ -40,7 +50,7 @@ func (m *mockHealthStore) GetHealth(_ context.Context, endpointID string) (*redi
 	return nil, redis.ErrCacheMiss
 }
 
-func (m *mockHealthStore) ListHealthyByTags(_ context.Context, tags []string) ([]*redis.EndpointHealth, error) {
+func (m *mockHealthStore) ListHealthyByTags(_ context.Context, _ []string) ([]*redis.EndpointHealth, error) {
 	var result []*redis.EndpointHealth
 	for _, health := range m.endpoints {
 		if health.State == redis.HealthStateHealthy || health.State == redis.HealthStateSuspect {
@@ -106,8 +116,8 @@ func TestHealthService_HandleHeartbeat(t *testing.T) {
 	msg := HeartbeatMessage{
 		EndpointID:  "test-endpoint",
 		Timestamp:   time.Now().Unix(),
-		Version:     "1.0.0",
-		Tags:        []string{"type:residential", "region:us"},
+		Version:     testVersion,
+		Tags:        []string{testTypeResidential, "region:us"},
 		ActiveTasks: 3,
 	}
 
@@ -129,8 +139,8 @@ func TestHealthService_HandleHeartbeat(t *testing.T) {
 	if health.State != redis.HealthStateHealthy {
 		t.Errorf("expected state %s, got %s", redis.HealthStateHealthy, health.State)
 	}
-	if health.Version != "1.0.0" {
-		t.Errorf("expected version 1.0.0, got %s", health.Version)
+	if health.Version != testVersion {
+		t.Errorf("expected version %s, got %s", testVersion, health.Version)
 	}
 	if health.ActiveTasks != 3 {
 		t.Errorf("expected active_tasks 3, got %d", health.ActiveTasks)
@@ -234,12 +244,12 @@ func TestHealthService_IsHealthyEndpoint(t *testing.T) {
 		EndpointID: "healthy",
 		State:      redis.HealthStateHealthy,
 	}
-	store.endpoints["suspect"] = &redis.EndpointHealth{
-		EndpointID: "suspect",
+	store.endpoints[testSuspectID] = &redis.EndpointHealth{
+		EndpointID: testSuspectID,
 		State:      redis.HealthStateSuspect,
 	}
-	store.endpoints["unhealthy"] = &redis.EndpointHealth{
-		EndpointID: "unhealthy",
+	store.endpoints[testUnhealthyID] = &redis.EndpointHealth{
+		EndpointID: testUnhealthyID,
 		State:      redis.HealthStateUnhealthy,
 	}
 
@@ -255,8 +265,8 @@ func TestHealthService_IsHealthyEndpoint(t *testing.T) {
 		expected   bool
 	}{
 		{"healthy", true},
-		{"suspect", true},
-		{"unhealthy", false},
+		{testSuspectID, true},
+		{testUnhealthyID, false},
 	}
 
 	for _, tt := range tests {
@@ -336,13 +346,13 @@ func newMockBroker() *mockBroker {
 	return &mockBroker{}
 }
 
-func (m *mockBroker) Publish(_ context.Context, subject string, body []byte) error {
+func (m *mockBroker) Publish(_ context.Context, _ string, _ []byte) error {
 	m.publishCalled = true
 
 	return nil
 }
 
-func (m *mockBroker) Subscribe(ctx context.Context, subject string, handler broker.Handler, opts ...broker.SubscribeOption) error {
+func (m *mockBroker) Subscribe(_ context.Context, subject string, handler broker.Handler, _ ...broker.SubscribeOption) error {
 	m.subscribeCalled = true
 	m.subscribeSubject = subject
 	m.subscribeHandler = handler
@@ -350,7 +360,7 @@ func (m *mockBroker) Subscribe(ctx context.Context, subject string, handler brok
 	return nil
 }
 
-func (m *mockBroker) DeclareStream(ctx context.Context, name string, subjects ...string) error {
+func (m *mockBroker) DeclareStream(_ context.Context, _ string, _ ...string) error {
 	return nil
 }
 
@@ -358,7 +368,7 @@ func (m *mockBroker) IsConnected() bool {
 	return true
 }
 
-func (m *mockBroker) ConsumeOnce(ctx context.Context, subject string, timeout time.Duration) ([]byte, error) {
+func (m *mockBroker) ConsumeOnce(_ context.Context, _ string, _ time.Duration) ([]byte, error) {
 	return nil, nil
 }
 
@@ -390,7 +400,7 @@ func TestWithHealthLogger(t *testing.T) {
 	service := &HealthService{
 		store:            store,
 		logger:           slog.Default(),
-		heartbeatSubject: "heartbeats.>",
+		heartbeatSubject: defaultHeartbeatSubject,
 	}
 
 	customLogger := slog.New(slog.NewTextHandler(nil, nil))
@@ -427,8 +437,8 @@ func TestNewHealthService(t *testing.T) {
 				if s.logger == nil {
 					t.Error("expected logger to be set")
 				}
-				if s.heartbeatSubject != "heartbeats.>" {
-					t.Errorf("expected default subject 'heartbeats.>', got %s", s.heartbeatSubject)
+				if s.heartbeatSubject != defaultHeartbeatSubject {
+					t.Errorf("expected default subject %q, got %s", defaultHeartbeatSubject, s.heartbeatSubject)
 				}
 			},
 		},
@@ -494,7 +504,7 @@ func TestHealthService_StartStop(t *testing.T) {
 	}{
 		{
 			name:  "start and stop service",
-			setup: func(s *HealthService) {},
+			setup: func(*HealthService) {},
 			testFunc: func(t *testing.T, s *HealthService) {
 				ctx := context.Background()
 
@@ -516,7 +526,7 @@ func TestHealthService_StartStop(t *testing.T) {
 		},
 		{
 			name:  "start already running service",
-			setup: func(s *HealthService) {},
+			setup: func(*HealthService) {},
 			testFunc: func(t *testing.T, s *HealthService) {
 				ctx := context.Background()
 
@@ -535,7 +545,7 @@ func TestHealthService_StartStop(t *testing.T) {
 		},
 		{
 			name:  "stop not running service",
-			setup: func(s *HealthService) {},
+			setup: func(*HealthService) {},
 			testFunc: func(t *testing.T, s *HealthService) {
 				s.Stop()
 
@@ -546,11 +556,11 @@ func TestHealthService_StartStop(t *testing.T) {
 		},
 		{
 			name:  "multiple start stop cycles",
-			setup: func(s *HealthService) {},
+			setup: func(*HealthService) {},
 			testFunc: func(t *testing.T, s *HealthService) {
 				ctx := context.Background()
 
-				for i := 0; i < 3; i++ {
+				for i := range 3 {
 					err := s.Start(ctx)
 					if err != nil {
 						t.Fatalf("Start failed on cycle %d: %v", i, err)
@@ -589,7 +599,7 @@ func TestHealthService_IsRunning(t *testing.T) {
 	}{
 		{
 			name:     "not running initially",
-			setup:    func(s *HealthService) {},
+			setup:    func(*HealthService) {},
 			expected: false,
 		},
 		{
@@ -643,26 +653,24 @@ func TestHealthService_run(t *testing.T) {
 	}{
 		{
 			name: "run subscribes to correct subject",
-			setup: func(mb *mockBroker, store *mockHealthStore) {
-
+			setup: func(*mockBroker, *mockHealthStore) {
 			},
-			verify: func(t *testing.T, s *HealthService, mb *mockBroker) {
+			verify: func(t *testing.T, _ *HealthService, mb *mockBroker) {
 				if !mb.subscribeCalled {
 					t.Error("expected Subscribe to be called")
 				}
-				if mb.subscribeSubject != "heartbeats.>" {
-					t.Errorf("expected Subscribe to be called with subject 'heartbeats.>', got %s", mb.subscribeSubject)
+				if mb.subscribeSubject != defaultHeartbeatSubject {
+					t.Errorf("expected Subscribe to be called with subject %q, got %s", defaultHeartbeatSubject, mb.subscribeSubject)
 				}
 			},
 		},
 		{
 			name: "run uses custom subject",
-			setup: func(mb *mockBroker, store *mockHealthStore) {
-
+			setup: func(*mockBroker, *mockHealthStore) {
 			},
-			verify: func(t *testing.T, s *HealthService, mb *mockBroker) {
+			verify: func(t *testing.T, _ *HealthService, mb *mockBroker) {
 				if mb.subscribeSubject != "custom-queue" {
-					t.Errorf("expected Subscribe to be called with subject 'custom-queue', got %s", mb.subscribeSubject)
+					t.Errorf("expected Subscribe to be called with subject %q, got %s", "custom-queue", mb.subscribeSubject)
 				}
 			},
 		},
@@ -718,7 +726,7 @@ func TestHealthService_GetHealthyEndpoints(t *testing.T) {
 				store.endpoints["healthy1"] = &redis.EndpointHealth{
 					EndpointID: "healthy1",
 					State:      redis.HealthStateHealthy,
-					Tags:       []string{"type:residential"},
+					Tags:       []string{testTypeResidential},
 				}
 				store.endpoints["healthy2"] = &redis.EndpointHealth{
 					EndpointID: "healthy2",
@@ -764,7 +772,7 @@ func TestHealthService_GetHealthyEndpoints(t *testing.T) {
 		},
 		{
 			name:    "empty store returns empty list",
-			setup:   func(store *mockHealthStore) {},
+			setup:   func(*mockHealthStore) {},
 			tags:    []string{},
 			wantLen: 0,
 			wantErr: false,
@@ -835,47 +843,47 @@ func TestHealthService_GetEndpointHealth(t *testing.T) {
 		{
 			name: "returns existing endpoint health",
 			setup: func(store *mockHealthStore) {
-				store.endpoints["ep1"] = &redis.EndpointHealth{
-					EndpointID:  "ep1",
+				store.endpoints[testEp1ID] = &redis.EndpointHealth{
+					EndpointID:  testEp1ID,
 					State:       redis.HealthStateHealthy,
 					LastSeen:    time.Now(),
-					Version:     "1.0.0",
+					Version:     testVersion,
 					ActiveTasks: 5,
 				}
 			},
-			endpointID: "ep1",
+			endpointID: testEp1ID,
 			wantState:  redis.HealthStateHealthy,
 			wantErr:    false,
 		},
 		{
 			name:       "returns error for non-existent endpoint",
-			setup:      func(store *mockHealthStore) {},
+			setup:      func(*mockHealthStore) {},
 			endpointID: "nonexistent",
 			wantErr:    true,
 		},
 		{
 			name: "returns unhealthy endpoint",
 			setup: func(store *mockHealthStore) {
-				store.endpoints["ep2"] = &redis.EndpointHealth{
-					EndpointID: "ep2",
+				store.endpoints[testEp2ID] = &redis.EndpointHealth{
+					EndpointID: testEp2ID,
 					State:      redis.HealthStateUnhealthy,
 					LastSeen:   time.Now().Add(-1 * time.Hour),
 				}
 			},
-			endpointID: "ep2",
+			endpointID: testEp2ID,
 			wantState:  redis.HealthStateUnhealthy,
 			wantErr:    false,
 		},
 		{
 			name: "returns suspect endpoint",
 			setup: func(store *mockHealthStore) {
-				store.endpoints["ep3"] = &redis.EndpointHealth{
-					EndpointID: "ep3",
+				store.endpoints[testEp3ID] = &redis.EndpointHealth{
+					EndpointID: testEp3ID,
 					State:      redis.HealthStateSuspect,
 					LastSeen:   time.Now().Add(-20 * time.Second),
 				}
 			},
-			endpointID: "ep3",
+			endpointID: testEp3ID,
 			wantState:  redis.HealthStateSuspect,
 			wantErr:    false,
 		},
@@ -936,15 +944,15 @@ func TestHealthService_DrainEndpoint(t *testing.T) {
 		{
 			name: "marks endpoint as draining",
 			setup: func(store *mockHealthStore) {
-				store.endpoints["ep1"] = &redis.EndpointHealth{
-					EndpointID: "ep1",
+				store.endpoints[testEp1ID] = &redis.EndpointHealth{
+					EndpointID: testEp1ID,
 					State:      redis.HealthStateHealthy,
 				}
 			},
-			endpointID: "ep1",
+			endpointID: testEp1ID,
 			wantErr:    false,
 			verify: func(t *testing.T, store *mockHealthStore) {
-				isDraining, err := store.IsDraining(context.Background(), "ep1")
+				isDraining, err := store.IsDraining(context.Background(), testEp1ID)
 				if err != nil {
 					t.Fatalf("IsDraining failed: %v", err)
 				}
@@ -955,7 +963,7 @@ func TestHealthService_DrainEndpoint(t *testing.T) {
 		},
 		{
 			name:       "can drain non-existent endpoint",
-			setup:      func(store *mockHealthStore) {},
+			setup:      func(*mockHealthStore) {},
 			endpointID: "nonexistent",
 			wantErr:    false,
 			verify: func(t *testing.T, store *mockHealthStore) {
@@ -971,12 +979,12 @@ func TestHealthService_DrainEndpoint(t *testing.T) {
 		{
 			name: "can drain already draining endpoint",
 			setup: func(store *mockHealthStore) {
-				store.draining["ep2"] = true
+				store.draining[testEp2ID] = true
 			},
-			endpointID: "ep2",
+			endpointID: testEp2ID,
 			wantErr:    false,
 			verify: func(t *testing.T, store *mockHealthStore) {
-				isDraining, err := store.IsDraining(context.Background(), "ep2")
+				isDraining, err := store.IsDraining(context.Background(), testEp2ID)
 				if err != nil {
 					t.Fatalf("IsDraining failed: %v", err)
 				}
@@ -1020,16 +1028,16 @@ func TestHealthService_ListAllEndpoints(t *testing.T) {
 		{
 			name: "returns all endpoints",
 			setup: func(store *mockHealthStore) {
-				store.endpoints["ep1"] = &redis.EndpointHealth{
-					EndpointID: "ep1",
+				store.endpoints[testEp1ID] = &redis.EndpointHealth{
+					EndpointID: testEp1ID,
 					State:      redis.HealthStateHealthy,
 				}
-				store.endpoints["ep2"] = &redis.EndpointHealth{
-					EndpointID: "ep2",
+				store.endpoints[testEp2ID] = &redis.EndpointHealth{
+					EndpointID: testEp2ID,
 					State:      redis.HealthStateSuspect,
 				}
-				store.endpoints["ep3"] = &redis.EndpointHealth{
-					EndpointID: "ep3",
+				store.endpoints[testEp3ID] = &redis.EndpointHealth{
+					EndpointID: testEp3ID,
 					State:      redis.HealthStateUnhealthy,
 				}
 			},
@@ -1038,7 +1046,7 @@ func TestHealthService_ListAllEndpoints(t *testing.T) {
 		},
 		{
 			name:    "empty store returns empty list",
-			setup:   func(store *mockHealthStore) {},
+			setup:   func(*mockHealthStore) {},
 			wantLen: 0,
 			wantErr: false,
 		},
@@ -1071,7 +1079,7 @@ func TestHealthService_ListAllEndpoints(t *testing.T) {
 				store.endpoints["ep1"] = &redis.EndpointHealth{
 					EndpointID:  "ep1",
 					State:       redis.HealthStateHealthy,
-					Tags:        []string{"type:residential", "region:us"},
+					Tags:        []string{testTypeResidential, "region:us"},
 					Version:     "1.2.3",
 					ActiveTasks: 10,
 					LastSeen:    time.Now(),

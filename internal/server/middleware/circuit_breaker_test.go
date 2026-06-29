@@ -7,8 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/beremaran/straw/internal/infra/circuitbreaker"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/beremaran/straw/internal/infra/circuitbreaker"
 )
 
 func TestCircuitBreaker(t *testing.T) {
@@ -22,7 +23,7 @@ func TestCircuitBreaker(t *testing.T) {
 
 	mw := CircuitBreaker(cb)
 
-	failHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	failHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte("fail"))
 	})
@@ -38,7 +39,7 @@ func TestCircuitBreaker(t *testing.T) {
 
 	time.Sleep(150 * time.Millisecond)
 
-	successHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	successHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})

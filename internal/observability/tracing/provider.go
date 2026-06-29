@@ -1,3 +1,4 @@
+// Package tracing configures OpenTelemetry tracing for the service.
 package tracing
 
 import (
@@ -15,6 +16,13 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
 )
 
+const (
+	batchTimeout       = 5 * time.Second
+	maxExportBatchSize = 512
+)
+
+// InitTracerProvider configures and returns an OpenTelemetry tracer provider.
+// The returned shutdown function should be called on service shutdown.
 func InitTracerProvider(ctx context.Context, serviceName, serviceVersion string) (func(context.Context) error, error) {
 	if strings.EqualFold(os.Getenv("OTEL_SDK_DISABLED"), "true") {
 		return func(context.Context) error { return nil }, nil
@@ -36,8 +44,8 @@ func InitTracerProvider(ctx context.Context, serviceName, serviceVersion string)
 	}
 
 	bsp := sdktrace.NewBatchSpanProcessor(exporter,
-		sdktrace.WithBatchTimeout(5*time.Second),
-		sdktrace.WithMaxExportBatchSize(512),
+		sdktrace.WithBatchTimeout(batchTimeout),
+		sdktrace.WithMaxExportBatchSize(maxExportBatchSize),
 	)
 
 	tracerProvider := sdktrace.NewTracerProvider(

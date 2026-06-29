@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
+	_ "github.com/jackc/pgx/v5/stdlib" // register pgx driver
 	"github.com/nats-io/nats.go"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
@@ -29,7 +29,7 @@ func TestContainerSetup(t *testing.T) {
 		defer cancel()
 
 		err = db.PingContext(ctx)
-		assert.NoError(t, err, "should ping PostgreSQL")
+		require.NoError(t, err, "should ping PostgreSQL")
 	})
 
 	t.Run("Redis is accessible", func(t *testing.T) {
@@ -42,7 +42,7 @@ func TestContainerSetup(t *testing.T) {
 		defer cancel()
 
 		_, err := client.Ping(ctx).Result()
-		assert.NoError(t, err, "should ping Redis")
+		require.NoError(t, err, "should ping Redis")
 	})
 
 	t.Run("NATS is accessible", func(t *testing.T) {
@@ -65,15 +65,15 @@ func TestDatabaseMigrations(t *testing.T) {
 	defer cancel()
 
 	expectedTables := []string{
-		"api_keys",
-		"routing_rules",
-		"endpoints",
-		"audit_log",
-		"usage_records",
-		"cost_multipliers",
-		"usage_daily_summary",
-		"admin_audit_log",
-		"fingerprint_presets",
+		tableAPIKeys,
+		tableRoutingRules,
+		tableEndpoints,
+		tableAuditLog,
+		tableUsageRecords,
+		tableCostMultipliers,
+		tableUsageDailySummary,
+		tableAdminAuditLog,
+		tableFingerprintPresets,
 	}
 
 	for _, tableName := range expectedTables {
@@ -193,7 +193,7 @@ func TestWaitForHealthy(t *testing.T) {
 		err := WaitForHealthy(ctx, func() error {
 			return nil
 		}, 100*time.Millisecond, 1*time.Second)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	})
 
 	t.Run("succeeds after retries", func(t *testing.T) {
@@ -207,7 +207,7 @@ func TestWaitForHealthy(t *testing.T) {
 
 			return nil
 		}, 50*time.Millisecond, 1*time.Second)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.GreaterOrEqual(t, attempts, 3)
 	})
 
@@ -216,7 +216,7 @@ func TestWaitForHealthy(t *testing.T) {
 		err := WaitForHealthy(ctx, func() error {
 			return assert.AnError
 		}, 50*time.Millisecond, 200*time.Millisecond)
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "timed out")
 	})
 
@@ -230,6 +230,6 @@ func TestWaitForHealthy(t *testing.T) {
 		err := WaitForHealthy(ctx, func() error {
 			return assert.AnError
 		}, 50*time.Millisecond, 10*time.Second)
-		assert.Error(t, err)
+		require.Error(t, err)
 	})
 }

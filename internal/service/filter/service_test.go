@@ -4,37 +4,49 @@ import (
 	"context"
 	"testing"
 
-	"github.com/beremaran/straw/internal/domain"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/beremaran/straw/internal/domain"
+)
+
+const (
+	testImagePng              = "image/png"
+	testImageWildcard         = "image/*"
+	testVideoWildcard         = "video/*"
+	testTextHTML              = "text/html"
+	testApplicationJS         = "application/javascript"
+	testAdsWildcard           = "*/ads/*"
+	testGoogleAnalyticsDomain = "googleanalytics.com"
 )
 
 func TestNewFilterRequest(t *testing.T) {
-	req := NewFilterRequest("https://example.com/page", "example.com", "text/html", "GET")
+	req := NewFilterRequest("https://example.com/page", testExampleHost, testTextHTML, "GET")
 
 	assert.Equal(t, "https://example.com/page", req.URL)
-	assert.Equal(t, "example.com", req.Host)
-	assert.Equal(t, "text/html", req.ContentType)
+	assert.Equal(t, testExampleHost, req.Host)
+	assert.Equal(t, testTextHTML, req.ContentType)
 	assert.Equal(t, "GET", req.Method)
 }
 
 func TestService_ShouldBlock_NilFilter(t *testing.T) {
 	service := NewService(nil)
-	req := NewFilterRequest("https://example.com/page", "example.com", "text/html", "GET")
+	req := NewFilterRequest("https://example.com/page", testExampleHost, testTextHTML, "GET")
 
 	result, err := service.ShouldBlock(context.Background(), req, nil)
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.False(t, result.Blocked)
 }
 
 func TestService_ShouldBlock_EmptyFilter(t *testing.T) {
 	service := NewService(nil)
-	req := NewFilterRequest("https://example.com/page", "example.com", "text/html", "GET")
+	req := NewFilterRequest("https://example.com/page", testExampleHost, testTextHTML, "GET")
 	filter := &domain.RequestFilter{}
 
 	result, err := service.ShouldBlock(context.Background(), req, filter)
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.False(t, result.Blocked)
 }
 
@@ -49,14 +61,14 @@ func TestService_ContentTypeBlocking(t *testing.T) {
 	}{
 		{
 			name:        "image/* blocks image/png",
-			contentType: "image/png",
-			patterns:    []string{"image/*"},
+			contentType: testImagePng,
+			patterns:    []string{testImageWildcard},
 			wantBlocked: true,
 		},
 		{
 			name:        "image/* blocks image/jpeg",
 			contentType: "image/jpeg",
-			patterns:    []string{"image/*"},
+			patterns:    []string{testImageWildcard},
 			wantBlocked: true,
 		},
 		{
@@ -68,43 +80,43 @@ func TestService_ContentTypeBlocking(t *testing.T) {
 		{
 			name:        "video/* blocks video/mp4",
 			contentType: "video/mp4",
-			patterns:    []string{"video/*"},
+			patterns:    []string{testVideoWildcard},
 			wantBlocked: true,
 		},
 		{
 			name:        "text/html not blocked by image/*",
-			contentType: "text/html",
-			patterns:    []string{"image/*"},
+			contentType: testTextHTML,
+			patterns:    []string{testImageWildcard},
 			wantBlocked: false,
 		},
 		{
 			name:        "exact match works",
-			contentType: "application/javascript",
-			patterns:    []string{"application/javascript"},
+			contentType: testApplicationJS,
+			patterns:    []string{testApplicationJS},
 			wantBlocked: true,
 		},
 		{
 			name:        "content-type with charset",
 			contentType: "text/html; charset=utf-8",
-			patterns:    []string{"text/html"},
+			patterns:    []string{testTextHTML},
 			wantBlocked: true,
 		},
 		{
 			name:        "multiple patterns - first match",
-			contentType: "image/png",
-			patterns:    []string{"video/*", "image/*", "font/*"},
+			contentType: testImagePng,
+			patterns:    []string{testVideoWildcard, testImageWildcard, "font/*"},
 			wantBlocked: true,
 		},
 		{
 			name:        "case insensitive",
 			contentType: "IMAGE/PNG",
-			patterns:    []string{"image/*"},
+			patterns:    []string{testImageWildcard},
 			wantBlocked: true,
 		},
 		{
 			name:        "empty content-type not blocked",
 			contentType: "",
-			patterns:    []string{"image/*"},
+			patterns:    []string{testImageWildcard},
 			wantBlocked: false,
 		},
 	}
@@ -118,7 +130,7 @@ func TestService_ContentTypeBlocking(t *testing.T) {
 
 			result, err := service.ShouldBlock(context.Background(), req, filter)
 
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.wantBlocked, result.Blocked)
 			if tt.wantBlocked {
 				assert.Equal(t, TypeContentType, result.FilterType)
@@ -140,7 +152,7 @@ func TestService_URLPatternBlocking(t *testing.T) {
 		{
 			name:        "*/ads/* blocks ads path",
 			url:         "https://example.com/ads/banner.js",
-			patterns:    []string{"*/ads/*"},
+			patterns:    []string{testAdsWildcard},
 			wantBlocked: true,
 		},
 		{
@@ -157,8 +169,8 @@ func TestService_URLPatternBlocking(t *testing.T) {
 		},
 		{
 			name:        "no match",
-			url:         "https://example.com/products/item",
-			patterns:    []string{"*/ads/*"},
+			url:         testNormalURL,
+			patterns:    []string{testAdsWildcard},
 			wantBlocked: false,
 		},
 		{
@@ -170,7 +182,7 @@ func TestService_URLPatternBlocking(t *testing.T) {
 		{
 			name:        "empty URL not blocked",
 			url:         "",
-			patterns:    []string{"*/ads/*"},
+			patterns:    []string{testAdsWildcard},
 			wantBlocked: false,
 		},
 	}
@@ -179,16 +191,16 @@ func TestService_URLPatternBlocking(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			host := ""
 			if tt.url != "" {
-				host = "example.com"
+				host = testExampleHost
 			}
-			req := NewFilterRequest(tt.url, host, "text/html", "GET")
+			req := NewFilterRequest(tt.url, host, testTextHTML, "GET")
 			filter := &domain.RequestFilter{
 				BlockURLPatterns: tt.patterns,
 			}
 
 			result, err := service.ShouldBlock(context.Background(), req, filter)
 
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.wantBlocked, result.Blocked)
 			if tt.wantBlocked {
 				assert.Equal(t, TypeURLPattern, result.FilterType)
@@ -209,14 +221,14 @@ func TestService_DomainBlocking(t *testing.T) {
 	}{
 		{
 			name:        "exact domain match",
-			host:        "googleanalytics.com",
-			domains:     []string{"googleanalytics.com"},
+			host:        testGoogleAnalyticsDomain,
+			domains:     []string{testGoogleAnalyticsDomain},
 			wantBlocked: true,
 		},
 		{
 			name:        "subdomain blocked by parent",
 			host:        "www.googleanalytics.com",
-			domains:     []string{"googleanalytics.com"},
+			domains:     []string{testGoogleAnalyticsDomain},
 			wantBlocked: true,
 		},
 		{
@@ -227,32 +239,32 @@ func TestService_DomainBlocking(t *testing.T) {
 		},
 		{
 			name:        "different domain not blocked",
-			host:        "example.com",
-			domains:     []string{"googleanalytics.com"},
+			host:        testExampleHost,
+			domains:     []string{testGoogleAnalyticsDomain},
 			wantBlocked: false,
 		},
 		{
 			name:        "host with port",
 			host:        "googleanalytics.com:443",
-			domains:     []string{"googleanalytics.com"},
+			domains:     []string{testGoogleAnalyticsDomain},
 			wantBlocked: true,
 		},
 		{
 			name:        "case insensitive",
 			host:        "GoogleAnalytics.COM",
-			domains:     []string{"googleanalytics.com"},
+			domains:     []string{testGoogleAnalyticsDomain},
 			wantBlocked: true,
 		},
 		{
 			name:        "empty host not blocked",
 			host:        "",
-			domains:     []string{"googleanalytics.com"},
+			domains:     []string{testGoogleAnalyticsDomain},
 			wantBlocked: false,
 		},
 		{
 			name:        "multiple domains - match second",
 			host:        "facebook.com",
-			domains:     []string{"googleanalytics.com", "facebook.com", "twitter.com"},
+			domains:     []string{testGoogleAnalyticsDomain, "facebook.com", "twitter.com"},
 			wantBlocked: true,
 		},
 	}
@@ -266,7 +278,7 @@ func TestService_DomainBlocking(t *testing.T) {
 
 			result, err := service.ShouldBlock(context.Background(), req, filter)
 
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.wantBlocked, result.Blocked)
 			if tt.wantBlocked {
 				assert.Equal(t, TypeDomain, result.FilterType)
@@ -280,30 +292,30 @@ func TestService_CombinedFilters(t *testing.T) {
 	service := NewService(nil)
 
 	t.Run("content-type checked first", func(t *testing.T) {
-		req := NewFilterRequest("https://ads.example.com/banner.png", "ads.example.com", "image/png", "GET")
+		req := NewFilterRequest("https://ads.example.com/banner.png", "ads.example.com", testImagePng, "GET")
 		filter := &domain.RequestFilter{
-			BlockContentTypes: []string{"image/*"},
+			BlockContentTypes: []string{testImageWildcard},
 			BlockDomains:      []string{"ads.example.com"},
 		}
 
 		result, err := service.ShouldBlock(context.Background(), req, filter)
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.True(t, result.Blocked)
 
 		assert.Equal(t, TypeContentType, result.FilterType)
 	})
 
 	t.Run("URL pattern checked after content-type", func(t *testing.T) {
-		req := NewFilterRequest("https://example.com/ads/script.js", "example.com", "application/javascript", "GET")
+		req := NewFilterRequest("https://example.com/ads/script.js", "example.com", testApplicationJS, "GET")
 		filter := &domain.RequestFilter{
-			BlockContentTypes: []string{"image/*"},
-			BlockURLPatterns:  []string{"*/ads/*"},
+			BlockContentTypes: []string{testImageWildcard},
+			BlockURLPatterns:  []string{testAdsWildcard},
 		}
 
 		result, err := service.ShouldBlock(context.Background(), req, filter)
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.True(t, result.Blocked)
 		assert.Equal(t, TypeURLPattern, result.FilterType)
 	})
@@ -311,14 +323,14 @@ func TestService_CombinedFilters(t *testing.T) {
 	t.Run("domain checked after URL pattern", func(t *testing.T) {
 		req := NewFilterRequest("https://tracking.com/pixel.gif", "tracking.com", "image/gif", "GET")
 		filter := &domain.RequestFilter{
-			BlockContentTypes: []string{"video/*"},
-			BlockURLPatterns:  []string{"*/ads/*"},
+			BlockContentTypes: []string{testVideoWildcard},
+			BlockURLPatterns:  []string{testAdsWildcard},
 			BlockDomains:      []string{"tracking.com"},
 		}
 
 		result, err := service.ShouldBlock(context.Background(), req, filter)
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.True(t, result.Blocked)
 		assert.Equal(t, TypeDomain, result.FilterType)
 	})
@@ -330,11 +342,11 @@ func TestMatchGlob(t *testing.T) {
 		pattern string
 		want    bool
 	}{
-		{"image/png", "image/*", true},
-		{"image/jpeg", "image/*", true},
-		{"text/html", "image/*", false},
-		{"application/javascript", "application/javascript", true},
-		{"video/mp4", "video/*", true},
+		{testImagePng, testImageWildcard, true},
+		{"image/jpeg", testImageWildcard, true},
+		{testTextHTML, testImageWildcard, false},
+		{testApplicationJS, testApplicationJS, true},
+		{"video/mp4", testVideoWildcard, true},
 	}
 
 	for _, tt := range tests {
@@ -351,9 +363,9 @@ func TestMatchDomain(t *testing.T) {
 		pattern string
 		want    bool
 	}{
-		{"example.com", "example.com", true},
-		{"www.example.com", "example.com", true},
-		{"sub.www.example.com", "example.com", true},
+		{testExampleHost, testExampleHost, true},
+		{"www.example.com", testExampleHost, true},
+		{"sub.www.example.com", testExampleHost, true},
 		{"notexample.com", "example.com", false},
 		{"sub.example.com", "*.example.com", true},
 		{"example.com", "*.example.com", false},
@@ -373,9 +385,9 @@ func TestMatchURLPattern(t *testing.T) {
 		pattern string
 		want    bool
 	}{
-		{"https://example.com/ads/banner.js", "*/ads/*", true},
-		{"https://example.com/static/ads/foo.js", "*/ads/*", true},
-		{"https://example.com/products/item", "*/ads/*", false},
+		{"https://example.com/ads/banner.js", testAdsWildcard, true},
+		{"https://example.com/static/ads/foo.js", testAdsWildcard, true},
+		{testNormalURL, testAdsWildcard, false},
 		{"https://www.google-analytics.com/foo", "*.google-analytics.com", true},
 	}
 

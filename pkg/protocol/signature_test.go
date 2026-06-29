@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"errors"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -82,10 +83,10 @@ func TestVerify_TamperedData(t *testing.T) {
 
 func TestNewSignedTask_Success(t *testing.T) {
 	req := &Request{
-		ID:          "req-123",
-		Method:      "GET",
-		URL:         "https://example.com",
-		Fingerprint: "chrome-130",
+		ID:          testReqID,
+		Method:      testMethodGet,
+		URL:         testURL,
+		Fingerprint: testFingerprint,
 	}
 	secret := []byte("test-secret")
 
@@ -112,11 +113,11 @@ func TestNewSignedTask_Success(t *testing.T) {
 
 func TestValidateSignedTask_Success(t *testing.T) {
 	req := &Request{
-		ID:          "req-123",
-		Method:      "POST",
+		ID:          testReqID,
+		Method:      testMethodPost,
 		URL:         "https://example.com/api",
-		Headers:     HeaderMap{{Key: "Content-Type", Value: "application/json"}},
-		Fingerprint: "chrome-130",
+		Headers:     HeaderMap{{Key: testContentType, Value: testJSONContentType}},
+		Fingerprint: testFingerprint,
 	}
 	secret := []byte("test-secret")
 
@@ -153,9 +154,9 @@ func TestValidateSignedTask_NilTask(t *testing.T) {
 
 func TestValidateSignedTask_ExpiredTimestamp(t *testing.T) {
 	req := &Request{
-		ID:     "req-123",
-		Method: "GET",
-		URL:    "https://example.com",
+		ID:     testReqID,
+		Method: testMethodGet,
+		URL:    testURL,
 	}
 	secret := []byte("test-secret")
 
@@ -166,7 +167,9 @@ func TestValidateSignedTask_ExpiredTimestamp(t *testing.T) {
 
 	task.Timestamp = time.Now().Add(-2 * time.Minute).Unix()
 
-	signatureData := append(task.Payload, []byte(string(rune(task.Timestamp)))...)
+	signatureData := make([]byte, 0, len(task.Payload)+len(strconv.FormatInt(task.Timestamp, 10)))
+	signatureData = append(signatureData, task.Payload...)
+	signatureData = append(signatureData, []byte(strconv.FormatInt(task.Timestamp, 10))...)
 	task.Signature = Sign(signatureData, secret)
 
 	_, err = ValidateSignedTask(task, secret, DefaultMaxTaskAge)
@@ -184,9 +187,9 @@ func TestValidateSignedTask_ExpiredTimestamp(t *testing.T) {
 
 func TestValidateSignedTask_InvalidSignature(t *testing.T) {
 	req := &Request{
-		ID:     "req-123",
-		Method: "GET",
-		URL:    "https://example.com",
+		ID:     testReqID,
+		Method: testMethodGet,
+		URL:    testURL,
 	}
 	secret := []byte("test-secret")
 
@@ -212,9 +215,9 @@ func TestValidateSignedTask_InvalidSignature(t *testing.T) {
 
 func TestValidateSignedTask_WrongSecret(t *testing.T) {
 	req := &Request{
-		ID:     "req-123",
-		Method: "GET",
-		URL:    "https://example.com",
+		ID:     testReqID,
+		Method: testMethodGet,
+		URL:    testURL,
 	}
 
 	task, err := NewSignedTask(req, []byte("correct-secret"))
@@ -230,9 +233,9 @@ func TestValidateSignedTask_WrongSecret(t *testing.T) {
 
 func TestValidateSignedTask_TamperedPayload(t *testing.T) {
 	req := &Request{
-		ID:     "req-123",
-		Method: "GET",
-		URL:    "https://example.com",
+		ID:     testReqID,
+		Method: testMethodGet,
+		URL:    testURL,
 	}
 	secret := []byte("test-secret")
 
@@ -285,9 +288,9 @@ func BenchmarkVerify(b *testing.B) {
 func BenchmarkNewSignedTask(b *testing.B) {
 	req := &Request{
 		ID:      "req-benchmark",
-		Method:  "GET",
+		Method:  testMethodGet,
 		URL:     "https://benchmark.example.com/path",
-		Headers: HeaderMap{{Key: "User-Agent", Value: "Benchmark/1.0"}},
+		Headers: HeaderMap{{Key: testUserAgent, Value: "Benchmark/1.0"}},
 	}
 	secret := []byte("benchmark-secret")
 
@@ -300,9 +303,9 @@ func BenchmarkNewSignedTask(b *testing.B) {
 func BenchmarkValidateSignedTask(b *testing.B) {
 	req := &Request{
 		ID:      "req-benchmark",
-		Method:  "GET",
+		Method:  testMethodGet,
 		URL:     "https://benchmark.example.com/path",
-		Headers: HeaderMap{{Key: "User-Agent", Value: "Benchmark/1.0"}},
+		Headers: HeaderMap{{Key: testUserAgent, Value: "Benchmark/1.0"}},
 	}
 	secret := []byte("benchmark-secret")
 	task, _ := NewSignedTask(req, secret)

@@ -24,7 +24,7 @@ func TestBuildResponse_Basic(t *testing.T) {
 	resp := &fhttp.Response{
 		StatusCode: 200,
 		Header: fhttp.Header{
-			"Content-Type": []string{"text/plain"},
+			ContentTypeHeader: []string{HeaderValueTextPlain},
 		},
 		Body: nopCloser{bytes.NewReader(body)},
 	}
@@ -72,8 +72,8 @@ func TestBuildResponse_GzipDecompression(t *testing.T) {
 	resp := &fhttp.Response{
 		StatusCode: 200,
 		Header: fhttp.Header{
-			"Content-Encoding": []string{"gzip"},
-			"Content-Type":     []string{"text/plain"},
+			ContentEncoding:   []string{"gzip"},
+			ContentTypeHeader: []string{HeaderValueTextPlain},
 		},
 		Body: nopCloser{bytes.NewReader(buf.Bytes())},
 	}
@@ -98,8 +98,8 @@ func TestBuildResponse_BrotliDecompression(t *testing.T) {
 	resp := &fhttp.Response{
 		StatusCode: 200,
 		Header: fhttp.Header{
-			"Content-Encoding": []string{"br"},
-			"Content-Type":     []string{"text/plain"},
+			ContentEncoding:   []string{"br"},
+			ContentTypeHeader: []string{HeaderValueTextPlain},
 		},
 		Body: nopCloser{bytes.NewReader(buf.Bytes())},
 	}
@@ -120,7 +120,7 @@ func TestBuildResponse_NoCompression(t *testing.T) {
 	resp := &fhttp.Response{
 		StatusCode: 200,
 		Header: fhttp.Header{
-			"Content-Type": []string{"text/plain"},
+			ContentTypeHeader: []string{HeaderValueTextPlain},
 		},
 		Body: nopCloser{bytes.NewReader(body)},
 	}
@@ -141,8 +141,8 @@ func TestBuildResponse_IdentityEncoding(t *testing.T) {
 	resp := &fhttp.Response{
 		StatusCode: 200,
 		Header: fhttp.Header{
-			"Content-Encoding": []string{"identity"},
-			"Content-Type":     []string{"text/plain"},
+			ContentEncoding:   []string{"identity"},
+			ContentTypeHeader: []string{HeaderValueTextPlain},
 		},
 		Body: nopCloser{bytes.NewReader(body)},
 	}
@@ -201,10 +201,10 @@ func TestBuildResponse_HeadersPreserved(t *testing.T) {
 	resp := &fhttp.Response{
 		StatusCode: 200,
 		Header: fhttp.Header{
-			"Content-Type":  []string{"application/json"},
-			"X-Custom":      []string{"value1"},
-			"X-Multi-Value": []string{"a", "b"},
-			"Cache-Control": []string{"no-cache"},
+			ContentTypeHeader:  []string{HeaderValueApplicationJSON},
+			HeaderValueXCustom: []string{HeaderValueValue1},
+			"X-Multi-Value":    []string{"a", "b"},
+			"Cache-Control":    []string{"no-cache"},
 		},
 		Body: nopCloser{bytes.NewReader([]byte("{}"))},
 	}
@@ -215,12 +215,12 @@ func TestBuildResponse_HeadersPreserved(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if protoResp.Headers.Get("Content-Type") != "application/json" {
-		t.Errorf("expected Content-Type 'application/json', got %s", protoResp.Headers.Get("Content-Type"))
+	if protoResp.Headers.Get(ContentTypeHeader) != HeaderValueApplicationJSON {
+		t.Errorf("expected Content-Type '%s', got %s", HeaderValueApplicationJSON, protoResp.Headers.Get(ContentTypeHeader))
 	}
 
-	if protoResp.Headers.Get("X-Custom") != "value1" {
-		t.Errorf("expected X-Custom 'value1', got %s", protoResp.Headers.Get("X-Custom"))
+	if protoResp.Headers.Get(HeaderValueXCustom) != HeaderValueValue1 {
+		t.Errorf("expected X-Custom '%s', got %s", HeaderValueValue1, protoResp.Headers.Get(HeaderValueXCustom))
 	}
 
 	if protoResp.Headers.Get("Cache-Control") != "no-cache" {
@@ -358,8 +358,8 @@ func TestBuildResponseWithOptions_StreamingResponse(t *testing.T) {
 	resp := &fhttp.Response{
 		StatusCode: 200,
 		Header: fhttp.Header{
-			"Content-Type":   []string{"application/octet-stream"},
-			"Content-Length": []string{"1000000000"},
+			ContentTypeHeader: []string{"application/octet-stream"},
+			"Content-Length":  []string{"1000000000"},
 		},
 		Body: nopCloser{bytes.NewReader(body)},
 	}
@@ -387,8 +387,8 @@ func TestBuildResponseWithOptions_StreamingResponse(t *testing.T) {
 		t.Errorf("expected status 200, got %d", protoResp.StatusCode)
 	}
 
-	if protoResp.Headers.Get("Content-Type") != "application/octet-stream" {
-		t.Errorf("expected Content-Type 'application/octet-stream', got %s", protoResp.Headers.Get("Content-Type"))
+	if protoResp.Headers.Get(ContentTypeHeader) != "application/octet-stream" {
+		t.Errorf("expected Content-Type 'application/octet-stream', got %s", protoResp.Headers.Get(ContentTypeHeader))
 	}
 
 	if protoResp.EndpointID != "endpoint-1" {
@@ -405,7 +405,7 @@ func TestBuildResponseWithOptions_BufferedResponse(t *testing.T) {
 	resp := &fhttp.Response{
 		StatusCode: 200,
 		Header: fhttp.Header{
-			"Content-Type": []string{"text/plain"},
+			ContentTypeHeader: []string{HeaderValueTextPlain},
 		},
 		Body: nopCloser{bytes.NewReader(body)},
 	}

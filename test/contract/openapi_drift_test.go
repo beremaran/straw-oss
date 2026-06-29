@@ -2,21 +2,28 @@ package contract_test
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/beremaran/straw/internal/server/dto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/xeipuuv/gojsonschema"
 	"gopkg.in/yaml.v3"
+
+	"github.com/beremaran/straw/internal/server/dto"
 )
 
-// loadOpenApiDoc loads the api/openapi.yaml file and parses it as a map.
-func loadOpenApiDoc(t *testing.T) map[string]interface{} {
+const (
+	regionUS     = "region:us"
+	endDate      = "2026-06-28"
+	targetAll    = "target:*"
+	chromePreset = "chrome-130"
+)
+
+// loadOpenAPIDoc loads the api/openapi.yaml file and parses it as a map.
+func loadOpenAPIDoc(t *testing.T) map[string]any {
 	wd, err := os.Getwd()
 	require.NoError(t, err)
 
@@ -31,13 +38,10 @@ func loadOpenApiDoc(t *testing.T) map[string]interface{} {
 		path = filepath.Join(wd, "..", "..", "api", "openapi.yaml")
 	}
 
-	absPath, err := filepath.Abs(path)
-	require.NoError(t, err, "failed to resolve absolute path for openapi.yaml")
-
-	yamlBytes, err := os.ReadFile(absPath)
+	yamlBytes, err := os.ReadFile(filepath.Clean(path))
 	require.NoError(t, err, "failed to read openapi.yaml")
 
-	var doc map[string]interface{}
+	var doc map[string]any
 	err = yaml.Unmarshal(yamlBytes, &doc)
 	require.NoError(t, err, "failed to parse openapi.yaml as YAML")
 
@@ -46,21 +50,21 @@ func loadOpenApiDoc(t *testing.T) map[string]interface{} {
 	jsonBytes, err := json.Marshal(doc)
 	require.NoError(t, err)
 
-	var jsonDoc map[string]interface{}
+	var jsonDoc map[string]any
 	err = json.Unmarshal(jsonBytes, &jsonDoc)
 	require.NoError(t, err)
 
 	return jsonDoc
 }
 
-// normalizeOpenApiSchema converts OpenAPI schema features (like nullable: true) to standard draft-04 JSON Schema.
-func normalizeOpenApiSchema(node interface{}) interface{} {
-	m, ok := node.(map[string]interface{})
+// normalizeOpenAPISchema converts OpenAPI schema features (like nullable: true) to standard draft-04 JSON Schema.
+func normalizeOpenAPISchema(node any) any {
+	m, ok := node.(map[string]any)
 	if !ok {
-		a, ok := node.([]interface{})
+		a, ok := node.([]any)
 		if ok {
 			for i, v := range a {
-				a[i] = normalizeOpenApiSchema(v)
+				a[i] = normalizeOpenAPISchema(v)
 			}
 
 			return a
@@ -70,7 +74,7 @@ func normalizeOpenApiSchema(node interface{}) interface{} {
 	}
 
 	for k, v := range m {
-		m[k] = normalizeOpenApiSchema(v)
+		m[k] = normalizeOpenAPISchema(v)
 	}
 
 	handleNullable(m)
@@ -78,7 +82,7 @@ func normalizeOpenApiSchema(node interface{}) interface{} {
 	return m
 }
 
-func handleNullable(m map[string]interface{}) {
+func handleNullable(m map[string]any) {
 	nullable, ok := m["nullable"].(bool)
 	if !ok || !nullable {
 		return
@@ -87,12 +91,12 @@ func handleNullable(m map[string]interface{}) {
 
 	t, ok := m["type"].(string)
 	if ok {
-		m["type"] = []interface{}{t, "null"}
+		m["type"] = []any{t, "null"}
 
 		return
 	}
 
-	types, ok := m["type"].([]interface{})
+	types, ok := m["type"].([]any)
 	if !ok {
 		return
 	}
@@ -110,12 +114,12 @@ func handleNullable(m map[string]interface{}) {
 	}
 }
 
-func validateAgainstOpenApiSchema(t *testing.T, doc map[string]interface{}, schemaName string, data interface{}) *gojsonschema.Result {
-	components := normalizeOpenApiSchema(doc["components"])
+func validateAgainstOpenAPISchema(t *testing.T, doc map[string]any, schemaName string, data any) *gojsonschema.Result {
+	components := normalizeOpenAPISchema(doc["components"])
 
-	wrapper := map[string]interface{}{
+	wrapper := map[string]any{
 		"$schema":    "http://json-schema.org/draft-04/schema#",
-		"$ref":       fmt.Sprintf("#/components/schemas/%s", schemaName),
+		"$ref":       "#/components/schemas/" + schemaName,
 		"components": components,
 	}
 
@@ -133,8 +137,8 @@ func validateAgainstOpenApiSchema(t *testing.T, doc map[string]interface{}, sche
 	return result
 }
 
-func assertValid(t *testing.T, doc map[string]interface{}, schemaName string, data interface{}) {
-	result := validateAgainstOpenApiSchema(t, doc, schemaName, data)
+func assertValid(t *testing.T, doc map[string]any, schemaName string, data any) {
+	result := validateAgainstOpenAPISchema(t, doc, schemaName, data)
 	if !result.Valid() {
 		t.Errorf("Schema validation failed for %s. Errors:", schemaName)
 		for _, desc := range result.Errors() {
@@ -144,13 +148,13 @@ func assertValid(t *testing.T, doc map[string]interface{}, schemaName string, da
 	}
 }
 
-func assertInvalid(t *testing.T, doc map[string]interface{}, schemaName string, data interface{}) {
-	result := validateAgainstOpenApiSchema(t, doc, schemaName, data)
+func assertInvalid(t *testing.T, doc map[string]any, schemaName string, data any) {
+	result := validateAgainstOpenAPISchema(t, doc, schemaName, data)
 	assert.False(t, result.Valid(), "expected schema validation to fail for %s, but it passed", schemaName)
 }
 
 func TestOpenApiSpecificationDrift(t *testing.T) {
-	doc := loadOpenApiDoc(t)
+	doc := loadOpenAPIDoc(t)
 
 	t.Run("RelayRequest Schema", func(t *testing.T) {
 		validReq := dto.RelayRequest{
@@ -168,61 +172,61 @@ func TestOpenApiSpecificationDrift(t *testing.T) {
 		assertValid(t, doc, "RelayRequest", validReq)
 
 		// Invalid: missing required "url" field
-		invalidReq := map[string]interface{}{
+		invalidReq := map[string]any{
 			"id":     "req-2",
 			"method": "POST",
 		}
 		assertInvalid(t, doc, "RelayRequest", invalidReq)
 	})
 
-	t.Run("CreateApiKeyRequest Schema", func(t *testing.T) {
-		validReq := dto.CreateApiKeyRequest{
+	t.Run("CreateAPIKeyRequest Schema", func(t *testing.T) {
+		validReq := dto.CreateAPIKeyRequest{
 			Name:              "Prod Scraper Key",
-			Scopes:            []string{"target:*", "region:us"},
+			Scopes:            []string{targetAll, regionUS},
 			RateLimitOverride: func(v int) *int { return &v }(100),
 		}
-		assertValid(t, doc, "CreateApiKeyRequest", validReq)
+		assertValid(t, doc, "CreateAPIKeyRequest", validReq)
 
 		// Invalid: missing required "name" field
-		invalidReq := map[string]interface{}{
-			"scopes": []string{"target:*"},
+		invalidReq := map[string]any{
+			"scopes": []string{targetAll},
 		}
-		assertInvalid(t, doc, "CreateApiKeyRequest", invalidReq)
+		assertInvalid(t, doc, "CreateAPIKeyRequest", invalidReq)
 	})
 
-	t.Run("ApiKeyResponse Schema", func(t *testing.T) {
+	t.Run("APIKeyResponse Schema", func(t *testing.T) {
 		now := time.Now()
-		validRes := dto.ApiKeyResponse{
+		validRes := dto.APIKeyResponse{
 			ID:                "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
 			Name:              "Test Key",
-			Scopes:            []string{"target:*"},
+			Scopes:            []string{targetAll},
 			RateLimitOverride: nil,
 			IsActive:          true,
 			CreatedAt:         now,
 			ExpiresAt:         &now,
 		}
-		assertValid(t, doc, "ApiKeyResponse", validRes)
+		assertValid(t, doc, "APIKeyResponse", validRes)
 	})
 
-	t.Run("CreateApiKeyResponse Schema", func(t *testing.T) {
+	t.Run("CreateAPIKeyResponse Schema", func(t *testing.T) {
 		now := time.Now()
-		validRes := dto.CreateApiKeyResponse{
-			ApiKeyResponse: dto.ApiKeyResponse{
+		validRes := dto.CreateAPIKeyResponse{
+			APIKeyResponse: dto.APIKeyResponse{
 				ID:        "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
 				Name:      "Test Key",
-				Scopes:    []string{"target:*"},
+				Scopes:    []string{targetAll},
 				IsActive:  true,
 				CreatedAt: now,
 			},
 			RawKey: "4cf5dfa6b4b4b4b4b4",
 		}
-		assertValid(t, doc, "CreateApiKeyResponse", validRes)
+		assertValid(t, doc, "CreateAPIKeyResponse", validRes)
 	})
 
 	t.Run("CreateRoutingRuleRequest Schema", func(t *testing.T) {
 		validRule := dto.CreateRoutingRuleRequest{
 			Name:                 "US Residential Egress",
-			RequiredTags:         []string{"type:residential", "region:us"},
+			RequiredTags:         []string{"type:residential", regionUS},
 			ExcludedTags:         []string{"type:datacenter"},
 			Priority:             100,
 			HardTimeout:          "30s",
@@ -230,10 +234,10 @@ func TestOpenApiSpecificationDrift(t *testing.T) {
 			RateLimitPerSecond:   10,
 			AllowedEndpointTypes: []string{"residential"},
 			RequiredEndpointCaps: []string{"http2"},
-			FingerprintPreset:    "chrome-130",
+			FingerprintPreset:    chromePreset,
 			FingerprintABTest: &dto.ABConfigDTO{
 				Variants: []dto.ABVariantDTO{
-					{Fingerprint: "chrome-130", Weight: 50},
+					{Fingerprint: chromePreset, Weight: 50},
 					{Fingerprint: "firefox-128", Weight: 50},
 				},
 				Strategy: "random",
@@ -256,7 +260,7 @@ func TestOpenApiSpecificationDrift(t *testing.T) {
 		assertValid(t, doc, "CreateRoutingRuleRequest", validRule)
 
 		// Invalid: missing required "name"
-		invalidRule := map[string]interface{}{
+		invalidRule := map[string]any{
 			"priority": 100,
 		}
 		assertInvalid(t, doc, "CreateRoutingRuleRequest", invalidRule)
@@ -284,7 +288,7 @@ func TestOpenApiSpecificationDrift(t *testing.T) {
 		validEp := dto.EndpointHealthResponse{
 			EndpointID:  "worker-1",
 			State:       "healthy",
-			Tags:        []string{"region:us"},
+			Tags:        []string{regionUS},
 			Version:     "1.0.0",
 			ActiveTasks: 5,
 			LastSeen:    time.Now().Format(time.RFC3339),
@@ -296,7 +300,7 @@ func TestOpenApiSpecificationDrift(t *testing.T) {
 		validFp := dto.FingerprintResponse{
 			ID:   "fp-1",
 			Name: "Chrome Desktop",
-			Config: map[string]interface{}{
+			Config: map[string]any{
 				"user_agent": "Mozilla/5.0",
 			},
 			CreatedAt: time.Now(),
@@ -309,7 +313,7 @@ func TestOpenApiSpecificationDrift(t *testing.T) {
 		validUsage := dto.UsageSummaryResponse{
 			Data: []dto.UsageSummaryDTO{
 				{
-					Date:          "2026-06-28",
+					Date:          endDate,
 					TotalRequests: 1500,
 					TotalBytes:    5000000,
 					CostUnits:     1.5,
@@ -317,7 +321,7 @@ func TestOpenApiSpecificationDrift(t *testing.T) {
 				},
 			},
 			Start: "2026-06-01",
-			End:   "2026-06-28",
+			End:   endDate,
 		}
 		assertValid(t, doc, "UsageSummaryResponse", validUsage)
 	})
@@ -328,7 +332,7 @@ func TestOpenApiSpecificationDrift(t *testing.T) {
 			EstimatedUSD:   1.50,
 			Currency:       "USD",
 			Start:          "2026-06-01",
-			End:            "2026-06-28",
+			End:            endDate,
 		}
 		assertValid(t, doc, "BillingEstimateResponse", validBilling)
 	})

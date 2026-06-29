@@ -7,6 +7,7 @@ import (
 	utls "github.com/refraction-networking/utls"
 )
 
+// HTTP2Settings configures HTTP/2 connection parameters.
 type HTTP2Settings struct {
 	HeaderTableSize      uint32
 	EnablePush           bool
@@ -16,6 +17,7 @@ type HTTP2Settings struct {
 	MaxHeaderListSize    uint32
 }
 
+// Preset holds a complete browser fingerprint configuration.
 type Preset struct {
 	ID                string
 	TLSClientHello    utls.ClientHelloID
@@ -31,17 +33,20 @@ type Preset struct {
 	LastUpdated       time.Time
 }
 
+// Registry stores and retrieves browser fingerprint presets.
 type Registry struct {
 	presets map[string]Preset
 	mu      sync.RWMutex
 }
 
+// NewRegistry creates an empty preset registry.
 func NewRegistry() *Registry {
 	return &Registry{
 		presets: make(map[string]Preset),
 	}
 }
 
+// Get retrieves a preset by its ID.
 func (r *Registry) Get(presetID string) (Preset, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -51,6 +56,7 @@ func (r *Registry) Get(presetID string) (Preset, bool) {
 	return preset, ok
 }
 
+// Register adds a preset to the registry.
 func (r *Registry) Register(preset Preset) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -64,6 +70,7 @@ func (r *Registry) Register(preset Preset) error {
 	return nil
 }
 
+// MustRegister registers a preset or panics on duplicate.
 func (r *Registry) MustRegister(preset Preset) {
 	err := r.Register(preset)
 	if err != nil {
@@ -71,6 +78,7 @@ func (r *Registry) MustRegister(preset Preset) {
 	}
 }
 
+// List returns all registered preset IDs.
 func (r *Registry) List() []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -83,6 +91,7 @@ func (r *Registry) List() []string {
 	return ids
 }
 
+// Count returns the number of registered presets.
 func (r *Registry) Count() int {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -90,6 +99,7 @@ func (r *Registry) Count() int {
 	return len(r.presets)
 }
 
+// DuplicatePresetError is returned when registering a preset with a duplicate ID.
 type DuplicatePresetError struct {
 	PresetID string
 }
@@ -105,14 +115,17 @@ func init() {
 	registerBuiltinPresets(defaultRegistry)
 }
 
+// DefaultRegistry returns the global registry with built-in presets.
 func DefaultRegistry() *Registry {
 	return defaultRegistry
 }
 
+// Get retrieves a preset from the default registry.
 func Get(presetID string) (Preset, bool) {
 	return defaultRegistry.Get(presetID)
 }
 
+// List returns all preset IDs from the default registry.
 func List() []string {
 	return defaultRegistry.List()
 }

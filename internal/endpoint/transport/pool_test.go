@@ -11,6 +11,8 @@ import (
 	"github.com/beremaran/straw/internal/endpoint/fingerprint"
 )
 
+const chrome133Preset = "chrome-133"
+
 type mockDialer struct {
 	mu        sync.Mutex
 	calls     []dialCall
@@ -23,7 +25,7 @@ type dialCall struct {
 	fingerprint string
 }
 
-func (m *mockDialer) dial(ctx context.Context, network, addr, fingerprint string) (net.Conn, error) {
+func (m *mockDialer) dial(_ context.Context, network, addr, fingerprint string) (net.Conn, error) {
 	m.mu.Lock()
 	m.calls = append(m.calls, dialCall{network, addr, fingerprint})
 	m.mu.Unlock()
@@ -102,7 +104,7 @@ func TestPooledTransport_GetTransport_Reuse(t *testing.T) {
 	pt := NewPooledTransport(cfg, dialer.dial)
 	defer func() { _ = pt.Close() }()
 
-	preset := fingerprint.Preset{ID: "chrome-133"}
+	preset := fingerprint.Preset{ID: chrome133Preset}
 
 	t1 := pt.GetTransport("example.com:443", preset)
 	t2 := pt.GetTransport("example.com:443", preset)
@@ -125,7 +127,7 @@ func TestPooledTransport_FingerprintIsolation(t *testing.T) {
 	pt := NewPooledTransport(cfg, dialer.dial)
 	defer func() { _ = pt.Close() }()
 
-	preset1 := fingerprint.Preset{ID: "chrome-133"}
+	preset1 := fingerprint.Preset{ID: chrome133Preset}
 	preset2 := fingerprint.Preset{ID: "firefox-133"}
 
 	t1 := pt.GetTransport("example.com:443", preset1)
@@ -148,7 +150,7 @@ func TestPooledTransport_HostIsolation(t *testing.T) {
 	pt := NewPooledTransport(cfg, dialer.dial)
 	defer func() { _ = pt.Close() }()
 
-	preset := fingerprint.Preset{ID: "chrome-133"}
+	preset := fingerprint.Preset{ID: chrome133Preset}
 
 	t1 := pt.GetTransport("example.com:443", preset)
 	t2 := pt.GetTransport("other.com:443", preset)
@@ -170,7 +172,7 @@ func TestPooledTransport_LRUEviction(t *testing.T) {
 	pt := NewPooledTransport(cfg, dialer.dial)
 	defer func() { _ = pt.Close() }()
 
-	preset := fingerprint.Preset{ID: "chrome-133"}
+	preset := fingerprint.Preset{ID: chrome133Preset}
 
 	_ = pt.GetTransport("host1.com:443", preset)
 	_ = pt.GetTransport("host2.com:443", preset)
@@ -209,12 +211,12 @@ func TestPooledTransport_ConcurrentAccess(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(goroutines)
 
-	for i := 0; i < goroutines; i++ {
-		go func(id int) {
+	for i := range goroutines {
+		go func(_ int) {
 			defer wg.Done()
-			for j := 0; j < iterations; j++ {
+			for range iterations {
 				host := "host.com:443"
-				preset := fingerprint.Preset{ID: "chrome-133"}
+				preset := fingerprint.Preset{ID: chrome133Preset}
 				_ = pt.GetTransport(host, preset)
 			}
 		}(i)
@@ -240,11 +242,11 @@ func TestPooledTransport_ConcurrentDifferentHosts(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(goroutines)
 
-	for i := 0; i < goroutines; i++ {
+	for i := range goroutines {
 		go func(id int) {
 			defer wg.Done()
 			host := fmt.Sprintf("host%c.com:443", 'A'+id)
-			preset := fingerprint.Preset{ID: "chrome-133"}
+			preset := fingerprint.Preset{ID: chrome133Preset}
 			_ = pt.GetTransport(host, preset)
 		}(i)
 	}
@@ -288,7 +290,7 @@ func TestPooledTransport_StaleEviction(t *testing.T) {
 	pt := NewPooledTransport(cfg, dialer.dial)
 	defer func() { _ = pt.Close() }()
 
-	preset := fingerprint.Preset{ID: "chrome-133"}
+	preset := fingerprint.Preset{ID: chrome133Preset}
 
 	_ = pt.GetTransport("stale.com:443", preset)
 

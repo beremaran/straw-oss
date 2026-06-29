@@ -11,8 +11,10 @@ import (
 	"github.com/beremaran/straw/pkg/broker"
 )
 
+// DefaultHeartbeatInterval is the default frequency for heartbeat messages.
 const DefaultHeartbeatInterval = 10 * time.Second
 
+// HeartbeatMessage is the JSON structure published for heartbeats.
 type HeartbeatMessage struct {
 	EndpointID  string   `json:"endpoint_id"`
 	Timestamp   int64    `json:"ts"`
@@ -21,8 +23,10 @@ type HeartbeatMessage struct {
 	ActiveTasks int      `json:"active_tasks"`
 }
 
+// ActiveTasksFunc returns the current number of active tasks.
 type ActiveTasksFunc func() int
 
+// HeartbeatSender periodically publishes heartbeat messages to a message broker.
 type HeartbeatSender struct {
 	broker          broker.MessageBroker
 	endpointID      string
@@ -37,8 +41,10 @@ type HeartbeatSender struct {
 	done            chan struct{}
 }
 
+// HeartbeatOption configures a HeartbeatSender.
 type HeartbeatOption func(*HeartbeatSender)
 
+// WithHeartbeatInterval sets the interval between heartbeat messages.
 func WithHeartbeatInterval(d time.Duration) HeartbeatOption {
 	return func(s *HeartbeatSender) {
 		if d > 0 {
@@ -47,30 +53,35 @@ func WithHeartbeatInterval(d time.Duration) HeartbeatOption {
 	}
 }
 
+// WithHeartbeatLogger sets the logger used by the HeartbeatSender.
 func WithHeartbeatLogger(logger *slog.Logger) HeartbeatOption {
 	return func(s *HeartbeatSender) {
 		s.logger = logger
 	}
 }
 
+// WithHeartbeatVersion sets the version string included in heartbeat messages.
 func WithHeartbeatVersion(version string) HeartbeatOption {
 	return func(s *HeartbeatSender) {
 		s.version = version
 	}
 }
 
+// WithHeartbeatTags sets the tags included in heartbeat messages.
 func WithHeartbeatTags(tags []string) HeartbeatOption {
 	return func(s *HeartbeatSender) {
 		s.tags = tags
 	}
 }
 
+// WithHeartbeatActiveTasksFunc sets a callback for the active task count.
 func WithHeartbeatActiveTasksFunc(f ActiveTasksFunc) HeartbeatOption {
 	return func(s *HeartbeatSender) {
 		s.activeTasksFunc = f
 	}
 }
 
+// NewHeartbeatSender creates a new HeartbeatSender with the given broker and options.
 func NewHeartbeatSender(b broker.MessageBroker, endpointID string, opts ...HeartbeatOption) *HeartbeatSender {
 	s := &HeartbeatSender{
 		broker:          b,
@@ -87,6 +98,7 @@ func NewHeartbeatSender(b broker.MessageBroker, endpointID string, opts ...Heart
 	return s
 }
 
+// Start begins periodic heartbeat sending and returns immediately.
 func (s *HeartbeatSender) Start(ctx context.Context) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -109,6 +121,7 @@ func (s *HeartbeatSender) Start(ctx context.Context) {
 	go s.run(ctx)
 }
 
+// Stop halts the heartbeat sender and waits for the goroutine to exit.
 func (s *HeartbeatSender) Stop() {
 	s.mu.Lock()
 	if !s.running {
@@ -116,6 +129,7 @@ func (s *HeartbeatSender) Stop() {
 
 		return
 	}
+
 	cancel := s.cancel
 	done := s.done
 	s.mu.Unlock()
@@ -135,6 +149,7 @@ func (s *HeartbeatSender) Stop() {
 	s.logger.Info("heartbeat sender stopped", "endpoint_id", s.endpointID)
 }
 
+// IsRunning reports whether the heartbeat sender is currently active.
 func (s *HeartbeatSender) IsRunning() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()

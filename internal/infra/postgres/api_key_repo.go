@@ -1,3 +1,4 @@
+// Package postgres provides PostgreSQL-backed repository implementations for the straw domain models.
 package postgres
 
 import (
@@ -6,28 +7,34 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/beremaran/straw/internal/domain"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/beremaran/straw/internal/domain"
 )
 
-var ErrApiKeyNotFound = errors.New("api key not found")
+// ErrAPIKeyNotFound is returned when an API key is not found.
+var ErrAPIKeyNotFound = errors.New("api key not found")
 
-type ApiKeyRepository struct {
+// APIKeyRepository persists and retrieves API keys.
+type APIKeyRepository struct {
 	client *Client
 }
 
-func NewApiKeyRepository(client *Client) *ApiKeyRepository {
-	return &ApiKeyRepository{client: client}
+// NewAPIKeyRepository creates a new APIKeyRepository backed by the given client.
+func NewAPIKeyRepository(client *Client) *APIKeyRepository {
+	return &APIKeyRepository{client: client}
 }
 
-func (r *ApiKeyRepository) GetByID(ctx context.Context, id string) (*domain.ApiKey, error) {
+// GetByID returns the API key with the given ID.
+func (r *APIKeyRepository) GetByID(ctx context.Context, id string) (*domain.APIKey, error) {
 	query := `
 		SELECT id, token_hash, name, scopes, rate_limit_override, is_active, created_at, expires_at
 		FROM api_keys
 		WHERE id = $1
 	`
 
-	var k domain.ApiKey
+	var k domain.APIKey
+
 	err := r.client.Execute(func() error {
 		return r.client.Pool.QueryRow(ctx, query, id).Scan(
 			&k.ID,
@@ -40,7 +47,6 @@ func (r *ApiKeyRepository) GetByID(ctx context.Context, id string) (*domain.ApiK
 			&k.ExpiresAt,
 		)
 	})
-
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
@@ -52,7 +58,8 @@ func (r *ApiKeyRepository) GetByID(ctx context.Context, id string) (*domain.ApiK
 	return &k, nil
 }
 
-func (r *ApiKeyRepository) GetByTokenHash(ctx context.Context, tokenHash string) (*domain.ApiKey, error) {
+// GetByTokenHash returns the API key with the given token hash.
+func (r *APIKeyRepository) GetByTokenHash(ctx context.Context, tokenHash string) (*domain.APIKey, error) {
 	query := `
 		SELECT k.id, t.token_hash, k.name, k.scopes, k.rate_limit_override, k.is_active, k.created_at, k.expires_at
 		FROM api_keys k
@@ -60,7 +67,8 @@ func (r *ApiKeyRepository) GetByTokenHash(ctx context.Context, tokenHash string)
 		WHERE t.token_hash = $1
 	`
 
-	var k domain.ApiKey
+	var k domain.APIKey
+
 	err := r.client.Execute(func() error {
 		return r.client.Pool.QueryRow(ctx, query, tokenHash).Scan(
 			&k.ID,
@@ -73,7 +81,6 @@ func (r *ApiKeyRepository) GetByTokenHash(ctx context.Context, tokenHash string)
 			&k.ExpiresAt,
 		)
 	})
-
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
@@ -85,7 +92,8 @@ func (r *ApiKeyRepository) GetByTokenHash(ctx context.Context, tokenHash string)
 	return &k, nil
 }
 
-func (r *ApiKeyRepository) Create(ctx context.Context, key *domain.ApiKey) error {
+// Create inserts a new API key and its initial token.
+func (r *APIKeyRepository) Create(ctx context.Context, key *domain.APIKey) error {
 	query := `
 		INSERT INTO api_keys (
 			id, token_hash, name, scopes, rate_limit_override, 
@@ -98,7 +106,7 @@ func (r *ApiKeyRepository) Create(ctx context.Context, key *domain.ApiKey) error
 	err := r.client.Execute(func() error {
 		tx, err := r.client.Pool.Begin(ctx)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to begin transaction: %w", err)
 		}
 		defer func() { _ = tx.Rollback(ctx) }()
 
@@ -113,21 +121,21 @@ func (r *ApiKeyRepository) Create(ctx context.Context, key *domain.ApiKey) error
 			key.ExpiresAt,
 		)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to insert api key: %w", err)
 		}
 
 		tokenQuery := `
-			INSERT INTO api_key_tokens (api_key_id, token_hash, status, created_at)
-			VALUES ($1, $2, 'active', $3)
-		`
+				INSERT INTO api_key_tokens (api_key_id, token_hash, status, created_at)
+				VALUES ($1, $2, 'active', $3)
+			`
+
 		_, err = tx.Exec(ctx, tokenQuery, key.ID, key.TokenHash, key.CreatedAt)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to insert api key token: %w", err)
 		}
 
 		return tx.Commit(ctx)
 	})
-
 	if err != nil {
 		return fmt.Errorf("failed to create api key: %w", err)
 	}
@@ -135,7 +143,8 @@ func (r *ApiKeyRepository) Create(ctx context.Context, key *domain.ApiKey) error
 	return nil
 }
 
-func (r *ApiKeyRepository) Update(ctx context.Context, key *domain.ApiKey) error {
+// Update modifies an existing API key.
+func (r *APIKeyRepository) Update(ctx context.Context, key *domain.APIKey) error {
 	query := `
 		UPDATE api_keys
 		SET name = $2,
@@ -147,8 +156,9 @@ func (r *ApiKeyRepository) Update(ctx context.Context, key *domain.ApiKey) error
 	`
 
 	var rows int64
+
 	err := r.client.Execute(func() error {
-		res, err := r.client.Pool.Exec(ctx, query,
+		_, err := r.client.Pool.Exec(ctx, query,
 			key.ID,
 			key.Name,
 			key.Scopes,
@@ -156,23 +166,31 @@ func (r *ApiKeyRepository) Update(ctx context.Context, key *domain.ApiKey) error
 			key.IsActive,
 			key.ExpiresAt,
 		)
-		rows = res.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("failed to execute update: %w", err)
+		}
 
-		return err
+		rows = 1
+
+		return nil
 	})
 	if err != nil {
 		return fmt.Errorf("failed to update api key: %w", err)
 	}
+
 	if rows == 0 {
-		return ErrApiKeyNotFound
+		return ErrAPIKeyNotFound
 	}
 
 	return nil
 }
 
-func (r *ApiKeyRepository) List(ctx context.Context, limit, offset int) ([]domain.ApiKey, int, error) {
+// List returns a paginated list of API keys.
+func (r *APIKeyRepository) List(ctx context.Context, limit, offset int) ([]domain.APIKey, int, error) {
 	var total int
+
 	countQuery := `SELECT COUNT(*) FROM api_keys`
+
 	err := r.client.Pool.QueryRow(ctx, countQuery).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to count api keys: %w", err)
@@ -191,9 +209,11 @@ func (r *ApiKeyRepository) List(ctx context.Context, limit, offset int) ([]domai
 	}
 	defer rows.Close()
 
-	var keys []domain.ApiKey
+	var keys []domain.APIKey
+
 	for rows.Next() {
-		var k domain.ApiKey
+		var k domain.APIKey
+
 		err := rows.Scan(
 			&k.ID,
 			&k.TokenHash,
@@ -207,6 +227,7 @@ func (r *ApiKeyRepository) List(ctx context.Context, limit, offset int) ([]domai
 		if err != nil {
 			return nil, 0, fmt.Errorf("failed to scan api key: %w", err)
 		}
+
 		keys = append(keys, k)
 	}
 
@@ -218,9 +239,12 @@ func (r *ApiKeyRepository) List(ctx context.Context, limit, offset int) ([]domai
 	return keys, total, nil
 }
 
-func (r *ApiKeyRepository) Exists(ctx context.Context) (bool, error) {
+// Exists returns whether any API keys exist.
+func (r *APIKeyRepository) Exists(ctx context.Context) (bool, error) {
 	query := `SELECT EXISTS(SELECT 1 FROM api_keys LIMIT 1)`
+
 	var exists bool
+
 	err := r.client.Pool.QueryRow(ctx, query).Scan(&exists)
 	if err != nil {
 		return false, fmt.Errorf("failed to check api keys existence: %w", err)
@@ -229,13 +253,14 @@ func (r *ApiKeyRepository) Exists(ctx context.Context) (bool, error) {
 	return exists, nil
 }
 
-func (r *ApiKeyRepository) Revoke(ctx context.Context, id string) error {
+// Revoke deactivates an API key and its tokens.
+func (r *APIKeyRepository) Revoke(ctx context.Context, id string) error {
 	now := time.Now().UTC()
 
 	return r.client.Execute(func() error {
 		tx, err := r.client.Pool.Begin(ctx)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to begin transaction: %w", err)
 		}
 		defer func() { _ = tx.Rollback(ctx) }()
 
@@ -247,8 +272,9 @@ func (r *ApiKeyRepository) Revoke(ctx context.Context, id string) error {
 		if err != nil {
 			return fmt.Errorf("failed to revoke api key: %w", err)
 		}
+
 		if res.RowsAffected() == 0 {
-			return ErrApiKeyNotFound
+			return ErrAPIKeyNotFound
 		}
 
 		_, err = tx.Exec(ctx, `

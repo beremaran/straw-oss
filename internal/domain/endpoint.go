@@ -2,18 +2,25 @@ package domain
 
 import (
 	"context"
+	"slices"
 	"time"
 )
 
+// DesiredState represents the desired operational state of an endpoint.
 type DesiredState string
 
 const (
-	DesiredStateActive   DesiredState = "active"
+	// DesiredStateActive indicates the endpoint should be serving traffic.
+	DesiredStateActive DesiredState = "active"
+	// DesiredStateDraining indicates the endpoint is finishing in-flight requests.
 	DesiredStateDraining DesiredState = "draining"
+	// DesiredStateDisabled indicates the endpoint should not receive traffic.
 	DesiredStateDisabled DesiredState = "disabled"
-	DesiredStateDeleted  DesiredState = "deleted"
+	// DesiredStateDeleted indicates the endpoint is scheduled for removal.
+	DesiredStateDeleted DesiredState = "deleted"
 )
 
+// Endpoint represents a registered endpoint that can process requests.
 type Endpoint struct {
 	ID            string           `json:"id"`
 	Tags          []string         `json:"tags"`
@@ -27,6 +34,7 @@ type Endpoint struct {
 	UpdatedAt     time.Time        `json:"updated_at"`
 }
 
+// EndpointMetadata holds supplementary information about an endpoint.
 type EndpointMetadata struct {
 	Version        string `json:"version,omitempty"`
 	IP             string `json:"ip,omitempty"`
@@ -35,17 +43,25 @@ type EndpointMetadata struct {
 	Provider       string `json:"provider,omitempty"`
 }
 
+// CommandStatus represents the lifecycle state of an endpoint command.
 type CommandStatus string
 
 const (
-	CommandStatusAccepted     CommandStatus = "accepted"
+	// CommandStatusAccepted indicates the command has been received.
+	CommandStatusAccepted CommandStatus = "accepted"
+	// CommandStatusAcknowledged indicates the command has been acknowledged.
 	CommandStatusAcknowledged CommandStatus = "acknowledged"
-	CommandStatusRunning      CommandStatus = "running"
-	CommandStatusSucceeded    CommandStatus = "succeeded"
-	CommandStatusFailed       CommandStatus = "failed"
-	CommandStatusTimedOut     CommandStatus = "timed_out"
+	// CommandStatusRunning indicates the command is executing.
+	CommandStatusRunning CommandStatus = "running"
+	// CommandStatusSucceeded indicates the command completed successfully.
+	CommandStatusSucceeded CommandStatus = "succeeded"
+	// CommandStatusFailed indicates the command failed.
+	CommandStatusFailed CommandStatus = "failed"
+	// CommandStatusTimedOut indicates the command timed out.
+	CommandStatusTimedOut CommandStatus = "timed_out"
 )
 
+// EndpointCommand represents a command sent to an endpoint.
 type EndpointCommand struct {
 	ID          string         `json:"id"`
 	EndpointID  string         `json:"endpoint_id"`
@@ -59,6 +75,7 @@ type EndpointCommand struct {
 	Error       *string        `json:"error,omitempty"`
 }
 
+// EndpointLogEntry represents a log entry from an endpoint.
 type EndpointLogEntry struct {
 	ID         int64          `json:"id"`
 	EndpointID string         `json:"endpoint_id"`
@@ -70,10 +87,13 @@ type EndpointLogEntry struct {
 	RequestID  *string        `json:"request_id,omitempty"`
 }
 
+// DefaultHeartbeatInterval is the default interval for endpoint heartbeats.
 const DefaultHeartbeatInterval = 10 * time.Second
 
+// DefaultHealthThreshold is the default time before an endpoint is considered stale.
 const DefaultHealthThreshold = 30 * time.Second
 
+// NewEndpoint creates a new active, healthy Endpoint with the given id and tags.
 func NewEndpoint(id string, tags []string) *Endpoint {
 	now := time.Now()
 
@@ -89,29 +109,28 @@ func NewEndpoint(id string, tags []string) *Endpoint {
 	}
 }
 
+// IsStale reports whether the Endpoint's last heartbeat is older than the threshold.
 func (e *Endpoint) IsStale(threshold time.Duration) bool {
 	return time.Since(e.LastHeartbeat) > threshold
 }
 
+// UpdateHeartbeat records the current time as the last heartbeat and marks the endpoint healthy.
 func (e *Endpoint) UpdateHeartbeat() {
 	e.LastHeartbeat = time.Now()
 	e.IsHealthy = true
 }
 
+// MarkUnhealthy marks the endpoint as unhealthy.
 func (e *Endpoint) MarkUnhealthy() {
 	e.IsHealthy = false
 }
 
+// HasTag reports whether the Endpoint has the given tag.
 func (e *Endpoint) HasTag(tag string) bool {
-	for _, t := range e.Tags {
-		if t == tag {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(e.Tags, tag)
 }
 
+// MatchesTags reports whether the Endpoint has all the required tags.
 func (e *Endpoint) MatchesTags(requiredTags []string) bool {
 	for _, required := range requiredTags {
 		if !e.HasTag(required) {
@@ -122,6 +141,7 @@ func (e *Endpoint) MatchesTags(requiredTags []string) bool {
 	return true
 }
 
+// EndpointRepository provides persistence operations for Endpoint entities.
 type EndpointRepository interface {
 	Create(ctx context.Context, endpoint *Endpoint) error
 	GetByID(ctx context.Context, id string) (*Endpoint, error)
@@ -130,6 +150,7 @@ type EndpointRepository interface {
 	List(ctx context.Context, limit, offset int, includeDeleted bool) ([]Endpoint, int, error)
 }
 
+// EndpointCommandRepository provides persistence operations for EndpointCommand entities.
 type EndpointCommandRepository interface {
 	Create(ctx context.Context, cmd *EndpointCommand) error
 	GetByID(ctx context.Context, id string) (*EndpointCommand, error)
@@ -138,6 +159,7 @@ type EndpointCommandRepository interface {
 	ListPending(ctx context.Context, before time.Time) ([]EndpointCommand, error)
 }
 
+// LogFilter constrains a query for endpoint log entries.
 type LogFilter struct {
 	Start     *time.Time
 	End       *time.Time
@@ -149,6 +171,7 @@ type LogFilter struct {
 	Limit     int
 }
 
+// EndpointLogRepository provides persistence operations for EndpointLogEntry entities.
 type EndpointLogRepository interface {
 	Create(ctx context.Context, entry *EndpointLogEntry) error
 	ListByEndpointID(ctx context.Context, endpointID string, beforeID int64, limit int) ([]EndpointLogEntry, error)

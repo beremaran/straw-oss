@@ -7,21 +7,25 @@ import (
 	"fmt"
 	"time"
 
+	goredis "github.com/redis/go-redis/v9"
+
 	"github.com/beremaran/straw/internal/domain"
 	"github.com/beremaran/straw/internal/infra/redis"
-	goredis "github.com/redis/go-redis/v9"
 )
 
+// RedisStore persists sessions to Redis.
 type RedisStore struct {
 	client *redis.Client
 }
 
+// NewRedisStore creates a RedisStore backed by the given client.
 func NewRedisStore(client *redis.Client) *RedisStore {
 	return &RedisStore{
 		client: client,
 	}
 }
 
+// Save persists a session to Redis with the given TTL.
 func (s *RedisStore) Save(ctx context.Context, session *domain.Session, ttl time.Duration) error {
 	data, err := json.Marshal(session)
 	if err != nil {
@@ -29,6 +33,7 @@ func (s *RedisStore) Save(ctx context.Context, session *domain.Session, ttl time
 	}
 
 	key := s.key(session.ID)
+
 	err = s.client.Client.Set(ctx, key, data, ttl).Err()
 	if err != nil {
 		return fmt.Errorf("failed to save session to redis: %w", err)
@@ -37,8 +42,10 @@ func (s *RedisStore) Save(ctx context.Context, session *domain.Session, ttl time
 	return nil
 }
 
+// Get retrieves a session from Redis by ID.
 func (s *RedisStore) Get(ctx context.Context, id string) (*domain.Session, error) {
 	key := s.key(id)
+
 	data, err := s.client.Client.Get(ctx, key).Bytes()
 	if err != nil {
 		if errors.Is(err, goredis.Nil) {
@@ -49,6 +56,7 @@ func (s *RedisStore) Get(ctx context.Context, id string) (*domain.Session, error
 	}
 
 	var session domain.Session
+
 	err = json.Unmarshal(data, &session)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal session: %w", err)
@@ -57,8 +65,10 @@ func (s *RedisStore) Get(ctx context.Context, id string) (*domain.Session, error
 	return &session, nil
 }
 
+// Delete removes a session from Redis by ID.
 func (s *RedisStore) Delete(ctx context.Context, id string) error {
 	key := s.key(id)
+
 	err := s.client.Client.Del(ctx, key).Err()
 	if err != nil {
 		return fmt.Errorf("failed to delete session from redis: %w", err)
@@ -67,13 +77,16 @@ func (s *RedisStore) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
+// Touch extends the TTL of a session in Redis.
 func (s *RedisStore) Touch(ctx context.Context, id string, ttl time.Duration) error {
 	key := s.key(id)
 	cmd := s.client.Client.Expire(ctx, key, ttl)
+
 	err := cmd.Err()
 	if err != nil {
 		return fmt.Errorf("failed to extend session ttl: %w", err)
 	}
+
 	if !cmd.Val() {
 		return domain.ErrSessionExpired
 	}
@@ -82,5 +95,5 @@ func (s *RedisStore) Touch(ctx context.Context, id string, ttl time.Duration) er
 }
 
 func (s *RedisStore) key(id string) string {
-	return fmt.Sprintf("session:%s", id)
+	return "session:" + id
 }

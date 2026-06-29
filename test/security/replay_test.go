@@ -1,13 +1,14 @@
 package security
 
 import (
-	"fmt"
+	"strconv"
 	"testing"
 	"time"
 
-	"github.com/beremaran/straw/pkg/protocol"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/beremaran/straw/pkg/protocol"
 )
 
 func TestReplayProtection_StaleTimestamp(t *testing.T) {
@@ -23,8 +24,8 @@ func TestReplayProtection_StaleTimestamp(t *testing.T) {
 		payload, err := protocol.MarshalCompressed(req)
 		require.NoError(t, err)
 
-		signatureData := append(payload, []byte(fmt.Sprintf("%d", ts))...)
-		signature := protocol.Sign(signatureData, secret)
+		payload = append(payload, []byte(strconv.FormatInt(ts, 10))...)
+		signature := protocol.Sign(payload, secret)
 
 		return &protocol.SignedTask{
 			Payload:   payload,

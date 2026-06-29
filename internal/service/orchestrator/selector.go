@@ -2,42 +2,54 @@ package orchestrator
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
-	"math/rand"
+	"math/big"
 
 	"github.com/beremaran/straw/internal/domain"
 	"github.com/beremaran/straw/internal/infra/redis"
 )
 
 var (
-	ErrSelectWithSessionNotImplemented    = errors.New("method SelectWithSession not implemented: requires session store access")
-	ErrPoolTierNotConfigured              = errors.New("pool tier not configured")
-	ErrNoHealthyEndpoints                 = errors.New("no healthy endpoints found")
-	ErrNoHealthyEndpointsInPool           = errors.New("no healthy endpoints found in configured pool")
+	// ErrSelectWithSessionNotImplemented is returned when session-based selection is not supported.
+	ErrSelectWithSessionNotImplemented = errors.New("method SelectWithSession not implemented: requires session store access")
+	// ErrPoolTierNotConfigured is returned when a pool tier has no configuration.
+	ErrPoolTierNotConfigured = errors.New("pool tier not configured")
+	// ErrNoHealthyEndpoints is returned when no healthy endpoints match the required tags.
+	ErrNoHealthyEndpoints = errors.New("no healthy endpoints found")
+	// ErrNoHealthyEndpointsInPool is returned when no healthy endpoints are in the configured pool.
+	ErrNoHealthyEndpointsInPool = errors.New("no healthy endpoints found in configured pool")
+	// ErrNoAvailableEndpointsAfterExclusion is returned when all endpoints are excluded.
 	ErrNoAvailableEndpointsAfterExclusion = errors.New("no available endpoints after exclusion")
 )
 
+// SimpleEndpointSelector selects endpoints using random selection from healthy candidates.
 type SimpleEndpointSelector struct {
 	healthStore *redis.EndpointHealthStore
 }
 
+// NewSimpleEndpointSelector creates a SimpleEndpointSelector with the given health store.
 func NewSimpleEndpointSelector(healthStore *redis.EndpointHealthStore) *SimpleEndpointSelector {
 	return &SimpleEndpointSelector{
 		healthStore: healthStore,
 	}
 }
 
+// Select chooses a healthy endpoint from pool tier 1.
 func (s *SimpleEndpointSelector) Select(ctx context.Context, rule *domain.RoutingRule) (string, error) {
 	return s.GetEndpointFromPool(ctx, rule, 1, nil)
 }
 
-func (s *SimpleEndpointSelector) SelectWithSession(ctx context.Context, sessionID string) (string, error) {
+// SelectWithSession always returns ErrSelectWithSessionNotImplemented.
+func (s *SimpleEndpointSelector) SelectWithSession(_ context.Context, _ string) (string, error) {
 	return "", ErrSelectWithSessionNotImplemented
 }
 
+// GetEndpointFromPool selects a random healthy endpoint from the specified pool tier.
 func (s *SimpleEndpointSelector) GetEndpointFromPool(ctx context.Context, rule *domain.RoutingRule, poolTier int, exclude []string) (string, error) {
 	poolConfig := s.GetPoolConfig(rule, poolTier)
+
 	requiredTags, err := requiredTagsForPool(rule, poolConfig, poolTier)
 	if err != nil {
 		return "", err
@@ -62,9 +74,12 @@ func (s *SimpleEndpointSelector) GetEndpointFromPool(ctx context.Context, rule *
 		return "", ErrNoAvailableEndpointsAfterExclusion
 	}
 
-	idx := rand.Intn(len(candidates))
+	idx, err := rand.Int(rand.Reader, big.NewInt(int64(len(candidates))))
+	if err != nil {
+		return "", fmt.Errorf("random selection: %w", err)
+	}
 
-	return candidates[idx], nil
+	return candidates[idx.Int64()], nil
 }
 
 func requiredTagsForPool(
@@ -123,10 +138,12 @@ func endpointCandidates(endpoints []*redis.EndpointHealth, exclude []string) []s
 	return candidates
 }
 
+// GetPoolConfig returns the pool configuration for the given tier.
 func (s *SimpleEndpointSelector) GetPoolConfig(rule *domain.RoutingRule, poolTier int) *domain.EndpointPool {
 	if rule == nil {
 		return nil
 	}
+
 	for i := range rule.EndpointPools {
 		if rule.EndpointPools[i].Tier == poolTier {
 			return &rule.EndpointPools[i]

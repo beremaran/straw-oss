@@ -6,10 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/beremaran/straw/internal/domain"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/beremaran/straw/internal/domain"
 )
 
 func TestRoutingRuleRepository(t *testing.T) {
@@ -44,7 +45,7 @@ func TestRoutingRuleRepository(t *testing.T) {
 		}
 
 		err := repo.CreateRule(ctx, rule)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	})
 
 	t.Run("GetActiveRules", func(t *testing.T) {
@@ -61,7 +62,7 @@ func TestRoutingRuleRepository(t *testing.T) {
 		require.NoError(t, repo.CreateRule(ctx, inactiveRule))
 
 		rules, err := repo.GetActiveRules(ctx)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Len(t, rules, 1)
 		assert.Equal(t, "rule-001", rules[0].ID)
 		assert.Equal(t, "Test Rule 1", rules[0].Name)
@@ -71,12 +72,12 @@ func TestRoutingRuleRepository(t *testing.T) {
 
 	t.Run("GetRuleByID", func(t *testing.T) {
 		rule, err := repo.GetRuleByID(ctx, "rule-001")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.NotNil(t, rule)
 		assert.Equal(t, "rule-001", rule.ID)
 
 		rule, err = repo.GetRuleByID(ctx, "non-existent")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Nil(t, rule)
 	})
 }

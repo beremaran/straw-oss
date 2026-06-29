@@ -6,19 +6,22 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/google/uuid"
+
 	"github.com/beremaran/straw/internal/domain"
 	"github.com/beremaran/straw/internal/infra/circuitbreaker"
 	"github.com/beremaran/straw/pkg/broker"
 	"github.com/beremaran/straw/pkg/protocol"
-	"github.com/google/uuid"
 )
 
+// EndpointSelector chooses an endpoint for a given request.
 type EndpointSelector interface {
 	Select(ctx context.Context, rule *domain.RoutingRule) (string, error)
 
 	SelectWithSession(ctx context.Context, sessionID string) (string, error)
 }
 
+// Publisher sends requests to endpoints via the message broker.
 type Publisher struct {
 	broker     broker.MessageBroker
 	selector   EndpointSelector
@@ -27,6 +30,7 @@ type Publisher struct {
 	breaker    *circuitbreaker.CircuitBreaker
 }
 
+// NewPublisher creates a Publisher with the given broker, selector, secret, and circuit breaker.
 func NewPublisher(b broker.MessageBroker, s EndpointSelector, secret []byte, breaker *circuitbreaker.CircuitBreaker) *Publisher {
 	return &Publisher{
 		broker:     b,
@@ -37,6 +41,7 @@ func NewPublisher(b broker.MessageBroker, s EndpointSelector, secret []byte, bre
 	}
 }
 
+// Publish sends a request to a selected endpoint and returns the chosen endpoint ID.
 func (p *Publisher) Publish(
 	ctx context.Context,
 	req *protocol.Request,
@@ -57,6 +62,7 @@ func (p *Publisher) Publish(
 	if replyTo != "" {
 		req.ReplyTo = replyTo
 	}
+
 	signedTask, err := protocol.NewSignedTask(req, p.hmacSecret)
 	if err != nil {
 		return "", fmt.Errorf("failed to create signed task: %w", err)

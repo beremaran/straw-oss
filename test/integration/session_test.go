@@ -5,11 +5,12 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/beremaran/straw/internal/config"
 	"github.com/beremaran/straw/internal/infra/redis"
 	"github.com/beremaran/straw/internal/server/middleware"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestSession_Stickiness(t *testing.T) {
@@ -23,9 +24,9 @@ func TestSession_Stickiness(t *testing.T) {
 	require.NoError(t, err)
 
 	ep1 := NewMockEndpoint(tc.Broker, MockEndpointConfig{
-		EndpointID: "endpoint-1",
+		EndpointID: testEndpoint1,
 		Secret:     []byte(testHMACSecret),
-		Tags:       []string{"type:sticky"},
+		Tags:       []string{testTagSticky},
 	})
 	ep1.SetResponse(&MockEndpointResponse{
 		StatusCode: 200, Body: []byte("Response from EP1"),
@@ -34,9 +35,9 @@ func TestSession_Stickiness(t *testing.T) {
 	defer ep1.Stop()
 
 	ep2 := NewMockEndpoint(tc.Broker, MockEndpointConfig{
-		EndpointID: "endpoint-2",
+		EndpointID: testEndpoint2,
 		Secret:     []byte(testHMACSecret),
-		Tags:       []string{"type:sticky"},
+		Tags:       []string{testTagSticky},
 	})
 	ep2.SetResponse(&MockEndpointResponse{
 		StatusCode: 200, Body: []byte("Response from EP2"),
@@ -44,9 +45,9 @@ func TestSession_Stickiness(t *testing.T) {
 	require.NoError(t, ep2.Start(ctx))
 	defer ep2.Stop()
 
-	err = CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{ID: "endpoint-1", Tags: []string{"type:sticky"}, IsHealthy: true})
+	err = CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{ID: testEndpoint1, Tags: []string{testTagSticky}, IsHealthy: true})
 	require.NoError(t, err)
-	err = CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{ID: "endpoint-2", Tags: []string{"type:sticky"}, IsHealthy: true})
+	err = CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{ID: testEndpoint2, Tags: []string{testTagSticky}, IsHealthy: true})
 	require.NoError(t, err)
 
 	require.NoError(t, tc.WaitForEndpoint(ctx, "endpoint-1"))
@@ -54,8 +55,8 @@ func TestSession_Stickiness(t *testing.T) {
 
 	err = CreateTestRoutingRule(
 		ctx, suite.PostgresDSN(), "Sticky Rule", 100,
-		[]string{"type:sticky"}, []string{}, "", 0, 0, "",
-		[]TestEndpointPool{{Tier: 1, Endpoints: []string{"endpoint-1", "endpoint-2"}, MaxRetries: 1}},
+		[]string{testTagSticky}, []string{}, "", 0, 0, "",
+		[]TestEndpointPool{{Tier: 1, Endpoints: []string{testEndpoint1, testEndpoint2}, MaxRetries: 1}},
 	)
 	require.NoError(t, err)
 	require.NoError(t, tc.Server.GetMatcher().LoadRules(ctx))
@@ -64,8 +65,8 @@ func TestSession_Stickiness(t *testing.T) {
 
 	resp1, err := client.SendRequest(ctx, &ProxyRequest{
 		URL:    "http://example.com",
-		Method: "GET",
-		Tags:   []string{"type:sticky"},
+		Method: httpGet,
+		Tags:   []string{testTagSticky},
 	})
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp1.StatusCode)
@@ -74,11 +75,12 @@ func TestSession_Stickiness(t *testing.T) {
 	require.NotEmpty(t, sessionID, "Session ID should be returned")
 
 	var firstEndpointID string
-	if len(ep1.GetRequests()) > 0 {
+	switch {
+	case len(ep1.GetRequests()) > 0:
 		firstEndpointID = "endpoint-1"
-	} else if len(ep2.GetRequests()) > 0 {
+	case len(ep2.GetRequests()) > 0:
 		firstEndpointID = "endpoint-2"
-	} else {
+	default:
 		t.Fatal("Neither endpoint received the request")
 	}
 	t.Logf("First request went to: %s", firstEndpointID)
@@ -88,9 +90,9 @@ func TestSession_Stickiness(t *testing.T) {
 
 	resp2, err := client.SendRequest(ctx, &ProxyRequest{
 		URL:       "http://example.com/2",
-		Method:    "GET",
+		Method:    httpGet,
 		SessionID: sessionID,
-		Tags:      []string{"type:sticky"},
+		Tags:      []string{testTagSticky},
 	})
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp2.StatusCode)
@@ -116,27 +118,27 @@ func TestSession_Migration(t *testing.T) {
 	require.NoError(t, err)
 
 	ep1 := NewMockEndpoint(tc.Broker, MockEndpointConfig{
-		EndpointID: "endpoint-1", Secret: []byte(testHMACSecret), Tags: []string{"type:migration"},
+		EndpointID: testEndpoint1, Secret: []byte(testHMACSecret), Tags: []string{testTagMigration},
 	})
 	ep1.SetResponse(&MockEndpointResponse{StatusCode: 200})
 	require.NoError(t, ep1.Start(ctx))
 	defer ep1.Stop()
 
-	require.NoError(t, CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{ID: "endpoint-1", Tags: []string{"type:migration"}, IsHealthy: true}))
-	require.NoError(t, CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{ID: "endpoint-2", Tags: []string{"type:migration"}, IsHealthy: true}))
+	require.NoError(t, CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{ID: testEndpoint1, Tags: []string{testTagMigration}, IsHealthy: true}))
+	require.NoError(t, CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{ID: testEndpoint2, Tags: []string{testTagMigration}, IsHealthy: true}))
 
 	require.NoError(t, tc.WaitForEndpoint(ctx, "endpoint-1"))
 
 	require.NoError(t, CreateTestRoutingRule(
 		ctx, suite.PostgresDSN(), "Migration Rule", 100,
-		[]string{"type:migration"}, []string{}, "", 0, 0, "",
-		[]TestEndpointPool{{Tier: 1, Endpoints: []string{"endpoint-1", "endpoint-2"}, MaxRetries: 1}},
+		[]string{testTagMigration}, []string{}, "", 0, 0, "",
+		[]TestEndpointPool{{Tier: 1, Endpoints: []string{testEndpoint1, testEndpoint2}, MaxRetries: 1}},
 	))
 	require.NoError(t, tc.Server.GetMatcher().LoadRules(ctx))
 
 	client := NewHTTPTestClient(tc.ServerURL, apiKey.RawKey)
 
-	resp, err := client.SendRequest(ctx, &ProxyRequest{URL: "http://example.com", Method: "GET", Tags: []string{"type:migration"}})
+	resp, err := client.SendRequest(ctx, &ProxyRequest{URL: "http://example.com", Method: httpGet, Tags: []string{testTagMigration}})
 	require.NoError(t, err)
 	sessionID := resp.Headers.Get(middleware.HeaderSessionID)
 	require.NotEmpty(t, sessionID, "Failed to establish session on endpoint-1")
@@ -144,20 +146,20 @@ func TestSession_Migration(t *testing.T) {
 	ep1.ClearRequests()
 
 	ep2 := NewMockEndpoint(tc.Broker, MockEndpointConfig{
-		EndpointID: "endpoint-2", Secret: []byte(testHMACSecret), Tags: []string{"type:migration"},
+		EndpointID: testEndpoint2, Secret: []byte(testHMACSecret), Tags: []string{testTagMigration},
 	})
 	ep2.SetResponse(&MockEndpointResponse{StatusCode: 200})
 	require.NoError(t, ep2.Start(ctx))
 	defer ep2.Stop()
-	require.NoError(t, tc.WaitForEndpoint(ctx, "endpoint-2"))
+	require.NoError(t, tc.WaitForEndpoint(ctx, testEndpoint2))
 
 	ep1.SetFailures(10)
 
 	resp, err = client.SendRequest(ctx, &ProxyRequest{
 		URL:       "http://example.com/migrate",
-		Method:    "GET",
+		Method:    httpGet,
 		SessionID: sessionID,
-		Tags:      []string{"type:migration"},
+		Tags:      []string{testTagMigration},
 	})
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
@@ -171,9 +173,9 @@ func TestSession_Migration(t *testing.T) {
 	ep2.ClearRequests()
 	resp2, err := client.SendRequest(ctx, &ProxyRequest{
 		URL:       "http://example.com/after-migrate",
-		Method:    "GET",
+		Method:    httpGet,
 		SessionID: sessionID,
-		Tags:      []string{"type:migration"},
+		Tags:      []string{testTagMigration},
 	})
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp2.StatusCode)
@@ -191,20 +193,20 @@ func TestSession_Expiration(t *testing.T) {
 	apiKey, err := CreateTestAPIKey(ctx, suite.PostgresDSN(), "test-client", []string{"*"})
 	require.NoError(t, err)
 
-	ep1 := NewMockEndpoint(tc.Broker, MockEndpointConfig{EndpointID: "ep1", Tags: []string{"type:expiry"}, Secret: []byte(testHMACSecret)})
+	ep1 := NewMockEndpoint(tc.Broker, MockEndpointConfig{EndpointID: testEp1, Tags: []string{testTagExpiry}, Secret: []byte(testHMACSecret)})
 	ep1.SetResponse(&MockEndpointResponse{StatusCode: 200})
 	require.NoError(t, ep1.Start(ctx), "failed to start mock endpoint")
 	defer ep1.Stop()
 
-	require.NoError(t, CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{ID: "ep1", Tags: []string{"type:expiry"}, IsHealthy: true}))
-	require.NoError(t, tc.WaitForEndpoint(ctx, "ep1"), "failed to wait for endpoint health")
+	require.NoError(t, CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{ID: testEp1, Tags: []string{testTagExpiry}, IsHealthy: true}))
+	require.NoError(t, tc.WaitForEndpoint(ctx, testEp1), "failed to wait for endpoint health")
 
-	require.NoError(t, CreateTestRoutingRule(ctx, suite.PostgresDSN(), "Expiry Rule", 100, []string{"type:expiry"}, []string{}, "", 0, 0, "", []TestEndpointPool{{Tier: 1, Endpoints: []string{"ep1"}}}))
+	require.NoError(t, CreateTestRoutingRule(ctx, suite.PostgresDSN(), "Expiry Rule", 100, []string{testTagExpiry}, []string{}, "", 0, 0, "", []TestEndpointPool{{Tier: 1, Endpoints: []string{testEp1}}}))
 	require.NoError(t, tc.Server.GetMatcher().LoadRules(ctx))
 
 	client := NewHTTPTestClient(tc.ServerURL, apiKey.RawKey)
 
-	resp, err := client.SendRequest(ctx, &ProxyRequest{URL: "http://x.com", Method: "GET", Tags: []string{"type:expiry"}})
+	resp, err := client.SendRequest(ctx, &ProxyRequest{URL: "http://x.com", Method: httpGet, Tags: []string{testTagExpiry}})
 	require.NoError(t, err, "failed to create session")
 	require.NotNil(t, resp, "response should not be nil")
 	sessionID := resp.Headers.Get(middleware.HeaderSessionID)
@@ -218,9 +220,9 @@ func TestSession_Expiration(t *testing.T) {
 
 	resp2, err := client.SendRequest(ctx, &ProxyRequest{
 		URL:       "http://x.com",
-		Method:    "GET",
+		Method:    httpGet,
 		SessionID: sessionID,
-		Tags:      []string{"type:expiry"},
+		Tags:      []string{testTagExpiry},
 	})
 	require.NoError(t, err)
 

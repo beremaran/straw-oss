@@ -1,3 +1,4 @@
+// Package update provides automatic update checking and installation for the endpoint binary.
 package update
 
 import (
@@ -15,12 +16,22 @@ import (
 )
 
 var (
-	ErrUnexpectedStatusCode   = errors.New("unexpected status code")
+	// ErrUnexpectedStatusCode is returned when the update server responds with a non-200 status.
+	ErrUnexpectedStatusCode = errors.New("unexpected status code")
+	// ErrManifestMissingVersion is returned when the manifest lacks a version field.
 	ErrManifestMissingVersion = errors.New("manifest missing version field")
-	ErrManifestMissingURL     = errors.New("manifest missing url field")
-	ErrManifestMissingSHA256  = errors.New("manifest missing sha256 field")
+	// ErrManifestMissingURL is returned when the manifest lacks a URL field.
+	ErrManifestMissingURL = errors.New("manifest missing url field")
+	// ErrManifestMissingSHA256 is returned when the manifest lacks a SHA256 field.
+	ErrManifestMissingSHA256 = errors.New("manifest missing sha256 field")
 )
 
+const (
+	initialCheckDelay = 10 * time.Second
+	maxManifestSize   = 1 << 20
+)
+
+// Checker periodically checks for new versions of the endpoint binary.
 type Checker struct {
 	updateURL      string
 	currentVersion string
@@ -35,8 +46,10 @@ type Checker struct {
 	done           chan struct{}
 }
 
+// CheckerOption configures a Checker.
 type CheckerOption func(*Checker)
 
+// WithCheckInterval sets how often the checker polls for updates.
 func WithCheckInterval(d time.Duration) CheckerOption {
 	return func(c *Checker) {
 		if d > 0 {
@@ -45,6 +58,7 @@ func WithCheckInterval(d time.Duration) CheckerOption {
 	}
 }
 
+// WithHTTPTimeout sets the timeout for HTTP requests made by the checker.
 func WithHTTPTimeout(d time.Duration) CheckerOption {
 	return func(c *Checker) {
 		if d > 0 {
@@ -53,24 +67,29 @@ func WithHTTPTimeout(d time.Duration) CheckerOption {
 	}
 }
 
+// WithCheckerLogger sets the logger used by the checker.
 func WithCheckerLogger(logger *slog.Logger) CheckerOption {
 	return func(c *Checker) {
 		c.logger = logger
 	}
 }
 
+// WithUpdateCallback sets a callback invoked when an update is available;
+// if it returns false the installation is skipped.
 func WithUpdateCallback(cb Callback) CheckerOption {
 	return func(c *Checker) {
 		c.callback = cb
 	}
 }
 
+// WithHTTPClient sets a custom HTTP client for the checker.
 func WithHTTPClient(client *http.Client) CheckerOption {
 	return func(c *Checker) {
 		c.httpClient = client
 	}
 }
 
+// NewChecker creates a Checker that polls updateURL for a JSON manifest.
 func NewChecker(updateURL, currentVersion string, opts ...CheckerOption) *Checker {
 	c := &Checker{
 		updateURL:      updateURL,
@@ -94,6 +113,7 @@ func NewChecker(updateURL, currentVersion string, opts ...CheckerOption) *Checke
 	return c
 }
 
+// Start begins periodic update checks in a background goroutine.
 func (c *Checker) Start(ctx context.Context) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -117,6 +137,7 @@ func (c *Checker) Start(ctx context.Context) {
 	go c.run(ctx)
 }
 
+// Stop signals the checker to halt and waits for the goroutine to exit.
 func (c *Checker) Stop() {
 	c.mu.Lock()
 	if !c.running {
@@ -124,6 +145,7 @@ func (c *Checker) Stop() {
 
 		return
 	}
+
 	cancel := c.cancel
 	done := c.done
 	c.mu.Unlock()
@@ -143,6 +165,7 @@ func (c *Checker) Stop() {
 	c.logger.Info("update checker stopped")
 }
 
+// CheckNow performs a single update check against the update server.
 func (c *Checker) CheckNow(ctx context.Context) (*Result, error) {
 	manifest, err := c.fetchManifest(ctx)
 	if err != nil {
@@ -161,6 +184,7 @@ func (c *Checker) CheckNow(ctx context.Context) (*Result, error) {
 	}, nil
 }
 
+// IsRunning reports whether the checker goroutine is active.
 func (c *Checker) IsRunning() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -174,7 +198,7 @@ func (c *Checker) run(ctx context.Context) {
 	select {
 	case <-ctx.Done():
 		return
-	case <-time.After(10 * time.Second):
+	case <-time.After(initialCheckDelay):
 		c.performCheck(ctx)
 	}
 
@@ -240,12 +264,13 @@ func (c *Checker) fetchManifest(ctx context.Context) (*VersionManifest, error) {
 		return nil, fmt.Errorf("%w: %d", ErrUnexpectedStatusCode, resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxManifestSize))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
 	var manifest VersionManifest
+
 	err = json.Unmarshal(body, &manifest)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse manifest: %w", err)
@@ -254,9 +279,11 @@ func (c *Checker) fetchManifest(ctx context.Context) (*VersionManifest, error) {
 	if manifest.Version == "" {
 		return nil, ErrManifestMissingVersion
 	}
+
 	if manifest.URL == "" {
 		return nil, ErrManifestMissingURL
 	}
+
 	if manifest.SHA256 == "" {
 		return nil, ErrManifestMissingSHA256
 	}
@@ -268,6 +295,7 @@ func normalizeVersion(version string) string {
 	if version == "" {
 		return "v0.0.0"
 	}
+
 	if version[0] != 'v' {
 		return "v" + version
 	}

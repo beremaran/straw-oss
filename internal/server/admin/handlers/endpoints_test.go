@@ -9,14 +9,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/beremaran/straw/internal/domain"
 	"github.com/beremaran/straw/internal/infra/postgres"
 	"github.com/beremaran/straw/internal/infra/redis"
 	"github.com/beremaran/straw/internal/server/dto"
 	"github.com/beremaran/straw/internal/service/endpoint"
 	"github.com/beremaran/straw/pkg/broker"
-	"github.com/stretchr/testify/assert"
 )
+
+const testEndpointID = "ep-1"
 
 type mockHealthStore struct {
 	endpoints map[string]*redis.EndpointHealth
@@ -24,13 +28,13 @@ type mockHealthStore struct {
 	deleted   map[string]bool
 }
 
-func (m *mockHealthStore) UpdateHealth(ctx context.Context, health *redis.EndpointHealth) error {
+func (m *mockHealthStore) UpdateHealth(_ context.Context, health *redis.EndpointHealth) error {
 	m.endpoints[health.EndpointID] = health
 
 	return nil
 }
 
-func (m *mockHealthStore) GetHealth(ctx context.Context, endpointID string) (*redis.EndpointHealth, error) {
+func (m *mockHealthStore) GetHealth(_ context.Context, endpointID string) (*redis.EndpointHealth, error) {
 	if h, ok := m.endpoints[endpointID]; ok {
 		return h, nil
 	}
@@ -38,11 +42,11 @@ func (m *mockHealthStore) GetHealth(ctx context.Context, endpointID string) (*re
 	return nil, redis.ErrCacheMiss
 }
 
-func (m *mockHealthStore) ListHealthyByTags(ctx context.Context, tags []string) ([]*redis.EndpointHealth, error) {
+func (m *mockHealthStore) ListHealthyByTags(_ context.Context, _ []string) ([]*redis.EndpointHealth, error) {
 	return nil, nil
 }
 
-func (m *mockHealthStore) ListAllEndpoints(ctx context.Context) ([]*redis.EndpointHealth, error) {
+func (m *mockHealthStore) ListAllEndpoints(_ context.Context) ([]*redis.EndpointHealth, error) {
 	var list []*redis.EndpointHealth
 	for _, h := range m.endpoints {
 		list = append(list, h)
@@ -51,13 +55,13 @@ func (m *mockHealthStore) ListAllEndpoints(ctx context.Context) ([]*redis.Endpoi
 	return list, nil
 }
 
-func (m *mockHealthStore) DeleteHealth(ctx context.Context, endpointID string) error {
+func (m *mockHealthStore) DeleteHealth(_ context.Context, endpointID string) error {
 	delete(m.endpoints, endpointID)
 
 	return nil
 }
 
-func (m *mockHealthStore) SetDraining(ctx context.Context, endpointID string, draining bool) error {
+func (m *mockHealthStore) SetDraining(_ context.Context, endpointID string, draining bool) error {
 	if draining {
 		m.draining[endpointID] = true
 	} else {
@@ -67,11 +71,11 @@ func (m *mockHealthStore) SetDraining(ctx context.Context, endpointID string, dr
 	return nil
 }
 
-func (m *mockHealthStore) IsDraining(ctx context.Context, endpointID string) (bool, error) {
+func (m *mockHealthStore) IsDraining(_ context.Context, endpointID string) (bool, error) {
 	return m.draining[endpointID], nil
 }
 
-func (m *mockHealthStore) SetDeleted(ctx context.Context, endpointID string, deleted bool) error {
+func (m *mockHealthStore) SetDeleted(_ context.Context, endpointID string, deleted bool) error {
 	if deleted {
 		m.deleted[endpointID] = true
 	} else {
@@ -81,7 +85,7 @@ func (m *mockHealthStore) SetDeleted(ctx context.Context, endpointID string, del
 	return nil
 }
 
-func (m *mockHealthStore) IsDeleted(ctx context.Context, endpointID string) (bool, error) {
+func (m *mockHealthStore) IsDeleted(_ context.Context, endpointID string) (bool, error) {
 	return m.deleted[endpointID], nil
 }
 
@@ -89,13 +93,13 @@ type mockEndpointRepo struct {
 	endpoints map[string]*domain.Endpoint
 }
 
-func (m *mockEndpointRepo) Create(ctx context.Context, ep *domain.Endpoint) error {
+func (m *mockEndpointRepo) Create(_ context.Context, ep *domain.Endpoint) error {
 	m.endpoints[ep.ID] = ep
 
 	return nil
 }
 
-func (m *mockEndpointRepo) GetByID(ctx context.Context, id string) (*domain.Endpoint, error) {
+func (m *mockEndpointRepo) GetByID(_ context.Context, id string) (*domain.Endpoint, error) {
 	if ep, ok := m.endpoints[id]; ok {
 		return ep, nil
 	}
@@ -103,13 +107,13 @@ func (m *mockEndpointRepo) GetByID(ctx context.Context, id string) (*domain.Endp
 	return nil, nil
 }
 
-func (m *mockEndpointRepo) Update(ctx context.Context, ep *domain.Endpoint) error {
+func (m *mockEndpointRepo) Update(_ context.Context, ep *domain.Endpoint) error {
 	m.endpoints[ep.ID] = ep
 
 	return nil
 }
 
-func (m *mockEndpointRepo) Delete(ctx context.Context, id string) error {
+func (m *mockEndpointRepo) Delete(_ context.Context, id string) error {
 	if ep, ok := m.endpoints[id]; ok {
 		now := time.Now().UTC()
 		ep.DeletedAt = &now
@@ -122,7 +126,7 @@ func (m *mockEndpointRepo) Delete(ctx context.Context, id string) error {
 	return postgres.ErrEndpointNotFound
 }
 
-func (m *mockEndpointRepo) List(ctx context.Context, limit, offset int, includeDeleted bool) ([]domain.Endpoint, int, error) {
+func (m *mockEndpointRepo) List(_ context.Context, _ int, _ int, includeDeleted bool) ([]domain.Endpoint, int, error) {
 	var list []domain.Endpoint
 	for _, ep := range m.endpoints {
 		if !includeDeleted && ep.DeletedAt != nil {
@@ -139,13 +143,13 @@ type mockCommandRepo struct {
 	commands map[string]*domain.EndpointCommand
 }
 
-func (m *mockCommandRepo) Create(ctx context.Context, cmd *domain.EndpointCommand) error {
+func (m *mockCommandRepo) Create(_ context.Context, cmd *domain.EndpointCommand) error {
 	m.commands[cmd.ID] = cmd
 
 	return nil
 }
 
-func (m *mockCommandRepo) GetByID(ctx context.Context, id string) (*domain.EndpointCommand, error) {
+func (m *mockCommandRepo) GetByID(_ context.Context, id string) (*domain.EndpointCommand, error) {
 	if cmd, ok := m.commands[id]; ok {
 		return cmd, nil
 	}
@@ -153,13 +157,13 @@ func (m *mockCommandRepo) GetByID(ctx context.Context, id string) (*domain.Endpo
 	return nil, nil
 }
 
-func (m *mockCommandRepo) Update(ctx context.Context, cmd *domain.EndpointCommand) error {
+func (m *mockCommandRepo) Update(_ context.Context, cmd *domain.EndpointCommand) error {
 	m.commands[cmd.ID] = cmd
 
 	return nil
 }
 
-func (m *mockCommandRepo) ListByEndpointID(ctx context.Context, endpointID string, limit, offset int) ([]domain.EndpointCommand, int, error) {
+func (m *mockCommandRepo) ListByEndpointID(_ context.Context, endpointID string, _ int, _ int) ([]domain.EndpointCommand, int, error) {
 	var list []domain.EndpointCommand
 	for _, cmd := range m.commands {
 		if cmd.EndpointID == endpointID {
@@ -170,7 +174,7 @@ func (m *mockCommandRepo) ListByEndpointID(ctx context.Context, endpointID strin
 	return list, len(list), nil
 }
 
-func (m *mockCommandRepo) ListPending(ctx context.Context, before time.Time) ([]domain.EndpointCommand, error) {
+func (m *mockCommandRepo) ListPending(_ context.Context, before time.Time) ([]domain.EndpointCommand, error) {
 	var list []domain.EndpointCommand
 	for _, cmd := range m.commands {
 		if (cmd.Status == domain.CommandStatusAccepted ||
@@ -187,21 +191,21 @@ type mockEndpointBroker struct {
 	published map[string][]byte
 }
 
-func (m *mockEndpointBroker) Publish(ctx context.Context, subject string, body []byte) error {
+func (m *mockEndpointBroker) Publish(_ context.Context, subject string, body []byte) error {
 	m.published[subject] = body
 
 	return nil
 }
 
-func (m *mockEndpointBroker) Subscribe(ctx context.Context, subject string, handler broker.Handler, opts ...broker.SubscribeOption) error {
+func (m *mockEndpointBroker) Subscribe(_ context.Context, _ string, _ broker.Handler, _ ...broker.SubscribeOption) error {
 	return nil
 }
 
-func (m *mockEndpointBroker) ConsumeOnce(ctx context.Context, subject string, timeout time.Duration) ([]byte, error) {
+func (m *mockEndpointBroker) ConsumeOnce(_ context.Context, _ string, _ time.Duration) ([]byte, error) {
 	return nil, nil
 }
 
-func (m *mockEndpointBroker) DeclareStream(ctx context.Context, name string, subjects ...string) error {
+func (m *mockEndpointBroker) DeclareStream(_ context.Context, _ string, _ ...string) error {
 	return nil
 }
 
@@ -233,14 +237,14 @@ func TestEndpointHandler_List_LegacyFallback(t *testing.T) {
 
 	var endpoints []dto.EndpointHealthResponse
 	err := json.Unmarshal(rec.Body.Bytes(), &endpoints)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Len(t, endpoints, 2)
 }
 
 func TestEndpointHandler_Lifecycle(t *testing.T) {
 	store := &mockHealthStore{
 		endpoints: map[string]*redis.EndpointHealth{
-			"ep-1": {EndpointID: "ep-1", State: "healthy", LastSeen: time.Now()},
+			testEndpointID: {EndpointID: testEndpointID, State: "healthy", LastSeen: time.Now()},
 		},
 		draining: make(map[string]bool),
 		deleted:  make(map[string]bool),
@@ -253,68 +257,68 @@ func TestEndpointHandler_Lifecycle(t *testing.T) {
 	h := NewEndpointHandler(healthService, epRepo, cmdRepo, mb, nil, nil)
 
 	// 1. Create Endpoint
-	reqBody := `{"id":"ep-1","tags":["type:residential","region:us"],"desired_state":"active"}`
+	reqBody := `{"id":testEndpointID,"tags":["type:residential","region:us"],"desired_state":"active"}`
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/management/endpoints", bytes.NewBufferString(reqBody))
 	rec := httptest.NewRecorder()
 	h.HandleCreateEndpoint(rec, req)
 	assert.Equal(t, http.StatusCreated, rec.Code)
 
 	var createResp dto.EndpointResponse
-	assert.NoError(t, json.Unmarshal(rec.Body.Bytes(), &createResp))
-	assert.Equal(t, "ep-1", createResp.ID)
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &createResp))
+	assert.Equal(t, testEndpointID, createResp.ID)
 	assert.Equal(t, "active", createResp.DesiredState)
 	assert.Equal(t, "healthy", createResp.Health.State)
 
 	// 2. Get Endpoint
 	req = httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/management/endpoints/ep-1", nil)
-	req.SetPathValue("id", "ep-1")
+	req.SetPathValue("id", testEndpointID)
 	rec = httptest.NewRecorder()
 	h.HandleGetEndpoint(rec, req)
 	assert.Equal(t, http.StatusOK, rec.Code)
 
 	var getResp dto.EndpointResponse
-	assert.NoError(t, json.Unmarshal(rec.Body.Bytes(), &getResp))
-	assert.Equal(t, "ep-1", getResp.ID)
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &getResp))
+	assert.Equal(t, testEndpointID, getResp.ID)
 
 	// 3. Drain Endpoint
 	req = httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/management/endpoints/ep-1/drain", nil)
-	req.SetPathValue("id", "ep-1")
+	req.SetPathValue("id", testEndpointID)
 	rec = httptest.NewRecorder()
 	h.HandleDrainEndpoint(rec, req)
 	assert.Equal(t, http.StatusOK, rec.Code)
 
 	var drainResp dto.EndpointDrainResponse
-	assert.NoError(t, json.Unmarshal(rec.Body.Bytes(), &drainResp))
-	assert.Equal(t, "ep-1", drainResp.EndpointID)
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &drainResp))
+	assert.Equal(t, testEndpointID, drainResp.EndpointID)
 	assert.Equal(t, "draining", drainResp.DesiredState)
 	assert.NotEmpty(t, drainResp.CommandID)
-	assert.True(t, store.draining["ep-1"])
+	assert.True(t, store.draining[testEndpointID])
 
 	// Check NATS publish
 	assert.NotEmpty(t, mb.published["endpoint.control.ep-1"])
 
 	// 4. Undrain Endpoint
 	req = httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/management/endpoints/ep-1/undrain", nil)
-	req.SetPathValue("id", "ep-1")
+	req.SetPathValue("id", testEndpointID)
 	rec = httptest.NewRecorder()
 	h.HandleUndrainEndpoint(rec, req)
 	assert.Equal(t, http.StatusOK, rec.Code)
-	assert.False(t, store.draining["ep-1"])
+	assert.False(t, store.draining[testEndpointID])
 
 	// 5. Restart Endpoint
 	req = httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/management/endpoints/ep-1/restart", nil)
-	req.SetPathValue("id", "ep-1")
+	req.SetPathValue("id", testEndpointID)
 	rec = httptest.NewRecorder()
 	h.HandleRestartEndpoint(rec, req)
 	assert.Equal(t, http.StatusOK, rec.Code)
 
 	// 6. Delete Endpoint
 	req = httptest.NewRequestWithContext(context.Background(), http.MethodDelete, "/management/endpoints/ep-1", nil)
-	req.SetPathValue("id", "ep-1")
+	req.SetPathValue("id", testEndpointID)
 	rec = httptest.NewRecorder()
 	h.HandleDeleteEndpoint(rec, req)
 	assert.Equal(t, http.StatusNoContent, rec.Code)
-	assert.True(t, store.deleted["ep-1"])
+	assert.True(t, store.deleted[testEndpointID])
 
 	// 7. Get Command detail
 	var cmdID string
@@ -333,19 +337,19 @@ func TestEndpointHandler_Lifecycle(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rec.Code)
 
 	var cmdResp dto.EndpointCommandDTO
-	assert.NoError(t, json.Unmarshal(rec.Body.Bytes(), &cmdResp))
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &cmdResp))
 	assert.Equal(t, cmdID, cmdResp.ID)
-	assert.Equal(t, "ep-1", cmdResp.EndpointID)
+	assert.Equal(t, testEndpointID, cmdResp.EndpointID)
 
 	// Test Command List
 	req = httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/management/endpoints/ep-1/commands", nil)
-	req.SetPathValue("id", "ep-1")
+	req.SetPathValue("id", testEndpointID)
 	rec = httptest.NewRecorder()
 	h.HandleListEndpointCommands(rec, req)
 	assert.Equal(t, http.StatusOK, rec.Code)
 
 	var cmdListResp dto.EndpointCommandListResponse
-	assert.NoError(t, json.Unmarshal(rec.Body.Bytes(), &cmdListResp))
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &cmdListResp))
 	assert.NotEmpty(t, cmdListResp.Data)
 }
 
@@ -353,29 +357,27 @@ type mockLogRepo struct {
 	logs []*domain.EndpointLogEntry
 }
 
-func (m *mockLogRepo) Create(ctx context.Context, entry *domain.EndpointLogEntry) error {
+func (m *mockLogRepo) Create(_ context.Context, entry *domain.EndpointLogEntry) error {
 	m.logs = append(m.logs, entry)
 	entry.ID = int64(len(m.logs))
 
 	return nil
 }
 
-func (m *mockLogRepo) ListByEndpointID(ctx context.Context, endpointID string, beforeID int64, limit int) ([]domain.EndpointLogEntry, error) {
+func (m *mockLogRepo) ListByEndpointID(_ context.Context, _ string, _ int64, _ int) ([]domain.EndpointLogEntry, error) {
 	return nil, nil
 }
 
-func (m *mockLogRepo) Query(ctx context.Context, endpointID string, filter domain.LogFilter) ([]domain.EndpointLogEntry, error) {
+func (m *mockLogRepo) Query(_ context.Context, _ string, _ domain.LogFilter) ([]domain.EndpointLogEntry, error) {
 	var res []domain.EndpointLogEntry
-	for _, l := range m.logs {
-		if l.EndpointID == endpointID {
-			res = append(res, *l)
-		}
+	for range m.logs {
+		res = append(res, domain.EndpointLogEntry{})
 	}
 
 	return res, nil
 }
 
-func (m *mockLogRepo) Cleanup(ctx context.Context, maxAge time.Duration, maxSizeBytes int64) error {
+func (m *mockLogRepo) Cleanup(_ context.Context, _ time.Duration, _ int64) error {
 	return nil
 }
 
@@ -383,7 +385,7 @@ func TestEndpointHandler_Logs(t *testing.T) {
 	logRepo := &mockLogRepo{logs: []*domain.EndpointLogEntry{
 		{
 			ID:         1,
-			EndpointID: "ep-1",
+			EndpointID: testEndpointID,
 			ObservedAt: time.Now(),
 			Level:      "info",
 			Message:    "hello test log",
@@ -392,7 +394,7 @@ func TestEndpointHandler_Logs(t *testing.T) {
 	h := NewEndpointHandler(nil, nil, nil, nil, nil, logRepo)
 
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/management/endpoints/ep-1/logs", nil)
-	req.SetPathValue("id", "ep-1")
+	req.SetPathValue("id", testEndpointID)
 	rec := httptest.NewRecorder()
 
 	h.HandleGetEndpointLogs(rec, req)
@@ -401,7 +403,7 @@ func TestEndpointHandler_Logs(t *testing.T) {
 
 	var resp dto.EndpointLogListResponse
 	err := json.Unmarshal(rec.Body.Bytes(), &resp)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Len(t, resp.Data, 1)
 	assert.Equal(t, "hello test log", resp.Data[0].Message)
 }

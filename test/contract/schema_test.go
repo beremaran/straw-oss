@@ -2,16 +2,16 @@ package contract_test
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/beremaran/straw/pkg/protocol"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/xeipuuv/gojsonschema"
+
+	"github.com/beremaran/straw/pkg/protocol"
 )
 
 func loadSchema(t *testing.T, filename string) *gojsonschema.Schema {
@@ -32,14 +32,14 @@ func loadSchema(t *testing.T, filename string) *gojsonschema.Schema {
 	absPath, err := filepath.Abs(path)
 	require.NoError(t, err)
 
-	loader := gojsonschema.NewReferenceLoader(fmt.Sprintf("file://%s", absPath))
+	loader := gojsonschema.NewReferenceLoader("file://" + absPath)
 	schema, err := gojsonschema.NewSchema(loader)
 	require.NoError(t, err, "failed to load schema %s", filename)
 
 	return schema
 }
 
-func validateAgainstSchema(t *testing.T, schema *gojsonschema.Schema, data interface{}) {
+func validateAgainstSchema(t *testing.T, schema *gojsonschema.Schema, data any) {
 	jsonBytes, err := json.Marshal(data)
 	require.NoError(t, err)
 
@@ -86,7 +86,7 @@ func TestRequestSchema(t *testing.T) {
 	})
 
 	t.Run("InvalidRequest_MissingRequired", func(t *testing.T) {
-		invalidReq := map[string]interface{}{
+		invalidReq := map[string]any{
 			"id": "req-bad",
 		}
 

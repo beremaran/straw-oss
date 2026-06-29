@@ -6,11 +6,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/beremaran/straw/internal/domain"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/beremaran/straw/internal/domain"
 )
 
 func TestEndpointRepositories(t *testing.T) {
@@ -31,9 +32,9 @@ func TestEndpointRepositories(t *testing.T) {
 	require.NoError(t, err)
 
 	client := &Client{Pool: pool}
-	epRepo := NewPostgresEndpointRepository(client)
-	cmdRepo := NewPostgresEndpointCommandRepository(client)
-	logRepo := NewPostgresEndpointLogRepository(client)
+	epRepo := NewEndpointRepository(client)
+	cmdRepo := NewEndpointCommandRepository(client)
+	logRepo := NewEndpointLogRepository(client)
 
 	t.Run("Endpoint Lifecycle", func(t *testing.T) {
 		epID := "ep-" + uuid.New().String()
@@ -108,7 +109,7 @@ func TestEndpointRepositories(t *testing.T) {
 		list, total, err = epRepo.List(ctx, 10, 0, false)
 		require.NoError(t, err)
 		assert.Equal(t, 0, total)
-		assert.Len(t, list, 0)
+		assert.Empty(t, list)
 
 		// List (with deleted - should return it)
 		list, total, err = epRepo.List(ctx, 10, 0, true)
@@ -197,15 +198,15 @@ func TestEndpointRepositories(t *testing.T) {
 			}
 			err := logRepo.Create(ctx, entry)
 			require.NoError(t, err)
-			assert.Greater(t, entry.ID, int64(0))
+			assert.Positive(t, entry.ID)
 		}
 
 		// Retrieve all logs (latest first, so index 5 should be first)
 		logs, err := logRepo.ListByEndpointID(ctx, epID, 0, 10)
 		require.NoError(t, err)
 		require.Len(t, logs, 5)
-		assert.Equal(t, float64(5), logs[0].Attrs["index"].(float64))
-		assert.Equal(t, float64(1), logs[4].Attrs["index"].(float64))
+		assert.InDelta(t, float64(5), logs[0].Attrs["index"].(float64), 0)
+		assert.InDelta(t, float64(1), logs[4].Attrs["index"].(float64), 0)
 
 		// Retrieve with cursor (before ID of logs[2] which has index 3)
 		cursorID := logs[2].ID
@@ -213,8 +214,8 @@ func TestEndpointRepositories(t *testing.T) {
 		require.NoError(t, err)
 		// Should return logs with index 2 and index 1
 		require.Len(t, subset, 2)
-		assert.Equal(t, float64(2), subset[0].Attrs["index"].(float64))
-		assert.Equal(t, float64(1), subset[1].Attrs["index"].(float64))
+		assert.InDelta(t, float64(2), subset[0].Attrs["index"].(float64), 0)
+		assert.InDelta(t, float64(1), subset[1].Attrs["index"].(float64), 0)
 
 		// Test Query with filter by level
 		filtered, err := logRepo.Query(ctx, epID, domain.LogFilter{Level: "info"})
@@ -223,7 +224,7 @@ func TestEndpointRepositories(t *testing.T) {
 
 		filteredNone, err := logRepo.Query(ctx, epID, domain.LogFilter{Level: "error"})
 		require.NoError(t, err)
-		assert.Len(t, filteredNone, 0)
+		assert.Empty(t, filteredNone)
 
 		// Test Query with trace ID
 		filteredTrace, err := logRepo.Query(ctx, epID, domain.LogFilter{TraceID: trace})

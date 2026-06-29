@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -21,6 +22,12 @@ import (
 	"github.com/beremaran/straw/pkg/broker"
 )
 
+const (
+	ruleCacheTTL      = 10 * time.Minute
+	readHeaderTimeout = 15 * time.Second
+)
+
+// Server is the management HTTP server.
 type Server struct {
 	mux           *http.ServeMux
 	server        *http.Server
@@ -33,8 +40,10 @@ type Server struct {
 	apiKeyAuth    *adminauth.Service
 }
 
+// New creates a new management server.
 func New(conf config.ServerConfig, client *postgres.Client, redisClient *redis.Client, healthService *endpoint.HealthService, broker broker.MessageBroker, apiKeyAuth *adminauth.Service) *Server {
 	mux := http.NewServeMux()
+
 	var authService *adminauth.AdminService
 	if client != nil {
 		authService = adminauth.NewAdminService(
@@ -68,28 +77,33 @@ func New(conf config.ServerConfig, client *postgres.Client, redisClient *redis.C
 	)
 
 	s.server = &http.Server{
-		Handler: handler,
+		Handler:           handler,
+		ReadHeaderTimeout: readHeaderTimeout,
 	}
 
 	return s
 }
 
+// Start starts the management server.
 func (s *Server) Start() error {
 	addr := fmt.Sprintf(":%d", s.conf.ManagementPort)
 	s.server.Addr = addr
 	s.warnNoActiveOwner()
 
-	return s.server.ListenAndServe()
+	return fmt.Errorf("listen: %w", s.server.ListenAndServe())
 }
 
+// Stop gracefully stops the management server.
 func (s *Server) Stop(ctx context.Context) error {
-	return s.server.Shutdown(ctx)
+	return fmt.Errorf("shutdown: %w", s.server.Shutdown(ctx))
 }
 
+// Address returns the address the server is listening on.
 func (s *Server) Address() string {
 	return fmt.Sprintf(":%d", s.conf.ManagementPort)
 }
 
+// GetHandler returns the HTTP handler for the management server.
 func (s *Server) GetHandler() http.Handler {
 	return s.server.Handler
 }
@@ -108,12 +122,13 @@ func (s *Server) registerRoutes() {
 }
 
 func (s *Server) registerAllSubRoutes() {
-	apiKeyRepo := postgres.NewApiKeyRepository(s.client)
-	apiKeyTokenRepo := postgres.NewApiKeyTokenRepository(s.client)
+	apiKeyRepo := postgres.NewAPIKeyRepository(s.client)
+	apiKeyTokenRepo := postgres.NewAPIKeyTokenRepository(s.client)
 	routingRuleRepo := postgres.NewRoutingRuleRepository(s.client)
 	fingerprintRepo := postgres.NewFingerprintRepository(s.client)
 	identityRepo := postgres.NewIdentityRepository(s.client)
 	usageRepo := postgres.NewUsageRepository(s.client)
+
 	var auditRepo domain.ManagementAuditRepository
 	if s.client != nil {
 		auditRepo = postgres.NewManagementAuditRepository(s.client.Pool)
@@ -121,16 +136,19 @@ func (s *Server) registerAllSubRoutes() {
 
 	var ruleCache *router.RuleCache
 	if s.redisClient != nil {
-		ruleCache = router.NewRuleCache(s.redisClient.Client, 10*time.Minute)
+		ruleCache = router.NewRuleCache(s.redisClient.Client, ruleCacheTTL)
 	}
 
-	var endpointRepo domain.EndpointRepository
-	var commandRepo domain.EndpointCommandRepository
-	var logRepo domain.EndpointLogRepository
+	var (
+		endpointRepo domain.EndpointRepository
+		commandRepo  domain.EndpointCommandRepository
+		logRepo      domain.EndpointLogRepository
+	)
+
 	if s.client != nil {
-		endpointRepo = postgres.NewPostgresEndpointRepository(s.client)
-		commandRepo = postgres.NewPostgresEndpointCommandRepository(s.client)
-		logRepo = postgres.NewPostgresEndpointLogRepository(s.client)
+		endpointRepo = postgres.NewEndpointRepository(s.client)
+		commandRepo = postgres.NewEndpointCommandRepository(s.client)
+		logRepo = postgres.NewEndpointLogRepository(s.client)
 	}
 
 	s.registerIdentityAndAuthRoutes(
@@ -139,14 +157,16 @@ func (s *Server) registerAllSubRoutes() {
 		handlers.NewIdentityProviderHandler(identityRepo),
 		handlers.NewAuthHandler(s.authService),
 	)
-	s.registerAPIKeyRoutes(handlers.NewApiKeyHandler(apiKeyRepo, apiKeyTokenRepo, auditRepo, s.apiKeyAuth))
+	s.registerAPIKeyRoutes(handlers.NewAPIKeyHandler(apiKeyRepo, apiKeyTokenRepo, auditRepo, s.apiKeyAuth))
 	s.registerRoutingRuleRoutes(handlers.NewRoutingRuleHandler(routingRuleRepo, ruleCache, auditRepo))
 	s.registerEndpointRoutes(handlers.NewEndpointHandler(s.healthService, endpointRepo, commandRepo, s.broker, auditRepo, logRepo))
 	s.registerFingerprintRoutes(handlers.NewFingerprintHandler(fingerprintRepo, routingRuleRepo, identityRepo, s.broker, auditRepo))
 	s.registerUsageRoutes(handlers.NewUsageHandler(usageRepo))
+
 	if s.redisClient != nil {
 		s.registerCacheRoutes(handlers.NewCacheHandler(s.redisClient, auditRepo))
 	}
+
 	s.registerAuditRoutes(handlers.NewAuditHandler(auditRepo, identityRepo))
 }
 
@@ -191,15 +211,15 @@ func (s *Server) registerIdentityProviderRoutes(idpHandler *handlers.IdentityPro
 	s.management("DELETE /management/identity-providers/{id}", middleware.PermissionUsersWrite, idpHandler.HandleDeleteIdentityProvider)
 }
 
-func (s *Server) registerAPIKeyRoutes(apiKeyHandler *handlers.ApiKeyHandler) {
-	s.management("POST /management/api-keys", middleware.PermissionAPIKeysWrite, apiKeyHandler.HandleCreateApiKey)
-	s.management("GET /management/api-keys", middleware.PermissionAPIKeysRead, apiKeyHandler.HandleListApiKeys)
-	s.management("GET /management/api-keys/{id}", middleware.PermissionAPIKeysRead, apiKeyHandler.HandleGetApiKey)
-	s.management("PATCH /management/api-keys/{id}", middleware.PermissionAPIKeysWrite, apiKeyHandler.HandleUpdateApiKey)
-	s.management("POST /management/api-keys/{id}/rotate", middleware.PermissionAPIKeysRotate, apiKeyHandler.HandleRotateApiKey)
-	s.management("POST /management/api-keys/{id}/reactivate", middleware.PermissionAPIKeysWrite, apiKeyHandler.HandleReactivateApiKey)
-	s.management("POST /management/api-keys/{id}/revoke", middleware.PermissionAPIKeysRevoke, apiKeyHandler.HandleRevokeApiKey)
-	s.management("DELETE /management/api-keys/{id}", middleware.PermissionAPIKeysRevoke, apiKeyHandler.HandleRevokeApiKey)
+func (s *Server) registerAPIKeyRoutes(apiKeyHandler *handlers.APIKeyHandler) {
+	s.management("POST /management/api-keys", middleware.PermissionAPIKeysWrite, apiKeyHandler.HandleCreateAPIKey)
+	s.management("GET /management/api-keys", middleware.PermissionAPIKeysRead, apiKeyHandler.HandleListAPIKeys)
+	s.management("GET /management/api-keys/{id}", middleware.PermissionAPIKeysRead, apiKeyHandler.HandleGetAPIKey)
+	s.management("PATCH /management/api-keys/{id}", middleware.PermissionAPIKeysWrite, apiKeyHandler.HandleUpdateAPIKey)
+	s.management("POST /management/api-keys/{id}/rotate", middleware.PermissionAPIKeysRotate, apiKeyHandler.HandleRotateAPIKey)
+	s.management("POST /management/api-keys/{id}/reactivate", middleware.PermissionAPIKeysWrite, apiKeyHandler.HandleReactivateAPIKey)
+	s.management("POST /management/api-keys/{id}/revoke", middleware.PermissionAPIKeysRevoke, apiKeyHandler.HandleRevokeAPIKey)
+	s.management("DELETE /management/api-keys/{id}", middleware.PermissionAPIKeysRevoke, apiKeyHandler.HandleRevokeAPIKey)
 }
 
 func (s *Server) registerRoutingRuleRoutes(routingRuleHandler *handlers.RoutingRuleHandler) {
@@ -254,15 +274,15 @@ func (s *Server) management(pattern, permission string, handler http.HandlerFunc
 	s.mux.Handle(pattern, middleware.RequirePermission(permission)(handler))
 }
 
-func (s *Server) healthCheck(w http.ResponseWriter, r *http.Request) {
+func (s *Server) healthCheck(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("OK"))
 }
 
 func applyMiddlewares(handler http.Handler, middlewares ...func(http.Handler) http.Handler) http.Handler {
-	for i := len(middlewares) - 1; i >= 0; i-- {
-		handler = middlewares[i](handler)
+	for _, v := range slices.Backward(middlewares) {
+		handler = v(handler)
 	}
 
 	return handler
@@ -270,12 +290,16 @@ func applyMiddlewares(handler http.Handler, middlewares ...func(http.Handler) ht
 
 func managementGlobalMiddleware(cfg config.ServerConfig, client *postgres.Client, verifier ...middleware.AccessTokenVerifier) func(http.Handler) http.Handler {
 	keyAuth := middleware.KeyAuth(cfg)
+
 	var accessVerifier middleware.AccessTokenVerifier
 	if len(verifier) > 0 {
 		accessVerifier = verifier[0]
 	}
+
 	sessionAuth := middleware.SessionAuth(accessVerifier)
+
 	var auditLog func(http.Handler) http.Handler
+
 	if client != nil && client.Pool != nil {
 		auditLogger := middleware.NewAuditLogger(client.Pool, 0, 0)
 		auditLog = middleware.AuditLog(auditLogger)
@@ -292,14 +316,17 @@ func managementGlobalMiddleware(cfg config.ServerConfig, client *postgres.Client
 				if auditLog != nil {
 					h = auditLog(h)
 				}
+
 				if !isPublicAuthRoute(r) {
 					h = keyAuth(h)
 					h = sessionAuth(h)
 				}
+
 				h.ServeHTTP(w, r)
 
 				return
 			}
+
 			next.ServeHTTP(w, r)
 		})
 	}
@@ -309,6 +336,7 @@ func isPublicAuthRoute(r *http.Request) bool {
 	if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/management/auth/sso/") {
 		return true
 	}
+
 	if r.Method != http.MethodPost {
 		return false
 	}
@@ -327,6 +355,7 @@ func (s *Server) warnNoActiveOwner() {
 
 		return
 	}
+
 	if !exists {
 		slog.Warn("no active management owner exists; bootstrap one at /management/users/bootstrap")
 	}

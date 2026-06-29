@@ -8,6 +8,7 @@ import (
 
 // User DTOs
 
+// CreateUserRequest is the request body for creating a new user.
 type CreateUserRequest struct {
 	Email        string   `json:"email"`
 	DisplayName  string   `json:"display_name"`
@@ -17,6 +18,7 @@ type CreateUserRequest struct {
 	RoleIDs      []string `json:"role_ids"`
 }
 
+// UpdateUserRequest is the request body for updating a user.
 type UpdateUserRequest struct {
 	Email        *string   `json:"email,omitempty"`
 	DisplayName  *string   `json:"display_name,omitempty"`
@@ -26,6 +28,7 @@ type UpdateUserRequest struct {
 	RoleIDs      *[]string `json:"role_ids,omitempty"`
 }
 
+// UserDetailResponse represents a user with full details in API responses.
 type UserDetailResponse struct {
 	ID           string              `json:"id"`
 	Email        string              `json:"email"`
@@ -38,6 +41,7 @@ type UserDetailResponse struct {
 	Roles        []AdminRoleResponse `json:"roles"`
 }
 
+// ListUsersResponse is a paginated list of users.
 type ListUsersResponse struct {
 	Data  []AdminUserResponse `json:"data"`
 	Total int                 `json:"total"`
@@ -47,18 +51,21 @@ type ListUsersResponse struct {
 
 // Role DTOs
 
+// CreateRoleRequest is the request body for creating a new role.
 type CreateRoleRequest struct {
 	Name        string   `json:"name"`
 	Description string   `json:"description,omitempty"`
 	Permissions []string `json:"permissions"`
 }
 
+// UpdateRoleRequest is the request body for updating a role.
 type UpdateRoleRequest struct {
 	Name        string   `json:"name"`
 	Description string   `json:"description,omitempty"`
 	Permissions []string `json:"permissions"`
 }
 
+// AdminRoleResponse represents a role in API responses.
 type AdminRoleResponse struct {
 	ID          string    `json:"id"`
 	Name        string    `json:"name"`
@@ -69,63 +76,69 @@ type AdminRoleResponse struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
+// ListRolesResponse is a list of roles.
 type ListRolesResponse struct {
 	Data []AdminRoleResponse `json:"data"`
 }
 
 // Identity Provider DTOs
 
+// CreateIdentityProviderRequest is the request body for creating a new identity provider.
 type CreateIdentityProviderRequest struct {
-	Name            string                 `json:"name"`
-	Type            string                 `json:"type"`
-	IssuerURL       string                 `json:"issuer_url,omitempty"`
-	ClientID        string                 `json:"client_id,omitempty"`
-	ClientSecretRef string                 `json:"client_secret_ref,omitempty"`
-	JWKSURL         string                 `json:"jwks_url,omitempty"`
-	Scopes          []string               `json:"scopes,omitempty"`
-	RoleClaim       string                 `json:"role_claim,omitempty"`
-	DefaultRoleID   string                 `json:"default_role_id,omitempty"`
-	IsEnabled       bool                   `json:"is_enabled"`
-	Config          map[string]interface{} `json:"config,omitempty"`
+	Name            string         `json:"name"`
+	Type            string         `json:"type"`
+	IssuerURL       string         `json:"issuer_url,omitempty"`
+	ClientID        string         `json:"client_id,omitempty"`
+	ClientSecretRef string         `json:"client_secret_ref,omitempty"`
+	JWKSURL         string         `json:"jwks_url,omitempty"`
+	Scopes          []string       `json:"scopes,omitempty"`
+	RoleClaim       string         `json:"role_claim,omitempty"`
+	DefaultRoleID   string         `json:"default_role_id,omitempty"`
+	IsEnabled       bool           `json:"is_enabled"`
+	Config          map[string]any `json:"config,omitempty"`
 }
 
+// UpdateIdentityProviderRequest is the request body for updating an identity provider.
 type UpdateIdentityProviderRequest struct {
-	Name            string                 `json:"name"`
-	Type            string                 `json:"type"`
-	IssuerURL       string                 `json:"issuer_url,omitempty"`
-	ClientID        string                 `json:"client_id,omitempty"`
-	ClientSecretRef string                 `json:"client_secret_ref,omitempty"`
-	JWKSURL         string                 `json:"jwks_url,omitempty"`
-	Scopes          []string               `json:"scopes,omitempty"`
-	RoleClaim       string                 `json:"role_claim,omitempty"`
-	DefaultRoleID   string                 `json:"default_role_id,omitempty"`
-	IsEnabled       bool                   `json:"is_enabled"`
-	Config          map[string]interface{} `json:"config,omitempty"`
+	Name            string         `json:"name"`
+	Type            string         `json:"type"`
+	IssuerURL       string         `json:"issuer_url,omitempty"`
+	ClientID        string         `json:"client_id,omitempty"`
+	ClientSecretRef string         `json:"client_secret_ref,omitempty"`
+	JWKSURL         string         `json:"jwks_url,omitempty"`
+	Scopes          []string       `json:"scopes,omitempty"`
+	RoleClaim       string         `json:"role_claim,omitempty"`
+	DefaultRoleID   string         `json:"default_role_id,omitempty"`
+	IsEnabled       bool           `json:"is_enabled"`
+	Config          map[string]any `json:"config,omitempty"`
 }
 
+// AdminIdentityProviderResponse represents an identity provider in API responses.
 type AdminIdentityProviderResponse struct {
-	ID              string                 `json:"id"`
-	Name            string                 `json:"name"`
-	Type            string                 `json:"type"`
-	IssuerURL       string                 `json:"issuer_url,omitempty"`
-	ClientID        string                 `json:"client_id,omitempty"`
-	ClientSecretRef string                 `json:"client_secret_ref,omitempty"`
-	JWKSURL         string                 `json:"jwks_url,omitempty"`
-	Scopes          []string               `json:"scopes,omitempty"`
-	RoleClaim       string                 `json:"role_claim,omitempty"`
-	DefaultRoleID   string                 `json:"default_role_id,omitempty"`
-	IsEnabled       bool                   `json:"is_enabled"`
-	Config          map[string]interface{} `json:"config,omitempty"`
-	CreatedAt       time.Time              `json:"created_at"`
-	UpdatedAt       time.Time              `json:"updated_at"`
+	ID              string         `json:"id"`
+	Name            string         `json:"name"`
+	Type            string         `json:"type"`
+	IssuerURL       string         `json:"issuer_url,omitempty"`
+	ClientID        string         `json:"client_id,omitempty"`
+	ClientSecretRef string         `json:"client_secret_ref,omitempty"`
+	JWKSURL         string         `json:"jwks_url,omitempty"`
+	Scopes          []string       `json:"scopes,omitempty"`
+	RoleClaim       string         `json:"role_claim,omitempty"`
+	DefaultRoleID   string         `json:"default_role_id,omitempty"`
+	IsEnabled       bool           `json:"is_enabled"`
+	Config          map[string]any `json:"config,omitempty"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
 }
 
+// ListIdentityProvidersResponse is a list of identity providers.
 type ListIdentityProvidersResponse struct {
 	Data []AdminIdentityProviderResponse `json:"data"`
 }
 
 // Mapper helpers
 
+// FromDomainUser converts a domain user to a DTO.
 func FromDomainUser(user domain.AdminUser) AdminUserResponse {
 	return AdminUserResponse{
 		ID:           user.ID,
@@ -136,6 +149,7 @@ func FromDomainUser(user domain.AdminUser) AdminUserResponse {
 	}
 }
 
+// FromDomainRole converts a domain role to a DTO.
 func FromDomainRole(role domain.AdminRole) AdminRoleResponse {
 	return AdminRoleResponse{
 		ID:          role.ID,
@@ -148,6 +162,7 @@ func FromDomainRole(role domain.AdminRole) AdminRoleResponse {
 	}
 }
 
+// FromDomainIdentityProvider converts a domain identity provider to a DTO.
 func FromDomainIdentityProvider(provider domain.AdminIdentityProvider) AdminIdentityProviderResponse {
 	return AdminIdentityProviderResponse{
 		ID:              provider.ID,
@@ -161,7 +176,7 @@ func FromDomainIdentityProvider(provider domain.AdminIdentityProvider) AdminIden
 		RoleClaim:       provider.RoleClaim,
 		DefaultRoleID:   provider.DefaultRoleID,
 		IsEnabled:       provider.IsEnabled,
-		Config:          map[string]interface{}(provider.Config),
+		Config:          map[string]any(provider.Config),
 		CreatedAt:       provider.CreatedAt,
 		UpdatedAt:       provider.UpdatedAt,
 	}

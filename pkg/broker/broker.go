@@ -1,3 +1,4 @@
+// Package broker provides a message broker abstraction with a NATS JetStream implementation.
 package broker
 
 import (
@@ -6,25 +7,29 @@ import (
 	"time"
 )
 
-var (
-	ErrTimeout = errors.New("timeout")
-)
+// ErrTimeout is returned when ConsumeOnce waits longer than the provided timeout.
+var ErrTimeout = errors.New("timeout")
 
+// Handler processes a received message body.
 type Handler func(ctx context.Context, body []byte) error
 
+// SubscribeOptions configures subscription behavior.
 type SubscribeOptions struct {
 	MaxAckPending int
 	Durable       *string
 }
 
+// SubscribeOption sets a subscription option.
 type SubscribeOption func(*SubscribeOptions)
 
-func WithMaxAckPending(max int) SubscribeOption {
+// WithMaxAckPending sets the maximum number of unacknowledged messages.
+func WithMaxAckPending(maxPending int) SubscribeOption {
 	return func(o *SubscribeOptions) {
-		o.MaxAckPending = max
+		o.MaxAckPending = maxPending
 	}
 }
 
+// WithTransient sets the subscription to use a transient (non-durable) consumer.
 func WithTransient() SubscribeOption {
 	return func(o *SubscribeOptions) {
 		empty := ""
@@ -32,12 +37,14 @@ func WithTransient() SubscribeOption {
 	}
 }
 
+// WithDurableName sets the consumer to use the given durable name.
 func WithDurableName(name string) SubscribeOption {
 	return func(o *SubscribeOptions) {
 		o.Durable = &name
 	}
 }
 
+// MessageBroker is the contract for message broker implementations.
 type MessageBroker interface {
 	Publish(ctx context.Context, subject string, body []byte) error
 

@@ -106,7 +106,7 @@ func TestSession_Migrate(t *testing.T) {
 }
 
 func TestNewSession(t *testing.T) {
-	s := NewSession("sess-123", "ep-001", "rule-001", []string{"target:amazon"})
+	s := NewSession("sess-123", "ep-001", "rule-001", []string{targetAmazon})
 
 	if s.ID != "sess-123" {
 		t.Errorf("NewSession() ID = %s, want sess-123", s.ID)

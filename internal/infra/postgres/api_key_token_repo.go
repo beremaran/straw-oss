@@ -6,39 +6,44 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/beremaran/straw/internal/domain"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/beremaran/straw/internal/domain"
 )
 
-var ErrApiKeyTokenNotFound = errors.New("api key token not found")
+// ErrAPIKeyTokenNotFound is returned when an API key token is not found.
+var ErrAPIKeyTokenNotFound = errors.New("api key token not found")
 
-type ApiKeyTokenRepository struct {
+// APIKeyTokenRepository persists and retrieves API key tokens.
+type APIKeyTokenRepository struct {
 	client *Client
 }
 
-func NewApiKeyTokenRepository(client *Client) *ApiKeyTokenRepository {
-	return &ApiKeyTokenRepository{client: client}
+// NewAPIKeyTokenRepository creates a new APIKeyTokenRepository backed by the given client.
+func NewAPIKeyTokenRepository(client *Client) *APIKeyTokenRepository {
+	return &APIKeyTokenRepository{client: client}
 }
 
-func (r *ApiKeyTokenRepository) GetByTokenHash(ctx context.Context, tokenHash string) (*domain.ApiKeyToken, error) {
+// GetByTokenHash returns the API key token with the given token hash.
+func (r *APIKeyTokenRepository) GetByTokenHash(ctx context.Context, tokenHash string) (*domain.APIKeyToken, error) {
 	query := `
 		SELECT id, api_key_id, token_hash, status, expires_at, created_at
 		FROM api_key_tokens
 		WHERE token_hash = $1
 	`
 
-	var t domain.ApiKeyToken
+	var t domain.APIKeyToken
+
 	err := r.client.Execute(func() error {
 		return r.client.Pool.QueryRow(ctx, query, tokenHash).Scan(
 			&t.ID,
-			&t.ApiKeyID,
+			&t.APIKeyID,
 			&t.TokenHash,
 			&t.Status,
 			&t.ExpiresAt,
 			&t.CreatedAt,
 		)
 	})
-
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
@@ -50,22 +55,27 @@ func (r *ApiKeyTokenRepository) GetByTokenHash(ctx context.Context, tokenHash st
 	return &t, nil
 }
 
-func (r *ApiKeyTokenRepository) Create(ctx context.Context, token *domain.ApiKeyToken) error {
+// Create inserts a new API key token.
+func (r *APIKeyTokenRepository) Create(ctx context.Context, token *domain.APIKeyToken) error {
 	query := `
 		INSERT INTO api_key_tokens (id, api_key_id, token_hash, status, expires_at, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6)
 	`
+
 	err := r.client.Execute(func() error {
 		_, err := r.client.Pool.Exec(ctx, query,
 			token.ID,
-			token.ApiKeyID,
+			token.APIKeyID,
 			token.TokenHash,
 			token.Status,
 			token.ExpiresAt,
 			token.CreatedAt,
 		)
+		if err != nil {
+			return fmt.Errorf("failed to insert token: %w", err)
+		}
 
-		return err
+		return nil
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create api key token: %w", err)
@@ -74,28 +84,34 @@ func (r *ApiKeyTokenRepository) Create(ctx context.Context, token *domain.ApiKey
 	return nil
 }
 
-func (r *ApiKeyTokenRepository) ListByApiKeyID(ctx context.Context, apiKeyID string) ([]domain.ApiKeyToken, error) {
+// ListByAPIKeyID returns all tokens for the given API key.
+func (r *APIKeyTokenRepository) ListByAPIKeyID(ctx context.Context, apiKeyID string) ([]domain.APIKeyToken, error) {
 	query := `
 		SELECT id, api_key_id, token_hash, status, expires_at, created_at
 		FROM api_key_tokens
 		WHERE api_key_id = $1
 		ORDER BY created_at DESC
 	`
+
 	rows, err := r.client.Pool.Query(ctx, query, apiKeyID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list api key tokens: %w", err)
 	}
 	defer rows.Close()
 
-	var tokens []domain.ApiKeyToken
+	var tokens []domain.APIKeyToken
+
 	for rows.Next() {
-		var t domain.ApiKeyToken
-		err := rows.Scan(&t.ID, &t.ApiKeyID, &t.TokenHash, &t.Status, &t.ExpiresAt, &t.CreatedAt)
+		var t domain.APIKeyToken
+
+		err := rows.Scan(&t.ID, &t.APIKeyID, &t.TokenHash, &t.Status, &t.ExpiresAt, &t.CreatedAt)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan api key token: %w", err)
 		}
+
 		tokens = append(tokens, t)
 	}
+
 	err = rows.Err()
 	if err != nil {
 		return nil, fmt.Errorf("error iterating api key tokens: %w", err)
@@ -104,11 +120,12 @@ func (r *ApiKeyTokenRepository) ListByApiKeyID(ctx context.Context, apiKeyID str
 	return tokens, nil
 }
 
-func (r *ApiKeyTokenRepository) Rotate(ctx context.Context, apiKeyID string, token *domain.ApiKeyToken, graceUntil *time.Time, revokeExisting bool) error {
+// Rotate creates a new token for the API key and optionally revokes or grace-periods existing tokens.
+func (r *APIKeyTokenRepository) Rotate(ctx context.Context, apiKeyID string, token *domain.APIKeyToken, graceUntil *time.Time, revokeExisting bool) error {
 	return r.client.Execute(func() error {
 		tx, err := r.client.Pool.Begin(ctx)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to begin transaction: %w", err)
 		}
 		defer func() { _ = tx.Rollback(ctx) }()
 
@@ -117,7 +134,7 @@ func (r *ApiKeyTokenRepository) Rotate(ctx context.Context, apiKeyID string, tok
 			VALUES ($1, $2, $3, $4, $5, $6)
 		`,
 			token.ID,
-			token.ApiKeyID,
+			token.APIKeyID,
 			token.TokenHash,
 			token.Status,
 			token.ExpiresAt,
@@ -128,7 +145,9 @@ func (r *ApiKeyTokenRepository) Rotate(ctx context.Context, apiKeyID string, tok
 		}
 
 		nextStatus := domain.TokenStatusRevoked
+
 		var nextExpiresAt *time.Time
+
 		if graceUntil != nil && !revokeExisting {
 			nextStatus = domain.TokenStatusGrace
 			nextExpiresAt = graceUntil
@@ -151,18 +170,21 @@ func (r *ApiKeyTokenRepository) Rotate(ctx context.Context, apiKeyID string, tok
 	})
 }
 
-func (r *ApiKeyTokenRepository) UpdateStatus(ctx context.Context, id string, status domain.TokenStatus) error {
+// UpdateStatus changes the status of a token.
+func (r *APIKeyTokenRepository) UpdateStatus(ctx context.Context, id string, status domain.TokenStatus) error {
 	query := `
 		UPDATE api_key_tokens
 		SET status = $1
 		WHERE id = $2
 	`
+
 	res, err := r.client.Pool.Exec(ctx, query, status, id)
 	if err != nil {
 		return fmt.Errorf("failed to update token status: %w", err)
 	}
+
 	if res.RowsAffected() == 0 {
-		return ErrApiKeyTokenNotFound
+		return ErrAPIKeyTokenNotFound
 	}
 
 	return nil

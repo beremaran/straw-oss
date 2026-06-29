@@ -6,8 +6,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/beremaran/straw/internal/config"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/beremaran/straw/internal/config"
 )
 
 func TestKeyAuth(t *testing.T) {
@@ -79,7 +80,7 @@ func TestKeyAuth_PreResolvedActor(t *testing.T) {
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 	req = req.WithContext(ContextWithActor(req.Context(), Actor{
 		Type:        ActorTypeUser,
-		ID:          "user-1",
+		ID:          testUserID,
 		DisplayName: "User One",
 		SessionID:   "session-1",
 		Permissions: []string{PermissionUsageRead},
@@ -89,7 +90,7 @@ func TestKeyAuth_PreResolvedActor(t *testing.T) {
 	h := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		actor, ok := ActorFromContext(r.Context())
 		assert.True(t, ok)
-		assert.Equal(t, "user-1", actor.ID)
+		assert.Equal(t, testUserID, actor.ID)
 		w.WriteHeader(http.StatusOK)
 	}))
 
@@ -107,7 +108,7 @@ func TestKeyAuth_LegacyDisabled(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer secret-key")
 	rec := httptest.NewRecorder()
 
-	h := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
@@ -130,7 +131,7 @@ func TestRequirePermission(t *testing.T) {
 		{
 			name: "missing permission",
 			actor: Actor{
-				ID:          "user-1",
+				ID:          testUserID,
 				Permissions: []string{PermissionUsageRead},
 			},
 			withActor:  true,
@@ -139,7 +140,7 @@ func TestRequirePermission(t *testing.T) {
 		{
 			name: "has permission",
 			actor: Actor{
-				ID:          "user-1",
+				ID:          testUserID,
 				Permissions: []string{PermissionAPIKeysRead},
 			},
 			withActor:  true,
@@ -161,7 +162,7 @@ func TestRequirePermission(t *testing.T) {
 			}
 			rec := httptest.NewRecorder()
 
-			h := RequirePermission(PermissionAPIKeysRead)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			h := RequirePermission(PermissionAPIKeysRead)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusOK)
 			}))
 

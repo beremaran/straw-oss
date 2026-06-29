@@ -10,7 +10,7 @@ func TestRoutingRule_JSON(t *testing.T) {
 	rule := RoutingRule{
 		ID:                   "rule-001",
 		Name:                 "Amazon Search",
-		RequiredTags:         []string{"target:amazon", "type:search"},
+		RequiredTags:         []string{targetAmazon, "type:search"},
 		ExcludedTags:         []string{"region:eu"},
 		Priority:             100,
 		HardTimeout:          30 * time.Second,
@@ -47,7 +47,7 @@ func TestRoutingRule_JSON(t *testing.T) {
 
 func TestRoutingRule_MatchesTags(t *testing.T) {
 	rule := &RoutingRule{
-		RequiredTags: []string{"target:amazon", "type:search"},
+		RequiredTags: []string{targetAmazon, "type:search"},
 		ExcludedTags: []string{"region:eu"},
 	}
 
@@ -59,25 +59,25 @@ func TestRoutingRule_MatchesTags(t *testing.T) {
 		{
 			name: "matches all required, no excluded",
 			tags: []Tag{
-				{Key: "target", Value: "amazon"},
-				{Key: "type", Value: "search"},
-				{Key: "region", Value: "us"},
+				{Key: target, Value: amazon},
+				{Key: tagType, Value: search},
+				{Key: region, Value: "us"},
 			},
 			want: true,
 		},
 		{
 			name: "missing required tag",
 			tags: []Tag{
-				{Key: "target", Value: "amazon"},
+				{Key: target, Value: amazon},
 			},
 			want: false,
 		},
 		{
 			name: "has excluded tag",
 			tags: []Tag{
-				{Key: "target", Value: "amazon"},
-				{Key: "type", Value: "search"},
-				{Key: "region", Value: "eu"},
+				{Key: target, Value: amazon},
+				{Key: tagType, Value: search},
+				{Key: region, Value: "eu"},
 			},
 			want: false,
 		},

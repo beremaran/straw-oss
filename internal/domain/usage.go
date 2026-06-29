@@ -8,9 +8,10 @@ import (
 	"github.com/google/uuid"
 )
 
+// UsageDailySummary represents usage data aggregated for a single day.
 type UsageDailySummary struct {
 	ID            int64           `json:"id"`
-	ApiKeyID      uuid.UUID       `json:"api_key_id"`
+	APIKeyID      uuid.UUID       `json:"api_key_id"`
 	Date          time.Time       `json:"date"`
 	TotalRequests int64           `json:"total_requests"`
 	TotalBytes    int64           `json:"total_bytes"`
@@ -18,6 +19,7 @@ type UsageDailySummary struct {
 	Breakdown     json.RawMessage `json:"breakdown"`
 }
 
+// UsageSummary represents a high-level usage summary for a date.
 type UsageSummary struct {
 	Date          string           `json:"date"`
 	TotalRequests int64            `json:"total_requests"`
@@ -26,6 +28,7 @@ type UsageSummary struct {
 	Breakdown     map[string]int64 `json:"breakdown"`
 }
 
+// UsageRepository provides persistence operations for usage data.
 type UsageRepository interface {
 	GetDailySummaries(ctx context.Context, apiKeyID string, start, end time.Time) ([]UsageSummary, error)
 }

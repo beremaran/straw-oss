@@ -8,21 +8,25 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/beremaran/straw/internal/domain"
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/google/uuid"
 	"golang.org/x/oauth2"
+
+	"github.com/beremaran/straw/internal/domain"
 )
 
-var (
-	ErrNoEmailClaim = errors.New("no email claim provided")
-)
+// ErrNoEmailClaim is returned when an SSO identity provider does not provide an email claim.
+var ErrNoEmailClaim = errors.New("no email claim provided")
 
 var (
+	// ErrProviderNotFound is returned when an identity provider is not found.
 	ErrProviderNotFound = errors.New("identity provider not found")
+	// ErrProviderDisabled is returned when an identity provider is disabled.
 	ErrProviderDisabled = errors.New("identity provider is disabled")
-	ErrInvalidState     = errors.New("invalid state")
-	ErrInvalidIDToken   = errors.New("invalid id token")
+	// ErrInvalidState is returned when the SSO state mismatch.
+	ErrInvalidState = errors.New("invalid state")
+	// ErrInvalidIDToken is returned when an ID token is invalid.
+	ErrInvalidIDToken = errors.New("invalid id token")
 )
 
 type ssoClaims struct {
@@ -34,8 +38,11 @@ type ssoClaims struct {
 
 func (s *AdminService) getOAuth2Config(ctx context.Context, provider *domain.AdminIdentityProvider, redirectURI string) (*oauth2.Config, *oidc.Provider, error) {
 	providerCtx := oidc.ClientContext(ctx, nil)
-	var oidcProvider *oidc.Provider
-	var err error
+
+	var (
+		oidcProvider *oidc.Provider
+		err          error
+	)
 	if provider.IssuerURL != "" {
 		oidcProvider, err = oidc.NewProvider(providerCtx, provider.IssuerURL)
 		if err != nil {
@@ -59,14 +66,17 @@ func (s *AdminService) getOAuth2Config(ctx context.Context, provider *domain.Adm
 	return oauth2Config, oidcProvider, nil
 }
 
+// StartSSO begins the SSO flow and returns the auth URL, state, and nonce.
 func (s *AdminService) StartSSO(ctx context.Context, providerName string, redirectURI string) (string, string, string, error) {
 	provider, err := s.repo.GetIdentityProviderByName(ctx, providerName)
 	if err != nil {
-		return "", "", "", err
+		return "", "", "", fmt.Errorf("failed to get identity provider: %w", err)
 	}
+
 	if provider == nil {
 		return "", "", "", ErrProviderNotFound
 	}
+
 	if !provider.IsEnabled {
 		return "", "", "", ErrProviderDisabled
 	}
@@ -76,12 +86,12 @@ func (s *AdminService) StartSSO(ctx context.Context, providerName string, redire
 		return "", "", "", err
 	}
 
-	state, err := generateRandomString(32)
+	state, err := generateRandomString(refreshTokenByteLen)
 	if err != nil {
 		return "", "", "", err
 	}
 
-	nonce, err := generateRandomString(32)
+	nonce, err := generateRandomString(refreshTokenByteLen)
 	if err != nil {
 		return "", "", "", err
 	}
@@ -91,6 +101,7 @@ func (s *AdminService) StartSSO(ctx context.Context, providerName string, redire
 	return authURL, state, nonce, nil
 }
 
+// CallbackSSO handles the SSO callback and returns a token pair.
 func (s *AdminService) CallbackSSO(ctx context.Context, providerName string, redirectURI string, code string, expectedState string, expectedNonce string, actualState string, userAgent string, ip string) (*TokenPair, error) {
 	if actualState != expectedState {
 		return nil, ErrInvalidState
@@ -127,11 +138,13 @@ func (s *AdminService) CallbackSSO(ctx context.Context, providerName string, red
 func (s *AdminService) enabledIdentityProvider(ctx context.Context, providerName string) (*domain.AdminIdentityProvider, error) {
 	provider, err := s.repo.GetIdentityProviderByName(ctx, providerName)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get identity provider: %w", err)
 	}
+
 	if provider == nil {
 		return nil, ErrProviderNotFound
 	}
+
 	if !provider.IsEnabled {
 		return nil, ErrProviderDisabled
 	}
@@ -146,6 +159,7 @@ func readSSOClaims(ctx context.Context, oidcProvider *oidc.Provider, provider *d
 	}
 
 	verifier := oidcProvider.Verifier(&oidc.Config{ClientID: provider.ClientID})
+
 	idToken, err := verifier.Verify(ctx, rawIDToken)
 	if err != nil {
 		return ssoClaims{}, fmt.Errorf("failed to verify id token: %w", err)
@@ -156,10 +170,12 @@ func readSSOClaims(ctx context.Context, oidcProvider *oidc.Provider, provider *d
 	}
 
 	var claims ssoClaims
+
 	err = idToken.Claims(&claims)
 	if err != nil {
-		return ssoClaims{}, err
+		return ssoClaims{}, fmt.Errorf("failed to parse id token claims: %w", err)
 	}
+
 	claims.Role = roleFromIDToken(idToken, provider.RoleClaim, claims.Role)
 
 	if claims.Email == "" {
@@ -174,7 +190,8 @@ func roleFromIDToken(idToken *oidc.IDToken, claimName string, fallback string) s
 		return fallback
 	}
 
-	var allClaims map[string]interface{}
+	var allClaims map[string]any
+
 	err := idToken.Claims(&allClaims)
 	if err != nil {
 		return fallback
@@ -188,12 +205,12 @@ func roleFromIDToken(idToken *oidc.IDToken, claimName string, fallback string) s
 	return role
 }
 
-func stringClaim(value interface{}) string {
+func stringClaim(value any) string {
 	if text, ok := value.(string); ok {
 		return text
 	}
 
-	values, ok := value.([]interface{})
+	values, ok := value.([]any)
 	if !ok || len(values) == 0 {
 		return ""
 	}
@@ -206,7 +223,7 @@ func stringClaim(value interface{}) string {
 func (s *AdminService) userForSSO(ctx context.Context, provider *domain.AdminIdentityProvider, claims ssoClaims) (*domain.AdminUser, error) {
 	user, err := s.repo.GetUserByEmail(ctx, claims.Email)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get user by email: %w", err)
 	}
 
 	if user == nil {
@@ -229,12 +246,12 @@ func (s *AdminService) createSSOUser(ctx context.Context, provider *domain.Admin
 
 	err := s.repo.CreateUser(ctx, user)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create SSO user: %w", err)
 	}
 
 	err = s.repo.SetUserRoles(ctx, user.ID, defaultSSORoleIDs(provider))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to set SSO user roles: %w", err)
 	}
 
 	return user, nil
@@ -255,9 +272,10 @@ func (s *AdminService) updateSSOLogin(ctx context.Context, user *domain.AdminUse
 
 	now := time.Now()
 	user.LastLoginAt = &now
+
 	err := s.repo.UpdateUser(ctx, user)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to update SSO login: %w", err)
 	}
 
 	return user, nil
@@ -265,9 +283,10 @@ func (s *AdminService) updateSSOLogin(ctx context.Context, user *domain.AdminUse
 
 func generateRandomString(length int) (string, error) {
 	b := make([]byte, length)
+
 	_, err := rand.Read(b)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to generate random string: %w", err)
 	}
 
 	return base64.RawURLEncoding.EncodeToString(b), nil

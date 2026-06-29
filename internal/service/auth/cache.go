@@ -10,11 +10,13 @@ import (
 	"github.com/beremaran/straw/internal/infra/redis"
 )
 
+// Cache provides a Redis-backed cache for API keys.
 type Cache struct {
 	client *redis.Client
 	ttl    time.Duration
 }
 
+// NewAuthCache creates a new Cache with the given Redis client and TTL.
 func NewAuthCache(client *redis.Client, ttl time.Duration) *Cache {
 	return &Cache{
 		client: client,
@@ -22,9 +24,11 @@ func NewAuthCache(client *redis.Client, ttl time.Duration) *Cache {
 	}
 }
 
-func (c *Cache) GetKey(ctx context.Context, keyHash string) (*domain.ApiKey, error) {
-	key := fmt.Sprintf("auth:valid:%s", keyHash)
-	var apiKey domain.ApiKey
+// GetKey retrieves a cached API key by its hash.
+func (c *Cache) GetKey(ctx context.Context, keyHash string) (*domain.APIKey, error) {
+	key := "auth:valid:" + keyHash
+
+	var apiKey domain.APIKey
 
 	err := c.client.Get(ctx, key, &apiKey)
 	if err != nil {
@@ -32,20 +36,32 @@ func (c *Cache) GetKey(ctx context.Context, keyHash string) (*domain.ApiKey, err
 			return nil, nil
 		}
 
-		return nil, err
+		return nil, fmt.Errorf("failed to get cache entry: %w", err)
 	}
 
 	return &apiKey, nil
 }
 
-func (c *Cache) SetKey(ctx context.Context, keyHash string, apiKey *domain.ApiKey) error {
-	key := fmt.Sprintf("auth:valid:%s", keyHash)
+// SetKey stores an API key in the cache.
+func (c *Cache) SetKey(ctx context.Context, keyHash string, apiKey *domain.APIKey) error {
+	key := "auth:valid:" + keyHash
 
-	return c.client.Set(ctx, key, apiKey, c.ttl)
+	err := c.client.Set(ctx, key, apiKey, c.ttl)
+	if err != nil {
+		return fmt.Errorf("failed to set cache entry: %w", err)
+	}
+
+	return nil
 }
 
+// InvalidateKey removes a cached API key by its hash.
 func (c *Cache) InvalidateKey(ctx context.Context, keyHash string) error {
-	key := fmt.Sprintf("auth:valid:%s", keyHash)
+	key := "auth:valid:" + keyHash
 
-	return c.client.Delete(ctx, key)
+	err := c.client.Delete(ctx, key)
+	if err != nil {
+		return fmt.Errorf("failed to delete cache entry: %w", err)
+	}
+
+	return nil
 }

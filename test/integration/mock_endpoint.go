@@ -1,3 +1,4 @@
+// Package integration provides mock utilities for integration testing.
 package integration
 
 import (
@@ -7,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -17,8 +19,21 @@ import (
 	"github.com/beremaran/straw/pkg/protocol"
 )
 
+// ErrMockEndpointAlreadyRunning is returned when attempting to start a
+// MockEndpoint that is already running.
 var ErrMockEndpointAlreadyRunning = errors.New("mock endpoint already running")
 
+const (
+	mockHTTPTimeout        = 30 * time.Second
+	mockValidationMaxAge   = 60 * time.Second
+	mockFailureStatusCode  = 503
+	mockMaxResponseBody    = 10 * 1024 * 1024
+	mockResultTotalLatency = 50 * time.Millisecond
+
+	mockContentType = "Content-Type"
+)
+
+// MockEndpointConfig holds configuration for a MockEndpoint.
 type MockEndpointConfig struct {
 	EndpointID        string
 	TaskSubject       string
@@ -28,6 +43,8 @@ type MockEndpointConfig struct {
 	HeartbeatInterval time.Duration
 }
 
+// MockEndpointResponse defines the shape of a response returned by a
+// MockEndpoint.
 type MockEndpointResponse struct {
 	StatusCode int
 	Headers    protocol.HeaderMap
@@ -36,6 +53,8 @@ type MockEndpointResponse struct {
 	Delay      time.Duration
 }
 
+// EndpointRequestRecord stores metadata about a request received by a
+// MockEndpoint.
 type EndpointRequestRecord struct {
 	RequestID   string
 	Method      string
@@ -44,6 +63,7 @@ type EndpointRequestRecord struct {
 	Time        time.Time
 }
 
+// MockEndpoint is a test double that mimics an endpoint server.
 type MockEndpoint struct {
 	config          MockEndpointConfig
 	broker          broker.MessageBroker
@@ -51,8 +71,8 @@ type MockEndpoint struct {
 	mu              sync.RWMutex
 	response        *MockEndpointResponse
 	requests        []EndpointRequestRecord
-	failureCount    int32
-	failuresLeft    int32
+	failureCount    atomic.Int32
+	failuresLeft    atomic.Int32
 	httpClient      *http.Client
 	targetURL       string
 	running         atomic.Bool
@@ -62,6 +82,7 @@ type MockEndpoint struct {
 	heartbeatSender *endpoint.HeartbeatSender
 }
 
+// NewMockEndpoint creates a new MockEndpoint instance.
 func NewMockEndpoint(b broker.MessageBroker, config MockEndpointConfig) *MockEndpoint {
 	if config.TaskSubject == "" {
 		config.TaskSubject = "tasks." + config.EndpointID + ".tasks"
@@ -75,11 +96,13 @@ func NewMockEndpoint(b broker.MessageBroker, config MockEndpointConfig) *MockEnd
 		config:     config,
 		broker:     b,
 		logger:     slog.Default(),
-		httpClient: &http.Client{Timeout: 30 * time.Second},
+		httpClient: &http.Client{Timeout: mockHTTPTimeout},
 		targetURL:  config.TargetURL,
 	}
 }
 
+// Start begins the mock endpoint, subscribing to its task subject and
+// starting the heartbeat sender.
 func (m *MockEndpoint) Start(ctx context.Context) error {
 	if m.running.Load() {
 		return ErrMockEndpointAlreadyRunning
@@ -103,69 +126,89 @@ func (m *MockEndpoint) Start(ctx context.Context) error {
 	)
 	m.heartbeatSender.Start(ctx)
 
-	m.wg.Add(1)
-	go func() {
-		defer m.wg.Done()
-
+	m.wg.Go(func() {
 		err := m.broker.Subscribe(ctx, m.config.TaskSubject, m.handleMessage)
 		if err != nil && ctx.Err() == nil {
 			m.logger.Error("mock endpoint subscription error", "error", err)
 		}
-	}()
+	})
 
 	return nil
 }
 
+// Stop halts the mock endpoint and waits for in-flight operations to finish.
 func (m *MockEndpoint) Stop() {
 	if m.heartbeatSender != nil {
 		m.heartbeatSender.Stop()
 	}
+
 	if m.cancelFunc != nil {
 		m.cancelFunc()
 	}
+
 	m.wg.Wait()
 	m.running.Store(false)
 	m.logger.Info("mock endpoint stopped", "endpoint_id", m.config.EndpointID)
 }
 
+// SetResponse configures a static response for the mock endpoint.
 func (m *MockEndpoint) SetResponse(resp *MockEndpointResponse) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	m.response = resp
 }
 
+// SetResponseHandler configures a dynamic response function for the mock
+// endpoint.
 func (m *MockEndpoint) SetResponseHandler(handler func(*protocol.Request) *MockEndpointResponse) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	m.responseHandler = handler
 }
 
+// SetFailures configures the mock endpoint to return a failure response
+// for the given number of requests.
 func (m *MockEndpoint) SetFailures(count int) {
-	atomic.StoreInt32(&m.failureCount, int32(count))
-	atomic.StoreInt32(&m.failuresLeft, int32(count))
+	if count > math.MaxInt32 {
+		count = math.MaxInt32
+	} else if count < math.MinInt32 {
+		count = math.MinInt32
+	}
+
+	m.failureCount.Store(int32(count))
+	m.failuresLeft.Store(int32(count))
 }
 
+// SetTargetURL configures the URL to forward requests to.
 func (m *MockEndpoint) SetTargetURL(url string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	m.targetURL = url
 }
 
+// GetRequests returns a copy of all recorded requests.
 func (m *MockEndpoint) GetRequests() []EndpointRequestRecord {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+
 	result := make([]EndpointRequestRecord, len(m.requests))
 	copy(result, m.requests)
 
 	return result
 }
 
+// ClearRequests clears all recorded requests.
 func (m *MockEndpoint) ClearRequests() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	m.requests = nil
 }
 
+// RequestCount returns the number of recorded requests.
 func (m *MockEndpoint) RequestCount() int {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -173,6 +216,7 @@ func (m *MockEndpoint) RequestCount() int {
 	return len(m.requests)
 }
 
+// EndpointID returns the endpoint ID configured for this mock endpoint.
 func (m *MockEndpoint) EndpointID() string {
 	return m.config.EndpointID
 }
@@ -195,18 +239,19 @@ func (m *MockEndpoint) handleMessage(ctx context.Context, body []byte) error {
 
 func (m *MockEndpoint) parseRequest(body []byte) (*protocol.Request, error) {
 	var signedTask protocol.SignedTask
+
 	err := json.Unmarshal(body, &signedTask)
 	if err != nil {
 		m.logger.Error("failed to unmarshal signed task", "error", err)
 
-		return nil, err
+		return nil, fmt.Errorf("unmarshal signed task: %w", err)
 	}
 
-	req, err := protocol.ValidateSignedTask(&signedTask, m.config.Secret, 60*time.Second)
+	req, err := protocol.ValidateSignedTask(&signedTask, m.config.Secret, mockValidationMaxAge)
 	if err != nil {
 		m.logger.Error("failed to validate signed task", "error", err)
 
-		return nil, err
+		return nil, fmt.Errorf("validate signed task: %w", err)
 	}
 
 	return req, nil
@@ -232,14 +277,14 @@ func (m *MockEndpoint) publishResponse(ctx context.Context, req *protocol.Reques
 	if err != nil {
 		m.logger.Error("failed to marshal response", "error", err)
 
-		return err
+		return fmt.Errorf("marshal response: %w", err)
 	}
 
 	err = m.broker.Publish(ctx, respSubjectName, respBody)
 	if err != nil {
 		m.logger.Error("failed to publish response", "error", err)
 
-		return err
+		return fmt.Errorf("publish response: %w", err)
 	}
 
 	m.logger.Info("mock endpoint published response",
@@ -256,13 +301,13 @@ func responseSubjectName(req *protocol.Request) string {
 		return req.ReplyTo
 	}
 
-	return fmt.Sprintf("results.%s", req.ID)
+	return "results." + req.ID
 }
 
 func (m *MockEndpoint) buildResponse(ctx context.Context, req *protocol.Request) *MockEndpointResponse {
-	if failuresLeft := atomic.AddInt32(&m.failuresLeft, -1); failuresLeft >= 0 {
+	if failuresLeft := m.failuresLeft.Add(-1); failuresLeft >= 0 {
 		return &MockEndpointResponse{
-			StatusCode: 503,
+			StatusCode: mockFailureStatusCode,
 			Error: &protocol.ErrorInfo{
 				Code:      protocol.ErrCodeUpstreamError,
 				Message:   "simulated endpoint failure",
@@ -296,13 +341,13 @@ func (m *MockEndpoint) buildResponse(ctx context.Context, req *protocol.Request)
 	return &MockEndpointResponse{
 		StatusCode: http.StatusOK,
 		Headers: protocol.HeaderMap{
-			{Key: "Content-Type", Value: "text/plain"},
+			{Key: mockContentType, Value: textPlain},
 		},
-		Body: []byte(fmt.Sprintf("mock response for %s", req.URL)),
+		Body: []byte("mock response for " + req.URL),
 	}
 }
 
-func (m *MockEndpoint) forwardRequest(ctx context.Context, req *protocol.Request, targetBase string) *MockEndpointResponse {
+func (m *MockEndpoint) forwardRequest(ctx context.Context, req *protocol.Request, _ string) *MockEndpointResponse {
 	httpReq, err := http.NewRequestWithContext(ctx, req.Method, req.URL, nil)
 	if err != nil {
 		return &MockEndpointResponse{
@@ -330,9 +375,10 @@ func (m *MockEndpoint) forwardRequest(ctx context.Context, req *protocol.Request
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, mockMaxResponseBody))
 
 	headers := protocol.HeaderMap{}
+
 	for k, v := range resp.Header {
 		if len(v) > 0 {
 			headers = append(headers, protocol.Header{Key: k, Value: v[0]})
@@ -346,6 +392,7 @@ func (m *MockEndpoint) forwardRequest(ctx context.Context, req *protocol.Request
 	}
 }
 
+// MockResultMessage is the response payload published by a MockEndpoint.
 type MockResultMessage struct {
 	RequestID      string               `json:"request_id"`
 	StatusCode     int                  `json:"status_code"`
@@ -358,6 +405,8 @@ type MockResultMessage struct {
 	Error          *protocol.ErrorInfo  `json:"error,omitempty"`
 }
 
+// ToResultMessage converts a MockEndpointResponse into a MockResultMessage
+// for publishing to the broker.
 func (r *MockEndpointResponse) ToResultMessage(endpointID, sessionID, requestID string) *MockResultMessage {
 	return &MockResultMessage{
 		RequestID:      requestID,
@@ -368,7 +417,7 @@ func (r *MockEndpointResponse) ToResultMessage(endpointID, sessionID, requestID 
 		EndpointID:     endpointID,
 		SessionID:      sessionID,
 		Timing: &protocol.TimingInfo{
-			Total: 50 * time.Millisecond,
+			Total: mockResultTotalLatency,
 		},
 		Error: r.Error,
 	}
