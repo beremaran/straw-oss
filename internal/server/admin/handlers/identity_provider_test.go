@@ -46,7 +46,7 @@ func TestIdentityProviderHandler_HandleListIdentityProviders(t *testing.T) {
 
 func TestIdentityProviderHandler_HandleCreateIdentityProvider(t *testing.T) {
 	t.Run("Create success", func(t *testing.T) {
-		body := `{"name":testProviderName,"type":testProviderType,"client_id":"client-id","client_secret_ref":"vault://secret"}`
+		body := `{"name":"Okta","type":"oidc","client_id":"client-id","client_secret_ref":"vault://secret"}`
 		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/management/identity-providers", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
@@ -64,7 +64,7 @@ func TestIdentityProviderHandler_HandleCreateIdentityProvider(t *testing.T) {
 	})
 
 	t.Run("Create fails on plaintext secret config", func(t *testing.T) {
-		body := `{"name":testProviderName,"type":testProviderType,"config":{"client_secret":"plaintext"}}`
+		body := `{"name":"Okta","type":"oidc","config":{"client_secret":"plaintext"}}`
 		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/management/identity-providers", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
