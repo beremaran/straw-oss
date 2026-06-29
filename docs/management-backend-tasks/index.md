@@ -36,8 +36,8 @@ Update `tracker.md` when work starts, lands, or is blocked. Keep task files focu
 | [MB-011](tasks/MB-011-endpoint-registry-persistence.md) | 3 | done | Endpoint registry persistence and command schema | MB-001 | endpoints, desired_state, endpoint_commands, registry |
 | [MB-012](tasks/MB-012-endpoint-management-apis.md) | 3 | done | Endpoint registry, desired-state, and command APIs | MB-011 | endpoint detail, drain, undrain, restart, commands |
 | [MB-013](tasks/MB-013-endpoint-control-plane.md) | 3 | done | Broker endpoint control plane and worker command subscriber | MB-011, MB-012 | endpoint_control, ack, restart, worker subscriber |
-| [MB-014](tasks/MB-014-endpoint-logs.md) | 3 | not-started | Endpoint log ingestion, query, stream, and retention | MB-011, MB-013 | endpoint logs, sse, retention, cursor |
-| [MB-015](tasks/MB-015-cost-multiplier-management.md) | 4 | not-started | Cost multiplier repository and management APIs | MB-001, MB-006 | cost_multipliers, version, optimistic locking |
+| [MB-014](tasks/MB-014-endpoint-logs.md) | 3 | done | Endpoint log ingestion, query, stream, and retention | MB-011, MB-013 | endpoint logs, sse, retention, cursor |
+| [MB-015](tasks/MB-015-cost-multiplier-management.md) | 4 | done | Cost multiplier repository and management APIs | MB-001, MB-006 | cost_multipliers, version, optimistic locking |
 | [MB-016](tasks/MB-016-billing-multiplier-integration.md) | 4 | not-started | Billing multiplier integration and pricing metadata | MB-015 | billing estimate, pricing_version, usage cost |
 | [MB-017](tasks/MB-017-saved-reports.md) | 5 | not-started | Saved reports, report runs, and artifact download | MB-001, MB-006 | reports, report_runs, download, artifacts |
 | [MB-018](tasks/MB-018-report-scheduler.md) | 5 | not-started | Report scheduler and due-run worker | MB-017 | schedules, cron, row locking, report worker |

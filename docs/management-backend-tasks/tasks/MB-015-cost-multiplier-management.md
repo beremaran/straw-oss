@@ -1,6 +1,6 @@
 # MB-015: Cost Multiplier Management
 
-Status: not-started
+Status: done
 Phase: 4
 Depends on: MB-001, MB-006
 Search tags: cost_multipliers, version, optimistic locking, `cost_multipliers:write`
@@ -29,15 +29,15 @@ Expose CRUD-style management for cost multipliers with optimistic versioning and
 
 ## Implementation Tasks
 
-- [ ] Add migration for timestamps and version.
-- [ ] Add domain validation using existing tag parsing.
-- [ ] Add repository with duplicate-tag and version-conflict handling.
-- [ ] Add handlers for `GET`, `POST`, `GET {id}`, `PUT {id}`, and `DELETE {id}`.
-- [ ] Add handler and repository tests.
+- [x] Add migration for timestamps and version.
+- [x] Add domain validation using existing tag parsing.
+- [x] Add repository with duplicate-tag and version-conflict handling.
+- [x] Add handlers for `GET`, `POST`, `GET {id}`, `PUT {id}`, and `DELETE {id}`.
+- [x] Add handler and repository tests.
 
 ## Done Criteria
 
-- [ ] Duplicate `endpoint_tag` returns `409`.
-- [ ] Update requires matching `version`.
-- [ ] Delete soft deactivates the multiplier.
-- [ ] Mutations write structured audit events.
+- [x] Duplicate `endpoint_tag` returns `409`.
+- [x] Update requires matching `version`.
+- [x] Delete soft deactivates the multiplier.
+- [x] Mutations write structured audit events.

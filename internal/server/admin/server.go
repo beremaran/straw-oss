@@ -128,6 +128,7 @@ func (s *Server) registerAllSubRoutes() {
 	fingerprintRepo := postgres.NewFingerprintRepository(s.client)
 	identityRepo := postgres.NewIdentityRepository(s.client)
 	usageRepo := postgres.NewUsageRepository(s.client)
+	costMultiplierRepo := postgres.NewCostMultiplierRepository(s.client)
 
 	var auditRepo domain.ManagementAuditRepository
 	if s.client != nil {
@@ -162,6 +163,7 @@ func (s *Server) registerAllSubRoutes() {
 	s.registerEndpointRoutes(handlers.NewEndpointHandler(s.healthService, endpointRepo, commandRepo, s.broker, auditRepo, logRepo))
 	s.registerFingerprintRoutes(handlers.NewFingerprintHandler(fingerprintRepo, routingRuleRepo, identityRepo, s.broker, auditRepo))
 	s.registerUsageRoutes(handlers.NewUsageHandler(usageRepo))
+	s.registerCostMultiplierRoutes(handlers.NewCostMultiplierHandler(costMultiplierRepo, auditRepo))
 
 	if s.redisClient != nil {
 		s.registerCacheRoutes(handlers.NewCacheHandler(s.redisClient, auditRepo))
@@ -256,6 +258,14 @@ func (s *Server) registerFingerprintRoutes(fingerprintHandler *handlers.Fingerpr
 func (s *Server) registerUsageRoutes(usageHandler *handlers.UsageHandler) {
 	s.management("GET /management/usage/summary", middleware.PermissionUsageRead, usageHandler.HandleGetUsageSummary)
 	s.management("GET /management/billing/estimate", middleware.PermissionBillingRead, usageHandler.HandleGetBillingEstimate)
+}
+
+func (s *Server) registerCostMultiplierRoutes(costMultiplierHandler *handlers.CostMultiplierHandler) {
+	s.management("GET /management/cost-multipliers", middleware.PermissionCostMultipliersRead, costMultiplierHandler.HandleListCostMultipliers)
+	s.management("POST /management/cost-multipliers", middleware.PermissionCostMultipliersWrite, costMultiplierHandler.HandleCreateCostMultiplier)
+	s.management("GET /management/cost-multipliers/{id}", middleware.PermissionCostMultipliersRead, costMultiplierHandler.HandleGetCostMultiplier)
+	s.management("PUT /management/cost-multipliers/{id}", middleware.PermissionCostMultipliersWrite, costMultiplierHandler.HandleUpdateCostMultiplier)
+	s.management("DELETE /management/cost-multipliers/{id}", middleware.PermissionCostMultipliersWrite, costMultiplierHandler.HandleDeleteCostMultiplier)
 }
 
 func (s *Server) registerCacheRoutes(cacheHandler *handlers.CacheHandler) {
