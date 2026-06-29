@@ -220,29 +220,226 @@ Updates a routing rule's parameters. Utilizes optimistic locking via the `versio
 
 ## 🖥️ Endpoint Monitoring & Management
 
+### Create Endpoint
+Pre-registers a new endpoint with capabilities and optional metadata.
+
+* **URL**: `POST /management/endpoints`
+* **Request Body**:
+  ```json
+  {
+    "id": "worker-us-residential-01",
+    "tags": ["type:residential", "region:us"],
+    "metadata": {
+      "version": "1.0.3",
+      "ip": "192.168.1.50",
+      "max_concurrency": 200,
+      "provider": "aws"
+    },
+    "desired_state": "active"
+  }
+  ```
+* **Response (Status 201 Created)**:
+  ```json
+  {
+    "id": "worker-us-residential-01",
+    "tags": ["type:residential", "region:us"],
+    "last_heartbeat": "2026-06-29T12:00:00Z",
+    "is_healthy": true,
+    "metadata": {
+      "version": "1.0.3",
+      "ip": "192.168.1.50",
+      "max_concurrency": 200,
+      "provider": "aws"
+    },
+    "desired_state": "active",
+    "is_registered": true,
+    "created_at": "2026-06-29T12:00:00Z",
+    "updated_at": "2026-06-29T12:00:00Z"
+  }
+  ```
+
 ### List Active Endpoints
 Inspects heartbeats and health status of all workers connected to the message broker.
 
 * **URL**: `GET /management/endpoints`
+* **Query Params**:
+  * `page` (default: `1`)
+  * `limit` (default: `20`, max: `100`)
+  * `include_deleted` (default: `false`)
 * **Response (Status 200 OK)**:
   ```json
-  [
-    {
+  {
+    "data": [
+      {
+        "id": "worker-us-residential-01",
+        "tags": ["type:residential", "region:us"],
+        "last_heartbeat": "2026-06-28T12:00:35Z",
+        "is_healthy": true,
+        "metadata": {
+          "version": "1.0.3",
+          "ip": "192.168.1.50",
+          "active_tasks": 2,
+          "max_concurrency": 200
+        },
+        "desired_state": "active",
+        "is_registered": true,
+        "created_at": "2026-06-28T11:50:00Z",
+        "updated_at": "2026-06-28T12:00:35Z",
+        "health": {
+          "endpoint_id": "worker-us-residential-01",
+          "state": "healthy",
+          "tags": ["type:residential", "region:us"],
+          "version": "1.0.3",
+          "active_tasks": 2,
+          "last_seen": "2026-06-28T12:00:35Z"
+        }
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "limit": 20
+  }
+  ```
+
+### Get Endpoint Detail
+Returns registry metadata, health status, and recent commands for a single endpoint.
+
+* **URL**: `GET /management/endpoints/{id}`
+* **Response (Status 200 OK)**:
+  ```json
+  {
+    "id": "worker-us-residential-01",
+    "tags": ["type:residential", "region:us"],
+    "last_heartbeat": "2026-06-28T12:00:35Z",
+    "is_healthy": true,
+    "metadata": {
+      "version": "1.0.3",
+      "ip": "192.168.1.50",
+      "active_tasks": 2,
+      "max_concurrency": 200
+    },
+    "desired_state": "active",
+    "is_registered": true,
+    "created_at": "2026-06-28T11:50:00Z",
+    "updated_at": "2026-06-28T12:00:35Z",
+    "health": {
       "endpoint_id": "worker-us-residential-01",
       "state": "healthy",
       "tags": ["type:residential", "region:us"],
       "version": "1.0.3",
       "active_tasks": 2,
       "last_seen": "2026-06-28T12:00:35Z"
-    }
-  ]
+    },
+    "recent_commands": [
+      {
+        "id": "c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13",
+        "endpoint_id": "worker-us-residential-01",
+        "command": "drain",
+        "status": "succeeded",
+        "payload": {},
+        "requested_at": "2026-06-28T11:55:00Z"
+      }
+    ]
+  }
   ```
+
+### Update Endpoint
+Updates tags, metadata, desired state, or registration status.
+
+* **URL**: `PATCH /management/endpoints/{id}`
+* **Request Body**:
+  ```json
+  {
+    "tags": ["type:residential", "region:us", "tier:premium"],
+    "desired_state": "draining"
+  }
+  ```
+* **Response (Status 200 OK)**: Same structure as Endpoint Detail.
+
+### Delete Endpoint
+Removes the endpoint from the active registry and cleans up its Redis health/drain state.
+
+* **URL**: `DELETE /management/endpoints/{id}`
+* **Response (Status 204 No Content)**: *(empty)*
 
 ### Drain Endpoint
 Instructs a worker to complete its active tasks but refuse any new incoming tasks, allowing for graceful worker recycling or node migration.
 
 * **URL**: `POST /management/endpoints/{id}/drain`
-* **Response (Status 200 OK)**: *(empty)*
+* **Response (Status 200 OK)**:
+  ```json
+  {
+    "endpoint_id": "worker-us-residential-01",
+    "desired_state": "draining",
+    "command_id": "c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13"
+  }
+  ```
+
+### Undrain Endpoint
+Clears draining status and marks the worker active for new routing requests.
+
+* **URL**: `POST /management/endpoints/{id}/undrain`
+* **Response (Status 200 OK)**:
+  ```json
+  {
+    "endpoint_id": "worker-us-residential-01",
+    "desired_state": "active",
+    "command_id": "d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a14"
+  }
+  ```
+
+### Restart Endpoint
+Issues a control command to restart the endpoint process.
+
+* **URL**: `POST /management/endpoints/{id}/restart`
+* **Response (Status 200 OK)**:
+  ```json
+  {
+    "endpoint_id": "worker-us-residential-01",
+    "desired_state": "active",
+    "command_id": "e0eebc99-9c0b-4ef8-bb6d-6bb9bd380a15"
+  }
+  ```
+
+### List Endpoint Commands
+Retrieves history of control commands dispatched to the endpoint.
+
+* **URL**: `GET /management/endpoints/{id}/commands`
+* **Response (Status 200 OK)**:
+  ```json
+  {
+    "data": [
+      {
+        "id": "e0eebc99-9c0b-4ef8-bb6d-6bb9bd380a15",
+        "endpoint_id": "worker-us-residential-01",
+        "command": "restart",
+        "status": "accepted",
+        "payload": {},
+        "requested_at": "2026-06-29T12:00:00Z"
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "limit": 20
+  }
+  ```
+
+### Get Command Status
+Retrieves details and execution status of a single control command.
+
+* **URL**: `GET /management/endpoints/commands/{command_id}`
+* **Response (Status 200 OK)**:
+  ```json
+  {
+    "id": "e0eebc99-9c0b-4ef8-bb6d-6bb9bd380a15",
+    "endpoint_id": "worker-us-residential-01",
+    "command": "restart",
+    "status": "acknowledged",
+    "payload": {},
+    "requested_at": "2026-06-29T12:00:00Z",
+    "accepted_at": "2026-06-29T12:00:01Z"
+  }
+  ```
 
 ---
 

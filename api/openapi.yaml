@@ -766,16 +766,144 @@ paths:
       summary: List Active Endpoints
       operationId: listEndpoints
       description: "Inspects heartbeats and health status of all workers connected to the message broker."
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+        - name: include_deleted
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
       responses:
         '200':
           description: "List of active endpoints"
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/EndpointHealthResponse'
+                $ref: '#/components/schemas/EndpointListResponse'
         '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+
+    post:
+      tags:
+        - endpoints
+      summary: Create Endpoint
+      operationId: createEndpoint
+      description: "Pre-registers a new endpoint."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEndpointRequest'
+      responses:
+        '201':
+          description: "Endpoint pre-registered successfully"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EndpointResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /management/endpoints/{id}:
+    get:
+      tags:
+        - endpoints
+      summary: Get Endpoint Detail
+      operationId: getEndpoint
+      description: "Returns detailed endpoint metadata, health, and recent commands."
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: "Endpoint details"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EndpointResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+
+    patch:
+      tags:
+        - endpoints
+      summary: Update Endpoint
+      operationId: updateEndpoint
+      description: "Updates tags, metadata, desired state, or registration status of an endpoint."
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchEndpointRequest'
+      responses:
+        '200':
+          description: "Endpoint updated successfully"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EndpointResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+
+    delete:
+      tags:
+        - endpoints
+      summary: Delete Endpoint
+      operationId: deleteEndpoint
+      description: "Marks endpoint deleted and cleans up health."
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: "Endpoint deleted successfully"
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
           $ref: '#/components/responses/ErrorResponse'
         '500':
           $ref: '#/components/responses/ErrorResponse'
@@ -797,9 +925,135 @@ paths:
       responses:
         '200':
           description: "Endpoint is draining"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EndpointDrainResponse'
         '400':
           $ref: '#/components/responses/ErrorResponse'
         '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /management/endpoints/{id}/undrain:
+    post:
+      tags:
+        - endpoints
+      summary: Undrain Endpoint
+      operationId: undrainEndpoint
+      description: "Clears draining state on endpoint worker."
+      parameters:
+        - name: id
+          in: path
+          description: "Endpoint worker ID."
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: "Endpoint is active"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EndpointDrainResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /management/endpoints/{id}/restart:
+    post:
+      tags:
+        - endpoints
+      summary: Restart Endpoint
+      operationId: restartEndpoint
+      description: "Issues a restart command to the endpoint worker."
+      parameters:
+        - name: id
+          in: path
+          description: "Endpoint worker ID."
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: "Restart command accepted"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EndpointDrainResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /management/endpoints/{id}/commands:
+    get:
+      tags:
+        - endpoints
+      summary: List Endpoint Commands
+      operationId: listEndpointCommands
+      description: "Returns paginated list of commands for an endpoint."
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: "List of commands"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EndpointCommandListResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /management/endpoints/commands/{command_id}:
+    get:
+      tags:
+        - endpoints
+      summary: Get Endpoint Command Status
+      operationId: getEndpointCommand
+      description: "Returns the details and status of a single control command."
+      parameters:
+        - name: command_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: "Command details"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EndpointCommandResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
           $ref: '#/components/responses/ErrorResponse'
         '500':
           $ref: '#/components/responses/ErrorResponse'
@@ -1850,6 +2104,170 @@ components:
         last_seen:
           type: string
           format: date-time
+
+    EndpointMetadataResponse:
+      type: object
+      properties:
+        version:
+          type: string
+        ip:
+          type: string
+        active_tasks:
+          type: integer
+        max_concurrency:
+          type: integer
+        provider:
+          type: string
+
+    CreateEndpointRequest:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        metadata:
+          $ref: '#/components/schemas/EndpointMetadataResponse'
+        desired_state:
+          type: string
+
+    PatchEndpointRequest:
+      type: object
+      properties:
+        tags:
+          type: array
+          items:
+            type: string
+        metadata:
+          $ref: '#/components/schemas/EndpointMetadataResponse'
+        desired_state:
+          type: string
+        is_registered:
+          type: boolean
+
+    EndpointResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        last_heartbeat:
+          type: string
+          format: date-time
+        is_healthy:
+          type: boolean
+        metadata:
+          $ref: '#/components/schemas/EndpointMetadataResponse'
+        desired_state:
+          type: string
+        is_registered:
+          type: boolean
+        deleted_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        health:
+          $ref: '#/components/schemas/EndpointHealthDTO'
+        recent_commands:
+          type: array
+          items:
+            $ref: '#/components/schemas/EndpointCommandResponse'
+
+    EndpointHealthDTO:
+      type: object
+      properties:
+        endpoint_id:
+          type: string
+        state:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        version:
+          type: string
+        active_tasks:
+          type: integer
+        last_seen:
+          type: string
+          format: date-time
+
+    EndpointCommandResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        endpoint_id:
+          type: string
+        command:
+          type: string
+        status:
+          type: string
+        payload:
+          type: object
+        requested_by:
+          type: string
+        requested_at:
+          type: string
+          format: date-time
+        accepted_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        error:
+          type: string
+
+    EndpointDrainResponse:
+      type: object
+      properties:
+        endpoint_id:
+          type: string
+        desired_state:
+          type: string
+        command_id:
+          type: string
+
+    EndpointCommandListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/EndpointCommandResponse'
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    EndpointListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/EndpointResponse'
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
 
     CreateFingerprintRequest:
       type: object

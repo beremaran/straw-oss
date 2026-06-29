@@ -20,12 +20,14 @@ const (
 	HealthStateSuspect   = "suspect"
 	HealthStateUnhealthy = "unhealthy"
 	HealthStateDraining  = "draining"
+	HealthStateDeleted   = "deleted"
 )
 
 const (
 	endpointHealthKeyPrefix = "endpoint:health:"
 	endpointHealthIndexKey  = "endpoint:health:index"
 	endpointDrainingSetKey  = "endpoint:draining"
+	endpointDeletedSetKey   = "endpoint:deleted"
 )
 
 const defaultHealthTTL = 60 * time.Second
@@ -53,6 +55,10 @@ type HealthStore interface {
 	SetDraining(ctx context.Context, endpointID string, draining bool) error
 
 	IsDraining(ctx context.Context, endpointID string) (bool, error)
+
+	SetDeleted(ctx context.Context, endpointID string, deleted bool) error
+
+	IsDeleted(ctx context.Context, endpointID string) (bool, error)
 }
 
 type EndpointHealthStore struct {
@@ -251,4 +257,24 @@ func (s *EndpointHealthStore) IsDraining(ctx context.Context, endpointID string)
 	}
 
 	return s.client.Client.SIsMember(ctx, endpointDrainingSetKey, endpointID).Result()
+}
+
+func (s *EndpointHealthStore) SetDeleted(ctx context.Context, endpointID string, deleted bool) error {
+	if endpointID == "" {
+		return ErrEmptyEndpointID
+	}
+
+	if deleted {
+		return s.client.Client.SAdd(ctx, endpointDeletedSetKey, endpointID).Err()
+	}
+
+	return s.client.Client.SRem(ctx, endpointDeletedSetKey, endpointID).Err()
+}
+
+func (s *EndpointHealthStore) IsDeleted(ctx context.Context, endpointID string) (bool, error) {
+	if endpointID == "" {
+		return false, ErrEmptyEndpointID
+	}
+
+	return s.client.Client.SIsMember(ctx, endpointDeletedSetKey, endpointID).Result()
 }
