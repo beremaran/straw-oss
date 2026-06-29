@@ -49,11 +49,47 @@ type ReportRunResponse struct {
 	Error       string     `json:"error,omitempty"`
 }
 
+// CreateReportScheduleRequest creates a report schedule.
+type CreateReportScheduleRequest struct {
+	ReportID             string     `json:"report_id"`
+	Cron                 string     `json:"cron"`
+	Timezone             string     `json:"timezone,omitempty"`
+	DestinationChannelID string     `json:"destination_channel_id,omitempty"`
+	IsActive             *bool      `json:"is_active,omitempty"`
+	NextRunAt            *time.Time `json:"next_run_at,omitempty"`
+}
+
+// UpdateReportScheduleRequest updates a report schedule.
+type UpdateReportScheduleRequest struct {
+	Cron                 *string    `json:"cron,omitempty"`
+	Timezone             *string    `json:"timezone,omitempty"`
+	DestinationChannelID *string    `json:"destination_channel_id,omitempty"`
+	IsActive             *bool      `json:"is_active,omitempty"`
+	NextRunAt            *time.Time `json:"next_run_at,omitempty"`
+}
+
+// ReportScheduleResponse represents a report schedule.
+type ReportScheduleResponse struct {
+	ID                   string     `json:"id"`
+	ReportID             string     `json:"report_id"`
+	Cron                 string     `json:"cron"`
+	Timezone             string     `json:"timezone"`
+	DestinationChannelID string     `json:"destination_channel_id,omitempty"`
+	IsActive             bool       `json:"is_active"`
+	NextRunAt            *time.Time `json:"next_run_at,omitempty"`
+	LastRunAt            *time.Time `json:"last_run_at,omitempty"`
+	CreatedAt            time.Time  `json:"created_at"`
+	UpdatedAt            time.Time  `json:"updated_at"`
+}
+
 // ListReportsResponse is a paginated list of saved reports.
 type ListReportsResponse = PaginatedResponse[ReportResponse]
 
 // ListReportRunsResponse is a paginated list of report runs.
 type ListReportRunsResponse = PaginatedResponse[ReportRunResponse]
+
+// ListReportSchedulesResponse is a paginated list of report schedules.
+type ListReportSchedulesResponse = PaginatedResponse[ReportScheduleResponse]
 
 // FromReport converts a domain.SavedReport to a ReportResponse.
 func FromReport(report *domain.SavedReport) *ReportResponse {
@@ -110,6 +146,39 @@ func FromReportRuns(runs []domain.ReportRun) []ReportRunResponse {
 	result := make([]ReportRunResponse, len(runs))
 	for i, run := range runs {
 		resp := FromReportRun(&run)
+		if resp != nil {
+			result[i] = *resp
+		}
+	}
+
+	return result
+}
+
+// FromReportSchedule converts a domain.ReportSchedule to a ReportScheduleResponse.
+func FromReportSchedule(schedule *domain.ReportSchedule) *ReportScheduleResponse {
+	if schedule == nil {
+		return nil
+	}
+
+	return &ReportScheduleResponse{
+		ID:                   schedule.ID,
+		ReportID:             schedule.ReportID,
+		Cron:                 schedule.Cron,
+		Timezone:             schedule.Timezone,
+		DestinationChannelID: schedule.DestinationChannelID,
+		IsActive:             schedule.IsActive,
+		NextRunAt:            schedule.NextRunAt,
+		LastRunAt:            schedule.LastRunAt,
+		CreatedAt:            schedule.CreatedAt,
+		UpdatedAt:            schedule.UpdatedAt,
+	}
+}
+
+// FromReportSchedules converts report schedules to responses.
+func FromReportSchedules(schedules []domain.ReportSchedule) []ReportScheduleResponse {
+	result := make([]ReportScheduleResponse, len(schedules))
+	for i, schedule := range schedules {
+		resp := FromReportSchedule(&schedule)
 		if resp != nil {
 			result[i] = *resp
 		}

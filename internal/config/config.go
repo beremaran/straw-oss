@@ -25,6 +25,7 @@ const (
 	defaultIdleConnTimeout           = 90 * time.Second
 	defaultManagementRefreshTokenTTL = 7 * 24 * time.Hour
 	defaultReportArtifactDir         = "data/reports"
+	defaultReportSchedulerInterval   = time.Minute
 )
 
 // NATSConfig holds NATS connection settings.
@@ -82,6 +83,7 @@ type ServerConfig struct {
 	MaxConcurrentRequests         int
 	AllowPrivateIPs               bool
 	ReportArtifactDir             string
+	ReportSchedulerInterval       time.Duration
 }
 
 // EndpointConfig holds endpoint-specific configuration.
@@ -172,6 +174,7 @@ func LoadServerConfig() (*ServerConfig, error) {
 		MaxConcurrentRequests:         getEnvInt("MAX_CONCURRENT_REQUESTS", defaultMaxConcurrentRequests),
 		AllowPrivateIPs:               getEnvBool("ALLOW_PRIVATE_IPS", false),
 		ReportArtifactDir:             getEnv("REPORT_ARTIFACT_DIR", defaultReportArtifactDir),
+		ReportSchedulerInterval:       getEnvDuration("REPORT_SCHEDULER_INTERVAL", defaultReportSchedulerInterval),
 	}
 
 	err := validateServerConfig(cfg)

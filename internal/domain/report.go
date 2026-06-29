@@ -34,6 +34,8 @@ var (
 	ErrReportNotFound = errors.New("report not found")
 	// ErrReportRunNotFound is returned when a report run does not exist.
 	ErrReportRunNotFound = errors.New("report run not found")
+	// ErrReportScheduleNotFound is returned when a report schedule does not exist.
+	ErrReportScheduleNotFound = errors.New("report schedule not found")
 )
 
 // SavedReport stores a reusable report definition.
@@ -61,6 +63,20 @@ type ReportRun struct {
 	Error       string
 }
 
+// ReportSchedule stores recurring execution settings for a saved report.
+type ReportSchedule struct {
+	ID                   string
+	ReportID             string
+	Cron                 string
+	Timezone             string
+	DestinationChannelID string
+	IsActive             bool
+	NextRunAt            *time.Time
+	LastRunAt            *time.Time
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
+}
+
 // SavedReportRepository provides persistence operations for saved reports.
 type SavedReportRepository interface {
 	Create(ctx context.Context, report *SavedReport) error
@@ -76,4 +92,15 @@ type ReportRunRepository interface {
 	Update(ctx context.Context, run *ReportRun) error
 	GetByID(ctx context.Context, id string) (*ReportRun, error)
 	ListByReportID(ctx context.Context, reportID string, limit, offset int) ([]ReportRun, int, error)
+}
+
+// ReportScheduleRepository provides persistence operations for report schedules.
+type ReportScheduleRepository interface {
+	Create(ctx context.Context, schedule *ReportSchedule) error
+	Update(ctx context.Context, schedule *ReportSchedule) error
+	Disable(ctx context.Context, id string) error
+	GetByID(ctx context.Context, id string) (*ReportSchedule, error)
+	List(ctx context.Context, limit, offset int) ([]ReportSchedule, int, error)
+	ClaimDue(ctx context.Context, now time.Time, limit int) ([]ReportSchedule, error)
+	MarkRun(ctx context.Context, id string, lastRunAt time.Time, nextRunAt time.Time) error
 }

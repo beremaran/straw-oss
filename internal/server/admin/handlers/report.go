@@ -30,6 +30,8 @@ const (
 	reportFilterEnd    = "end"
 	reportDirPerm      = 0o700
 	reportFilePerm     = 0o600
+	cronFieldCount     = 5
+	reportDailyHours   = 24
 )
 
 const maxReportDateRange = 31 * 24 * time.Hour
@@ -42,12 +44,17 @@ var (
 	errReportDateOrder         = errors.New("start must be before end")
 	errReportTooManyRows       = errors.New("report row count exceeds limit")
 	errReportSourceUnavailable = errors.New("report source is unavailable")
+	errScheduleReportRequired  = errors.New("report_id is required")
+	errScheduleCronInvalid     = errors.New("cron must contain five fields")
+	errScheduleTimezoneInvalid = errors.New("timezone is invalid")
+	errScheduleChannelInvalid  = errors.New("destination_channel_id must be a uuid")
 )
 
 // ReportHandler manages saved reports and report runs.
 type ReportHandler struct {
 	reportRepo         domain.SavedReportRepository
 	runRepo            domain.ReportRunRepository
+	scheduleRepo       domain.ReportScheduleRepository
 	usageRepo          domain.UsageRepository
 	apiKeyRepo         domain.APIKeyRepository
 	endpointRepo       domain.EndpointRepository
@@ -66,8 +73,9 @@ func NewReportHandler(
 	auditRepo domain.ManagementAuditRepository,
 	costMultiplierRepo domain.CostMultiplierRepository,
 	artifactDir string,
+	scheduleRepo ...domain.ReportScheduleRepository,
 ) *ReportHandler {
-	return &ReportHandler{
+	handler := &ReportHandler{
 		reportRepo:         reportRepo,
 		runRepo:            runRepo,
 		usageRepo:          usageRepo,
@@ -77,6 +85,12 @@ func NewReportHandler(
 		costMultiplierRepo: costMultiplierRepo,
 		artifactDir:        artifactDir,
 	}
+
+	if len(scheduleRepo) > 0 {
+		handler.scheduleRepo = scheduleRepo[0]
+	}
+
+	return handler
 }
 
 // HandleListReports lists saved reports.
@@ -207,35 +221,9 @@ func (h *ReportHandler) HandleRunReport(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	run := &domain.ReportRun{
-		ID:        uuid.New().String(),
-		ReportID:  report.ID,
-		Status:    domain.ReportRunStatusRunning,
-		StartedAt: time.Now().UTC(),
-	}
-
-	err := h.runRepo.Create(r.Context(), run)
+	run, runErr, err := h.executeReportRun(r.Context(), report, "")
 	if err != nil {
-		helper.WriteError(w, http.StatusInternalServerError, "failed to create report run")
-
-		return
-	}
-
-	artifactURL, runErr := h.runReport(r.Context(), report, run.ID)
-	completedAt := time.Now().UTC()
-
-	run.CompletedAt = &completedAt
-	if runErr != nil {
-		run.Status = domain.ReportRunStatusFailed
-		run.Error = runErr.Error()
-	} else {
-		run.Status = domain.ReportRunStatusSucceeded
-		run.ArtifactURL = artifactURL
-	}
-
-	err = h.runRepo.Update(r.Context(), run)
-	if err != nil {
-		helper.WriteError(w, http.StatusInternalServerError, "failed to update report run")
+		helper.WriteError(w, http.StatusInternalServerError, "failed to run report")
 
 		return
 	}
@@ -250,6 +238,25 @@ func (h *ReportHandler) HandleRunReport(w http.ResponseWriter, r *http.Request) 
 	}
 
 	helper.WriteJSON(w, http.StatusOK, resp)
+}
+
+// RunScheduledReport runs a report for the scheduler.
+func (h *ReportHandler) RunScheduledReport(ctx context.Context, reportID, scheduleID string) (*domain.ReportRun, error) {
+	report, err := h.reportRepo.GetByID(ctx, reportID)
+	if err != nil {
+		return nil, fmt.Errorf("get scheduled report: %w", err)
+	}
+
+	if report == nil {
+		return nil, domain.ErrReportNotFound
+	}
+
+	run, runErr, err := h.executeReportRun(ctx, report, scheduleID)
+	if err != nil {
+		return nil, err
+	}
+
+	return run, runErr
 }
 
 // HandleListReportRuns lists runs for a report.
@@ -302,6 +309,165 @@ func (h *ReportHandler) HandleDownloadReportRun(w http.ResponseWriter, r *http.R
 	w.Header().Set("Content-Type", "text/csv")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.csv"`, run.ID))
 	http.ServeFile(w, r, run.ArtifactURL)
+}
+
+// HandleListReportSchedules lists report schedules.
+func (h *ReportHandler) HandleListReportSchedules(w http.ResponseWriter, r *http.Request) {
+	page, limit := reportPageLimit(r)
+
+	schedules, total, err := h.scheduleRepo.List(r.Context(), limit, (page-1)*limit)
+	if err != nil {
+		helper.WriteError(w, http.StatusInternalServerError, "failed to list report schedules")
+
+		return
+	}
+
+	helper.WriteJSON(w, http.StatusOK, dto.ListReportSchedulesResponse{
+		Data:  dto.FromReportSchedules(schedules),
+		Total: total,
+		Page:  page,
+		Limit: limit,
+	})
+}
+
+// HandleCreateReportSchedule creates a report schedule.
+func (h *ReportHandler) HandleCreateReportSchedule(w http.ResponseWriter, r *http.Request) {
+	var req dto.CreateReportScheduleRequest
+
+	err := helper.ReadJSON(r, &req)
+	if err != nil {
+		helper.WriteError(w, http.StatusBadRequest, "invalid request body")
+
+		return
+	}
+
+	report, err := h.reportRepo.GetByID(r.Context(), req.ReportID)
+	if err != nil {
+		helper.WriteError(w, http.StatusInternalServerError, "failed to get report")
+
+		return
+	}
+
+	if report == nil {
+		helper.WriteError(w, http.StatusNotFound, "report not found")
+
+		return
+	}
+
+	schedule := scheduleFromCreateRequest(req)
+
+	err = validateSchedule(schedule)
+	if err != nil {
+		helper.WriteError(w, http.StatusBadRequest, err.Error())
+
+		return
+	}
+
+	err = h.scheduleRepo.Create(r.Context(), schedule)
+	if err != nil {
+		helper.WriteError(w, http.StatusInternalServerError, "failed to create report schedule")
+
+		return
+	}
+
+	resp := dto.FromReportSchedule(schedule)
+	h.audit(r, domain.ActionCreate, "report_schedule", schedule.ID, nil, resp)
+
+	helper.WriteJSON(w, http.StatusCreated, resp)
+}
+
+// HandleUpdateReportSchedule updates a report schedule.
+func (h *ReportHandler) HandleUpdateReportSchedule(w http.ResponseWriter, r *http.Request) {
+	schedule := h.loadReportSchedule(w, r.PathValue("id"), r)
+	if schedule == nil {
+		return
+	}
+
+	oldSchedule := *schedule
+
+	var req dto.UpdateReportScheduleRequest
+
+	err := helper.ReadJSON(r, &req)
+	if err != nil {
+		helper.WriteError(w, http.StatusBadRequest, "invalid request body")
+
+		return
+	}
+
+	applyScheduleUpdate(schedule, req)
+
+	err = validateSchedule(schedule)
+	if err != nil {
+		helper.WriteError(w, http.StatusBadRequest, err.Error())
+
+		return
+	}
+
+	schedule.UpdatedAt = time.Now().UTC()
+
+	err = h.scheduleRepo.Update(r.Context(), schedule)
+	if err != nil {
+		helper.WriteError(w, http.StatusInternalServerError, "failed to update report schedule")
+
+		return
+	}
+
+	resp := dto.FromReportSchedule(schedule)
+	h.audit(r, domain.ActionUpdate, "report_schedule", schedule.ID, dto.FromReportSchedule(&oldSchedule), resp)
+
+	helper.WriteJSON(w, http.StatusOK, resp)
+}
+
+// HandleDeleteReportSchedule disables a report schedule.
+func (h *ReportHandler) HandleDeleteReportSchedule(w http.ResponseWriter, r *http.Request) {
+	schedule := h.loadReportSchedule(w, r.PathValue("id"), r)
+	if schedule == nil {
+		return
+	}
+
+	err := h.scheduleRepo.Disable(r.Context(), schedule.ID)
+	if err != nil {
+		helper.WriteError(w, http.StatusInternalServerError, "failed to delete report schedule")
+
+		return
+	}
+
+	h.audit(r, domain.ActionDelete, "report_schedule", schedule.ID, dto.FromReportSchedule(schedule), nil)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *ReportHandler) executeReportRun(ctx context.Context, report *domain.SavedReport, scheduleID string) (*domain.ReportRun, error, error) {
+	run := &domain.ReportRun{
+		ID:         uuid.New().String(),
+		ReportID:   report.ID,
+		ScheduleID: scheduleID,
+		Status:     domain.ReportRunStatusRunning,
+		StartedAt:  time.Now().UTC(),
+	}
+
+	err := h.runRepo.Create(ctx, run)
+	if err != nil {
+		return nil, nil, fmt.Errorf("create report run: %w", err)
+	}
+
+	artifactURL, runErr := h.runReport(ctx, report, run.ID)
+	completedAt := time.Now().UTC()
+
+	run.CompletedAt = &completedAt
+	if runErr != nil {
+		run.Status = domain.ReportRunStatusFailed
+		run.Error = runErr.Error()
+	} else {
+		run.Status = domain.ReportRunStatusSucceeded
+		run.ArtifactURL = artifactURL
+	}
+
+	err = h.runRepo.Update(ctx, run)
+	if err != nil {
+		return nil, nil, fmt.Errorf("update report run: %w", err)
+	}
+
+	return run, runErr, nil
 }
 
 func (h *ReportHandler) runReport(ctx context.Context, report *domain.SavedReport, runID string) (string, error) {
@@ -571,6 +737,23 @@ func (h *ReportHandler) loadReportRun(w http.ResponseWriter, id string, r *http.
 	return run
 }
 
+func (h *ReportHandler) loadReportSchedule(w http.ResponseWriter, id string, r *http.Request) *domain.ReportSchedule {
+	schedule, err := h.scheduleRepo.GetByID(r.Context(), id)
+	if err != nil {
+		helper.WriteError(w, http.StatusInternalServerError, "failed to get report schedule")
+
+		return nil
+	}
+
+	if schedule == nil {
+		helper.WriteError(w, http.StatusNotFound, "report schedule not found")
+
+		return nil
+	}
+
+	return schedule
+}
+
 func (h *ReportHandler) audit(r *http.Request, action, entityType, id string, oldValue, newValue any) {
 	if h.auditRepo == nil {
 		return
@@ -616,6 +799,118 @@ func applyReportUpdate(report *domain.SavedReport, req dto.UpdateReportRequest) 
 	if req.Format != nil {
 		report.Format = reportFormat(*req.Format)
 	}
+}
+
+func scheduleFromCreateRequest(req dto.CreateReportScheduleRequest) *domain.ReportSchedule {
+	now := time.Now().UTC()
+
+	active := true
+	if req.IsActive != nil {
+		active = *req.IsActive
+	}
+
+	nextRunAt := req.NextRunAt
+	if nextRunAt == nil {
+		next := nextRunFromCron(now, req.Cron)
+		nextRunAt = &next
+	}
+
+	return &domain.ReportSchedule{
+		ID:                   uuid.New().String(),
+		ReportID:             strings.TrimSpace(req.ReportID),
+		Cron:                 strings.TrimSpace(req.Cron),
+		Timezone:             reportTimezone(req.Timezone),
+		DestinationChannelID: strings.TrimSpace(req.DestinationChannelID),
+		IsActive:             active,
+		NextRunAt:            nextRunAt,
+		CreatedAt:            now,
+		UpdatedAt:            now,
+	}
+}
+
+func applyScheduleUpdate(schedule *domain.ReportSchedule, req dto.UpdateReportScheduleRequest) {
+	if req.Cron != nil {
+		schedule.Cron = strings.TrimSpace(*req.Cron)
+		if req.NextRunAt == nil && schedule.NextRunAt == nil {
+			next := nextRunFromCron(time.Now().UTC(), schedule.Cron)
+			schedule.NextRunAt = &next
+		}
+	}
+
+	if req.Timezone != nil {
+		schedule.Timezone = reportTimezone(*req.Timezone)
+	}
+
+	if req.DestinationChannelID != nil {
+		schedule.DestinationChannelID = strings.TrimSpace(*req.DestinationChannelID)
+	}
+
+	if req.IsActive != nil {
+		schedule.IsActive = *req.IsActive
+	}
+
+	if req.NextRunAt != nil {
+		schedule.NextRunAt = req.NextRunAt
+	}
+}
+
+func validateSchedule(schedule *domain.ReportSchedule) error {
+	if schedule.ReportID == "" {
+		return errScheduleReportRequired
+	}
+
+	if !validCron(schedule.Cron) {
+		return errScheduleCronInvalid
+	}
+
+	_, err := time.LoadLocation(schedule.Timezone)
+	if err != nil {
+		return errScheduleTimezoneInvalid
+	}
+
+	if schedule.DestinationChannelID != "" {
+		_, err = uuid.Parse(schedule.DestinationChannelID)
+		if err != nil {
+			return errScheduleChannelInvalid
+		}
+	}
+
+	return nil
+}
+
+func validCron(cron string) bool {
+	return len(strings.Fields(cron)) == cronFieldCount
+}
+
+func reportTimezone(timezone string) string {
+	timezone = strings.TrimSpace(timezone)
+	if timezone == "" {
+		return "UTC"
+	}
+
+	return timezone
+}
+
+func nextRunFromCron(now time.Time, cron string) time.Time {
+	fields := strings.Fields(cron)
+	if len(fields) == 0 {
+		return now.Add(time.Hour)
+	}
+
+	// ponytail: minimal cron advancement; use a real cron parser when exact calendar semantics matter.
+	minute := fields[0]
+	if minute == "*" {
+		return now.Add(time.Minute)
+	}
+
+	if every, ok := strings.CutPrefix(minute, "*/"); ok {
+		n, err := strconv.Atoi(every)
+		if err == nil && n > 0 {
+			return now.Add(time.Duration(n) * time.Minute)
+		}
+	}
+
+	return now.Add(reportDailyHours * time.Hour)
 }
 
 func validateReport(report *domain.SavedReport) error {

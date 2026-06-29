@@ -1,6 +1,6 @@
 # MB-018: Report Scheduler
 
-Status: not-started
+Status: done
 Phase: 5
 Depends on: MB-017
 Search tags: report_schedules, cron, timezone, row locking, scheduler, worker
@@ -27,14 +27,14 @@ Run due report schedules safely from the relay or a worker process.
 
 ## Implementation Tasks
 
-- [ ] Add schedule DTOs, handlers, and route registration.
-- [ ] Add cron and timezone validation.
-- [ ] Add due-schedule query using row locking.
-- [ ] Add scheduler loop with configurable interval.
-- [ ] Add tests for due claiming, disabled schedules, and run status updates.
+- [x] Add schedule DTOs, handlers, and route registration.
+- [x] Add cron and timezone validation.
+- [x] Add due-schedule query using row locking.
+- [x] Add scheduler loop with configurable interval.
+- [x] Add tests for due claiming, disabled schedules, and run status updates.
 
 ## Done Criteria
 
-- [ ] Schedules can be created, updated, listed, and disabled/deleted.
-- [ ] Concurrent scheduler workers do not claim the same due schedule.
-- [ ] Successful and failed scheduled runs record status and timestamps.
+- [x] Schedules can be created, updated, listed, and disabled/deleted.
+- [x] Concurrent scheduler workers do not claim the same due schedule.
+- [x] Successful and failed scheduled runs record status and timestamps.
