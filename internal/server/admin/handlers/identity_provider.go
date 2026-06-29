@@ -41,55 +41,25 @@ func (h *IdentityProviderHandler) HandleListIdentityProviders(w http.ResponseWri
 
 func (h *IdentityProviderHandler) HandleCreateIdentityProvider(w http.ResponseWriter, r *http.Request) {
 	var req dto.CreateIdentityProviderRequest
-	if err := helper.ReadJSON(r, &req); err != nil {
+	err := helper.ReadJSON(r, &req)
+	if err != nil {
 		helper.WriteError(w, http.StatusBadRequest, "invalid request body")
 
 		return
 	}
 
 	name := strings.TrimSpace(req.Name)
-	if name == "" {
-		helper.WriteError(w, http.StatusBadRequest, "identity provider name is required")
-
-		return
-	}
-
 	providerType := strings.TrimSpace(req.Type)
-	if providerType == "" {
-		helper.WriteError(w, http.StatusBadRequest, "identity provider type is required")
-
+	if hasIdentityProviderInputError(w, name, providerType) {
 		return
 	}
 
 	providerID := uuid.New().String()
-	config := domain.ConfigMap{}
-	for k, v := range req.Config {
-		config[k] = v
-	}
+	provider := toDomainProvider(providerID, name, providerType, req)
 
-	provider := &domain.AdminIdentityProvider{
-		ID:              providerID,
-		Name:            name,
-		Type:            providerType,
-		IssuerURL:       req.IssuerURL,
-		ClientID:        req.ClientID,
-		ClientSecretRef: req.ClientSecretRef,
-		JWKSURL:         req.JWKSURL,
-		Scopes:          req.Scopes,
-		RoleClaim:       req.RoleClaim,
-		DefaultRoleID:   req.DefaultRoleID,
-		IsEnabled:       req.IsEnabled,
-		Config:          config,
-	}
-
-	if err := h.repo.CreateIdentityProvider(r.Context(), provider); err != nil {
-		if errors.Is(err, postgres.ErrPlaintextProviderSecret) {
-			helper.WriteError(w, http.StatusBadRequest, "identity provider config must not contain secrets")
-		} else if strings.Contains(err.Error(), "duplicate key") || strings.Contains(err.Error(), "unique constraint") {
-			helper.WriteError(w, http.StatusConflict, "identity provider name already exists")
-		} else {
-			helper.WriteError(w, http.StatusInternalServerError, "failed to create identity provider")
-		}
+	err = h.repo.CreateIdentityProvider(r.Context(), provider)
+	if err != nil {
+		writeIdentityProviderSaveError(w, err, "failed to create identity provider")
 
 		return
 	}
@@ -125,53 +95,24 @@ func (h *IdentityProviderHandler) HandleUpdateIdentityProvider(w http.ResponseWr
 	}
 
 	var req dto.UpdateIdentityProviderRequest
-	if err := helper.ReadJSON(r, &req); err != nil {
+	err = helper.ReadJSON(r, &req)
+	if err != nil {
 		helper.WriteError(w, http.StatusBadRequest, "invalid request body")
 
 		return
 	}
 
-	name := strings.TrimSpace(req.Name)
-	if name == "" {
-		helper.WriteError(w, http.StatusBadRequest, "identity provider name is required")
-
-		return
-	}
-
-	providerType := strings.TrimSpace(req.Type)
-	if providerType == "" {
-		helper.WriteError(w, http.StatusBadRequest, "identity provider type is required")
-
+	if hasIdentityProviderInputError(w, req.Name, req.Type) {
 		return
 	}
 
 	oldProvider := *provider
 
-	config := domain.ConfigMap{}
-	for k, v := range req.Config {
-		config[k] = v
-	}
+	applyUpdateToProvider(provider, req)
 
-	provider.Name = name
-	provider.Type = providerType
-	provider.IssuerURL = req.IssuerURL
-	provider.ClientID = req.ClientID
-	provider.ClientSecretRef = req.ClientSecretRef
-	provider.JWKSURL = req.JWKSURL
-	provider.Scopes = req.Scopes
-	provider.RoleClaim = req.RoleClaim
-	provider.DefaultRoleID = req.DefaultRoleID
-	provider.IsEnabled = req.IsEnabled
-	provider.Config = config
-
-	if err := h.repo.UpdateIdentityProvider(r.Context(), provider); err != nil {
-		if errors.Is(err, postgres.ErrPlaintextProviderSecret) {
-			helper.WriteError(w, http.StatusBadRequest, "identity provider config must not contain secrets")
-		} else if strings.Contains(err.Error(), "duplicate key") || strings.Contains(err.Error(), "unique constraint") {
-			helper.WriteError(w, http.StatusConflict, "identity provider name already exists")
-		} else {
-			helper.WriteError(w, http.StatusInternalServerError, "failed to update identity provider")
-		}
+	err = h.repo.UpdateIdentityProvider(r.Context(), provider)
+	if err != nil {
+		writeIdentityProviderSaveError(w, err, "failed to update identity provider")
 
 		return
 	}
@@ -207,7 +148,8 @@ func (h *IdentityProviderHandler) HandleDeleteIdentityProvider(w http.ResponseWr
 		return
 	}
 
-	if err := h.repo.DisableIdentityProvider(r.Context(), id); err != nil {
+	err = h.repo.DisableIdentityProvider(r.Context(), id)
+	if err != nil {
 		helper.WriteError(w, http.StatusInternalServerError, "failed to disable identity provider")
 
 		return
@@ -220,4 +162,70 @@ func (h *IdentityProviderHandler) HandleDeleteIdentityProvider(w http.ResponseWr
 	)
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func applyUpdateToProvider(provider *domain.AdminIdentityProvider, req dto.UpdateIdentityProviderRequest) {
+	config := domain.ConfigMap{}
+	for k, v := range req.Config {
+		config[k] = v
+	}
+
+	provider.Name = strings.TrimSpace(req.Name)
+	provider.Type = strings.TrimSpace(req.Type)
+	provider.IssuerURL = req.IssuerURL
+	provider.ClientID = req.ClientID
+	provider.ClientSecretRef = req.ClientSecretRef
+	provider.JWKSURL = req.JWKSURL
+	provider.Scopes = req.Scopes
+	provider.RoleClaim = req.RoleClaim
+	provider.DefaultRoleID = req.DefaultRoleID
+	provider.IsEnabled = req.IsEnabled
+	provider.Config = config
+}
+
+func toDomainProvider(id, name, pType string, req dto.CreateIdentityProviderRequest) *domain.AdminIdentityProvider {
+	config := domain.ConfigMap{}
+	for k, v := range req.Config {
+		config[k] = v
+	}
+
+	return &domain.AdminIdentityProvider{
+		ID:              id,
+		Name:            name,
+		Type:            pType,
+		IssuerURL:       req.IssuerURL,
+		ClientID:        req.ClientID,
+		ClientSecretRef: req.ClientSecretRef,
+		JWKSURL:         req.JWKSURL,
+		Scopes:          req.Scopes,
+		RoleClaim:       req.RoleClaim,
+		DefaultRoleID:   req.DefaultRoleID,
+		IsEnabled:       req.IsEnabled,
+		Config:          config,
+	}
+}
+
+func hasIdentityProviderInputError(w http.ResponseWriter, name string, providerType string) bool {
+	if strings.TrimSpace(name) == "" {
+		helper.WriteError(w, http.StatusBadRequest, "identity provider name is required")
+
+		return true
+	}
+	if strings.TrimSpace(providerType) == "" {
+		helper.WriteError(w, http.StatusBadRequest, "identity provider type is required")
+
+		return true
+	}
+
+	return false
+}
+
+func writeIdentityProviderSaveError(w http.ResponseWriter, err error, serverMsg string) {
+	if errors.Is(err, postgres.ErrPlaintextProviderSecret) {
+		helper.WriteError(w, http.StatusBadRequest, "identity provider config must not contain secrets")
+
+		return
+	}
+
+	writeConflictOrServerError(w, err, "identity provider name already exists", serverMsg)
 }

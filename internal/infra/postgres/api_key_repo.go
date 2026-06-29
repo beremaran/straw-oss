@@ -98,7 +98,7 @@ func (r *ApiKeyRepository) Create(ctx context.Context, key *domain.ApiKey) error
 		if err != nil {
 			return err
 		}
-		defer tx.Rollback(ctx)
+		defer func() { _ = tx.Rollback(ctx) }()
 
 		_, err = tx.Exec(ctx, query,
 			key.ID,

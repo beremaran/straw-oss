@@ -78,6 +78,7 @@ func FromAuditEvent(e *domain.ManagementAuditEvent, redactBody bool) *AuditEvent
 		dtoEvent.OldValue = e.OldValue
 		dtoEvent.NewValue = e.NewValue
 	}
+
 	return dtoEvent
 }
 
@@ -86,6 +87,7 @@ func FromAuditEvents(events []*domain.ManagementAuditEvent, redactBody bool) []*
 	for i, e := range events {
 		dtos[i] = FromAuditEvent(e, redactBody)
 	}
+
 	return dtos
 }
 
@@ -93,6 +95,7 @@ func FromAuditRequest(r *domain.ManagementAuditRequest) *AuditRequest {
 	if r == nil {
 		return nil
 	}
+
 	return &AuditRequest{
 		ID:               r.ID,
 		Timestamp:        r.Timestamp,
@@ -118,6 +121,6 @@ func FromAuditRequests(requests []*domain.ManagementAuditRequest) []*AuditReques
 	for i, r := range requests {
 		dtos[i] = FromAuditRequest(r)
 	}
+
 	return dtos
 }
-

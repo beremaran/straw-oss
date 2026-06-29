@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 
@@ -55,34 +56,13 @@ func (h *FingerprintHandler) HandleCreatePreset(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	if existing != nil {
-		err := h.repo.UpdatePreset(r.Context(), preset)
-		if err != nil {
-			helper.WriteError(w, http.StatusInternalServerError, "failed to update preset")
+	err = h.savePreset(r.Context(), existing, preset)
+	if err != nil {
+		helper.WriteError(w, http.StatusInternalServerError, presetSaveError(existing))
 
-			return
-		}
-
-		if h.auditRepo != nil {
-			oldVal := dto.FromFingerprintPreset(existing)
-			newVal := dto.FromFingerprintPreset(preset)
-			event := middleware.NewAuditEvent(r, domain.ActionUpdate, "fingerprint_preset", preset.ID, oldVal, newVal)
-			_ = h.auditRepo.Create(r.Context(), event)
-		}
-	} else {
-		err := h.repo.CreatePreset(r.Context(), preset)
-		if err != nil {
-			helper.WriteError(w, http.StatusInternalServerError, "failed to create preset")
-
-			return
-		}
-
-		if h.auditRepo != nil {
-			newVal := dto.FromFingerprintPreset(preset)
-			event := middleware.NewAuditEvent(r, domain.ActionCreate, "fingerprint_preset", preset.ID, nil, newVal)
-			_ = h.auditRepo.Create(r.Context(), event)
-		}
+		return
 	}
+	h.auditPresetChange(r, existing, preset)
 
 	helper.WriteJSON(w, http.StatusOK, dto.FromFingerprintPreset(preset))
 }
@@ -112,4 +92,37 @@ func (h *FingerprintHandler) HandleBroadcastPresets(w http.ResponseWriter, r *ht
 	}
 
 	w.WriteHeader(http.StatusOK)
+}
+
+func (h *FingerprintHandler) savePreset(ctx context.Context, existing *domain.FingerprintPreset, preset *domain.FingerprintPreset) error {
+	if existing != nil {
+		return h.repo.UpdatePreset(ctx, preset)
+	}
+
+	return h.repo.CreatePreset(ctx, preset)
+}
+
+func (h *FingerprintHandler) auditPresetChange(r *http.Request, existing *domain.FingerprintPreset, preset *domain.FingerprintPreset) {
+	if h.auditRepo == nil {
+		return
+	}
+
+	action := domain.ActionCreate
+	var oldVal interface{}
+	if existing != nil {
+		action = domain.ActionUpdate
+		oldVal = dto.FromFingerprintPreset(existing)
+	}
+
+	newVal := dto.FromFingerprintPreset(preset)
+	event := middleware.NewAuditEvent(r, action, "fingerprint_preset", preset.ID, oldVal, newVal)
+	_ = h.auditRepo.Create(r.Context(), event)
+}
+
+func presetSaveError(existing *domain.FingerprintPreset) string {
+	if existing != nil {
+		return "failed to update preset"
+	}
+
+	return "failed to create preset"
 }

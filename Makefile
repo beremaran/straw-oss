@@ -8,7 +8,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "lat
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_TIME ?= $(shell date -u +'%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date +'%Y-%m-%dT%H:%M:%SZ')
 
-.PHONY: docker server endpoint build all test load-test security format lint clean docs docs-serve
+.PHONY: docker server endpoint build all test load-test security format lint clean docs docs-serve install-tools
 
 docker:
 	# Build base image
@@ -63,15 +63,17 @@ load-test: docker
 	@./scripts/run-load-test.sh
 
 security:
-	@./scripts/install-govulncheck.sh
-	govulncheck ./...
+	$$(go env GOPATH)/bin/govulncheck ./...
 
 format:
 	gofmt -w ./
 
 lint:
-	@./scripts/install-golangci-lint.sh
 	golangci-lint run ./...
+
+install-tools:
+	@./scripts/install-govulncheck.sh
+	@./scripts/install-golangci-lint.sh
 
 docs:
 	npx -y @redocly/cli lint api/openapi.yaml

@@ -111,11 +111,13 @@ type MockIdentityRepo struct {
 
 func (m *MockIdentityRepo) CreateUser(ctx context.Context, user *domain.AdminUser) error {
 	args := m.Called(ctx, user)
+
 	return args.Error(0)
 }
 
 func (m *MockIdentityRepo) UpdateUser(ctx context.Context, user *domain.AdminUser) error {
 	args := m.Called(ctx, user)
+
 	return args.Error(0)
 }
 
@@ -124,6 +126,7 @@ func (m *MockIdentityRepo) GetUserByID(ctx context.Context, id string) (*domain.
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
+
 	return args.Get(0).(*domain.AdminUser), args.Error(1)
 }
 
@@ -132,6 +135,7 @@ func (m *MockIdentityRepo) GetUserByEmail(ctx context.Context, email string) (*d
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
+
 	return args.Get(0).(*domain.AdminUser), args.Error(1)
 }
 
@@ -140,11 +144,13 @@ func (m *MockIdentityRepo) ListUsers(ctx context.Context, limit, offset int) ([]
 	if args.Get(0) == nil {
 		return nil, 0, args.Error(2)
 	}
+
 	return args.Get(0).([]domain.AdminUser), args.Int(1), args.Error(2)
 }
 
 func (m *MockIdentityRepo) SetUserRoles(ctx context.Context, userID string, roleIDs []string) error {
 	args := m.Called(ctx, userID, roleIDs)
+
 	return args.Error(0)
 }
 
@@ -153,6 +159,7 @@ func (m *MockIdentityRepo) ListUserRoles(ctx context.Context, userID string) ([]
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
+
 	return args.Get(0).([]domain.AdminRole), args.Error(1)
 }
 
@@ -161,31 +168,37 @@ func (m *MockIdentityRepo) EffectivePermissions(ctx context.Context, userID stri
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
+
 	return args.Get(0).([]string), args.Error(1)
 }
 
 func (m *MockIdentityRepo) ActiveOwnerExists(ctx context.Context) (bool, error) {
 	args := m.Called(ctx)
+
 	return args.Bool(0), args.Error(1)
 }
 
 func (m *MockIdentityRepo) CountActiveOwners(ctx context.Context) (int, error) {
 	args := m.Called(ctx)
+
 	return args.Int(0), args.Error(1)
 }
 
 func (m *MockIdentityRepo) CreateRole(ctx context.Context, role *domain.AdminRole) error {
 	args := m.Called(ctx, role)
+
 	return args.Error(0)
 }
 
 func (m *MockIdentityRepo) UpdateRole(ctx context.Context, role *domain.AdminRole) error {
 	args := m.Called(ctx, role)
+
 	return args.Error(0)
 }
 
 func (m *MockIdentityRepo) DeleteRole(ctx context.Context, id string) error {
 	args := m.Called(ctx, id)
+
 	return args.Error(0)
 }
 
@@ -194,6 +207,7 @@ func (m *MockIdentityRepo) GetRoleByID(ctx context.Context, id string) (*domain.
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
+
 	return args.Get(0).(*domain.AdminRole), args.Error(1)
 }
 
@@ -202,6 +216,7 @@ func (m *MockIdentityRepo) GetRoleByName(ctx context.Context, name string) (*dom
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
+
 	return args.Get(0).(*domain.AdminRole), args.Error(1)
 }
 
@@ -210,11 +225,13 @@ func (m *MockIdentityRepo) ListRoles(ctx context.Context) ([]domain.AdminRole, e
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
+
 	return args.Get(0).([]domain.AdminRole), args.Error(1)
 }
 
 func (m *MockIdentityRepo) CreateSession(ctx context.Context, session *domain.AdminSession) error {
 	args := m.Called(ctx, session)
+
 	return args.Error(0)
 }
 
@@ -223,6 +240,7 @@ func (m *MockIdentityRepo) GetSessionByID(ctx context.Context, id string) (*doma
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
+
 	return args.Get(0).(*domain.AdminSession), args.Error(1)
 }
 
@@ -231,31 +249,37 @@ func (m *MockIdentityRepo) GetSessionByRefreshTokenHash(ctx context.Context, has
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
+
 	return args.Get(0).(*domain.AdminSession), args.Error(1)
 }
 
 func (m *MockIdentityRepo) UpdateSessionRefreshHash(ctx context.Context, id, hash string) error {
 	args := m.Called(ctx, id, hash)
+
 	return args.Error(0)
 }
 
 func (m *MockIdentityRepo) RevokeSession(ctx context.Context, id string) error {
 	args := m.Called(ctx, id)
+
 	return args.Error(0)
 }
 
 func (m *MockIdentityRepo) RevokeUserSessions(ctx context.Context, userID string) error {
 	args := m.Called(ctx, userID)
+
 	return args.Error(0)
 }
 
 func (m *MockIdentityRepo) CreateIdentityProvider(ctx context.Context, provider *domain.AdminIdentityProvider) error {
 	args := m.Called(ctx, provider)
+
 	return args.Error(0)
 }
 
 func (m *MockIdentityRepo) UpdateIdentityProvider(ctx context.Context, provider *domain.AdminIdentityProvider) error {
 	args := m.Called(ctx, provider)
+
 	return args.Error(0)
 }
 
@@ -264,6 +288,7 @@ func (m *MockIdentityRepo) GetIdentityProviderByID(ctx context.Context, id strin
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
+
 	return args.Get(0).(*domain.AdminIdentityProvider), args.Error(1)
 }
 
@@ -272,6 +297,7 @@ func (m *MockIdentityRepo) GetIdentityProviderByName(ctx context.Context, name s
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
+
 	return args.Get(0).(*domain.AdminIdentityProvider), args.Error(1)
 }
 
@@ -280,11 +306,13 @@ func (m *MockIdentityRepo) ListIdentityProviders(ctx context.Context) ([]domain.
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
+
 	return args.Get(0).([]domain.AdminIdentityProvider), args.Error(1)
 }
 
 func (m *MockIdentityRepo) DisableIdentityProvider(ctx context.Context, id string) error {
 	args := m.Called(ctx, id)
+
 	return args.Error(0)
 }
 
@@ -294,6 +322,7 @@ type MockManagementAuditRepo struct {
 
 func (m *MockManagementAuditRepo) Create(ctx context.Context, event *domain.ManagementAuditEvent) error {
 	args := m.Called(ctx, event)
+
 	return args.Error(0)
 }
 
@@ -302,6 +331,7 @@ func (m *MockManagementAuditRepo) GetEventByID(ctx context.Context, id int64) (*
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
+
 	return args.Get(0).(*domain.ManagementAuditEvent), args.Error(1)
 }
 
@@ -310,6 +340,7 @@ func (m *MockManagementAuditRepo) ListEvents(ctx context.Context, filter domain.
 	if args.Get(0) == nil {
 		return nil, 0, args.Error(2)
 	}
+
 	return args.Get(0).([]*domain.ManagementAuditEvent), args.Int(1), args.Error(2)
 }
 
@@ -318,5 +349,6 @@ func (m *MockManagementAuditRepo) ListRequests(ctx context.Context, filter domai
 	if args.Get(0) == nil {
 		return nil, 0, args.Error(2)
 	}
+
 	return args.Get(0).([]*domain.ManagementAuditRequest), args.Int(1), args.Error(2)
 }
