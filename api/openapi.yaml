@@ -426,6 +426,182 @@ paths:
         '500':
           $ref: '#/components/responses/ErrorResponse'
 
+  /management/audit/events:
+    get:
+      tags:
+        - audit
+      summary: List Audit Events
+      operationId: listAuditEvents
+      description: "Retrieves a paginated list of management audit events."
+      parameters:
+        - name: page
+          in: query
+          description: "Page number (1-based)."
+          required: false
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          description: "Number of events to retrieve."
+          required: false
+          schema:
+            type: integer
+            default: 20
+            maximum: 500
+        - name: start_date
+          in: query
+          description: "Start date (RFC3339)."
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: end_date
+          in: query
+          description: "End date (RFC3339)."
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: action
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: actor_id
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: "Paginated List of Audit Events"
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /management/audit/events/{id}:
+    get:
+      tags:
+        - audit
+      summary: Get Audit Event
+      operationId: getAuditEvent
+      description: "Retrieves an audit event by ID."
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: "Audit Event Details"
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /management/audit/requests:
+    get:
+      tags:
+        - audit
+      summary: List Audit Requests
+      operationId: listAuditRequests
+      description: "Retrieves a paginated list of management audit requests."
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+            maximum: 500
+        - name: start_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: end_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: actor_id
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: "Paginated List of Audit Requests"
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /management/audit/export:
+    get:
+      tags:
+        - audit
+      summary: Export Audit Events
+      operationId: exportAuditEvents
+      description: "Exports audit events in CSV or NDJSON format."
+      parameters:
+        - name: start_date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - name: end_date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - name: format
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [csv, ndjson]
+            default: csv
+      responses:
+        '200':
+          description: "Export File Download"
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+            application/x-ndjson:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+
   /management/endpoints:
     get:
       tags:
