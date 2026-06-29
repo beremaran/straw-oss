@@ -107,6 +107,7 @@ func (s *Server) registerRoutes() {
 	apiKeyTokenRepo := postgres.NewApiKeyTokenRepository(s.client)
 	routingRuleRepo := postgres.NewRoutingRuleRepository(s.client)
 	fingerprintRepo := postgres.NewFingerprintRepository(s.client)
+	identityRepo := postgres.NewIdentityRepository(s.client)
 	usageRepo := postgres.NewUsageRepository(s.client)
 	var auditRepo domain.ManagementAuditRepository
 	if s.client != nil {
@@ -121,11 +122,10 @@ func (s *Server) registerRoutes() {
 	apiKeyHandler := handlers.NewApiKeyHandler(apiKeyRepo, apiKeyTokenRepo, auditRepo, s.apiKeyAuth)
 	routingRuleHandler := handlers.NewRoutingRuleHandler(routingRuleRepo, ruleCache, auditRepo)
 	endpointHandler := handlers.NewEndpointHandler(s.healthService, auditRepo)
-	fingerprintHandler := handlers.NewFingerprintHandler(fingerprintRepo, s.broker, auditRepo)
+	fingerprintHandler := handlers.NewFingerprintHandler(fingerprintRepo, routingRuleRepo, identityRepo, s.broker, auditRepo)
 	usageHandler := handlers.NewUsageHandler(usageRepo)
 	authHandler := handlers.NewAuthHandler(s.authService)
 
-	identityRepo := postgres.NewIdentityRepository(s.client)
 	userHandler := handlers.NewUserHandler(identityRepo)
 	roleHandler := handlers.NewRoleHandler(identityRepo)
 	idpHandler := handlers.NewIdentityProviderHandler(identityRepo)
@@ -212,6 +212,8 @@ func (s *Server) registerEndpointRoutes(endpointHandler *handlers.EndpointHandle
 func (s *Server) registerFingerprintRoutes(fingerprintHandler *handlers.FingerprintHandler) {
 	s.management("GET /management/fingerprints", middleware.PermissionFingerprintsRead, fingerprintHandler.HandleListPresets)
 	s.management("POST /management/fingerprints", middleware.PermissionFingerprintsWrite, fingerprintHandler.HandleCreatePreset)
+	s.management("GET /management/fingerprints/{id}", middleware.PermissionFingerprintsRead, fingerprintHandler.HandleGetPreset)
+	s.management("DELETE /management/fingerprints/{id}", middleware.PermissionFingerprintsDelete, fingerprintHandler.HandleDeletePreset)
 	s.management("POST /management/fingerprints/broadcast", middleware.PermissionFingerprintsBroadcast, fingerprintHandler.HandleBroadcastPresets)
 }
 

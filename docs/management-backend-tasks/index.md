@@ -32,7 +32,7 @@ Update `tracker.md` when work starts, lands, or is blocked. Keep task files focu
 | [MB-007](tasks/MB-007-audit-viewer-apis.md) | 1 | done | Audit viewer APIs and export | MB-006 | audit:read, filters, csv, ndjson, export |
 | [MB-008](tasks/MB-008-api-key-token-history.md) | 2 | done | API key token history and auth lookup migration | MB-001 | api_key_tokens, token hash, grace, revoke, auth lookup |
 | [MB-009](tasks/MB-009-api-key-lifecycle-apis.md) | 2 | done | API key detail, update, rotate, reactivate, revoke APIs | MB-008 | api_keys:rotate, expires_at, raw_key, scopes |
-| [MB-010](tasks/MB-010-fingerprint-delete.md) | 2 | not-started | Fingerprint detail and protected delete | MB-001, MB-006 | fingerprints, delete, routing rule dependency, broadcast |
+| [MB-010](tasks/MB-010-fingerprint-delete.md) | 2 | done | Fingerprint detail and protected delete | MB-001, MB-006 | fingerprints, delete, routing rule dependency, broadcast |
 | [MB-011](tasks/MB-011-endpoint-registry-persistence.md) | 3 | not-started | Endpoint registry persistence and command schema | MB-001 | endpoints, desired_state, endpoint_commands, registry |
 | [MB-012](tasks/MB-012-endpoint-management-apis.md) | 3 | not-started | Endpoint registry, desired-state, and command APIs | MB-011 | endpoint detail, drain, undrain, restart, commands |
 | [MB-013](tasks/MB-013-endpoint-control-plane.md) | 3 | not-started | Broker endpoint control plane and worker command subscriber | MB-011, MB-012 | endpoint_control, ack, restart, worker subscriber |

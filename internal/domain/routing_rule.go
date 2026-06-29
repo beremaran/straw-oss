@@ -61,6 +61,12 @@ type ABVariant struct {
 	Weight int `json:"weight"`
 }
 
+type RoutingRuleReference struct {
+	ID string `json:"id"`
+
+	Name string `json:"name"`
+}
+
 type RequestFilter struct {
 	BlockContentTypes []string `json:"block_content_types,omitempty"`
 

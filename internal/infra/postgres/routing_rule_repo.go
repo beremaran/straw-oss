@@ -139,6 +139,67 @@ func (r *RoutingRuleRepository) GetActiveRules(ctx context.Context) ([]domain.Ro
 	return rules, nil
 }
 
+func (r *RoutingRuleRepository) ListActiveRulesReferencingFingerprintPreset(ctx context.Context, presetID string) ([]domain.RoutingRuleReference, error) {
+	ctx, span := r.tracer.Start(ctx, "db.query", trace.WithAttributes(
+		attribute.String("db.system", "postgresql"),
+		attribute.String("db.operation", "select"),
+		attribute.String("db.table", "routing_rules"),
+		attribute.String("fingerprint_preset", presetID),
+	))
+	defer span.End()
+
+	query := `
+		SELECT id, name
+		FROM routing_rules
+		WHERE is_active = true
+			AND (
+				config->>'fingerprint_preset' = $1
+				OR EXISTS (
+					SELECT 1
+					FROM jsonb_array_elements(
+						CASE
+							WHEN jsonb_typeof(config->'fingerprint_ab_test'->'variants') = 'array'
+							THEN config->'fingerprint_ab_test'->'variants'
+							ELSE '[]'::jsonb
+						END
+					) AS variant
+					WHERE variant->>'fingerprint' = $1
+				)
+			)
+		ORDER BY priority DESC, created_at DESC
+	`
+
+	var rows pgx.Rows
+	var err error
+	err = r.client.Execute(func() error {
+		rows, err = r.client.Pool.Query(ctx, query, presetID)
+
+		return err
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to query referencing routing rules: %w", err)
+	}
+	defer rows.Close()
+
+	var refs []domain.RoutingRuleReference
+	for rows.Next() {
+		var ref domain.RoutingRuleReference
+		err := rows.Scan(&ref.ID, &ref.Name)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan referencing routing rule: %w", err)
+		}
+
+		refs = append(refs, ref)
+	}
+
+	err = rows.Err()
+	if err != nil {
+		return nil, fmt.Errorf("error iterating referencing routing rules: %w", err)
+	}
+
+	return refs, nil
+}
+
 func (r *RoutingRuleRepository) CreateRule(ctx context.Context, rule *domain.RoutingRule) error {
 	ctx, span := r.tracer.Start(ctx, "db.query", trace.WithAttributes(
 		attribute.String("db.system", "postgresql"),

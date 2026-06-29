@@ -11,7 +11,7 @@ Status values: `not-started`, `in-progress`, `blocked`, `done`.
 | Current task | none |
 | Current owner | unassigned |
 | Last updated | 2026-06-29 |
-| Notes | MB-009 completed; next unblocked backend task is MB-010. |
+| Notes | MB-010 completed; next unblocked backend task is MB-011. |
 
 ## Phase 1: Identity And Audit Foundation
 
@@ -31,7 +31,7 @@ Status values: `not-started`, `in-progress`, `blocked`, `done`.
 | --- | --- | --- | --- |
 | [x] | [MB-008](tasks/MB-008-api-key-token-history.md) | done | API key token history and auth lookup migration |
 | [x] | [MB-009](tasks/MB-009-api-key-lifecycle-apis.md) | done | API key detail, update, rotate, reactivate, revoke APIs |
-| [ ] | [MB-010](tasks/MB-010-fingerprint-delete.md) | not-started | Fingerprint detail and protected delete |
+| [x] | [MB-010](tasks/MB-010-fingerprint-delete.md) | done | Fingerprint detail and protected delete |
 
 ## Phase 3: Endpoint Control Plane
 

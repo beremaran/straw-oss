@@ -203,7 +203,7 @@ make lint
 
 ## 🔌 4. API Clients & Code Generation
 
-Straw Proxy publishes a comprehensive **OpenAPI 3.0.3 specification** located at [api/openapi.yaml](../api/openapi.yaml). This specification can be used to generate clean API client SDKs for any programming language (Go, TypeScript, Python, Java, etc.) to communicate with the Client and Management APIs.
+Straw Proxy publishes a comprehensive **OpenAPI 3.0.3 specification** located at `api/openapi.yaml`. This specification can be used to generate clean API client SDKs for any programming language (Go, TypeScript, Python, Java, etc.) to communicate with the Client and Management APIs.
 
 ### Validate the OpenAPI Specification
 To validate the OpenAPI schema format, run:
@@ -214,7 +214,7 @@ This runs the `@redocly/cli` linter on the spec file.
 
 ### Specification Drift Tests
 To ensure the OpenAPI specification never drifts out of sync with the actual Go DTO structs used by the server runtime, we have a contract test suite:
-* File: [openapi_drift_test.go](../test/contract/openapi_drift_test.go)
+* File: `test/contract/openapi_drift_test.go`
 
 This test suite loads `api/openapi.yaml`, normalizes its schema components, and validates actual JSON-marshaled Go DTO instances against the corresponding schema definitions using `gojsonschema`.
 

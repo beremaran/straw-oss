@@ -849,6 +849,87 @@ paths:
         '500':
           $ref: '#/components/responses/ErrorResponse'
 
+  /management/fingerprints/{id}:
+    get:
+      tags:
+        - fingerprints
+      summary: Get Fingerprint Preset
+      operationId: getFingerprint
+      description: "Returns one browser profile fingerprint preset."
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: "Preset detail"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FingerprintResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+
+    delete:
+      tags:
+        - fingerprints
+      summary: Delete Fingerprint Preset
+      operationId: deleteFingerprint
+      description: "Deletes a preset when no active routing rules reference it. Owner force delete can deactivate referencing rules."
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: force
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+        - name: deactivate_referencing_rules
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+        - name: broadcast
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: "Preset deleted"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FingerprintDeleteResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          description: "Preset is referenced by active routing rules"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FingerprintDeleteConflictResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+
   /management/fingerprints/broadcast:
     post:
       tags:
@@ -1798,6 +1879,45 @@ components:
         updated_at:
           type: string
           format: date-time
+
+    FingerprintDeleteResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        deleted:
+          type: boolean
+        broadcast_requested:
+          type: boolean
+
+    RoutingRuleReferenceResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+
+    FingerprintDeleteConflictDetails:
+      type: object
+      properties:
+        referencing_rules:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoutingRuleReferenceResponse'
+
+    FingerprintDeleteConflictResponse:
+      type: object
+      required:
+        - error
+        - details
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+        details:
+          $ref: '#/components/schemas/FingerprintDeleteConflictDetails'
 
     ListFingerprintsResponse:
       type: array

@@ -131,6 +131,15 @@ func (m *MockRoutingRuleRepo) GetRuleByID(ctx context.Context, id string) (*doma
 	return args.Get(0).(*domain.RoutingRule), args.Error(1)
 }
 
+func (m *MockRoutingRuleRepo) ListActiveRulesReferencingFingerprintPreset(ctx context.Context, presetID string) ([]domain.RoutingRuleReference, error) {
+	args := m.Called(ctx, presetID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+
+	return args.Get(0).([]domain.RoutingRuleReference), args.Error(1)
+}
+
 func (m *MockRoutingRuleRepo) UpdateRule(ctx context.Context, rule *domain.RoutingRule) error {
 	args := m.Called(ctx, rule)
 
