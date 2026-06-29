@@ -1,6 +1,6 @@
 # MB-003: Local Sessions And Bootstrap Owner
 
-Status: not-started
+Status: done
 Phase: 1
 Depends on: MB-001, MB-002
 Search tags: login, refresh, logout, bootstrap, password hash, session rotation
@@ -29,15 +29,15 @@ Add local email/password login, access-token issuance, refresh-token rotation, l
 
 ## Implementation Tasks
 
-- [ ] Add request and response DTOs for auth endpoints.
-- [ ] Add password verification and access-token signing.
-- [ ] Add refresh-token creation, hashing, rotation, expiry, and reuse detection.
-- [ ] Add bootstrap route guarded by the legacy management token and owner-existence check.
-- [ ] Add tests for login failure, successful login, refresh rotation, logout revocation, and bootstrap disablement.
+- [x] Add request and response DTOs for auth endpoints.
+- [x] Add password verification and access-token signing.
+- [x] Add refresh-token creation, hashing, rotation, expiry, and reuse detection.
+- [x] Add bootstrap route guarded by the legacy management token and owner-existence check.
+- [x] Add tests for login failure, successful login, refresh rotation, logout revocation, and bootstrap disablement.
 
 ## Done Criteria
 
-- [ ] Admin users can authenticate without the legacy management token.
-- [ ] Access tokens expire and include enough actor/session data for RBAC.
-- [ ] Refresh tokens rotate and old-token reuse revokes the session family.
-- [ ] Bootstrap is unavailable after an active owner exists.
+- [x] Admin users can authenticate without the legacy management token.
+- [x] Access tokens expire and include enough actor/session data for RBAC.
+- [x] Refresh tokens rotate and old-token reuse revokes the session family.
+- [x] Bootstrap is unavailable after an active owner exists.
