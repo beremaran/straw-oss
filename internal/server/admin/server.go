@@ -221,7 +221,8 @@ func (s *Server) registerEndpointRoutes(endpointHandler *handlers.EndpointHandle
 	s.management("POST /management/endpoints/{id}/restart", middleware.PermissionEndpointsControl, endpointHandler.HandleRestartEndpoint)
 	s.management("GET /management/endpoints/{id}/logs", middleware.PermissionEndpointsLogs, endpointHandler.HandleGetEndpointLogs)
 	s.management("GET /management/endpoints/{id}/logs/stream", middleware.PermissionEndpointsLogs, endpointHandler.HandleStreamEndpointLogs)
-	s.management("GET /management/endpoints/{segment3}/{segment4}", middleware.PermissionEndpointsRead, endpointHandler.HandleCommandDispatch)
+	s.management("GET /management/endpoints/{id}/commands", middleware.PermissionEndpointsRead, endpointHandler.HandleListEndpointCommands)
+	s.management("GET /management/commands/{id}", middleware.PermissionEndpointsRead, endpointHandler.HandleGetEndpointCommand)
 }
 
 func (s *Server) registerFingerprintRoutes(fingerprintHandler *handlers.FingerprintHandler) {

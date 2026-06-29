@@ -1031,7 +1031,7 @@ paths:
         '500':
           $ref: '#/components/responses/ErrorResponse'
 
-  /management/endpoints/commands/{command_id}:
+  /management/commands/{id}:
     get:
       tags:
         - endpoints
@@ -1039,7 +1039,7 @@ paths:
       operationId: getEndpointCommand
       description: "Returns the details and status of a single control command."
       parameters:
-        - name: command_id
+        - name: id
           in: path
           required: true
           schema:
@@ -1051,6 +1051,113 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/EndpointCommandResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /management/endpoints/{id}/logs:
+    get:
+      tags:
+        - endpoints
+      summary: Query Endpoint Logs
+      operationId: getEndpointLogs
+      description: "Returns cursor-paginated log entries for an endpoint with optional filters."
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: start
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: "Filter logs observed at or after this RFC3339 timestamp."
+        - name: end
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: "Filter logs observed at or before this RFC3339 timestamp."
+        - name: level
+          in: query
+          required: false
+          schema:
+            type: string
+          description: "Filter by log level (e.g., DEBUG, INFO, WARN, ERROR)."
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+          description: "Free-text search against log messages."
+        - name: trace_id
+          in: query
+          required: false
+          schema:
+            type: string
+          description: "Filter by trace ID."
+        - name: request_id
+          in: query
+          required: false
+          schema:
+            type: string
+          description: "Filter by request ID."
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+          description: "Cursor for pagination (log entry ID)."
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 50
+            maximum: 500
+          description: "Maximum number of logs to return (capped at 500)."
+      responses:
+        '200':
+          description: "Paginated log entries"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EndpointLogListResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /management/endpoints/{id}/logs/stream:
+    get:
+      tags:
+        - endpoints
+      summary: Stream Endpoint Logs (SSE)
+      operationId: streamEndpointLogs
+      description: "Streams live log entries for an endpoint using Server-Sent Events."
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: "SSE stream of log entries"
+          content:
+            text/event-stream:
+              schema:
+                type: string
         '401':
           $ref: '#/components/responses/ErrorResponse'
         '404':
@@ -2254,6 +2361,41 @@ components:
           type: integer
         limit:
           type: integer
+
+    EndpointLogDTO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        endpoint_id:
+          type: string
+        observed_at:
+          type: string
+          format: date-time
+        level:
+          type: string
+        message:
+          type: string
+        attrs:
+          type: object
+        trace_id:
+          type: string
+        request_id:
+          type: string
+
+    EndpointLogListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/EndpointLogDTO'
+        next_cursor:
+          type: integer
+          format: int64
+        has_more:
+          type: boolean
 
     EndpointListResponse:
       type: object
