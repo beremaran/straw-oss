@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/beremaran/straw/internal/domain"
 	"github.com/jackc/pgx/v5"
@@ -53,9 +54,10 @@ func (r *ApiKeyRepository) GetByID(ctx context.Context, id string) (*domain.ApiK
 
 func (r *ApiKeyRepository) GetByTokenHash(ctx context.Context, tokenHash string) (*domain.ApiKey, error) {
 	query := `
-		SELECT id, token_hash, name, scopes, rate_limit_override, is_active, created_at, expires_at
-		FROM api_keys
-		WHERE token_hash = $1
+		SELECT k.id, t.token_hash, k.name, k.scopes, k.rate_limit_override, k.is_active, k.created_at, k.expires_at
+		FROM api_keys k
+		JOIN api_key_tokens t ON t.api_key_id = k.id
+		WHERE t.token_hash = $1
 	`
 
 	var k domain.ApiKey
@@ -133,6 +135,41 @@ func (r *ApiKeyRepository) Create(ctx context.Context, key *domain.ApiKey) error
 	return nil
 }
 
+func (r *ApiKeyRepository) Update(ctx context.Context, key *domain.ApiKey) error {
+	query := `
+		UPDATE api_keys
+		SET name = $2,
+			scopes = $3,
+			rate_limit_override = $4,
+			is_active = $5,
+			expires_at = $6
+		WHERE id = $1
+	`
+
+	var rows int64
+	err := r.client.Execute(func() error {
+		res, err := r.client.Pool.Exec(ctx, query,
+			key.ID,
+			key.Name,
+			key.Scopes,
+			key.RateLimitOverride,
+			key.IsActive,
+			key.ExpiresAt,
+		)
+		rows = res.RowsAffected()
+
+		return err
+	})
+	if err != nil {
+		return fmt.Errorf("failed to update api key: %w", err)
+	}
+	if rows == 0 {
+		return ErrApiKeyNotFound
+	}
+
+	return nil
+}
+
 func (r *ApiKeyRepository) List(ctx context.Context, limit, offset int) ([]domain.ApiKey, int, error) {
 	var total int
 	countQuery := `SELECT COUNT(*) FROM api_keys`
@@ -193,20 +230,37 @@ func (r *ApiKeyRepository) Exists(ctx context.Context) (bool, error) {
 }
 
 func (r *ApiKeyRepository) Revoke(ctx context.Context, id string) error {
-	query := `
-		UPDATE api_keys 
-		SET is_active = false 
-		WHERE id = $1
-	`
+	now := time.Now().UTC()
 
-	res, err := r.client.Pool.Exec(ctx, query, id)
-	if err != nil {
-		return fmt.Errorf("failed to revoke api key: %w", err)
-	}
+	return r.client.Execute(func() error {
+		tx, err := r.client.Pool.Begin(ctx)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = tx.Rollback(ctx) }()
 
-	if res.RowsAffected() == 0 {
-		return ErrApiKeyNotFound
-	}
+		res, err := tx.Exec(ctx, `
+			UPDATE api_keys
+			SET is_active = false
+			WHERE id = $1
+		`, id)
+		if err != nil {
+			return fmt.Errorf("failed to revoke api key: %w", err)
+		}
+		if res.RowsAffected() == 0 {
+			return ErrApiKeyNotFound
+		}
 
-	return nil
+		_, err = tx.Exec(ctx, `
+			UPDATE api_key_tokens
+			SET status = $2,
+				expires_at = $3
+			WHERE api_key_id = $1 AND status <> $2
+		`, id, domain.TokenStatusRevoked, now)
+		if err != nil {
+			return fmt.Errorf("failed to revoke api key tokens: %w", err)
+		}
+
+		return tx.Commit(ctx)
+	})
 }

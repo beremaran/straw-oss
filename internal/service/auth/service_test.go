@@ -9,6 +9,7 @@ import (
 	"github.com/beremaran/straw/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 type MockRepo struct {
@@ -34,6 +35,12 @@ func (m *MockRepo) GetByTokenHash(ctx context.Context, tokenHash string) (*domai
 }
 
 func (m *MockRepo) Create(ctx context.Context, key *domain.ApiKey) error {
+	args := m.Called(ctx, key)
+
+	return args.Error(0)
+}
+
+func (m *MockRepo) Update(ctx context.Context, key *domain.ApiKey) error {
 	args := m.Called(ctx, key)
 
 	return args.Error(0)
@@ -88,6 +95,12 @@ func (m *MockTokenRepo) ListByApiKeyID(ctx context.Context, apiKeyID string) ([]
 	return args.Get(0).([]domain.ApiKeyToken), args.Error(1)
 }
 
+func (m *MockTokenRepo) Rotate(ctx context.Context, apiKeyID string, token *domain.ApiKeyToken, graceUntil *time.Time, revokeExisting bool) error {
+	args := m.Called(ctx, apiKeyID, token, graceUntil, revokeExisting)
+
+	return args.Error(0)
+}
+
 func (m *MockTokenRepo) UpdateStatus(ctx context.Context, id string, status domain.TokenStatus) error {
 	args := m.Called(ctx, id, status)
 
@@ -105,7 +118,7 @@ func TestAuthService_ValidateKey(t *testing.T) {
 		TokenHash: testTokenHash,
 		IsActive:  true,
 	}
-	
+
 	validToken := &domain.ApiKeyToken{
 		ID:        "token-id-123",
 		ApiKeyID:  "key-id-123",
@@ -180,7 +193,7 @@ func TestAuthService_ValidateKey(t *testing.T) {
 			TokenHash: inactiveHash,
 			IsActive:  false,
 		}
-		
+
 		inactiveToken := &domain.ApiKeyToken{
 			ID:        "token-id-inactive",
 			ApiKeyID:  "key-id-inactive",
@@ -258,7 +271,7 @@ func TestAuthService_ValidateKey(t *testing.T) {
 			IsActive:  true,
 			ExpiresAt: &expiredTime,
 		}
-		
+
 		expiredToken := &domain.ApiKeyToken{
 			ID:        "token-id-expired",
 			ApiKeyID:  "key-id-expired",
@@ -403,7 +416,17 @@ func TestAuthService_InvalidateKeyByID(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("InvalidateKeyByID Returns Nil", func(t *testing.T) {
+		tokenHash := sha256Hash("token-to-invalidate")
+		require.NoError(t, cache.SetKey(ctx, tokenHash, &domain.ApiKey{ID: "test-id"}))
+		mockTokenRepo.On("ListByApiKeyID", ctx, "test-id").Return([]domain.ApiKeyToken{
+			{ID: "token-1", ApiKeyID: "test-id", TokenHash: tokenHash, Status: domain.TokenStatusActive},
+		}, nil).Once()
+
 		err := service.InvalidateKeyByID(ctx, "test-id")
 		assert.NoError(t, err)
+
+		cached, cacheErr := cache.GetKey(ctx, tokenHash)
+		assert.NoError(t, cacheErr)
+		assert.Nil(t, cached)
 	})
 }

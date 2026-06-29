@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"time"
 
 	"github.com/beremaran/straw/internal/domain"
 	"github.com/stretchr/testify/mock"
@@ -21,6 +22,12 @@ func (m *MockApiKeyRepo) GetByID(ctx context.Context, id string) (*domain.ApiKey
 }
 
 func (m *MockApiKeyRepo) Create(ctx context.Context, key *domain.ApiKey) error {
+	args := m.Called(ctx, key)
+
+	return args.Error(0)
+}
+
+func (m *MockApiKeyRepo) Update(ctx context.Context, key *domain.ApiKey) error {
 	args := m.Called(ctx, key)
 
 	return args.Error(0)
@@ -54,6 +61,46 @@ func (m *MockApiKeyRepo) GetByTokenHash(ctx context.Context, tokenHash string) (
 	}
 
 	return args.Get(0).(*domain.ApiKey), args.Error(1)
+}
+
+type MockApiKeyTokenRepo struct {
+	mock.Mock
+}
+
+func (m *MockApiKeyTokenRepo) GetByTokenHash(ctx context.Context, tokenHash string) (*domain.ApiKeyToken, error) {
+	args := m.Called(ctx, tokenHash)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+
+	return args.Get(0).(*domain.ApiKeyToken), args.Error(1)
+}
+
+func (m *MockApiKeyTokenRepo) Create(ctx context.Context, token *domain.ApiKeyToken) error {
+	args := m.Called(ctx, token)
+
+	return args.Error(0)
+}
+
+func (m *MockApiKeyTokenRepo) ListByApiKeyID(ctx context.Context, apiKeyID string) ([]domain.ApiKeyToken, error) {
+	args := m.Called(ctx, apiKeyID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+
+	return args.Get(0).([]domain.ApiKeyToken), args.Error(1)
+}
+
+func (m *MockApiKeyTokenRepo) Rotate(ctx context.Context, apiKeyID string, token *domain.ApiKeyToken, graceUntil *time.Time, revokeExisting bool) error {
+	args := m.Called(ctx, apiKeyID, token, graceUntil, revokeExisting)
+
+	return args.Error(0)
+}
+
+func (m *MockApiKeyTokenRepo) UpdateStatus(ctx context.Context, id string, status domain.TokenStatus) error {
+	args := m.Called(ctx, id, status)
+
+	return args.Error(0)
 }
 
 type MockRoutingRuleRepo struct {

@@ -283,6 +283,31 @@ func FromApiKeys(keys []domain.ApiKey) []ApiKeyResponse {
 	return result
 }
 
+func FromApiKeyToken(token *domain.ApiKeyToken) *ApiKeyTokenResponse {
+	if token == nil {
+		return nil
+	}
+
+	return &ApiKeyTokenResponse{
+		ID:        token.ID,
+		Status:    string(token.Status),
+		ExpiresAt: token.ExpiresAt,
+		CreatedAt: token.CreatedAt,
+	}
+}
+
+func FromApiKeyTokens(tokens []domain.ApiKeyToken) []ApiKeyTokenResponse {
+	result := make([]ApiKeyTokenResponse, len(tokens))
+	for i, token := range tokens {
+		resp := FromApiKeyToken(&token)
+		if resp != nil {
+			result[i] = *resp
+		}
+	}
+
+	return result
+}
+
 func (r *CreateFingerprintRequest) ToDomain() *domain.FingerprintPreset {
 	return &domain.FingerprintPreset{
 		ID:     r.ID,

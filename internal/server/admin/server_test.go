@@ -13,7 +13,7 @@ import (
 
 func TestServer_HealthCheck(t *testing.T) {
 	cfg := config.ServerConfig{ManagementPort: 8081}
-	s := New(cfg, nil, nil, nil, nil)
+	s := New(cfg, nil, nil, nil, nil, nil)
 
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/healthz", nil)
 	rec := httptest.NewRecorder()
@@ -29,7 +29,7 @@ func TestServer_AuthProtection(t *testing.T) {
 		ManagementPort:   8081,
 		ManagementAPIKey: "management-secret",
 	}
-	s := New(cfg, nil, nil, nil, nil)
+	s := New(cfg, nil, nil, nil, nil, nil)
 
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/management/some-resource", nil)
 	rec := httptest.NewRecorder()

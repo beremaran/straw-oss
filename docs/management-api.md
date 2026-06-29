@@ -76,6 +76,76 @@ Disables an API key immediately.
 * **URL**: `DELETE /management/api-keys/{id}`
 * **Response (Status 204 No Content)**: *(empty)*
 
+### Get API Key Detail
+Returns API key metadata plus token history metadata. Token hashes and raw secrets are never returned.
+
+* **URL**: `GET /management/api-keys/{id}`
+* **Response (Status 200 OK)**:
+  ```json
+  {
+    "id": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+    "name": "Production Crawler Key",
+    "scopes": ["target:*", "type:residential"],
+    "rate_limit_override": 100,
+    "is_active": true,
+    "tokens": [
+      {
+        "id": "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12",
+        "status": "active",
+        "created_at": "2026-06-29T12:00:00Z"
+      }
+    ]
+  }
+  ```
+
+### Update API Key
+Updates API key metadata under the same logical key ID. All fields are optional. Set `expires_at` to `""` or `null` to clear it.
+
+* **URL**: `PATCH /management/api-keys/{id}`
+* **Request Body**:
+  ```json
+  {
+    "name": "Production Crawler Key",
+    "scopes": ["target:*", "type:residential"],
+    "rate_limit_override": 120,
+    "expires_at": "2026-12-31T23:59:59Z",
+    "is_active": true
+  }
+  ```
+
+### Rotate API Key
+Generates a new token secret for the same logical key ID. The returned `raw_key` is shown once. Previous accepted tokens are either revoked immediately or placed into grace until the supplied deadline.
+
+* **URL**: `POST /management/api-keys/{id}/rotate`
+* **Request Body**:
+  ```json
+  {
+    "grace_period": "24h",
+    "revoke_existing": false
+  }
+  ```
+* **Response (Status 200 OK)**:
+  ```json
+  {
+    "api_key_id": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+    "raw_key": "4cf5df...3a2f8c",
+    "token_id": "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12",
+    "previous_tokens_grace_until": "2026-06-30T12:00:00Z"
+  }
+  ```
+
+### Reactivate API Key
+Reactivates a logical API key if it has not expired.
+
+* **URL**: `POST /management/api-keys/{id}/reactivate`
+* **Response (Status 200 OK)**: Returns the same payload as `GET /management/api-keys/{id}`.
+
+### Revoke API Key (Explicit Route)
+Revokes the logical key and all stored token secrets. `DELETE /management/api-keys/{id}` remains as the compatibility alias.
+
+* **URL**: `POST /management/api-keys/{id}/revoke`
+* **Response (Status 204 No Content)**: *(empty)*
+
 ---
 
 ## 🗺️ Routing Rules Management

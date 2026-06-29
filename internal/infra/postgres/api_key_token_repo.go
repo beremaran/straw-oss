@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/beremaran/straw/internal/domain"
 	"github.com/jackc/pgx/v5"
@@ -101,6 +102,53 @@ func (r *ApiKeyTokenRepository) ListByApiKeyID(ctx context.Context, apiKeyID str
 	}
 
 	return tokens, nil
+}
+
+func (r *ApiKeyTokenRepository) Rotate(ctx context.Context, apiKeyID string, token *domain.ApiKeyToken, graceUntil *time.Time, revokeExisting bool) error {
+	return r.client.Execute(func() error {
+		tx, err := r.client.Pool.Begin(ctx)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = tx.Rollback(ctx) }()
+
+		_, err = tx.Exec(ctx, `
+			INSERT INTO api_key_tokens (id, api_key_id, token_hash, status, expires_at, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6)
+		`,
+			token.ID,
+			token.ApiKeyID,
+			token.TokenHash,
+			token.Status,
+			token.ExpiresAt,
+			token.CreatedAt,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to create rotated api key token: %w", err)
+		}
+
+		nextStatus := domain.TokenStatusRevoked
+		var nextExpiresAt *time.Time
+		if graceUntil != nil && !revokeExisting {
+			nextStatus = domain.TokenStatusGrace
+			nextExpiresAt = graceUntil
+		} else {
+			now := time.Now().UTC()
+			nextExpiresAt = &now
+		}
+
+		_, err = tx.Exec(ctx, `
+			UPDATE api_key_tokens
+			SET status = $2,
+				expires_at = $3
+			WHERE api_key_id = $1 AND id <> $4 AND status <> $5
+		`, apiKeyID, nextStatus, nextExpiresAt, token.ID, domain.TokenStatusRevoked)
+		if err != nil {
+			return fmt.Errorf("failed to update previous api key tokens: %w", err)
+		}
+
+		return tx.Commit(ctx)
+	})
 }
 
 func (r *ApiKeyTokenRepository) UpdateStatus(ctx context.Context, id string, status domain.TokenStatus) error {
