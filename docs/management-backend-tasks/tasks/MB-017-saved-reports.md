@@ -1,6 +1,6 @@
 # MB-017: Saved Reports And Report Runs
 
-Status: not-started
+Status: done
 Phase: 5
 Depends on: MB-001, MB-006
 Search tags: saved_reports, report_runs, artifacts, download, `reports:run`
@@ -28,15 +28,15 @@ Persist saved report definitions and allow users to run and download reports.
 
 ## Implementation Tasks
 
-- [ ] Add migrations and report domain models.
-- [ ] Add saved report and run repositories.
-- [ ] Add report generation for usage summary, billing estimate, API key inventory, endpoint health, and audit events.
-- [ ] Add local artifact storage with max range and row-count checks.
-- [ ] Add handlers and tests for CRUD, run, history, detail, and download.
+- [x] Add migrations and report domain models.
+- [x] Add saved report and run repositories.
+- [x] Add report generation for usage summary, billing estimate, API key inventory, endpoint health, and audit events.
+- [x] Add local artifact storage with max range and row-count checks.
+- [x] Add handlers and tests for CRUD, run, history, detail, and download.
 
 ## Done Criteria
 
-- [ ] Saved reports can be created, updated, listed, fetched, and deleted.
-- [ ] Reports can run immediately and produce downloadable artifacts.
-- [ ] Report generation enforces maximum date ranges and row counts.
-- [ ] Mutations and report runs are audited.
+- [x] Saved reports can be created, updated, listed, fetched, and deleted.
+- [x] Reports can run immediately and produce downloadable artifacts.
+- [x] Report generation enforces maximum date ranges and row counts.
+- [x] Mutations and report runs are audited.

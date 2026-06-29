@@ -49,7 +49,16 @@ func (s *CommandService) Start(ctx context.Context) error {
 		return nil
 	}
 
-	ctx, s.cancel = context.WithCancel(ctx)
+	ctx, cancel := context.WithCancel(ctx)
+
+	err := s.broker.Subscribe(ctx, "endpoint.control.ack.>", s.handleAck, broker.WithTransient())
+	if err != nil {
+		cancel()
+
+		return fmt.Errorf("subscribe to command acks: %w", err)
+	}
+
+	s.cancel = cancel
 	s.done = make(chan struct{})
 	s.running = true
 
@@ -98,13 +107,6 @@ func (s *CommandService) IsRunning() bool {
 
 func (s *CommandService) run(ctx context.Context) {
 	defer close(s.done)
-
-	err := s.broker.Subscribe(ctx, "endpoint.control.ack.>", s.handleAck, broker.WithTransient())
-	if err != nil {
-		s.logger.Error("failed to subscribe to command acks", "error", err)
-
-		return
-	}
 
 	ticker := time.NewTicker(commandTickerInterval)
 	defer ticker.Stop()

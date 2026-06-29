@@ -24,6 +24,7 @@ const (
 	defaultIdleConnsPerHost          = 10
 	defaultIdleConnTimeout           = 90 * time.Second
 	defaultManagementRefreshTokenTTL = 7 * 24 * time.Hour
+	defaultReportArtifactDir         = "data/reports"
 )
 
 // NATSConfig holds NATS connection settings.
@@ -80,6 +81,7 @@ type ServerConfig struct {
 	MaxBodySize                   string
 	MaxConcurrentRequests         int
 	AllowPrivateIPs               bool
+	ReportArtifactDir             string
 }
 
 // EndpointConfig holds endpoint-specific configuration.
@@ -169,6 +171,7 @@ func LoadServerConfig() (*ServerConfig, error) {
 		MaxBodySize:                   getEnv("MAX_BODY_SIZE", "2M"),
 		MaxConcurrentRequests:         getEnvInt("MAX_CONCURRENT_REQUESTS", defaultMaxConcurrentRequests),
 		AllowPrivateIPs:               getEnvBool("ALLOW_PRIVATE_IPS", false),
+		ReportArtifactDir:             getEnv("REPORT_ARTIFACT_DIR", defaultReportArtifactDir),
 	}
 
 	err := validateServerConfig(cfg)

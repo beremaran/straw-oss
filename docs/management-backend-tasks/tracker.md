@@ -11,7 +11,7 @@ Status values: `not-started`, `in-progress`, `blocked`, `done`.
 | Current task | none |
 | Current owner | unassigned |
 | Last updated | 2026-06-30 |
-| Notes | MB-016 completed; next unblocked backend task is MB-017. |
+| Notes | MB-017 completed; next unblocked backend task is MB-018. |
 
 ## Phase 1: Identity And Audit Foundation
 
@@ -53,7 +53,7 @@ Status values: `not-started`, `in-progress`, `blocked`, `done`.
 
 | Done | ID | Status | Task |
 | --- | --- | --- | --- |
-| [ ] | [MB-017](tasks/MB-017-saved-reports.md) | not-started | Saved reports, report runs, and artifact download |
+| [x] | [MB-017](tasks/MB-017-saved-reports.md) | done | Saved reports, report runs, and artifact download |
 | [ ] | [MB-018](tasks/MB-018-report-scheduler.md) | not-started | Report scheduler and due-run worker |
 | [ ] | [MB-019](tasks/MB-019-notification-settings.md) | not-started | Notification channels and preferences |
 | [ ] | [MB-020](tasks/MB-020-alerting.md) | not-started | Alert rules, evaluator, events, and delivery |

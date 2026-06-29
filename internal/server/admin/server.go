@@ -129,6 +129,8 @@ func (s *Server) registerAllSubRoutes() {
 	identityRepo := postgres.NewIdentityRepository(s.client)
 	usageRepo := postgres.NewUsageRepository(s.client)
 	costMultiplierRepo := postgres.NewCostMultiplierRepository(s.client)
+	reportRepo := postgres.NewSavedReportRepository(s.client)
+	reportRunRepo := postgres.NewReportRunRepository(s.client)
 
 	var auditRepo domain.ManagementAuditRepository
 	if s.client != nil {
@@ -164,6 +166,7 @@ func (s *Server) registerAllSubRoutes() {
 	s.registerFingerprintRoutes(handlers.NewFingerprintHandler(fingerprintRepo, routingRuleRepo, identityRepo, s.broker, auditRepo))
 	s.registerUsageRoutes(handlers.NewUsageHandler(usageRepo, costMultiplierRepo))
 	s.registerCostMultiplierRoutes(handlers.NewCostMultiplierHandler(costMultiplierRepo, auditRepo))
+	s.registerReportRoutes(handlers.NewReportHandler(reportRepo, reportRunRepo, usageRepo, apiKeyRepo, endpointRepo, auditRepo, costMultiplierRepo, s.conf.ReportArtifactDir))
 
 	if s.redisClient != nil {
 		s.registerCacheRoutes(handlers.NewCacheHandler(s.redisClient, auditRepo))
@@ -266,6 +269,18 @@ func (s *Server) registerCostMultiplierRoutes(costMultiplierHandler *handlers.Co
 	s.management("GET /management/cost-multipliers/{id}", middleware.PermissionCostMultipliersRead, costMultiplierHandler.HandleGetCostMultiplier)
 	s.management("PUT /management/cost-multipliers/{id}", middleware.PermissionCostMultipliersWrite, costMultiplierHandler.HandleUpdateCostMultiplier)
 	s.management("DELETE /management/cost-multipliers/{id}", middleware.PermissionCostMultipliersWrite, costMultiplierHandler.HandleDeleteCostMultiplier)
+}
+
+func (s *Server) registerReportRoutes(reportHandler *handlers.ReportHandler) {
+	s.management("GET /management/reports", middleware.PermissionReportsRead, reportHandler.HandleListReports)
+	s.management("POST /management/reports", middleware.PermissionReportsWrite, reportHandler.HandleCreateReport)
+	s.management("GET /management/reports/{id}", middleware.PermissionReportsRead, reportHandler.HandleGetReport)
+	s.management("PATCH /management/reports/{id}", middleware.PermissionReportsWrite, reportHandler.HandleUpdateReport)
+	s.management("DELETE /management/reports/{id}", middleware.PermissionReportsWrite, reportHandler.HandleDeleteReport)
+	s.management("POST /management/reports/{id}/run", middleware.PermissionReportsRun, reportHandler.HandleRunReport)
+	s.management("GET /management/reports/{id}/runs", middleware.PermissionReportsRead, reportHandler.HandleListReportRuns)
+	s.management("GET /management/report-runs/{run_id}", middleware.PermissionReportsRead, reportHandler.HandleGetReportRun)
+	s.management("GET /management/report-runs/{run_id}/download", middleware.PermissionReportsRead, reportHandler.HandleDownloadReportRun)
 }
 
 func (s *Server) registerCacheRoutes(cacheHandler *handlers.CacheHandler) {

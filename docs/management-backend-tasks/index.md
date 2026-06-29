@@ -39,7 +39,7 @@ Update `tracker.md` when work starts, lands, or is blocked. Keep task files focu
 | [MB-014](tasks/MB-014-endpoint-logs.md) | 3 | done | Endpoint log ingestion, query, stream, and retention | MB-011, MB-013 | endpoint logs, sse, retention, cursor |
 | [MB-015](tasks/MB-015-cost-multiplier-management.md) | 4 | done | Cost multiplier repository and management APIs | MB-001, MB-006 | cost_multipliers, version, optimistic locking |
 | [MB-016](tasks/MB-016-billing-multiplier-integration.md) | 4 | done | Billing multiplier integration and pricing metadata | MB-015 | billing estimate, pricing_version, usage cost |
-| [MB-017](tasks/MB-017-saved-reports.md) | 5 | not-started | Saved reports, report runs, and artifact download | MB-001, MB-006 | reports, report_runs, download, artifacts |
+| [MB-017](tasks/MB-017-saved-reports.md) | 5 | done | Saved reports, report runs, and artifact download | MB-001, MB-006 | reports, report_runs, download, artifacts |
 | [MB-018](tasks/MB-018-report-scheduler.md) | 5 | not-started | Report scheduler and due-run worker | MB-017 | schedules, cron, row locking, report worker |
 | [MB-019](tasks/MB-019-notification-settings.md) | 5 | not-started | Notification channels and preferences | MB-001, MB-006 | notification channels, preferences, webhook, email, slack |
 | [MB-020](tasks/MB-020-alerting.md) | 5 | not-started | Alert rules, evaluator, events, and delivery | MB-019 | alerts, evaluator, ack, resolved, delivery |
