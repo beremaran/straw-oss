@@ -1,6 +1,6 @@
 # MB-004: Users, Roles, And Identity Provider APIs
 
-Status: not-started
+Status: done
 Phase: 1
 Depends on: MB-001, MB-002
 Search tags: users, roles, identity-providers, `users:read`, `users:write`
@@ -29,15 +29,15 @@ Expose management APIs for admin users, roles, permissions, and SSO provider con
 
 ## Implementation Tasks
 
-- [ ] Add DTOs with redaction for password hashes and provider secrets.
-- [ ] Add handlers and route registration.
-- [ ] Add repository methods needed by list/detail/update flows.
-- [ ] Emit structured audit events for mutating operations.
-- [ ] Add handler tests for permissions, validation, and protected-role behavior.
+- [x] Add DTOs with redaction for password hashes and provider secrets.
+- [x] Add handlers and route registration.
+- [x] Add repository methods needed by list/detail/update flows.
+- [x] Emit structured audit events for mutating operations.
+- [x] Add handler tests for permissions, validation, and protected-role behavior.
 
 ## Done Criteria
 
-- [ ] Users can be created, deactivated, assigned roles, and listed.
-- [ ] Roles can be managed except built-in role deletion.
-- [ ] Identity providers can be configured without exposing secrets in responses.
-- [ ] All mutating operations produce structured audit events.
+- [x] Users can be created, deactivated, assigned roles, and listed.
+- [x] Roles can be managed except built-in role deletion.
+- [x] Identity providers can be configured without exposing secrets in responses.
+- [x] All mutating operations produce structured audit events.

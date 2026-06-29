@@ -246,6 +246,24 @@ func (r *IdentityRepository) ActiveOwnerExists(ctx context.Context) (bool, error
 	return exists, nil
 }
 
+func (r *IdentityRepository) CountActiveOwners(ctx context.Context) (int, error) {
+	query := `
+		SELECT COUNT(*)
+		FROM admin_users u
+		JOIN admin_user_roles ur ON ur.user_id = u.id
+		JOIN admin_roles r ON r.id = ur.role_id
+		WHERE u.is_active = true AND r.name = $1
+	`
+
+	var count int
+	err := r.client.Pool.QueryRow(ctx, query, domain.RoleOwner).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count active owners: %w", err)
+	}
+
+	return count, nil
+}
+
 func (r *IdentityRepository) CreateRole(ctx context.Context, role *domain.AdminRole) error {
 	now := time.Now()
 	if role.ID == "" {
@@ -572,6 +590,27 @@ func (r *IdentityRepository) UpdateIdentityProvider(ctx context.Context, provide
 	}
 
 	return nil
+}
+
+func (r *IdentityRepository) GetIdentityProviderByID(ctx context.Context, id string) (*domain.AdminIdentityProvider, error) {
+	query := providerSelectSQL() + ` WHERE id = $1`
+
+	var provider domain.AdminIdentityProvider
+	err := r.client.Execute(func() error {
+		var scanErr error
+		provider, scanErr = scanIdentityProvider(r.client.Pool.QueryRow(ctx, query, id).Scan)
+
+		return scanErr
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+
+		return nil, fmt.Errorf("failed to get identity provider by ID: %w", err)
+	}
+
+	return &provider, nil
 }
 
 func (r *IdentityRepository) GetIdentityProviderByName(ctx context.Context, name string) (*domain.AdminIdentityProvider, error) {
