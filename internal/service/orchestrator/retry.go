@@ -25,30 +25,20 @@ const (
 )
 
 type AttemptError struct {
-	Pool int `json:"pool"`
-
-	Attempt int `json:"attempt"`
-
-	EndpointID string `json:"endpoint_id"`
-
-	Failure FailureType `json:"failure"`
-
-	FailureString string `json:"failure_type"`
-
-	Message string `json:"message"`
-
-	Duration time.Duration `json:"duration"`
+	Pool          int           `json:"pool"`
+	Attempt       int           `json:"attempt"`
+	EndpointID    string        `json:"endpoint_id"`
+	Failure       FailureType   `json:"failure"`
+	FailureString string        `json:"failure_type"`
+	Message       string        `json:"message"`
+	Duration      time.Duration `json:"duration"`
 }
 
 type RetryResult struct {
-	Success bool
-
-	Response *ResultMessage
-
-	FinalPool int
-
-	TotalRetries int
-
+	Success       bool
+	Response      *ResultMessage
+	FinalPool     int
+	TotalRetries  int
 	AttemptErrors []AttemptError
 }
 
@@ -59,15 +49,13 @@ type PoolManager interface {
 }
 
 type RetryExecutor struct {
-	publisher   *Publisher
-	consumer    *Consumer
-	poolManager PoolManager
-	broker      broker.MessageBroker
-	hmacSecret  []byte
-	logger      *slog.Logger
-
+	publisher     *Publisher
+	consumer      *Consumer
+	poolManager   PoolManager
+	broker        broker.MessageBroker
+	hmacSecret    []byte
+	logger        *slog.Logger
 	responseChans sync.Map
-
 	baseBackoff   time.Duration
 	maxBackoff    time.Duration
 	backoffFactor float64

@@ -1,13 +1,10 @@
 package filter
 
 type Request struct {
-	URL string
-
-	Host string
-
+	URL         string
+	Host        string
 	ContentType string
-
-	Method string
+	Method      string
 }
 
 func NewFilterRequest(url, host, contentType, method string) *Request {

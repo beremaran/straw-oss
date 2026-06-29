@@ -3,21 +3,14 @@ package domain
 import "time"
 
 type Session struct {
-	ID string `json:"id"`
-
-	EndpointID string `json:"endpoint_id"`
-
-	Tags []string `json:"tags"`
-
-	RuleID string `json:"rule_id"`
-
-	MigrationCount int `json:"migration_count"`
-
-	CreatedAt time.Time `json:"created_at"`
-
-	LastUsedAt time.Time `json:"last_used_at"`
-
-	RequestCount int `json:"request_count"`
+	ID             string    `json:"id"`
+	EndpointID     string    `json:"endpoint_id"`
+	Tags           []string  `json:"tags"`
+	RuleID         string    `json:"rule_id"`
+	MigrationCount int       `json:"migration_count"`
+	CreatedAt      time.Time `json:"created_at"`
+	LastUsedAt     time.Time `json:"last_used_at"`
+	RequestCount   int       `json:"request_count"`
 }
 
 const DefaultSessionTTL = 10 * time.Minute

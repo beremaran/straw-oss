@@ -7,21 +7,14 @@ import (
 )
 
 type ApiKey struct {
-	ID string `json:"id"`
-
-	TokenHash string `json:"token_hash"`
-
-	Name string `json:"name"`
-
-	Scopes []string `json:"scopes"`
-
-	RateLimitOverride *int `json:"rate_limit_override,omitempty"`
-
-	IsActive bool `json:"is_active"`
-
-	CreatedAt time.Time `json:"created_at"`
-
-	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	ID                string     `json:"id"`
+	TokenHash         string     `json:"token_hash"`
+	Name              string     `json:"name"`
+	Scopes            []string   `json:"scopes"`
+	RateLimitOverride *int       `json:"rate_limit_override,omitempty"`
+	IsActive          bool       `json:"is_active"`
+	CreatedAt         time.Time  `json:"created_at"`
+	ExpiresAt         *time.Time `json:"expires_at,omitempty"`
 }
 
 func NewApiKey(id, tokenHash, name string, scopes []string) *ApiKey {

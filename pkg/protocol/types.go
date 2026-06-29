@@ -7,29 +7,18 @@ import (
 )
 
 type Request struct {
-	ID string `json:"id"`
-
-	Method string `json:"method"`
-
-	URL string `json:"url"`
-
-	Headers HeaderMap `json:"headers"`
-
-	Body []byte `json:"body,omitempty"`
-
-	Timeout time.Duration `json:"timeout,omitempty"`
-
-	Fingerprint string `json:"fingerprint,omitempty"`
-
-	SessionID string `json:"session_id,omitempty"`
-
-	TraceID string `json:"trace_id,omitempty"`
-
-	ReplyTo string `json:"reply_to,omitempty"`
-
-	StreamResponse bool `json:"stream_response,omitempty"`
-
-	MaxResponseSize int64 `json:"max_response_size,omitempty"`
+	ID              string        `json:"id"`
+	Method          string        `json:"method"`
+	URL             string        `json:"url"`
+	Headers         HeaderMap     `json:"headers"`
+	Body            []byte        `json:"body,omitempty"`
+	Timeout         time.Duration `json:"timeout,omitempty"`
+	Fingerprint     string        `json:"fingerprint,omitempty"`
+	SessionID       string        `json:"session_id,omitempty"`
+	TraceID         string        `json:"trace_id,omitempty"`
+	ReplyTo         string        `json:"reply_to,omitempty"`
+	StreamResponse  bool          `json:"stream_response,omitempty"`
+	MaxResponseSize int64         `json:"max_response_size,omitempty"`
 }
 
 func (r *Request) EstimateWireSize() uint64 {
@@ -47,23 +36,15 @@ func (r *Request) EstimateWireSize() uint64 {
 }
 
 type Response struct {
-	RequestID string `json:"request_id"`
-
-	StatusCode int `json:"status_code"`
-
-	Headers HeaderMap `json:"headers"`
-
-	Body []byte `json:"body,omitempty"`
-
-	Error *ErrorInfo `json:"error,omitempty"`
-
-	Timing *TimingInfo `json:"timing,omitempty"`
-
-	EndpointID string `json:"endpoint_id,omitempty"`
-
-	SessionID string `json:"session_id,omitempty"`
-
-	IsStreaming bool `json:"is_streaming,omitempty"`
+	RequestID   string      `json:"request_id"`
+	StatusCode  int         `json:"status_code"`
+	Headers     HeaderMap   `json:"headers"`
+	Body        []byte      `json:"body,omitempty"`
+	Error       *ErrorInfo  `json:"error,omitempty"`
+	Timing      *TimingInfo `json:"timing,omitempty"`
+	EndpointID  string      `json:"endpoint_id,omitempty"`
+	SessionID   string      `json:"session_id,omitempty"`
+	IsStreaming bool        `json:"is_streaming,omitempty"`
 }
 
 func (r *Response) EstimateWireSize() uint64 {
@@ -226,20 +207,15 @@ func equalFold(a, b string) bool {
 }
 
 type SignedTask struct {
-	Payload []byte `json:"payload"`
-
+	Payload   []byte `json:"payload"`
 	Signature string `json:"signature"`
-
-	Timestamp int64 `json:"ts"`
+	Timestamp int64  `json:"ts"`
 }
 
 type ErrorInfo struct {
-	Code string `json:"code"`
-
-	Message string `json:"message"`
-
-	Retryable bool `json:"retryable"`
-
+	Code       string        `json:"code"`
+	Message    string        `json:"message"`
+	Retryable  bool          `json:"retryable"`
 	RetryAfter time.Duration `json:"retry_after,omitempty"`
 }
 
@@ -257,13 +233,9 @@ const (
 )
 
 type TimingInfo struct {
-	DNSLookup time.Duration `json:"dns_lookup,omitempty"`
-
-	TCPConnect time.Duration `json:"tcp_connect,omitempty"`
-
+	DNSLookup    time.Duration `json:"dns_lookup,omitempty"`
+	TCPConnect   time.Duration `json:"tcp_connect,omitempty"`
 	TLSHandshake time.Duration `json:"tls_handshake,omitempty"`
-
-	FirstByte time.Duration `json:"first_byte,omitempty"`
-
-	Total time.Duration `json:"total"`
+	FirstByte    time.Duration `json:"first_byte,omitempty"`
+	Total        time.Duration `json:"total"`
 }

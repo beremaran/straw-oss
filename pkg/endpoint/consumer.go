@@ -23,26 +23,20 @@ type RequestExecutor interface {
 }
 
 type Consumer struct {
-	broker      broker.MessageBroker
-	httpClient  RequestExecutor
-	secret      []byte
-	endpointID  string
-	taskSubject string
-
+	broker           broker.MessageBroker
+	httpClient       RequestExecutor
+	secret           []byte
+	endpointID       string
+	taskSubject      string
 	concurrencyLimit int
 	semaphore        chan struct{}
-
-	maxTaskAge time.Duration
-
-	ctx    context.Context
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
-
-	resultHandler func(ctx context.Context, resp *protocol.Response, replyTo string) error
-
-	logger *slog.Logger
-
-	onTaskCompleted func(TaskResult)
+	maxTaskAge       time.Duration
+	ctx              context.Context
+	cancel           context.CancelFunc
+	wg               sync.WaitGroup
+	resultHandler    func(ctx context.Context, resp *protocol.Response, replyTo string) error
+	logger           *slog.Logger
+	onTaskCompleted  func(TaskResult)
 }
 
 type TaskResult struct {

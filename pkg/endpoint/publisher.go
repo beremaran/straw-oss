@@ -17,9 +17,8 @@ var (
 )
 
 type Publisher struct {
-	broker broker.MessageBroker
-	logger *slog.Logger
-
+	broker     broker.MessageBroker
+	logger     *slog.Logger
 	useConfirm bool
 }
 
@@ -87,23 +86,15 @@ func (p *Publisher) Publish(ctx context.Context, resp *protocol.Response, replyT
 }
 
 type ResultMessage struct {
-	RequestID string `json:"request_id"`
-
-	EndpointID string `json:"endpoint_id,omitempty"`
-
-	SessionID string `json:"session_id,omitempty"`
-
-	StatusCode int `json:"status_code"`
-
-	Headers protocol.HeaderMap `json:"headers"`
-
-	CompressedBody []byte `json:"body,omitempty"`
-
-	BodyCompressed bool `json:"body_compressed"`
-
-	Error *protocol.ErrorInfo `json:"error,omitempty"`
-
-	Timing *protocol.TimingInfo `json:"timing,omitempty"`
+	RequestID      string               `json:"request_id"`
+	EndpointID     string               `json:"endpoint_id,omitempty"`
+	SessionID      string               `json:"session_id,omitempty"`
+	StatusCode     int                  `json:"status_code"`
+	Headers        protocol.HeaderMap   `json:"headers"`
+	CompressedBody []byte               `json:"body,omitempty"`
+	BodyCompressed bool                 `json:"body_compressed"`
+	Error          *protocol.ErrorInfo  `json:"error,omitempty"`
+	Timing         *protocol.TimingInfo `json:"timing,omitempty"`
 }
 
 func (p *Publisher) PublishError(ctx context.Context, requestID, endpointID string, errInfo *protocol.ErrorInfo, replyTo string) error {

@@ -13,23 +13,15 @@ import (
 )
 
 type ResultMessage struct {
-	RequestID string `json:"request_id"`
-
-	EndpointID string `json:"endpoint_id,omitempty"`
-
-	SessionID string `json:"session_id,omitempty"`
-
-	StatusCode int `json:"status_code"`
-
-	Headers protocol.HeaderMap `json:"headers"`
-
-	CompressedBody []byte `json:"body,omitempty"`
-
-	BodyCompressed bool `json:"body_compressed"`
-
-	Error *protocol.ErrorInfo `json:"error,omitempty"`
-
-	Timing *protocol.TimingInfo `json:"timing,omitempty"`
+	RequestID      string               `json:"request_id"`
+	EndpointID     string               `json:"endpoint_id,omitempty"`
+	SessionID      string               `json:"session_id,omitempty"`
+	StatusCode     int                  `json:"status_code"`
+	Headers        protocol.HeaderMap   `json:"headers"`
+	CompressedBody []byte               `json:"body,omitempty"`
+	BodyCompressed bool                 `json:"body_compressed"`
+	Error          *protocol.ErrorInfo  `json:"error,omitempty"`
+	Timing         *protocol.TimingInfo `json:"timing,omitempty"`
 }
 
 type Consumer struct {

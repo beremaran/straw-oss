@@ -12,17 +12,12 @@ type ErrorResponse struct {
 }
 
 type ErrorDetail struct {
-	Code string `json:"code"`
-
-	Message string `json:"message"`
-
-	Retryable bool `json:"retryable"`
-
-	RetryAfterSeconds int `json:"retry_after_seconds,omitempty"`
-
-	RequestID string `json:"request_id,omitempty"`
-
-	TraceID string `json:"trace_id,omitempty"`
+	Code              string `json:"code"`
+	Message           string `json:"message"`
+	Retryable         bool   `json:"retryable"`
+	RetryAfterSeconds int    `json:"retry_after_seconds,omitempty"`
+	RequestID         string `json:"request_id,omitempty"`
+	TraceID           string `json:"trace_id,omitempty"`
 }
 
 type StrawError struct {

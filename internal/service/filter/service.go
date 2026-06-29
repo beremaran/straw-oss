@@ -20,10 +20,8 @@ const (
 )
 
 type Result struct {
-	Blocked bool
-
-	Reason string
-
+	Blocked    bool
+	Reason     string
 	FilterType Type
 }
 

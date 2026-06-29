@@ -256,4 +256,3 @@ func parseDates(q url.Values, filter *domain.AuditEventFilter) {
 		}
 	}
 }
-

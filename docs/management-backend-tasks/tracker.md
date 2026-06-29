@@ -11,7 +11,7 @@ Status values: `not-started`, `in-progress`, `blocked`, `done`.
 | Current task | none |
 | Current owner | unassigned |
 | Last updated | 2026-06-29 |
-| Notes | MB-010 completed; next unblocked backend task is MB-011. |
+| Notes | MB-011 completed; next unblocked backend task is MB-012. |
 
 ## Phase 1: Identity And Audit Foundation
 
@@ -37,7 +37,7 @@ Status values: `not-started`, `in-progress`, `blocked`, `done`.
 
 | Done | ID | Status | Task |
 | --- | --- | --- | --- |
-| [ ] | [MB-011](tasks/MB-011-endpoint-registry-persistence.md) | not-started | Endpoint registry persistence and command schema |
+| [x] | [MB-011](tasks/MB-011-endpoint-registry-persistence.md) | done | Endpoint registry persistence and command schema |
 | [ ] | [MB-012](tasks/MB-012-endpoint-management-apis.md) | not-started | Endpoint registry, desired-state, and command APIs |
 | [ ] | [MB-013](tasks/MB-013-endpoint-control-plane.md) | not-started | Broker endpoint control plane and worker command subscriber |
 | [ ] | [MB-014](tasks/MB-014-endpoint-logs.md) | not-started | Endpoint log ingestion, query, stream, and retention |

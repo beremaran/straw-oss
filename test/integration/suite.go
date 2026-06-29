@@ -15,8 +15,7 @@ type TestSuite struct {
 	Postgres *PostgresContainer
 	Redis    *RedisContainer
 	Nats     *NatsContainer
-
-	mu sync.Mutex
+	mu       sync.Mutex
 }
 
 var (

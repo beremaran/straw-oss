@@ -10,14 +10,10 @@ import (
 
 type MockTargetConfig struct {
 	StatusCode int
-
-	Headers map[string]string
-
-	Body []byte
-
-	Delay time.Duration
-
-	Error bool
+	Headers    map[string]string
+	Body       []byte
+	Delay      time.Duration
+	Error      bool
 }
 
 type RecordedRequest struct {
@@ -29,8 +25,7 @@ type RecordedRequest struct {
 }
 
 type MockTargetServer struct {
-	server *httptest.Server
-
+	server     *httptest.Server
 	mu         sync.RWMutex
 	config     MockTargetConfig
 	requests   []RecordedRequest

@@ -14,33 +14,27 @@ import (
 const DefaultHeartbeatInterval = 10 * time.Second
 
 type HeartbeatMessage struct {
-	EndpointID string `json:"endpoint_id"`
-
-	Timestamp int64 `json:"ts"`
-
-	Version string `json:"version,omitempty"`
-
-	Tags []string `json:"tags,omitempty"`
-
-	ActiveTasks int `json:"active_tasks"`
+	EndpointID  string   `json:"endpoint_id"`
+	Timestamp   int64    `json:"ts"`
+	Version     string   `json:"version,omitempty"`
+	Tags        []string `json:"tags,omitempty"`
+	ActiveTasks int      `json:"active_tasks"`
 }
 
 type ActiveTasksFunc func() int
 
 type HeartbeatSender struct {
-	broker     broker.MessageBroker
-	endpointID string
-	version    string
-	tags       []string
-	interval   time.Duration
-	logger     *slog.Logger
-
+	broker          broker.MessageBroker
+	endpointID      string
+	version         string
+	tags            []string
+	interval        time.Duration
+	logger          *slog.Logger
 	activeTasksFunc ActiveTasksFunc
-
-	mu      sync.Mutex
-	running bool
-	cancel  context.CancelFunc
-	done    chan struct{}
+	mu              sync.Mutex
+	running         bool
+	cancel          context.CancelFunc
+	done            chan struct{}
 }
 
 type HeartbeatOption func(*HeartbeatSender)

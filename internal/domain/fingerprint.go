@@ -6,14 +6,10 @@ import (
 )
 
 type FingerprintPreset struct {
-	ID string `json:"id"`
-
-	Name string `json:"name"`
-
-	Config ConfigMap `json:"config"`
-
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Config    ConfigMap `json:"config"`
 	CreatedAt time.Time `json:"created_at"`
-
 	UpdatedAt time.Time `json:"updated_at"`
 }
 

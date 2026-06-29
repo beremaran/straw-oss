@@ -39,9 +39,8 @@ type Client struct {
 	defaultTimeout    time.Duration
 	maxBodySize       int64
 	endpointID        string
-
-	mu         sync.Mutex
-	tlsClients map[string]tls_client.HttpClient
+	mu                sync.Mutex
+	tlsClients        map[string]tls_client.HttpClient
 }
 
 type ClientOption func(*Client)

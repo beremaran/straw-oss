@@ -18,9 +18,8 @@ type Matcher struct {
 	currentVersion int64
 	mu             sync.RWMutex
 	lastUpdate     time.Time
-
-	cacheHits   int64
-	cacheMisses int64
+	cacheHits      int64
+	cacheMisses    int64
 }
 
 func NewMatcher(repo domain.RoutingRuleRepository, cache *RuleCache) *Matcher {

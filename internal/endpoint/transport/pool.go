@@ -18,13 +18,12 @@ import (
 type DialTLSFunc func(ctx context.Context, network, addr string, fingerprint string) (net.Conn, error)
 
 type PooledTransport struct {
-	pools   map[string]*hostPool
-	lruList *list.List
-	lruMap  map[string]*list.Element
-	mu      sync.RWMutex
-	config  PoolConfig
-	dialTLS DialTLSFunc
-
+	pools        map[string]*hostPool
+	lruList      *list.List
+	lruMap       map[string]*list.Element
+	mu           sync.RWMutex
+	config       PoolConfig
+	dialTLS      DialTLSFunc
 	stopEviction chan struct{}
 	evictionDone chan struct{}
 }

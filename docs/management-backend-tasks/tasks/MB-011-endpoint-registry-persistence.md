@@ -1,6 +1,6 @@
 # MB-011: Endpoint Registry Persistence And Command Schema
 
-Status: not-started
+Status: done
 Phase: 3
 Depends on: MB-001
 Search tags: endpoints, registry, desired_state, endpoint_commands, endpoint_log_entries
@@ -27,14 +27,14 @@ Persist endpoint desired state, registration state, command status, and log rows
 
 ## Implementation Tasks
 
-- [ ] Add migration for endpoint columns, commands, and log entries.
-- [ ] Add endpoint registry domain fields for desired state, registered state, deleted state, and metadata.
-- [ ] Add command domain model with statuses from the spec.
-- [ ] Add log-entry model and cursor-friendly query support.
-- [ ] Add repository tests for desired state, soft delete, command lifecycle, and log queries.
+- [x] Add migration for endpoint columns, commands, and log entries.
+- [x] Add endpoint registry domain fields for desired state, registered state, deleted state, and metadata.
+- [x] Add command domain model with statuses from the spec.
+- [x] Add log-entry model and cursor-friendly query support.
+- [x] Add repository tests for desired state, soft delete, command lifecycle, and log queries.
 
 ## Done Criteria
 
-- [ ] Endpoint registry state can be managed without Redis health data.
-- [ ] Command records can be created and moved through accepted, acknowledged, running, succeeded, failed, and timed_out.
-- [ ] Log entries can be queried by endpoint and time in descending order.
+- [x] Endpoint registry state can be managed without Redis health data.
+- [x] Command records can be created and moved through accepted, acknowledged, running, succeeded, failed, and timed_out.
+- [x] Log entries can be queried by endpoint and time in descending order.

@@ -19,16 +19,15 @@ import (
 )
 
 type Server struct {
-	mux            *http.ServeMux
-	server         *http.Server
-	conf           config.ServerConfig
-	authService    *auth.Service
-	sessionService *session.Service
-	matcher        *router.Matcher
-	rateLimiter    *ratelimit.RateLimiter
-	filterService  *filter.Service
-	orchestrator   *orchestrator.RetryExecutor
-
+	mux             *http.ServeMux
+	server          *http.Server
+	conf            config.ServerConfig
+	authService     *auth.Service
+	sessionService  *session.Service
+	matcher         *router.Matcher
+	rateLimiter     *ratelimit.RateLimiter
+	filterService   *filter.Service
+	orchestrator    *orchestrator.RetryExecutor
 	allowPrivateIPs bool
 }
 

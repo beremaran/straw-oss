@@ -31,17 +31,12 @@ const (
 const defaultHealthTTL = 60 * time.Second
 
 type EndpointHealth struct {
-	EndpointID string `json:"endpoint_id"`
-
-	State string `json:"state"`
-
-	Tags []string `json:"tags,omitempty"`
-
-	Version string `json:"version,omitempty"`
-
-	ActiveTasks int `json:"active_tasks"`
-
-	LastSeen time.Time `json:"last_seen"`
+	EndpointID  string    `json:"endpoint_id"`
+	State       string    `json:"state"`
+	Tags        []string  `json:"tags,omitempty"`
+	Version     string    `json:"version,omitempty"`
+	ActiveTasks int       `json:"active_tasks"`
+	LastSeen    time.Time `json:"last_seen"`
 }
 
 type HealthStore interface {

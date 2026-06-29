@@ -17,29 +17,18 @@ type HTTP2Settings struct {
 }
 
 type Preset struct {
-	ID string
-
-	TLSClientHello utls.ClientHelloID
-
-	HTTP2Settings *HTTP2Settings
-
-	HeaderOrder []string
-
+	ID                string
+	TLSClientHello    utls.ClientHelloID
+	HTTP2Settings     *HTTP2Settings
+	HeaderOrder       []string
 	PseudoHeaderOrder []string
-
-	UserAgent string
-
-	AcceptLanguage string
-
-	SecCHUA string
-
-	SecCHUAMobile string
-
-	SecCHUAPlatform string
-
-	Deprecated bool
-
-	LastUpdated time.Time
+	UserAgent         string
+	AcceptLanguage    string
+	SecCHUA           string
+	SecCHUAMobile     string
+	SecCHUAPlatform   string
+	Deprecated        bool
+	LastUpdated       time.Time
 }
 
 type Registry struct {
