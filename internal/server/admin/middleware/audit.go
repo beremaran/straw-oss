@@ -6,12 +6,20 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/beremaran/straw/internal/domain"
 	"github.com/jackc/pgx/v5/pgconn"
 )
+
+var redactionRegex = regexp.MustCompile(`(?i)("(raw_key|token|password|client_secret|Authorization)"\s*:\s*)("[^"]*"|[0-9]+|true|false|null)`)
+
+func redactSensitiveFields(body string) string {
+	return redactionRegex.ReplaceAllString(body, `$1"[REDACTED]"`)
+}
 
 const (
 	maxAuditBodySize = 1024
@@ -31,6 +39,8 @@ type AuditEntry struct {
 	ActorID          string
 	ActorDisplayName string
 	SessionID        string
+	RequestID        string
+	TraceID          string
 	Method           string
 	Path             string
 	Query            string
@@ -124,8 +134,11 @@ func (al *AuditLogger) worker() {
 	defer al.wg.Done()
 
 	const insertQuery = `
-		INSERT INTO admin_audit_log (timestamp, method, path, query, body, ip, user_agent, status, error)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		INSERT INTO admin_audit_log (
+			timestamp, method, path, query, body, ip, user_agent, status, error,
+			actor_type, actor_id, actor_display_name, session_id, request_id, trace_id
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 	`
 
 	for entry := range al.entries {
@@ -140,6 +153,12 @@ func (al *AuditLogger) worker() {
 			entry.UserAgent,
 			entry.Status,
 			entry.Error,
+			entry.ActorType,
+			entry.ActorID,
+			entry.ActorDisplayName,
+			entry.SessionID,
+			entry.RequestID,
+			entry.TraceID,
 		)
 		cancel()
 
@@ -193,10 +212,12 @@ func AuditLog(auditLogger *AuditLogger) func(http.Handler) http.Handler {
 				ActorID:          actor.ID,
 				ActorDisplayName: actor.DisplayName,
 				SessionID:        actor.SessionID,
+				RequestID:        w.Header().Get("X-Request-Id"),
+				TraceID:          w.Header().Get("Trace-Id"),
 				Method:           method,
 				Path:             path,
 				Query:            queryStr,
-				Body:             bodyStr,
+				Body:             redactSensitiveFields(bodyStr),
 				IP:               ip,
 				UserAgent:        userAgent,
 				Status:           sw.status,
@@ -233,4 +254,25 @@ func getRealIP(r *http.Request) string {
 	}
 
 	return r.RemoteAddr
+}
+
+func NewAuditEvent(r *http.Request, action, entityType, entityID string, oldVal, newVal interface{}) *domain.ManagementAuditEvent {
+	actor, _ := ActorFromContext(r.Context())
+	ip := getRealIP(r)
+	userAgent := r.UserAgent()
+
+	return &domain.ManagementAuditEvent{
+		ActorType:    actor.Type,
+		ActorID:      actor.ID,
+		ActorDisplay: actor.DisplayName,
+		Action:       action,
+		EntityType:   entityType,
+		EntityID:     entityID,
+		OldValue:     oldVal,
+		NewValue:     newVal,
+		RequestID:    r.Header.Get("X-Request-Id"),
+		TraceID:      r.Header.Get("Trace-Id"),
+		IP:           ip,
+		UserAgent:    userAgent,
+	}
 }

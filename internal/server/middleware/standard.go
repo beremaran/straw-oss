@@ -25,6 +25,7 @@ func RequestID() func(http.Handler) http.Handler {
 					reqID = fmt.Sprintf("req_%d", r.Context().Done())
 				}
 			}
+			r.Header.Set("X-Request-ID", reqID)
 			w.Header().Set("X-Request-ID", reqID)
 			next.ServeHTTP(w, r)
 		})

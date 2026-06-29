@@ -73,7 +73,7 @@ func TestEndpointHandler_List(t *testing.T) {
 	}
 	healthService := endpoint.NewHealthService(nil, store)
 
-	h := NewEndpointHandler(healthService)
+	h := NewEndpointHandler(healthService, nil)
 
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/management/endpoints", nil)
 	rec := httptest.NewRecorder()
@@ -96,7 +96,7 @@ func TestEndpointHandler_Drain(t *testing.T) {
 		draining: make(map[string]bool),
 	}
 	healthService := endpoint.NewHealthService(nil, store)
-	h := NewEndpointHandler(healthService)
+	h := NewEndpointHandler(healthService, nil)
 
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/management/endpoints/ep1/drain", nil)
 	req.SetPathValue("id", "ep1")

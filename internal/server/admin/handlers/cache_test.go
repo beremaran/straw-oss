@@ -23,7 +23,7 @@ func TestCacheHandler_HandleClearCache(t *testing.T) {
 	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
 	assert.NoError(t, err)
 
-	h := NewCacheHandler(client)
+	h := NewCacheHandler(client, nil)
 
 	client.Client.Set(context.Background(), "test:1", "val1", time.Minute)
 	client.Client.Set(context.Background(), "other:1", "val2", time.Minute)
@@ -53,7 +53,7 @@ func TestCacheHandler_HandleGetCacheStats(t *testing.T) {
 	client, err := redis.NewClient(ctx, config.RedisConfig{Addr: mr.Addr()}, nil)
 	assert.NoError(t, err)
 
-	h := NewCacheHandler(client)
+	h := NewCacheHandler(client, nil)
 
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/management/cache/stats", nil)
 	rec := httptest.NewRecorder()

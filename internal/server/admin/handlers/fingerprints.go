@@ -5,18 +5,20 @@ import (
 	"net/http"
 
 	"github.com/beremaran/straw/internal/domain"
+	"github.com/beremaran/straw/internal/server/admin/middleware"
 	"github.com/beremaran/straw/internal/server/dto"
 	"github.com/beremaran/straw/internal/server/helper"
 	"github.com/beremaran/straw/pkg/broker"
 )
 
 type FingerprintHandler struct {
-	repo   domain.FingerprintRepository
-	broker broker.MessageBroker
+	repo      domain.FingerprintRepository
+	broker    broker.MessageBroker
+	auditRepo domain.ManagementAuditRepository
 }
 
-func NewFingerprintHandler(repo domain.FingerprintRepository, broker broker.MessageBroker) *FingerprintHandler {
-	return &FingerprintHandler{repo: repo, broker: broker}
+func NewFingerprintHandler(repo domain.FingerprintRepository, broker broker.MessageBroker, auditRepo domain.ManagementAuditRepository) *FingerprintHandler {
+	return &FingerprintHandler{repo: repo, broker: broker, auditRepo: auditRepo}
 }
 
 func (h *FingerprintHandler) HandleListPresets(w http.ResponseWriter, r *http.Request) {
@@ -60,12 +62,25 @@ func (h *FingerprintHandler) HandleCreatePreset(w http.ResponseWriter, r *http.R
 
 			return
 		}
+
+		if h.auditRepo != nil {
+			oldVal := dto.FromFingerprintPreset(existing)
+			newVal := dto.FromFingerprintPreset(preset)
+			event := middleware.NewAuditEvent(r, domain.ActionUpdate, "fingerprint_preset", preset.ID, oldVal, newVal)
+			_ = h.auditRepo.Create(r.Context(), event)
+		}
 	} else {
 		err := h.repo.CreatePreset(r.Context(), preset)
 		if err != nil {
 			helper.WriteError(w, http.StatusInternalServerError, "failed to create preset")
 
 			return
+		}
+
+		if h.auditRepo != nil {
+			newVal := dto.FromFingerprintPreset(preset)
+			event := middleware.NewAuditEvent(r, domain.ActionCreate, "fingerprint_preset", preset.ID, nil, newVal)
+			_ = h.auditRepo.Create(r.Context(), event)
 		}
 	}
 

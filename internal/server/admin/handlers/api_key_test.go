@@ -18,7 +18,7 @@ func TestApiKeyHandler_HandleListApiKeys(t *testing.T) {
 	rec := httptest.NewRecorder()
 
 	mockRepo := new(MockApiKeyRepo)
-	handler := NewApiKeyHandler(mockRepo)
+	handler := NewApiKeyHandler(mockRepo, nil)
 
 	keys := []domain.ApiKey{
 		{ID: "key1", Name: "Key 1"},
@@ -43,7 +43,7 @@ func TestApiKeyHandler_HandleCreateApiKey(t *testing.T) {
 	rec := httptest.NewRecorder()
 
 	mockRepo := new(MockApiKeyRepo)
-	handler := NewApiKeyHandler(mockRepo)
+	handler := NewApiKeyHandler(mockRepo, nil)
 
 	mockRepo.On("Create", mock.Anything, mock.MatchedBy(func(k *domain.ApiKey) bool {
 		return k.Name == "New Key" && len(k.Scopes) == 1 && k.Scopes[0] == "target:*"
@@ -66,7 +66,7 @@ func TestApiKeyHandler_HandleRevokeApiKey(t *testing.T) {
 	rec := httptest.NewRecorder()
 
 	mockRepo := new(MockApiKeyRepo)
-	handler := NewApiKeyHandler(mockRepo)
+	handler := NewApiKeyHandler(mockRepo, nil)
 
 	mockRepo.On("Revoke", mock.Anything, "key1").Return(nil).Once()
 
