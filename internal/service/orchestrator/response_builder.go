@@ -63,6 +63,9 @@ func (b *ResponseBuilder) WriteResponse(w http.ResponseWriter, result *ResultMes
 
 	w.Header().Set("Content-Type", result.Headers.Get("Content-Type"))
 	w.WriteHeader(statusCode)
+	if len(result.CompressedBody) == 0 {
+		return nil
+	}
 	_, err := w.Write(result.CompressedBody)
 
 	return err
