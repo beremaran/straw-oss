@@ -1,6 +1,6 @@
 # MB-019: Notification Channels And Preferences
 
-Status: not-started
+Status: done
 Phase: 5
 Depends on: MB-001, MB-006
 Search tags: notification_channels, notification_preferences, webhook, email, slack, secret_ref
@@ -28,15 +28,15 @@ Manage notification delivery channels and per-user notification preferences.
 
 ## Implementation Tasks
 
-- [ ] Add migrations and domain models.
-- [ ] Add repositories for channels and preferences.
-- [ ] Add handlers with permission checks from the spec.
-- [ ] Add secret redaction and `has_secret` response behavior.
-- [ ] Add delivery test path for supported channel types.
+- [x] Add migrations and domain models.
+- [x] Add repositories for channels and preferences.
+- [x] Add handlers with permission checks from the spec.
+- [x] Add secret redaction and `has_secret` response behavior.
+- [x] Add delivery test path for supported channel types.
 
 ## Done Criteria
 
-- [ ] Channels can be managed without exposing stored secrets.
-- [ ] Test notification endpoint attempts delivery and reports result.
-- [ ] Current user can read and update preferences.
-- [ ] Mutating channel operations write audit events.
+- [x] Channels can be managed without exposing stored secrets.
+- [x] Test notification endpoint attempts delivery and reports result.
+- [x] Current user can read and update preferences.
+- [x] Mutating channel operations write audit events.

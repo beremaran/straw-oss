@@ -136,6 +136,8 @@ func (s *Server) registerAllSubRoutes() {
 	identityRepo := postgres.NewIdentityRepository(s.client)
 	usageRepo := postgres.NewUsageRepository(s.client)
 	costMultiplierRepo := postgres.NewCostMultiplierRepository(s.client)
+	notificationChannelRepo := postgres.NewNotificationChannelRepository(s.client)
+	notificationPreferenceRepo := postgres.NewNotificationPreferenceRepository(s.client)
 
 	var auditRepo domain.ManagementAuditRepository
 	if s.client != nil {
@@ -172,6 +174,7 @@ func (s *Server) registerAllSubRoutes() {
 	s.registerUsageRoutes(handlers.NewUsageHandler(usageRepo, costMultiplierRepo))
 	s.registerCostMultiplierRoutes(handlers.NewCostMultiplierHandler(costMultiplierRepo, auditRepo))
 	s.registerReportFeatures(usageRepo, apiKeyRepo, endpointRepo, auditRepo, costMultiplierRepo)
+	s.registerNotificationRoutes(handlers.NewNotificationHandler(notificationChannelRepo, notificationPreferenceRepo, auditRepo, nil))
 
 	if s.redisClient != nil {
 		s.registerCacheRoutes(handlers.NewCacheHandler(s.redisClient, auditRepo))
@@ -315,6 +318,16 @@ func (s *Server) registerReportRoutes(reportHandler *handlers.ReportHandler) {
 	s.management("POST /management/report-schedules", middleware.PermissionReportsWrite, reportHandler.HandleCreateReportSchedule)
 	s.management("PATCH /management/report-schedules/{id}", middleware.PermissionReportsWrite, reportHandler.HandleUpdateReportSchedule)
 	s.management("DELETE /management/report-schedules/{id}", middleware.PermissionReportsWrite, reportHandler.HandleDeleteReportSchedule)
+}
+
+func (s *Server) registerNotificationRoutes(notificationHandler *handlers.NotificationHandler) {
+	s.management("GET /management/notification-channels", middleware.PermissionAlertsRead, notificationHandler.HandleListChannels)
+	s.management("POST /management/notification-channels", middleware.PermissionNotificationsWrite, notificationHandler.HandleCreateChannel)
+	s.management("PATCH /management/notification-channels/{id}", middleware.PermissionNotificationsWrite, notificationHandler.HandleUpdateChannel)
+	s.management("DELETE /management/notification-channels/{id}", middleware.PermissionNotificationsWrite, notificationHandler.HandleDeleteChannel)
+	s.management("POST /management/notification-channels/{id}/test", middleware.PermissionNotificationsWrite, notificationHandler.HandleTestChannel)
+	s.mux.HandleFunc("GET /management/notification-preferences", notificationHandler.HandleGetPreferences)
+	s.mux.HandleFunc("PATCH /management/notification-preferences", notificationHandler.HandleUpdatePreferences)
 }
 
 func (s *Server) startReportScheduler(ctx context.Context) error {
