@@ -55,6 +55,7 @@ func TracingMiddleware(serviceName string) func(http.Handler) http.Handler {
 			r = r.WithContext(ctx)
 
 			traceID := span.SpanContext().TraceID().String()
+			r.Header.Set("Trace-Id", traceID)
 			w.Header().Set("Trace-Id", traceID)
 			otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(w.Header()))
 

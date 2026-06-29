@@ -3,6 +3,8 @@ package handlers
 import (
 	"net/http"
 
+	"github.com/beremaran/straw/internal/domain"
+	"github.com/beremaran/straw/internal/server/admin/middleware"
 	"github.com/beremaran/straw/internal/server/dto"
 	"github.com/beremaran/straw/internal/server/helper"
 	"github.com/beremaran/straw/internal/service/endpoint"
@@ -10,10 +12,11 @@ import (
 
 type EndpointHandler struct {
 	healthService *endpoint.HealthService
+	auditRepo     domain.ManagementAuditRepository
 }
 
-func NewEndpointHandler(healthService *endpoint.HealthService) *EndpointHandler {
-	return &EndpointHandler{healthService: healthService}
+func NewEndpointHandler(healthService *endpoint.HealthService, auditRepo domain.ManagementAuditRepository) *EndpointHandler {
+	return &EndpointHandler{healthService: healthService, auditRepo: auditRepo}
 }
 
 func (h *EndpointHandler) HandleListEndpoints(w http.ResponseWriter, r *http.Request) {
@@ -51,6 +54,11 @@ func (h *EndpointHandler) HandleDrainEndpoint(w http.ResponseWriter, r *http.Req
 		helper.WriteError(w, http.StatusInternalServerError, "failed to drain endpoint")
 
 		return
+	}
+
+	if h.auditRepo != nil {
+		event := middleware.NewAuditEvent(r, domain.ActionDrain, "endpoint", id, nil, nil)
+		_ = h.auditRepo.Create(r.Context(), event)
 	}
 
 	w.WriteHeader(http.StatusOK)

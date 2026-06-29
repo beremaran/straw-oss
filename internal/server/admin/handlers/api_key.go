@@ -8,17 +8,19 @@ import (
 	"strconv"
 
 	"github.com/beremaran/straw/internal/domain"
+	"github.com/beremaran/straw/internal/server/admin/middleware"
 	"github.com/beremaran/straw/internal/server/dto"
 	"github.com/beremaran/straw/internal/server/helper"
 	"github.com/google/uuid"
 )
 
 type ApiKeyHandler struct {
-	repo domain.ApiKeyRepository
+	repo      domain.ApiKeyRepository
+	auditRepo domain.ManagementAuditRepository
 }
 
-func NewApiKeyHandler(repo domain.ApiKeyRepository) *ApiKeyHandler {
-	return &ApiKeyHandler{repo: repo}
+func NewApiKeyHandler(repo domain.ApiKeyRepository, auditRepo domain.ManagementAuditRepository) *ApiKeyHandler {
+	return &ApiKeyHandler{repo: repo, auditRepo: auditRepo}
 }
 
 func (h *ApiKeyHandler) HandleListApiKeys(w http.ResponseWriter, r *http.Request) {
@@ -85,6 +87,12 @@ func (h *ApiKeyHandler) HandleCreateApiKey(w http.ResponseWriter, r *http.Reques
 	}
 
 	apiKeyResp := dto.FromApiKey(apiKey)
+	
+	if h.auditRepo != nil {
+		event := middleware.NewAuditEvent(r, domain.ActionCreate, "api_key", apiKey.ID, nil, apiKeyResp)
+		_ = h.auditRepo.Create(r.Context(), event)
+	}
+	
 	helper.WriteJSON(w, http.StatusCreated, dto.CreateApiKeyResponse{
 		ApiKeyResponse: *apiKeyResp,
 		RawKey:         rawKey,
@@ -104,6 +112,11 @@ func (h *ApiKeyHandler) HandleRevokeApiKey(w http.ResponseWriter, r *http.Reques
 		helper.WriteError(w, http.StatusInternalServerError, "failed to revoke api key")
 
 		return
+	}
+
+	if h.auditRepo != nil {
+		event := middleware.NewAuditEvent(r, domain.ActionRevoke, "api_key", id, nil, nil)
+		_ = h.auditRepo.Create(r.Context(), event)
 	}
 
 	w.WriteHeader(http.StatusNoContent)

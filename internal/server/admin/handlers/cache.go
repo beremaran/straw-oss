@@ -3,17 +3,20 @@ package handlers
 import (
 	"net/http"
 
+	"github.com/beremaran/straw/internal/domain"
 	"github.com/beremaran/straw/internal/infra/redis"
+	"github.com/beremaran/straw/internal/server/admin/middleware"
 	"github.com/beremaran/straw/internal/server/dto"
 	"github.com/beremaran/straw/internal/server/helper"
 )
 
 type CacheHandler struct {
 	redisClient *redis.Client
+	auditRepo   domain.ManagementAuditRepository
 }
 
-func NewCacheHandler(redisClient *redis.Client) *CacheHandler {
-	return &CacheHandler{redisClient: redisClient}
+func NewCacheHandler(redisClient *redis.Client, auditRepo domain.ManagementAuditRepository) *CacheHandler {
+	return &CacheHandler{redisClient: redisClient, auditRepo: auditRepo}
 }
 
 func (h *CacheHandler) HandleClearCache(w http.ResponseWriter, r *http.Request) {
@@ -59,11 +62,18 @@ func (h *CacheHandler) HandleClearCache(w http.ResponseWriter, r *http.Request) 
 		count += len(keys)
 	}
 
-	helper.WriteJSON(w, http.StatusOK, dto.ClearCacheResponse{
+	resp := dto.ClearCacheResponse{
 		Message: "cache cleared",
 		Pattern: pattern,
 		Deleted: count,
-	})
+	}
+
+	if h.auditRepo != nil {
+		event := middleware.NewAuditEvent(r, domain.ActionPurge, "cache", pattern, nil, resp)
+		_ = h.auditRepo.Create(r.Context(), event)
+	}
+
+	helper.WriteJSON(w, http.StatusOK, resp)
 }
 
 func (h *CacheHandler) HandleGetCacheStats(w http.ResponseWriter, r *http.Request) {

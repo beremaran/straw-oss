@@ -80,7 +80,7 @@ func (m *mockBroker) IsConnected() bool {
 func TestFingerprintHandler_List(t *testing.T) {
 	repo := new(mockFingerprintRepo)
 	mb := new(mockBroker)
-	h := NewFingerprintHandler(repo, mb)
+	h := NewFingerprintHandler(repo, mb, nil)
 
 	presets := []domain.FingerprintPreset{
 		{ID: "p1", Name: "Preset 1"},
@@ -99,7 +99,7 @@ func TestFingerprintHandler_List(t *testing.T) {
 func TestFingerprintHandler_Create(t *testing.T) {
 	repo := new(mockFingerprintRepo)
 	mb := new(mockBroker)
-	h := NewFingerprintHandler(repo, mb)
+	h := NewFingerprintHandler(repo, mb, nil)
 
 	preset := domain.FingerprintPreset{ID: "p1", Name: "Preset 1", Config: domain.ConfigMap{"a": 1}}
 	body, err := json.Marshal(preset)
@@ -123,7 +123,7 @@ func TestFingerprintHandler_Create(t *testing.T) {
 func TestFingerprintHandler_Broadcast(t *testing.T) {
 	repo := new(mockFingerprintRepo)
 	mb := new(mockBroker)
-	h := NewFingerprintHandler(repo, mb)
+	h := NewFingerprintHandler(repo, mb, nil)
 
 	presets := []domain.FingerprintPreset{{ID: "p1"}}
 	repo.On("ListPresets", mock.Anything).Return(presets, nil)

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/beremaran/straw/internal/config"
+	"github.com/beremaran/straw/internal/domain"
 	"github.com/beremaran/straw/internal/infra/postgres"
 	"github.com/beremaran/straw/internal/infra/redis"
 	"github.com/beremaran/straw/internal/server/admin/handlers"
@@ -104,16 +105,20 @@ func (s *Server) registerRoutes() {
 	routingRuleRepo := postgres.NewRoutingRuleRepository(s.client)
 	fingerprintRepo := postgres.NewFingerprintRepository(s.client)
 	usageRepo := postgres.NewUsageRepository(s.client)
+	var auditRepo domain.ManagementAuditRepository
+	if s.client != nil {
+		auditRepo = postgres.NewManagementAuditRepository(s.client.Pool)
+	}
 
 	var ruleCache *router.RuleCache
 	if s.redisClient != nil {
 		ruleCache = router.NewRuleCache(s.redisClient.Client, 10*time.Minute)
 	}
 
-	apiKeyHandler := handlers.NewApiKeyHandler(apiKeyRepo)
-	routingRuleHandler := handlers.NewRoutingRuleHandler(routingRuleRepo, ruleCache)
-	endpointHandler := handlers.NewEndpointHandler(s.healthService)
-	fingerprintHandler := handlers.NewFingerprintHandler(fingerprintRepo, s.broker)
+	apiKeyHandler := handlers.NewApiKeyHandler(apiKeyRepo, auditRepo)
+	routingRuleHandler := handlers.NewRoutingRuleHandler(routingRuleRepo, ruleCache, auditRepo)
+	endpointHandler := handlers.NewEndpointHandler(s.healthService, auditRepo)
+	fingerprintHandler := handlers.NewFingerprintHandler(fingerprintRepo, s.broker, auditRepo)
 	usageHandler := handlers.NewUsageHandler(usageRepo)
 	authHandler := handlers.NewAuthHandler(s.authService)
 
@@ -124,7 +129,7 @@ func (s *Server) registerRoutes() {
 
 	var cacheHandler *handlers.CacheHandler
 	if s.redisClient != nil {
-		cacheHandler = handlers.NewCacheHandler(s.redisClient)
+		cacheHandler = handlers.NewCacheHandler(s.redisClient, auditRepo)
 	}
 
 	s.management("GET /management/users", middleware.PermissionUsersRead, userHandler.HandleListUsers)

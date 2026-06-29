@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/beremaran/straw/internal/domain"
+	"github.com/beremaran/straw/internal/server/admin/middleware"
 	"github.com/beremaran/straw/internal/server/dto"
 	"github.com/beremaran/straw/internal/server/helper"
 	"github.com/google/uuid"
@@ -19,12 +20,14 @@ type RuleVersionManager interface {
 type RoutingRuleHandler struct {
 	repo       domain.RoutingRuleRepository
 	versionMgr RuleVersionManager
+	auditRepo  domain.ManagementAuditRepository
 }
 
-func NewRoutingRuleHandler(repo domain.RoutingRuleRepository, versionMgr RuleVersionManager) *RoutingRuleHandler {
+func NewRoutingRuleHandler(repo domain.RoutingRuleRepository, versionMgr RuleVersionManager, auditRepo domain.ManagementAuditRepository) *RoutingRuleHandler {
 	return &RoutingRuleHandler{
 		repo:       repo,
 		versionMgr: versionMgr,
+		auditRepo:  auditRepo,
 	}
 }
 
@@ -113,7 +116,13 @@ func (h *RoutingRuleHandler) HandleCreateRoutingRule(w http.ResponseWriter, r *h
 
 	_, _ = h.versionMgr.IncrementRulesVersion(r.Context())
 
-	helper.WriteJSON(w, http.StatusCreated, dto.FromRoutingRule(rule))
+	ruleResp := dto.FromRoutingRule(rule)
+	if h.auditRepo != nil {
+		event := middleware.NewAuditEvent(r, domain.ActionCreate, "routing_rule", rule.ID, nil, ruleResp)
+		_ = h.auditRepo.Create(r.Context(), event)
+	}
+
+	helper.WriteJSON(w, http.StatusCreated, ruleResp)
 }
 
 func (h *RoutingRuleHandler) HandleUpdateRoutingRule(w http.ResponseWriter, r *http.Request) {
@@ -143,6 +152,8 @@ func (h *RoutingRuleHandler) HandleUpdateRoutingRule(w http.ResponseWriter, r *h
 	rule.UpdatedAt = time.Now()
 	rule.Version = req.Version
 
+	oldRule, _ := h.repo.GetRuleByID(r.Context(), id)
+
 	err = h.repo.UpdateRule(r.Context(), rule)
 	if err != nil {
 		helper.WriteError(w, http.StatusInternalServerError, err.Error())
@@ -152,7 +163,17 @@ func (h *RoutingRuleHandler) HandleUpdateRoutingRule(w http.ResponseWriter, r *h
 
 	_, _ = h.versionMgr.IncrementRulesVersion(r.Context())
 
-	helper.WriteJSON(w, http.StatusOK, dto.FromRoutingRule(rule))
+	ruleResp := dto.FromRoutingRule(rule)
+	if h.auditRepo != nil {
+		var oldVal interface{}
+		if oldRule != nil {
+			oldVal = dto.FromRoutingRule(oldRule)
+		}
+		event := middleware.NewAuditEvent(r, domain.ActionUpdate, "routing_rule", rule.ID, oldVal, ruleResp)
+		_ = h.auditRepo.Create(r.Context(), event)
+	}
+
+	helper.WriteJSON(w, http.StatusOK, ruleResp)
 }
 
 func (h *RoutingRuleHandler) HandleDeleteRoutingRule(w http.ResponseWriter, r *http.Request) {
@@ -163,6 +184,8 @@ func (h *RoutingRuleHandler) HandleDeleteRoutingRule(w http.ResponseWriter, r *h
 		return
 	}
 
+	oldRule, _ := h.repo.GetRuleByID(r.Context(), id)
+
 	err := h.repo.DeleteRule(r.Context(), id)
 	if err != nil {
 		helper.WriteError(w, http.StatusInternalServerError, "failed to delete routing rule")
@@ -171,6 +194,15 @@ func (h *RoutingRuleHandler) HandleDeleteRoutingRule(w http.ResponseWriter, r *h
 	}
 
 	_, _ = h.versionMgr.IncrementRulesVersion(r.Context())
+
+	if h.auditRepo != nil {
+		var oldVal interface{}
+		if oldRule != nil {
+			oldVal = dto.FromRoutingRule(oldRule)
+		}
+		event := middleware.NewAuditEvent(r, domain.ActionDelete, "routing_rule", id, oldVal, nil)
+		_ = h.auditRepo.Create(r.Context(), event)
+	}
 
 	w.WriteHeader(http.StatusNoContent)
 }

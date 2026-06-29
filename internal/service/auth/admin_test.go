@@ -91,6 +91,10 @@ func (r *fakeAdminRepo) GetRoleByName(ctx context.Context, name string) (*domain
 	return nil, nil
 }
 
+func (r *fakeAdminRepo) GetIdentityProviderByName(ctx context.Context, name string) (*domain.AdminIdentityProvider, error) {
+	return nil, nil
+}
+
 func (r *fakeAdminRepo) CreateSession(ctx context.Context, session *domain.AdminSession) error {
 	r.sessions[session.ID] = session
 
