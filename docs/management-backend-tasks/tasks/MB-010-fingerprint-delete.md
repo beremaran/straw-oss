@@ -1,6 +1,6 @@
 # MB-010: Fingerprint Detail And Protected Delete
 
-Status: not-started
+Status: done
 Phase: 2
 Depends on: MB-001, MB-006
 Search tags: fingerprints, delete, `fingerprints:delete`, routing rule dependency, broadcast
@@ -31,15 +31,15 @@ Add fingerprint preset detail and safe deletion with routing-rule dependency pro
 
 ## Implementation Tasks
 
-- [ ] Add detail handler and route.
-- [ ] Add repository query for active routing rules referencing a preset.
-- [ ] Add delete handler with conflict response and optional force path.
-- [ ] Publish fingerprint broadcast after successful delete unless disabled.
-- [ ] Add audit event with deleted preset metadata and redacted config.
+- [x] Add detail handler and route.
+- [x] Add repository query for active routing rules referencing a preset.
+- [x] Add delete handler with conflict response and optional force path.
+- [x] Publish fingerprint broadcast after successful delete unless disabled.
+- [x] Add audit event with deleted preset metadata and redacted config.
 
 ## Done Criteria
 
-- [ ] Referenced presets cannot be deleted without explicit allowed force behavior.
-- [ ] Force delete is limited to Owner and handles affected rules as the spec requires.
-- [ ] Successful delete returns `{id, deleted, broadcast_requested}`.
-- [ ] Existing list and upsert behavior remains compatible.
+- [x] Referenced presets cannot be deleted without explicit allowed force behavior.
+- [x] Force delete is limited to Owner and handles affected rules as the spec requires.
+- [x] Successful delete returns `{id, deleted, broadcast_requested}`.
+- [x] Existing list and upsert behavior remains compatible.

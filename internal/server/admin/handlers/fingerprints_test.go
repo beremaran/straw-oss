@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/beremaran/straw/internal/domain"
+	"github.com/beremaran/straw/internal/server/admin/middleware"
+	"github.com/beremaran/straw/internal/server/dto"
 	"github.com/beremaran/straw/pkg/broker"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -80,7 +82,7 @@ func (m *mockBroker) IsConnected() bool {
 func TestFingerprintHandler_List(t *testing.T) {
 	repo := new(mockFingerprintRepo)
 	mb := new(mockBroker)
-	h := NewFingerprintHandler(repo, mb, nil)
+	h := NewFingerprintHandler(repo, nil, nil, mb, nil)
 
 	presets := []domain.FingerprintPreset{
 		{ID: "p1", Name: "Preset 1"},
@@ -99,7 +101,7 @@ func TestFingerprintHandler_List(t *testing.T) {
 func TestFingerprintHandler_Create(t *testing.T) {
 	repo := new(mockFingerprintRepo)
 	mb := new(mockBroker)
-	h := NewFingerprintHandler(repo, mb, nil)
+	h := NewFingerprintHandler(repo, nil, nil, mb, nil)
 
 	preset := domain.FingerprintPreset{ID: "p1", Name: "Preset 1", Config: domain.ConfigMap{"a": 1}}
 	body, err := json.Marshal(preset)
@@ -123,7 +125,7 @@ func TestFingerprintHandler_Create(t *testing.T) {
 func TestFingerprintHandler_Broadcast(t *testing.T) {
 	repo := new(mockFingerprintRepo)
 	mb := new(mockBroker)
-	h := NewFingerprintHandler(repo, mb, nil)
+	h := NewFingerprintHandler(repo, nil, nil, mb, nil)
 
 	presets := []domain.FingerprintPreset{{ID: "p1"}}
 	repo.On("ListPresets", mock.Anything).Return(presets, nil)
@@ -137,4 +139,152 @@ func TestFingerprintHandler_Broadcast(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rec.Code)
 	repo.AssertExpectations(t)
 	mb.AssertExpectations(t)
+}
+
+func TestFingerprintHandler_GetPreset(t *testing.T) {
+	repo := new(mockFingerprintRepo)
+	h := NewFingerprintHandler(repo, nil, nil, nil, nil)
+
+	preset := &domain.FingerprintPreset{ID: "p1", Name: "Preset 1"}
+	repo.On("GetPreset", mock.Anything, "p1").Return(preset, nil)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/management/fingerprints/p1", nil)
+	req.SetPathValue("id", "p1")
+	rec := httptest.NewRecorder()
+
+	h.HandleGetPreset(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	repo.AssertExpectations(t)
+}
+
+func TestFingerprintHandler_DeleteConflict(t *testing.T) {
+	repo := new(mockFingerprintRepo)
+	ruleRepo := new(MockRoutingRuleRepo)
+	h := NewFingerprintHandler(repo, ruleRepo, nil, nil, nil)
+
+	preset := &domain.FingerprintPreset{ID: "p1", Name: "Preset 1"}
+	refs := []domain.RoutingRuleReference{{ID: "r1", Name: "Default"}}
+	repo.On("GetPreset", mock.Anything, "p1").Return(preset, nil)
+	ruleRepo.On("ListActiveRulesReferencingFingerprintPreset", mock.Anything, "p1").Return(refs, nil)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodDelete, "/management/fingerprints/p1", nil)
+	req.SetPathValue("id", "p1")
+	rec := httptest.NewRecorder()
+
+	h.HandleDeletePreset(rec, req)
+
+	assert.Equal(t, http.StatusConflict, rec.Code)
+	assert.Contains(t, rec.Body.String(), "FINGERPRINT_REFERENCED")
+	assert.Contains(t, rec.Body.String(), "r1")
+	repo.AssertExpectations(t)
+	ruleRepo.AssertExpectations(t)
+}
+
+func TestFingerprintHandler_DeleteForceRequiresOwner(t *testing.T) {
+	repo := new(mockFingerprintRepo)
+	ruleRepo := new(MockRoutingRuleRepo)
+	identityRepo := new(MockIdentityRepo)
+	h := NewFingerprintHandler(repo, ruleRepo, identityRepo, nil, nil)
+
+	identityRepo.On("ListUserRoles", mock.Anything, "user-1").Return([]domain.AdminRole{{Name: domain.RoleOperator}}, nil)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodDelete, "/management/fingerprints/p1?force=true", nil)
+	req = req.WithContext(middleware.ContextWithActor(req.Context(), middleware.Actor{
+		Type: middleware.ActorTypeUser,
+		ID:   "user-1",
+	}))
+	req.SetPathValue("id", "p1")
+	rec := httptest.NewRecorder()
+
+	h.HandleDeletePreset(rec, req)
+
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+	identityRepo.AssertExpectations(t)
+	ruleRepo.AssertNotCalled(t, "ListActiveRulesReferencingFingerprintPreset", mock.Anything, mock.Anything)
+	repo.AssertNotCalled(t, "DeletePreset", mock.Anything, mock.Anything)
+}
+
+func TestFingerprintHandler_DeleteForceDeactivatesRules(t *testing.T) {
+	repo := new(mockFingerprintRepo)
+	ruleRepo := new(MockRoutingRuleRepo)
+	identityRepo := new(MockIdentityRepo)
+	h := NewFingerprintHandler(repo, ruleRepo, identityRepo, nil, nil)
+
+	preset := &domain.FingerprintPreset{ID: "p1", Name: "Preset 1"}
+	refs := []domain.RoutingRuleReference{{ID: "r1", Name: "Default"}}
+	identityRepo.On("ListUserRoles", mock.Anything, "owner-1").Return([]domain.AdminRole{{Name: domain.RoleOwner}}, nil)
+	repo.On("GetPreset", mock.Anything, "p1").Return(preset, nil)
+	ruleRepo.On("ListActiveRulesReferencingFingerprintPreset", mock.Anything, "p1").Return(refs, nil)
+	ruleRepo.On("DeleteRule", mock.Anything, "r1").Return(nil)
+	repo.On("DeletePreset", mock.Anything, "p1").Return(nil)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodDelete, "/management/fingerprints/p1?force=true&deactivate_referencing_rules=true&broadcast=false", nil)
+	req = req.WithContext(middleware.ContextWithActor(req.Context(), middleware.Actor{
+		Type: middleware.ActorTypeUser,
+		ID:   "owner-1",
+	}))
+	req.SetPathValue("id", "p1")
+	rec := httptest.NewRecorder()
+
+	h.HandleDeletePreset(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Contains(t, rec.Body.String(), `"broadcast_requested":false`)
+	repo.AssertExpectations(t)
+	ruleRepo.AssertExpectations(t)
+	identityRepo.AssertExpectations(t)
+}
+
+func TestFingerprintHandler_DeleteAuditsAndSkipsBroadcast(t *testing.T) {
+	repo := new(mockFingerprintRepo)
+	ruleRepo := new(MockRoutingRuleRepo)
+	auditRepo := new(MockManagementAuditRepo)
+	h := NewFingerprintHandler(repo, ruleRepo, nil, nil, auditRepo)
+
+	preset := &domain.FingerprintPreset{
+		ID:   "p1",
+		Name: "Preset 1",
+		Config: domain.ConfigMap{
+			"api_token": "secret-token",
+			"nested": map[string]interface{}{
+				"client_secret": "secret-value",
+			},
+			"user_agent": "Mozilla/5.0",
+		},
+	}
+	repo.On("GetPreset", mock.Anything, "p1").Return(preset, nil)
+	ruleRepo.On("ListActiveRulesReferencingFingerprintPreset", mock.Anything, "p1").Return([]domain.RoutingRuleReference{}, nil)
+	repo.On("DeletePreset", mock.Anything, "p1").Return(nil)
+	auditRepo.On("Create", mock.Anything, mock.MatchedBy(deleteAuditRedacted)).Return(nil)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodDelete, "/management/fingerprints/p1?broadcast=false", nil)
+	req.SetPathValue("id", "p1")
+	rec := httptest.NewRecorder()
+
+	h.HandleDeletePreset(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Contains(t, rec.Body.String(), `"deleted":true`)
+	repo.AssertExpectations(t)
+	ruleRepo.AssertExpectations(t)
+	auditRepo.AssertExpectations(t)
+}
+
+func deleteAuditRedacted(event *domain.ManagementAuditEvent) bool {
+	oldValue, ok := event.OldValue.(*dto.FingerprintResponse)
+	if !ok {
+		return false
+	}
+
+	nested, ok := oldValue.Config["nested"].(map[string]interface{})
+	if !ok {
+		return false
+	}
+
+	return event.Action == domain.ActionDelete &&
+		event.EntityID == "p1" &&
+		oldValue.Config["api_token"] == "[REDACTED]" &&
+		nested["client_secret"] == "[REDACTED]" &&
+		oldValue.Config["user_agent"] == "Mozilla/5.0"
 }

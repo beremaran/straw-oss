@@ -79,11 +79,11 @@ docs:
 	npx -y @redocly/cli lint api/openapi.yaml
 	cp api/openapi.yaml docs/openapi.yaml
 	npx -y @redocly/cli build-docs api/openapi.yaml -o docs/api-reference.html
-	mkdocs build --strict
+	uvx --with mkdocs-material mkdocs build --strict
 
 docs-serve:
 	npx -y @redocly/cli build-docs api/openapi.yaml -o docs/api-reference.html
-	mkdocs serve
+	uvx --with mkdocs-material mkdocs serve
 
 generate-clients:
 	npx -y @openapitools/openapi-generator-cli generate -i api/openapi.yaml -g typescript-fetch -o client/typescript

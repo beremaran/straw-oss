@@ -254,6 +254,13 @@ Lists preset user agents, HTTP/2 configurations, and TLS/JA3 spoofing parameters
 * **URL**: `GET /management/fingerprints`
 * **Response (Status 200 OK)**: List of presets.
 
+### Get Preset
+Returns one browser profile fingerprint preset.
+
+* **URL**: `GET /management/fingerprints/{id}`
+* **Response (Status 200 OK)**: Preset object.
+* **Response (Status 404 Not Found)**: Preset does not exist.
+
 ### Create Preset
 Adds a new browser profile fingerprint.
 
@@ -274,6 +281,24 @@ Adds a new browser profile fingerprint.
   }
   ```
 * **Response (Status 200 OK)**: Created preset object.
+
+### Delete Preset
+Deletes a fingerprint preset when no active routing rules reference it.
+
+* **URL**: `DELETE /management/fingerprints/{id}`
+* **Query Params**:
+  * `broadcast=false` skips the post-delete fingerprint broadcast.
+  * `force=true` is limited to `Owner` users or the legacy management token.
+  * `deactivate_referencing_rules=true` is required with `force=true` when active rules reference the preset.
+* **Response (Status 200 OK)**:
+  ```json
+  {
+    "id": "chrome-133",
+    "deleted": true,
+    "broadcast_requested": true
+  }
+  ```
+* **Response (Status 409 Conflict)**: Returns referencing active routing rule IDs and names.
 
 ### Broadcast Presets
 Triggers a broadcast via NATS to push all registered fingerprint presets directly into memory on active worker nodes.
