@@ -143,6 +143,7 @@ type IdentityRepository interface {
 	ListUserRoles(ctx context.Context, userID string) ([]AdminRole, error)
 	EffectivePermissions(ctx context.Context, userID string) ([]string, error)
 	ActiveOwnerExists(ctx context.Context) (bool, error)
+	CountActiveOwners(ctx context.Context) (int, error)
 
 	CreateRole(ctx context.Context, role *AdminRole) error
 	UpdateRole(ctx context.Context, role *AdminRole) error
@@ -160,6 +161,7 @@ type IdentityRepository interface {
 
 	CreateIdentityProvider(ctx context.Context, provider *AdminIdentityProvider) error
 	UpdateIdentityProvider(ctx context.Context, provider *AdminIdentityProvider) error
+	GetIdentityProviderByID(ctx context.Context, id string) (*AdminIdentityProvider, error)
 	GetIdentityProviderByName(ctx context.Context, name string) (*AdminIdentityProvider, error)
 	ListIdentityProviders(ctx context.Context) ([]AdminIdentityProvider, error)
 	DisableIdentityProvider(ctx context.Context, id string) error

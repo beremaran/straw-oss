@@ -662,6 +662,393 @@ paths:
         '500':
           $ref: '#/components/responses/ErrorResponse'
 
+  /management/users:
+    get:
+      tags:
+        - users
+      summary: List Admin Users
+      operationId: listAdminUsers
+      description: "Retrieves a list of all admin users."
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: "List of users"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListUsersResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+    post:
+      tags:
+        - users
+      summary: Create Admin User
+      operationId: createAdminUser
+      description: "Creates a new admin user."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+      responses:
+        '201':
+          description: "User created"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminUserResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /management/users/{id}:
+    get:
+      tags:
+        - users
+      summary: Get User Details
+      operationId: getUserDetails
+      description: "Retrieves detailed information about an admin user including roles."
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: "User details"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDetailResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+    patch:
+      tags:
+        - users
+      summary: Update Admin User
+      operationId: updateAdminUser
+      description: "Updates an admin user's display name, status, roles, or password."
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+      responses:
+        '200':
+          description: "User updated"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDetailResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+    delete:
+      tags:
+        - users
+      summary: Deactivate User
+      operationId: deactivateUser
+      description: "Deactivates an admin user immediately and revokes sessions."
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: "User deactivated"
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /management/roles:
+    get:
+      tags:
+        - users
+      summary: List Roles
+      operationId: listRoles
+      description: "Retrieves all custom and built-in management roles."
+      responses:
+        '200':
+          description: "List of roles"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListRolesResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+    post:
+      tags:
+        - users
+      summary: Create Custom Role
+      operationId: createCustomRole
+      description: "Creates a new custom management role with permissions."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRoleRequest'
+      responses:
+        '201':
+          description: "Role created"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminRoleResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /management/roles/{id}:
+    patch:
+      tags:
+        - users
+      summary: Update Custom Role
+      operationId: updateCustomRole
+      description: "Updates a custom role's definition. Built-in roles cannot be updated."
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRoleRequest'
+      responses:
+        '200':
+          description: "Role updated"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminRoleResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+    delete:
+      tags:
+        - users
+      summary: Delete Custom Role
+      operationId: deleteCustomRole
+      description: "Deletes a custom role. Built-in roles cannot be deleted."
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: "Role deleted"
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /management/identity-providers:
+    get:
+      tags:
+        - users
+      summary: List Identity Providers
+      operationId: listIdentityProviders
+      description: "Retrieves a list of all configured identity providers."
+      responses:
+        '200':
+          description: "List of identity providers"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListIdentityProvidersResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+    post:
+      tags:
+        - users
+      summary: Create Identity Provider
+      operationId: createIdentityProvider
+      description: "Configures a new SSO OIDC identity provider."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateIdentityProviderRequest'
+      responses:
+        '201':
+          description: "Provider created"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminIdentityProviderResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /management/identity-providers/{id}:
+    patch:
+      tags:
+        - users
+      summary: Update Identity Provider
+      operationId: updateIdentityProvider
+      description: "Updates an existing SSO provider configuration."
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateIdentityProviderRequest'
+      responses:
+        '200':
+          description: "Provider updated"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminIdentityProviderResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+    delete:
+      tags:
+        - users
+      summary: Disable Identity Provider
+      operationId: disableIdentityProvider
+      description: "Disables an identity provider immediately."
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: "Provider disabled"
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+
 components:
   securitySchemes:
     BearerAuth:
@@ -1072,3 +1459,285 @@ components:
       properties:
         info:
           type: string
+
+    CreateUserRequest:
+      type: object
+      required:
+        - email
+      properties:
+        email:
+          type: string
+          format: email
+        display_name:
+          type: string
+        password:
+          type: string
+        is_active:
+          type: boolean
+          default: true
+        is_super_admin:
+          type: boolean
+          default: false
+        role_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    UpdateUserRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        display_name:
+          type: string
+        password:
+          type: string
+        is_active:
+          type: boolean
+        is_super_admin:
+          type: boolean
+        role_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    AdminUserResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        display_name:
+          type: string
+        is_active:
+          type: boolean
+        is_super_admin:
+          type: boolean
+
+    UserDetailResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        display_name:
+          type: string
+        is_active:
+          type: boolean
+        is_super_admin:
+          type: boolean
+        last_login_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminRoleResponse'
+
+    ListUsersResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminUserResponse'
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    CreateRoleRequest:
+      type: object
+      required:
+        - name
+        - permissions
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        permissions:
+          type: array
+          items:
+            type: string
+
+    UpdateRoleRequest:
+      type: object
+      required:
+        - name
+        - permissions
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        permissions:
+          type: array
+          items:
+            type: string
+
+    AdminRoleResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        is_builtin:
+          type: boolean
+        permissions:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ListRolesResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminRoleResponse'
+
+    CreateIdentityProviderRequest:
+      type: object
+      required:
+        - name
+        - type
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+        issuer_url:
+          type: string
+          format: uri
+        client_id:
+          type: string
+        client_secret_ref:
+          type: string
+        jwks_url:
+          type: string
+          format: uri
+        scopes:
+          type: array
+          items:
+            type: string
+        role_claim:
+          type: string
+        default_role_id:
+          type: string
+          format: uuid
+        is_enabled:
+          type: boolean
+          default: true
+        config:
+          type: object
+
+    UpdateIdentityProviderRequest:
+      type: object
+      required:
+        - name
+        - type
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+        issuer_url:
+          type: string
+          format: uri
+        client_id:
+          type: string
+        client_secret_ref:
+          type: string
+        jwks_url:
+          type: string
+          format: uri
+        scopes:
+          type: array
+          items:
+            type: string
+        role_claim:
+          type: string
+        default_role_id:
+          type: string
+          format: uuid
+        is_enabled:
+          type: boolean
+        config:
+          type: object
+
+    AdminIdentityProviderResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        type:
+          type: string
+        issuer_url:
+          type: string
+          format: uri
+        client_id:
+          type: string
+        client_secret_ref:
+          type: string
+        jwks_url:
+          type: string
+          format: uri
+        scopes:
+          type: array
+          items:
+            type: string
+        role_claim:
+          type: string
+        default_role_id:
+          type: string
+          format: uuid
+        is_enabled:
+          type: boolean
+        config:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ListIdentityProvidersResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminIdentityProviderResponse'

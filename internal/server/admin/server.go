@@ -117,10 +117,31 @@ func (s *Server) registerRoutes() {
 	usageHandler := handlers.NewUsageHandler(usageRepo)
 	authHandler := handlers.NewAuthHandler(s.authService)
 
+	identityRepo := postgres.NewIdentityRepository(s.client)
+	userHandler := handlers.NewUserHandler(identityRepo)
+	roleHandler := handlers.NewRoleHandler(identityRepo)
+	idpHandler := handlers.NewIdentityProviderHandler(identityRepo)
+
 	var cacheHandler *handlers.CacheHandler
 	if s.redisClient != nil {
 		cacheHandler = handlers.NewCacheHandler(s.redisClient)
 	}
+
+	s.management("GET /management/users", middleware.PermissionUsersRead, userHandler.HandleListUsers)
+	s.management("POST /management/users", middleware.PermissionUsersWrite, userHandler.HandleCreateUser)
+	s.management("GET /management/users/{id}", middleware.PermissionUsersRead, userHandler.HandleGetUser)
+	s.management("PATCH /management/users/{id}", middleware.PermissionUsersWrite, userHandler.HandleUpdateUser)
+	s.management("DELETE /management/users/{id}", middleware.PermissionUsersWrite, userHandler.HandleDeactivateUser)
+
+	s.management("GET /management/roles", middleware.PermissionUsersRead, roleHandler.HandleListRoles)
+	s.management("POST /management/roles", middleware.PermissionUsersWrite, roleHandler.HandleCreateRole)
+	s.management("PATCH /management/roles/{id}", middleware.PermissionUsersWrite, roleHandler.HandleUpdateRole)
+	s.management("DELETE /management/roles/{id}", middleware.PermissionUsersWrite, roleHandler.HandleDeleteRole)
+
+	s.management("GET /management/identity-providers", middleware.PermissionUsersRead, idpHandler.HandleListIdentityProviders)
+	s.management("POST /management/identity-providers", middleware.PermissionUsersWrite, idpHandler.HandleCreateIdentityProvider)
+	s.management("PATCH /management/identity-providers/{id}", middleware.PermissionUsersWrite, idpHandler.HandleUpdateIdentityProvider)
+	s.management("DELETE /management/identity-providers/{id}", middleware.PermissionUsersWrite, idpHandler.HandleDeleteIdentityProvider)
 
 	s.management("POST /management/api-keys", middleware.PermissionAPIKeysWrite, apiKeyHandler.HandleCreateApiKey)
 	s.management("GET /management/api-keys", middleware.PermissionAPIKeysRead, apiKeyHandler.HandleListApiKeys)
