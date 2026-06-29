@@ -174,6 +174,8 @@ func (s *Server) registerRoutes() {
 		s.mux.HandleFunc("POST /management/auth/logout", authHandler.HandleLogout)
 		s.mux.HandleFunc("GET /management/auth/me", authHandler.HandleMe)
 		s.mux.HandleFunc("POST /management/users/bootstrap", authHandler.HandleBootstrapOwner)
+		s.mux.HandleFunc("GET /management/auth/sso/{provider}/start", authHandler.HandleSSOStart)
+		s.mux.HandleFunc("GET /management/auth/sso/{provider}/callback", authHandler.HandleSSOCallback)
 	}
 }
 
@@ -233,6 +235,9 @@ func managementGlobalMiddleware(cfg config.ServerConfig, client *postgres.Client
 }
 
 func isPublicAuthRoute(r *http.Request) bool {
+	if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/management/auth/sso/") {
+		return true
+	}
 	if r.Method != http.MethodPost {
 		return false
 	}

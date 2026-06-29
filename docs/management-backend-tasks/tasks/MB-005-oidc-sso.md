@@ -1,6 +1,6 @@
 # MB-005: OIDC SSO Login Flow
 
-Status: not-started
+Status: done
 Phase: 1
 Depends on: MB-002, MB-003, MB-004
 Search tags: sso, oidc, authorization code, callback, jwks, role claim
@@ -28,15 +28,15 @@ Allow enabled OIDC providers to start and complete admin login.
 
 ## Implementation Tasks
 
-- [ ] Add provider lookup and enabled checks.
-- [ ] Add start URL generation with state and nonce.
-- [ ] Add callback token exchange and ID-token validation.
-- [ ] Add user upsert or link behavior for trusted provider emails.
-- [ ] Issue the same access and refresh tokens as local login.
+- [x] Add provider lookup and enabled checks.
+- [x] Add start URL generation with state and nonce.
+- [x] Add callback token exchange and ID-token validation.
+- [x] Add user upsert or link behavior for trusted provider emails.
+- [x] Issue the same access and refresh tokens as local login.
 
 ## Done Criteria
 
-- [ ] Disabled or unknown providers cannot start login.
-- [ ] Callback rejects invalid state, issuer, audience, expiry, and signature.
-- [ ] Successful SSO login creates or updates the admin user and session.
-- [ ] Provider secrets are never returned through management read APIs.
+- [x] Disabled or unknown providers cannot start login.
+- [x] Callback rejects invalid state, issuer, audience, expiry, and signature.
+- [x] Successful SSO login creates or updates the admin user and session.
+- [x] Provider secrets are never returned through management read APIs.

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/base64"
 	"errors"
 	"net"
 	"net/http"
@@ -188,4 +189,92 @@ func clientIP(r *http.Request) string {
 	}
 
 	return host
+}
+
+func (h *AuthHandler) HandleSSOStart(w http.ResponseWriter, r *http.Request) {
+	providerName := r.PathValue("provider")
+	redirectURI := r.URL.Query().Get("redirect_uri")
+	if redirectURI == "" {
+		helper.WriteError(w, http.StatusBadRequest, "redirect_uri is required")
+		return
+	}
+
+	authURL, state, nonce, err := h.service.StartSSO(r.Context(), providerName, redirectURI)
+	if err != nil {
+		if errors.Is(err, adminauth.ErrProviderNotFound) {
+			helper.WriteError(w, http.StatusNotFound, "provider not found")
+			return
+		}
+		if errors.Is(err, adminauth.ErrProviderDisabled) {
+			helper.WriteError(w, http.StatusForbidden, "provider is disabled")
+			return
+		}
+		helper.WriteError(w, http.StatusInternalServerError, "failed to start sso")
+		return
+	}
+
+	cookiePayload := state + ":" + nonce + ":" + base64.RawURLEncoding.EncodeToString([]byte(redirectURI))
+	
+	http.SetCookie(w, &http.Cookie{
+		Name:     "sso_state",
+		Value:    cookiePayload,
+		Path:     "/management/auth/sso",
+		MaxAge:   300,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
+
+	http.Redirect(w, r, authURL, http.StatusFound)
+}
+
+func (h *AuthHandler) HandleSSOCallback(w http.ResponseWriter, r *http.Request) {
+	providerName := r.PathValue("provider")
+	code := r.URL.Query().Get("code")
+	actualState := r.URL.Query().Get("state")
+	errDesc := r.URL.Query().Get("error_description")
+	errStr := r.URL.Query().Get("error")
+
+	if errStr != "" {
+		helper.WriteError(w, http.StatusUnauthorized, "provider error: "+errDesc)
+		return
+	}
+
+	cookie, err := r.Cookie("sso_state")
+	if err != nil || cookie.Value == "" {
+		helper.WriteError(w, http.StatusBadRequest, "missing or invalid state cookie")
+		return
+	}
+
+	parts := strings.Split(cookie.Value, ":")
+	if len(parts) != 3 {
+		helper.WriteError(w, http.StatusBadRequest, "invalid state cookie format")
+		return
+	}
+
+	expectedState := parts[0]
+	expectedNonce := parts[1]
+	redirectURIRaw, err := base64.RawURLEncoding.DecodeString(parts[2])
+	if err != nil {
+		helper.WriteError(w, http.StatusBadRequest, "invalid redirect_uri in cookie")
+		return
+	}
+	redirectURI := string(redirectURIRaw)
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "sso_state",
+		Value:    "",
+		Path:     "/management/auth/sso",
+		MaxAge:   -1,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
+
+	tokens, err := h.service.CallbackSSO(r.Context(), providerName, redirectURI, code, expectedState, expectedNonce, actualState, r.UserAgent(), clientIP(r))
+	if err != nil {
+		helper.WriteError(w, http.StatusUnauthorized, "sso failed: "+err.Error())
+		return
+	}
+
+	targetURL := redirectURI + "#access_token=" + tokens.AccessToken + "&refresh_token=" + tokens.RefreshToken
+	http.Redirect(w, r, targetURL, http.StatusFound)
 }

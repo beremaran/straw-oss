@@ -45,6 +45,7 @@ type AdminIdentityRepository interface {
 	GetSessionByID(ctx context.Context, id string) (*domain.AdminSession, error)
 	UpdateSessionRefreshHash(ctx context.Context, id, hash string) error
 	RevokeSession(ctx context.Context, id string) error
+	GetIdentityProviderByName(ctx context.Context, name string) (*domain.AdminIdentityProvider, error)
 }
 
 type AdminService struct {
