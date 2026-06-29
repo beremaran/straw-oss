@@ -295,6 +295,51 @@ func TestMatchesTags(t *testing.T) {
 	}
 }
 
+func TestEndpointHealthStore_Deleted(t *testing.T) {
+	client, cleanup := setupTestRedis(t)
+	defer cleanup()
+
+	store := NewEndpointHealthStore(client)
+	ctx := context.Background()
+
+	// By default, it shouldn't be deleted
+	isDeleted, err := store.IsDeleted(ctx, "test-endpoint-deleted")
+	if err != nil {
+		t.Fatalf("IsDeleted failed: %v", err)
+	}
+	if isDeleted {
+		t.Error("expected isDeleted to be false initially")
+	}
+
+	// Set to deleted
+	err = store.SetDeleted(ctx, "test-endpoint-deleted", true)
+	if err != nil {
+		t.Fatalf("SetDeleted failed: %v", err)
+	}
+
+	isDeleted, err = store.IsDeleted(ctx, "test-endpoint-deleted")
+	if err != nil {
+		t.Fatalf("IsDeleted failed: %v", err)
+	}
+	if !isDeleted {
+		t.Error("expected isDeleted to be true")
+	}
+
+	// Clear deleted
+	err = store.SetDeleted(ctx, "test-endpoint-deleted", false)
+	if err != nil {
+		t.Fatalf("SetDeleted failed: %v", err)
+	}
+
+	isDeleted, err = store.IsDeleted(ctx, "test-endpoint-deleted")
+	if err != nil {
+		t.Fatalf("IsDeleted failed: %v", err)
+	}
+	if isDeleted {
+		t.Error("expected isDeleted to be false after clearing")
+	}
+}
+
 func setupTestRedis(t *testing.T) (*Client, func()) {
 	t.Helper()
 

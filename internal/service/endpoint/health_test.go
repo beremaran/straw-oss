@@ -15,12 +15,14 @@ import (
 type mockHealthStore struct {
 	endpoints map[string]*redis.EndpointHealth
 	draining  map[string]bool
+	deleted   map[string]bool
 }
 
 func newMockHealthStore() *mockHealthStore {
 	return &mockHealthStore{
 		endpoints: make(map[string]*redis.EndpointHealth),
 		draining:  make(map[string]bool),
+		deleted:   make(map[string]bool),
 	}
 }
 
@@ -76,6 +78,20 @@ func (m *mockHealthStore) SetDraining(_ context.Context, endpointID string, drai
 
 func (m *mockHealthStore) IsDraining(_ context.Context, endpointID string) (bool, error) {
 	return m.draining[endpointID], nil
+}
+
+func (m *mockHealthStore) SetDeleted(_ context.Context, endpointID string, deleted bool) error {
+	if deleted {
+		m.deleted[endpointID] = true
+	} else {
+		delete(m.deleted, endpointID)
+	}
+
+	return nil
+}
+
+func (m *mockHealthStore) IsDeleted(_ context.Context, endpointID string) (bool, error) {
+	return m.deleted[endpointID], nil
 }
 
 func TestHealthService_HandleHeartbeat(t *testing.T) {

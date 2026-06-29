@@ -97,12 +97,17 @@ func (s *Server) GetHandler() http.Handler {
 func (s *Server) setupBroker() {
 	if s.broker != nil {
 		_ = s.broker.DeclareStream(context.Background(), "fingerprint_broadcast", "fingerprint_broadcast")
+		_ = s.broker.DeclareStream(context.Background(), "endpoint_control", "endpoint.control.>")
 	}
 }
 
 func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /healthz", s.healthCheck)
 
+	s.registerAllSubRoutes()
+}
+
+func (s *Server) registerAllSubRoutes() {
 	apiKeyRepo := postgres.NewApiKeyRepository(s.client)
 	apiKeyTokenRepo := postgres.NewApiKeyTokenRepository(s.client)
 	routingRuleRepo := postgres.NewRoutingRuleRepository(s.client)
@@ -119,9 +124,16 @@ func (s *Server) registerRoutes() {
 		ruleCache = router.NewRuleCache(s.redisClient.Client, 10*time.Minute)
 	}
 
+	var endpointRepo domain.EndpointRepository
+	var commandRepo domain.EndpointCommandRepository
+	if s.client != nil {
+		endpointRepo = postgres.NewPostgresEndpointRepository(s.client)
+		commandRepo = postgres.NewPostgresEndpointCommandRepository(s.client)
+	}
+
 	apiKeyHandler := handlers.NewApiKeyHandler(apiKeyRepo, apiKeyTokenRepo, auditRepo, s.apiKeyAuth)
 	routingRuleHandler := handlers.NewRoutingRuleHandler(routingRuleRepo, ruleCache, auditRepo)
-	endpointHandler := handlers.NewEndpointHandler(s.healthService, auditRepo)
+	endpointHandler := handlers.NewEndpointHandler(s.healthService, endpointRepo, commandRepo, s.broker, auditRepo)
 	fingerprintHandler := handlers.NewFingerprintHandler(fingerprintRepo, routingRuleRepo, identityRepo, s.broker, auditRepo)
 	usageHandler := handlers.NewUsageHandler(usageRepo)
 	authHandler := handlers.NewAuthHandler(s.authService)
@@ -136,9 +148,7 @@ func (s *Server) registerRoutes() {
 		cacheHandler = handlers.NewCacheHandler(s.redisClient, auditRepo)
 	}
 
-	s.registerUserRoutes(userHandler)
-	s.registerRoleRoutes(roleHandler)
-	s.registerIdentityProviderRoutes(idpHandler)
+	s.registerIdentityAndAuthRoutes(userHandler, roleHandler, idpHandler, authHandler)
 	s.registerAPIKeyRoutes(apiKeyHandler)
 	s.registerRoutingRuleRoutes(routingRuleHandler)
 	s.registerEndpointRoutes(endpointHandler)
@@ -148,7 +158,13 @@ func (s *Server) registerRoutes() {
 		s.registerCacheRoutes(cacheHandler)
 	}
 	s.registerAuditRoutes(auditHandler)
-	s.registerAuthRoutes(authHandler)
+}
+
+func (s *Server) registerIdentityAndAuthRoutes(user *handlers.UserHandler, role *handlers.RoleHandler, idp *handlers.IdentityProviderHandler, auth *handlers.AuthHandler) {
+	s.registerUserRoutes(user)
+	s.registerRoleRoutes(role)
+	s.registerIdentityProviderRoutes(idp)
+	s.registerAuthRoutes(auth)
 }
 
 func (s *Server) registerAuthRoutes(authHandler *handlers.AuthHandler) {
@@ -206,7 +222,14 @@ func (s *Server) registerRoutingRuleRoutes(routingRuleHandler *handlers.RoutingR
 
 func (s *Server) registerEndpointRoutes(endpointHandler *handlers.EndpointHandler) {
 	s.management("GET /management/endpoints", middleware.PermissionEndpointsRead, endpointHandler.HandleListEndpoints)
+	s.management("POST /management/endpoints", middleware.PermissionEndpointsWrite, endpointHandler.HandleCreateEndpoint)
+	s.management("GET /management/endpoints/{id}", middleware.PermissionEndpointsRead, endpointHandler.HandleGetEndpoint)
+	s.management("PATCH /management/endpoints/{id}", middleware.PermissionEndpointsWrite, endpointHandler.HandlePatchEndpoint)
+	s.management("DELETE /management/endpoints/{id}", middleware.PermissionEndpointsWrite, endpointHandler.HandleDeleteEndpoint)
 	s.management("POST /management/endpoints/{id}/drain", middleware.PermissionEndpointsControl, endpointHandler.HandleDrainEndpoint)
+	s.management("POST /management/endpoints/{id}/undrain", middleware.PermissionEndpointsControl, endpointHandler.HandleUndrainEndpoint)
+	s.management("POST /management/endpoints/{id}/restart", middleware.PermissionEndpointsControl, endpointHandler.HandleRestartEndpoint)
+	s.management("GET /management/endpoints/{segment3}/{segment4}", middleware.PermissionEndpointsRead, endpointHandler.HandleCommandDispatch)
 }
 
 func (s *Server) registerFingerprintRoutes(fingerprintHandler *handlers.FingerprintHandler) {

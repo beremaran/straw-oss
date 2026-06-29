@@ -3,18 +3,25 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"bytes"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/beremaran/straw/internal/domain"
+	"github.com/beremaran/straw/internal/infra/postgres"
 	"github.com/beremaran/straw/internal/infra/redis"
+	"github.com/beremaran/straw/internal/server/dto"
 	"github.com/beremaran/straw/internal/service/endpoint"
+	"github.com/beremaran/straw/pkg/broker"
 	"github.com/stretchr/testify/assert"
 )
 
 type mockHealthStore struct {
 	endpoints map[string]*redis.EndpointHealth
 	draining  map[string]bool
+	deleted   map[string]bool
 }
 
 func (m *mockHealthStore) UpdateHealth(ctx context.Context, health *redis.EndpointHealth) error {
@@ -64,7 +71,136 @@ func (m *mockHealthStore) IsDraining(ctx context.Context, endpointID string) (bo
 	return m.draining[endpointID], nil
 }
 
-func TestEndpointHandler_List(t *testing.T) {
+func (m *mockHealthStore) SetDeleted(ctx context.Context, endpointID string, deleted bool) error {
+	if deleted {
+		m.deleted[endpointID] = true
+	} else {
+		delete(m.deleted, endpointID)
+	}
+
+	return nil
+}
+
+func (m *mockHealthStore) IsDeleted(ctx context.Context, endpointID string) (bool, error) {
+	return m.deleted[endpointID], nil
+}
+
+type mockEndpointRepo struct {
+	endpoints map[string]*domain.Endpoint
+}
+
+func (m *mockEndpointRepo) Create(ctx context.Context, ep *domain.Endpoint) error {
+	m.endpoints[ep.ID] = ep
+
+	return nil
+}
+
+func (m *mockEndpointRepo) GetByID(ctx context.Context, id string) (*domain.Endpoint, error) {
+	if ep, ok := m.endpoints[id]; ok {
+		return ep, nil
+	}
+
+	return nil, nil
+}
+
+func (m *mockEndpointRepo) Update(ctx context.Context, ep *domain.Endpoint) error {
+	m.endpoints[ep.ID] = ep
+
+	return nil
+}
+
+func (m *mockEndpointRepo) Delete(ctx context.Context, id string) error {
+	if ep, ok := m.endpoints[id]; ok {
+		now := time.Now().UTC()
+		ep.DeletedAt = &now
+		ep.DesiredState = domain.DesiredStateDeleted
+		ep.IsRegistered = false
+
+		return nil
+	}
+
+	return postgres.ErrEndpointNotFound
+}
+
+func (m *mockEndpointRepo) List(ctx context.Context, limit, offset int, includeDeleted bool) ([]domain.Endpoint, int, error) {
+	var list []domain.Endpoint
+	for _, ep := range m.endpoints {
+		if !includeDeleted && ep.DeletedAt != nil {
+			continue
+		}
+
+		list = append(list, *ep)
+	}
+
+	return list, len(list), nil
+}
+
+type mockCommandRepo struct {
+	commands map[string]*domain.EndpointCommand
+}
+
+func (m *mockCommandRepo) Create(ctx context.Context, cmd *domain.EndpointCommand) error {
+	m.commands[cmd.ID] = cmd
+
+	return nil
+}
+
+func (m *mockCommandRepo) GetByID(ctx context.Context, id string) (*domain.EndpointCommand, error) {
+	if cmd, ok := m.commands[id]; ok {
+		return cmd, nil
+	}
+
+	return nil, nil
+}
+
+func (m *mockCommandRepo) Update(ctx context.Context, cmd *domain.EndpointCommand) error {
+	m.commands[cmd.ID] = cmd
+
+	return nil
+}
+
+func (m *mockCommandRepo) ListByEndpointID(ctx context.Context, endpointID string, limit, offset int) ([]domain.EndpointCommand, int, error) {
+	var list []domain.EndpointCommand
+	for _, cmd := range m.commands {
+		if cmd.EndpointID == endpointID {
+			list = append(list, *cmd)
+		}
+	}
+
+	return list, len(list), nil
+}
+
+type mockEndpointBroker struct {
+	published map[string][]byte
+}
+
+func (m *mockEndpointBroker) Publish(ctx context.Context, subject string, body []byte) error {
+	m.published[subject] = body
+
+	return nil
+}
+
+func (m *mockEndpointBroker) Subscribe(ctx context.Context, subject string, handler broker.Handler, opts ...broker.SubscribeOption) error {
+	return nil
+}
+
+func (m *mockEndpointBroker) ConsumeOnce(ctx context.Context, subject string, timeout time.Duration) ([]byte, error) {
+	return nil, nil
+}
+
+func (m *mockEndpointBroker) DeclareStream(ctx context.Context, name string, subjects ...string) error {
+	return nil
+}
+
+func (m *mockEndpointBroker) Close() error {
+	return nil
+}
+
+func (m *mockEndpointBroker) IsConnected() bool {
+	return true
+}
+
+func TestEndpointHandler_List_LegacyFallback(t *testing.T) {
 	store := &mockHealthStore{
 		endpoints: map[string]*redis.EndpointHealth{
 			"ep1": {EndpointID: "ep1", State: "healthy"},
@@ -73,7 +209,7 @@ func TestEndpointHandler_List(t *testing.T) {
 	}
 	healthService := endpoint.NewHealthService(nil, store)
 
-	h := NewEndpointHandler(healthService, nil)
+	h := NewEndpointHandler(healthService, nil, nil, nil, nil)
 
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/management/endpoints", nil)
 	rec := httptest.NewRecorder()
@@ -82,28 +218,122 @@ func TestEndpointHandler_List(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 
-	var endpoints []*redis.EndpointHealth
+	var endpoints []dto.EndpointHealthResponse
 	err := json.Unmarshal(rec.Body.Bytes(), &endpoints)
 	assert.NoError(t, err)
 	assert.Len(t, endpoints, 2)
 }
 
-func TestEndpointHandler_Drain(t *testing.T) {
+func TestEndpointHandler_Lifecycle(t *testing.T) {
 	store := &mockHealthStore{
 		endpoints: map[string]*redis.EndpointHealth{
-			"ep1": {EndpointID: "ep1", State: "healthy"},
+			"ep-1": {EndpointID: "ep-1", State: "healthy", LastSeen: time.Now()},
 		},
 		draining: make(map[string]bool),
+		deleted:  make(map[string]bool),
 	}
 	healthService := endpoint.NewHealthService(nil, store)
-	h := NewEndpointHandler(healthService, nil)
+	epRepo := &mockEndpointRepo{endpoints: make(map[string]*domain.Endpoint)}
+	cmdRepo := &mockCommandRepo{commands: make(map[string]*domain.EndpointCommand)}
+	mb := &mockEndpointBroker{published: make(map[string][]byte)}
 
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/management/endpoints/ep1/drain", nil)
-	req.SetPathValue("id", "ep1")
+	h := NewEndpointHandler(healthService, epRepo, cmdRepo, mb, nil)
+
+	// 1. Create Endpoint
+	reqBody := `{"id":"ep-1","tags":["type:residential","region:us"],"desired_state":"active"}`
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/management/endpoints", bytes.NewBufferString(reqBody))
 	rec := httptest.NewRecorder()
+	h.HandleCreateEndpoint(rec, req)
+	assert.Equal(t, http.StatusCreated, rec.Code)
 
-	h.HandleDrainEndpoint(rec, req)
+	var createResp dto.EndpointResponse
+	assert.NoError(t, json.Unmarshal(rec.Body.Bytes(), &createResp))
+	assert.Equal(t, "ep-1", createResp.ID)
+	assert.Equal(t, "active", createResp.DesiredState)
+	assert.Equal(t, "healthy", createResp.Health.State)
 
+	// 2. Get Endpoint
+	req = httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/management/endpoints/ep-1", nil)
+	req.SetPathValue("id", "ep-1")
+	rec = httptest.NewRecorder()
+	h.HandleGetEndpoint(rec, req)
 	assert.Equal(t, http.StatusOK, rec.Code)
-	assert.True(t, store.draining["ep1"])
+
+	var getResp dto.EndpointResponse
+	assert.NoError(t, json.Unmarshal(rec.Body.Bytes(), &getResp))
+	assert.Equal(t, "ep-1", getResp.ID)
+
+	// 3. Drain Endpoint
+	req = httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/management/endpoints/ep-1/drain", nil)
+	req.SetPathValue("id", "ep-1")
+	rec = httptest.NewRecorder()
+	h.HandleDrainEndpoint(rec, req)
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	var drainResp dto.EndpointDrainResponse
+	assert.NoError(t, json.Unmarshal(rec.Body.Bytes(), &drainResp))
+	assert.Equal(t, "ep-1", drainResp.EndpointID)
+	assert.Equal(t, "draining", drainResp.DesiredState)
+	assert.NotEmpty(t, drainResp.CommandID)
+	assert.True(t, store.draining["ep-1"])
+
+	// Check NATS publish
+	assert.NotEmpty(t, mb.published["endpoint.control.ep-1"])
+
+	// 4. Undrain Endpoint
+	req = httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/management/endpoints/ep-1/undrain", nil)
+	req.SetPathValue("id", "ep-1")
+	rec = httptest.NewRecorder()
+	h.HandleUndrainEndpoint(rec, req)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.False(t, store.draining["ep-1"])
+
+	// 5. Restart Endpoint
+	req = httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/management/endpoints/ep-1/restart", nil)
+	req.SetPathValue("id", "ep-1")
+	rec = httptest.NewRecorder()
+	h.HandleRestartEndpoint(rec, req)
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	// 6. Delete Endpoint
+	req = httptest.NewRequestWithContext(context.Background(), http.MethodDelete, "/management/endpoints/ep-1", nil)
+	req.SetPathValue("id", "ep-1")
+	rec = httptest.NewRecorder()
+	h.HandleDeleteEndpoint(rec, req)
+	assert.Equal(t, http.StatusNoContent, rec.Code)
+	assert.True(t, store.deleted["ep-1"])
+
+	// 7. Get Command detail
+	var cmdID string
+	for k := range cmdRepo.commands {
+		cmdID = k
+
+		break
+	}
+	assert.NotEmpty(t, cmdID)
+
+	// Test Command Detail dispatch
+	req = httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/management/endpoints/commands/"+cmdID, nil)
+	req.SetPathValue("segment3", "commands")
+	req.SetPathValue("segment4", cmdID)
+	rec = httptest.NewRecorder()
+	h.HandleCommandDispatch(rec, req)
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	var cmdResp dto.EndpointCommandDTO
+	assert.NoError(t, json.Unmarshal(rec.Body.Bytes(), &cmdResp))
+	assert.Equal(t, cmdID, cmdResp.ID)
+	assert.Equal(t, "ep-1", cmdResp.EndpointID)
+
+	// Test Command List dispatch
+	req = httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/management/endpoints/ep-1/commands", nil)
+	req.SetPathValue("segment3", "ep-1")
+	req.SetPathValue("segment4", "commands")
+	rec = httptest.NewRecorder()
+	h.HandleCommandDispatch(rec, req)
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	var cmdListResp dto.EndpointCommandListResponse
+	assert.NoError(t, json.Unmarshal(rec.Body.Bytes(), &cmdListResp))
+	assert.NotEmpty(t, cmdListResp.Data)
 }

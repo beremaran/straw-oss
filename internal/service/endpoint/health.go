@@ -134,6 +134,18 @@ func (s *HealthService) DrainEndpoint(ctx context.Context, endpointID string) er
 	return s.store.SetDraining(ctx, endpointID, true)
 }
 
+func (s *HealthService) SetDraining(ctx context.Context, endpointID string, draining bool) error {
+	return s.store.SetDraining(ctx, endpointID, draining)
+}
+
+func (s *HealthService) SetDeleted(ctx context.Context, endpointID string, deleted bool) error {
+	return s.store.SetDeleted(ctx, endpointID, deleted)
+}
+
+func (s *HealthService) DeleteHealth(ctx context.Context, endpointID string) error {
+	return s.store.DeleteHealth(ctx, endpointID)
+}
+
 func (s *HealthService) ListAllEndpoints(ctx context.Context) ([]*redis.EndpointHealth, error) {
 	return s.store.ListAllEndpoints(ctx)
 }
@@ -178,6 +190,11 @@ func (s *HealthService) handleHeartbeat(ctx context.Context, body []byte) error 
 	isDraining, err := s.store.IsDraining(ctx, msg.EndpointID)
 	if err == nil && isDraining {
 		health.State = redis.HealthStateDraining
+	}
+
+	isDeleted, err := s.store.IsDeleted(ctx, msg.EndpointID)
+	if err == nil && isDeleted {
+		health.State = redis.HealthStateDeleted
 	}
 
 	if msg.Timestamp == 0 || time.Since(health.LastSeen) > time.Hour {
