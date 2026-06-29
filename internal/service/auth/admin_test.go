@@ -206,13 +206,15 @@ func TestAdminService_LogoutRevokesSession(t *testing.T) {
 		t.Fatalf("Login() error = %v", err)
 	}
 
-	if err := service.Logout(context.Background(), tokens.Session.ID); err != nil {
+	err = service.Logout(context.Background(), tokens.Session.ID)
+	if err != nil {
 		t.Fatalf("Logout() error = %v", err)
 	}
 	if repo.sessions[tokens.Session.ID].RevokedAt == nil {
 		t.Fatal("Logout() did not revoke the session")
 	}
-	if _, err := service.VerifyAccessToken(context.Background(), tokens.AccessToken); !errors.Is(err, ErrInvalidAccessToken) {
+	_, err = service.VerifyAccessToken(context.Background(), tokens.AccessToken)
+	if !errors.Is(err, ErrInvalidAccessToken) {
 		t.Fatalf("VerifyAccessToken() after logout error = %v, want %v", err, ErrInvalidAccessToken)
 	}
 }

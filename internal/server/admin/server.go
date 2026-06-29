@@ -133,52 +133,22 @@ func (s *Server) registerRoutes() {
 		cacheHandler = handlers.NewCacheHandler(s.redisClient, auditRepo)
 	}
 
-	s.management("GET /management/users", middleware.PermissionUsersRead, userHandler.HandleListUsers)
-	s.management("POST /management/users", middleware.PermissionUsersWrite, userHandler.HandleCreateUser)
-	s.management("GET /management/users/{id}", middleware.PermissionUsersRead, userHandler.HandleGetUser)
-	s.management("PATCH /management/users/{id}", middleware.PermissionUsersWrite, userHandler.HandleUpdateUser)
-	s.management("DELETE /management/users/{id}", middleware.PermissionUsersWrite, userHandler.HandleDeactivateUser)
-
-	s.management("GET /management/roles", middleware.PermissionUsersRead, roleHandler.HandleListRoles)
-	s.management("POST /management/roles", middleware.PermissionUsersWrite, roleHandler.HandleCreateRole)
-	s.management("PATCH /management/roles/{id}", middleware.PermissionUsersWrite, roleHandler.HandleUpdateRole)
-	s.management("DELETE /management/roles/{id}", middleware.PermissionUsersWrite, roleHandler.HandleDeleteRole)
-
-	s.management("GET /management/identity-providers", middleware.PermissionUsersRead, idpHandler.HandleListIdentityProviders)
-	s.management("POST /management/identity-providers", middleware.PermissionUsersWrite, idpHandler.HandleCreateIdentityProvider)
-	s.management("PATCH /management/identity-providers/{id}", middleware.PermissionUsersWrite, idpHandler.HandleUpdateIdentityProvider)
-	s.management("DELETE /management/identity-providers/{id}", middleware.PermissionUsersWrite, idpHandler.HandleDeleteIdentityProvider)
-
-	s.management("POST /management/api-keys", middleware.PermissionAPIKeysWrite, apiKeyHandler.HandleCreateApiKey)
-	s.management("GET /management/api-keys", middleware.PermissionAPIKeysRead, apiKeyHandler.HandleListApiKeys)
-	s.management("DELETE /management/api-keys/{id}", middleware.PermissionAPIKeysRevoke, apiKeyHandler.HandleRevokeApiKey)
-
-	s.management("POST /management/rules", middleware.PermissionRoutingRulesWrite, routingRuleHandler.HandleCreateRoutingRule)
-	s.management("GET /management/rules", middleware.PermissionRoutingRulesRead, routingRuleHandler.HandleListRoutingRules)
-	s.management("GET /management/rules/{id}", middleware.PermissionRoutingRulesRead, routingRuleHandler.HandleGetRoutingRule)
-	s.management("PUT /management/rules/{id}", middleware.PermissionRoutingRulesWrite, routingRuleHandler.HandleUpdateRoutingRule)
-	s.management("DELETE /management/rules/{id}", middleware.PermissionRoutingRulesWrite, routingRuleHandler.HandleDeleteRoutingRule)
-
-	s.management("GET /management/endpoints", middleware.PermissionEndpointsRead, endpointHandler.HandleListEndpoints)
-	s.management("POST /management/endpoints/{id}/drain", middleware.PermissionEndpointsControl, endpointHandler.HandleDrainEndpoint)
-
-	s.management("GET /management/fingerprints", middleware.PermissionFingerprintsRead, fingerprintHandler.HandleListPresets)
-	s.management("POST /management/fingerprints", middleware.PermissionFingerprintsWrite, fingerprintHandler.HandleCreatePreset)
-	s.management("POST /management/fingerprints/broadcast", middleware.PermissionFingerprintsBroadcast, fingerprintHandler.HandleBroadcastPresets)
-
-	s.management("GET /management/usage/summary", middleware.PermissionUsageRead, usageHandler.HandleGetUsageSummary)
-	s.management("GET /management/billing/estimate", middleware.PermissionBillingRead, usageHandler.HandleGetBillingEstimate)
-
+	s.registerUserRoutes(userHandler)
+	s.registerRoleRoutes(roleHandler)
+	s.registerIdentityProviderRoutes(idpHandler)
+	s.registerAPIKeyRoutes(apiKeyHandler)
+	s.registerRoutingRuleRoutes(routingRuleHandler)
+	s.registerEndpointRoutes(endpointHandler)
+	s.registerFingerprintRoutes(fingerprintHandler)
+	s.registerUsageRoutes(usageHandler)
 	if cacheHandler != nil {
-		s.management("POST /management/cache/clear", middleware.PermissionCacheWrite, cacheHandler.HandleClearCache)
-		s.management("GET /management/cache/stats", middleware.PermissionCacheRead, cacheHandler.HandleGetCacheStats)
+		s.registerCacheRoutes(cacheHandler)
 	}
+	s.registerAuditRoutes(auditHandler)
+	s.registerAuthRoutes(authHandler)
+}
 
-	s.management("GET /management/audit/events", middleware.PermissionAuditRead, auditHandler.HandleListEvents)
-	s.management("GET /management/audit/events/{id}", middleware.PermissionAuditRead, auditHandler.HandleGetEvent)
-	s.management("GET /management/audit/requests", middleware.PermissionAuditRead, auditHandler.HandleListRequests)
-	s.management("GET /management/audit/export", middleware.PermissionAuditRead, auditHandler.HandleExport)
-
+func (s *Server) registerAuthRoutes(authHandler *handlers.AuthHandler) {
 	if s.authService != nil {
 		s.mux.HandleFunc("POST /management/auth/login", authHandler.HandleLogin)
 		s.mux.HandleFunc("POST /management/auth/refresh", authHandler.HandleRefresh)
@@ -188,6 +158,70 @@ func (s *Server) registerRoutes() {
 		s.mux.HandleFunc("GET /management/auth/sso/{provider}/start", authHandler.HandleSSOStart)
 		s.mux.HandleFunc("GET /management/auth/sso/{provider}/callback", authHandler.HandleSSOCallback)
 	}
+}
+
+func (s *Server) registerUserRoutes(userHandler *handlers.UserHandler) {
+	s.management("GET /management/users", middleware.PermissionUsersRead, userHandler.HandleListUsers)
+	s.management("POST /management/users", middleware.PermissionUsersWrite, userHandler.HandleCreateUser)
+	s.management("GET /management/users/{id}", middleware.PermissionUsersRead, userHandler.HandleGetUser)
+	s.management("PATCH /management/users/{id}", middleware.PermissionUsersWrite, userHandler.HandleUpdateUser)
+	s.management("DELETE /management/users/{id}", middleware.PermissionUsersWrite, userHandler.HandleDeactivateUser)
+}
+
+func (s *Server) registerRoleRoutes(roleHandler *handlers.RoleHandler) {
+	s.management("GET /management/roles", middleware.PermissionUsersRead, roleHandler.HandleListRoles)
+	s.management("POST /management/roles", middleware.PermissionUsersWrite, roleHandler.HandleCreateRole)
+	s.management("PATCH /management/roles/{id}", middleware.PermissionUsersWrite, roleHandler.HandleUpdateRole)
+	s.management("DELETE /management/roles/{id}", middleware.PermissionUsersWrite, roleHandler.HandleDeleteRole)
+}
+
+func (s *Server) registerIdentityProviderRoutes(idpHandler *handlers.IdentityProviderHandler) {
+	s.management("GET /management/identity-providers", middleware.PermissionUsersRead, idpHandler.HandleListIdentityProviders)
+	s.management("POST /management/identity-providers", middleware.PermissionUsersWrite, idpHandler.HandleCreateIdentityProvider)
+	s.management("PATCH /management/identity-providers/{id}", middleware.PermissionUsersWrite, idpHandler.HandleUpdateIdentityProvider)
+	s.management("DELETE /management/identity-providers/{id}", middleware.PermissionUsersWrite, idpHandler.HandleDeleteIdentityProvider)
+}
+
+func (s *Server) registerAPIKeyRoutes(apiKeyHandler *handlers.ApiKeyHandler) {
+	s.management("POST /management/api-keys", middleware.PermissionAPIKeysWrite, apiKeyHandler.HandleCreateApiKey)
+	s.management("GET /management/api-keys", middleware.PermissionAPIKeysRead, apiKeyHandler.HandleListApiKeys)
+	s.management("DELETE /management/api-keys/{id}", middleware.PermissionAPIKeysRevoke, apiKeyHandler.HandleRevokeApiKey)
+}
+
+func (s *Server) registerRoutingRuleRoutes(routingRuleHandler *handlers.RoutingRuleHandler) {
+	s.management("POST /management/rules", middleware.PermissionRoutingRulesWrite, routingRuleHandler.HandleCreateRoutingRule)
+	s.management("GET /management/rules", middleware.PermissionRoutingRulesRead, routingRuleHandler.HandleListRoutingRules)
+	s.management("GET /management/rules/{id}", middleware.PermissionRoutingRulesRead, routingRuleHandler.HandleGetRoutingRule)
+	s.management("PUT /management/rules/{id}", middleware.PermissionRoutingRulesWrite, routingRuleHandler.HandleUpdateRoutingRule)
+	s.management("DELETE /management/rules/{id}", middleware.PermissionRoutingRulesWrite, routingRuleHandler.HandleDeleteRoutingRule)
+}
+
+func (s *Server) registerEndpointRoutes(endpointHandler *handlers.EndpointHandler) {
+	s.management("GET /management/endpoints", middleware.PermissionEndpointsRead, endpointHandler.HandleListEndpoints)
+	s.management("POST /management/endpoints/{id}/drain", middleware.PermissionEndpointsControl, endpointHandler.HandleDrainEndpoint)
+}
+
+func (s *Server) registerFingerprintRoutes(fingerprintHandler *handlers.FingerprintHandler) {
+	s.management("GET /management/fingerprints", middleware.PermissionFingerprintsRead, fingerprintHandler.HandleListPresets)
+	s.management("POST /management/fingerprints", middleware.PermissionFingerprintsWrite, fingerprintHandler.HandleCreatePreset)
+	s.management("POST /management/fingerprints/broadcast", middleware.PermissionFingerprintsBroadcast, fingerprintHandler.HandleBroadcastPresets)
+}
+
+func (s *Server) registerUsageRoutes(usageHandler *handlers.UsageHandler) {
+	s.management("GET /management/usage/summary", middleware.PermissionUsageRead, usageHandler.HandleGetUsageSummary)
+	s.management("GET /management/billing/estimate", middleware.PermissionBillingRead, usageHandler.HandleGetBillingEstimate)
+}
+
+func (s *Server) registerCacheRoutes(cacheHandler *handlers.CacheHandler) {
+	s.management("POST /management/cache/clear", middleware.PermissionCacheWrite, cacheHandler.HandleClearCache)
+	s.management("GET /management/cache/stats", middleware.PermissionCacheRead, cacheHandler.HandleGetCacheStats)
+}
+
+func (s *Server) registerAuditRoutes(auditHandler *handlers.AuditHandler) {
+	s.management("GET /management/audit/events", middleware.PermissionAuditRead, auditHandler.HandleListEvents)
+	s.management("GET /management/audit/events/{id}", middleware.PermissionAuditRead, auditHandler.HandleGetEvent)
+	s.management("GET /management/audit/requests", middleware.PermissionAuditRead, auditHandler.HandleListRequests)
+	s.management("GET /management/audit/export", middleware.PermissionAuditRead, auditHandler.HandleExport)
 }
 
 func (s *Server) management(pattern, permission string, handler http.HandlerFunc) {

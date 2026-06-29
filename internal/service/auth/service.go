@@ -30,13 +30,9 @@ func NewAuthService(repo domain.ApiKeyRepository, tokenRepo domain.ApiKeyTokenRe
 func (s *Service) ValidateKey(ctx context.Context, rawToken string) (*domain.ApiKey, error) {
 	tokenHash := sha256Hash(rawToken)
 
-	if s.cache != nil {
-		cachedKey, err := s.cache.GetKey(ctx, tokenHash)
-		if err == nil && cachedKey != nil {
-			if cachedKey.IsValid() {
-				return cachedKey, nil
-			}
-		}
+	cachedKey := s.cachedValidKey(ctx, tokenHash)
+	if cachedKey != nil {
+		return cachedKey, nil
 	}
 
 	token, err := s.tokenRepo.GetByTokenHash(ctx, tokenHash)
@@ -51,11 +47,7 @@ func (s *Service) ValidateKey(ctx context.Context, rawToken string) (*domain.Api
 	if err != nil {
 		return nil, err
 	}
-	if apiKey == nil {
-		return nil, ErrInvalidKey
-	}
-
-	if !apiKey.IsValid() {
+	if !validAPIKey(apiKey) {
 		return nil, ErrInvalidKey
 	}
 
@@ -77,6 +69,23 @@ func (s *Service) InvalidateKey(ctx context.Context, rawToken string) error {
 
 func (s *Service) InvalidateKeyByID(ctx context.Context, keyID string) error {
 	return nil
+}
+
+func (s *Service) cachedValidKey(ctx context.Context, tokenHash string) *domain.ApiKey {
+	if s.cache == nil {
+		return nil
+	}
+
+	cachedKey, err := s.cache.GetKey(ctx, tokenHash)
+	if err != nil || !validAPIKey(cachedKey) {
+		return nil
+	}
+
+	return cachedKey
+}
+
+func validAPIKey(apiKey *domain.ApiKey) bool {
+	return apiKey != nil && apiKey.IsValid()
 }
 
 func sha256Hash(s string) string {

@@ -24,7 +24,8 @@ func NewAuthHandler(service *adminauth.AdminService) *AuthHandler {
 
 func (h *AuthHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	var req dto.AdminLoginRequest
-	if err := helper.ReadJSON(r, &req); err != nil {
+	err := helper.ReadJSON(r, &req)
+	if err != nil {
 		helper.WriteError(w, http.StatusBadRequest, "invalid request body")
 
 		return
@@ -52,7 +53,8 @@ func (h *AuthHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 
 func (h *AuthHandler) HandleRefresh(w http.ResponseWriter, r *http.Request) {
 	var req dto.AdminRefreshRequest
-	if err := helper.ReadJSON(r, &req); err != nil {
+	err := helper.ReadJSON(r, &req)
+	if err != nil {
 		helper.WriteError(w, http.StatusBadRequest, "invalid request body")
 
 		return
@@ -86,7 +88,8 @@ func (h *AuthHandler) HandleLogout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.service.Logout(r.Context(), actor.SessionID); err != nil {
+	err := h.service.Logout(r.Context(), actor.SessionID)
+	if err != nil {
 		helper.WriteError(w, http.StatusInternalServerError, "failed to logout")
 
 		return
@@ -124,7 +127,8 @@ func (h *AuthHandler) HandleBootstrapOwner(w http.ResponseWriter, r *http.Reques
 	}
 
 	var req dto.BootstrapOwnerRequest
-	if err := helper.ReadJSON(r, &req); err != nil {
+	err := helper.ReadJSON(r, &req)
+	if err != nil {
 		helper.WriteError(w, http.StatusBadRequest, "invalid request body")
 
 		return
@@ -196,6 +200,7 @@ func (h *AuthHandler) HandleSSOStart(w http.ResponseWriter, r *http.Request) {
 	redirectURI := r.URL.Query().Get("redirect_uri")
 	if redirectURI == "" {
 		helper.WriteError(w, http.StatusBadRequest, "redirect_uri is required")
+
 		return
 	}
 
@@ -203,18 +208,21 @@ func (h *AuthHandler) HandleSSOStart(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, adminauth.ErrProviderNotFound) {
 			helper.WriteError(w, http.StatusNotFound, "provider not found")
+
 			return
 		}
 		if errors.Is(err, adminauth.ErrProviderDisabled) {
 			helper.WriteError(w, http.StatusForbidden, "provider is disabled")
+
 			return
 		}
 		helper.WriteError(w, http.StatusInternalServerError, "failed to start sso")
+
 		return
 	}
 
 	cookiePayload := state + ":" + nonce + ":" + base64.RawURLEncoding.EncodeToString([]byte(redirectURI))
-	
+
 	http.SetCookie(w, &http.Cookie{
 		Name:     "sso_state",
 		Value:    cookiePayload,
@@ -236,18 +244,21 @@ func (h *AuthHandler) HandleSSOCallback(w http.ResponseWriter, r *http.Request) 
 
 	if errStr != "" {
 		helper.WriteError(w, http.StatusUnauthorized, "provider error: "+errDesc)
+
 		return
 	}
 
 	cookie, err := r.Cookie("sso_state")
 	if err != nil || cookie.Value == "" {
 		helper.WriteError(w, http.StatusBadRequest, "missing or invalid state cookie")
+
 		return
 	}
 
 	parts := strings.Split(cookie.Value, ":")
 	if len(parts) != 3 {
 		helper.WriteError(w, http.StatusBadRequest, "invalid state cookie format")
+
 		return
 	}
 
@@ -256,6 +267,7 @@ func (h *AuthHandler) HandleSSOCallback(w http.ResponseWriter, r *http.Request) 
 	redirectURIRaw, err := base64.RawURLEncoding.DecodeString(parts[2])
 	if err != nil {
 		helper.WriteError(w, http.StatusBadRequest, "invalid redirect_uri in cookie")
+
 		return
 	}
 	redirectURI := string(redirectURIRaw)
@@ -272,6 +284,7 @@ func (h *AuthHandler) HandleSSOCallback(w http.ResponseWriter, r *http.Request) 
 	tokens, err := h.service.CallbackSSO(r.Context(), providerName, redirectURI, code, expectedState, expectedNonce, actualState, r.UserAgent(), clientIP(r))
 	if err != nil {
 		helper.WriteError(w, http.StatusUnauthorized, "sso failed: "+err.Error())
+
 		return
 	}
 

@@ -42,6 +42,7 @@ func (r *ApiKeyTokenRepository) GetByTokenHash(ctx context.Context, tokenHash st
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
+
 		return nil, fmt.Errorf("failed to get api key token: %w", err)
 	}
 
@@ -62,11 +63,13 @@ func (r *ApiKeyTokenRepository) Create(ctx context.Context, token *domain.ApiKey
 			token.ExpiresAt,
 			token.CreatedAt,
 		)
+
 		return err
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create api key token: %w", err)
 	}
+
 	return nil
 }
 
@@ -86,14 +89,17 @@ func (r *ApiKeyTokenRepository) ListByApiKeyID(ctx context.Context, apiKeyID str
 	var tokens []domain.ApiKeyToken
 	for rows.Next() {
 		var t domain.ApiKeyToken
-		if err := rows.Scan(&t.ID, &t.ApiKeyID, &t.TokenHash, &t.Status, &t.ExpiresAt, &t.CreatedAt); err != nil {
+		err := rows.Scan(&t.ID, &t.ApiKeyID, &t.TokenHash, &t.Status, &t.ExpiresAt, &t.CreatedAt)
+		if err != nil {
 			return nil, fmt.Errorf("failed to scan api key token: %w", err)
 		}
 		tokens = append(tokens, t)
 	}
-	if err := rows.Err(); err != nil {
+	err = rows.Err()
+	if err != nil {
 		return nil, fmt.Errorf("error iterating api key tokens: %w", err)
 	}
+
 	return tokens, nil
 }
 
@@ -110,5 +116,6 @@ func (r *ApiKeyTokenRepository) UpdateStatus(ctx context.Context, id string, sta
 	if res.RowsAffected() == 0 {
 		return ErrApiKeyTokenNotFound
 	}
+
 	return nil
 }

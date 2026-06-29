@@ -41,7 +41,8 @@ func (h *RoleHandler) HandleListRoles(w http.ResponseWriter, r *http.Request) {
 
 func (h *RoleHandler) HandleCreateRole(w http.ResponseWriter, r *http.Request) {
 	var req dto.CreateRoleRequest
-	if err := helper.ReadJSON(r, &req); err != nil {
+	err := helper.ReadJSON(r, &req)
+	if err != nil {
 		helper.WriteError(w, http.StatusBadRequest, "invalid request body")
 
 		return
@@ -63,12 +64,9 @@ func (h *RoleHandler) HandleCreateRole(w http.ResponseWriter, r *http.Request) {
 		Permissions: req.Permissions,
 	}
 
-	if err := h.repo.CreateRole(r.Context(), role); err != nil {
-		if strings.Contains(err.Error(), "duplicate key") || strings.Contains(err.Error(), "unique constraint") {
-			helper.WriteError(w, http.StatusConflict, "role name already exists")
-		} else {
-			helper.WriteError(w, http.StatusInternalServerError, "failed to create role")
-		}
+	err = h.repo.CreateRole(r.Context(), role)
+	if err != nil {
+		writeConflictOrServerError(w, err, "role name already exists", "failed to create role")
 
 		return
 	}
@@ -110,7 +108,8 @@ func (h *RoleHandler) HandleUpdateRole(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req dto.UpdateRoleRequest
-	if err := helper.ReadJSON(r, &req); err != nil {
+	err = helper.ReadJSON(r, &req)
+	if err != nil {
 		helper.WriteError(w, http.StatusBadRequest, "invalid request body")
 
 		return
@@ -124,16 +123,11 @@ func (h *RoleHandler) HandleUpdateRole(w http.ResponseWriter, r *http.Request) {
 	}
 
 	oldRole := *role
-	role.Name = name
-	role.Description = req.Description
-	role.Permissions = req.Permissions
+	applyRoleUpdate(role, req, name)
 
-	if err := h.repo.UpdateRole(r.Context(), role); err != nil {
-		if strings.Contains(err.Error(), "duplicate key") || strings.Contains(err.Error(), "unique constraint") {
-			helper.WriteError(w, http.StatusConflict, "role name already exists")
-		} else {
-			helper.WriteError(w, http.StatusInternalServerError, "failed to update role")
-		}
+	err = h.repo.UpdateRole(r.Context(), role)
+	if err != nil {
+		writeConflictOrServerError(w, err, "role name already exists", "failed to update role")
 
 		return
 	}
@@ -175,7 +169,8 @@ func (h *RoleHandler) HandleDeleteRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.repo.DeleteRole(r.Context(), id); err != nil {
+	err = h.repo.DeleteRole(r.Context(), id)
+	if err != nil {
 		if errors.Is(err, postgres.ErrBuiltinRoleProtected) {
 			helper.WriteError(w, http.StatusBadRequest, "cannot delete a built-in role")
 		} else {
@@ -192,4 +187,10 @@ func (h *RoleHandler) HandleDeleteRole(w http.ResponseWriter, r *http.Request) {
 	)
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func applyRoleUpdate(role *domain.AdminRole, req dto.UpdateRoleRequest, name string) {
+	role.Name = name
+	role.Description = req.Description
+	role.Permissions = req.Permissions
 }

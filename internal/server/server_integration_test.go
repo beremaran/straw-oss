@@ -71,10 +71,12 @@ func (m *MockApiKeyTokenRepo) GetByTokenHash(ctx context.Context, tokenHash stri
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
+
 	return args.Get(0).(*domain.ApiKeyToken), args.Error(1)
 }
 func (m *MockApiKeyTokenRepo) Create(ctx context.Context, token *domain.ApiKeyToken) error {
 	args := m.Called(ctx, token)
+
 	return args.Error(0)
 }
 func (m *MockApiKeyTokenRepo) ListByApiKeyID(ctx context.Context, apiKeyID string) ([]domain.ApiKeyToken, error) {
@@ -82,10 +84,12 @@ func (m *MockApiKeyTokenRepo) ListByApiKeyID(ctx context.Context, apiKeyID strin
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
+
 	return args.Get(0).([]domain.ApiKeyToken), args.Error(1)
 }
 func (m *MockApiKeyTokenRepo) UpdateStatus(ctx context.Context, id string, status domain.TokenStatus) error {
 	args := m.Called(ctx, id, status)
+
 	return args.Error(0)
 }
 

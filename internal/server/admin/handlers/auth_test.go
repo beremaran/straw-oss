@@ -1,6 +1,7 @@
 package handlers_test
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -13,7 +14,7 @@ func TestAuthHandler_SSOStart_Validation(t *testing.T) {
 	// Simple test to ensure redirect_uri validation works
 	authHandler := handlers.NewAuthHandler(&adminauth.AdminService{})
 
-	req, err := http.NewRequest(http.MethodGet, "/management/auth/sso/google/start", nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "/management/auth/sso/google/start", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +34,7 @@ func TestAuthHandler_SSOStart_Validation(t *testing.T) {
 func TestAuthHandler_SSOCallback_Validation(t *testing.T) {
 	authHandler := handlers.NewAuthHandler(&adminauth.AdminService{})
 
-	req, err := http.NewRequest(http.MethodGet, "/management/auth/sso/google/callback", nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "/management/auth/sso/google/callback", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

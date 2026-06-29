@@ -77,10 +77,12 @@ func (m *MockTokenRepo) GetByTokenHash(ctx context.Context, tokenHash string) (*
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
+
 	return args.Get(0).(*domain.ApiKeyToken), args.Error(1)
 }
 func (m *MockTokenRepo) Create(ctx context.Context, token *domain.ApiKeyToken) error {
 	args := m.Called(ctx, token)
+
 	return args.Error(0)
 }
 func (m *MockTokenRepo) ListByApiKeyID(ctx context.Context, apiKeyID string) ([]domain.ApiKeyToken, error) {
@@ -88,10 +90,12 @@ func (m *MockTokenRepo) ListByApiKeyID(ctx context.Context, apiKeyID string) ([]
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
+
 	return args.Get(0).([]domain.ApiKeyToken), args.Error(1)
 }
 func (m *MockTokenRepo) UpdateStatus(ctx context.Context, id string, status domain.TokenStatus) error {
 	args := m.Called(ctx, id, status)
+
 	return args.Error(0)
 }
 
@@ -155,7 +159,7 @@ func TestAuthMiddleware(t *testing.T) {
 		tokenHash := sha256Hash("valid-token")
 		validApiKey := &domain.ApiKey{ID: "test", TokenHash: tokenHash, IsActive: true}
 		validToken := &domain.ApiKeyToken{ID: "token", ApiKeyID: "test", TokenHash: tokenHash, Status: domain.TokenStatusActive}
-		
+
 		mockTokenRepo.On("GetByTokenHash", mock.Anything, tokenHash).Return(validToken, nil).Once()
 		mockRepo.On("GetByID", mock.Anything, validApiKey.ID).Return(validApiKey, nil).Once()
 
@@ -173,7 +177,7 @@ func TestAuthMiddleware(t *testing.T) {
 		tokenHash := sha256Hash("inactive-token")
 		inactiveApiKey := &domain.ApiKey{ID: "test", TokenHash: tokenHash, IsActive: false}
 		inactiveToken := &domain.ApiKeyToken{ID: "token", ApiKeyID: "test", TokenHash: tokenHash, Status: domain.TokenStatusActive}
-		
+
 		mockTokenRepo.On("GetByTokenHash", mock.Anything, tokenHash).Return(inactiveToken, nil).Once()
 		mockRepo.On("GetByID", mock.Anything, inactiveApiKey.ID).Return(inactiveApiKey, nil).Once()
 

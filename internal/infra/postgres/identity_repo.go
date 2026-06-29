@@ -147,7 +147,8 @@ func (r *IdentityRepository) ListUsers(ctx context.Context, limit, offset int) (
 		}
 		users = append(users, user)
 	}
-	if err := rows.Err(); err != nil {
+	err = rows.Err()
+	if err != nil {
 		return nil, 0, fmt.Errorf("error iterating admin users: %w", err)
 	}
 
@@ -291,7 +292,8 @@ func (r *IdentityRepository) CreateRole(ctx context.Context, role *domain.AdminR
 			return fmt.Errorf("failed to create admin role: %w", err)
 		}
 
-		if err := replaceRolePermissions(ctx, tx, role.ID, role.Permissions); err != nil {
+		err = replaceRolePermissions(ctx, tx, role.ID, role.Permissions)
+		if err != nil {
 			return err
 		}
 
@@ -321,7 +323,8 @@ func (r *IdentityRepository) UpdateRole(ctx context.Context, role *domain.AdminR
 			return ErrIdentityNotFound
 		}
 
-		if err := replaceRolePermissions(ctx, tx, role.ID, role.Permissions); err != nil {
+		err = replaceRolePermissions(ctx, tx, role.ID, role.Permissions)
+		if err != nil {
 			return err
 		}
 
@@ -486,7 +489,8 @@ func (r *IdentityRepository) RevokeUserSessions(ctx context.Context, userID stri
 }
 
 func (r *IdentityRepository) CreateIdentityProvider(ctx context.Context, provider *domain.AdminIdentityProvider) error {
-	if err := validateProviderConfig(provider.Config); err != nil {
+	err := validateProviderConfig(provider.Config)
+	if err != nil {
 		return err
 	}
 	now := time.Now()
@@ -543,7 +547,8 @@ func (r *IdentityRepository) CreateIdentityProvider(ctx context.Context, provide
 }
 
 func (r *IdentityRepository) UpdateIdentityProvider(ctx context.Context, provider *domain.AdminIdentityProvider) error {
-	if err := validateProviderConfig(provider.Config); err != nil {
+	err := validateProviderConfig(provider.Config)
+	if err != nil {
 		return err
 	}
 	provider.UpdatedAt = time.Now()
@@ -649,7 +654,8 @@ func (r *IdentityRepository) ListIdentityProviders(ctx context.Context) ([]domai
 		}
 		providers = append(providers, provider)
 	}
-	if err := rows.Err(); err != nil {
+	err = rows.Err()
+	if err != nil {
 		return nil, fmt.Errorf("error iterating identity providers: %w", err)
 	}
 
@@ -718,7 +724,8 @@ func (r *IdentityRepository) listRoles(ctx context.Context, query string, args .
 		}
 		roles = append(roles, role)
 	}
-	if err := rows.Err(); err != nil {
+	err = rows.Err()
+	if err != nil {
 		return nil, fmt.Errorf("error iterating admin roles: %w", err)
 	}
 
@@ -895,7 +902,8 @@ func scanIdentityProvider(scan func(dest ...interface{}) error) (domain.AdminIde
 	provider.DefaultRoleID = defaultRoleID.String
 
 	if len(config) > 0 {
-		if err := json.Unmarshal(config, &provider.Config); err != nil {
+		err := json.Unmarshal(config, &provider.Config)
+		if err != nil {
 			return domain.AdminIdentityProvider{}, fmt.Errorf("failed to unmarshal identity provider config: %w", err)
 		}
 	}
@@ -939,23 +947,26 @@ func validateProviderConfig(config domain.ConfigMap) error {
 		if strings.Contains(strings.ToLower(key), "secret") {
 			return ErrPlaintextProviderSecret
 		}
+		err := validateValue(value)
+		if err != nil {
+			return err
+		}
+	}
 
-		switch v := value.(type) {
-		case map[string]interface{}:
-			if err := validateProviderConfig(domain.ConfigMap(v)); err != nil {
-				return err
-			}
-		case domain.ConfigMap:
-			if err := validateProviderConfig(v); err != nil {
-				return err
-			}
-		case []interface{}:
-			for _, item := range v {
-				nested, ok := item.(map[string]interface{})
-				if !ok {
-					continue
-				}
-				if err := validateProviderConfig(domain.ConfigMap(nested)); err != nil {
+	return nil
+}
+
+func validateValue(value interface{}) error {
+	switch v := value.(type) {
+	case map[string]interface{}:
+		return validateProviderConfig(domain.ConfigMap(v))
+	case domain.ConfigMap:
+		return validateProviderConfig(v)
+	case []interface{}:
+		for _, item := range v {
+			if nested, ok := item.(map[string]interface{}); ok {
+				err := validateProviderConfig(domain.ConfigMap(nested))
+				if err != nil {
 					return err
 				}
 			}

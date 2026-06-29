@@ -9,7 +9,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -24,6 +23,7 @@ const (
 )
 
 var (
+	ErrOwnerRoleNotFound  = errors.New("owner role not found")
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrInvalidAccessToken = errors.New("invalid access token")
 	ErrInvalidRefresh     = errors.New("invalid refresh token")
@@ -117,7 +117,8 @@ func (s *AdminService) Login(ctx context.Context, email, password, userAgent, ip
 
 	now := time.Now()
 	user.LastLoginAt = &now
-	if err := s.repo.UpdateUser(ctx, user); err != nil {
+	err = s.repo.UpdateUser(ctx, user)
+	if err != nil {
 		return nil, err
 	}
 
@@ -183,7 +184,7 @@ func (s *AdminService) BootstrapOwner(ctx context.Context, email, displayName, p
 		return nil, err
 	}
 	if role == nil {
-		return nil, fmt.Errorf("owner role not found")
+		return nil, ErrOwnerRoleNotFound
 	}
 
 	name := strings.TrimSpace(displayName)
@@ -198,10 +199,12 @@ func (s *AdminService) BootstrapOwner(ctx context.Context, email, displayName, p
 		PasswordHash: passwordHash,
 		IsActive:     true,
 	}
-	if err := s.repo.CreateUser(ctx, user); err != nil {
+	err = s.repo.CreateUser(ctx, user)
+	if err != nil {
 		return nil, err
 	}
-	if err := s.repo.SetUserRoles(ctx, user.ID, []string{role.ID}); err != nil {
+	err = s.repo.SetUserRoles(ctx, user.ID, []string{role.ID})
+	if err != nil {
 		return nil, err
 	}
 
@@ -209,6 +212,28 @@ func (s *AdminService) BootstrapOwner(ctx context.Context, email, displayName, p
 }
 
 func (s *AdminService) VerifyAccessToken(ctx context.Context, rawToken string) (*AccessClaims, error) {
+	claims, err := s.parseAccessToken(rawToken)
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now()
+	if !claims.validAt(now) {
+		return nil, ErrInvalidAccessToken
+	}
+
+	session, err := s.repo.GetSessionByID(ctx, claims.SessionID)
+	if err != nil {
+		return nil, err
+	}
+	if !validAdminSession(session, now) {
+		return nil, ErrInvalidAccessToken
+	}
+
+	return claims, nil
+}
+
+func (s *AdminService) parseAccessToken(rawToken string) (*AccessClaims, error) {
 	parts := strings.Split(rawToken, ".")
 	if len(parts) != 3 || len(s.secret) == 0 {
 		return nil, ErrInvalidAccessToken
@@ -229,23 +254,20 @@ func (s *AdminService) VerifyAccessToken(ctx context.Context, rawToken string) (
 	}
 
 	var claims AccessClaims
-	if err := json.Unmarshal(payload, &claims); err != nil {
-		return nil, ErrInvalidAccessToken
-	}
-	now := time.Now()
-	if claims.UserID == "" || claims.SessionID == "" || now.Unix() >= claims.ExpiresAt {
-		return nil, ErrInvalidAccessToken
-	}
-
-	session, err := s.repo.GetSessionByID(ctx, claims.SessionID)
+	err = json.Unmarshal(payload, &claims)
 	if err != nil {
-		return nil, err
-	}
-	if session == nil || session.RevokedAt != nil || now.After(session.ExpiresAt) {
 		return nil, ErrInvalidAccessToken
 	}
 
 	return &claims, nil
+}
+
+func (c *AccessClaims) validAt(now time.Time) bool {
+	return c.UserID != "" && c.SessionID != "" && now.Unix() < c.ExpiresAt
+}
+
+func validAdminSession(session *domain.AdminSession, now time.Time) bool {
+	return session != nil && session.RevokedAt == nil && !now.After(session.ExpiresAt)
 }
 
 func (s *AdminService) issueSession(ctx context.Context, user *domain.AdminUser, userAgent, ip, sessionID string) (*TokenPair, error) {
@@ -268,7 +290,8 @@ func (s *AdminService) issueSession(ctx context.Context, user *domain.AdminUser,
 		IP:               ip,
 		ExpiresAt:        now.Add(s.refreshTTL),
 	}
-	if err := s.repo.CreateSession(ctx, session); err != nil {
+	err = s.repo.CreateSession(ctx, session)
+	if err != nil {
 		return nil, err
 	}
 
@@ -298,7 +321,8 @@ func (s *AdminService) rotateSession(ctx context.Context, user *domain.AdminUser
 	if err != nil {
 		return nil, err
 	}
-	if err := s.repo.UpdateSessionRefreshHash(ctx, session.ID, sha256Hash(refreshToken)); err != nil {
+	err = s.repo.UpdateSessionRefreshHash(ctx, session.ID, sha256Hash(refreshToken))
+	if err != nil {
 		return nil, err
 	}
 
@@ -355,7 +379,8 @@ func (s *AdminService) sign(data []byte) []byte {
 
 func newRefreshToken(sessionID string) (string, error) {
 	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
+	_, err := rand.Read(b)
+	if err != nil {
 		return "", err
 	}
 

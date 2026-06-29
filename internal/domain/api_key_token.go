@@ -39,6 +39,7 @@ func (t *ApiKeyToken) IsValid() bool {
 	if t.ExpiresAt != nil && time.Now().After(*t.ExpiresAt) {
 		return false
 	}
+
 	return true
 }
 
