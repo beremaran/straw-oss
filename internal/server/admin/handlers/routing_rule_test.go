@@ -24,7 +24,7 @@ func (m *MockRuleVersionManager) IncrementRulesVersion(ctx context.Context) (int
 }
 
 func TestRoutingRuleHandler_HandleListRoutingRules(t *testing.T) {
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/admin/rules", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/management/rules", nil)
 	rec := httptest.NewRecorder()
 
 	mockRepo := new(MockRoutingRuleRepo)
@@ -42,7 +42,7 @@ func TestRoutingRuleHandler_HandleListRoutingRules(t *testing.T) {
 }
 
 func TestRoutingRuleHandler_HandleGetRoutingRule(t *testing.T) {
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/admin/rules/rule1", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/management/rules/rule1", nil)
 	req.SetPathValue("id", "rule1")
 	rec := httptest.NewRecorder()
 
@@ -62,7 +62,7 @@ func TestRoutingRuleHandler_HandleCreateRoutingRule(t *testing.T) {
 	rule := domain.RoutingRule{Name: "New Rule", Priority: 10}
 	body, err := json.Marshal(rule)
 	assert.NoError(t, err)
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/admin/rules", bytes.NewReader(body))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/management/rules", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 
@@ -86,7 +86,7 @@ func TestRoutingRuleHandler_HandleUpdateRoutingRule(t *testing.T) {
 	rule := domain.RoutingRule{ID: "rule1", Name: "Updated Rule", Priority: 20}
 	body, err := json.Marshal(rule)
 	assert.NoError(t, err)
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodPut, "/admin/rules/rule1", bytes.NewReader(body))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPut, "/management/rules/rule1", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.SetPathValue("id", "rule1")
 	rec := httptest.NewRecorder()
@@ -108,7 +108,7 @@ func TestRoutingRuleHandler_HandleUpdateRoutingRule(t *testing.T) {
 }
 
 func TestRoutingRuleHandler_HandleDeleteRoutingRule(t *testing.T) {
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodDelete, "/admin/rules/rule1", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodDelete, "/management/rules/rule1", nil)
 	req.SetPathValue("id", "rule1")
 	rec := httptest.NewRecorder()
 

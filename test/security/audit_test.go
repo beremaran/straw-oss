@@ -20,7 +20,7 @@ import (
 )
 
 func TestSecurity_SSRFProtection(t *testing.T) {
-	reqJSON := `{"url": "http://127.0.0.1:8080/admin", "method": "GET"}`
+	reqJSON := `{"url": "http://127.0.0.1:8080/management", "method": "GET"}`
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/v1/request", strings.NewReader(reqJSON))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()

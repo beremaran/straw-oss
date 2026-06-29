@@ -83,10 +83,10 @@ func main() {
 	relayServer := createServer(cfg, authService, sessionService, matcher, rateLimiter, filterService, retryExecutor)
 	healthService := startHealthServiceOrDie(natsBroker, endpointHealthStore, ctx)
 	defer healthService.Stop()
-	managementServer := getAdminServer(cfg, pgClient, redisClient, healthService, natsBroker)
+	managementServer := getManagementServer(cfg, pgClient, redisClient, healthService, natsBroker)
 	metricsServer := startMetricsServerIfEnabled(cfg)
 
-	ensureAdminKey(apiKeyRepo, ctx)
+	ensureManagementKey(apiKeyRepo, ctx)
 
 	fmt.Printf("Straw Proxy Relay Server %s started on %s\n", Version, relayServer.Address())
 
@@ -154,12 +154,12 @@ func listenInterrupts() {
 	<-quit
 }
 
-func shutdown(ctx context.Context, cfg *config.ServerConfig, srv *server.Server, adminSrv *admin.Server, metricsSrv *http.Server) {
+func shutdown(ctx context.Context, cfg *config.ServerConfig, srv *server.Server, managementSrv *admin.Server, metricsSrv *http.Server) {
 	ctx, cancel := context.WithTimeout(ctx, cfg.ShutdownTimeout)
 	defer cancel()
 
 	tryStopServer(srv, ctx)
-	tryStopManagementServer(adminSrv, ctx)
+	tryStopManagementServer(managementSrv, ctx)
 	tryStopMetricsServer(metricsSrv, ctx)
 
 	slog.Info("Server exiting")
@@ -174,10 +174,10 @@ func tryStopMetricsServer(metricsSrv *http.Server, ctx context.Context) {
 	}
 }
 
-func tryStopManagementServer(adminSrv *admin.Server, ctx context.Context) {
-	err := adminSrv.Stop(ctx)
+func tryStopManagementServer(managementSrv *admin.Server, ctx context.Context) {
+	err := managementSrv.Stop(ctx)
 	if err != nil {
-		slog.Error("Admin Server forced to shutdown", "error", err)
+		slog.Error("Management Server forced to shutdown", "error", err)
 	}
 }
 
@@ -216,16 +216,16 @@ func startMetricsServerIfEnabled(cfg *config.ServerConfig) *http.Server {
 	return metricsSrv
 }
 
-func getAdminServer(cfg *config.ServerConfig, pgClient *postgres.Client, redisClient *redis.Client, healthService *endpoint.HealthService, natsBroker *broker.NatsBroker) *admin.Server {
-	adminSrv := admin.New(*cfg, pgClient, redisClient, healthService, natsBroker)
+func getManagementServer(cfg *config.ServerConfig, pgClient *postgres.Client, redisClient *redis.Client, healthService *endpoint.HealthService, natsBroker *broker.NatsBroker) *admin.Server {
+	managementSrv := admin.New(*cfg, pgClient, redisClient, healthService, natsBroker)
 	go func() {
-		err := adminSrv.Start()
+		err := managementSrv.Start()
 		if err != nil {
-			slog.Error("Admin Server shutting down", "error", err)
+			slog.Error("Management Server shutting down", "error", err)
 		}
 	}()
 
-	return adminSrv
+	return managementSrv
 }
 
 func createServer(cfg *config.ServerConfig, authService *auth.Service, sessionService *session.Service, matcher *router.Matcher, rateLimiter *ratelimit.RateLimiter, filterService *filter.Service, retryExecutor *orchestrator.RetryExecutor) *server.Server {
@@ -292,36 +292,36 @@ func initRetryablePubSubOrDie(natsBroker *broker.NatsBroker, endpointSelector *o
 	return retryExecutor
 }
 
-func ensureAdminKey(apiKeyRepo *postgres.ApiKeyRepository, ctx context.Context) {
+func ensureManagementKey(apiKeyRepo *postgres.ApiKeyRepository, ctx context.Context) {
 	keysExist, err := apiKeyRepo.Exists(ctx)
 	if err != nil {
 		slog.Warn("Failed to check for existing API keys", "error", err)
 	} else if !keysExist {
-		generateInitialAdminKey(apiKeyRepo, ctx)
+		generateInitialManagementKey(apiKeyRepo, ctx)
 	}
 }
 
-func generateInitialAdminKey(apiKeyRepo *postgres.ApiKeyRepository, ctx context.Context) {
+func generateInitialManagementKey(apiKeyRepo *postgres.ApiKeyRepository, ctx context.Context) {
 	keyBytes := make([]byte, 32)
 	_, err := rand.Read(keyBytes)
 	if err != nil {
-		slog.Error("Failed to generate admin key", "error", err)
+		slog.Error("Failed to generate management key", "error", err)
 		os.Exit(1)
 	}
 	rawKey := hex.EncodeToString(keyBytes)
 	hash := sha256.Sum256([]byte(rawKey))
 	tokenHash := hex.EncodeToString(hash[:])
 
-	adminKey := domain.NewApiKey(uuid.New().String(), tokenHash, "Default Administrator Key", []string{"target:*", "type:*", "region:*"})
-	adminKey.RateLimitOverride = intPtr(100)
+	managementKey := domain.NewApiKey(uuid.New().String(), tokenHash, "Default Management Key", []string{"target:*", "type:*", "region:*"})
+	managementKey.RateLimitOverride = intPtr(100)
 
-	err = apiKeyRepo.Create(ctx, adminKey)
+	err = apiKeyRepo.Create(ctx, managementKey)
 	if err != nil {
-		slog.Error("Failed to create initial admin API key", "error", err)
+		slog.Error("Failed to create initial management API key", "error", err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("Initial admin API key generated: %s\n", rawKey)
+	fmt.Printf("Initial management API key generated: %s\n", rawKey)
 	fmt.Println("Save this key — it will not be shown again.")
 }
 

@@ -11,7 +11,7 @@ import (
 )
 
 func TestKeyAuth(t *testing.T) {
-	cfg := config.ServerConfig{AdminAPIKey: "secret-key"}
+	cfg := config.ServerConfig{ManagementAPIKey: "secret-key"}
 	mw := KeyAuth(cfg)
 
 	tests := []struct {

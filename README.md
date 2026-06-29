@@ -62,14 +62,14 @@ docker compose up -d
 ```
 
 * *Default Client API Port*: `8080`
-* *Default Admin API Port*: `8081`
+* *Default Management API Port*: `8081`
 
 ### 2. Generate a Client API Key
 
-Create an API key for your crawler clients using the Admin API:
+Create an API key for your crawler clients using the Management API:
 
 ```bash
-curl -X POST http://localhost:8081/admin/api-keys \
+curl -X POST http://localhost:8081/management/api-keys \
   -H "Authorization: Bearer default-token-123456" \
   -H "Content-Type: application/json" \
   -d '{
@@ -175,7 +175,7 @@ make docs-serve
 
 * **[Getting Started](docs/getting-started.md)**: Extended setup and development environment guides.
 * **[Architecture Overview](docs/architecture.md)**: In-depth sequence flows, schemas, and resilience patterns.
-* **[Admin API Reference](docs/admin-api.md)**: Detailed API specs for key rotation, routing rules, and metrics.
+* **[Management API Reference](docs/management-api.md)**: Detailed API specs for key rotation, routing rules, and metrics.
 * **[Custom Endpoint SDK](docs/custom-endpoint.md)**: Complete guide on building proprietary workers.
 
 ---
@@ -189,4 +189,3 @@ We welcome contributions to Straw Proxy! Please read [CONTRIBUTING.md](CONTRIBUT
 ## 📄 License
 
 Straw Proxy is open-sourced software licensed under the [MIT License](LICENSE).
-

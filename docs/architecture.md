@@ -12,7 +12,7 @@ Straw Proxy is organized into two main logical zones: the **Control Plane** (Rel
 graph TB
     subgraph Clients
         App1[Scraping Engine] -->|HTTP POST| RelayPort[Relay Port :8080]
-        AdminApp[Admin CLI / Web] -->|HTTP API| AdminPort[Admin Port :8081]
+        MgmtApp[Management CLI / Web] -->|HTTP API| MgmtPort[Management Port :8081]
     end
 
     subgraph Control Plane (Relay Server)
@@ -23,13 +23,13 @@ graph TB
         Handler --> FilterServ[ABP Filter Service]
         Handler --> RetryExec[Orchestrator Executor]
 
-        AdminPort --> AdminSrv[Admin Server]
-        AdminSrv --> DbMigrate[Database Migrations]
+        MgmtPort --> MgmtSrv[Management Server]
+        MgmtSrv --> DbMigrate[Database Migrations]
     end
 
     subgraph Data Stores
         AuthServ & Matcher & SessServ -->|Read/Write Cache| Redis[(Redis Cache)]
-        AuthServ & Matcher & AdminSrv -->|Persistent State| Postgres[(Postgres DB)]
+        AuthServ & Matcher & MgmtSrv -->|Persistent State| Postgres[(Postgres DB)]
     end
 
     subgraph Message Broker
@@ -48,7 +48,7 @@ graph TB
 
 ### 1. Control Plane (Relay Server)
 * **API Handler**: Exposes `POST /v1/request` and `POST /v2/request` for regular proxy clients.
-* **Admin Server**: Exposes endpoints to control rules, keys, endpoints, and monitor usage.
+* **Management Server**: Exposes endpoints to control rules, keys, endpoints, and monitor usage.
 * **Services**:
   * **Auth Service**: Evaluates and validates client Bearer tokens.
   * **Session Service**: Pinpoints requests belonging to the same session to the same egress worker (sticky sessions).

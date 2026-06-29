@@ -29,8 +29,8 @@ These variables configure the behavior of the orchestrator gateway (`cmd/relay`)
 |---|---|---|---|
 | `DB_AUTO_MIGRATE` | boolean | `false` | If `true`, runs embedded SQL migrations on startup. |
 | `HTTP_PORT` | integer | `8080` | Port for the client-facing proxy API. |
-| `ADMIN_PORT` | integer | `8081` | Port for the administrative API. |
-| `ADMIN_API_KEY` | string | *(empty)* | Optional API key required to access the Admin API (via Bearer token header). |
+| `MANAGEMENT_PORT` | integer | `8081` | Port for the management API. |
+| `MANAGEMENT_API_KEY` | string | *(empty)* | Optional API key required to access the Management API (via Bearer token header). |
 | `SHUTDOWN_TIMEOUT` | duration | `30s` | Time allocated for graceful shutdown of active HTTP clients. |
 | `RESULT_TIMEOUT` | duration | `30s` | Maximum time to wait for a worker to return results before timing out. |
 | `MAX_BODY_SIZE` | string | `2M` | Maximum allowed request body size (e.g. `500K`, `2M`, `10M`). |

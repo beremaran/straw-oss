@@ -14,7 +14,7 @@ import (
 )
 
 func TestApiKeyHandler_HandleListApiKeys(t *testing.T) {
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/admin/api-keys?page=1&limit=10", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/management/api-keys?page=1&limit=10", nil)
 	rec := httptest.NewRecorder()
 
 	mockRepo := new(MockApiKeyRepo)
@@ -38,7 +38,7 @@ func TestApiKeyHandler_HandleListApiKeys(t *testing.T) {
 
 func TestApiKeyHandler_HandleCreateApiKey(t *testing.T) {
 	body := `{"name":"New Key", "scopes":["target:*"]}`
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/admin/api-keys", strings.NewReader(body))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/management/api-keys", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 
@@ -61,7 +61,7 @@ func TestApiKeyHandler_HandleCreateApiKey(t *testing.T) {
 }
 
 func TestApiKeyHandler_HandleRevokeApiKey(t *testing.T) {
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodDelete, "/admin/api-keys/key1", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodDelete, "/management/api-keys/key1", nil)
 	req.SetPathValue("id", "key1")
 	rec := httptest.NewRecorder()
 

@@ -8,8 +8,8 @@ services:
       HMAC_SECRET: load-test-secret
       DB_AUTO_MIGRATE: "true"
       HTTP_PORT: "8080"
-      ADMIN_PORT: "8081"
-      ADMIN_API_KEY: admin-secret-token
+      MANAGEMENT_PORT: "8081"
+      MANAGEMENT_API_KEY: management-secret-token
       LOG_LEVEL: debug
       ALLOW_PRIVATE_IPS: "true"
     healthcheck:

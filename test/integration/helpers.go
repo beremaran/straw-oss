@@ -46,12 +46,12 @@ func NewTestServerConfig(postgresDSN, redisAddr, natsURL string) *config.ServerC
 			LogFormat:      "json",
 			MetricsEnabled: false,
 		},
-		HTTPPort:        0,
-		AdminPort:       0,
-		ShutdownTimeout: 5 * time.Second,
-		ResultTimeout:   30 * time.Second,
-		AdminAPIKey:     "test-admin-api-key",
-		MaxBodySize:     "2M",
+		HTTPPort:         0,
+		ManagementPort:   0,
+		ShutdownTimeout:  5 * time.Second,
+		ResultTimeout:    30 * time.Second,
+		ManagementAPIKey: "test-management-api-key",
+		MaxBodySize:      "2M",
 	}
 }
 

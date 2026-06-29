@@ -68,7 +68,7 @@ services:
     container_name: straw-relay
     ports:
       - "8080:8080" # Client API
-      - "8081:8081" # Admin API
+      - "8081:8081" # Management API
       - "9090:9090" # Metrics Port
     environment:
       - POSTGRES_DSN=postgres://postgres:postgres@postgres:5432/straw_proxy?sslmode=disable
@@ -203,7 +203,7 @@ make lint
 
 ## 🔌 4. API Clients & Code Generation
 
-Straw Proxy publishes a comprehensive **OpenAPI 3.0.3 specification** located at [api/openapi.yaml](../api/openapi.yaml). This specification can be used to generate clean API client SDKs for any programming language (Go, TypeScript, Python, Java, etc.) to communicate with the Client and Admin APIs.
+Straw Proxy publishes a comprehensive **OpenAPI 3.0.3 specification** located at [api/openapi.yaml](../api/openapi.yaml). This specification can be used to generate clean API client SDKs for any programming language (Go, TypeScript, Python, Java, etc.) to communicate with the Client and Management APIs.
 
 ### Validate the OpenAPI Specification
 To validate the OpenAPI schema format, run:
@@ -243,4 +243,3 @@ npx @openapitools/openapi-generator-cli generate \
   -g python \
   -o client/python
 ```
-

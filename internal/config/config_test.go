@@ -36,8 +36,8 @@ func TestLoadServerConfig_Defaults(t *testing.T) {
 	if cfg.HTTPPort != 8080 {
 		t.Errorf("HTTPPort = %v, want 8080", cfg.HTTPPort)
 	}
-	if cfg.AdminPort != 8081 {
-		t.Errorf("AdminPort = %v, want 8081", cfg.AdminPort)
+	if cfg.ManagementPort != 8081 {
+		t.Errorf("ManagementPort = %v, want 8081", cfg.ManagementPort)
 	}
 }
 
@@ -278,7 +278,7 @@ func setEnvVars(t *testing.T, vars map[string]string) {
 		"POSTGRES_DSN", "REDIS_ADDR", "NATS_URL", "LOG_LEVEL", "LOG_FORMAT",
 		"HMAC_SECRET", "TLS_CERT_FILE", "TLS_KEY_FILE", "VAULT_ADDR",
 		"OTEL_EXPORTER_OTLP_ENDPOINT", "METRICS_ENABLED", "METRICS_PORT",
-		"HTTP_PORT", "ADMIN_PORT", "SHUTDOWN_TIMEOUT", "ADMIN_API_KEY",
+		"HTTP_PORT", "MANAGEMENT_PORT", "SHUTDOWN_TIMEOUT", "MANAGEMENT_API_KEY",
 		"ENDPOINT_ID", "ENDPOINT_TAGS", "CONCURRENCY_LIMIT", "SELF_UPDATE_URL",
 	}
 	for _, v := range allVars {

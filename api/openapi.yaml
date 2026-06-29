@@ -7,14 +7,14 @@ info:
     
     The API is divided into two separate server runtimes:
     1. **Client API** (Default port `8080`): Handles request relaying through worker nodes.
-    2. **Admin API** (Default port `8081`): Handles API keys, routing rules, fingerprint presets, and metrics.
+    2. **Management API** (Default port `8081`): Handles API keys, routing rules, fingerprint presets, and metrics.
   version: 1.0.0
 
 servers:
   - url: http://localhost:8080
     description: "Local Client API Server"
   - url: http://localhost:8081
-    description: "Local Admin API Server"
+    description: "Local Management API Server"
 
 security:
   - BearerAuth: []
@@ -43,7 +43,7 @@ paths:
         - client
       summary: Health Check
       operationId: healthCheck
-      description: "Returns the health status of the relay server or admin server."
+      description: "Returns the health status of the relay server or management server."
       security: []
       responses:
         '200':
@@ -205,8 +205,8 @@ paths:
         '504':
           $ref: '#/components/responses/ErrorResponse'
 
-  # Admin API Paths
-  /admin/api-keys:
+  # Management API Paths
+  /management/api-keys:
     post:
       tags:
         - api-keys
@@ -267,7 +267,7 @@ paths:
         '500':
           $ref: '#/components/responses/ErrorResponse'
 
-  /admin/api-keys/{id}:
+  /management/api-keys/{id}:
     delete:
       tags:
         - api-keys
@@ -292,7 +292,7 @@ paths:
         '500':
           $ref: '#/components/responses/ErrorResponse'
 
-  /admin/rules:
+  /management/rules:
     post:
       tags:
         - routing-rules
@@ -337,7 +337,7 @@ paths:
         '500':
           $ref: '#/components/responses/ErrorResponse'
 
-  /admin/rules/{id}:
+  /management/rules/{id}:
     get:
       tags:
         - routing-rules
@@ -426,7 +426,7 @@ paths:
         '500':
           $ref: '#/components/responses/ErrorResponse'
 
-  /admin/endpoints:
+  /management/endpoints:
     get:
       tags:
         - endpoints
@@ -447,7 +447,7 @@ paths:
         '500':
           $ref: '#/components/responses/ErrorResponse'
 
-  /admin/endpoints/{id}/drain:
+  /management/endpoints/{id}/drain:
     post:
       tags:
         - endpoints
@@ -471,7 +471,7 @@ paths:
         '500':
           $ref: '#/components/responses/ErrorResponse'
 
-  /admin/fingerprints:
+  /management/fingerprints:
     get:
       tags:
         - fingerprints
@@ -516,7 +516,7 @@ paths:
         '500':
           $ref: '#/components/responses/ErrorResponse'
 
-  /admin/fingerprints/broadcast:
+  /management/fingerprints/broadcast:
     post:
       tags:
         - fingerprints
@@ -531,7 +531,7 @@ paths:
         '500':
           $ref: '#/components/responses/ErrorResponse'
 
-  /admin/usage/summary:
+  /management/usage/summary:
     get:
       tags:
         - usage
@@ -574,7 +574,7 @@ paths:
         '500':
           $ref: '#/components/responses/ErrorResponse'
 
-  /admin/billing/estimate:
+  /management/billing/estimate:
     get:
       tags:
         - usage
@@ -617,7 +617,7 @@ paths:
         '500':
           $ref: '#/components/responses/ErrorResponse'
 
-  /admin/cache/clear:
+  /management/cache/clear:
     post:
       tags:
         - cache
@@ -643,7 +643,7 @@ paths:
         '500':
           $ref: '#/components/responses/ErrorResponse'
 
-  /admin/cache/stats:
+  /management/cache/stats:
     get:
       tags:
         - cache
@@ -667,7 +667,7 @@ components:
     BearerAuth:
       type: http
       scheme: bearer
-      description: "Enter Bearer token (API Key or Admin token depending on port/path)."
+      description: "Enter Bearer token (API Key or Management token depending on port/path)."
 
   responses:
     ErrorResponse:
