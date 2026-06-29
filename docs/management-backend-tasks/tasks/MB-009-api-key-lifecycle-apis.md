@@ -1,6 +1,6 @@
 # MB-009: API Key Lifecycle APIs
 
-Status: not-started
+Status: done
 Phase: 2
 Depends on: MB-008
 Search tags: api keys, detail, update, rotate, reactivate, revoke, `api_keys:rotate`, raw_key
@@ -30,15 +30,15 @@ Add full API key lifecycle management under a stable logical key ID.
 
 ## Implementation Tasks
 
-- [ ] Add DTOs for detail, update, rotation request, and rotation response.
-- [ ] Validate optional fields, scope syntax, rate limits, and expiration changes.
-- [ ] Implement rotate with one-time `raw_key`, immediate revoke, or grace-period behavior.
-- [ ] Implement reactivate only for non-expired logical keys.
-- [ ] Emit structured audit events without storing `raw_key`.
+- [x] Add DTOs for detail, update, rotation request, and rotation response.
+- [x] Validate optional fields, scope syntax, rate limits, and expiration changes.
+- [x] Implement rotate with one-time `raw_key`, immediate revoke, or grace-period behavior.
+- [x] Implement reactivate only for non-expired logical keys.
+- [x] Emit structured audit events without storing `raw_key`.
 
 ## Done Criteria
 
-- [ ] Key detail returns token history metadata but no hashes or raw tokens.
-- [ ] Update can change name, scopes, rate limit override, expiration, and active state.
-- [ ] Rotation returns a raw secret once and updates previous token statuses correctly.
-- [ ] Revoke disables the logical key and all token secrets.
+- [x] Key detail returns token history metadata but no hashes or raw tokens.
+- [x] Update can change name, scopes, rate limit override, expiration, and active state.
+- [x] Rotation returns a raw secret once and updates previous token statuses correctly.
+- [x] Revoke disables the logical key and all token secrets.

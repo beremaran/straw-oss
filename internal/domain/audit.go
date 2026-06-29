@@ -6,14 +6,16 @@ import (
 )
 
 const (
-	ActionCreate   = "create"
-	ActionUpdate   = "update"
-	ActionDelete   = "delete"
-	ActionRevoke   = "revoke"
-	ActionDrain    = "drain"
-	ActionUndrain  = "undrain"
-	ActionPurge    = "purge"
-	ActionReorder  = "reorder"
+	ActionCreate     = "create"
+	ActionUpdate     = "update"
+	ActionDelete     = "delete"
+	ActionRotate     = "rotate"
+	ActionReactivate = "reactivate"
+	ActionRevoke     = "revoke"
+	ActionDrain      = "drain"
+	ActionUndrain    = "undrain"
+	ActionPurge      = "purge"
+	ActionReorder    = "reorder"
 )
 
 type ManagementAuditEvent struct {

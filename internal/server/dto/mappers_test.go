@@ -309,6 +309,22 @@ func TestFromApiKeys(t *testing.T) {
 	assert.Equal(t, "key-2", result[1].ID)
 }
 
+func TestFromApiKeyTokens(t *testing.T) {
+	now := time.Now()
+	tokens := []domain.ApiKeyToken{
+		{ID: "token-1", Status: domain.TokenStatusActive, CreatedAt: now},
+		{ID: "token-2", Status: domain.TokenStatusGrace, CreatedAt: now.Add(-time.Minute)},
+	}
+
+	result := FromApiKeyTokens(tokens)
+
+	assert.Len(t, result, 2)
+	assert.Equal(t, "token-1", result[0].ID)
+	assert.Equal(t, "active", result[0].Status)
+	assert.Equal(t, "token-2", result[1].ID)
+	assert.Equal(t, "grace", result[1].Status)
+}
+
 func TestCreateFingerprintRequest_ToDomain(t *testing.T) {
 	dto := &CreateFingerprintRequest{
 		ID:   "chrome-130",

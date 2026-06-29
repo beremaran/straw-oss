@@ -68,6 +68,22 @@ func (s *Service) InvalidateKey(ctx context.Context, rawToken string) error {
 }
 
 func (s *Service) InvalidateKeyByID(ctx context.Context, keyID string) error {
+	if s.cache == nil {
+		return nil
+	}
+
+	tokens, err := s.tokenRepo.ListByApiKeyID(ctx, keyID)
+	if err != nil {
+		return err
+	}
+
+	for _, token := range tokens {
+		err = s.cache.InvalidateKey(ctx, token.TokenHash)
+		if err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 

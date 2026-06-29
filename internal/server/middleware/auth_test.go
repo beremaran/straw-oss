@@ -47,6 +47,12 @@ func (m *MockRepo) Create(ctx context.Context, key *domain.ApiKey) error {
 	return args.Error(0)
 }
 
+func (m *MockRepo) Update(ctx context.Context, key *domain.ApiKey) error {
+	args := m.Called(ctx, key)
+
+	return args.Error(0)
+}
+
 func (m *MockRepo) List(ctx context.Context, limit, offset int) ([]domain.ApiKey, int, error) {
 	args := m.Called(ctx, limit, offset)
 	if args.Get(0) == nil {
@@ -92,6 +98,12 @@ func (m *MockTokenRepo) ListByApiKeyID(ctx context.Context, apiKeyID string) ([]
 	}
 
 	return args.Get(0).([]domain.ApiKeyToken), args.Error(1)
+}
+
+func (m *MockTokenRepo) Rotate(ctx context.Context, apiKeyID string, token *domain.ApiKeyToken, graceUntil *time.Time, revokeExisting bool) error {
+	args := m.Called(ctx, apiKeyID, token, graceUntil, revokeExisting)
+
+	return args.Error(0)
 }
 func (m *MockTokenRepo) UpdateStatus(ctx context.Context, id string, status domain.TokenStatus) error {
 	args := m.Called(ctx, id, status)

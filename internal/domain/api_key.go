@@ -96,6 +96,7 @@ type ApiKeyRepository interface {
 	GetByID(ctx context.Context, id string) (*ApiKey, error)
 	GetByTokenHash(ctx context.Context, tokenHash string) (*ApiKey, error)
 	Create(ctx context.Context, key *ApiKey) error
+	Update(ctx context.Context, key *ApiKey) error
 	List(ctx context.Context, limit, offset int) ([]ApiKey, int, error)
 	Exists(ctx context.Context) (bool, error)
 	Revoke(ctx context.Context, id string) error

@@ -83,7 +83,7 @@ func main() {
 	relayServer := createServer(cfg, authService, sessionService, matcher, rateLimiter, filterService, retryExecutor)
 	healthService := startHealthServiceOrDie(natsBroker, endpointHealthStore, ctx)
 	defer healthService.Stop()
-	managementServer := getManagementServer(cfg, pgClient, redisClient, healthService, natsBroker)
+	managementServer := getManagementServer(cfg, pgClient, redisClient, healthService, natsBroker, authService)
 	metricsServer := startMetricsServerIfEnabled(cfg)
 
 	ensureManagementKey(apiKeyRepo, ctx)
@@ -219,8 +219,8 @@ func startMetricsServerIfEnabled(cfg *config.ServerConfig) *http.Server {
 	return metricsSrv
 }
 
-func getManagementServer(cfg *config.ServerConfig, pgClient *postgres.Client, redisClient *redis.Client, healthService *endpoint.HealthService, natsBroker *broker.NatsBroker) *admin.Server {
-	managementSrv := admin.New(*cfg, pgClient, redisClient, healthService, natsBroker)
+func getManagementServer(cfg *config.ServerConfig, pgClient *postgres.Client, redisClient *redis.Client, healthService *endpoint.HealthService, natsBroker *broker.NatsBroker, authService *auth.Service) *admin.Server {
+	managementSrv := admin.New(*cfg, pgClient, redisClient, healthService, natsBroker, authService)
 	go func() {
 		err := managementSrv.Start()
 		if err != nil {

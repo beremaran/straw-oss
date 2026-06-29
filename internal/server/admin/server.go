@@ -30,9 +30,10 @@ type Server struct {
 	healthService *endpoint.HealthService
 	broker        broker.MessageBroker
 	authService   *adminauth.AdminService
+	apiKeyAuth    *adminauth.Service
 }
 
-func New(conf config.ServerConfig, client *postgres.Client, redisClient *redis.Client, healthService *endpoint.HealthService, broker broker.MessageBroker) *Server {
+func New(conf config.ServerConfig, client *postgres.Client, redisClient *redis.Client, healthService *endpoint.HealthService, broker broker.MessageBroker, apiKeyAuth *adminauth.Service) *Server {
 	mux := http.NewServeMux()
 	var authService *adminauth.AdminService
 	if client != nil {
@@ -52,6 +53,7 @@ func New(conf config.ServerConfig, client *postgres.Client, redisClient *redis.C
 		healthService: healthService,
 		broker:        broker,
 		authService:   authService,
+		apiKeyAuth:    apiKeyAuth,
 	}
 
 	s.registerRoutes()
@@ -102,6 +104,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /healthz", s.healthCheck)
 
 	apiKeyRepo := postgres.NewApiKeyRepository(s.client)
+	apiKeyTokenRepo := postgres.NewApiKeyTokenRepository(s.client)
 	routingRuleRepo := postgres.NewRoutingRuleRepository(s.client)
 	fingerprintRepo := postgres.NewFingerprintRepository(s.client)
 	usageRepo := postgres.NewUsageRepository(s.client)
@@ -115,7 +118,7 @@ func (s *Server) registerRoutes() {
 		ruleCache = router.NewRuleCache(s.redisClient.Client, 10*time.Minute)
 	}
 
-	apiKeyHandler := handlers.NewApiKeyHandler(apiKeyRepo, auditRepo)
+	apiKeyHandler := handlers.NewApiKeyHandler(apiKeyRepo, apiKeyTokenRepo, auditRepo, s.apiKeyAuth)
 	routingRuleHandler := handlers.NewRoutingRuleHandler(routingRuleRepo, ruleCache, auditRepo)
 	endpointHandler := handlers.NewEndpointHandler(s.healthService, auditRepo)
 	fingerprintHandler := handlers.NewFingerprintHandler(fingerprintRepo, s.broker, auditRepo)
@@ -185,6 +188,11 @@ func (s *Server) registerIdentityProviderRoutes(idpHandler *handlers.IdentityPro
 func (s *Server) registerAPIKeyRoutes(apiKeyHandler *handlers.ApiKeyHandler) {
 	s.management("POST /management/api-keys", middleware.PermissionAPIKeysWrite, apiKeyHandler.HandleCreateApiKey)
 	s.management("GET /management/api-keys", middleware.PermissionAPIKeysRead, apiKeyHandler.HandleListApiKeys)
+	s.management("GET /management/api-keys/{id}", middleware.PermissionAPIKeysRead, apiKeyHandler.HandleGetApiKey)
+	s.management("PATCH /management/api-keys/{id}", middleware.PermissionAPIKeysWrite, apiKeyHandler.HandleUpdateApiKey)
+	s.management("POST /management/api-keys/{id}/rotate", middleware.PermissionAPIKeysRotate, apiKeyHandler.HandleRotateApiKey)
+	s.management("POST /management/api-keys/{id}/reactivate", middleware.PermissionAPIKeysWrite, apiKeyHandler.HandleReactivateApiKey)
+	s.management("POST /management/api-keys/{id}/revoke", middleware.PermissionAPIKeysRevoke, apiKeyHandler.HandleRevokeApiKey)
 	s.management("DELETE /management/api-keys/{id}", middleware.PermissionAPIKeysRevoke, apiKeyHandler.HandleRevokeApiKey)
 }
 

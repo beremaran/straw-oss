@@ -47,5 +47,6 @@ type ApiKeyTokenRepository interface {
 	GetByTokenHash(ctx context.Context, tokenHash string) (*ApiKeyToken, error)
 	Create(ctx context.Context, token *ApiKeyToken) error
 	ListByApiKeyID(ctx context.Context, apiKeyID string) ([]ApiKeyToken, error)
+	Rotate(ctx context.Context, apiKeyID string, token *ApiKeyToken, graceUntil *time.Time, revokeExisting bool) error
 	UpdateStatus(ctx context.Context, id string, status TokenStatus) error
 }

@@ -87,6 +87,13 @@ func (m *MockApiKeyTokenRepo) ListByApiKeyID(ctx context.Context, apiKeyID strin
 
 	return args.Get(0).([]domain.ApiKeyToken), args.Error(1)
 }
+
+func (m *MockApiKeyTokenRepo) Rotate(ctx context.Context, apiKeyID string, token *domain.ApiKeyToken, graceUntil *time.Time, revokeExisting bool) error {
+	args := m.Called(ctx, apiKeyID, token, graceUntil, revokeExisting)
+
+	return args.Error(0)
+}
+
 func (m *MockApiKeyTokenRepo) UpdateStatus(ctx context.Context, id string, status domain.TokenStatus) error {
 	args := m.Called(ctx, id, status)
 

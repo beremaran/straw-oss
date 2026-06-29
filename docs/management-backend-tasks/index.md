@@ -26,12 +26,12 @@ Update `tracker.md` when work starts, lands, or is blocked. Keep task files focu
 | [MB-001](tasks/MB-001-auth-rbac-compatibility.md) | 1 | done | Auth and RBAC compatibility foundation | none | auth, rbac, legacy token, permissions, actor context |
 | [MB-002](tasks/MB-002-identity-schema-repositories.md) | 1 | done | Identity schema and repositories | MB-001 | admin_users, roles, sessions, identity providers |
 | [MB-003](tasks/MB-003-local-sessions-bootstrap.md) | 1 | done | Local login, refresh sessions, logout, bootstrap owner | MB-001, MB-002 | login, refresh token, session rotation, bootstrap |
-| [MB-004](tasks/MB-004-users-roles-idp-apis.md) | 1 | not-started | Users, roles, and identity-provider management APIs | MB-001, MB-002 | users, roles, identity-providers, permissions |
+| [MB-004](tasks/MB-004-users-roles-idp-apis.md) | 1 | done | Users, roles, and identity-provider management APIs | MB-001, MB-002 | users, roles, identity-providers, permissions |
 | [MB-005](tasks/MB-005-oidc-sso.md) | 1 | done | OIDC SSO login flow | MB-002, MB-003, MB-004 | sso, oidc, callback, jwks, provider |
-| [MB-006](tasks/MB-006-structured-audit-foundation.md) | 1 | not-started | Structured audit foundation and redaction | MB-001 | audit events, actor, redaction, request log |
-| [MB-007](tasks/MB-007-audit-viewer-apis.md) | 1 | not-started | Audit viewer APIs and export | MB-006 | audit:read, filters, csv, ndjson, export |
-| [MB-008](tasks/MB-008-api-key-token-history.md) | 2 | not-started | API key token history and auth lookup migration | MB-001 | api_key_tokens, token hash, grace, revoke, auth lookup |
-| [MB-009](tasks/MB-009-api-key-lifecycle-apis.md) | 2 | not-started | API key detail, update, rotate, reactivate, revoke APIs | MB-008 | api_keys:rotate, expires_at, raw_key, scopes |
+| [MB-006](tasks/MB-006-structured-audit-foundation.md) | 1 | done | Structured audit foundation and redaction | MB-001 | audit events, actor, redaction, request log |
+| [MB-007](tasks/MB-007-audit-viewer-apis.md) | 1 | done | Audit viewer APIs and export | MB-006 | audit:read, filters, csv, ndjson, export |
+| [MB-008](tasks/MB-008-api-key-token-history.md) | 2 | done | API key token history and auth lookup migration | MB-001 | api_key_tokens, token hash, grace, revoke, auth lookup |
+| [MB-009](tasks/MB-009-api-key-lifecycle-apis.md) | 2 | done | API key detail, update, rotate, reactivate, revoke APIs | MB-008 | api_keys:rotate, expires_at, raw_key, scopes |
 | [MB-010](tasks/MB-010-fingerprint-delete.md) | 2 | not-started | Fingerprint detail and protected delete | MB-001, MB-006 | fingerprints, delete, routing rule dependency, broadcast |
 | [MB-011](tasks/MB-011-endpoint-registry-persistence.md) | 3 | not-started | Endpoint registry persistence and command schema | MB-001 | endpoints, desired_state, endpoint_commands, registry |
 | [MB-012](tasks/MB-012-endpoint-management-apis.md) | 3 | not-started | Endpoint registry, desired-state, and command APIs | MB-011 | endpoint detail, drain, undrain, restart, commands |
