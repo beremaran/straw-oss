@@ -1,6 +1,6 @@
 # MB-016: Billing Multiplier Integration
 
-Status: not-started
+Status: done
 Phase: 4
 Depends on: MB-015
 Search tags: billing estimate, cost multiplier, pricing_version, usage summaries
@@ -27,13 +27,13 @@ Apply active cost multipliers to billing estimates and expose pricing metadata.
 
 ## Implementation Tasks
 
-- [ ] Add active multiplier lookup to billing estimate flow.
-- [ ] Apply multipliers by endpoint tag with deterministic conflict behavior.
-- [ ] Add pricing metadata to the response without removing current fields.
-- [ ] Add tests for no multiplier, matching multiplier, inactive multiplier, and pricing metadata.
+- [x] Add active multiplier lookup to billing estimate flow.
+- [x] Apply multipliers by endpoint tag with deterministic conflict behavior.
+- [x] Add pricing metadata to the response without removing current fields.
+- [x] Add tests for no multiplier, matching multiplier, inactive multiplier, and pricing metadata.
 
 ## Done Criteria
 
-- [ ] Billing estimates reflect active multiplier configuration.
-- [ ] Existing billing response fields remain compatible.
-- [ ] Response identifies the multiplier version or pricing version used.
+- [x] Billing estimates reflect active multiplier configuration.
+- [x] Existing billing response fields remain compatible.
+- [x] Response identifies the multiplier version or pricing version used.

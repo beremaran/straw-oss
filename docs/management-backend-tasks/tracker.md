@@ -11,7 +11,7 @@ Status values: `not-started`, `in-progress`, `blocked`, `done`.
 | Current task | none |
 | Current owner | unassigned |
 | Last updated | 2026-06-30 |
-| Notes | MB-015 completed; next unblocked backend task is MB-016. |
+| Notes | MB-016 completed; next unblocked backend task is MB-017. |
 
 ## Phase 1: Identity And Audit Foundation
 
@@ -47,7 +47,7 @@ Status values: `not-started`, `in-progress`, `blocked`, `done`.
 | Done | ID | Status | Task |
 | --- | --- | --- | --- |
 | [x] | [MB-015](tasks/MB-015-cost-multiplier-management.md) | done | Cost multiplier repository and management APIs |
-| [ ] | [MB-016](tasks/MB-016-billing-multiplier-integration.md) | not-started | Billing multiplier integration and pricing metadata |
+| [x] | [MB-016](tasks/MB-016-billing-multiplier-integration.md) | done | Billing multiplier integration and pricing metadata |
 
 ## Phase 5: Reports, Schedules, Alerts, And Notifications
 

@@ -162,7 +162,7 @@ func (s *Server) registerAllSubRoutes() {
 	s.registerRoutingRuleRoutes(handlers.NewRoutingRuleHandler(routingRuleRepo, ruleCache, auditRepo))
 	s.registerEndpointRoutes(handlers.NewEndpointHandler(s.healthService, endpointRepo, commandRepo, s.broker, auditRepo, logRepo))
 	s.registerFingerprintRoutes(handlers.NewFingerprintHandler(fingerprintRepo, routingRuleRepo, identityRepo, s.broker, auditRepo))
-	s.registerUsageRoutes(handlers.NewUsageHandler(usageRepo))
+	s.registerUsageRoutes(handlers.NewUsageHandler(usageRepo, costMultiplierRepo))
 	s.registerCostMultiplierRoutes(handlers.NewCostMultiplierHandler(costMultiplierRepo, auditRepo))
 
 	if s.redisClient != nil {

@@ -423,3 +423,17 @@ func FromCostMultipliers(multipliers []domain.CostMultiplier) []CostMultiplierRe
 
 	return result
 }
+
+// FromBillingMultipliers converts active cost multipliers to billing metadata.
+func FromBillingMultipliers(multipliers []domain.CostMultiplier) []BillingMultiplierDTO {
+	result := make([]BillingMultiplierDTO, len(multipliers))
+	for i, multiplier := range multipliers {
+		result[i] = BillingMultiplierDTO{
+			EndpointTag: multiplier.EndpointTag,
+			Multiplier:  multiplier.Multiplier,
+			Version:     multiplier.Version,
+		}
+	}
+
+	return result
+}
