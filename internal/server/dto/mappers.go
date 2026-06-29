@@ -392,3 +392,34 @@ func FromUsageSummaries(summaries []domain.UsageSummary) []UsageSummaryDTO {
 
 	return result
 }
+
+// FromCostMultiplier converts a domain.CostMultiplier to a CostMultiplierResponse.
+func FromCostMultiplier(multiplier *domain.CostMultiplier) *CostMultiplierResponse {
+	if multiplier == nil {
+		return nil
+	}
+
+	return &CostMultiplierResponse{
+		ID:          multiplier.ID,
+		EndpointTag: multiplier.EndpointTag,
+		Multiplier:  multiplier.Multiplier,
+		Description: multiplier.Description,
+		IsActive:    multiplier.IsActive,
+		Version:     multiplier.Version,
+		CreatedAt:   multiplier.CreatedAt,
+		UpdatedAt:   multiplier.UpdatedAt,
+	}
+}
+
+// FromCostMultipliers converts a slice of domain.CostMultiplier to CostMultiplierResponse.
+func FromCostMultipliers(multipliers []domain.CostMultiplier) []CostMultiplierResponse {
+	result := make([]CostMultiplierResponse, len(multipliers))
+	for i, multiplier := range multipliers {
+		resp := FromCostMultiplier(&multiplier)
+		if resp != nil {
+			result[i] = *resp
+		}
+	}
+
+	return result
+}
