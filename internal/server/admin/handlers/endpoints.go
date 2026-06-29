@@ -13,6 +13,7 @@ import (
 	"github.com/beremaran/straw/internal/server/helper"
 	"github.com/beremaran/straw/internal/service/endpoint"
 	"github.com/beremaran/straw/pkg/broker"
+	"github.com/beremaran/straw/pkg/protocol"
 	"github.com/google/uuid"
 )
 
@@ -38,14 +39,6 @@ func NewEndpointHandler(
 		broker:        broker,
 		auditRepo:     auditRepo,
 	}
-}
-
-type ControlCommandPayload struct {
-	CommandID  string         `json:"command_id"`
-	EndpointID string         `json:"endpoint_id"`
-	Command    string         `json:"command"`
-	IssuedAt   string         `json:"issued_at"`
-	Payload    map[string]any `json:"payload"`
 }
 
 func (h *EndpointHandler) HandleCreateEndpoint(w http.ResponseWriter, r *http.Request) {
@@ -586,11 +579,11 @@ func (h *EndpointHandler) publishControlCommand(ctx context.Context, endpointID,
 	}
 
 	if h.broker != nil {
-		cmdPayload := ControlCommandPayload{
+		cmdPayload := protocol.ControlCommand{
 			CommandID:  cmdID,
 			EndpointID: endpointID,
 			Command:    commandName,
-			IssuedAt:   now.Format(time.RFC3339),
+			IssuedAt:   now,
 			Payload:    payload,
 		}
 		body, err := json.Marshal(cmdPayload)

@@ -135,6 +135,7 @@ type EndpointCommandRepository interface {
 	GetByID(ctx context.Context, id string) (*EndpointCommand, error)
 	Update(ctx context.Context, cmd *EndpointCommand) error
 	ListByEndpointID(ctx context.Context, endpointID string, limit, offset int) ([]EndpointCommand, int, error)
+	ListPending(ctx context.Context, before time.Time) ([]EndpointCommand, error)
 }
 
 type EndpointLogRepository interface {

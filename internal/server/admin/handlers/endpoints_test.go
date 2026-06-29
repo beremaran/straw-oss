@@ -1,9 +1,9 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
-	"bytes"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -168,6 +168,19 @@ func (m *mockCommandRepo) ListByEndpointID(ctx context.Context, endpointID strin
 	}
 
 	return list, len(list), nil
+}
+
+func (m *mockCommandRepo) ListPending(ctx context.Context, before time.Time) ([]domain.EndpointCommand, error) {
+	var list []domain.EndpointCommand
+	for _, cmd := range m.commands {
+		if (cmd.Status == domain.CommandStatusAccepted ||
+			cmd.Status == domain.CommandStatusAcknowledged ||
+			cmd.Status == domain.CommandStatusRunning) && cmd.RequestedAt.Before(before) {
+			list = append(list, *cmd)
+		}
+	}
+
+	return list, nil
 }
 
 type mockEndpointBroker struct {

@@ -37,6 +37,9 @@ type Consumer struct {
 	resultHandler    func(ctx context.Context, resp *protocol.Response, replyTo string) error
 	logger           *slog.Logger
 	onTaskCompleted  func(TaskResult)
+	mu               sync.Mutex
+	subCtx           context.Context
+	subCancel        context.CancelFunc
 }
 
 type TaskResult struct {
@@ -121,18 +124,14 @@ func (c *Consumer) Start(ctx context.Context) error {
 		"max_task_age", c.maxTaskAge,
 	)
 
-	c.logger.Info("subscribed to task subject",
-		"subject", c.taskSubject,
-	)
-
-	err := c.broker.Subscribe(ctx, c.taskSubject, c.handleMessage, broker.WithMaxAckPending(c.concurrencyLimit))
+	err := c.Resume(ctx)
 	if err != nil {
 		return err
 	}
 
 	<-c.ctx.Done()
 
-	c.wg.Wait()
+	c.Drain()
 
 	c.logger.Info("consumer stopped", "endpoint_id", c.endpointID)
 
@@ -143,6 +142,43 @@ func (c *Consumer) Stop() {
 	if c.cancel != nil {
 		c.cancel()
 	}
+}
+
+func (c *Consumer) Resume(ctx context.Context) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.subCancel != nil {
+		return nil
+	}
+
+	c.logger.Info("subscribing task consumer", "subject", c.taskSubject)
+
+	subCtx, subCancel := context.WithCancel(ctx)
+	c.subCtx = subCtx
+	c.subCancel = subCancel
+
+	err := c.broker.Subscribe(subCtx, c.taskSubject, c.handleMessage, broker.WithMaxAckPending(c.concurrencyLimit))
+	if err != nil {
+		subCancel()
+		c.subCancel = nil
+
+		return err
+	}
+
+	return nil
+}
+
+func (c *Consumer) Drain() {
+	c.mu.Lock()
+	if c.subCancel != nil {
+		c.logger.Info("draining task consumer (unsubscribing)", "subject", c.taskSubject)
+		c.subCancel()
+		c.subCancel = nil
+	}
+	c.mu.Unlock()
+
+	c.wg.Wait()
 }
 
 type TaskError struct {

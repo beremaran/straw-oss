@@ -83,6 +83,12 @@ func main() {
 	relayServer := createServer(cfg, authService, sessionService, matcher, rateLimiter, filterService, retryExecutor)
 	healthService := startHealthServiceOrDie(natsBroker, endpointHealthStore, ctx)
 	defer healthService.Stop()
+
+	commandService := startCommandServiceIfEnabled(natsBroker, pgClient, ctx)
+	if commandService != nil {
+		defer commandService.Stop()
+	}
+
 	managementServer := getManagementServer(cfg, pgClient, redisClient, healthService, natsBroker, authService)
 	metricsServer := startMetricsServerIfEnabled(cfg)
 
@@ -430,4 +436,21 @@ func handleMigrations(cfg *config.ServerConfig) {
 	}
 
 	slog.Info("Migrations applied successfully!")
+}
+
+func startCommandServiceIfEnabled(natsBroker *broker.NatsBroker, pgClient *postgres.Client, ctx context.Context) *endpoint.CommandService {
+	if pgClient == nil {
+		return nil
+	}
+
+	commandRepo := postgres.NewPostgresEndpointCommandRepository(pgClient)
+	commandService := endpoint.NewCommandService(natsBroker, commandRepo, nil)
+	err := commandService.Start(ctx)
+	if err != nil {
+		slog.Warn("Failed to start command service", "error", err)
+
+		return nil
+	}
+
+	return commandService
 }
