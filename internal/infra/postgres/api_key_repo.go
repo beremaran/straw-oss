@@ -94,7 +94,13 @@ func (r *ApiKeyRepository) Create(ctx context.Context, key *domain.ApiKey) error
 	`
 
 	err := r.client.Execute(func() error {
-		_, err := r.client.Pool.Exec(ctx, query,
+		tx, err := r.client.Pool.Begin(ctx)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback(ctx)
+
+		_, err = tx.Exec(ctx, query,
 			key.ID,
 			key.TokenHash,
 			key.Name,
@@ -104,8 +110,20 @@ func (r *ApiKeyRepository) Create(ctx context.Context, key *domain.ApiKey) error
 			key.CreatedAt,
 			key.ExpiresAt,
 		)
+		if err != nil {
+			return err
+		}
 
-		return err
+		tokenQuery := `
+			INSERT INTO api_key_tokens (api_key_id, token_hash, status, created_at)
+			VALUES ($1, $2, 'active', $3)
+		`
+		_, err = tx.Exec(ctx, tokenQuery, key.ID, key.TokenHash, key.CreatedAt)
+		if err != nil {
+			return err
+		}
+
+		return tx.Commit(ctx)
 	})
 
 	if err != nil {

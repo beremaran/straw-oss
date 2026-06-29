@@ -73,10 +73,11 @@ func setupTestServer(t *testing.T, suite *TestSuite) *testServerContext {
 	require.NoError(t, err, "failed to create postgres client")
 
 	apiKeyRepo := postgres.NewApiKeyRepository(postgresClient)
+	apiKeyTokenRepo := postgres.NewApiKeyTokenRepository(postgresClient)
 	ruleRepo := postgres.NewRoutingRuleRepository(postgresClient)
 
 	keyCache := auth.NewAuthCache(redisClient, 5*time.Minute)
-	authService := auth.NewAuthService(apiKeyRepo, keyCache)
+	authService := auth.NewAuthService(apiKeyRepo, apiKeyTokenRepo, keyCache)
 
 	ruleCache := router.NewRuleCache(redisClient.Client, 5*time.Minute)
 	routerMatcher := router.NewMatcher(ruleRepo, ruleCache)

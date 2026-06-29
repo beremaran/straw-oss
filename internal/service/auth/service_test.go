@@ -60,6 +60,40 @@ func (m *MockRepo) Revoke(ctx context.Context, id string) error {
 	return args.Error(0)
 }
 
+type MockTokenRepo struct {
+	mock.Mock
+}
+
+func (m *MockTokenRepo) GetByTokenHash(ctx context.Context, tokenHash string) (*domain.ApiKeyToken, error) {
+	args := m.Called(ctx, tokenHash)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+
+	return args.Get(0).(*domain.ApiKeyToken), args.Error(1)
+}
+
+func (m *MockTokenRepo) Create(ctx context.Context, token *domain.ApiKeyToken) error {
+	args := m.Called(ctx, token)
+
+	return args.Error(0)
+}
+
+func (m *MockTokenRepo) ListByApiKeyID(ctx context.Context, apiKeyID string) ([]domain.ApiKeyToken, error) {
+	args := m.Called(ctx, apiKeyID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+
+	return args.Get(0).([]domain.ApiKeyToken), args.Error(1)
+}
+
+func (m *MockTokenRepo) UpdateStatus(ctx context.Context, id string, status domain.TokenStatus) error {
+	args := m.Called(ctx, id, status)
+
+	return args.Error(0)
+}
+
 func TestAuthService_ValidateKey(t *testing.T) {
 	ctx := context.Background()
 
@@ -71,14 +105,23 @@ func TestAuthService_ValidateKey(t *testing.T) {
 		TokenHash: testTokenHash,
 		IsActive:  true,
 	}
+	
+	validToken := &domain.ApiKeyToken{
+		ID:        "token-id-123",
+		ApiKeyID:  "key-id-123",
+		TokenHash: testTokenHash,
+		Status:    domain.TokenStatusActive,
+	}
 
 	t.Run("Valid Token - Cache Miss - DB Hit", func(t *testing.T) {
 		mockRepo := new(MockRepo)
 		client, _ := newTestRedis(t)
 		cache := NewAuthCache(client, time.Minute)
-		service := NewAuthService(mockRepo, cache)
+		mockTokenRepo := new(MockTokenRepo)
+		service := NewAuthService(mockRepo, mockTokenRepo, cache)
 
-		mockRepo.On("GetByTokenHash", ctx, testTokenHash).Return(validApiKey, nil).Once()
+		mockTokenRepo.On("GetByTokenHash", ctx, testTokenHash).Return(validToken, nil).Once()
+		mockRepo.On("GetByID", ctx, "key-id-123").Return(validApiKey, nil).Once()
 
 		key, err := service.ValidateKey(ctx, testToken)
 		assert.NoError(t, err)
@@ -95,7 +138,8 @@ func TestAuthService_ValidateKey(t *testing.T) {
 		mockRepo := new(MockRepo)
 		client, _ := newTestRedis(t)
 		cache := NewAuthCache(client, time.Minute)
-		service := NewAuthService(mockRepo, cache)
+		mockTokenRepo := new(MockTokenRepo)
+		service := NewAuthService(mockRepo, mockTokenRepo, cache)
 
 		err := cache.SetKey(ctx, testTokenHash, validApiKey)
 		assert.NoError(t, err)
@@ -109,12 +153,13 @@ func TestAuthService_ValidateKey(t *testing.T) {
 		mockRepo := new(MockRepo)
 		client, _ := newTestRedis(t)
 		cache := NewAuthCache(client, time.Minute)
-		service := NewAuthService(mockRepo, cache)
+		mockTokenRepo := new(MockTokenRepo)
+		service := NewAuthService(mockRepo, mockTokenRepo, cache)
 
 		unknownToken := "unknown-token-xyz"
 		unknownHash := sha256Hash(unknownToken)
 
-		mockRepo.On("GetByTokenHash", ctx, unknownHash).Return(nil, nil).Once()
+		mockTokenRepo.On("GetByTokenHash", ctx, unknownHash).Return((*domain.ApiKeyToken)(nil), nil).Once()
 
 		key, err := service.ValidateKey(ctx, unknownToken)
 		assert.ErrorIs(t, err, ErrInvalidKey)
@@ -125,15 +170,28 @@ func TestAuthService_ValidateKey(t *testing.T) {
 		mockRepo := new(MockRepo)
 		client, _ := newTestRedis(t)
 		cache := NewAuthCache(client, time.Minute)
-		service := NewAuthService(mockRepo, cache)
+		mockTokenRepo := new(MockTokenRepo)
+		service := NewAuthService(mockRepo, mockTokenRepo, cache)
 
-		inactiveToken := "inactive-token"
-		inactiveHash := sha256Hash(inactiveToken)
-		inactiveKey := &domain.ApiKey{ID: "key-id", TokenHash: inactiveHash, IsActive: false}
+		inactiveTokenString := "inactive-token"
+		inactiveHash := sha256Hash(inactiveTokenString)
+		inactiveApiKey := &domain.ApiKey{
+			ID:        "key-id-inactive",
+			TokenHash: inactiveHash,
+			IsActive:  false,
+		}
+		
+		inactiveToken := &domain.ApiKeyToken{
+			ID:        "token-id-inactive",
+			ApiKeyID:  "key-id-inactive",
+			TokenHash: inactiveHash,
+			Status:    domain.TokenStatusActive,
+		}
 
-		mockRepo.On("GetByTokenHash", ctx, inactiveHash).Return(inactiveKey, nil).Once()
+		mockTokenRepo.On("GetByTokenHash", ctx, inactiveHash).Return(inactiveToken, nil).Once()
+		mockRepo.On("GetByID", ctx, "key-id-inactive").Return(inactiveApiKey, nil).Once()
 
-		key, err := service.ValidateKey(ctx, inactiveToken)
+		key, err := service.ValidateKey(ctx, inactiveTokenString)
 		assert.ErrorIs(t, err, ErrInvalidKey)
 		assert.Nil(t, key)
 	})
@@ -142,12 +200,13 @@ func TestAuthService_ValidateKey(t *testing.T) {
 		mockRepo := new(MockRepo)
 		client, _ := newTestRedis(t)
 		cache := NewAuthCache(client, time.Minute)
-		service := NewAuthService(mockRepo, cache)
+		mockTokenRepo := new(MockTokenRepo)
+		service := NewAuthService(mockRepo, mockTokenRepo, cache)
 
 		errorToken := "error-causing-token"
 		errorHash := sha256Hash(errorToken)
 
-		mockRepo.On("GetByTokenHash", ctx, errorHash).Return(nil, errors.New("db error")).Once()
+		mockTokenRepo.On("GetByTokenHash", ctx, errorHash).Return((*domain.ApiKeyToken)(nil), errors.New("db error")).Once()
 
 		key, err := service.ValidateKey(ctx, errorToken)
 		assert.Error(t, err)
@@ -158,13 +217,21 @@ func TestAuthService_ValidateKey(t *testing.T) {
 		mockRepo := new(MockRepo)
 		client, mr := newTestRedis(t)
 		cache := NewAuthCache(client, time.Minute)
-		service := NewAuthService(mockRepo, cache)
+		mockTokenRepo := new(MockTokenRepo)
+		service := NewAuthService(mockRepo, mockTokenRepo, cache)
 
 		cacheErrorToken := "cache-error-token"
 		cacheErrorHash := sha256Hash(cacheErrorToken)
 		cacheErrorKey := &domain.ApiKey{ID: "key-id", TokenHash: cacheErrorHash, IsActive: true}
 
-		mockRepo.On("GetByTokenHash", ctx, cacheErrorHash).Return(cacheErrorKey, nil).Once()
+		cacheErrorTokenModel := &domain.ApiKeyToken{
+			ID:        "token-id",
+			ApiKeyID:  cacheErrorKey.ID,
+			TokenHash: cacheErrorHash,
+			Status:    domain.TokenStatusActive,
+		}
+		mockTokenRepo.On("GetByTokenHash", ctx, cacheErrorHash).Return(cacheErrorTokenModel, nil).Once()
+		mockRepo.On("GetByID", ctx, cacheErrorTokenModel.ApiKeyID).Return(cacheErrorKey, nil).Once()
 
 		mr.Close()
 
@@ -179,21 +246,30 @@ func TestAuthService_ValidateKey(t *testing.T) {
 		mockRepo := new(MockRepo)
 		client, _ := newTestRedis(t)
 		cache := NewAuthCache(client, time.Minute)
-		service := NewAuthService(mockRepo, cache)
+		mockTokenRepo := new(MockTokenRepo)
+		service := NewAuthService(mockRepo, mockTokenRepo, cache)
 
-		expiredToken := "expired-token"
-		expiredHash := sha256Hash(expiredToken)
-		pastTime := time.Now().Add(-1 * time.Hour)
-		expiredKey := &domain.ApiKey{
-			ID:        "key-id",
+		expiredTokenString := "expired-token"
+		expiredHash := sha256Hash(expiredTokenString)
+		expiredTime := time.Now().Add(-1 * time.Hour)
+		expiredApiKey := &domain.ApiKey{
+			ID:        "key-id-expired",
 			TokenHash: expiredHash,
 			IsActive:  true,
-			ExpiresAt: &pastTime,
+			ExpiresAt: &expiredTime,
+		}
+		
+		expiredToken := &domain.ApiKeyToken{
+			ID:        "token-id-expired",
+			ApiKeyID:  "key-id-expired",
+			TokenHash: expiredHash,
+			Status:    domain.TokenStatusActive,
 		}
 
-		mockRepo.On("GetByTokenHash", ctx, expiredHash).Return(expiredKey, nil).Once()
+		mockTokenRepo.On("GetByTokenHash", ctx, expiredHash).Return(expiredToken, nil).Once()
+		mockRepo.On("GetByID", ctx, "key-id-expired").Return(expiredApiKey, nil).Once()
 
-		key, err := service.ValidateKey(ctx, expiredToken)
+		key, err := service.ValidateKey(ctx, expiredTokenString)
 		assert.ErrorIs(t, err, ErrInvalidKey)
 		assert.Nil(t, key)
 	})
@@ -202,7 +278,8 @@ func TestAuthService_ValidateKey(t *testing.T) {
 		mockRepo := new(MockRepo)
 		client, _ := newTestRedis(t)
 		cache := NewAuthCache(client, time.Minute)
-		service := NewAuthService(mockRepo, cache)
+		mockTokenRepo := new(MockTokenRepo)
+		service := NewAuthService(mockRepo, mockTokenRepo, cache)
 
 		expiredCacheToken := "expired-cache-token"
 		expiredCacheHash := sha256Hash(expiredCacheToken)
@@ -218,11 +295,18 @@ func TestAuthService_ValidateKey(t *testing.T) {
 			TokenHash: expiredCacheHash,
 			IsActive:  true,
 		}
+		freshToken := &domain.ApiKeyToken{
+			ID:        "token-id",
+			ApiKeyID:  "key-id",
+			TokenHash: expiredCacheHash,
+			Status:    domain.TokenStatusActive,
+		}
 
 		err := cache.SetKey(ctx, expiredCacheHash, expiredCachedKey)
 		assert.NoError(t, err)
 
-		mockRepo.On("GetByTokenHash", ctx, expiredCacheHash).Return(freshKey, nil).Once()
+		mockTokenRepo.On("GetByTokenHash", ctx, expiredCacheHash).Return(freshToken, nil).Once()
+		mockRepo.On("GetByID", ctx, "key-id").Return(freshKey, nil).Once()
 
 		key, err := service.ValidateKey(ctx, expiredCacheToken)
 		assert.NoError(t, err)
@@ -235,7 +319,8 @@ func TestAuthService_ValidateKey(t *testing.T) {
 		mockRepo := new(MockRepo)
 		client, _ := newTestRedis(t)
 		cache := NewAuthCache(client, time.Minute)
-		service := NewAuthService(mockRepo, cache)
+		mockTokenRepo := new(MockTokenRepo)
+		service := NewAuthService(mockRepo, mockTokenRepo, cache)
 
 		inactiveCacheToken := "inactive-cache-token"
 		inactiveCacheHash := sha256Hash(inactiveCacheToken)
@@ -249,11 +334,18 @@ func TestAuthService_ValidateKey(t *testing.T) {
 			TokenHash: inactiveCacheHash,
 			IsActive:  true,
 		}
+		freshToken := &domain.ApiKeyToken{
+			ID:        "token-id",
+			ApiKeyID:  "key-id",
+			TokenHash: inactiveCacheHash,
+			Status:    domain.TokenStatusActive,
+		}
 
 		err := cache.SetKey(ctx, inactiveCacheHash, inactiveCachedKey)
 		assert.NoError(t, err)
 
-		mockRepo.On("GetByTokenHash", ctx, inactiveCacheHash).Return(freshKey, nil).Once()
+		mockTokenRepo.On("GetByTokenHash", ctx, inactiveCacheHash).Return(freshToken, nil).Once()
+		mockRepo.On("GetByID", ctx, "key-id").Return(freshKey, nil).Once()
 
 		key, err := service.ValidateKey(ctx, inactiveCacheToken)
 		assert.NoError(t, err)
@@ -270,7 +362,8 @@ func TestAuthService_InvalidateKey(t *testing.T) {
 	t.Run("Successfully Invalidate Token", func(t *testing.T) {
 		client, _ := newTestRedis(t)
 		cache := NewAuthCache(client, time.Minute)
-		service := NewAuthService(mockRepo, cache)
+		mockTokenRepo := new(MockTokenRepo)
+		service := NewAuthService(mockRepo, mockTokenRepo, cache)
 
 		rawToken := "some-token"
 		tokenHash := sha256Hash(rawToken)
@@ -289,7 +382,8 @@ func TestAuthService_InvalidateKey(t *testing.T) {
 	t.Run("Cache Error During Invalidation", func(t *testing.T) {
 		client, mr := newTestRedis(t)
 		cache := NewAuthCache(client, time.Minute)
-		service := NewAuthService(mockRepo, cache)
+		mockTokenRepo := new(MockTokenRepo)
+		service := NewAuthService(mockRepo, mockTokenRepo, cache)
 
 		rawToken := "error-token"
 
@@ -304,7 +398,8 @@ func TestAuthService_InvalidateKeyByID(t *testing.T) {
 	mockRepo := new(MockRepo)
 	client, _ := newTestRedis(t)
 	cache := NewAuthCache(client, time.Minute)
-	service := NewAuthService(mockRepo, cache)
+	mockTokenRepo := new(MockTokenRepo)
+	service := NewAuthService(mockRepo, mockTokenRepo, cache)
 	ctx := context.Background()
 
 	t.Run("InvalidateKeyByID Returns Nil", func(t *testing.T) {

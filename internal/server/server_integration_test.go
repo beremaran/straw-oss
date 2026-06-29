@@ -50,8 +50,44 @@ func (m *MockApiKeyRepo) Delete(ctx context.Context, id string) error          {
 func (m *MockApiKeyRepo) List(ctx context.Context, limit, offset int) ([]domain.ApiKey, int, error) {
 	return nil, 0, nil
 }
-func (m *MockApiKeyRepo) Exists(ctx context.Context) (bool, error)    { return false, nil }
-func (m *MockApiKeyRepo) Revoke(ctx context.Context, id string) error { return nil }
+func (m *MockApiKeyRepo) Exists(ctx context.Context) (bool, error) {
+	args := m.Called(ctx)
+
+	return args.Bool(0), args.Error(1)
+}
+
+func (m *MockApiKeyRepo) Revoke(ctx context.Context, id string) error {
+	args := m.Called(ctx, id)
+
+	return args.Error(0)
+}
+
+type MockApiKeyTokenRepo struct {
+	mock.Mock
+}
+
+func (m *MockApiKeyTokenRepo) GetByTokenHash(ctx context.Context, tokenHash string) (*domain.ApiKeyToken, error) {
+	args := m.Called(ctx, tokenHash)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.ApiKeyToken), args.Error(1)
+}
+func (m *MockApiKeyTokenRepo) Create(ctx context.Context, token *domain.ApiKeyToken) error {
+	args := m.Called(ctx, token)
+	return args.Error(0)
+}
+func (m *MockApiKeyTokenRepo) ListByApiKeyID(ctx context.Context, apiKeyID string) ([]domain.ApiKeyToken, error) {
+	args := m.Called(ctx, apiKeyID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]domain.ApiKeyToken), args.Error(1)
+}
+func (m *MockApiKeyTokenRepo) UpdateStatus(ctx context.Context, id string, status domain.TokenStatus) error {
+	args := m.Called(ctx, id, status)
+	return args.Error(0)
+}
 
 type MockKeyCache struct {
 	mock.Mock
@@ -250,7 +286,8 @@ func TestServer_RelayRequest_Success(t *testing.T) {
 		t.Logf("DEBUG: Captured request ID: %s", capturedRequestID)
 	}).Return(nil)
 
-	authSvc := auth.NewAuthService(mockKeyRepo, nil)
+	mockTokenRepo := new(MockApiKeyTokenRepo)
+	authSvc := auth.NewAuthService(mockKeyRepo, mockTokenRepo, nil)
 	matcher := router.NewMatcher(mockRuleRepo, nil)
 	assert.NoError(t, matcher.LoadRules(context.Background()))
 

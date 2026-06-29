@@ -68,6 +68,33 @@ func (m *MockRepo) Revoke(ctx context.Context, id string) error {
 	return args.Error(0)
 }
 
+type MockTokenRepo struct {
+	mock.Mock
+}
+
+func (m *MockTokenRepo) GetByTokenHash(ctx context.Context, tokenHash string) (*domain.ApiKeyToken, error) {
+	args := m.Called(ctx, tokenHash)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.ApiKeyToken), args.Error(1)
+}
+func (m *MockTokenRepo) Create(ctx context.Context, token *domain.ApiKeyToken) error {
+	args := m.Called(ctx, token)
+	return args.Error(0)
+}
+func (m *MockTokenRepo) ListByApiKeyID(ctx context.Context, apiKeyID string) ([]domain.ApiKeyToken, error) {
+	args := m.Called(ctx, apiKeyID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]domain.ApiKeyToken), args.Error(1)
+}
+func (m *MockTokenRepo) UpdateStatus(ctx context.Context, id string, status domain.TokenStatus) error {
+	args := m.Called(ctx, id, status)
+	return args.Error(0)
+}
+
 func sha256Hash(s string) string {
 	hash := sha256.Sum256([]byte(s))
 
@@ -86,7 +113,8 @@ func TestAuthMiddleware(t *testing.T) {
 	authCache := auth.NewAuthCache(redisClient, time.Minute)
 
 	mockRepo := new(MockRepo)
-	authService := auth.NewAuthService(mockRepo, authCache)
+	mockTokenRepo := new(MockTokenRepo)
+	authService := auth.NewAuthService(mockRepo, mockTokenRepo, authCache)
 	mw := AuthMiddleware(authService)
 
 	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -111,7 +139,7 @@ func TestAuthMiddleware(t *testing.T) {
 		rec := httptest.NewRecorder()
 
 		tokenHash := sha256Hash("invalid-token")
-		mockRepo.On("GetByTokenHash", mock.Anything, tokenHash).Return(nil, nil).Once()
+		mockTokenRepo.On("GetByTokenHash", mock.Anything, tokenHash).Return((*domain.ApiKeyToken)(nil), nil).Once()
 
 		handler.ServeHTTP(rec, req)
 		assert.Equal(t, http.StatusUnauthorized, rec.Code)
@@ -126,11 +154,32 @@ func TestAuthMiddleware(t *testing.T) {
 
 		tokenHash := sha256Hash("valid-token")
 		validApiKey := &domain.ApiKey{ID: "test", TokenHash: tokenHash, IsActive: true}
-		mockRepo.On("GetByTokenHash", mock.Anything, tokenHash).Return(validApiKey, nil).Once()
+		validToken := &domain.ApiKeyToken{ID: "token", ApiKeyID: "test", TokenHash: tokenHash, Status: domain.TokenStatusActive}
+		
+		mockTokenRepo.On("GetByTokenHash", mock.Anything, tokenHash).Return(validToken, nil).Once()
+		mockRepo.On("GetByID", mock.Anything, validApiKey.ID).Return(validApiKey, nil).Once()
 
 		handler.ServeHTTP(rec, req)
 		assert.Equal(t, http.StatusOK, rec.Code)
 		assert.Equal(t, "success", rec.Body.String())
+		mockRepo.AssertExpectations(t)
+	})
+
+	t.Run("Inactive API Key", func(t *testing.T) {
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
+		req.Header.Set("Authorization", "Bearer inactive-token")
+		rec := httptest.NewRecorder()
+
+		tokenHash := sha256Hash("inactive-token")
+		inactiveApiKey := &domain.ApiKey{ID: "test", TokenHash: tokenHash, IsActive: false}
+		inactiveToken := &domain.ApiKeyToken{ID: "token", ApiKeyID: "test", TokenHash: tokenHash, Status: domain.TokenStatusActive}
+		
+		mockTokenRepo.On("GetByTokenHash", mock.Anything, tokenHash).Return(inactiveToken, nil).Once()
+		mockRepo.On("GetByID", mock.Anything, inactiveApiKey.ID).Return(inactiveApiKey, nil).Once()
+
+		handler.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+		assert.Contains(t, rec.Body.String(), "invalid bearer token")
 		mockRepo.AssertExpectations(t)
 	})
 
@@ -150,7 +199,7 @@ func TestAuthMiddleware(t *testing.T) {
 
 		tokenHash := sha256Hash("error-token")
 		_ = authCache.InvalidateKey(context.Background(), tokenHash)
-		mockRepo.On("GetByTokenHash", mock.Anything, tokenHash).Return(nil, errors.New("db down")).Once()
+		mockTokenRepo.On("GetByTokenHash", mock.Anything, tokenHash).Return((*domain.ApiKeyToken)(nil), errors.New("db down")).Once()
 
 		handler.ServeHTTP(rec, req)
 		assert.Equal(t, http.StatusInternalServerError, rec.Code)

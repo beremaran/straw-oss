@@ -187,6 +187,12 @@ func TestAuthenticationFlows(t *testing.T) {
 		`, keyID, "premium-user", tokenHash)
 		require.NoError(t, err)
 
+		_, err = db.ExecContext(ctx, `
+			INSERT INTO api_key_tokens (api_key_id, token_hash, status)
+			VALUES ($1, $2, 'active')
+		`, keyID, tokenHash)
+		require.NoError(t, err)
+
 		clientPrem := NewHTTPTestClient(tc.ServerURL, premiumToken)
 
 		time.Sleep(1100 * time.Millisecond)

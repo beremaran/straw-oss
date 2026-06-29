@@ -1,6 +1,6 @@
 # MB-008: API Key Token History And Auth Lookup Migration
 
-Status: not-started
+Status: done
 Phase: 2
 Depends on: MB-001
 Search tags: api_key_tokens, token hash, active, grace, revoked, expired, auth lookup
@@ -28,15 +28,15 @@ Split API key token secrets from logical API key metadata and migrate authentica
 
 ## Implementation Tasks
 
-- [ ] Add migration with indexes from the spec.
-- [ ] Add domain and repository methods for token creation, lookup, status changes, and history list.
-- [ ] Update API-key auth middleware to resolve by `api_key_tokens`.
-- [ ] Treat expired tokens as rejected even before status cleanup runs.
-- [ ] Add repository and security tests for active, grace, revoked, and expired tokens.
+- [x] Add migration with indexes from the spec.
+- [x] Add domain and repository methods for token creation, lookup, status changes, and history list.
+- [x] Update API-key auth middleware to resolve by `api_key_tokens`.
+- [x] Treat expired tokens as rejected even before status cleanup runs.
+- [x] Add repository and security tests for active, grace, revoked, and expired tokens.
 
 ## Done Criteria
 
-- [ ] Existing API keys still authenticate after migration.
-- [ ] New token lookup ignores revoked and expired tokens.
-- [ ] Grace tokens authenticate only until `expires_at`.
-- [ ] Logical API key ID remains stable across token changes.
+- [x] Existing API keys still authenticate after migration.
+- [x] New token lookup ignores revoked and expired tokens.
+- [x] Grace tokens authenticate only until `expires_at`.
+- [x] Logical API key ID remains stable across token changes.

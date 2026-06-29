@@ -132,9 +132,12 @@ func initSessionServices(redisClient *redis.Client) *session.Service {
 }
 
 func initAuthServices(pgClient *postgres.Client, redisClient *redis.Client) (*postgres.ApiKeyRepository, *auth.Service) {
-	authCache := auth.NewAuthCache(redisClient, 5*time.Minute)
 	apiKeyRepo := postgres.NewApiKeyRepository(pgClient)
-	authService := auth.NewAuthService(apiKeyRepo, authCache)
+	apiKeyTokenRepo := postgres.NewApiKeyTokenRepository(pgClient)
+
+	// Build auth service
+	authCache := auth.NewAuthCache(redisClient, 10*time.Minute)
+	authService := auth.NewAuthService(apiKeyRepo, apiKeyTokenRepo, authCache)
 
 	return apiKeyRepo, authService
 }
