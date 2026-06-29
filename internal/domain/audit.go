@@ -26,6 +26,8 @@ const (
 	ActionPurge = "purge"
 	// ActionReorder records a reorder operation.
 	ActionReorder = "reorder"
+	// ActionRun records a run operation.
+	ActionRun = "run"
 )
 
 // ManagementAuditEvent records a management-plane action taken by an actor.
