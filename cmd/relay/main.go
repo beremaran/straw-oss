@@ -60,16 +60,10 @@ func main() {
 		}()
 	}
 
-	pgClient := getPostgresClientOrDie(ctx, cfg)
+	pgClient, redisClient, natsBroker := connectInfraOrDie(ctx, cfg)
 	defer pgClient.Close()
-
-	redisClient := getRedisClientOrDie(ctx, cfg)
 	defer func() { _ = redisClient.Close() }()
-
-	natsBroker := getNATSConnectionOrDie(ctx, cfg)
 	defer func() { _ = natsBroker.Close() }()
-
-	handleMigrations(cfg)
 
 	apiKeyRepo, authService := initAuthServices(pgClient, redisClient)
 	sessionService := initSessionServices(redisClient)
@@ -87,6 +81,11 @@ func main() {
 	commandService := startCommandServiceIfEnabled(natsBroker, pgClient, ctx)
 	if commandService != nil {
 		defer commandService.Stop()
+	}
+
+	logService := startLogServiceIfEnabled(natsBroker, pgClient, ctx)
+	if logService != nil {
+		defer logService.Stop()
 	}
 
 	managementServer := getManagementServer(cfg, pgClient, redisClient, healthService, natsBroker, authService)
@@ -423,13 +422,13 @@ func setupLogger(cfg *config.ServerConfig) {
 	slog.SetDefault(logger)
 }
 
-func handleMigrations(cfg *config.ServerConfig) {
+func handleMigrations(ctx context.Context, cfg *config.ServerConfig) {
 	if !cfg.Database.AutoMigrate {
 		return
 	}
 
 	slog.Info("Applying pending migrations...")
-	err := postgres.RunEmbeddedMigrations(context.Background(), cfg.Database.DSN)
+	err := postgres.RunEmbeddedMigrations(ctx, cfg.Database.DSN)
 	if err != nil {
 		slog.Error("Failed to run migrations", "error", err)
 		os.Exit(1)
@@ -453,4 +452,31 @@ func startCommandServiceIfEnabled(natsBroker *broker.NatsBroker, pgClient *postg
 	}
 
 	return commandService
+}
+
+func startLogServiceIfEnabled(natsBroker *broker.NatsBroker, pgClient *postgres.Client, ctx context.Context) *endpoint.LogService {
+	if pgClient == nil {
+		return nil
+	}
+
+	logRepo := postgres.NewPostgresEndpointLogRepository(pgClient)
+	logService := endpoint.NewLogService(natsBroker, logRepo, nil)
+	err := logService.Start(ctx)
+	if err != nil {
+		slog.Warn("Failed to start log service", "error", err)
+
+		return nil
+	}
+
+	return logService
+}
+
+func connectInfraOrDie(ctx context.Context, cfg *config.ServerConfig) (*postgres.Client, *redis.Client, *broker.NatsBroker) {
+	pgClient := getPostgresClientOrDie(ctx, cfg)
+	redisClient := getRedisClientOrDie(ctx, cfg)
+	natsBroker := getNATSConnectionOrDie(ctx, cfg)
+
+	handleMigrations(ctx, cfg)
+
+	return pgClient, redisClient, natsBroker
 }

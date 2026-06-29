@@ -654,3 +654,136 @@ func scanLogEntries(rows pgx.Rows) ([]domain.EndpointLogEntry, error) {
 
 	return entries, nil
 }
+
+func (r *PostgresEndpointLogRepository) Query(ctx context.Context, endpointID string, f domain.LogFilter) ([]domain.EndpointLogEntry, error) {
+	query := `
+		SELECT id, endpoint_id, observed_at, level, message, attrs, trace_id, request_id
+		FROM endpoint_log_entries
+		WHERE endpoint_id = $1
+	`
+	args := []any{endpointID}
+	placeholderIndex := 2
+	params := []struct {
+		cond   string
+		val    any
+		active bool
+	}{
+		{"observed_at >= $%d", timeOrZero(f.Start), f.Start != nil},
+		{"observed_at <= $%d", timeOrZero(f.End), f.End != nil},
+		{"level = $%d", f.Level, f.Level != ""},
+		{"message ILIKE $%d", "%" + f.Q + "%", f.Q != ""},
+		{"trace_id = $%d", f.TraceID, f.TraceID != ""},
+		{"request_id = $%d", f.RequestID, f.RequestID != ""},
+		{"id < $%d", f.Cursor, f.Cursor > 0},
+	}
+
+	for _, p := range params {
+		if p.active {
+			query += " AND " + fmt.Sprintf(p.cond, placeholderIndex)
+			args = append(args, p.val)
+			placeholderIndex++
+		}
+	}
+
+	query += fmt.Sprintf(" ORDER BY observed_at DESC, id DESC LIMIT $%d", placeholderIndex)
+	args = append(args, sanitizeLimit(f.Limit))
+
+	var rows pgx.Rows
+	var qErr error
+	err := r.client.Execute(func() error {
+		rows, qErr = r.client.Pool.Query(ctx, query, args...)
+
+		return qErr
+	})
+	if err == nil {
+		err = qErr
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to query logs: %w", err)
+	}
+	defer rows.Close()
+
+	entries, err := scanLogEntries(rows)
+	if err != nil {
+		return nil, err
+	}
+
+	err = rows.Err()
+	if err != nil {
+		return nil, fmt.Errorf("rows iteration error: %w", err)
+	}
+
+	return entries, nil
+}
+
+func timeOrZero(t *time.Time) time.Time {
+	if t == nil {
+		return time.Time{}
+	}
+
+	return *t
+}
+
+func sanitizeLimit(l int) int {
+	if l <= 0 || l > 500 {
+		return 500
+	}
+
+	return l
+}
+
+func (r *PostgresEndpointLogRepository) Cleanup(ctx context.Context, maxAge time.Duration, maxSizeBytes int64) error {
+	cutoff := time.Now().UTC().Add(-maxAge)
+	deleteAgeQuery := `DELETE FROM endpoint_log_entries WHERE observed_at < $1`
+	err := r.client.Execute(func() error {
+		_, err := r.client.Pool.Exec(ctx, deleteAgeQuery, cutoff)
+
+		return err
+	})
+	if err != nil {
+		return fmt.Errorf("failed to delete log entries by age: %w", err)
+	}
+
+	for {
+		var size int64
+		sizeQuery := `SELECT COALESCE(pg_total_relation_size('endpoint_log_entries'), 0)`
+		err = r.client.Execute(func() error {
+			return r.client.Pool.QueryRow(ctx, sizeQuery).Scan(&size)
+		})
+		if err != nil {
+			return fmt.Errorf("failed to check log table size: %w", err)
+		}
+
+		if size <= maxSizeBytes {
+			break
+		}
+
+		deleteSizeQuery := `
+			DELETE FROM endpoint_log_entries
+			WHERE id IN (
+				SELECT id FROM endpoint_log_entries
+				ORDER BY observed_at ASC, id ASC
+				LIMIT 10000
+			)
+		`
+		var chunkDeleted int64
+		err = r.client.Execute(func() error {
+			res, err := r.client.Pool.Exec(ctx, deleteSizeQuery)
+			if err != nil {
+				return err
+			}
+			chunkDeleted = res.RowsAffected()
+
+			return nil
+		})
+		if err != nil {
+			return fmt.Errorf("failed to delete log entries chunk by size: %w", err)
+		}
+
+		if chunkDeleted == 0 {
+			break
+		}
+	}
+
+	return nil
+}

@@ -78,3 +78,20 @@ type EndpointListResponse struct {
 	Page  int                `json:"page"`
 	Limit int                `json:"limit"`
 }
+
+type EndpointLogDTO struct {
+	ID         int64          `json:"id"`
+	EndpointID string         `json:"endpoint_id"`
+	ObservedAt string         `json:"observed_at"`
+	Level      string         `json:"level"`
+	Message    string         `json:"message"`
+	Attrs      map[string]any `json:"attrs"`
+	TraceID    *string        `json:"trace_id,omitempty"`
+	RequestID  *string        `json:"request_id,omitempty"`
+}
+
+type EndpointLogListResponse struct {
+	Data       []EndpointLogDTO `json:"data"`
+	NextCursor string           `json:"next_cursor,omitempty"`
+	HasMore    bool             `json:"has_more"`
+}

@@ -215,5 +215,53 @@ func TestEndpointRepositories(t *testing.T) {
 		require.Len(t, subset, 2)
 		assert.Equal(t, float64(2), subset[0].Attrs["index"].(float64))
 		assert.Equal(t, float64(1), subset[1].Attrs["index"].(float64))
+
+		// Test Query with filter by level
+		filtered, err := logRepo.Query(ctx, epID, domain.LogFilter{Level: "info"})
+		require.NoError(t, err)
+		assert.Len(t, filtered, 5)
+
+		filteredNone, err := logRepo.Query(ctx, epID, domain.LogFilter{Level: "error"})
+		require.NoError(t, err)
+		assert.Len(t, filteredNone, 0)
+
+		// Test Query with trace ID
+		filteredTrace, err := logRepo.Query(ctx, epID, domain.LogFilter{TraceID: trace})
+		require.NoError(t, err)
+		assert.Len(t, filteredTrace, 5)
+
+		// Test Query with search string
+		filteredQ, err := logRepo.Query(ctx, epID, domain.LogFilter{Q: "message"})
+		require.NoError(t, err)
+		assert.Len(t, filteredQ, 5)
+
+		// Test Cleanup (insert an old entry, verify it gets cleaned up)
+		oldTime := time.Now().UTC().Add(-10 * 24 * time.Hour)
+		oldEntry := &domain.EndpointLogEntry{
+			EndpointID: epID,
+			ObservedAt: oldTime,
+			Level:      "warn",
+			Message:    "Old log message",
+			Attrs:      map[string]any{},
+		}
+		err = logRepo.Create(ctx, oldEntry)
+		require.NoError(t, err)
+
+		// Verify it was created
+		allLogs, err := logRepo.Query(ctx, epID, domain.LogFilter{Limit: 20})
+		require.NoError(t, err)
+		assert.Len(t, allLogs, 6)
+
+		// Run Cleanup for logs older than 7 days
+		err = logRepo.Cleanup(ctx, 7*24*time.Hour, 10*1024*1024)
+		require.NoError(t, err)
+
+		// Verify the old log is gone but the 5 new ones remain
+		remaining, err := logRepo.Query(ctx, epID, domain.LogFilter{Limit: 20})
+		require.NoError(t, err)
+		assert.Len(t, remaining, 5)
+		for _, rem := range remaining {
+			assert.NotEqual(t, "Old log message", rem.Message)
+		}
 	})
 }

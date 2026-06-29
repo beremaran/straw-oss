@@ -36,8 +36,9 @@ var (
 
 // Worker wraps the endpoint components and manages their execution lifecycle.
 type Worker struct {
-	cfg      *config.EndpointConfig
-	executor RequestExecutor
+	cfg        *config.EndpointConfig
+	executor   RequestExecutor
+	logHandler *ForwardingHandler
 }
 
 // WorkerOption defines a functional option for configuring a Worker.
@@ -108,7 +109,18 @@ func RunWithConfig(cfg *config.EndpointConfig) error {
 func (w *Worker) Start(ctx context.Context) error {
 	cfg := w.cfg
 
-	logger := setupWorkerLogger(cfg)
+	baseLogger := setupWorkerLogger(cfg)
+	var brokerRef broker.MessageBroker
+	w.logHandler = &ForwardingHandler{
+		Handler:    baseLogger.Handler(),
+		endpointID: cfg.ID,
+		mu:         &sync.RWMutex{},
+		brokerRef:  &brokerRef,
+		enabled:    cfg.LogStreamEnabled,
+	}
+	logger := slog.New(w.logHandler)
+	slog.SetDefault(logger)
+
 	logWorkerStart(logger, cfg)
 
 	defer setupEndpointTracer(ctx, logger)()
@@ -120,7 +132,17 @@ func (w *Worker) Start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = mqBroker.Close() }()
+	defer func() {
+		w.logHandler.mu.Lock()
+		*w.logHandler.brokerRef = nil
+		w.logHandler.mu.Unlock()
+		_ = mqBroker.Close()
+	}()
+
+	w.logHandler.mu.Lock()
+	*w.logHandler.brokerRef = mqBroker
+	w.logHandler.mu.Unlock()
+
 	logger.Info("connected to message broker")
 
 	resultPublisher := NewPublisher(

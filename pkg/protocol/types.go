@@ -255,3 +255,13 @@ type CommandAck struct {
 	Message    string    `json:"message,omitempty"`
 	Timestamp  time.Time `json:"ts"`
 }
+
+type LogEntry struct {
+	EndpointID string         `json:"endpoint_id"`
+	ObservedAt time.Time      `json:"observed_at"`
+	Level      string         `json:"level"`
+	Message    string         `json:"message"`
+	Attrs      map[string]any `json:"attrs,omitempty"`
+	TraceID    string         `json:"trace_id,omitempty"`
+	RequestID  string         `json:"request_id,omitempty"`
+}

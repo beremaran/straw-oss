@@ -97,7 +97,7 @@ func (s *Server) GetHandler() http.Handler {
 func (s *Server) setupBroker() {
 	if s.broker != nil {
 		_ = s.broker.DeclareStream(context.Background(), "fingerprint_broadcast", "fingerprint_broadcast")
-		_ = s.broker.DeclareStream(context.Background(), "endpoint_control", "endpoint.control.>")
+		_ = s.broker.DeclareStream(context.Background(), "endpoint_control", "endpoint.control.>", "endpoint.logs.>")
 	}
 }
 
@@ -126,38 +126,28 @@ func (s *Server) registerAllSubRoutes() {
 
 	var endpointRepo domain.EndpointRepository
 	var commandRepo domain.EndpointCommandRepository
+	var logRepo domain.EndpointLogRepository
 	if s.client != nil {
 		endpointRepo = postgres.NewPostgresEndpointRepository(s.client)
 		commandRepo = postgres.NewPostgresEndpointCommandRepository(s.client)
+		logRepo = postgres.NewPostgresEndpointLogRepository(s.client)
 	}
 
-	apiKeyHandler := handlers.NewApiKeyHandler(apiKeyRepo, apiKeyTokenRepo, auditRepo, s.apiKeyAuth)
-	routingRuleHandler := handlers.NewRoutingRuleHandler(routingRuleRepo, ruleCache, auditRepo)
-	endpointHandler := handlers.NewEndpointHandler(s.healthService, endpointRepo, commandRepo, s.broker, auditRepo)
-	fingerprintHandler := handlers.NewFingerprintHandler(fingerprintRepo, routingRuleRepo, identityRepo, s.broker, auditRepo)
-	usageHandler := handlers.NewUsageHandler(usageRepo)
-	authHandler := handlers.NewAuthHandler(s.authService)
-
-	userHandler := handlers.NewUserHandler(identityRepo)
-	roleHandler := handlers.NewRoleHandler(identityRepo)
-	idpHandler := handlers.NewIdentityProviderHandler(identityRepo)
-	auditHandler := handlers.NewAuditHandler(auditRepo, identityRepo)
-
-	var cacheHandler *handlers.CacheHandler
+	s.registerIdentityAndAuthRoutes(
+		handlers.NewUserHandler(identityRepo),
+		handlers.NewRoleHandler(identityRepo),
+		handlers.NewIdentityProviderHandler(identityRepo),
+		handlers.NewAuthHandler(s.authService),
+	)
+	s.registerAPIKeyRoutes(handlers.NewApiKeyHandler(apiKeyRepo, apiKeyTokenRepo, auditRepo, s.apiKeyAuth))
+	s.registerRoutingRuleRoutes(handlers.NewRoutingRuleHandler(routingRuleRepo, ruleCache, auditRepo))
+	s.registerEndpointRoutes(handlers.NewEndpointHandler(s.healthService, endpointRepo, commandRepo, s.broker, auditRepo, logRepo))
+	s.registerFingerprintRoutes(handlers.NewFingerprintHandler(fingerprintRepo, routingRuleRepo, identityRepo, s.broker, auditRepo))
+	s.registerUsageRoutes(handlers.NewUsageHandler(usageRepo))
 	if s.redisClient != nil {
-		cacheHandler = handlers.NewCacheHandler(s.redisClient, auditRepo)
+		s.registerCacheRoutes(handlers.NewCacheHandler(s.redisClient, auditRepo))
 	}
-
-	s.registerIdentityAndAuthRoutes(userHandler, roleHandler, idpHandler, authHandler)
-	s.registerAPIKeyRoutes(apiKeyHandler)
-	s.registerRoutingRuleRoutes(routingRuleHandler)
-	s.registerEndpointRoutes(endpointHandler)
-	s.registerFingerprintRoutes(fingerprintHandler)
-	s.registerUsageRoutes(usageHandler)
-	if cacheHandler != nil {
-		s.registerCacheRoutes(cacheHandler)
-	}
-	s.registerAuditRoutes(auditHandler)
+	s.registerAuditRoutes(handlers.NewAuditHandler(auditRepo, identityRepo))
 }
 
 func (s *Server) registerIdentityAndAuthRoutes(user *handlers.UserHandler, role *handlers.RoleHandler, idp *handlers.IdentityProviderHandler, auth *handlers.AuthHandler) {
@@ -229,6 +219,8 @@ func (s *Server) registerEndpointRoutes(endpointHandler *handlers.EndpointHandle
 	s.management("POST /management/endpoints/{id}/drain", middleware.PermissionEndpointsControl, endpointHandler.HandleDrainEndpoint)
 	s.management("POST /management/endpoints/{id}/undrain", middleware.PermissionEndpointsControl, endpointHandler.HandleUndrainEndpoint)
 	s.management("POST /management/endpoints/{id}/restart", middleware.PermissionEndpointsControl, endpointHandler.HandleRestartEndpoint)
+	s.management("GET /management/endpoints/{id}/logs", middleware.PermissionEndpointsLogs, endpointHandler.HandleGetEndpointLogs)
+	s.management("GET /management/endpoints/{id}/logs/stream", middleware.PermissionEndpointsLogs, endpointHandler.HandleStreamEndpointLogs)
 	s.management("GET /management/endpoints/{segment3}/{segment4}", middleware.PermissionEndpointsRead, endpointHandler.HandleCommandDispatch)
 }
 
