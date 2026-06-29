@@ -24,8 +24,11 @@ func TestReplayProtection_StaleTimestamp(t *testing.T) {
 		payload, err := protocol.MarshalCompressed(req)
 		require.NoError(t, err)
 
-		payload = append(payload, []byte(strconv.FormatInt(ts, 10))...)
-		signature := protocol.Sign(payload, secret)
+		timestamp := strconv.FormatInt(ts, 10)
+		signatureData := make([]byte, 0, len(payload)+len(timestamp))
+		signatureData = append(signatureData, payload...)
+		signatureData = append(signatureData, []byte(timestamp)...)
+		signature := protocol.Sign(signatureData, secret)
 
 		return &protocol.SignedTask{
 			Payload:   payload,

@@ -257,7 +257,7 @@ func TestEndpointHandler_Lifecycle(t *testing.T) {
 	h := NewEndpointHandler(healthService, epRepo, cmdRepo, mb, nil, nil)
 
 	// 1. Create Endpoint
-	reqBody := `{"id":testEndpointID,"tags":["type:residential","region:us"],"desired_state":"active"}`
+	reqBody := `{"id":"ep-1","tags":["type:residential","region:us"],"desired_state":"active"}`
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/management/endpoints", bytes.NewBufferString(reqBody))
 	rec := httptest.NewRecorder()
 	h.HandleCreateEndpoint(rec, req)
@@ -369,9 +369,9 @@ func (m *mockLogRepo) ListByEndpointID(_ context.Context, _ string, _ int64, _ i
 }
 
 func (m *mockLogRepo) Query(_ context.Context, _ string, _ domain.LogFilter) ([]domain.EndpointLogEntry, error) {
-	var res []domain.EndpointLogEntry
-	for range m.logs {
-		res = append(res, domain.EndpointLogEntry{})
+	res := make([]domain.EndpointLogEntry, 0, len(m.logs))
+	for _, log := range m.logs {
+		res = append(res, *log)
 	}
 
 	return res, nil
