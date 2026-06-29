@@ -23,7 +23,7 @@ Update `tracker.md` when work starts, lands, or is blocked. Keep task files focu
 
 | ID | Phase | Status | Task | Depends on | Search tags |
 | --- | --- | --- | --- | --- | --- |
-| [MB-001](tasks/MB-001-auth-rbac-compatibility.md) | 1 | not-started | Auth and RBAC compatibility foundation | none | auth, rbac, legacy token, permissions, actor context |
+| [MB-001](tasks/MB-001-auth-rbac-compatibility.md) | 1 | done | Auth and RBAC compatibility foundation | none | auth, rbac, legacy token, permissions, actor context |
 | [MB-002](tasks/MB-002-identity-schema-repositories.md) | 1 | not-started | Identity schema and repositories | MB-001 | admin_users, roles, sessions, identity providers |
 | [MB-003](tasks/MB-003-local-sessions-bootstrap.md) | 1 | not-started | Local login, refresh sessions, logout, bootstrap owner | MB-001, MB-002 | login, refresh token, session rotation, bootstrap |
 | [MB-004](tasks/MB-004-users-roles-idp-apis.md) | 1 | not-started | Users, roles, and identity-provider management APIs | MB-001, MB-002 | users, roles, identity-providers, permissions |

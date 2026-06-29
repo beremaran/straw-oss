@@ -31,6 +31,7 @@ These variables configure the behavior of the orchestrator gateway (`cmd/relay`)
 | `HTTP_PORT` | integer | `8080` | Port for the client-facing proxy API. |
 | `MANAGEMENT_PORT` | integer | `8081` | Port for the management API. |
 | `MANAGEMENT_API_KEY` | string | *(empty)* | Optional API key required to access the Management API (via Bearer token header). |
+| `MANAGEMENT_LEGACY_TOKEN_ENABLED` | boolean | `true` | If `false`, disables Management API bearer-token compatibility. |
 | `SHUTDOWN_TIMEOUT` | duration | `30s` | Time allocated for graceful shutdown of active HTTP clients. |
 | `RESULT_TIMEOUT` | duration | `30s` | Maximum time to wait for a worker to return results before timing out. |
 | `MAX_BODY_SIZE` | string | `2M` | Maximum allowed request body size (e.g. `500K`, `2M`, `10M`). |

@@ -70,6 +70,35 @@ func TestAuditLog_SkipGet(t *testing.T) {
 	mockDB.AssertNotCalled(t, "Exec")
 }
 
+func TestAuditLog_IncludesActor(t *testing.T) {
+	auditLogger := &AuditLogger{
+		entries: make(chan AuditEntry, 1),
+		logger:  slog.Default(),
+	}
+	mw := AuditLog(auditLogger)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/test", strings.NewReader(`{"foo":"bar"}`))
+	req = req.WithContext(ContextWithActor(req.Context(), Actor{
+		Type:        ActorTypeUser,
+		ID:          "user-1",
+		DisplayName: "User One",
+		SessionID:   "session-1",
+	}))
+	rec := httptest.NewRecorder()
+
+	h := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+	}))
+
+	h.ServeHTTP(rec, req)
+
+	entry := <-auditLogger.entries
+	assert.Equal(t, ActorTypeUser, entry.ActorType)
+	assert.Equal(t, "user-1", entry.ActorID)
+	assert.Equal(t, "User One", entry.ActorDisplayName)
+	assert.Equal(t, "session-1", entry.SessionID)
+}
+
 func TestAuditLogger_BufferFull(t *testing.T) {
 	mockDB := new(MockExecer)
 

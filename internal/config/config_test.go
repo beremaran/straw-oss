@@ -39,17 +39,21 @@ func TestLoadServerConfig_Defaults(t *testing.T) {
 	if cfg.ManagementPort != 8081 {
 		t.Errorf("ManagementPort = %v, want 8081", cfg.ManagementPort)
 	}
+	if cfg.ManagementLegacyTokenDisabled {
+		t.Error("ManagementLegacyTokenDisabled should be false by default")
+	}
 }
 
 func TestLoadServerConfig_EnvOverride(t *testing.T) {
 	setEnvVars(t, map[string]string{
-		"POSTGRES_DSN": "postgres://custom/db",
-		"NATS_URL":     "nats://custom:4222",
-		"HMAC_SECRET":  "custom-secret",
-		"REDIS_ADDR":   "redis.example.com:6380",
-		"LOG_LEVEL":    "debug",
-		"METRICS_PORT": "9091",
-		"HTTP_PORT":    "3000",
+		"POSTGRES_DSN":                    "postgres://custom/db",
+		"NATS_URL":                        "nats://custom:4222",
+		"HMAC_SECRET":                     "custom-secret",
+		"REDIS_ADDR":                      "redis.example.com:6380",
+		"LOG_LEVEL":                       "debug",
+		"METRICS_PORT":                    "9091",
+		"HTTP_PORT":                       "3000",
+		"MANAGEMENT_LEGACY_TOKEN_ENABLED": "false",
 	})
 
 	cfg, err := LoadServerConfig()
@@ -71,6 +75,9 @@ func TestLoadServerConfig_EnvOverride(t *testing.T) {
 	}
 	if cfg.HTTPPort != 3000 {
 		t.Errorf("HTTPPort = %v, want 3000", cfg.HTTPPort)
+	}
+	if !cfg.ManagementLegacyTokenDisabled {
+		t.Error("ManagementLegacyTokenDisabled should be true")
 	}
 }
 
@@ -279,6 +286,7 @@ func setEnvVars(t *testing.T, vars map[string]string) {
 		"HMAC_SECRET", "TLS_CERT_FILE", "TLS_KEY_FILE", "VAULT_ADDR",
 		"OTEL_EXPORTER_OTLP_ENDPOINT", "METRICS_ENABLED", "METRICS_PORT",
 		"HTTP_PORT", "MANAGEMENT_PORT", "SHUTDOWN_TIMEOUT", "MANAGEMENT_API_KEY",
+		"MANAGEMENT_LEGACY_TOKEN_ENABLED",
 		"ENDPOINT_ID", "ENDPOINT_TAGS", "CONCURRENCY_LIMIT", "SELF_UPDATE_URL",
 	}
 	for _, v := range allVars {
