@@ -29,11 +29,10 @@ type Checker struct {
 	logger         *slog.Logger
 	callback       Callback
 	httpClient     *http.Client
-
-	mu      sync.Mutex
-	running bool
-	cancel  context.CancelFunc
-	done    chan struct{}
+	mu             sync.Mutex
+	running        bool
+	cancel         context.CancelFunc
+	done           chan struct{}
 }
 
 type CheckerOption func(*Checker)

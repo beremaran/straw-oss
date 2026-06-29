@@ -16,10 +16,8 @@ import (
 
 type DialOptions struct {
 	InsecureSkipVerify bool
-
-	ServerName string
-
-	HandshakeTimeout time.Duration
+	ServerName         string
+	HandshakeTimeout   time.Duration
 }
 
 type DialOption func(*DialOptions)

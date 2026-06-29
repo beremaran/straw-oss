@@ -49,8 +49,7 @@ func BuildResponse(
 }
 
 type ResponseOptions struct {
-	MaxBodySize int64
-
+	MaxBodySize    int64
 	StreamResponse bool
 }
 

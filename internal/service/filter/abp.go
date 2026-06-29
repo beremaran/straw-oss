@@ -31,10 +31,9 @@ var DefaultLists = map[string]string{
 }
 
 type ABPMatcher struct {
-	matchers map[string]*adblock.RuleMatcher
-	redis    *redis.Client
-	mu       sync.RWMutex
-
+	matchers       map[string]*adblock.RuleMatcher
+	redis          *redis.Client
+	mu             sync.RWMutex
 	httpClient     *http.Client
 	updateInterval time.Duration
 	stopChan       chan struct{}
@@ -42,8 +41,7 @@ type ABPMatcher struct {
 
 type ABPMatcherConfig struct {
 	UpdateInterval time.Duration
-
-	HTTPTimeout time.Duration
+	HTTPTimeout    time.Duration
 }
 
 func DefaultABPMatcherConfig() ABPMatcherConfig {

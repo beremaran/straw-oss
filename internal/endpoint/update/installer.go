@@ -25,7 +25,6 @@ type Installer struct {
 	httpClient *http.Client
 	logger     *slog.Logger
 	binaryPath string
-
 	onProgress func(downloaded, total int64)
 }
 

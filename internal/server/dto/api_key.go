@@ -15,11 +15,9 @@ var (
 )
 
 type CreateApiKeyRequest struct {
-	Name string `json:"name" validate:"required"`
-
-	Scopes []string `json:"scopes"`
-
-	RateLimitOverride *int `json:"rate_limit_override,omitempty"`
+	Name              string   `json:"name"                          validate:"required"`
+	Scopes            []string `json:"scopes"`
+	RateLimitOverride *int     `json:"rate_limit_override,omitempty"`
 }
 
 type UpdateApiKeyRequest struct {
@@ -116,50 +114,36 @@ type RotateApiKeyRequest struct {
 }
 
 type ApiKeyResponse struct {
-	ID string `json:"id"`
-
-	Name string `json:"name"`
-
-	Scopes []string `json:"scopes"`
-
-	RateLimitOverride *int `json:"rate_limit_override,omitempty"`
-
-	IsActive bool `json:"is_active"`
-
-	CreatedAt time.Time `json:"created_at"`
-
-	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	ID                string     `json:"id"`
+	Name              string     `json:"name"`
+	Scopes            []string   `json:"scopes"`
+	RateLimitOverride *int       `json:"rate_limit_override,omitempty"`
+	IsActive          bool       `json:"is_active"`
+	CreatedAt         time.Time  `json:"created_at"`
+	ExpiresAt         *time.Time `json:"expires_at,omitempty"`
 }
 
 type CreateApiKeyResponse struct {
 	ApiKeyResponse
-
 	RawKey string `json:"raw_key"`
 }
 
 type ApiKeyTokenResponse struct {
-	ID string `json:"id"`
-
-	Status string `json:"status"`
-
+	ID        string     `json:"id"`
+	Status    string     `json:"status"`
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
-
-	CreatedAt time.Time `json:"created_at"`
+	CreatedAt time.Time  `json:"created_at"`
 }
 
 type ApiKeyDetailResponse struct {
 	ApiKeyResponse
-
 	Tokens []ApiKeyTokenResponse `json:"tokens"`
 }
 
 type RotateApiKeyResponse struct {
-	APIKeyID string `json:"api_key_id"`
-
-	RawKey string `json:"raw_key"`
-
-	TokenID string `json:"token_id"`
-
+	APIKeyID                 string     `json:"api_key_id"`
+	RawKey                   string     `json:"raw_key"`
+	TokenID                  string     `json:"token_id"`
 	PreviousTokensGraceUntil *time.Time `json:"previous_tokens_grace_until,omitempty"`
 }
 

@@ -20,7 +20,7 @@ func TestAuthHandler_SSOStart_Validation(t *testing.T) {
 	}
 
 	rr := httptest.NewRecorder()
-	
+
 	// Create a minimal router to extract path values if we used Go 1.22 routing
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /management/auth/sso/{provider}/start", authHandler.HandleSSOStart)
@@ -40,7 +40,7 @@ func TestAuthHandler_SSOCallback_Validation(t *testing.T) {
 	}
 
 	rr := httptest.NewRecorder()
-	
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /management/auth/sso/{provider}/callback", authHandler.HandleSSOCallback)
 	mux.ServeHTTP(rr, req)

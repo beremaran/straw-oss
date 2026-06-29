@@ -3,12 +3,9 @@ package transport
 import "time"
 
 type PoolConfig struct {
-	MaxPoolHosts int
-
+	MaxPoolHosts     int
 	IdleConnsPerHost int
-
-	IdleConnTimeout time.Duration
-
+	IdleConnTimeout  time.Duration
 	EvictionInterval time.Duration
 }
 

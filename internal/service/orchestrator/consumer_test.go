@@ -14,9 +14,8 @@ import (
 )
 
 type consumeOnceMockBroker struct {
-	response    []byte
-	responseErr error
-
+	response      []byte
+	responseErr   error
 	calledSubject string
 	calledTimeout time.Duration
 }

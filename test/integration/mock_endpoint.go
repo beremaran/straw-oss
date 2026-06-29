@@ -20,29 +20,20 @@ import (
 var ErrMockEndpointAlreadyRunning = errors.New("mock endpoint already running")
 
 type MockEndpointConfig struct {
-	EndpointID string
-
-	TaskSubject string
-
-	Secret []byte
-
-	TargetURL string
-
-	Tags []string
-
+	EndpointID        string
+	TaskSubject       string
+	Secret            []byte
+	TargetURL         string
+	Tags              []string
 	HeartbeatInterval time.Duration
 }
 
 type MockEndpointResponse struct {
 	StatusCode int
-
-	Headers protocol.HeaderMap
-
-	Body []byte
-
-	Error *protocol.ErrorInfo
-
-	Delay time.Duration
+	Headers    protocol.HeaderMap
+	Body       []byte
+	Error      *protocol.ErrorInfo
+	Delay      time.Duration
 }
 
 type EndpointRequestRecord struct {
@@ -54,10 +45,9 @@ type EndpointRequestRecord struct {
 }
 
 type MockEndpoint struct {
-	config MockEndpointConfig
-	broker broker.MessageBroker
-	logger *slog.Logger
-
+	config          MockEndpointConfig
+	broker          broker.MessageBroker
+	logger          *slog.Logger
 	mu              sync.RWMutex
 	response        *MockEndpointResponse
 	requests        []EndpointRequestRecord
@@ -69,7 +59,6 @@ type MockEndpoint struct {
 	cancelFunc      context.CancelFunc
 	wg              sync.WaitGroup
 	responseHandler func(*protocol.Request) *MockEndpointResponse
-
 	heartbeatSender *endpoint.HeartbeatSender
 }
 

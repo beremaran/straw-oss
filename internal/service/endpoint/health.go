@@ -24,11 +24,10 @@ type HealthService struct {
 	store            redis.HealthStore
 	logger           *slog.Logger
 	heartbeatSubject string
-
-	mu      sync.Mutex
-	running bool
-	cancel  context.CancelFunc
-	done    chan struct{}
+	mu               sync.Mutex
+	running          bool
+	cancel           context.CancelFunc
+	done             chan struct{}
 }
 
 type HealthOption func(*HealthService)

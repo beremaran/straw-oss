@@ -32,21 +32,19 @@ type SecurityConfig struct {
 }
 
 type ObservabilityConfig struct {
-	LogLevel  string
-	LogFormat string
-
+	LogLevel       string
+	LogFormat      string
 	MetricsEnabled bool
 	MetricsPort    int
 	OTELEndpoint   string
 }
 
 type ServerConfig struct {
-	NATS          NATSConfig
-	Database      DatabaseConfig
-	Redis         RedisConfig
-	Security      SecurityConfig
-	Observability ObservabilityConfig
-
+	NATS                          NATSConfig
+	Database                      DatabaseConfig
+	Redis                         RedisConfig
+	Security                      SecurityConfig
+	Observability                 ObservabilityConfig
 	HTTPPort                      int
 	ManagementPort                int
 	ShutdownTimeout               time.Duration
@@ -57,25 +55,22 @@ type ServerConfig struct {
 	ResultTimeout                 time.Duration
 	MaxBodySize                   string
 	MaxConcurrentRequests         int
-
-	AllowPrivateIPs bool
+	AllowPrivateIPs               bool
 }
 
 type EndpointConfig struct {
-	NATS          NATSConfig
-	Security      SecurityConfig
-	Observability ObservabilityConfig
-
+	NATS               NATSConfig
+	Security           SecurityConfig
+	Observability      ObservabilityConfig
 	ID                 string
 	Tags               []string
 	ConcurrencyLimit   int
 	SelfUpdateURL      string
 	SelfUpdateInterval time.Duration
 	SelfUpdateEnabled  bool
-
-	MaxPoolHosts     int
-	IdleConnsPerHost int
-	IdleConnTimeout  time.Duration
+	MaxPoolHosts       int
+	IdleConnsPerHost   int
+	IdleConnTimeout    time.Duration
 }
 
 func getEnv(key, defaultVal string) string {

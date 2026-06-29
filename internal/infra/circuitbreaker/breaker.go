@@ -17,22 +17,19 @@ const (
 var ErrCircuitOpen = errors.New("circuit breaker is open")
 
 type Config struct {
-	Name string
-
+	Name             string
 	FailureThreshold uint
-
-	ResetTimeout time.Duration
+	ResetTimeout     time.Duration
 }
 
 type CircuitBreaker struct {
 	name             string
 	failureThreshold uint
 	resetTimeout     time.Duration
-
-	mu          sync.RWMutex
-	state       State
-	failures    uint
-	lastFailure time.Time
+	mu               sync.RWMutex
+	state            State
+	failures         uint
+	lastFailure      time.Time
 }
 
 func New(cfg Config) *CircuitBreaker {
