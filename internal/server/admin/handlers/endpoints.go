@@ -363,9 +363,9 @@ func (h *EndpointHandler) HandleListEndpointCommands(w http.ResponseWriter, r *h
 }
 
 func (h *EndpointHandler) HandleGetEndpointCommand(w http.ResponseWriter, r *http.Request) {
-	cmdID := r.PathValue("command_id")
+	cmdID := r.PathValue("id")
 	if cmdID == "" {
-		helper.WriteError(w, http.StatusBadRequest, "command_id is required")
+		helper.WriteError(w, http.StatusBadRequest, "id is required")
 
 		return
 	}
@@ -389,27 +389,6 @@ func (h *EndpointHandler) HandleGetEndpointCommand(w http.ResponseWriter, r *htt
 	}
 
 	helper.WriteJSON(w, http.StatusOK, h.mapCommand(cmd))
-}
-
-func (h *EndpointHandler) HandleCommandDispatch(w http.ResponseWriter, r *http.Request) {
-	seg3 := r.PathValue("segment3")
-	seg4 := r.PathValue("segment4")
-
-	if seg3 == "commands" {
-		r.SetPathValue("command_id", seg4)
-		h.HandleGetEndpointCommand(w, r)
-
-		return
-	}
-
-	if seg4 == "commands" {
-		r.SetPathValue("id", seg3)
-		h.HandleListEndpointCommands(w, r)
-
-		return
-	}
-
-	helper.WriteError(w, http.StatusNotFound, "path not found")
 }
 
 func (h *EndpointHandler) HandleGetEndpointLogs(w http.ResponseWriter, r *http.Request) {

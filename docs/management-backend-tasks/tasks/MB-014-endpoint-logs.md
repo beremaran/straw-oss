@@ -1,6 +1,6 @@
 # MB-014: Endpoint Logs
 
-Status: not-started
+Status: done
 Phase: 3
 Depends on: MB-011, MB-013
 Search tags: endpoint logs, `endpoints:logs`, SSE, retention, cursor, log forwarding
@@ -28,16 +28,16 @@ Forward, store, query, and stream endpoint logs for management users.
 
 ## Implementation Tasks
 
-- [ ] Add config flag `ENDPOINT_LOG_STREAM_ENABLED`.
-- [ ] Add log payload type and worker publisher.
-- [ ] Add relay-side subscriber to persist logs.
-- [ ] Add cursor-paginated log query handler with filters from the spec.
-- [ ] Add SSE stream handler for live tail.
-- [ ] Add retention cleanup job.
+- [x] Add config flag `ENDPOINT_LOG_STREAM_ENABLED`.
+- [x] Add log payload type and worker publisher.
+- [x] Add relay-side subscriber to persist logs.
+- [x] Add cursor-paginated log query handler with filters from the spec.
+- [x] Add SSE stream handler for live tail.
+- [x] Add retention cleanup job.
 
 ## Done Criteria
 
-- [ ] Log query supports `start`, `end`, `level`, `q`, `trace_id`, `request_id`, `cursor`, and `limit`.
-- [ ] Limit is capped at 500.
-- [ ] SSE live stream works without WebSocket support.
-- [ ] Retention cleanup removes old or excessive log data.
+- [x] Log query supports `start`, `end`, `level`, `q`, `trace_id`, `request_id`, `cursor`, and `limit`.
+- [x] Limit is capped at 500.
+- [x] SSE live stream works without WebSocket support.
+- [x] Retention cleanup removes old or excessive log data.

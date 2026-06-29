@@ -325,12 +325,11 @@ func TestEndpointHandler_Lifecycle(t *testing.T) {
 	}
 	assert.NotEmpty(t, cmdID)
 
-	// Test Command Detail dispatch
-	req = httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/management/endpoints/commands/"+cmdID, nil)
-	req.SetPathValue("segment3", "commands")
-	req.SetPathValue("segment4", cmdID)
+	// Test Command Detail
+	req = httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/management/commands/"+cmdID, nil)
+	req.SetPathValue("id", cmdID)
 	rec = httptest.NewRecorder()
-	h.HandleCommandDispatch(rec, req)
+	h.HandleGetEndpointCommand(rec, req)
 	assert.Equal(t, http.StatusOK, rec.Code)
 
 	var cmdResp dto.EndpointCommandDTO
@@ -338,12 +337,11 @@ func TestEndpointHandler_Lifecycle(t *testing.T) {
 	assert.Equal(t, cmdID, cmdResp.ID)
 	assert.Equal(t, "ep-1", cmdResp.EndpointID)
 
-	// Test Command List dispatch
+	// Test Command List
 	req = httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/management/endpoints/ep-1/commands", nil)
-	req.SetPathValue("segment3", "ep-1")
-	req.SetPathValue("segment4", "commands")
+	req.SetPathValue("id", "ep-1")
 	rec = httptest.NewRecorder()
-	h.HandleCommandDispatch(rec, req)
+	h.HandleListEndpointCommands(rec, req)
 	assert.Equal(t, http.StatusOK, rec.Code)
 
 	var cmdListResp dto.EndpointCommandListResponse
