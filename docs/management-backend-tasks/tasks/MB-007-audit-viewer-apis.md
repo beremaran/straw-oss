@@ -1,6 +1,6 @@
 # MB-007: Audit Viewer APIs And Export
 
-Status: not-started
+Status: done
 Phase: 1
 Depends on: MB-006
 Search tags: audit viewer, `audit:read`, filters, csv, ndjson, export
@@ -29,15 +29,15 @@ Expose structured audit events and raw management request audit rows to the Mana
 
 ## Implementation Tasks
 
-- [ ] Add query DTOs and validation for dates, status range, page, and limit.
-- [ ] Add repository queries with bounded limits.
-- [ ] Add CSV and NDJSON export for bounded date ranges.
-- [ ] Keep request bodies excluded by default.
-- [ ] Add handler tests for filtering, permissions, and export bounds.
+- [x] Add query DTOs and validation for dates, status range, page, and limit.
+- [x] Add repository queries with bounded limits.
+- [x] Add CSV and NDJSON export for bounded date ranges.
+- [x] Keep request bodies excluded by default.
+- [x] Add handler tests for filtering, permissions, and export bounds.
 
 ## Done Criteria
 
-- [ ] Audit events can be listed, filtered, and fetched by ID.
-- [ ] Request audit can be listed without leaking unredacted bodies.
-- [ ] Export rejects unbounded or excessive ranges.
-- [ ] Pagination limit is capped at 500.
+- [x] Audit events can be listed, filtered, and fetched by ID.
+- [x] Request audit can be listed without leaking unredacted bodies.
+- [x] Export rejects unbounded or excessive ranges.
+- [x] Pagination limit is capped at 500.

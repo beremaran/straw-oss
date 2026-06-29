@@ -213,6 +213,47 @@ Triggers a broadcast via NATS to push all registered fingerprint presets directl
 
 ---
 
+---
+
+## 📜 Audit Viewer APIs
+
+### List Audit Events
+Lists management audit events (e.g., API key created, endpoint drained).
+
+* **URL**: `GET /management/audit/events`
+* **Query Params**:
+  * `page` (default: 1)
+  * `limit` (default: 20, max: 500)
+  * `start_date` (RFC3339 format)
+  * `end_date` (RFC3339 format)
+  * `action` (e.g., `create`, `revoke`)
+  * `actor_id`
+* **Response (Status 200 OK)**:
+  Returns a paginated list. Note: `old_value` and `new_value` bodies are only included if the requester holds the `Owner` or `Security auditor` role.
+
+### Get Audit Event Details
+Retrieves details for a specific audit event by ID.
+
+* **URL**: `GET /management/audit/events/{id}`
+* **Response (Status 200 OK)**: Returns the audit event object.
+
+### List Audit Requests
+Lists raw HTTP requests made to the Management API.
+
+* **URL**: `GET /management/audit/requests`
+* **Query Params**: Same as List Audit Events (except `action` is not used).
+* **Response (Status 200 OK)**: Returns a paginated list of requests. The `body` is redacted unless the requester is an `Owner` or `Security auditor`.
+
+### Export Audit Events
+Exports audit events within a bounded date range (max 31 days).
+
+* **URL**: `GET /management/audit/export`
+* **Query Params**:
+  * `start_date` (required)
+  * `end_date` (required)
+  * `format` (`csv` or `ndjson`, default: `csv`)
+* **Response (Status 200 OK)**: Downloads the export file.
+
 ## 📊 Usage & Billing
 
 ### Get Daily Usage Summary

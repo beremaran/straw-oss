@@ -126,6 +126,7 @@ func (s *Server) registerRoutes() {
 	userHandler := handlers.NewUserHandler(identityRepo)
 	roleHandler := handlers.NewRoleHandler(identityRepo)
 	idpHandler := handlers.NewIdentityProviderHandler(identityRepo)
+	auditHandler := handlers.NewAuditHandler(auditRepo, identityRepo)
 
 	var cacheHandler *handlers.CacheHandler
 	if s.redisClient != nil {
@@ -172,6 +173,11 @@ func (s *Server) registerRoutes() {
 		s.management("POST /management/cache/clear", middleware.PermissionCacheWrite, cacheHandler.HandleClearCache)
 		s.management("GET /management/cache/stats", middleware.PermissionCacheRead, cacheHandler.HandleGetCacheStats)
 	}
+
+	s.management("GET /management/audit/events", middleware.PermissionAuditRead, auditHandler.HandleListEvents)
+	s.management("GET /management/audit/events/{id}", middleware.PermissionAuditRead, auditHandler.HandleGetEvent)
+	s.management("GET /management/audit/requests", middleware.PermissionAuditRead, auditHandler.HandleListRequests)
+	s.management("GET /management/audit/export", middleware.PermissionAuditRead, auditHandler.HandleExport)
 
 	if s.authService != nil {
 		s.mux.HandleFunc("POST /management/auth/login", authHandler.HandleLogin)

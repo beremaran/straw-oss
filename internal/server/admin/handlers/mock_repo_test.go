@@ -287,3 +287,36 @@ func (m *MockIdentityRepo) DisableIdentityProvider(ctx context.Context, id strin
 	args := m.Called(ctx, id)
 	return args.Error(0)
 }
+
+type MockManagementAuditRepo struct {
+	mock.Mock
+}
+
+func (m *MockManagementAuditRepo) Create(ctx context.Context, event *domain.ManagementAuditEvent) error {
+	args := m.Called(ctx, event)
+	return args.Error(0)
+}
+
+func (m *MockManagementAuditRepo) GetEventByID(ctx context.Context, id int64) (*domain.ManagementAuditEvent, error) {
+	args := m.Called(ctx, id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.ManagementAuditEvent), args.Error(1)
+}
+
+func (m *MockManagementAuditRepo) ListEvents(ctx context.Context, filter domain.AuditEventFilter) ([]*domain.ManagementAuditEvent, int, error) {
+	args := m.Called(ctx, filter)
+	if args.Get(0) == nil {
+		return nil, 0, args.Error(2)
+	}
+	return args.Get(0).([]*domain.ManagementAuditEvent), args.Int(1), args.Error(2)
+}
+
+func (m *MockManagementAuditRepo) ListRequests(ctx context.Context, filter domain.AuditEventFilter, includeBody bool) ([]*domain.ManagementAuditRequest, int, error) {
+	args := m.Called(ctx, filter, includeBody)
+	if args.Get(0) == nil {
+		return nil, 0, args.Error(2)
+	}
+	return args.Get(0).([]*domain.ManagementAuditRequest), args.Int(1), args.Error(2)
+}

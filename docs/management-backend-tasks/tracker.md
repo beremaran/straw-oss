@@ -23,7 +23,7 @@ Status values: `not-started`, `in-progress`, `blocked`, `done`.
 | [x] | [MB-004](tasks/MB-004-users-roles-idp-apis.md) | done | Users, roles, and identity-provider management APIs |
 | [x] | [MB-005](tasks/MB-005-oidc-sso.md) | done | OIDC SSO login flow |
 | [x] | [MB-006](tasks/MB-006-structured-audit-foundation.md) | done | Structured audit foundation and redaction |
-| [ ] | [MB-007](tasks/MB-007-audit-viewer-apis.md) | not-started | Audit viewer APIs and export |
+| [x] | [MB-007](tasks/MB-007-audit-viewer-apis.md) | done | Audit viewer APIs and export |
 
 ## Phase 2: API Key And Fingerprint Lifecycle
 
