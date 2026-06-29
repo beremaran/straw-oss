@@ -28,7 +28,7 @@ func TestUsageHandler_HandleGetUsageSummary(t *testing.T) {
 	h := NewUsageHandler(mockRepo)
 
 	t.Run("success", func(t *testing.T) {
-		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/admin/usage/summary?start=2023-01-01&end=2023-01-02", nil)
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/management/usage/summary?start=2023-01-01&end=2023-01-02", nil)
 		rec := httptest.NewRecorder()
 
 		summaries := []domain.UsageSummary{

@@ -87,7 +87,7 @@ func TestFingerprintHandler_List(t *testing.T) {
 	}
 	repo.On("ListPresets", mock.Anything).Return(presets, nil)
 
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/admin/fingerprints", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/management/fingerprints", nil)
 	rec := httptest.NewRecorder()
 
 	h.HandleListPresets(rec, req)
@@ -110,7 +110,7 @@ func TestFingerprintHandler_Create(t *testing.T) {
 		return p.ID == "p1"
 	})).Return(nil)
 
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/admin/fingerprints", bytes.NewReader(body))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/management/fingerprints", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 
@@ -129,7 +129,7 @@ func TestFingerprintHandler_Broadcast(t *testing.T) {
 	repo.On("ListPresets", mock.Anything).Return(presets, nil)
 	mb.On("Publish", mock.Anything, "fingerprint_broadcast", mock.Anything).Return(nil)
 
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/admin/fingerprints/broadcast", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/management/fingerprints/broadcast", nil)
 	rec := httptest.NewRecorder()
 
 	h.HandleBroadcastPresets(rec, req)

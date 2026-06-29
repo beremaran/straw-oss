@@ -11,7 +11,7 @@ import (
 )
 
 func TestServer_HealthCheck(t *testing.T) {
-	cfg := config.ServerConfig{AdminPort: 8081}
+	cfg := config.ServerConfig{ManagementPort: 8081}
 	s := New(cfg, nil, nil, nil, nil)
 
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/healthz", nil)
@@ -25,19 +25,19 @@ func TestServer_HealthCheck(t *testing.T) {
 
 func TestServer_AuthProtection(t *testing.T) {
 	cfg := config.ServerConfig{
-		AdminPort:   8081,
-		AdminAPIKey: "admin-secret",
+		ManagementPort:   8081,
+		ManagementAPIKey: "management-secret",
 	}
 	s := New(cfg, nil, nil, nil, nil)
 
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/admin/some-resource", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/management/some-resource", nil)
 	rec := httptest.NewRecorder()
 	s.GetHandler().ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 
-	req = httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/admin/some-resource", nil)
-	req.Header.Set("Authorization", "Bearer admin-secret")
+	req = httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/management/some-resource", nil)
+	req.Header.Set("Authorization", "Bearer management-secret")
 	rec = httptest.NewRecorder()
 	s.GetHandler().ServeHTTP(rec, req)
 

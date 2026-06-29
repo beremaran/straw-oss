@@ -1,6 +1,6 @@
-# Admin API Reference
+# Management API Reference
 
-The Admin API serves as the control gateway for managing API keys, routing rules, fingerprint presets, and inspecting worker health and billing statistics.
+The Management API serves as the control gateway for managing API keys, routing rules, fingerprint presets, and inspecting worker health and billing statistics.
 
 > [!TIP]
 > **Interactive API Reference (OpenAPI)**
@@ -11,10 +11,10 @@ The Admin API serves as the control gateway for managing API keys, routing rules
 
 ## 🔒 Authentication
 
-All requests targeting `/admin/*` endpoints must be authenticated by supplying the `ADMIN_API_KEY` configured in your Relay environment as a Bearer token in the `Authorization` header:
+All requests targeting the Management API endpoints (`/management/*`) must be authenticated by supplying the `MANAGEMENT_API_KEY` configured in your Relay environment as a Bearer token in the `Authorization` header:
 
 ```http
-Authorization: Bearer <ADMIN_API_KEY>
+Authorization: Bearer <MANAGEMENT_API_KEY>
 ```
 
 ---
@@ -24,7 +24,7 @@ Authorization: Bearer <ADMIN_API_KEY>
 ### Create API Key
 Creates a new API client key. The response contains a `raw_key` which is **only returned once** upon creation. Save it securely.
 
-* **URL**: `POST /admin/api-keys`
+* **URL**: `POST /management/api-keys`
 * **Request Body**:
   ```json
   {
@@ -48,7 +48,7 @@ Creates a new API client key. The response contains a `raw_key` which is **only 
 ### List API Keys
 Retrieves a paginated list of all API keys (active and inactive).
 
-* **URL**: `GET /admin/api-keys`
+* **URL**: `GET /management/api-keys`
 * **Query Params**:
   * `page` (default: `1`)
   * `limit` (default: `20`, max: `100`)
@@ -73,7 +73,7 @@ Retrieves a paginated list of all API keys (active and inactive).
 ### Revoke API Key
 Disables an API key immediately.
 
-* **URL**: `DELETE /admin/api-keys/{id}`
+* **URL**: `DELETE /management/api-keys/{id}`
 * **Response (Status 204 No Content)**: *(empty)*
 
 ---
@@ -83,7 +83,7 @@ Disables an API key immediately.
 ### Create Routing Rule
 Defines how incoming client proxy requests map to endpoint workers.
 
-* **URL**: `POST /admin/rules`
+* **URL**: `POST /management/rules`
 * **Request Body**:
   ```json
   {
@@ -120,7 +120,7 @@ Defines how incoming client proxy requests map to endpoint workers.
 ### List Routing Rules
 Retrieves routing rules sorted by priority in descending order.
 
-* **URL**: `GET /admin/rules`
+* **URL**: `GET /management/rules`
 * **Response (Status 200 OK)**:
   ```json
   {
@@ -132,18 +132,18 @@ Retrieves routing rules sorted by priority in descending order.
   ```
 
 ### Get Routing Rule Details
-* **URL**: `GET /admin/rules/{id}`
+* **URL**: `GET /management/rules/{id}`
 * **Response (Status 200 OK)**: Returns the matching rule configuration object.
 
 ### Update Routing Rule
 Updates a routing rule's parameters. Utilizes optimistic locking via the `version` field.
 
-* **URL**: `PUT /admin/rules/{id}`
+* **URL**: `PUT /management/rules/{id}`
 * **Request Body**: Same schema as Create Rule, plus `"version": 1`.
 * **Response (Status 200 OK)**: Returns the updated rule.
 
 ### Delete Routing Rule
-* **URL**: `DELETE /admin/rules/{id}`
+* **URL**: `DELETE /management/rules/{id}`
 * **Response (Status 204 No Content)**: *(empty)*
 
 ---
@@ -153,7 +153,7 @@ Updates a routing rule's parameters. Utilizes optimistic locking via the `versio
 ### List Active Endpoints
 Inspects heartbeats and health status of all workers connected to the message broker.
 
-* **URL**: `GET /admin/endpoints`
+* **URL**: `GET /management/endpoints`
 * **Response (Status 200 OK)**:
   ```json
   [
@@ -171,7 +171,7 @@ Inspects heartbeats and health status of all workers connected to the message br
 ### Drain Endpoint
 Instructs a worker to complete its active tasks but refuse any new incoming tasks, allowing for graceful worker recycling or node migration.
 
-* **URL**: `POST /admin/endpoints/{id}/drain`
+* **URL**: `POST /management/endpoints/{id}/drain`
 * **Response (Status 200 OK)**: *(empty)*
 
 ---
@@ -181,13 +181,13 @@ Instructs a worker to complete its active tasks but refuse any new incoming task
 ### List Fingerprint Presets
 Lists preset user agents, HTTP/2 configurations, and TLS/JA3 spoofing parameters.
 
-* **URL**: `GET /admin/fingerprints`
+* **URL**: `GET /management/fingerprints`
 * **Response (Status 200 OK)**: List of presets.
 
 ### Create Preset
 Adds a new browser profile fingerprint.
 
-* **URL**: `POST /admin/fingerprints`
+* **URL**: `POST /management/fingerprints`
 * **Request Body**:
   ```json
   {
@@ -208,7 +208,7 @@ Adds a new browser profile fingerprint.
 ### Broadcast Presets
 Triggers a broadcast via NATS to push all registered fingerprint presets directly into memory on active worker nodes.
 
-* **URL**: `POST /admin/fingerprints/broadcast`
+* **URL**: `POST /management/fingerprints/broadcast`
 * **Response (Status 200 OK)**: *(empty)*
 
 ---
@@ -218,7 +218,7 @@ Triggers a broadcast via NATS to push all registered fingerprint presets directl
 ### Get Daily Usage Summary
 Returns daily logs of requests and transfer size.
 
-* **URL**: `GET /admin/usage/summary`
+* **URL**: `GET /management/usage/summary`
 * **Query Params**:
   * `start` (date format: `YYYY-MM-DD`, default: 30 days ago)
   * `end` (date format: `YYYY-MM-DD`, default: today)
@@ -246,7 +246,7 @@ Returns daily logs of requests and transfer size.
 ### Get Billing Estimate
 Aggregates daily summaries and calculates estimated costs in USD.
 
-* **URL**: `GET /admin/billing/estimate`
+* **URL**: `GET /management/billing/estimate`
 * **Query Params**:
   * `start` (default: start of the current month)
   * `end` (default: today)
@@ -269,13 +269,13 @@ Aggregates daily summaries and calculates estimated costs in USD.
 ### Clear Redis Cache
 Cleans in-memory caches on Redis. Forces the Relay Server to pull the latest rules and keys from PostgreSQL.
 
-* **URL**: `POST /admin/cache/clear`
+* **URL**: `POST /management/cache/clear`
 * **Response (Status 200 OK)**: *(empty)*
 
 ### Get Cache Statistics
 Reports current hit rates and size estimates.
 
-* **URL**: `GET /admin/cache/stats`
+* **URL**: `GET /management/cache/stats`
 * **Response (Status 200 OK)**:
   ```json
   {

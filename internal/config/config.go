@@ -48,9 +48,9 @@ type ServerConfig struct {
 	Observability ObservabilityConfig
 
 	HTTPPort              int
-	AdminPort             int
+	ManagementPort        int
 	ShutdownTimeout       time.Duration
-	AdminAPIKey           string
+	ManagementAPIKey      string
 	ResultTimeout         time.Duration
 	MaxBodySize           string
 	MaxConcurrentRequests int
@@ -131,9 +131,9 @@ func LoadServerConfig() (*ServerConfig, error) {
 		Security:              LoadSecurityConfig(),
 		Observability:         LoadObservabilityConfig(),
 		HTTPPort:              getEnvInt("HTTP_PORT", 8080),
-		AdminPort:             getEnvInt("ADMIN_PORT", 8081),
+		ManagementPort:        getEnvInt("MANAGEMENT_PORT", 8081),
 		ShutdownTimeout:       getEnvDuration("SHUTDOWN_TIMEOUT", 30*time.Second),
-		AdminAPIKey:           getEnv("ADMIN_API_KEY", ""),
+		ManagementAPIKey:      getEnv("MANAGEMENT_API_KEY", ""),
 		ResultTimeout:         getEnvDuration("RESULT_TIMEOUT", 30*time.Second),
 		MaxBodySize:           getEnv("MAX_BODY_SIZE", "2M"),
 		MaxConcurrentRequests: getEnvInt("MAX_CONCURRENT_REQUESTS", 50),

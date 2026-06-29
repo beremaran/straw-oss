@@ -52,5 +52,5 @@ graph TD
 * **[Getting Started](getting-started.md)**: Spin up Straw Proxy locally using Docker Compose or build from source.
 * **[Architecture Overview](architecture.md)**: Explore the detailed sequence flow, database design, and message broker structure.
 * **[Configuration Reference](configuration.md)**: Comprehensive details about env variables for the Relay and Worker.
-* **[Admin API Reference](admin-api.md)**: Management of API keys, routing rules, usage metrics, and worker health.
+* **[Management API Reference](management-api.md)**: Management of API keys, routing rules, usage metrics, and worker health.
 * **[Custom Endpoint SDK](custom-endpoint.md)**: Step-by-step developer guide for compiling custom endpoint workers.

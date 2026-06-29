@@ -48,7 +48,7 @@ func New(conf config.ServerConfig, client *postgres.Client, redisClient *redis.C
 		mw.RequestID(),
 		mw.LoggerMiddleware(),
 		mw.CORS(),
-		adminGlobalMiddleware(conf, client),
+		managementGlobalMiddleware(conf, client),
 	)
 
 	s.server = &http.Server{
@@ -59,7 +59,7 @@ func New(conf config.ServerConfig, client *postgres.Client, redisClient *redis.C
 }
 
 func (s *Server) Start() error {
-	addr := fmt.Sprintf(":%d", s.conf.AdminPort)
+	addr := fmt.Sprintf(":%d", s.conf.ManagementPort)
 	s.server.Addr = addr
 
 	return s.server.ListenAndServe()
@@ -70,7 +70,7 @@ func (s *Server) Stop(ctx context.Context) error {
 }
 
 func (s *Server) Address() string {
-	return fmt.Sprintf(":%d", s.conf.AdminPort)
+	return fmt.Sprintf(":%d", s.conf.ManagementPort)
 }
 
 func (s *Server) GetHandler() http.Handler {
@@ -107,29 +107,29 @@ func (s *Server) registerRoutes() {
 		cacheHandler = handlers.NewCacheHandler(s.redisClient)
 	}
 
-	s.mux.HandleFunc("POST /admin/api-keys", apiKeyHandler.HandleCreateApiKey)
-	s.mux.HandleFunc("GET /admin/api-keys", apiKeyHandler.HandleListApiKeys)
-	s.mux.HandleFunc("DELETE /admin/api-keys/{id}", apiKeyHandler.HandleRevokeApiKey)
+	s.mux.HandleFunc("POST /management/api-keys", apiKeyHandler.HandleCreateApiKey)
+	s.mux.HandleFunc("GET /management/api-keys", apiKeyHandler.HandleListApiKeys)
+	s.mux.HandleFunc("DELETE /management/api-keys/{id}", apiKeyHandler.HandleRevokeApiKey)
 
-	s.mux.HandleFunc("POST /admin/rules", routingRuleHandler.HandleCreateRoutingRule)
-	s.mux.HandleFunc("GET /admin/rules", routingRuleHandler.HandleListRoutingRules)
-	s.mux.HandleFunc("GET /admin/rules/{id}", routingRuleHandler.HandleGetRoutingRule)
-	s.mux.HandleFunc("PUT /admin/rules/{id}", routingRuleHandler.HandleUpdateRoutingRule)
-	s.mux.HandleFunc("DELETE /admin/rules/{id}", routingRuleHandler.HandleDeleteRoutingRule)
+	s.mux.HandleFunc("POST /management/rules", routingRuleHandler.HandleCreateRoutingRule)
+	s.mux.HandleFunc("GET /management/rules", routingRuleHandler.HandleListRoutingRules)
+	s.mux.HandleFunc("GET /management/rules/{id}", routingRuleHandler.HandleGetRoutingRule)
+	s.mux.HandleFunc("PUT /management/rules/{id}", routingRuleHandler.HandleUpdateRoutingRule)
+	s.mux.HandleFunc("DELETE /management/rules/{id}", routingRuleHandler.HandleDeleteRoutingRule)
 
-	s.mux.HandleFunc("GET /admin/endpoints", endpointHandler.HandleListEndpoints)
-	s.mux.HandleFunc("POST /admin/endpoints/{id}/drain", endpointHandler.HandleDrainEndpoint)
+	s.mux.HandleFunc("GET /management/endpoints", endpointHandler.HandleListEndpoints)
+	s.mux.HandleFunc("POST /management/endpoints/{id}/drain", endpointHandler.HandleDrainEndpoint)
 
-	s.mux.HandleFunc("GET /admin/fingerprints", fingerprintHandler.HandleListPresets)
-	s.mux.HandleFunc("POST /admin/fingerprints", fingerprintHandler.HandleCreatePreset)
-	s.mux.HandleFunc("POST /admin/fingerprints/broadcast", fingerprintHandler.HandleBroadcastPresets)
+	s.mux.HandleFunc("GET /management/fingerprints", fingerprintHandler.HandleListPresets)
+	s.mux.HandleFunc("POST /management/fingerprints", fingerprintHandler.HandleCreatePreset)
+	s.mux.HandleFunc("POST /management/fingerprints/broadcast", fingerprintHandler.HandleBroadcastPresets)
 
-	s.mux.HandleFunc("GET /admin/usage/summary", usageHandler.HandleGetUsageSummary)
-	s.mux.HandleFunc("GET /admin/billing/estimate", usageHandler.HandleGetBillingEstimate)
+	s.mux.HandleFunc("GET /management/usage/summary", usageHandler.HandleGetUsageSummary)
+	s.mux.HandleFunc("GET /management/billing/estimate", usageHandler.HandleGetBillingEstimate)
 
 	if cacheHandler != nil {
-		s.mux.HandleFunc("POST /admin/cache/clear", cacheHandler.HandleClearCache)
-		s.mux.HandleFunc("GET /admin/cache/stats", cacheHandler.HandleGetCacheStats)
+		s.mux.HandleFunc("POST /management/cache/clear", cacheHandler.HandleClearCache)
+		s.mux.HandleFunc("GET /management/cache/stats", cacheHandler.HandleGetCacheStats)
 	}
 }
 
@@ -147,7 +147,7 @@ func applyMiddlewares(handler http.Handler, middlewares ...func(http.Handler) ht
 	return handler
 }
 
-func adminGlobalMiddleware(cfg config.ServerConfig, client *postgres.Client) func(http.Handler) http.Handler {
+func managementGlobalMiddleware(cfg config.ServerConfig, client *postgres.Client) func(http.Handler) http.Handler {
 	keyAuth := middleware.KeyAuth(cfg)
 	var auditLog func(http.Handler) http.Handler
 	if client != nil && client.Pool != nil {
@@ -157,7 +157,7 @@ func adminGlobalMiddleware(cfg config.ServerConfig, client *postgres.Client) fun
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if strings.HasPrefix(r.URL.Path, "/admin") {
+			if strings.HasPrefix(r.URL.Path, "/management") {
 				inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					next.ServeHTTP(w, r)
 				})
