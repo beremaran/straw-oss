@@ -9,6 +9,8 @@ import (
 	utls "github.com/refraction-networking/utls"
 )
 
+const testPresetID = "test-preset"
+
 func TestNewRegistry(t *testing.T) {
 	r := NewRegistry()
 	if r == nil {
@@ -23,7 +25,7 @@ func TestRegistry_Register(t *testing.T) {
 	r := NewRegistry()
 
 	preset := Preset{
-		ID:             "test-preset",
+		ID:             testPresetID,
 		TLSClientHello: utls.HelloGolang,
 		UserAgent:      "Test/1.0",
 		LastUpdated:    time.Now(),
@@ -43,7 +45,7 @@ func TestRegistry_RegisterDuplicate(t *testing.T) {
 	r := NewRegistry()
 
 	preset := Preset{
-		ID:             "test-preset",
+		ID:             testPresetID,
 		TLSClientHello: utls.HelloGolang,
 	}
 
@@ -60,10 +62,8 @@ func TestRegistry_RegisterDuplicate(t *testing.T) {
 	var dupErr *DuplicatePresetError
 	if !errors.As(err, &dupErr) {
 		t.Errorf("expected DuplicatePresetError, got %T", err)
-	} else {
-		if dupErr.PresetID != "test-preset" {
-			t.Errorf("expected preset ID 'test-preset', got %q", dupErr.PresetID)
-		}
+	} else if dupErr.PresetID != testPresetID {
+		t.Errorf("expected preset ID 'test-preset', got %q", dupErr.PresetID)
 	}
 }
 
@@ -130,10 +130,10 @@ func TestRegistry_List(t *testing.T) {
 	}
 }
 
-func TestRegistry_ConcurrentAccess(t *testing.T) {
+func TestRegistry_ConcurrentAccess(_ *testing.T) {
 	r := NewRegistry()
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		preset := Preset{
 			ID:             "initial-" + string(rune('a'+i)),
 			TLSClientHello: utls.HelloGolang,
@@ -145,16 +145,14 @@ func TestRegistry_ConcurrentAccess(t *testing.T) {
 	const numGoroutines = 100
 	const opsPerGoroutine = 100
 
-	for i := 0; i < numGoroutines; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for j := 0; j < opsPerGoroutine; j++ {
+	for range numGoroutines {
+		wg.Go(func() {
+			for range opsPerGoroutine {
 				_ = r.List()
 				_, _ = r.Get("initial-a")
 				_ = r.Count()
 			}
-		}()
+		})
 	}
 
 	wg.Wait()

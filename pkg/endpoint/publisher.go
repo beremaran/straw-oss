@@ -11,31 +11,45 @@ import (
 	"github.com/beremaran/straw/pkg/protocol"
 )
 
-var (
-	ErrResponseCannotBeNil = errors.New("response cannot be nil")
-	ErrMissingRequestID    = errors.New("response must have a request ID")
+const (
+	// HTTPServerErrorCode is the lowest HTTP status code for server errors (5xx).
+	HTTPServerErrorCode = 500
+	// HTTPStatusClassUpperBound is the exclusive upper bound for 5xx status codes.
+	HTTPStatusClassUpperBound = 600
 )
 
+var (
+	// ErrResponseCannotBeNil is returned when Publish is called with a nil response.
+	ErrResponseCannotBeNil = errors.New("response cannot be nil")
+	// ErrMissingRequestID is returned when a response lacks a request ID.
+	ErrMissingRequestID = errors.New("response must have a request ID")
+)
+
+// Publisher publishes task results to a message broker.
 type Publisher struct {
 	broker     broker.MessageBroker
 	logger     *slog.Logger
 	useConfirm bool
 }
 
+// PublisherOption configures a Publisher.
 type PublisherOption func(*Publisher)
 
+// WithPublisherLogger sets the logger used by the Publisher.
 func WithPublisherLogger(logger *slog.Logger) PublisherOption {
 	return func(p *Publisher) {
 		p.logger = logger
 	}
 }
 
+// WithPublisherConfirm enables or disables publish confirmations.
 func WithPublisherConfirm(enabled bool) PublisherOption {
 	return func(p *Publisher) {
 		p.useConfirm = enabled
 	}
 }
 
+// NewPublisher creates a new Publisher with the given broker and options.
 func NewPublisher(b broker.MessageBroker, opts ...PublisherOption) *Publisher {
 	p := &Publisher{
 		broker:     b,
@@ -50,6 +64,7 @@ func NewPublisher(b broker.MessageBroker, opts ...PublisherOption) *Publisher {
 	return p
 }
 
+// Publish marshals and sends a task result to the message broker.
 func (p *Publisher) Publish(ctx context.Context, resp *protocol.Response, replyTo string) error {
 	if resp == nil {
 		return ErrResponseCannotBeNil
@@ -85,6 +100,7 @@ func (p *Publisher) Publish(ctx context.Context, resp *protocol.Response, replyT
 	return nil
 }
 
+// ResultMessage is the JSON structure published for task results.
 type ResultMessage struct {
 	RequestID      string               `json:"request_id"`
 	EndpointID     string               `json:"endpoint_id,omitempty"`
@@ -97,6 +113,7 @@ type ResultMessage struct {
 	Timing         *protocol.TimingInfo `json:"timing,omitempty"`
 }
 
+// PublishError publishes a result containing an error.
 func (p *Publisher) PublishError(ctx context.Context, requestID, endpointID string, errInfo *protocol.ErrorInfo, replyTo string) error {
 	resp := &protocol.Response{
 		RequestID:  requestID,
@@ -108,6 +125,7 @@ func (p *Publisher) PublishError(ctx context.Context, requestID, endpointID stri
 	return p.Publish(ctx, resp, replyTo)
 }
 
+// NewNetworkError creates an ErrorInfo for a network failure.
 func NewNetworkError(message string, retryable bool) *protocol.ErrorInfo {
 	return &protocol.ErrorInfo{
 		Code:      protocol.ErrCodeUpstreamError,
@@ -116,6 +134,7 @@ func NewNetworkError(message string, retryable bool) *protocol.ErrorInfo {
 	}
 }
 
+// NewTLSError creates an ErrorInfo for a TLS failure.
 func NewTLSError(message string) *protocol.ErrorInfo {
 	return &protocol.ErrorInfo{
 		Code:      protocol.ErrCodeUpstreamError,
@@ -124,8 +143,9 @@ func NewTLSError(message string) *protocol.ErrorInfo {
 	}
 }
 
+// NewHTTPError creates an ErrorInfo for an HTTP status code error.
 func NewHTTPError(statusCode int, message string) *protocol.ErrorInfo {
-	retryable := statusCode >= 500 && statusCode < 600
+	retryable := statusCode >= HTTPServerErrorCode && statusCode < HTTPStatusClassUpperBound
 
 	return &protocol.ErrorInfo{
 		Code:      protocol.ErrCodeUpstreamError,
@@ -134,6 +154,7 @@ func NewHTTPError(statusCode int, message string) *protocol.ErrorInfo {
 	}
 }
 
+// NewTimeoutError creates an ErrorInfo for a timeout failure.
 func NewTimeoutError(message string) *protocol.ErrorInfo {
 	return &protocol.ErrorInfo{
 		Code:      protocol.ErrCodeEndpointTimeout,
@@ -142,6 +163,7 @@ func NewTimeoutError(message string) *protocol.ErrorInfo {
 	}
 }
 
+// Handler returns a function that publishes a task result, suitable as a broker handler.
 func (p *Publisher) Handler() func(ctx context.Context, resp *protocol.Response, replyTo string) error {
 	return p.Publish
 }
@@ -182,5 +204,10 @@ func (p *Publisher) buildMessage(resp *protocol.Response) ([]byte, error) {
 		}
 	}
 
-	return json.Marshal(msg)
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return nil, fmt.Errorf("marshal result message: %w", err)
+	}
+
+	return data, nil
 }

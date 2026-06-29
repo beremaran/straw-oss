@@ -5,12 +5,17 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
+)
+
+const (
+	testInstallVersion = "2.0.0"
+	testBadSHA256      = "abc123"
 )
 
 func TestInstaller_New(t *testing.T) {
@@ -32,7 +37,7 @@ func TestInstaller_NewWithOptions(t *testing.T) {
 	i := NewInstaller(
 		WithInstallerHTTPClient(customClient),
 		WithBinaryPath("/custom/path"),
-		WithProgressCallback(func(downloaded, total int64) {
+		WithProgressCallback(func(_ int64, _ int64) {
 			progressCalled = true
 		}),
 	)
@@ -58,14 +63,14 @@ func TestInstaller_DownloadAndVerify_Success(t *testing.T) {
 	hash := sha256.Sum256(binaryContent)
 	hashHex := hex.EncodeToString(hash[:])
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(binaryContent)
 	}))
 	defer server.Close()
 
 	manifest := &VersionManifest{
-		Version: "2.0.0",
+		Version: testInstallVersion,
 		URL:     server.URL,
 		SHA256:  hashHex,
 	}
@@ -78,7 +83,7 @@ func TestInstaller_DownloadAndVerify_Success(t *testing.T) {
 	}
 	defer func() { _ = os.Remove(tmpPath) }()
 
-	content, err := os.ReadFile(tmpPath)
+	content, err := os.ReadFile(tmpPath) //nolint:gosec // tmpPath from os.CreateTemp
 	if err != nil {
 		t.Fatalf("failed to read temp file: %v", err)
 	}
@@ -92,7 +97,7 @@ func TestInstaller_DownloadAndVerify_Success(t *testing.T) {
 		t.Fatalf("failed to stat temp file: %v", err)
 	}
 
-	if info.Mode().Perm()&0100 == 0 {
+	if info.Mode().Perm()&0o100 == 0 {
 		t.Error("expected file to be executable")
 	}
 }
@@ -100,14 +105,14 @@ func TestInstaller_DownloadAndVerify_Success(t *testing.T) {
 func TestInstaller_DownloadAndVerify_BadChecksum(t *testing.T) {
 	binaryContent := []byte("some binary content")
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(binaryContent)
 	}))
 	defer server.Close()
 
 	manifest := &VersionManifest{
-		Version: "2.0.0",
+		Version: testInstallVersion,
 		URL:     server.URL,
 		SHA256:  "wrongchecksum",
 	}
@@ -125,15 +130,15 @@ func TestInstaller_DownloadAndVerify_BadChecksum(t *testing.T) {
 }
 
 func TestInstaller_DownloadAndVerify_NetworkError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	server.Close()
 
 	manifest := &VersionManifest{
-		Version: "2.0.0",
+		Version: testInstallVersion,
 		URL:     server.URL,
-		SHA256:  "abc123",
+		SHA256:  testBadSHA256,
 	}
 
 	i := NewInstaller()
@@ -145,15 +150,15 @@ func TestInstaller_DownloadAndVerify_NetworkError(t *testing.T) {
 }
 
 func TestInstaller_DownloadAndVerify_NonOKStatus(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer server.Close()
 
 	manifest := &VersionManifest{
-		Version: "2.0.0",
+		Version: testInstallVersion,
 		URL:     server.URL,
-		SHA256:  "abc123",
+		SHA256:  testBadSHA256,
 	}
 
 	i := NewInstaller()
@@ -173,15 +178,15 @@ func TestInstaller_DownloadAndVerify_ProgressCallback(t *testing.T) {
 	hash := sha256.Sum256(binaryContent)
 	hashHex := hex.EncodeToString(hash[:])
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(binaryContent)))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Length", strconv.Itoa(len(binaryContent)))
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(binaryContent)
 	}))
 	defer server.Close()
 
 	manifest := &VersionManifest{
-		Version: "2.0.0",
+		Version: testInstallVersion,
 		URL:     server.URL,
 		SHA256:  hashHex,
 	}
@@ -190,7 +195,7 @@ func TestInstaller_DownloadAndVerify_ProgressCallback(t *testing.T) {
 	var lastDownloaded int64
 
 	i := NewInstaller(
-		WithProgressCallback(func(downloaded, total int64) {
+		WithProgressCallback(func(downloaded, _ int64) {
 			progressCalls++
 			lastDownloaded = downloaded
 		}),
@@ -219,14 +224,14 @@ func TestInstaller_DownloadAndVerify_LargeFile(t *testing.T) {
 	hash := sha256.Sum256(binaryContent)
 	hashHex := hex.EncodeToString(hash[:])
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(binaryContent)
 	}))
 	defer server.Close()
 
 	manifest := &VersionManifest{
-		Version: "2.0.0",
+		Version: testInstallVersion,
 		URL:     server.URL,
 		SHA256:  hashHex,
 	}
@@ -258,14 +263,14 @@ func TestInstaller_AtomicReplace(t *testing.T) {
 
 	srcPath := filepath.Join(tmpDir, "source")
 	srcContent := []byte("new binary content")
-	err = os.WriteFile(srcPath, srcContent, 0755)
+	err = os.WriteFile(srcPath, srcContent, 0o600)
 	if err != nil {
 		t.Fatalf("failed to write source file: %v", err)
 	}
 
 	dstPath := filepath.Join(tmpDir, "destination")
 	dstContent := []byte("old binary content")
-	err = os.WriteFile(dstPath, dstContent, 0755)
+	err = os.WriteFile(dstPath, dstContent, 0o600)
 	if err != nil {
 		t.Fatalf("failed to write destination file: %v", err)
 	}
@@ -277,7 +282,7 @@ func TestInstaller_AtomicReplace(t *testing.T) {
 		t.Fatalf("atomicReplace failed: %v", err)
 	}
 
-	content, err := os.ReadFile(dstPath)
+	content, err := os.ReadFile(dstPath) //nolint:gosec // dstPath from filepath.Join with temp dir
 	if err != nil {
 		t.Fatalf("failed to read destination: %v", err)
 	}
@@ -288,7 +293,7 @@ func TestInstaller_AtomicReplace(t *testing.T) {
 }
 
 func TestInstaller_ContextCancellation(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		select {
 		case <-r.Context().Done():
 			return
@@ -298,9 +303,9 @@ func TestInstaller_ContextCancellation(t *testing.T) {
 	defer server.Close()
 
 	manifest := &VersionManifest{
-		Version: "2.0.0",
+		Version: testInstallVersion,
 		URL:     server.URL,
-		SHA256:  "abc123",
+		SHA256:  testBadSHA256,
 	}
 
 	i := NewInstaller()
@@ -334,7 +339,7 @@ func TestInstaller_Install(t *testing.T) {
 	}(tmpDir)
 
 	currentBinary := filepath.Join(tmpDir, "app")
-	err = os.WriteFile(currentBinary, []byte("old version"), 0755)
+	err = os.WriteFile(currentBinary, []byte("old version"), 0o600)
 	if err != nil {
 		t.Fatalf("failed to create current binary: %v", err)
 	}
@@ -343,14 +348,14 @@ func TestInstaller_Install(t *testing.T) {
 	hash := sha256.Sum256(newContent)
 	hashHex := hex.EncodeToString(hash[:])
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(newContent)
 	}))
 	defer server.Close()
 
 	manifest := &VersionManifest{
-		Version: "2.0.0",
+		Version: testInstallVersion,
 		URL:     server.URL,
 		SHA256:  hashHex,
 	}
@@ -364,7 +369,7 @@ func TestInstaller_Install(t *testing.T) {
 		t.Fatalf("Install failed: %v", err)
 	}
 
-	content, err := os.ReadFile(currentBinary)
+	content, err := os.ReadFile(currentBinary) //nolint:gosec // currentBinary from filepath.Join with temp dir
 	if err != nil {
 		t.Fatalf("failed to read binary after install: %v", err)
 	}

@@ -8,7 +8,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "lat
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_TIME ?= $(shell date -u +'%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date +'%Y-%m-%dT%H:%M:%SZ')
 
-.PHONY: docker server endpoint build all test load-test security format lint clean docs docs-serve install-tools
+.PHONY: docker server endpoint build all test load-test security format lint lint-autofix clean docs docs-serve install-tools
 
 docker:
 	# Build base image
@@ -69,7 +69,10 @@ format:
 	gofmt -w ./
 
 lint:
-	golangci-lint run ./...
+	golangci-lint run --max-issues-per-linter 0 --max-same-issues 0 ./...
+
+lint-autofix:
+	@./scripts/lint-fix-loop.sh
 
 install-tools:
 	@./scripts/install-govulncheck.sh

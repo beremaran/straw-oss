@@ -13,6 +13,7 @@ import (
 	"github.com/beremaran/straw/pkg/protocol"
 )
 
+// BuildRequest creates an fhttp.Request from a protocol request with fingerprint headers applied.
 func BuildRequest(ctx context.Context, req *protocol.Request, preset fingerprint.Preset) (*fhttp.Request, error) {
 	parsedURL, err := url.Parse(req.URL)
 	if err != nil {
@@ -33,6 +34,7 @@ func BuildRequest(ctx context.Context, req *protocol.Request, preset fingerprint
 	} else {
 		fhttpReq, err = fhttp.NewRequestWithContext(ctx, req.Method, req.URL, nil)
 	}
+
 	if err != nil {
 		return nil, &ClientError{
 			Code:    "REQUEST_BUILD_FAILED",
@@ -60,6 +62,7 @@ func applyHeaders(req *fhttp.Request, headers protocol.HeaderMap) {
 		if strings.HasPrefix(h.Key, ":") || strings.EqualFold(h.Key, "host") {
 			continue
 		}
+
 		req.Header.Set(h.Key, h.Value)
 	}
 }
@@ -70,6 +73,7 @@ func applyHeaderOrder(req *fhttp.Request, order []string) {
 	}
 
 	orderedHeaders := make([]string, 0, len(req.Header))
+
 	orderMap := make(map[string]int)
 	for i, h := range order {
 		orderMap[strings.ToLower(h)] = i
@@ -79,6 +83,7 @@ func applyHeaderOrder(req *fhttp.Request, order []string) {
 		if key == fhttp.PHeaderOrderKey || key == fhttp.HeaderOrderKey {
 			continue
 		}
+
 		orderedHeaders = append(orderedHeaders, key)
 	}
 
@@ -89,9 +94,11 @@ func applyHeaderOrder(req *fhttp.Request, order []string) {
 		if iExists && jExists {
 			return iOrder < jOrder
 		}
+
 		if iExists {
 			return true
 		}
+
 		if jExists {
 			return false
 		}
@@ -120,7 +127,7 @@ func defaultFingerprintHeaders(preset fingerprint.Preset) []defaultHeader {
 		{key: "Sec-CH-UA", value: preset.SecCHUA},
 		{key: "Sec-CH-UA-Mobile", value: preset.SecCHUAMobile},
 		{key: "Sec-CH-UA-Platform", value: preset.SecCHUAPlatform},
-		{key: "Accept", value: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"},
+		{key: AcceptHeader, value: AcceptAll},
 		{key: "Accept-Encoding", value: "gzip, deflate, br"},
 		{key: "Connection", value: "keep-alive"},
 	}
@@ -132,12 +139,14 @@ func setHeaderDefault(req *fhttp.Request, key, value string) {
 	}
 }
 
+// HeadersToProtocol converts fhttp headers to protocol headers.
 func HeadersToProtocol(headers fhttp.Header) protocol.HeaderMap {
 	result := make(protocol.HeaderMap, 0, len(headers))
 	for key, values := range headers {
 		if key == fhttp.PHeaderOrderKey || key == fhttp.HeaderOrderKey {
 			continue
 		}
+
 		for _, value := range values {
 			result = append(result, protocol.Header{Key: key, Value: value})
 		}

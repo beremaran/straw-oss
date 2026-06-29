@@ -11,6 +11,7 @@ import (
 	"github.com/beremaran/straw/internal/service/session"
 )
 
+// Session header constants used for session management.
 const (
 	HeaderSessionID               = "X-Session-ID"
 	HeaderSessionEnd              = "X-Session-End"
@@ -21,10 +22,12 @@ const (
 
 type sessionContextKey string
 
+// SessionContextKey is the context key for storing the session.
 const SessionContextKey sessionContextKey = "session"
 
 func processExistingSession(w http.ResponseWriter, r *http.Request, service *session.Service, sessionID string) (*http.Request, bool) {
 	ctx := r.Context()
+
 	sess, err := service.GetSession(ctx, sessionID)
 	if err != nil {
 		if errors.Is(err, domain.ErrSessionExpired) {
@@ -32,6 +35,7 @@ func processExistingSession(w http.ResponseWriter, r *http.Request, service *ses
 			if requestID == "" {
 				requestID = w.Header().Get("X-Request-ID")
 			}
+
 			helper.WriteJSON(w, domain.ErrSessionExpired.HTTPCode, domain.ErrSessionExpired.ToResponse(requestID, ""))
 
 			return r, true
@@ -51,6 +55,7 @@ func processExistingSession(w http.ResponseWriter, r *http.Request, service *ses
 	return r, false
 }
 
+// SessionMiddleware manages session lifecycle, including validation and termination.
 func SessionMiddleware(service *session.Service) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -61,6 +66,7 @@ func SessionMiddleware(service *session.Service) func(http.Handler) http.Handler
 				if sessionID != "" {
 					_ = service.EndSession(ctx, sessionID)
 				}
+
 				next.ServeHTTP(w, r)
 
 				return
@@ -68,6 +74,7 @@ func SessionMiddleware(service *session.Service) func(http.Handler) http.Handler
 
 			if sessionID != "" {
 				var shouldReturn bool
+
 				r, shouldReturn = processExistingSession(w, r, service, sessionID)
 				if shouldReturn {
 					return
@@ -79,6 +86,7 @@ func SessionMiddleware(service *session.Service) func(http.Handler) http.Handler
 	}
 }
 
+// GetSessionFromContext retrieves the session from the request context.
 func GetSessionFromContext(ctx context.Context) *domain.Session {
 	sess, ok := ctx.Value(SessionContextKey).(*domain.Session)
 	if !ok {

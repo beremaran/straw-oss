@@ -11,6 +11,9 @@ import (
 	"github.com/beremaran/straw/internal/domain"
 )
 
+const cacheAsyncTimeout = 5 * time.Second
+
+// Matcher matches incoming requests against routing rules with caching support.
 type Matcher struct {
 	repo           domain.RoutingRuleRepository
 	cache          *RuleCache
@@ -18,10 +21,11 @@ type Matcher struct {
 	currentVersion int64
 	mu             sync.RWMutex
 	lastUpdate     time.Time
-	cacheHits      int64
-	cacheMisses    int64
+	cacheHits      atomic.Int64
+	cacheMisses    atomic.Int64
 }
 
+// NewMatcher creates a new Matcher with the given repository and cache.
 func NewMatcher(repo domain.RoutingRuleRepository, cache *RuleCache) *Matcher {
 	return &Matcher{
 		repo:  repo,
@@ -29,6 +33,7 @@ func NewMatcher(repo domain.RoutingRuleRepository, cache *RuleCache) *Matcher {
 	}
 }
 
+// LoadRules loads the current routing rules, using cache when available.
 func (m *Matcher) LoadRules(ctx context.Context) error {
 	if m.cache == nil {
 		return m.loadFromDB(ctx)
@@ -45,19 +50,20 @@ func (m *Matcher) LoadRules(ctx context.Context) error {
 		return nil
 	}
 
-	if loadCachedRules(m, ctx, version) {
+	if loadCachedRules(ctx, m, version) {
 		return nil
 	}
 
-	atomic.AddInt64(&m.cacheMisses, 1)
+	m.cacheMisses.Add(1)
 	log.Printf("Loading rules from DB (cache miss/error, version=%d)", version)
+
 	rules, err := m.repo.GetActiveRules(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to load rules from repo: %w", err)
 	}
 
 	if version > 0 {
-		cacheRulesAsync(m, ctx, version, rules)
+		cacheRulesAsync(ctx, m, version, rules)
 	}
 
 	m.updateRules(rules, version)
@@ -73,7 +79,7 @@ func matcherHasCurrentVersion(m *Matcher, version int64) bool {
 	return m.currentVersion == version && version > 0 && len(m.rules) > 0
 }
 
-func loadCachedRules(m *Matcher, ctx context.Context, version int64) bool {
+func loadCachedRules(ctx context.Context, m *Matcher, version int64) bool {
 	if version <= 0 {
 		return false
 	}
@@ -84,21 +90,23 @@ func loadCachedRules(m *Matcher, ctx context.Context, version int64) bool {
 
 		return false
 	}
+
 	if rules == nil {
 		return false
 	}
 
 	m.updateRules(rules, version)
-	atomic.AddInt64(&m.cacheHits, 1)
+	m.cacheHits.Add(1)
 	log.Printf("Routing rules loaded from cache (v%d): count=%d", version, len(rules))
 
 	return true
 }
 
-func cacheRulesAsync(m *Matcher, ctx context.Context, version int64, rules []domain.RoutingRule) {
+func cacheRulesAsync(ctx context.Context, m *Matcher, version int64, rules []domain.RoutingRule) {
 	go func() {
-		cacheCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		cacheCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), cacheAsyncTimeout)
 		defer cancel()
+
 		err := m.cache.SetRulesByVersion(cacheCtx, version, rules)
 		if err != nil {
 			log.Printf("Failed to update rules cache (v%d): %v", version, err)
@@ -106,6 +114,7 @@ func cacheRulesAsync(m *Matcher, ctx context.Context, version int64, rules []dom
 	}()
 }
 
+// Match finds the first routing rule that matches the given tags.
 func (m *Matcher) Match(tags []domain.Tag) *domain.RoutingRule {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -120,10 +129,12 @@ func (m *Matcher) Match(tags []domain.Tag) *domain.RoutingRule {
 	return nil
 }
 
+// StartAutoRefresh periodically reloads routing rules at the given interval.
 func (m *Matcher) StartAutoRefresh(ctx context.Context, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	go func() {
 		defer ticker.Stop()
+
 		for {
 			select {
 			case <-ctx.Done():
@@ -138,8 +149,9 @@ func (m *Matcher) StartAutoRefresh(ctx context.Context, interval time.Duration) 
 	}()
 }
 
+// GetStats returns the cache hits and misses counts.
 func (m *Matcher) GetStats() (int64, int64) {
-	return atomic.LoadInt64(&m.cacheHits), atomic.LoadInt64(&m.cacheMisses)
+	return m.cacheHits.Load(), m.cacheMisses.Load()
 }
 
 func (m *Matcher) loadFromDB(ctx context.Context) error {

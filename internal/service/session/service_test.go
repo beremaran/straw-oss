@@ -5,13 +5,16 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/beremaran/straw/internal/config"
 	"github.com/beremaran/straw/internal/domain"
 	"github.com/beremaran/straw/internal/infra/redis"
 	"github.com/beremaran/straw/internal/service/session"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
+
+const tag1 = "tag1"
 
 func TestService_CreateSession(t *testing.T) {
 	ctx := t.Context()
@@ -26,8 +29,8 @@ func TestService_CreateSession(t *testing.T) {
 	store := session.NewRedisStore(client)
 	svc := session.NewService(store)
 
-	sess, err := svc.CreateSession(ctx, "ep1", "rule1", []string{"tag1"})
-	assert.NoError(t, err)
+	sess, err := svc.CreateSession(ctx, "ep1", "rule1", []string{tag1})
+	require.NoError(t, err)
 	assert.NotEmpty(t, sess.ID)
 	assert.Equal(t, "ep1", sess.EndpointID)
 }
@@ -49,7 +52,7 @@ func TestService_GetSession(t *testing.T) {
 	require.NoError(t, err)
 
 	got, err := svc.GetSession(ctx, sess.ID)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, sess.ID, got.ID)
 
 	sess.LastUsedAt = time.Now().Add(-20 * time.Minute)
@@ -76,16 +79,16 @@ func TestService_MigrateSession(t *testing.T) {
 	sess, _ := svc.CreateSession(ctx, "ep1", "rule1", nil)
 
 	updated, err := svc.MigrateSession(ctx, sess.ID, "ep2")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "ep2", updated.EndpointID)
 	assert.Equal(t, 1, updated.MigrationCount)
 
 	updated, err = svc.MigrateSession(ctx, sess.ID, "ep3")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, 2, updated.MigrationCount)
 
 	updated, err = svc.MigrateSession(ctx, sess.ID, "ep4")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, 3, updated.MigrationCount)
 
 	_, err = svc.MigrateSession(ctx, sess.ID, "ep5")
@@ -105,8 +108,8 @@ func TestService_CreateSession_StoreError(t *testing.T) {
 
 	mr.Close()
 
-	_, err = svc.CreateSession(ctx, "ep1", "rule1", []string{"tag1"})
-	assert.Error(t, err)
+	_, err = svc.CreateSession(ctx, "ep1", "rule1", []string{tag1})
+	require.Error(t, err)
 }
 
 func TestService_GetSession_StoreError(t *testing.T) {
@@ -123,7 +126,7 @@ func TestService_GetSession_StoreError(t *testing.T) {
 	mr.Close()
 
 	_, err = svc.GetSession(ctx, "nonexistent")
-	assert.Error(t, err)
+	require.Error(t, err)
 }
 
 func TestService_GetSession_NonExistent(t *testing.T) {
@@ -159,7 +162,7 @@ func TestService_TouchSession(t *testing.T) {
 	sess, _ := svc.CreateSession(ctx, "ep1", "rule1", nil)
 
 	err = svc.TouchSession(ctx, sess.ID)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	err = svc.TouchSession(ctx, "nonexistent")
 	assert.ErrorIs(t, err, domain.ErrSessionExpired)
@@ -181,7 +184,7 @@ func TestService_TouchSession_StoreError(t *testing.T) {
 	mr.Close()
 
 	err = svc.TouchSession(ctx, sess.ID)
-	assert.Error(t, err)
+	require.Error(t, err)
 }
 
 func TestService_EndSession(t *testing.T) {
@@ -200,7 +203,7 @@ func TestService_EndSession(t *testing.T) {
 	sess, _ := svc.CreateSession(ctx, "ep1", "rule1", nil)
 
 	err = svc.EndSession(ctx, sess.ID)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	_, err = svc.GetSession(ctx, sess.ID)
 	assert.ErrorIs(t, err, domain.ErrSessionExpired)
@@ -222,7 +225,7 @@ func TestService_EndSession_StoreError(t *testing.T) {
 	mr.Close()
 
 	err = svc.EndSession(ctx, sess.ID)
-	assert.Error(t, err)
+	require.Error(t, err)
 }
 
 func TestService_MigrateSession_NonExistent(t *testing.T) {
@@ -258,7 +261,7 @@ func TestService_MigrateSession_StoreSaveError(t *testing.T) {
 	mr.Close()
 
 	_, err = svc.MigrateSession(ctx, sess.ID, "ep2")
-	assert.Error(t, err)
+	require.Error(t, err)
 }
 
 func TestService_CreateSession_WithTags(t *testing.T) {
@@ -276,7 +279,7 @@ func TestService_CreateSession_WithTags(t *testing.T) {
 
 	tags := []string{"tag1", "tag2", "tag3"}
 	sess, err := svc.CreateSession(ctx, "ep1", "rule1", tags)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotEmpty(t, sess.ID)
 	assert.Equal(t, "ep1", sess.EndpointID)
 	assert.Equal(t, "rule1", sess.RuleID)

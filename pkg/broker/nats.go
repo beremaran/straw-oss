@@ -11,10 +11,10 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 )
 
-var (
-	ErrNoStreamForSubject = errors.New("no stream found for subject")
-)
+// ErrNoStreamForSubject is returned when no stream is found for a subject.
+var ErrNoStreamForSubject = errors.New("no stream found for subject")
 
+// NatsBroker is a NATS JetStream message broker implementation.
 type NatsBroker struct {
 	url  string
 	conn *nats.Conn
@@ -22,6 +22,7 @@ type NatsBroker struct {
 	opts []Option
 }
 
+// NewNatsBroker creates a new NATS broker with the given options.
 func NewNatsBroker(opts ...Option) *NatsBroker {
 	options := Options{
 		Addrs: []string{nats.DefaultURL},
@@ -43,6 +44,7 @@ func NewNatsBroker(opts ...Option) *NatsBroker {
 	return b
 }
 
+// Connect establishes the NATS connection and JetStream context.
 func (b *NatsBroker) Connect() error {
 	opts := []nats.Option{
 		nats.Name("straw"),
@@ -53,6 +55,7 @@ func (b *NatsBroker) Connect() error {
 		for _, o := range b.opts {
 			o(&config)
 		}
+
 		if config.Token != "" {
 			opts = append(opts, nats.Token(config.Token))
 		}
@@ -62,17 +65,20 @@ func (b *NatsBroker) Connect() error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to NATS: %w", err)
 	}
+
 	b.conn = nc
 
 	js, err := jetstream.New(nc)
 	if err != nil {
 		return fmt.Errorf("failed to create JetStream context: %w", err)
 	}
+
 	b.js = js
 
 	return nil
 }
 
+// Close closes the NATS connection.
 func (b *NatsBroker) Close() error {
 	if b.conn != nil {
 		b.conn.Close()
@@ -81,10 +87,12 @@ func (b *NatsBroker) Close() error {
 	return nil
 }
 
+// IsConnected reports whether the broker has an active NATS connection.
 func (b *NatsBroker) IsConnected() bool {
 	return b.conn != nil && b.conn.IsConnected()
 }
 
+// Publish sends a message to the given subject.
 func (b *NatsBroker) Publish(ctx context.Context, subject string, body []byte) error {
 	_, err := b.js.Publish(ctx, subject, body)
 	if err != nil {
@@ -94,6 +102,7 @@ func (b *NatsBroker) Publish(ctx context.Context, subject string, body []byte) e
 	return nil
 }
 
+// Subscribe creates a JetStream consumer for the given subject and routes messages to the handler.
 func (b *NatsBroker) Subscribe(ctx context.Context, subject string, handler Handler, opts ...SubscribeOption) error {
 	subOpts := SubscribeOptions{}
 	for _, o := range opts {
@@ -178,6 +187,7 @@ func subjectMatchesPattern(pattern, subject string) bool {
 	return i == pLen
 }
 
+// DeclareStream creates or updates a stream for the given name and subjects.
 func (b *NatsBroker) DeclareStream(ctx context.Context, name string, subjects ...string) error {
 	if len(subjects) == 0 {
 		subjects = []string{name + ".>"}
@@ -194,10 +204,11 @@ func (b *NatsBroker) DeclareStream(ctx context.Context, name string, subjects ..
 	return nil
 }
 
-func (b *NatsBroker) ConsumeOnce(ctx context.Context, subject string, timeout time.Duration) ([]byte, error) {
+// ConsumeOnce subscribes synchronously, returns the first message, then unsubscribes.
+func (b *NatsBroker) ConsumeOnce(_ context.Context, subject string, timeout time.Duration) ([]byte, error) {
 	sub, err := b.conn.SubscribeSync(subject)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to subscribe to %s: %w", subject, err)
 	}
 	defer func(sub *nats.Subscription) {
 		_ = sub.Unsubscribe()
@@ -209,7 +220,7 @@ func (b *NatsBroker) ConsumeOnce(ctx context.Context, subject string, timeout ti
 			return nil, ErrTimeout
 		}
 
-		return nil, err
+		return nil, fmt.Errorf("failed to receive message from %s: %w", subject, err)
 	}
 
 	return msg.Data, nil

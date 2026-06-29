@@ -3,7 +3,6 @@ package handlers
 import (
 	"encoding/csv"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -15,15 +14,24 @@ import (
 	"github.com/beremaran/straw/internal/server/helper"
 )
 
+const (
+	formatCSV           = "csv"
+	formatNDJSON        = "ndjson"
+	maxAuditExportLimit = 500
+)
+
+// AuditHandler manages audit event and request operations.
 type AuditHandler struct {
 	repo         domain.ManagementAuditRepository
 	identityRepo domain.IdentityRepository
 }
 
+// NewAuditHandler creates a new AuditHandler.
 func NewAuditHandler(repo domain.ManagementAuditRepository, identityRepo domain.IdentityRepository) *AuditHandler {
 	return &AuditHandler{repo: repo, identityRepo: identityRepo}
 }
 
+// HandleListEvents lists audit events.
 func (h *AuditHandler) HandleListEvents(w http.ResponseWriter, r *http.Request) {
 	filter := h.parseFilter(r)
 	redactBody := h.shouldRedact(r)
@@ -48,8 +56,10 @@ func (h *AuditHandler) HandleListEvents(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
+// HandleGetEvent retrieves a single audit event.
 func (h *AuditHandler) HandleGetEvent(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
+
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
 		helper.WriteError(w, http.StatusBadRequest, "invalid event id")
@@ -74,10 +84,12 @@ func (h *AuditHandler) HandleGetEvent(w http.ResponseWriter, r *http.Request) {
 	helper.WriteJSON(w, http.StatusOK, dto.FromAuditEvent(event, redactBody))
 }
 
+// HandleListRequests lists audit requests.
 func (h *AuditHandler) HandleListRequests(w http.ResponseWriter, r *http.Request) {
 	filter := h.parseFilter(r)
 
 	includeBody := !h.shouldRedact(r)
+
 	reqs, total, err := h.repo.ListRequests(r.Context(), filter, includeBody)
 	if err != nil {
 		helper.WriteError(w, http.StatusInternalServerError, "failed to list audit requests")
@@ -98,6 +110,7 @@ func (h *AuditHandler) HandleListRequests(w http.ResponseWriter, r *http.Request
 	})
 }
 
+// HandleExport exports audit events to CSV or NDJSON.
 func (h *AuditHandler) HandleExport(w http.ResponseWriter, r *http.Request) {
 	filter := h.parseFilter(r)
 	if filter.StartDate == nil || filter.EndDate == nil {
@@ -118,8 +131,8 @@ func (h *AuditHandler) HandleExport(w http.ResponseWriter, r *http.Request) {
 	filter.Offset = 0
 
 	format := r.URL.Query().Get("format")
-	if format != "csv" && format != "ndjson" {
-		format = "csv" // Default
+	if format != formatCSV && format != formatNDJSON {
+		format = formatCSV // Default
 	}
 
 	events, _, err := h.repo.ListEvents(r.Context(), filter)
@@ -133,9 +146,9 @@ func (h *AuditHandler) HandleExport(w http.ResponseWriter, r *http.Request) {
 	dtos := dto.FromAuditEvents(events, redactBody)
 
 	switch format {
-	case "csv":
+	case formatCSV:
 		h.exportCSV(w, dtos)
-	case "ndjson":
+	case formatNDJSON:
 		h.exportNDJSON(w, dtos)
 	}
 }
@@ -145,10 +158,11 @@ func (h *AuditHandler) exportCSV(w http.ResponseWriter, dtos []*dto.AuditEvent) 
 	w.Header().Set("Content-Disposition", "attachment; filename=\"audit_events_export.csv\"")
 
 	cw := csv.NewWriter(w)
+
 	_ = cw.Write([]string{"ID", "OccurredAt", "ActorType", "ActorID", "ActorDisplay", "Action", "EntityType", "EntityID", "IP", "UserAgent", "RequestID", "TraceID"})
 	for _, e := range dtos {
 		_ = cw.Write([]string{
-			fmt.Sprintf("%d", e.ID),
+			strconv.FormatInt(e.ID, 10),
 			e.OccurredAt.Format(time.RFC3339),
 			e.ActorType,
 			e.ActorID,
@@ -162,6 +176,7 @@ func (h *AuditHandler) exportCSV(w http.ResponseWriter, dtos []*dto.AuditEvent) 
 			e.TraceID,
 		})
 	}
+
 	cw.Flush()
 }
 
@@ -225,9 +240,10 @@ func (h *AuditHandler) parseFilter(r *http.Request) domain.AuditEventFilter {
 func parsePagination(q url.Values, filter *domain.AuditEventFilter) {
 	if limitStr := q.Get("limit"); limitStr != "" {
 		limit, _ := strconv.Atoi(limitStr)
-		if limit > 500 {
-			limit = 500
+		if limit > maxAuditExportLimit {
+			limit = maxAuditExportLimit
 		}
+
 		filter.Limit = limit
 	} else {
 		filter.Limit = 20

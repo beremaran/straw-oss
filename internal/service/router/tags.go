@@ -8,31 +8,51 @@ import (
 )
 
 const (
-	HeaderRelayTags      = "X-Relay-Tags"
+	// HeaderRelayTags is the modern header for relay tags.
+	HeaderRelayTags = "X-Relay-Tags"
+
+	// HeaderLegacyRetailer is a deprecated header for retailer identification.
 	HeaderLegacyRetailer = "X-Straw-Retailer"
-	HeaderLegacyMode     = "X-Straw-Mode"
-	HeaderLegacyCountry  = "X-Straw-Country"
+
+	// HeaderLegacyMode is a deprecated header for mode identification.
+	HeaderLegacyMode = "X-Straw-Mode"
+
+	// HeaderLegacyCountry is a deprecated header for country identification.
+	HeaderLegacyCountry = "X-Straw-Country"
 )
 
+// Legacy tag keys used by deprecated header names.
+const (
+	legacyKeyTarget = "target"
+	legacyKeyType   = "type"
+	legacyKeyRegion = "region"
+)
+
+// TagParser parses tags from HTTP request headers and API key scopes.
 type TagParser struct{}
 
+// NewTagParser creates a new TagParser.
 func NewTagParser() *TagParser {
 	return &TagParser{}
 }
 
+// ParseResult holds parsed tags and deprecation warnings.
 type ParseResult struct {
 	Tags     []domain.Tag
 	Warnings []string
 }
 
-func (p *TagParser) ParseTags(r *http.Request, apiKey *domain.ApiKey) (*ParseResult, error) {
+// ParseTags extracts tags from request headers and API key scopes.
+func (p *TagParser) ParseTags(r *http.Request, apiKey *domain.APIKey) (*ParseResult, error) {
 	result, addTag := newParseResult()
 
 	err := addRelayHeaderTags(r, addTag)
 	if err != nil {
 		return nil, err
 	}
+
 	addLegacyHeaderTags(r, result, addTag)
+
 	err = addScopedTags(apiKey, addTag)
 	if err != nil {
 		return nil, err
@@ -67,6 +87,7 @@ func addRelayHeaderTags(r *http.Request, addTag tagAdder) error {
 		if err != nil {
 			return fmt.Errorf("failed to parse %s: %w", HeaderRelayTags, err)
 		}
+
 		for _, t := range tags {
 			addTag(t)
 		}
@@ -81,9 +102,9 @@ type legacyTagHeader struct {
 }
 
 var legacyTagHeaders = []legacyTagHeader{
-	{header: HeaderLegacyRetailer, key: "target"},
-	{header: HeaderLegacyMode, key: "type"},
-	{header: HeaderLegacyCountry, key: "region"},
+	{header: HeaderLegacyRetailer, key: legacyKeyTarget},
+	{header: HeaderLegacyMode, key: legacyKeyType},
+	{header: HeaderLegacyCountry, key: legacyKeyRegion},
 }
 
 func addLegacyHeaderTags(r *http.Request, result *ParseResult, addTag tagAdder) {
@@ -92,12 +113,13 @@ func addLegacyHeaderTags(r *http.Request, result *ParseResult, addTag tagAdder) 
 		if val == "" {
 			continue
 		}
+
 		addTag(domain.Tag{Key: legacy.key, Value: val})
 		result.Warnings = append(result.Warnings, fmt.Sprintf("Header %s is deprecated. Use %s: %s=%s instead.", legacy.header, HeaderRelayTags, legacy.key, val))
 	}
 }
 
-func addScopedTags(apiKey *domain.ApiKey, addTag tagAdder) error {
+func addScopedTags(apiKey *domain.APIKey, addTag tagAdder) error {
 	if apiKey == nil || len(apiKey.Scopes) == 0 {
 		return nil
 	}
@@ -106,6 +128,7 @@ func addScopedTags(apiKey *domain.ApiKey, addTag tagAdder) error {
 	if err != nil {
 		return fmt.Errorf("invalid api key scopes: %w", err)
 	}
+
 	for _, t := range scopes {
 		addTag(t)
 	}

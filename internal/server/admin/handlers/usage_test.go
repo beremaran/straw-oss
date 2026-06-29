@@ -8,9 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/beremaran/straw/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+
+	"github.com/beremaran/straw/internal/domain"
 )
 
 type MockUsageRepo struct {
@@ -40,7 +41,7 @@ func TestUsageHandler_HandleGetUsageSummary(t *testing.T) {
 		h.HandleGetUsageSummary(rec, req)
 		assert.Equal(t, http.StatusOK, rec.Code)
 
-		var resp map[string]interface{}
+		var resp map[string]any
 		_ = json.Unmarshal(rec.Body.Bytes(), &resp)
 		assert.NotEmpty(t, resp["data"])
 	})

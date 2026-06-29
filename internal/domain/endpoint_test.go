@@ -5,6 +5,10 @@ import (
 	"time"
 )
 
+const typeResidential = "type:residential"
+
+const regionEU = "region:eu"
+
 func TestEndpoint_IsStale(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -61,10 +65,10 @@ func TestEndpoint_UpdateHeartbeat(t *testing.T) {
 
 func TestEndpoint_HasTag(t *testing.T) {
 	e := &Endpoint{
-		Tags: []string{"type:residential", "region:us", "provider:luminati"},
+		Tags: []string{typeResidential, regionUS, "provider:luminati"},
 	}
 
-	if !e.HasTag("type:residential") {
+	if !e.HasTag(typeResidential) {
 		t.Error("HasTag() returned false for existing tag")
 	}
 
@@ -75,7 +79,7 @@ func TestEndpoint_HasTag(t *testing.T) {
 
 func TestEndpoint_MatchesTags(t *testing.T) {
 	e := &Endpoint{
-		Tags: []string{"type:residential", "region:us", "provider:luminati"},
+		Tags: []string{typeResidential, regionUS, "provider:luminati"},
 	}
 
 	tests := []struct {
@@ -85,12 +89,12 @@ func TestEndpoint_MatchesTags(t *testing.T) {
 	}{
 		{
 			name:         "all match",
-			requiredTags: []string{"type:residential", "region:us"},
+			requiredTags: []string{typeResidential, regionUS},
 			want:         true,
 		},
 		{
 			name:         "one missing",
-			requiredTags: []string{"type:residential", "region:eu"},
+			requiredTags: []string{typeResidential, regionEU},
 			want:         false,
 		},
 		{
@@ -110,7 +114,7 @@ func TestEndpoint_MatchesTags(t *testing.T) {
 }
 
 func TestNewEndpoint(t *testing.T) {
-	e := NewEndpoint("ep-001", []string{"type:residential", "region:us"})
+	e := NewEndpoint("ep-001", []string{typeResidential, regionUS})
 
 	if e.ID != "ep-001" {
 		t.Errorf("NewEndpoint() ID = %s, want ep-001", e.ID)

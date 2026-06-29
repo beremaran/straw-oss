@@ -3,8 +3,9 @@ package metrics_test
 import (
 	"testing"
 
-	"github.com/beremaran/straw/internal/endpoint/metrics"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/beremaran/straw/internal/endpoint/metrics"
 )
 
 func TestEndpointMetrics_Registration(t *testing.T) {
@@ -18,7 +19,7 @@ func TestEndpointMetrics_Registration(t *testing.T) {
 	assert.NotNil(t, metrics.TasksFailed)
 }
 
-func TestEndpointMetrics_Usage(t *testing.T) {
+func TestEndpointMetrics_Usage(*testing.T) {
 	metrics.UpstreamDuration.WithLabelValues("example.com", "200").Observe(0.1)
 	metrics.TLSFingerprintUsed.WithLabelValues("chrome-100").Inc()
 	metrics.ConnectionsPooled.WithLabelValues("example.com").Inc()
@@ -29,7 +30,7 @@ func TestEndpointMetrics_Usage(t *testing.T) {
 	metrics.TasksFailed.WithLabelValues("timeout").Inc()
 }
 
-func TestEndpointMetrics_Values(t *testing.T) {
+func TestEndpointMetrics_Values(*testing.T) {
 	metrics.TasksInFlight.Set(10)
 
 	c := metrics.HeartbeatsSent

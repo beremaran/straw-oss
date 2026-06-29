@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/beremaran/straw/internal/config"
 	"github.com/beremaran/straw/internal/server"
 	"github.com/beremaran/straw/internal/server/handlers"
@@ -16,7 +18,6 @@ import (
 	"github.com/beremaran/straw/internal/service/ratelimit"
 	"github.com/beremaran/straw/internal/service/router"
 	"github.com/beremaran/straw/internal/service/session"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestSecurity_SSRFProtection(t *testing.T) {

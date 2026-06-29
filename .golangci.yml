@@ -21,34 +21,63 @@ linters:
     - exhaustive
     - funcorder
     - funlen
+    - goconst
+    - gocritic
     - godot
     - godox
     - goheader
     - goprintffuncname
+    - gosec
     - iface
     - inamedparam
     - ineffassign
+    - loggercheck
+    - makezero
+    - mnd
+    - modernize
     - musttag
+    - nakedret
     - nestif
+    - nilerr
     - nlreturn
     - noctx
     - noinlineerr
     - nonamedreturns
+    - perfsprint
     - promlinter
     - reassign
+    - revive
+    - sloglint
     - staticcheck
     - tagalign
     - testableexamples
+    - testifylint
     - testpackage
     - unused
     - usestdlibvars
     - whitespace
+    - wrapcheck
+    - wsl_v5
+
   exclusions:
     rules:
       - path: (.+)_test\.go
         linters:
+          - cyclop
           - err113
           - funlen
+          - mnd
           - testpackage
-          - cyclop
+          - wrapcheck
+          - wsl_v5
 
+formatters:
+  enable:
+    - gci
+    - gofumpt
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/beremaran/straw)

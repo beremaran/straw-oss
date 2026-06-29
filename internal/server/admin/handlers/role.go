@@ -6,21 +6,25 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/google/uuid"
+
 	"github.com/beremaran/straw/internal/domain"
 	"github.com/beremaran/straw/internal/infra/postgres"
 	"github.com/beremaran/straw/internal/server/dto"
 	"github.com/beremaran/straw/internal/server/helper"
-	"github.com/google/uuid"
 )
 
+// RoleHandler manages admin role operations.
 type RoleHandler struct {
 	repo domain.IdentityRepository
 }
 
+// NewRoleHandler creates a new RoleHandler.
 func NewRoleHandler(repo domain.IdentityRepository) *RoleHandler {
 	return &RoleHandler{repo: repo}
 }
 
+// HandleListRoles lists all admin roles.
 func (h *RoleHandler) HandleListRoles(w http.ResponseWriter, r *http.Request) {
 	roles, err := h.repo.ListRoles(r.Context())
 	if err != nil {
@@ -39,8 +43,10 @@ func (h *RoleHandler) HandleListRoles(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// HandleCreateRole creates a new admin role.
 func (h *RoleHandler) HandleCreateRole(w http.ResponseWriter, r *http.Request) {
 	var req dto.CreateRoleRequest
+
 	err := helper.ReadJSON(r, &req)
 	if err != nil {
 		helper.WriteError(w, http.StatusBadRequest, "invalid request body")
@@ -81,6 +87,7 @@ func (h *RoleHandler) HandleCreateRole(w http.ResponseWriter, r *http.Request) {
 	helper.WriteJSON(w, http.StatusCreated, dto.FromDomainRole(*role))
 }
 
+// HandleUpdateRole updates an admin role.
 func (h *RoleHandler) HandleUpdateRole(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if id == "" {
@@ -95,6 +102,7 @@ func (h *RoleHandler) HandleUpdateRole(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+
 	if role == nil {
 		helper.WriteError(w, http.StatusNotFound, "role not found")
 
@@ -108,6 +116,7 @@ func (h *RoleHandler) HandleUpdateRole(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req dto.UpdateRoleRequest
+
 	err = helper.ReadJSON(r, &req)
 	if err != nil {
 		helper.WriteError(w, http.StatusBadRequest, "invalid request body")
@@ -132,17 +141,12 @@ func (h *RoleHandler) HandleUpdateRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	slog.InfoContext(r.Context(), "audit event",
-		"action", "role:update",
-		"entity_type", "role",
-		"entity_id", id,
-		"old_value", oldRole,
-		"new_value", role,
-	)
+	h.logRoleUpdateAudit(r, id, oldRole, *role)
 
 	helper.WriteJSON(w, http.StatusOK, dto.FromDomainRole(*role))
 }
 
+// HandleDeleteRole deletes an admin role.
 func (h *RoleHandler) HandleDeleteRole(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if id == "" {
@@ -157,6 +161,7 @@ func (h *RoleHandler) HandleDeleteRole(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+
 	if role == nil {
 		helper.WriteError(w, http.StatusNotFound, "role not found")
 
@@ -187,6 +192,16 @@ func (h *RoleHandler) HandleDeleteRole(w http.ResponseWriter, r *http.Request) {
 	)
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *RoleHandler) logRoleUpdateAudit(r *http.Request, id string, oldRole, newRole domain.AdminRole) {
+	slog.InfoContext(r.Context(), "audit event",
+		"action", "role:update",
+		"entity_type", "role",
+		"entity_id", id,
+		"old_value", oldRole,
+		"new_value", newRole,
+	)
 }
 
 func applyRoleUpdate(role *domain.AdminRole, req dto.UpdateRoleRequest, name string) {

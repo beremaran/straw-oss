@@ -1,3 +1,4 @@
+// Package tls implements TLS dialing with fingerprint presets and error classification.
 package tls
 
 import (
@@ -5,6 +6,8 @@ import (
 	"errors"
 	"testing"
 )
+
+const testServerAddr = "example.com:443"
 
 func TestClassifyHandshakeError(t *testing.T) {
 	tests := []struct {
@@ -46,7 +49,7 @@ func TestClassifyHandshakeError(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			addr := "example.com:443"
+			addr := testServerAddr
 			classified := classifyHandshakeError(addr, tt.err)
 
 			if tt.expected != nil {

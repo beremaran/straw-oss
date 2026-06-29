@@ -2,6 +2,7 @@ package dto
 
 import "time"
 
+// CreateRoutingRuleRequest is the request body for creating a routing rule.
 type CreateRoutingRuleRequest struct {
 	Name                 string            `json:"name"                             validate:"required"`
 	RequiredTags         []string          `json:"required_tags"`
@@ -22,11 +23,13 @@ type CreateRoutingRuleRequest struct {
 	IsActive             bool              `json:"is_active"`
 }
 
+// UpdateRoutingRuleRequest is the request body for updating a routing rule.
 type UpdateRoutingRuleRequest struct {
 	CreateRoutingRuleRequest
 	Version int `json:"version" validate:"required"`
 }
 
+// RoutingRuleResponse represents a routing rule in API responses.
 type RoutingRuleResponse struct {
 	ID                   string            `json:"id"`
 	Name                 string            `json:"name"`
@@ -51,18 +54,22 @@ type RoutingRuleResponse struct {
 	UpdatedAt            time.Time         `json:"updated_at"`
 }
 
+// ListRoutingRulesResponse is a paginated list of routing rules.
 type ListRoutingRulesResponse = PaginatedResponse[RoutingRuleResponse]
 
+// ABConfigDTO defines an A/B testing configuration.
 type ABConfigDTO struct {
 	Variants []ABVariantDTO `json:"variants"`
 	Strategy string         `json:"strategy"`
 }
 
+// ABVariantDTO represents a variant in an A/B test.
 type ABVariantDTO struct {
 	Fingerprint string `json:"fingerprint"`
 	Weight      int    `json:"weight"`
 }
 
+// RequestFilterDTO defines request filtering rules.
 type RequestFilterDTO struct {
 	BlockContentTypes []string `json:"block_content_types,omitempty"`
 	BlockURLPatterns  []string `json:"block_url_patterns,omitempty"`
@@ -71,6 +78,7 @@ type RequestFilterDTO struct {
 	AdblockLists      []string `json:"adblock_lists,omitempty"`
 }
 
+// EndpointPoolDTO represents a pool of endpoints for routing.
 type EndpointPoolDTO struct {
 	Tier       int      `json:"tier"`
 	Endpoints  []string `json:"endpoints"`

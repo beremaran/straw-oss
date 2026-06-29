@@ -14,6 +14,8 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
+const testUserID = "user-1"
+
 type MockExecer struct {
 	mock.Mock
 }
@@ -38,7 +40,7 @@ func TestAuditLog(t *testing.T) {
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/test", strings.NewReader(`{"foo":"bar"}`))
 	rec := httptest.NewRecorder()
 
-	h := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusCreated)
 		_, _ = w.Write([]byte("created"))
 	}))
@@ -60,7 +62,7 @@ func TestAuditLog_SkipGet(t *testing.T) {
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test", nil)
 	rec := httptest.NewRecorder()
 
-	h := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	}))
@@ -80,13 +82,13 @@ func TestAuditLog_IncludesActor(t *testing.T) {
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/test", strings.NewReader(`{"foo":"bar"}`))
 	req = req.WithContext(ContextWithActor(req.Context(), Actor{
 		Type:        ActorTypeUser,
-		ID:          "user-1",
+		ID:          testUserID,
 		DisplayName: "User One",
 		SessionID:   "session-1",
 	}))
 	rec := httptest.NewRecorder()
 
-	h := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusCreated)
 	}))
 
@@ -94,7 +96,7 @@ func TestAuditLog_IncludesActor(t *testing.T) {
 
 	entry := <-auditLogger.entries
 	assert.Equal(t, ActorTypeUser, entry.ActorType)
-	assert.Equal(t, "user-1", entry.ActorID)
+	assert.Equal(t, testUserID, entry.ActorID)
 	assert.Equal(t, "User One", entry.ActorDisplayName)
 	assert.Equal(t, "session-1", entry.SessionID)
 }

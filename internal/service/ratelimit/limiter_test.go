@@ -6,12 +6,15 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/beremaran/straw/internal/config"
 	"github.com/beremaran/straw/internal/infra/redis"
 	"github.com/beremaran/straw/internal/service/ratelimit"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
+
+const testKey = "test_key"
 
 func TestRateLimiter_Allow(t *testing.T) {
 	ctx := context.Background()
@@ -24,7 +27,7 @@ func TestRateLimiter_Allow(t *testing.T) {
 	defer func() { _ = client.Close() }()
 
 	limiter := ratelimit.NewRateLimiter(client)
-	quotaKey := "test_key"
+	quotaKey := testKey
 
 	t.Run("Approves request within limits", func(t *testing.T) {
 		s.FlushAll()
@@ -53,7 +56,7 @@ func TestRateLimiter_Allow(t *testing.T) {
 	t.Run("Blocks request exceeding minute limit", func(t *testing.T) {
 		s.FlushAll()
 
-		for i := 0; i < 2; i++ {
+		for range 2 {
 			allowed, _, err := limiter.Allow(ctx, quotaKey, 100, 2)
 			require.NoError(t, err)
 			assert.True(t, allowed)
@@ -77,7 +80,7 @@ func TestRateLimiter_Allow(t *testing.T) {
 	t.Run("Only per-second limit (no minute limit)", func(t *testing.T) {
 		s.FlushAll()
 
-		for i := 0; i < 5; i++ {
+		for i := range 5 {
 			allowed, res, err := limiter.Allow(ctx, quotaKey, 5, 0)
 			require.NoError(t, err)
 			assert.True(t, allowed)
@@ -95,7 +98,7 @@ func TestRateLimiter_Allow(t *testing.T) {
 	t.Run("Only per-minute limit (no second limit)", func(t *testing.T) {
 		s.FlushAll()
 
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			allowed, res, err := limiter.Allow(ctx, quotaKey, 0, 3)
 			require.NoError(t, err)
 			assert.True(t, allowed)
@@ -160,7 +163,7 @@ func TestRateLimiter_RedisErrors(t *testing.T) {
 	defer func() { _ = client.Close() }()
 
 	limiter := ratelimit.NewRateLimiter(client)
-	quotaKey := "test_key"
+	quotaKey := testKey
 
 	t.Run("Returns error on Redis failure for per-second limit", func(t *testing.T) {
 		s.Close()
@@ -203,7 +206,7 @@ func TestRateLimiter_ResetCalculation(t *testing.T) {
 	defer func() { _ = client.Close() }()
 
 	limiter := ratelimit.NewRateLimiter(client)
-	quotaKey := "test_key"
+	quotaKey := testKey
 
 	t.Run("Reset duration is positive when limit exceeded", func(t *testing.T) {
 		s.FlushAll()
@@ -222,7 +225,7 @@ func TestRateLimiter_ResetCalculation(t *testing.T) {
 	t.Run("Reset duration for minute limit is less than or equal to one minute", func(t *testing.T) {
 		s.FlushAll()
 
-		for i := 0; i < 2; i++ {
+		for range 2 {
 			allowed, _, err := limiter.Allow(ctx, quotaKey, 100, 2)
 			require.NoError(t, err)
 			assert.True(t, allowed)

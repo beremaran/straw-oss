@@ -7,10 +7,12 @@ import (
 	"github.com/beremaran/straw/pkg/protocol"
 )
 
+// ErrorResponse is the top-level error response structure.
 type ErrorResponse struct {
 	Error ErrorDetail `json:"error"`
 }
 
+// ErrorDetail provides structured error information for API responses.
 type ErrorDetail struct {
 	Code              string `json:"code"`
 	Message           string `json:"message"`
@@ -20,6 +22,7 @@ type ErrorDetail struct {
 	TraceID           string `json:"trace_id,omitempty"`
 }
 
+// StrawError represents a domain error with an HTTP status code.
 type StrawError struct {
 	Code      string
 	Message   string
@@ -27,7 +30,8 @@ type StrawError struct {
 	HTTPCode  int
 }
 
-func NewRateLimitError(quotaKey string, retryAfterSeconds int) *StrawError {
+// NewRateLimitError creates a rate limit exceeded error for the given quota key.
+func NewRateLimitError(quotaKey string, _ int) *StrawError {
 	return &StrawError{
 		Code:      protocol.ErrCodeRateLimitExceeded,
 		Message:   fmt.Sprintf("Rate limit exceeded for quota key '%s'", quotaKey),
@@ -36,11 +40,12 @@ func NewRateLimitError(quotaKey string, retryAfterSeconds int) *StrawError {
 	}
 }
 
+// NewUpstreamError creates an error for upstream failures, marking it retryable for server errors.
 func NewUpstreamError(targetStatus int, message string) *StrawError {
 	return &StrawError{
 		Code:      protocol.ErrCodeUpstreamError,
 		Message:   message,
-		Retryable: targetStatus >= 500,
+		Retryable: targetStatus >= http.StatusInternalServerError,
 		HTTPCode:  http.StatusBadGateway,
 	}
 }
@@ -49,6 +54,7 @@ func (e *StrawError) Error() string {
 	return fmt.Sprintf("%s: %s", e.Code, e.Message)
 }
 
+// ToResponse converts the StrawError into an ErrorResponse for the given request and trace IDs.
 func (e *StrawError) ToResponse(requestID, traceID string) ErrorResponse {
 	return ErrorResponse{
 		Error: ErrorDetail{
@@ -62,6 +68,7 @@ func (e *StrawError) ToResponse(requestID, traceID string) ErrorResponse {
 }
 
 var (
+	// ErrAuthInvalid indicates the provided API key is invalid or missing.
 	ErrAuthInvalid = &StrawError{
 		Code:      protocol.ErrCodeAuthInvalid,
 		Message:   "Invalid or missing API key",
@@ -69,6 +76,7 @@ var (
 		HTTPCode:  http.StatusUnauthorized,
 	}
 
+	// ErrAuthForbidden indicates the API key lacks permission for the requested tags.
 	ErrAuthForbidden = &StrawError{
 		Code:      protocol.ErrCodeAuthForbidden,
 		Message:   "API key lacks permission for requested tags",
@@ -76,6 +84,7 @@ var (
 		HTTPCode:  http.StatusForbidden,
 	}
 
+	// ErrRateLimitExceeded indicates the rate limit has been exceeded.
 	ErrRateLimitExceeded = &StrawError{
 		Code:      protocol.ErrCodeRateLimitExceeded,
 		Message:   "Rate limit exceeded",
@@ -83,6 +92,7 @@ var (
 		HTTPCode:  http.StatusTooManyRequests,
 	}
 
+	// ErrNoEndpointsAvailable indicates no healthy endpoints match the requested tags.
 	ErrNoEndpointsAvailable = &StrawError{
 		Code:      protocol.ErrCodeNoEndpointsAvailable,
 		Message:   "No healthy endpoints available for the requested tags",
@@ -90,6 +100,7 @@ var (
 		HTTPCode:  http.StatusServiceUnavailable,
 	}
 
+	// ErrEndpointTimeout indicates an endpoint did not respond in time.
 	ErrEndpointTimeout = &StrawError{
 		Code:      protocol.ErrCodeEndpointTimeout,
 		Message:   "Endpoint did not respond in time",
@@ -97,6 +108,7 @@ var (
 		HTTPCode:  http.StatusGatewayTimeout,
 	}
 
+	// ErrUpstreamError indicates the target website returned an error.
 	ErrUpstreamError = &StrawError{
 		Code:      protocol.ErrCodeUpstreamError,
 		Message:   "Target website returned an error",
@@ -104,6 +116,7 @@ var (
 		HTTPCode:  http.StatusBadGateway,
 	}
 
+	// ErrSessionExpired indicates the session has expired or does not exist.
 	ErrSessionExpired = &StrawError{
 		Code:      protocol.ErrCodeSessionExpired,
 		Message:   "Session has expired or does not exist",
@@ -111,6 +124,7 @@ var (
 		HTTPCode:  http.StatusGone,
 	}
 
+	// ErrInternalError indicates an internal server error.
 	ErrInternalError = &StrawError{
 		Code:      protocol.ErrCodeInternalError,
 		Message:   "Internal server error",
@@ -119,6 +133,7 @@ var (
 	}
 )
 
+// ErrSessionMigrationLimit indicates the session has exceeded maximum migration attempts.
 var ErrSessionMigrationLimit = &StrawError{
 	Code:      "SESSION_MIGRATION_LIMIT",
 	Message:   "Session has exceeded maximum migration attempts",
@@ -126,6 +141,7 @@ var ErrSessionMigrationLimit = &StrawError{
 	HTTPCode:  http.StatusGone,
 }
 
+// ErrNoMatchingRule indicates no routing rule matches the provided tags.
 var ErrNoMatchingRule = &StrawError{
 	Code:      "NO_MATCHING_RULE",
 	Message:   "No routing rule matches the provided tags",

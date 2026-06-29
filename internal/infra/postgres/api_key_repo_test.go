@@ -6,11 +6,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/beremaran/straw/internal/domain"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/beremaran/straw/internal/domain"
 )
 
 func TestAPIKeyRepositories(t *testing.T) {
@@ -30,11 +31,11 @@ func TestAPIKeyRepositories(t *testing.T) {
 	require.NoError(t, err)
 
 	client := &Client{Pool: pool}
-	keyRepo := NewApiKeyRepository(client)
-	tokenRepo := NewApiKeyTokenRepository(client)
+	keyRepo := NewAPIKeyRepository(client)
+	tokenRepo := NewAPIKeyTokenRepository(client)
 
 	rateLimit := 10
-	key := &domain.ApiKey{
+	key := &domain.APIKey{
 		ID:                uuid.New().String(),
 		TokenHash:         "hash-1",
 		Name:              "Initial Key",
@@ -51,7 +52,7 @@ func TestAPIKeyRepositories(t *testing.T) {
 	require.NotNil(t, gotKey)
 	assert.Equal(t, "Initial Key", gotKey.Name)
 
-	tokens, err := tokenRepo.ListByApiKeyID(ctx, key.ID)
+	tokens, err := tokenRepo.ListByAPIKeyID(ctx, key.ID)
 	require.NoError(t, err)
 	require.Len(t, tokens, 1)
 	assert.Equal(t, domain.TokenStatusActive, tokens[0].Status)
@@ -73,9 +74,9 @@ func TestAPIKeyRepositories(t *testing.T) {
 	assert.WithinDuration(t, expiresAt, *gotKey.ExpiresAt, time.Second)
 
 	graceUntil := time.Now().UTC().Add(time.Hour).Truncate(time.Second)
-	rotatedToken := &domain.ApiKeyToken{
+	rotatedToken := &domain.APIKeyToken{
 		ID:        uuid.New().String(),
-		ApiKeyID:  key.ID,
+		APIKeyID:  key.ID,
 		TokenHash: "hash-2",
 		Status:    domain.TokenStatusActive,
 		CreatedAt: time.Now().UTC(),
@@ -88,12 +89,12 @@ func TestAPIKeyRepositories(t *testing.T) {
 	require.NotNil(t, gotKey)
 	assert.Equal(t, key.ID, gotKey.ID)
 
-	tokens, err = tokenRepo.ListByApiKeyID(ctx, key.ID)
+	tokens, err = tokenRepo.ListByAPIKeyID(ctx, key.ID)
 	require.NoError(t, err)
 	require.Len(t, tokens, 2)
 
-	var activeToken *domain.ApiKeyToken
-	var graceToken *domain.ApiKeyToken
+	var activeToken *domain.APIKeyToken
+	var graceToken *domain.APIKeyToken
 	for i := range tokens {
 		token := tokens[i]
 		switch token.ID {
@@ -118,7 +119,7 @@ func TestAPIKeyRepositories(t *testing.T) {
 	require.NotNil(t, gotKey)
 	assert.False(t, gotKey.IsActive)
 
-	tokens, err = tokenRepo.ListByApiKeyID(ctx, key.ID)
+	tokens, err = tokenRepo.ListByAPIKeyID(ctx, key.ID)
 	require.NoError(t, err)
 	require.Len(t, tokens, 2)
 	for _, token := range tokens {

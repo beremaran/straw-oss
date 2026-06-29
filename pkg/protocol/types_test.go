@@ -8,13 +8,13 @@ import (
 
 func TestRequest_JSONRoundTrip(t *testing.T) {
 	req := &Request{
-		ID:          "req-12345",
-		Method:      "POST",
+		ID:          testReqIDLong,
+		Method:      testMethodPost,
 		URL:         "https://example.com/api/data",
-		Headers:     HeaderMap{{Key: "Content-Type", Value: "application/json"}},
+		Headers:     HeaderMap{{Key: testContentType, Value: testJSONContentType}},
 		Body:        []byte(`{"foo":"bar"}`),
 		Timeout:     30 * time.Second,
-		Fingerprint: "chrome-130",
+		Fingerprint: testFingerprint,
 		SessionID:   "sess-abc",
 		TraceID:     "trace-xyz",
 	}
@@ -49,10 +49,10 @@ func TestRequest_JSONRoundTrip(t *testing.T) {
 
 func TestResponse_JSONRoundTrip(t *testing.T) {
 	resp := &Response{
-		RequestID:  "req-12345",
+		RequestID:  testReqIDLong,
 		StatusCode: 200,
 		Headers: HeaderMap{
-			{Key: "Content-Type", Value: "application/json"},
+			{Key: testContentType, Value: testJSONContentType},
 			{Key: "X-Request-Id", Value: "abc123"},
 		},
 		Body:       []byte(`{"result":"success"}`),
@@ -91,7 +91,7 @@ func TestResponse_JSONRoundTrip(t *testing.T) {
 
 func TestResponse_WithError(t *testing.T) {
 	resp := &Response{
-		RequestID:  "req-12345",
+		RequestID:  testReqIDLong,
 		StatusCode: 403,
 		Error: &ErrorInfo{
 			Code:       ErrCodeAuthForbidden,
@@ -122,19 +122,19 @@ func TestResponse_WithError(t *testing.T) {
 
 func TestHeaderMap_Get(t *testing.T) {
 	headers := HeaderMap{
-		{Key: "Content-Type", Value: "application/json"},
-		{Key: "X-Custom-Header", Value: "custom-value"},
+		{Key: testContentType, Value: testJSONContentType},
+		{Key: "X-Custom-Header", Value: testCustomValue},
 	}
 
 	tests := []struct {
 		key      string
 		expected string
 	}{
-		{"Content-Type", "application/json"},
-		{"content-type", "application/json"},
-		{"CONTENT-TYPE", "application/json"},
-		{"X-Custom-Header", "custom-value"},
-		{"x-custom-header", "custom-value"},
+		{testContentType, testJSONContentType},
+		{"content-type", testJSONContentType},
+		{"CONTENT-TYPE", testJSONContentType},
+		{"X-Custom-Header", testCustomValue},
+		{"x-custom-header", testCustomValue},
 		{"NonExistent", ""},
 	}
 
@@ -150,11 +150,11 @@ func TestHeaderMap_Get(t *testing.T) {
 
 func TestHeaderMap_Set(t *testing.T) {
 	headers := HeaderMap{
-		{Key: "Content-Type", Value: "text/html"},
+		{Key: testContentType, Value: "text/html"},
 	}
 
-	headers.Set("Content-Type", "application/json")
-	if headers.Get("Content-Type") != "application/json" {
+	headers.Set(testContentType, testJSONContentType)
+	if headers.Get(testContentType) != testJSONContentType {
 		t.Error("Set did not update existing header")
 	}
 
@@ -170,7 +170,7 @@ func TestHeaderMap_Set(t *testing.T) {
 
 func TestHeaderMap_Del(t *testing.T) {
 	headers := HeaderMap{
-		{Key: "Content-Type", Value: "application/json"},
+		{Key: testContentType, Value: testJSONContentType},
 		{Key: "X-To-Delete", Value: "delete-me"},
 		{Key: "X-Keep", Value: "keep-me"},
 	}
@@ -180,7 +180,7 @@ func TestHeaderMap_Del(t *testing.T) {
 	if headers.Get("X-To-Delete") != "" {
 		t.Error("Del did not remove header")
 	}
-	if headers.Get("Content-Type") != "application/json" {
+	if headers.Get(testContentType) != testJSONContentType {
 		t.Error("Del removed wrong header")
 	}
 	if headers.Get("X-Keep") != "keep-me" {
@@ -193,15 +193,15 @@ func TestHeaderMap_Del(t *testing.T) {
 
 func TestHeaderMap_Clone(t *testing.T) {
 	original := HeaderMap{
-		{Key: "Content-Type", Value: "application/json"},
+		{Key: testContentType, Value: testJSONContentType},
 	}
 
 	clone := original.Clone()
 
-	clone.Set("Content-Type", "text/html")
+	clone.Set(testContentType, "text/html")
 	clone.Set("X-New", "new")
 
-	if original.Get("Content-Type") != "application/json" {
+	if original.Get(testContentType) != testJSONContentType {
 		t.Error("Clone modified original")
 	}
 	if len(original) != 1 {
@@ -253,16 +253,16 @@ func TestHeaderMap_UnmarshalJSON_ObjectFormat(t *testing.T) {
 			name: "simple object with string values",
 			json: `{"User-Agent": "k6-load-test", "Accept": "application/json"}`,
 			expected: HeaderMap{
-				{Key: "User-Agent", Value: "k6-load-test"},
-				{Key: "Accept", Value: "application/json"},
+				{Key: testUserAgent, Value: testK6UserAgent},
+				{Key: testAccept, Value: testJSONContentType},
 			},
 		},
 		{
 			name: "object with array values (joined)",
 			json: `{"User-Agent": ["k6-load-test"], "Accept": ["application/json", "text/html"]}`,
 			expected: HeaderMap{
-				{Key: "User-Agent", Value: "k6-load-test"},
-				{Key: "Accept", Value: "application/json, text/html"},
+				{Key: testUserAgent, Value: testK6UserAgent},
+				{Key: testAccept, Value: "application/json, text/html"},
 			},
 		},
 		{
@@ -274,8 +274,8 @@ func TestHeaderMap_UnmarshalJSON_ObjectFormat(t *testing.T) {
 			name: "mixed string and array values",
 			json: `{"User-Agent": "test", "Accept": ["json", "xml"]}`,
 			expected: HeaderMap{
-				{Key: "User-Agent", Value: "test"},
-				{Key: "Accept", Value: "json, xml"},
+				{Key: testUserAgent, Value: "test"},
+				{Key: testAccept, Value: "json, xml"},
 			},
 		},
 	}
@@ -312,8 +312,8 @@ func TestHeaderMap_UnmarshalJSON_ObjectFormat(t *testing.T) {
 func TestHeaderMap_UnmarshalJSON_ArrayFormat(t *testing.T) {
 	jsonData := `[{"key": "User-Agent", "value": "k6-load-test"}, {"key": "Accept", "value": "application/json"}]`
 	expected := HeaderMap{
-		{Key: "User-Agent", Value: "k6-load-test"},
-		{Key: "Accept", Value: "application/json"},
+		{Key: testUserAgent, Value: testK6UserAgent},
+		{Key: testAccept, Value: testJSONContentType},
 	}
 
 	var headers HeaderMap
@@ -370,11 +370,11 @@ func TestRequest_UnmarshalJSON_LoadTestFormat(t *testing.T) {
 		t.Errorf("expected 2 headers, got %d", len(req.Headers))
 	}
 
-	if req.Headers[0].Key != "User-Agent" || req.Headers[0].Value != "k6-load-test" {
+	if req.Headers[0].Key != testUserAgent || req.Headers[0].Value != testK6UserAgent {
 		t.Errorf("first header mismatch: got %v", req.Headers[0])
 	}
 
-	if req.Headers[1].Key != "Accept" || req.Headers[1].Value != "application/json" {
+	if req.Headers[1].Key != testAccept || req.Headers[1].Value != testJSONContentType {
 		t.Errorf("second header mismatch: got %v", req.Headers[1])
 	}
 }

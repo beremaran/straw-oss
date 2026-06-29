@@ -27,6 +27,8 @@ Use standard Go formatting: tabs via `gofmt`, short lowercase package names, `Ca
 - Strictly must not add `//nolint:...` comments; fix the lint issue instead.
 - Strictly forbidden to modify `.golangci.yml`.
 - Strictly must fix every linter error; never dismiss failures as pre-existing.
+- Strictly forbidden to use `// #nosec` or any `#nosec` comments to disable security linters or checks.
+- Don't be a stupid bitch. If you are running the linter for a module or file, make sure you are running it with `--max-issues-per-linter 0 --max-same-issues 0` flags to see all issues at once.
 
 ## Testing Guidelines
 

@@ -1,3 +1,4 @@
+// Package filter provides request filtering capabilities including ADBlock Plus list matching.
 package filter
 
 import (
@@ -12,24 +13,38 @@ import (
 	"sync"
 	"time"
 
-	"github.com/beremaran/straw/internal/infra/redis"
 	"github.com/pmezard/adblock/adblock"
+
+	"github.com/beremaran/straw/internal/infra/redis"
 )
 
+// ErrUnexpectedListStatusCode is returned when a filter list URL responds with a non-200 status code.
 var ErrUnexpectedListStatusCode = errors.New("unexpected status code for list")
 
 const (
-	EasyListURL      = "https://easylist.to/easylist/easylist.txt"
-	EasyPrivacyURL   = "https://easylist.to/easylist/easyprivacy.txt"
+	// DefaultUpdateInterval is the default interval for auto-updating filter lists.
+	DefaultUpdateInterval = 24 * time.Hour
+	// DefaultHTTPTimeout is the default HTTP client timeout for fetching filter lists.
+	DefaultHTTPTimeout = 30 * time.Second
+	// DefaultCacheTTL is the default TTL for cached filter lists in Redis.
+	DefaultCacheTTL = 25 * time.Hour
+
+	// EasyListURL is the URL for the EasyList filter list.
+	EasyListURL = "https://easylist.to/easylist/easylist.txt"
+	// EasyPrivacyURL is the URL for the EasyPrivacy filter list.
+	EasyPrivacyURL = "https://easylist.to/easylist/easyprivacy.txt"
+	// UBlockFiltersURL is the URL for the uBlock Origin filters list.
 	UBlockFiltersURL = "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/filters.txt"
 )
 
+// DefaultLists maps list names to their download URLs.
 var DefaultLists = map[string]string{
 	"easylist":    EasyListURL,
 	"easyprivacy": EasyPrivacyURL,
 	"ublock":      UBlockFiltersURL,
 }
 
+// ABPMatcher applies ADBlock Plus filter lists to determine if requests should be blocked.
 type ABPMatcher struct {
 	matchers       map[string]*adblock.RuleMatcher
 	redis          *redis.Client
@@ -39,24 +54,28 @@ type ABPMatcher struct {
 	stopChan       chan struct{}
 }
 
+// ABPMatcherConfig configures the behavior of ABPMatcher.
 type ABPMatcherConfig struct {
 	UpdateInterval time.Duration
 	HTTPTimeout    time.Duration
 }
 
+// DefaultABPMatcherConfig returns a configuration with sensible defaults.
 func DefaultABPMatcherConfig() ABPMatcherConfig {
 	return ABPMatcherConfig{
-		UpdateInterval: 24 * time.Hour,
-		HTTPTimeout:    30 * time.Second,
+		UpdateInterval: DefaultUpdateInterval,
+		HTTPTimeout:    DefaultHTTPTimeout,
 	}
 }
 
+// NewABPMatcher creates a new ABPMatcher with the given configuration.
 func NewABPMatcher(redisClient *redis.Client, config ABPMatcherConfig) *ABPMatcher {
 	if config.UpdateInterval == 0 {
-		config.UpdateInterval = 24 * time.Hour
+		config.UpdateInterval = DefaultUpdateInterval
 	}
+
 	if config.HTTPTimeout == 0 {
-		config.HTTPTimeout = 30 * time.Second
+		config.HTTPTimeout = DefaultHTTPTimeout
 	}
 
 	return &ABPMatcher{
@@ -70,6 +89,7 @@ func NewABPMatcher(redisClient *redis.Client, config ABPMatcherConfig) *ABPMatch
 	}
 }
 
+// LoadDefaultLists downloads and parses all default filter lists.
 func (m *ABPMatcher) LoadDefaultLists(ctx context.Context) error {
 	for name, url := range DefaultLists {
 		err := m.LoadList(ctx, name, url)
@@ -81,8 +101,9 @@ func (m *ABPMatcher) LoadDefaultLists(ctx context.Context) error {
 	return nil
 }
 
+// LoadList downloads and parses a filter list from the given URL.
 func (m *ABPMatcher) LoadList(ctx context.Context, listName string, listURL string) error {
-	cacheKey := fmt.Sprintf("abp:list:%s", listName)
+	cacheKey := "abp:list:" + listName
 	if m.redis != nil {
 		cached, err := m.redis.Client.Get(ctx, cacheKey).Result()
 		if err == nil && cached != "" {
@@ -114,12 +135,13 @@ func (m *ABPMatcher) LoadList(ctx context.Context, listName string, listURL stri
 	}
 
 	if m.redis != nil {
-		_ = m.redis.Client.Set(ctx, cacheKey, string(body), 25*time.Hour).Err()
+		_ = m.redis.Client.Set(ctx, cacheKey, string(body), DefaultCacheTTL).Err()
 	}
 
 	return m.parseAndStore(listName, strings.NewReader(string(body)))
 }
 
+// Match checks if the given URL is blocked by any of the specified filter lists.
 func (m *ABPMatcher) Match(url string, lists []string) (bool, string) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -144,6 +166,7 @@ func (m *ABPMatcher) Match(url string, lists []string) (bool, string) {
 	return false, ""
 }
 
+// StartAutoUpdate begins periodic refreshing of all default filter lists.
 func (m *ABPMatcher) StartAutoUpdate(ctx context.Context) {
 	go func() {
 		ticker := time.NewTicker(m.updateInterval)
@@ -156,7 +179,6 @@ func (m *ABPMatcher) StartAutoUpdate(ctx context.Context) {
 			case <-m.stopChan:
 				return
 			case <-ticker.C:
-
 				for name, url := range DefaultLists {
 					_ = m.LoadList(ctx, name, url)
 				}
@@ -165,13 +187,16 @@ func (m *ABPMatcher) StartAutoUpdate(ctx context.Context) {
 	}()
 }
 
+// Stop signals the auto-update goroutine to terminate.
 func (m *ABPMatcher) Stop() {
 	close(m.stopChan)
 }
 
+// HasList reports whether the given filter list has been loaded.
 func (m *ABPMatcher) HasList(listName string) bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+
 	_, ok := m.matchers[listName]
 
 	return ok
@@ -182,6 +207,7 @@ func extractDomain(rawURL string) string {
 	if !strings.Contains(rawURL, "://") && !strings.HasPrefix(rawURL, "//") {
 		uStr = "http://" + rawURL
 	}
+
 	u, err := url.Parse(uStr)
 	if err != nil {
 		return rawURL

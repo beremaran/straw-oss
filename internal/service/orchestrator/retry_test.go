@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -12,6 +13,12 @@ import (
 	"github.com/beremaran/straw/internal/domain"
 	"github.com/beremaran/straw/pkg/broker"
 	"github.com/beremaran/straw/pkg/protocol"
+)
+
+const (
+	testRequestIDRetry   = "test-123"
+	testEndpointIDRetry1 = "ep-1"
+	testEndpointIDRetry2 = "ep-2"
 )
 
 type retryMockBroker struct {
@@ -45,16 +52,16 @@ func (m *retryMockBroker) Publish(ctx context.Context, subject string, body []by
 	return nil
 }
 
-func (m *retryMockBroker) Subscribe(ctx context.Context, subject string, handler broker.Handler, opts ...broker.SubscribeOption) error {
+func (m *retryMockBroker) Subscribe(_ context.Context, _ string, _ broker.Handler, _ ...broker.SubscribeOption) error {
 	return nil
 }
 
-func (m *retryMockBroker) ConsumeOnce(ctx context.Context, subject string, timeout time.Duration) ([]byte, error) {
+func (m *retryMockBroker) ConsumeOnce(_ context.Context, _ string, _ time.Duration) ([]byte, error) {
 	return nil, errors.New("not implemented")
 }
 
 func (m *retryMockBroker) Close() error { return nil }
-func (m *retryMockBroker) DeclareStream(ctx context.Context, name string, subjects ...string) error {
+func (m *retryMockBroker) DeclareStream(_ context.Context, _ string, _ ...string) error {
 	return nil
 }
 
@@ -74,20 +81,13 @@ func newMockPoolManager() *mockPoolManager {
 	}
 }
 
-func (m *mockPoolManager) GetEndpointFromPool(ctx context.Context, rule *domain.RoutingRule, poolTier int, exclude []string) (string, error) {
+func (m *mockPoolManager) GetEndpointFromPool(_ context.Context, _ *domain.RoutingRule, poolTier int, exclude []string) (string, error) {
 	endpoints, ok := m.endpoints[poolTier]
 	if !ok || len(endpoints) == 0 {
 		return "", errors.New("no endpoints in pool")
 	}
 	for _, ep := range endpoints {
-		excluded := false
-		for _, ex := range exclude {
-			if ep == ex {
-				excluded = true
-
-				break
-			}
-		}
+		excluded := slices.Contains(exclude, ep)
 		if !excluded {
 			return ep, nil
 		}
@@ -96,7 +96,7 @@ func (m *mockPoolManager) GetEndpointFromPool(ctx context.Context, rule *domain.
 	return "", errors.New("all endpoints excluded")
 }
 
-func (m *mockPoolManager) GetPoolConfig(rule *domain.RoutingRule, poolTier int) *domain.EndpointPool {
+func (m *mockPoolManager) GetPoolConfig(_ *domain.RoutingRule, poolTier int) *domain.EndpointPool {
 	return m.poolConfigs[poolTier]
 }
 
@@ -200,11 +200,11 @@ func TestRetryExecutor_getFailureMessage(t *testing.T) {
 	t.Run("with error info", func(t *testing.T) {
 		result := &ResultMessage{
 			Error: &protocol.ErrorInfo{
-				Message: "connection refused",
+				Message: errConnectionRefused,
 			},
 		}
 		msg := executor.getFailureMessage(result)
-		if msg != "connection refused" {
+		if msg != errConnectionRefused {
 			t.Errorf("expected 'connection refused', got %q", msg)
 		}
 	})
@@ -225,7 +225,7 @@ func TestRetryExecutor_parseResult(t *testing.T) {
 
 	t.Run("valid result", func(t *testing.T) {
 		result := ResultMessage{
-			RequestID:  "test-123",
+			RequestID:  testRequestIDRetry,
 			StatusCode: 200,
 		}
 		body, _ := json.Marshal(result)
@@ -233,7 +233,7 @@ func TestRetryExecutor_parseResult(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if parsed.RequestID != "test-123" {
+		if parsed.RequestID != testRequestIDRetry {
 			t.Errorf("expected request ID 'test-123', got %q", parsed.RequestID)
 		}
 	})
@@ -255,10 +255,10 @@ func TestRetryResult(t *testing.T) {
 			{
 				Pool:          1,
 				Attempt:       1,
-				EndpointID:    "ep-1",
+				EndpointID:    testEndpointIDRetry1,
 				Failure:       FailureTimeout,
-				FailureString: "timeout",
-				Message:       "request timed out",
+				FailureString: testFailureTimeoutStr,
+				Message:       testRequestTimedOut,
 			},
 		},
 	}
@@ -284,7 +284,7 @@ func TestAttemptError(t *testing.T) {
 	err := AttemptError{
 		Pool:          2,
 		Attempt:       3,
-		EndpointID:    "ep-2",
+		EndpointID:    testEndpointIDRetry2,
 		Failure:       FailureConnection,
 		FailureString: "connection",
 		Message:       "connection reset",
@@ -299,7 +299,7 @@ func TestAttemptError(t *testing.T) {
 		t.Errorf("expected attempt 3, got %d", err.Attempt)
 	}
 
-	if err.EndpointID != "ep-2" {
+	if err.EndpointID != testEndpointIDRetry2 {
 		t.Errorf("expected endpoint ID 'ep-2', got %q", err.EndpointID)
 	}
 

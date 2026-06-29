@@ -6,23 +6,27 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/beremaran/straw/internal/domain"
 	"github.com/beremaran/straw/internal/server/admin/middleware"
 	"github.com/beremaran/straw/internal/server/dto"
 	"github.com/beremaran/straw/internal/server/helper"
-	"github.com/google/uuid"
 )
 
+// RuleVersionManager handles routing rule version management.
 type RuleVersionManager interface {
 	IncrementRulesVersion(ctx context.Context) (int64, error)
 }
 
+// RoutingRuleHandler manages routing rule operations.
 type RoutingRuleHandler struct {
 	repo       domain.RoutingRuleRepository
 	versionMgr RuleVersionManager
 	auditRepo  domain.ManagementAuditRepository
 }
 
+// NewRoutingRuleHandler creates a new RoutingRuleHandler.
 func NewRoutingRuleHandler(repo domain.RoutingRuleRepository, versionMgr RuleVersionManager, auditRepo domain.ManagementAuditRepository) *RoutingRuleHandler {
 	return &RoutingRuleHandler{
 		repo:       repo,
@@ -31,15 +35,18 @@ func NewRoutingRuleHandler(repo domain.RoutingRuleRepository, versionMgr RuleVer
 	}
 }
 
+// HandleListRoutingRules lists all routing rules.
 func (h *RoutingRuleHandler) HandleListRoutingRules(w http.ResponseWriter, r *http.Request) {
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	if page < 1 {
 		page = 1
 	}
+
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	if limit < 1 || limit > 100 {
 		limit = 20
 	}
+
 	offset := (page - 1) * limit
 
 	rules, total, err := h.repo.ListRules(r.Context(), limit, offset)
@@ -57,6 +64,7 @@ func (h *RoutingRuleHandler) HandleListRoutingRules(w http.ResponseWriter, r *ht
 	})
 }
 
+// HandleGetRoutingRule retrieves a single routing rule.
 func (h *RoutingRuleHandler) HandleGetRoutingRule(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if id == "" {
@@ -71,6 +79,7 @@ func (h *RoutingRuleHandler) HandleGetRoutingRule(w http.ResponseWriter, r *http
 
 		return
 	}
+
 	if rule == nil {
 		helper.WriteError(w, http.StatusNotFound, "routing rule not found")
 
@@ -80,8 +89,10 @@ func (h *RoutingRuleHandler) HandleGetRoutingRule(w http.ResponseWriter, r *http
 	helper.WriteJSON(w, http.StatusOK, dto.FromRoutingRule(rule))
 }
 
+// HandleCreateRoutingRule creates a new routing rule.
 func (h *RoutingRuleHandler) HandleCreateRoutingRule(w http.ResponseWriter, r *http.Request) {
 	var req dto.CreateRoutingRuleRequest
+
 	err := helper.ReadJSON(r, &req)
 	if err != nil {
 		helper.WriteError(w, http.StatusBadRequest, "invalid request body")
@@ -125,6 +136,7 @@ func (h *RoutingRuleHandler) HandleCreateRoutingRule(w http.ResponseWriter, r *h
 	helper.WriteJSON(w, http.StatusCreated, ruleResp)
 }
 
+// HandleUpdateRoutingRule updates a routing rule.
 func (h *RoutingRuleHandler) HandleUpdateRoutingRule(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if id == "" {
@@ -134,6 +146,7 @@ func (h *RoutingRuleHandler) HandleUpdateRoutingRule(w http.ResponseWriter, r *h
 	}
 
 	var req dto.UpdateRoutingRuleRequest
+
 	err := helper.ReadJSON(r, &req)
 	if err != nil {
 		helper.WriteError(w, http.StatusBadRequest, "invalid request body")
@@ -164,11 +177,13 @@ func (h *RoutingRuleHandler) HandleUpdateRoutingRule(w http.ResponseWriter, r *h
 	_, _ = h.versionMgr.IncrementRulesVersion(r.Context())
 
 	ruleResp := dto.FromRoutingRule(rule)
+
 	if h.auditRepo != nil {
-		var oldVal interface{}
+		var oldVal any
 		if oldRule != nil {
 			oldVal = dto.FromRoutingRule(oldRule)
 		}
+
 		event := middleware.NewAuditEvent(r, domain.ActionUpdate, "routing_rule", rule.ID, oldVal, ruleResp)
 		_ = h.auditRepo.Create(r.Context(), event)
 	}
@@ -176,6 +191,7 @@ func (h *RoutingRuleHandler) HandleUpdateRoutingRule(w http.ResponseWriter, r *h
 	helper.WriteJSON(w, http.StatusOK, ruleResp)
 }
 
+// HandleDeleteRoutingRule deletes a routing rule.
 func (h *RoutingRuleHandler) HandleDeleteRoutingRule(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if id == "" {
@@ -196,10 +212,11 @@ func (h *RoutingRuleHandler) HandleDeleteRoutingRule(w http.ResponseWriter, r *h
 	_, _ = h.versionMgr.IncrementRulesVersion(r.Context())
 
 	if h.auditRepo != nil {
-		var oldVal interface{}
+		var oldVal any
 		if oldRule != nil {
 			oldVal = dto.FromRoutingRule(oldRule)
 		}
+
 		event := middleware.NewAuditEvent(r, domain.ActionDelete, "routing_rule", id, oldVal, nil)
 		_ = h.auditRepo.Create(r.Context(), event)
 	}

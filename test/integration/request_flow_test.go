@@ -8,6 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/beremaran/straw/internal/config"
 	"github.com/beremaran/straw/internal/infra/circuitbreaker"
 	"github.com/beremaran/straw/internal/infra/postgres"
@@ -22,8 +25,6 @@ import (
 	"github.com/beremaran/straw/internal/service/session"
 	"github.com/beremaran/straw/pkg/broker"
 	"github.com/beremaran/straw/pkg/protocol"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 const testHMACSecret = "test-hmac-secret-for-integration-tests"
@@ -72,8 +73,8 @@ func setupTestServer(t *testing.T, suite *TestSuite) *testServerContext {
 	postgresClient, err := postgres.NewClient(ctx, suite.PostgresDSN(), nil)
 	require.NoError(t, err, "failed to create postgres client")
 
-	apiKeyRepo := postgres.NewApiKeyRepository(postgresClient)
-	apiKeyTokenRepo := postgres.NewApiKeyTokenRepository(postgresClient)
+	apiKeyRepo := postgres.NewAPIKeyRepository(postgresClient)
+	apiKeyTokenRepo := postgres.NewAPIKeyTokenRepository(postgresClient)
 	ruleRepo := postgres.NewRoutingRuleRepository(postgresClient)
 
 	keyCache := auth.NewAuthCache(redisClient, 5*time.Minute)
@@ -104,8 +105,8 @@ func setupTestServer(t *testing.T, suite *TestSuite) *testServerContext {
 
 	serverConfig := config.ServerConfig{
 		Observability: config.ObservabilityConfig{
-			LogLevel:  "debug",
-			LogFormat: "json",
+			LogLevel:  testLogLevel,
+			LogFormat: testLogFormat,
 		},
 		Security: config.SecurityConfig{
 			HMACSecret: testHMACSecret,
@@ -131,10 +132,10 @@ func setupTestServer(t *testing.T, suite *TestSuite) *testServerContext {
 	mockTarget := NewMockTargetServer()
 
 	mockEndpoint := NewMockEndpoint(broker, MockEndpointConfig{
-		EndpointID: "test-endpoint-1",
+		EndpointID: testEndpointID,
 		Secret:     []byte(testHMACSecret),
 		TargetURL:  mockTarget.URL(),
-		Tags:       []string{"type:test"},
+		Tags:       []string{testTagTest},
 	})
 
 	tc := &testServerContext{
@@ -187,8 +188,8 @@ func TestRequestFlow_BasicRequest(t *testing.T) {
 	require.NoError(t, err, "failed to create API key")
 
 	err = CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{
-		ID:        "test-endpoint-1",
-		Tags:      []string{"type:test"},
+		ID:        testEndpointID,
+		Tags:      []string{testTagTest},
 		IsHealthy: true,
 	})
 	require.NoError(t, err, "failed to create endpoint")
@@ -205,7 +206,7 @@ func TestRequestFlow_BasicRequest(t *testing.T) {
 		0,
 		"chrome-133",
 		[]TestEndpointPool{
-			{Tier: 1, Endpoints: []string{"test-endpoint-1"}, MaxRetries: 2},
+			{Tier: 1, Endpoints: []string{testEndpointID}, MaxRetries: 2},
 		},
 	)
 	require.NoError(t, err, "failed to create routing rule")
@@ -214,18 +215,18 @@ func TestRequestFlow_BasicRequest(t *testing.T) {
 
 	err = tc.MockEndpoint.Start(ctx)
 	require.NoError(t, err, "failed to start mock endpoint")
-	require.NoError(t, tc.WaitForEndpoint(ctx, "test-endpoint-1"), "failed to wait for endpoint health")
+	require.NoError(t, tc.WaitForEndpoint(ctx, testEndpointID), "failed to wait for endpoint health")
 
 	tc.MockTarget.SetDefaultResponse(MockTargetConfig{
 		StatusCode: http.StatusOK,
-		Headers:    map[string]string{"Content-Type": "text/plain"},
+		Headers:    map[string]string{testHTTPHeaderContentType: textPlain},
 		Body:       []byte("Hello from target!"),
 	})
 
 	client := NewHTTPTestClient(tc.ServerURL, apiKey.RawKey)
 	resp, err := client.SendRequest(ctx, &ProxyRequest{
 		URL:    tc.MockTarget.URL() + "/test",
-		Method: "GET",
+		Method: httpGet,
 	})
 	require.NoError(t, err, "proxy request failed")
 
@@ -254,8 +255,8 @@ func TestRequestFlow_WithTags(t *testing.T) {
 	require.NoError(t, err)
 
 	err = CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{
-		ID:        "test-endpoint-1",
-		Tags:      []string{"type:test", "target:amazon"},
+		ID:        testEndpointID,
+		Tags:      []string{testTagTest, testTargetAmazon},
 		IsHealthy: true,
 	})
 	require.NoError(t, err)
@@ -265,14 +266,14 @@ func TestRequestFlow_WithTags(t *testing.T) {
 		suite.PostgresDSN(),
 		"Amazon Rule",
 		200,
-		[]string{"target:amazon"},
+		[]string{testTargetAmazon},
 		[]string{},
 		"amazon",
 		0,
 		0,
 		"chrome-133",
 		[]TestEndpointPool{
-			{Tier: 1, Endpoints: []string{"test-endpoint-1"}, MaxRetries: 2},
+			{Tier: 1, Endpoints: []string{testEndpointID}, MaxRetries: 2},
 		},
 	)
 	require.NoError(t, err)
@@ -289,7 +290,7 @@ func TestRequestFlow_WithTags(t *testing.T) {
 		0,
 		"firefox-130",
 		[]TestEndpointPool{
-			{Tier: 1, Endpoints: []string{"test-endpoint-1"}, MaxRetries: 2},
+			{Tier: 1, Endpoints: []string{testEndpointID}, MaxRetries: 2},
 		},
 	)
 	require.NoError(t, err)
@@ -297,15 +298,15 @@ func TestRequestFlow_WithTags(t *testing.T) {
 	require.NoError(t, tc.Server.GetMatcher().LoadRules(ctx))
 
 	tc.ReplaceMockEndpoint(NewMockEndpoint(tc.Broker, MockEndpointConfig{
-		EndpointID: "test-endpoint-1",
+		EndpointID: testEndpointID,
 		Secret:     []byte(testHMACSecret),
 		TargetURL:  tc.MockTarget.URL(),
-		Tags:       []string{"type:test", "target:amazon"},
+		Tags:       []string{testTagTest, testTargetAmazon},
 	}))
 
 	err = tc.MockEndpoint.Start(ctx)
 	require.NoError(t, err)
-	require.NoError(t, tc.WaitForEndpoint(ctx, "test-endpoint-1"))
+	require.NoError(t, tc.WaitForEndpoint(ctx, testEndpointID))
 
 	tc.MockTarget.SetDefaultResponse(MockTargetConfig{
 		StatusCode: http.StatusOK,
@@ -315,8 +316,8 @@ func TestRequestFlow_WithTags(t *testing.T) {
 	client := NewHTTPTestClient(tc.ServerURL, apiKey.RawKey)
 	resp, err := client.SendRequest(ctx, &ProxyRequest{
 		URL:    tc.MockTarget.URL() + "/product",
-		Method: "GET",
-		Tags:   []string{"target:amazon"},
+		Method: httpGet,
+		Tags:   []string{testTargetAmazon},
 	})
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
@@ -350,8 +351,8 @@ func TestRequestFlow_WithSession(t *testing.T) {
 	require.NoError(t, err)
 
 	err = CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{
-		ID:        "test-endpoint-1",
-		Tags:      []string{"type:test"},
+		ID:        testEndpointID,
+		Tags:      []string{testTagTest},
 		IsHealthy: true,
 	})
 	require.NoError(t, err)
@@ -368,7 +369,7 @@ func TestRequestFlow_WithSession(t *testing.T) {
 		0,
 		"",
 		[]TestEndpointPool{
-			{Tier: 1, Endpoints: []string{"test-endpoint-1"}, MaxRetries: 2},
+			{Tier: 1, Endpoints: []string{testEndpointID}, MaxRetries: 2},
 		},
 	)
 	require.NoError(t, err)
@@ -377,7 +378,7 @@ func TestRequestFlow_WithSession(t *testing.T) {
 
 	err = tc.MockEndpoint.Start(ctx)
 	require.NoError(t, err)
-	require.NoError(t, tc.WaitForEndpoint(ctx, "test-endpoint-1"))
+	require.NoError(t, tc.WaitForEndpoint(ctx, testEndpointID))
 
 	tc.MockTarget.SetDefaultResponse(MockTargetConfig{
 		StatusCode: http.StatusOK,
@@ -419,8 +420,8 @@ func TestRequestFlow_RateLimitExceeded(t *testing.T) {
 	require.NoError(t, err)
 
 	err = CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{
-		ID:        "test-endpoint-1",
-		Tags:      []string{"type:test"},
+		ID:        testEndpointID,
+		Tags:      []string{testTagTest},
 		IsHealthy: true,
 	})
 	require.NoError(t, err)
@@ -437,7 +438,7 @@ func TestRequestFlow_RateLimitExceeded(t *testing.T) {
 		0,
 		"",
 		[]TestEndpointPool{
-			{Tier: 1, Endpoints: []string{"test-endpoint-1"}, MaxRetries: 2},
+			{Tier: 1, Endpoints: []string{testEndpointID}, MaxRetries: 2},
 		},
 	)
 	require.NoError(t, err)
@@ -446,7 +447,7 @@ func TestRequestFlow_RateLimitExceeded(t *testing.T) {
 
 	err = tc.MockEndpoint.Start(ctx)
 	require.NoError(t, err)
-	require.NoError(t, tc.WaitForEndpoint(ctx, "test-endpoint-1"))
+	require.NoError(t, tc.WaitForEndpoint(ctx, testEndpointID))
 
 	tc.MockTarget.SetDefaultResponse(MockTargetConfig{
 		StatusCode: http.StatusOK,
@@ -457,16 +458,16 @@ func TestRequestFlow_RateLimitExceeded(t *testing.T) {
 
 	resp1, err := client.SendRequest(ctx, &ProxyRequest{
 		URL:    tc.MockTarget.URL() + "/api",
-		Method: "GET",
+		Method: httpGet,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp1.StatusCode, "first request should succeed")
 
 	var resp2 *ProxyResponse
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		resp, err := client.SendRequest(ctx, &ProxyRequest{
 			URL:    tc.MockTarget.URL() + "/api",
-			Method: "GET",
+			Method: httpGet,
 		})
 		require.NoError(t, err)
 		if resp.StatusCode == http.StatusTooManyRequests {
@@ -486,7 +487,7 @@ func TestRequestFlow_RateLimitExceeded(t *testing.T) {
 	time.Sleep(1100 * time.Millisecond)
 	resp3, err := client.SendRequest(ctx, &ProxyRequest{
 		URL:    tc.MockTarget.URL() + "/api",
-		Method: "GET",
+		Method: httpGet,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp3.StatusCode, "request after waiting should succeed")
@@ -503,15 +504,15 @@ func TestRequestFlow_RetryFallback(t *testing.T) {
 	require.NoError(t, err)
 
 	err = CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{
-		ID:        "primary-endpoint",
-		Tags:      []string{"type:primary"},
+		ID:        testEndpointPrimary,
+		Tags:      []string{testTagPrimary},
 		IsHealthy: true,
 	})
 	require.NoError(t, err)
 
 	err = CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{
-		ID:        "fallback-endpoint",
-		Tags:      []string{"type:fallback"},
+		ID:        testEndpointFallback,
+		Tags:      []string{testTagFallback},
 		IsHealthy: true,
 	})
 	require.NoError(t, err)
@@ -528,8 +529,8 @@ func TestRequestFlow_RetryFallback(t *testing.T) {
 		0,
 		"",
 		[]TestEndpointPool{
-			{Tier: 1, Endpoints: []string{"primary-endpoint"}, MaxRetries: 1},
-			{Tier: 2, Endpoints: []string{"fallback-endpoint"}, MaxRetries: 1},
+			{Tier: 1, Endpoints: []string{testEndpointPrimary}, MaxRetries: 1},
+			{Tier: 2, Endpoints: []string{testEndpointFallback}, MaxRetries: 1},
 		},
 	)
 	require.NoError(t, err)
@@ -537,38 +538,38 @@ func TestRequestFlow_RetryFallback(t *testing.T) {
 	require.NoError(t, tc.Server.GetMatcher().LoadRules(ctx))
 
 	primaryEndpoint := NewMockEndpoint(tc.Broker, MockEndpointConfig{
-		EndpointID: "primary-endpoint",
+		EndpointID: testEndpointPrimary,
 		Secret:     []byte(testHMACSecret),
-		Tags:       []string{"type:primary"},
+		Tags:       []string{testTagPrimary},
 	})
 	primaryEndpoint.SetFailures(2)
 	err = primaryEndpoint.Start(ctx)
 	require.NoError(t, err)
 	defer primaryEndpoint.Stop()
-	require.NoError(t, tc.WaitForEndpoint(ctx, "primary-endpoint"))
+	require.NoError(t, tc.WaitForEndpoint(ctx, testEndpointPrimary))
 
 	fallbackEndpoint := NewMockEndpoint(tc.Broker, MockEndpointConfig{
-		EndpointID: "fallback-endpoint",
+		EndpointID: testEndpointFallback,
 		Secret:     []byte(testHMACSecret),
-		Tags:       []string{"type:fallback"},
+		Tags:       []string{testTagFallback},
 	})
 	fallbackEndpoint.SetResponse(&MockEndpointResponse{
 		StatusCode: http.StatusOK,
 		Headers: protocol.HeaderMap{
-			{Key: "Content-Type", Value: "text/plain"},
+			{Key: mockContentType, Value: textPlain},
 		},
 		Body: []byte("Fallback succeeded!"),
 	})
 	err = fallbackEndpoint.Start(ctx)
 	require.NoError(t, err)
 	defer fallbackEndpoint.Stop()
-	require.NoError(t, tc.WaitForEndpoint(ctx, "fallback-endpoint"))
+	require.NoError(t, tc.WaitForEndpoint(ctx, testEndpointFallback))
 
 	client := NewHTTPTestClient(tc.ServerURL, apiKey.RawKey)
 
 	resp, err := client.SendRequest(ctx, &ProxyRequest{
 		URL:    "http://example.com/test",
-		Method: "GET",
+		Method: httpGet,
 	})
 	require.NoError(t, err)
 

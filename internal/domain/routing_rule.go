@@ -5,6 +5,7 @@ import (
 	"time"
 )
 
+// RoutingRule defines how requests are routed based on tags and other criteria.
 type RoutingRule struct {
 	ID                   string         `json:"id"`
 	Name                 string         `json:"name"`
@@ -29,21 +30,25 @@ type RoutingRule struct {
 	UpdatedAt            time.Time      `json:"updated_at"`
 }
 
+// ABConfig defines an A/B test configuration with variants.
 type ABConfig struct {
 	Variants []ABVariant `json:"variants"`
 	Strategy string      `json:"strategy"`
 }
 
+// ABVariant represents a single variant in an A/B test.
 type ABVariant struct {
 	Fingerprint string `json:"fingerprint"`
 	Weight      int    `json:"weight"`
 }
 
+// RoutingRuleReference is a lightweight reference to a routing rule.
 type RoutingRuleReference struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 }
 
+// RequestFilter defines request-level filtering rules.
 type RequestFilter struct {
 	BlockContentTypes []string `json:"block_content_types,omitempty"`
 	BlockURLPatterns  []string `json:"block_url_patterns,omitempty"`
@@ -52,12 +57,14 @@ type RequestFilter struct {
 	AdblockLists      []string `json:"adblock_lists,omitempty"`
 }
 
+// EndpointPool defines a tiered pool of endpoint IDs.
 type EndpointPool struct {
 	Tier       int      `json:"tier"`
 	Endpoints  []string `json:"endpoints"`
 	MaxRetries int      `json:"max_retries"`
 }
 
+// MatchesTags reports whether the request tags satisfy this routing rule's required and excluded tags.
 func (r *RoutingRule) MatchesTags(requestTags []Tag) bool {
 	required, err := StringsToTags(r.RequiredTags)
 	if err != nil {
@@ -72,6 +79,7 @@ func (r *RoutingRule) MatchesTags(requestTags []Tag) bool {
 	return MatchesAll(requestTags, required) && MatchesNone(requestTags, excluded)
 }
 
+// RoutingRuleRepository provides persistence operations for RoutingRule entities.
 type RoutingRuleRepository interface {
 	GetActiveRules(ctx context.Context) ([]RoutingRule, error)
 	CreateRule(ctx context.Context, rule *RoutingRule) error

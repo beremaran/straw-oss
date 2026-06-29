@@ -3,6 +3,7 @@ package middleware
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -11,11 +12,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/beremaran/straw/internal/domain"
 	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/beremaran/straw/internal/domain"
 )
 
 var redactionRegex = regexp.MustCompile(`(?i)("(raw_key|token|password|client_secret|Authorization)"\s*:\s*)("[^"]*"|[0-9]+|true|false|null)`)
+
+const auditTimeout = 5 * time.Second
 
 func redactSensitiveFields(body string) string {
 	return redactionRegex.ReplaceAllString(body, `$1"[REDACTED]"`)
@@ -29,10 +33,12 @@ const (
 	defaultAuditWorkers = 2
 )
 
+// Execer is the interface for executing SQL commands.
 type Execer interface {
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
 }
 
+// AuditEntry holds fields for a single audit log entry.
 type AuditEntry struct {
 	Timestamp        time.Time
 	ActorType        string
@@ -51,6 +57,7 @@ type AuditEntry struct {
 	Error            string
 }
 
+// AuditLogger buffers and asynchronously writes audit log entries to the database.
 type AuditLogger struct {
 	db      Execer
 	entries chan AuditEntry
@@ -60,18 +67,22 @@ type AuditLogger struct {
 	mu      sync.RWMutex
 }
 
+// AuditLoggerOption configures an AuditLogger.
 type AuditLoggerOption func(*AuditLogger)
 
+// WithAuditLogger sets the slog logger on the AuditLogger.
 func WithAuditLogger(logger *slog.Logger) AuditLoggerOption {
 	return func(al *AuditLogger) {
 		al.logger = logger
 	}
 }
 
+// NewAuditLogger creates a new AuditLogger with the given database, buffer size, and worker count.
 func NewAuditLogger(db Execer, bufferSize, workers int, opts ...AuditLoggerOption) *AuditLogger {
 	if bufferSize <= 0 {
 		bufferSize = defaultAuditBufferSize
 	}
+
 	if workers <= 0 {
 		workers = defaultAuditWorkers
 	}
@@ -94,6 +105,7 @@ func NewAuditLogger(db Execer, bufferSize, workers int, opts ...AuditLoggerOptio
 	return al
 }
 
+// Log queues an audit entry for asynchronous persistence.
 func (al *AuditLogger) Log(entry AuditEntry) bool {
 	al.mu.RLock()
 	defer al.mu.RUnlock()
@@ -106,7 +118,6 @@ func (al *AuditLogger) Log(entry AuditEntry) bool {
 	case al.entries <- entry:
 		return true
 	default:
-
 		al.logger.Warn("audit log buffer full, dropping entry",
 			"method", entry.Method,
 			"path", entry.Path,
@@ -116,6 +127,7 @@ func (al *AuditLogger) Log(entry AuditEntry) bool {
 	}
 }
 
+// Stop closes the logger and waits for all workers to finish.
 func (al *AuditLogger) Stop() {
 	al.mu.Lock()
 	if al.closed {
@@ -123,6 +135,7 @@ func (al *AuditLogger) Stop() {
 
 		return
 	}
+
 	al.closed = true
 	al.mu.Unlock()
 
@@ -142,7 +155,7 @@ func (al *AuditLogger) worker() {
 	`
 
 	for entry := range al.entries {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), auditTimeout)
 		_, err := al.db.Exec(ctx, insertQuery,
 			entry.Timestamp,
 			entry.Method,
@@ -160,6 +173,7 @@ func (al *AuditLogger) worker() {
 			entry.RequestID,
 			entry.TraceID,
 		)
+
 		cancel()
 
 		if err != nil {
@@ -172,6 +186,7 @@ func (al *AuditLogger) worker() {
 	}
 }
 
+// AuditLog returns a middleware that records non-GET/HEAD request audit entries.
 func AuditLog(auditLogger *AuditLogger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -182,6 +197,7 @@ func AuditLog(auditLogger *AuditLogger) func(http.Handler) http.Handler {
 			}
 
 			var bodyStr string
+
 			if r.Body != nil {
 				limitedReader := io.LimitReader(r.Body, maxAuditBodySize+1)
 				reqBody, _ := io.ReadAll(limitedReader)
@@ -238,16 +254,22 @@ func (sw *statusResponseWriter) WriteHeader(statusCode int) {
 }
 
 func (sw *statusResponseWriter) Write(b []byte) (int, error) {
-	return sw.ResponseWriter.Write(b)
+	n, err := sw.ResponseWriter.Write(b)
+	if err != nil {
+		return 0, fmt.Errorf("write response: %w", err)
+	}
+
+	return n, nil
 }
 
 func getRealIP(r *http.Request) string {
 	if ip := r.Header.Get("X-Real-IP"); ip != "" {
 		return ip
 	}
+
 	if ip := r.Header.Get("X-Forwarded-For"); ip != "" {
-		if idx := strings.Index(ip, ","); idx != -1 {
-			return strings.TrimSpace(ip[:idx])
+		if before, _, ok := strings.Cut(ip, ","); ok {
+			return strings.TrimSpace(before)
 		}
 
 		return strings.TrimSpace(ip)
@@ -256,7 +278,8 @@ func getRealIP(r *http.Request) string {
 	return r.RemoteAddr
 }
 
-func NewAuditEvent(r *http.Request, action, entityType, entityID string, oldVal, newVal interface{}) *domain.ManagementAuditEvent {
+// NewAuditEvent creates a management audit event from the request context.
+func NewAuditEvent(r *http.Request, action, entityType, entityID string, oldVal, newVal any) *domain.ManagementAuditEvent {
 	actor, _ := ActorFromContext(r.Context())
 	ip := getRealIP(r)
 	userAgent := r.UserAgent()

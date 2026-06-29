@@ -9,21 +9,31 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/beremaran/straw/internal/domain"
 	"github.com/beremaran/straw/pkg/broker"
 	"github.com/beremaran/straw/pkg/protocol"
-	"github.com/google/uuid"
 )
 
 const (
-	DefaultMaxRetries      = 2
-	DefaultBaseBackoff     = 100 * time.Millisecond
-	DefaultMaxBackoff      = 5 * time.Second
-	DefaultBackoffFactor   = 2.0
+	// DefaultMaxRetries is the default number of retries per pool tier.
+	DefaultMaxRetries = 2
+	// DefaultBaseBackoff is the initial backoff duration before the first retry.
+	DefaultBaseBackoff = 100 * time.Millisecond
+	// DefaultMaxBackoff is the maximum backoff duration.
+	DefaultMaxBackoff = 5 * time.Second
+	// DefaultBackoffFactor is the multiplier applied to backoff after each retry.
+	DefaultBackoffFactor = 2.0
+	// DefaultLastExitRetries is the retry count for last-exit pool tier.
 	DefaultLastExitRetries = 1
-	SharedResultSubject    = "results.relay"
+	// DefaultMaxPoolTier is the pool tier that uses last-exit retry count.
+	DefaultMaxPoolTier = 4
+	// SharedResultSubject is the broker subject for relay-wide result messages.
+	SharedResultSubject = "results.relay"
 )
 
+// AttemptError records details of a single failed attempt.
 type AttemptError struct {
 	Pool          int           `json:"pool"`
 	Attempt       int           `json:"attempt"`
@@ -34,6 +44,7 @@ type AttemptError struct {
 	Duration      time.Duration `json:"duration"`
 }
 
+// RetryResult holds the outcome of a retry execution.
 type RetryResult struct {
 	Success       bool
 	Response      *ResultMessage
@@ -42,12 +53,14 @@ type RetryResult struct {
 	AttemptErrors []AttemptError
 }
 
+// PoolManager provides endpoint selection and pool configuration.
 type PoolManager interface {
 	GetEndpointFromPool(ctx context.Context, rule *domain.RoutingRule, poolTier int, exclude []string) (string, error)
 
 	GetPoolConfig(rule *domain.RoutingRule, poolTier int) *domain.EndpointPool
 }
 
+// RetryExecutor coordinates retry logic across endpoint pools.
 type RetryExecutor struct {
 	publisher     *Publisher
 	consumer      *Consumer
@@ -61,22 +74,26 @@ type RetryExecutor struct {
 	backoffFactor float64
 }
 
+// RetryExecutorOption configures a RetryExecutor.
 type RetryExecutorOption func(*RetryExecutor)
 
+// WithRetryLogger sets the logger for the retry executor.
 func WithRetryLogger(logger *slog.Logger) RetryExecutorOption {
 	return func(r *RetryExecutor) {
 		r.logger = logger
 	}
 }
 
-func WithBackoffConfig(base, max time.Duration, factor float64) RetryExecutorOption {
+// WithBackoffConfig sets the backoff parameters for the retry executor.
+func WithBackoffConfig(base, maxBackoff time.Duration, factor float64) RetryExecutorOption {
 	return func(r *RetryExecutor) {
 		r.baseBackoff = base
-		r.maxBackoff = max
+		r.maxBackoff = maxBackoff
 		r.backoffFactor = factor
 	}
 }
 
+// NewRetryExecutor creates a RetryExecutor with the given dependencies and options.
 func NewRetryExecutor(
 	publisher *Publisher,
 	consumer *Consumer,
@@ -104,10 +121,19 @@ func NewRetryExecutor(
 	return r
 }
 
+const defaultMaxAckPending = 5000
+
+// Start begins consuming result messages from the broker.
 func (r *RetryExecutor) Start(ctx context.Context) error {
-	return r.broker.Subscribe(ctx, SharedResultSubject, r.handleResult, broker.WithTransient(), broker.WithMaxAckPending(5000))
+	err := r.broker.Subscribe(ctx, SharedResultSubject, r.handleResult, broker.WithTransient(), broker.WithMaxAckPending(defaultMaxAckPending))
+	if err != nil {
+		return fmt.Errorf("subscribe to results: %w", err)
+	}
+
+	return nil
 }
 
+// Execute runs the request with retry logic across endpoint pools.
 func (r *RetryExecutor) Execute(
 	ctx context.Context,
 	req *protocol.Request,
@@ -135,6 +161,7 @@ func (r *RetryExecutor) Execute(
 	}
 
 	resultCh := make(chan *ResultMessage, 1)
+
 	r.responseChans.Store(req.ID, resultCh)
 	defer r.responseChans.Delete(req.ID)
 
@@ -175,6 +202,7 @@ func (r *RetryExecutor) executePreferredEndpoint(
 	response, endpointID, err := r.executeAttempt(ctx, req, rule, 1, *excludedEndpoints, sessionID, resultCh, preferredEndpointID)
 	if err != nil {
 		r.logger.WarnContext(ctx, "sticky endpoint execution error", "error", err)
+
 		*excludedEndpoints = append(*excludedEndpoints, preferredEndpointID)
 
 		return false
@@ -196,6 +224,7 @@ func (r *RetryExecutor) executePreferredEndpoint(
 	)
 	r.recordFailure(result, 1, 1, endpointID, failure, 0, response)
 	*excludedEndpoints = append(*excludedEndpoints, endpointID)
+
 	ReleaseResultMessage(response)
 
 	return false
@@ -241,7 +270,7 @@ func (r *RetryExecutor) executePool(
 
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		if ctx.Err() != nil {
-			return false, ctx.Err()
+			return false, fmt.Errorf("pool %d attempt %d: %w", poolTier, attempt, ctx.Err())
 		}
 
 		done, stopPool, err := r.executePoolAttempt(ctx, req, rule, result, sessionID, resultCh, poolTier, attempt, maxRetries, excludedEndpoints)
@@ -267,6 +296,7 @@ func (r *RetryExecutor) executePoolAttempt(
 ) (bool, bool, error) {
 	attemptStart := time.Now()
 	response, endpointID, err := r.executeAttempt(ctx, req, rule, poolTier, *excludedEndpoints, sessionID, resultCh, "")
+
 	attemptDuration := time.Since(attemptStart)
 	if err != nil {
 		r.recordInternalFailure(ctx, req, result, poolTier, attempt, endpointID, attemptDuration, err, excludedEndpoints)
@@ -282,11 +312,13 @@ func (r *RetryExecutor) executePoolAttempt(
 	}
 
 	r.recordFailedResponse(ctx, req, result, poolTier, attempt, endpointID, attemptDuration, failure, response, excludedEndpoints)
+
 	if failure.ShouldEscalate() {
 		ReleaseResultMessage(response)
 
 		return false, true, nil
 	}
+
 	if !failure.ShouldRetry() {
 		result.Response = response
 		result.FinalPool = poolTier
@@ -320,6 +352,7 @@ func (r *RetryExecutor) recordInternalFailure(
 		Duration:      duration,
 	})
 	result.TotalRetries++
+
 	if endpointID != "" {
 		*excludedEndpoints = append(*excludedEndpoints, endpointID)
 	}
@@ -378,6 +411,7 @@ func (r *RetryExecutor) recordFailedResponse(
 		"failure", failure.String(),
 		"status_code", response.StatusCode,
 	)
+
 	if failure.ShouldEscalate() {
 		r.logger.InfoContext(ctx, "immediate escalation triggered",
 			"request_id", req.ID,
@@ -427,7 +461,7 @@ func (r *RetryExecutor) backoffBeforeRetry(
 
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return fmt.Errorf("backoff cancelled: %w", ctx.Err())
 	case <-time.After(backoff):
 		return nil
 	}
@@ -443,8 +477,10 @@ func (r *RetryExecutor) executeAttempt(
 	resultCh <-chan *ResultMessage,
 	specificEndpointID string,
 ) (*ResultMessage, string, error) {
-	var endpointID string
-	var err error
+	var (
+		endpointID string
+		err        error
+	)
 
 	if specificEndpointID != "" {
 		endpointID = specificEndpointID
@@ -463,9 +499,8 @@ func (r *RetryExecutor) executeAttempt(
 	for {
 		select {
 		case <-ctx.Done():
-			return nil, endpointID, ctx.Err()
+			return nil, endpointID, fmt.Errorf("wait for result cancelled: %w", ctx.Err())
 		case result := <-resultCh:
-
 			if result.EndpointID != "" && result.EndpointID != endpointID {
 				r.logger.DebugContext(ctx, "ignoring stale result from previous attempt",
 					"current_endpoint", endpointID,
@@ -485,6 +520,7 @@ func (r *RetryExecutor) executeAttempt(
 
 func (r *RetryExecutor) parseResult(body []byte) (*ResultMessage, error) {
 	result := AcquireResultMessage()
+
 	err := json.Unmarshal(body, result)
 	if err != nil {
 		ReleaseResultMessage(result)
@@ -521,7 +557,7 @@ func (r *RetryExecutor) getMaxRetries(poolConfig *domain.EndpointPool, poolTier 
 		return poolConfig.MaxRetries
 	}
 
-	if poolTier >= 4 {
+	if poolTier >= DefaultMaxPoolTier {
 		return DefaultLastExitRetries
 	}
 
@@ -550,11 +586,14 @@ func (r *RetryExecutor) getFailureMessage(result *ResultMessage) string {
 	return fmt.Sprintf("HTTP %d", result.StatusCode)
 }
 
+// ErrNoEndpointsAvailable is returned when no endpoints are available in any pool.
 var ErrNoEndpointsAvailable = errors.New("no endpoints available in any pool")
 
+// ErrAllPoolsExhausted is returned when all endpoint pools have been exhausted.
 var ErrAllPoolsExhausted = errors.New("all endpoint pools exhausted")
 
-func (r *RetryExecutor) handleResult(ctx context.Context, body []byte) error {
+// handleResult processes a result message from the broker and forwards it to the waiting executor.
+func (r *RetryExecutor) handleResult(_ context.Context, body []byte) error {
 	res, err := r.parseResult(body)
 	if err != nil {
 		r.logger.Error("failed to parse result message", "error", err)

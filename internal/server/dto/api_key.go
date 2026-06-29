@@ -1,9 +1,11 @@
+// Package dto defines data transfer objects for the API server.
 package dto
 
 import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -14,13 +16,15 @@ var (
 	errExpiresAtFormat       = errors.New("expires_at must be a valid RFC3339 timestamp")
 )
 
-type CreateApiKeyRequest struct {
+// CreateAPIKeyRequest is the request body for creating a new API key.
+type CreateAPIKeyRequest struct {
 	Name              string   `json:"name"                          validate:"required"`
 	Scopes            []string `json:"scopes"`
 	RateLimitOverride *int     `json:"rate_limit_override,omitempty"`
 }
 
-type UpdateApiKeyRequest struct {
+// UpdateAPIKeyRequest is the request body for updating an existing API key.
+type UpdateAPIKeyRequest struct {
 	Name                 *string    `json:"-"`
 	Scopes               *[]string  `json:"-"`
 	RateLimitOverride    *int       `json:"-"`
@@ -30,8 +34,9 @@ type UpdateApiKeyRequest struct {
 	IsActive             *bool      `json:"-"`
 }
 
-func (r *UpdateApiKeyRequest) UnmarshalJSON(data []byte) error {
-	type rawUpdateApiKeyRequest struct {
+// UnmarshalJSON implements custom JSON deserialization for UpdateAPIKeyRequest.
+func (r *UpdateAPIKeyRequest) UnmarshalJSON(data []byte) error {
+	type rawUpdateAPIKeyRequest struct {
 		Name              *string          `json:"name"`
 		Scopes            *[]string        `json:"scopes"`
 		RateLimitOverride *json.RawMessage `json:"rate_limit_override"`
@@ -39,10 +44,11 @@ func (r *UpdateApiKeyRequest) UnmarshalJSON(data []byte) error {
 		IsActive          *bool            `json:"is_active"`
 	}
 
-	var raw rawUpdateApiKeyRequest
+	var raw rawUpdateAPIKeyRequest
+
 	err := json.Unmarshal(data, &raw)
 	if err != nil {
-		return err
+		return fmt.Errorf("unmarshal update api key request: %w", err)
 	}
 
 	r.Name = raw.Name
@@ -51,19 +57,23 @@ func (r *UpdateApiKeyRequest) UnmarshalJSON(data []byte) error {
 
 	if raw.RateLimitOverride != nil {
 		r.RateLimitOverrideSet = true
+
 		rateLimit, err := parseOptionalRateLimit(*raw.RateLimitOverride)
 		if err != nil {
 			return err
 		}
+
 		r.RateLimitOverride = rateLimit
 	}
 
 	if raw.ExpiresAt != nil {
 		r.ExpiresAtSet = true
+
 		expiresAt, err := parseOptionalExpiresAt(*raw.ExpiresAt)
 		if err != nil {
 			return err
 		}
+
 		r.ExpiresAt = expiresAt
 	}
 
@@ -77,6 +87,7 @@ func parseOptionalRateLimit(raw json.RawMessage) (*int, error) {
 	}
 
 	var rateLimit int
+
 	err := json.Unmarshal(value, &rateLimit)
 	if err != nil {
 		return nil, errRateLimitOverrideType
@@ -92,10 +103,12 @@ func parseOptionalExpiresAt(raw json.RawMessage) (*time.Time, error) {
 	}
 
 	var expiresAt string
+
 	err := json.Unmarshal(value, &expiresAt)
 	if err != nil {
 		return nil, errExpiresAtType
 	}
+
 	if strings.TrimSpace(expiresAt) == "" {
 		return nil, nil
 	}
@@ -108,12 +121,14 @@ func parseOptionalExpiresAt(raw json.RawMessage) (*time.Time, error) {
 	return &parsed, nil
 }
 
-type RotateApiKeyRequest struct {
+// RotateAPIKeyRequest is the request body for rotating an API key.
+type RotateAPIKeyRequest struct {
 	GracePeriod    string `json:"grace_period,omitempty"`
 	RevokeExisting bool   `json:"revoke_existing,omitempty"`
 }
 
-type ApiKeyResponse struct {
+// APIKeyResponse represents an API key in API responses.
+type APIKeyResponse struct {
 	ID                string     `json:"id"`
 	Name              string     `json:"name"`
 	Scopes            []string   `json:"scopes"`
@@ -123,28 +138,33 @@ type ApiKeyResponse struct {
 	ExpiresAt         *time.Time `json:"expires_at,omitempty"`
 }
 
-type CreateApiKeyResponse struct {
-	ApiKeyResponse
+// CreateAPIKeyResponse is the response body for creating an API key.
+type CreateAPIKeyResponse struct {
+	APIKeyResponse
 	RawKey string `json:"raw_key"`
 }
 
-type ApiKeyTokenResponse struct {
+// APIKeyTokenResponse represents an API key token in API responses.
+type APIKeyTokenResponse struct {
 	ID        string     `json:"id"`
 	Status    string     `json:"status"`
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 	CreatedAt time.Time  `json:"created_at"`
 }
 
-type ApiKeyDetailResponse struct {
-	ApiKeyResponse
-	Tokens []ApiKeyTokenResponse `json:"tokens"`
+// APIKeyDetailResponse represents an API key with its tokens.
+type APIKeyDetailResponse struct {
+	APIKeyResponse
+	Tokens []APIKeyTokenResponse `json:"tokens"`
 }
 
-type RotateApiKeyResponse struct {
+// RotateAPIKeyResponse is the response body for rotating an API key.
+type RotateAPIKeyResponse struct {
 	APIKeyID                 string     `json:"api_key_id"`
 	RawKey                   string     `json:"raw_key"`
 	TokenID                  string     `json:"token_id"`
 	PreviousTokensGraceUntil *time.Time `json:"previous_tokens_grace_until,omitempty"`
 }
 
-type ListApiKeysResponse = PaginatedResponse[ApiKeyResponse]
+// ListAPIKeysResponse is a paginated list of API keys.
+type ListAPIKeysResponse = PaginatedResponse[APIKeyResponse]

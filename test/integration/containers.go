@@ -1,3 +1,5 @@
+// Package integration provides test helpers for spinning up integration
+// test containers (Postgres, Redis, NATS).
 package integration
 
 import (
@@ -14,11 +16,21 @@ import (
 	pginfra "github.com/beremaran/straw/internal/infra/postgres"
 )
 
+const (
+	postgresLogOccurrence = 2
+	postgresStartup       = 60 * time.Second
+	redisStartup          = 30 * time.Second
+)
+
+// PostgresContainer wraps a running Postgres testcontainer and exposes its
+// DSN for application tests.
 type PostgresContainer struct {
 	container *postgres.PostgresContainer
 	dsn       string
 }
 
+// NewPostgresContainer starts a Postgres 17 container and returns it
+// ready for use.
 func NewPostgresContainer(ctx context.Context) (*PostgresContainer, error) {
 	container, err := postgres.Run(ctx,
 		"postgres:17-alpine",
@@ -27,8 +39,8 @@ func NewPostgresContainer(ctx context.Context) (*PostgresContainer, error) {
 		postgres.WithPassword("straw"),
 		testcontainers.WithWaitStrategy(
 			wait.ForLog("database system is ready to accept connections").
-				WithOccurrence(2).
-				WithStartupTimeout(60*time.Second),
+				WithOccurrence(postgresLogOccurrence).
+				WithStartupTimeout(postgresStartup),
 		),
 	)
 	if err != nil {
@@ -48,33 +60,47 @@ func NewPostgresContainer(ctx context.Context) (*PostgresContainer, error) {
 	}, nil
 }
 
+// DSN returns the Postgres connection string for the running container.
 func (c *PostgresContainer) DSN() string {
 	return c.dsn
 }
 
+// RunMigrations applies the embedded migrations to the container.
 func (c *PostgresContainer) RunMigrations(ctx context.Context) error {
-	return pginfra.RunEmbeddedMigrations(ctx, c.dsn)
-}
-
-func (c *PostgresContainer) Terminate(ctx context.Context) error {
-	if c.container != nil {
-		return c.container.Terminate(ctx)
+	err := pginfra.RunEmbeddedMigrations(ctx, c.dsn)
+	if err != nil {
+		return fmt.Errorf("run migrations: %w", err)
 	}
 
 	return nil
 }
 
+// Terminate stops and removes the container.
+func (c *PostgresContainer) Terminate(ctx context.Context) error {
+	if c.container != nil {
+		err := c.container.Terminate(ctx)
+		if err != nil {
+			return fmt.Errorf("terminate postgres container: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// RedisContainer wraps a running Redis testcontainer and exposes its
+// address for application tests.
 type RedisContainer struct {
 	container *redis.RedisContainer
 	addr      string
 }
 
+// NewRedisContainer starts a Redis 7 container and returns it ready for use.
 func NewRedisContainer(ctx context.Context) (*RedisContainer, error) {
 	container, err := redis.Run(ctx,
 		"redis:7-alpine",
 		testcontainers.WithWaitStrategy(
 			wait.ForLog("Ready to accept connections").
-				WithStartupTimeout(30*time.Second),
+				WithStartupTimeout(redisStartup),
 		),
 	)
 	if err != nil {
@@ -101,23 +127,32 @@ func NewRedisContainer(ctx context.Context) (*RedisContainer, error) {
 	}, nil
 }
 
+// Addr returns the Redis address for the running container.
 func (c *RedisContainer) Addr() string {
 	return c.addr
 }
 
+// Terminate stops and removes the container.
 func (c *RedisContainer) Terminate(ctx context.Context) error {
 	if c.container != nil {
-		return c.container.Terminate(ctx)
+		err := c.container.Terminate(ctx)
+		if err != nil {
+			return fmt.Errorf("terminate redis container: %w", err)
+		}
 	}
 
 	return nil
 }
 
+// NatsContainer wraps a running NATS testcontainer and exposes its
+// URL for application tests.
 type NatsContainer struct {
 	container *nats.NATSContainer
 	url       string
 }
 
+// NewNatsContainer starts a NATS container with JetStream enabled and
+// returns it ready for use.
 func NewNatsContainer(ctx context.Context) (*NatsContainer, error) {
 	container, err := nats.Run(ctx,
 		"nats:latest",
@@ -140,13 +175,18 @@ func NewNatsContainer(ctx context.Context) (*NatsContainer, error) {
 	}, nil
 }
 
+// URL returns the NATS connection URL for the running container.
 func (c *NatsContainer) URL() string {
 	return c.url
 }
 
+// Terminate stops and removes the container.
 func (c *NatsContainer) Terminate(ctx context.Context) error {
 	if c.container != nil {
-		return c.container.Terminate(ctx)
+		err := c.container.Terminate(ctx)
+		if err != nil {
+			return fmt.Errorf("terminate nats container: %w", err)
+		}
 	}
 
 	return nil

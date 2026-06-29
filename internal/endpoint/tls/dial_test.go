@@ -105,7 +105,7 @@ func TestDial_Success(t *testing.T) {
 func TestDial_UnknownFingerprint(t *testing.T) {
 	ctx := context.Background()
 
-	_, err := Dial(ctx, "tcp", "example.com:443", "unknown-fingerprint")
+	_, err := Dial(ctx, "tcp", testServerAddr, "unknown-fingerprint")
 	if err == nil {
 		t.Fatal("expected error for unknown fingerprint")
 	}
@@ -205,7 +205,7 @@ func TestErrorTypes(t *testing.T) {
 	}
 
 	certErr := &CertificateError{
-		Addr: "example.com:443",
+		Addr: testServerAddr,
 		Err:  errors.New("x509: certificate is not valid"),
 	}
 	if !errors.Is(certErr, ErrCertificateValidation) {
@@ -213,7 +213,7 @@ func TestErrorTypes(t *testing.T) {
 	}
 
 	protoErr := &ProtocolError{
-		Addr: "example.com:443",
+		Addr: testServerAddr,
 		Err:  errors.New("ALPN negotiation failed"),
 	}
 	if !errors.Is(protoErr, ErrProtocolNegotiation) {

@@ -3,6 +3,7 @@ package endpoint
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -12,16 +13,25 @@ import (
 	"github.com/beremaran/straw/pkg/protocol"
 )
 
+const (
+	logRetentionDays = 7
+	logHoursPerDay   = 24
+	logRetentionGiB  = 5
+	kibibyte         = 1024
+)
+
+// LogService manages the lifecycle of endpoint log ingestion and retention.
 type LogService struct {
-	broker      broker.MessageBroker
-	logRepo     domain.EndpointLogRepository
-	logger      *slog.Logger
-	mu          sync.Mutex
-	running     bool
-	cancel      context.CancelFunc
-	done        chan struct{}
+	broker  broker.MessageBroker
+	logRepo domain.EndpointLogRepository
+	logger  *slog.Logger
+	mu      sync.Mutex
+	running bool
+	cancel  context.CancelFunc
+	done    chan struct{}
 }
 
+// NewLogService creates a new LogService with the given broker, repository, and logger.
 func NewLogService(b broker.MessageBroker, repo domain.EndpointLogRepository, logger *slog.Logger) *LogService {
 	if logger == nil {
 		logger = slog.Default()
@@ -34,6 +44,7 @@ func NewLogService(b broker.MessageBroker, repo domain.EndpointLogRepository, lo
 	}
 }
 
+// Start begins processing log entries. It is safe to call multiple times.
 func (s *LogService) Start(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -53,6 +64,7 @@ func (s *LogService) Start(ctx context.Context) error {
 	return nil
 }
 
+// Stop signals the log service to stop and waits for goroutines to exit.
 func (s *LogService) Stop() {
 	s.mu.Lock()
 	if !s.running {
@@ -60,6 +72,7 @@ func (s *LogService) Stop() {
 
 		return
 	}
+
 	cancel := s.cancel
 	done := s.done
 	s.mu.Unlock()
@@ -67,6 +80,7 @@ func (s *LogService) Stop() {
 	if cancel != nil {
 		cancel()
 	}
+
 	if done != nil {
 		<-done
 	}
@@ -78,6 +92,7 @@ func (s *LogService) Stop() {
 	s.logger.Info("log service stopped")
 }
 
+// IsRunning reports whether the log service is currently running.
 func (s *LogService) IsRunning() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -115,6 +130,7 @@ func (s *LogService) run(ctx context.Context) {
 
 func (s *LogService) handleLog(ctx context.Context, body []byte) error {
 	var entry protocol.LogEntry
+
 	err := json.Unmarshal(body, &entry)
 	if err != nil {
 		s.logger.Error("failed to unmarshal log entry", "error", err)
@@ -133,6 +149,7 @@ func (s *LogService) handleLog(ctx context.Context, body []byte) error {
 	if entry.TraceID != "" {
 		domainEntry.TraceID = &entry.TraceID
 	}
+
 	if entry.RequestID != "" {
 		domainEntry.RequestID = &entry.RequestID
 	}
@@ -141,7 +158,7 @@ func (s *LogService) handleLog(ctx context.Context, body []byte) error {
 	if err != nil {
 		s.logger.Error("failed to create log entry in repository", "endpoint_id", entry.EndpointID, "error", err)
 
-		return err
+		return fmt.Errorf("create log entry: %w", err)
 	}
 
 	return nil
@@ -149,10 +166,11 @@ func (s *LogService) handleLog(ctx context.Context, body []byte) error {
 
 func (s *LogService) runCleanup(ctx context.Context) {
 	// Retention limits: 7 days or 5 GB
-	maxAge := 7 * 24 * time.Hour
-	maxSizeBytes := int64(5 * 1024 * 1024 * 1024)
+	maxAge := time.Duration(logRetentionDays) * logHoursPerDay * time.Hour
+	maxSizeBytes := int64(logRetentionGiB * kibibyte * kibibyte * kibibyte)
 
 	s.logger.Info("running logs retention cleanup")
+
 	err := s.logRepo.Cleanup(ctx, maxAge, maxSizeBytes)
 	if err != nil {
 		s.logger.Error("failed to cleanup log entries", "error", err)

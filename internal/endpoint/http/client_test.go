@@ -13,11 +13,19 @@ import (
 	"github.com/beremaran/straw/pkg/protocol"
 )
 
+const exampleURL = "https://example.com"
+
+const testID = "test-123"
+
+const getMethod = "GET"
+
+const chromePreset = "chrome-133"
+
 type mockTransportProvider struct {
 	transport *fhttp.Transport
 }
 
-func (m *mockTransportProvider) GetTransport(host string, preset fingerprint.Preset) *fhttp.Transport {
+func (m *mockTransportProvider) GetTransport(_ string, _ fingerprint.Preset) *fhttp.Transport {
 	if m.transport != nil {
 		return m.transport
 	}
@@ -80,13 +88,13 @@ func TestClient_Close(t *testing.T) {
 }
 
 func TestNewRequest(t *testing.T) {
-	req := NewRequest("GET", "https://example.com", nil)
+	req := NewRequest(getMethod, exampleURL, nil)
 
 	if req.Method != http.MethodGet {
 		t.Errorf("expected method GET, got %s", req.Method)
 	}
 
-	if req.URL != "https://example.com" {
+	if req.URL != exampleURL {
 		t.Errorf("expected URL https://example.com, got %s", req.URL)
 	}
 
@@ -109,7 +117,7 @@ func TestNewRequest_WithBody(t *testing.T) {
 }
 
 func TestClient_Do_MockServer(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status": "ok"}`))
@@ -122,11 +130,11 @@ func TestClient_Do_MockServer(t *testing.T) {
 	client := NewClient(registry, provider, WithEndpointID("test-ep"))
 
 	req := &protocol.Request{
-		ID:          "test-123",
-		Method:      "GET",
+		ID:          testID,
+		Method:      getMethod,
 		URL:         server.URL,
 		Headers:     protocol.HeaderMap{},
-		Fingerprint: "chrome-133",
+		Fingerprint: chromePreset,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -137,7 +145,7 @@ func TestClient_Do_MockServer(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if resp.RequestID != "test-123" {
+	if resp.RequestID != testID {
 		t.Errorf("expected request ID test-123, got %s", resp.RequestID)
 	}
 
@@ -161,17 +169,16 @@ func TestClient_Do_Error(t *testing.T) {
 
 	req := &protocol.Request{
 		ID:          "test-error",
-		Method:      "GET",
+		Method:      getMethod,
 		URL:         "http://localhost:1",
 		Headers:     protocol.HeaderMap{},
-		Fingerprint: "chrome-133",
+		Fingerprint: chromePreset,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
 
 	resp, err := client.Do(ctx, req)
-
 	if err != nil {
 		t.Fatalf("expected response with error field, got error: %v", err)
 	}
@@ -186,7 +193,7 @@ func TestClient_Do_Error(t *testing.T) {
 }
 
 func TestClient_Do_FingerprintFallback(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	}))
@@ -198,7 +205,7 @@ func TestClient_Do_FingerprintFallback(t *testing.T) {
 
 	req := &protocol.Request{
 		ID:          "test-fallback",
-		Method:      "GET",
+		Method:      getMethod,
 		URL:         server.URL,
 		Headers:     protocol.HeaderMap{},
 		Fingerprint: "non-existent-fingerprint",

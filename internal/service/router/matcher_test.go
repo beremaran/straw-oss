@@ -7,10 +7,22 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/beremaran/straw/internal/domain"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/beremaran/straw/internal/domain"
+)
+
+const (
+	testMatcherRuleID = "rule-1"
+	testRuleHigh      = "rule-high"
+	testTarget        = "target"
+	testTargetVal     = "amazon"
+	testSearchVal     = "search"
+	testRegionKey     = "region"
+	testRegionVal     = "eu"
+	testTypeKey       = "type"
 )
 
 type mockRepo struct {
@@ -18,17 +30,17 @@ type mockRepo struct {
 	err   error
 }
 
-func (m *mockRepo) GetActiveRules(ctx context.Context) ([]domain.RoutingRule, error) {
+func (m *mockRepo) GetActiveRules(context.Context) ([]domain.RoutingRule, error) {
 	return m.rules, m.err
 }
 
-func (m *mockRepo) CreateRule(ctx context.Context, rule *domain.RoutingRule) error { return nil }
-func (m *mockRepo) GetRuleByID(ctx context.Context, id string) (*domain.RoutingRule, error) {
+func (m *mockRepo) CreateRule(context.Context, *domain.RoutingRule) error { return nil }
+func (m *mockRepo) GetRuleByID(context.Context, string) (*domain.RoutingRule, error) {
 	return nil, nil
 }
-func (m *mockRepo) UpdateRule(ctx context.Context, rule *domain.RoutingRule) error { return nil }
-func (m *mockRepo) DeleteRule(ctx context.Context, id string) error                { return nil }
-func (m *mockRepo) ListRules(ctx context.Context, limit, offset int) ([]domain.RoutingRule, int, error) {
+func (m *mockRepo) UpdateRule(context.Context, *domain.RoutingRule) error { return nil }
+func (m *mockRepo) DeleteRule(context.Context, string) error              { return nil }
+func (m *mockRepo) ListRules(context.Context, int, int) ([]domain.RoutingRule, int, error) {
 	return nil, 0, nil
 }
 
@@ -40,7 +52,7 @@ func TestMatcher_LoadRules(t *testing.T) {
 		cache := NewRuleCache(client, time.Minute)
 		repo := &mockRepo{}
 
-		expectedRules := []domain.RoutingRule{{ID: "rule-1"}}
+		expectedRules := []domain.RoutingRule{{ID: testMatcherRuleID}}
 		_, err := cache.IncrementRulesVersion(ctx)
 		require.NoError(t, err)
 		err = cache.SetRulesByVersion(ctx, 1, expectedRules)
@@ -49,7 +61,7 @@ func TestMatcher_LoadRules(t *testing.T) {
 		matcher := NewMatcher(repo, cache)
 
 		err = matcher.LoadRules(ctx)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, expectedRules, matcher.rules)
 		assert.Equal(t, int64(1), matcher.currentVersion)
 	})
@@ -58,12 +70,12 @@ func TestMatcher_LoadRules(t *testing.T) {
 		client := newTestRedis(t)
 		cache := NewRuleCache(client, time.Minute)
 
-		expectedRules := []domain.RoutingRule{{ID: "rule-1"}}
+		expectedRules := []domain.RoutingRule{{ID: testMatcherRuleID}}
 		repo := &mockRepo{rules: expectedRules}
 		matcher := NewMatcher(repo, cache)
 
 		err := matcher.LoadRules(ctx)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, expectedRules, matcher.rules)
 	})
 
@@ -80,7 +92,7 @@ func TestMatcher_LoadRules(t *testing.T) {
 		mr.Close()
 
 		err = matcher.LoadRules(ctx)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, expectedRules, matcher.rules)
 	})
 
@@ -91,14 +103,14 @@ func TestMatcher_LoadRules(t *testing.T) {
 		matcher := NewMatcher(repo, cache)
 
 		err := matcher.LoadRules(ctx)
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to load rules from repo")
 	})
 
 	t.Run("Already Up To Date", func(t *testing.T) {
 		client := newTestRedis(t)
 		cache := NewRuleCache(client, time.Minute)
-		expectedRules := []domain.RoutingRule{{ID: "rule-1"}}
+		expectedRules := []domain.RoutingRule{{ID: testMatcherRuleID}}
 		repo := &mockRepo{rules: expectedRules}
 
 		_, err := cache.IncrementRulesVersion(ctx)
@@ -113,7 +125,7 @@ func TestMatcher_LoadRules(t *testing.T) {
 		assert.Equal(t, expectedRules, matcher.rules)
 
 		err = matcher.LoadRules(ctx)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, expectedRules, matcher.rules)
 	})
 }
@@ -122,7 +134,7 @@ func TestMatcher_GetStats(t *testing.T) {
 	ctx := context.Background()
 	client := newTestRedis(t)
 	cache := NewRuleCache(client, time.Minute)
-	expectedRules := []domain.RoutingRule{{ID: "rule-1"}}
+	expectedRules := []domain.RoutingRule{{ID: testMatcherRuleID}}
 	repo := &mockRepo{rules: expectedRules}
 
 	_, err := cache.IncrementRulesVersion(ctx)
@@ -157,13 +169,12 @@ func TestMatcher_GetStats(t *testing.T) {
 }
 
 func TestMatcher_StartAutoRefresh(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	client := newTestRedis(t)
 	cache := NewRuleCache(client, time.Minute)
 	expectedRules := []domain.RoutingRule{
-		{ID: "rule-1", RequiredTags: []string{"target:test"}},
+		{ID: testMatcherRuleID, RequiredTags: []string{"target:test"}},
 	}
 	_, err := cache.IncrementRulesVersion(ctx)
 	require.NoError(t, err)
@@ -177,9 +188,9 @@ func TestMatcher_StartAutoRefresh(t *testing.T) {
 
 	time.Sleep(50 * time.Millisecond)
 
-	matched := matcher.Match([]domain.Tag{{Key: "target", Value: "test"}})
+	matched := matcher.Match([]domain.Tag{{Key: testTarget, Value: "test"}})
 	assert.NotNil(t, matched)
-	assert.Equal(t, "rule-1", matched.ID)
+	assert.Equal(t, testMatcherRuleID, matched.ID)
 }
 
 func TestMatcher_loadFromDB(t *testing.T) {
@@ -193,7 +204,7 @@ func TestMatcher_loadFromDB(t *testing.T) {
 		matcher := NewMatcher(repo, cache)
 
 		err := matcher.loadFromDB(ctx)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, expectedRules, matcher.rules)
 	})
 
@@ -204,7 +215,7 @@ func TestMatcher_loadFromDB(t *testing.T) {
 		matcher := NewMatcher(repo, cache)
 
 		err := matcher.loadFromDB(ctx)
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to load rules from repo")
 	})
 }
@@ -212,20 +223,20 @@ func TestMatcher_loadFromDB(t *testing.T) {
 func TestMatcher_Match(t *testing.T) {
 	rules := []domain.RoutingRule{
 		{
-			ID:           "rule-high",
+			ID:           testRuleHigh,
 			Priority:     100,
-			RequiredTags: []string{"target:amazon"},
+			RequiredTags: []string{testTarget + ":" + testTargetVal},
 		},
 		{
 			ID:           "rule-low",
 			Priority:     50,
-			RequiredTags: []string{"type:search"},
+			RequiredTags: []string{testTypeKey + ":" + testSearchVal},
 		},
 		{
 			ID:           "rule-excluded",
 			Priority:     200,
-			RequiredTags: []string{"target:amazon"},
-			ExcludedTags: []string{"region:eu"},
+			RequiredTags: []string{testTarget + ":" + testTargetVal},
+			ExcludedTags: []string{testRegionKey + ":" + testRegionVal},
 		},
 	}
 
@@ -240,25 +251,25 @@ func TestMatcher_Match(t *testing.T) {
 	}{
 		{
 			name: "Match High Priority",
-			tags: []domain.Tag{{Key: "target", Value: "amazon"}},
-			want: "rule-high",
+			tags: []domain.Tag{{Key: testTarget, Value: testTargetVal}},
+			want: testRuleHigh,
 		},
 		{
 			name: "Match Low Priority",
-			tags: []domain.Tag{{Key: "type", Value: "search"}},
+			tags: []domain.Tag{{Key: testTypeKey, Value: testSearchVal}},
 			want: "rule-low",
 		},
 		{
 			name: "Match Excluded (Should match next best)",
 			tags: []domain.Tag{
-				{Key: "target", Value: "amazon"},
-				{Key: "region", Value: "eu"},
+				{Key: testTarget, Value: testTargetVal},
+				{Key: testRegionKey, Value: testRegionVal},
 			},
-			want: "rule-high",
+			want: testRuleHigh,
 		},
 		{
 			name: "No Match",
-			tags: []domain.Tag{{Key: "target", Value: "google"}},
+			tags: []domain.Tag{{Key: testTarget, Value: "google"}},
 			want: "",
 		},
 	}

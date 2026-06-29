@@ -6,14 +6,16 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/beremaran/straw/internal/observability/logging"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/beremaran/straw/internal/observability/logging"
 )
 
+// TracingMiddleware creates OpenTelemetry spans for each request.
 func TracingMiddleware(serviceName string) func(http.Handler) http.Handler {
 	tracer := otel.Tracer(serviceName)
 
@@ -27,6 +29,7 @@ func TracingMiddleware(serviceName string) func(http.Handler) http.Handler {
 			if route == "" {
 				route = r.URL.Path
 			}
+
 			opts := []trace.SpanStartOption{
 				trace.WithAttributes(
 					attribute.String("http.method", r.Method),
@@ -47,6 +50,7 @@ func TracingMiddleware(serviceName string) func(http.Handler) http.Handler {
 			if reqID == "" {
 				reqID = w.Header().Get("X-Request-ID")
 			}
+
 			if reqID != "" {
 				ctx = context.WithValue(ctx, logging.RequestIDKey, reqID)
 				span.SetAttributes(attribute.String("request_id", reqID))
@@ -63,7 +67,8 @@ func TracingMiddleware(serviceName string) func(http.Handler) http.Handler {
 			next.ServeHTTP(sw, r)
 
 			span.SetAttributes(attribute.Int("http.status_code", sw.Status))
-			if sw.Status >= 500 {
+
+			if sw.Status >= http.StatusInternalServerError {
 				span.SetStatus(codes.Error, fmt.Sprintf("HTTP %d", sw.Status))
 			}
 		})
@@ -74,9 +79,10 @@ func getRealIP(r *http.Request) string {
 	if ip := r.Header.Get("X-Real-IP"); ip != "" {
 		return ip
 	}
+
 	if ip := r.Header.Get("X-Forwarded-For"); ip != "" {
-		if idx := strings.Index(ip, ","); idx != -1 {
-			return strings.TrimSpace(ip[:idx])
+		if before, _, ok := strings.Cut(ip, ","); ok {
+			return strings.TrimSpace(before)
 		}
 
 		return strings.TrimSpace(ip)
@@ -89,6 +95,7 @@ func getScheme(r *http.Request) string {
 	if r.TLS != nil {
 		return "https"
 	}
+
 	if scheme := r.Header.Get("X-Forwarded-Proto"); scheme != "" {
 		return scheme
 	}

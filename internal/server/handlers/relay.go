@@ -1,3 +1,4 @@
+// Package handlers provides HTTP request handlers for the relay server.
 package handlers
 
 import (
@@ -10,6 +11,9 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+
 	"github.com/beremaran/straw/internal/domain"
 	"github.com/beremaran/straw/internal/server/dto"
 	"github.com/beremaran/straw/internal/server/helper"
@@ -21,11 +25,10 @@ import (
 	"github.com/beremaran/straw/internal/service/session"
 	"github.com/beremaran/straw/pkg/protocol"
 	"github.com/beremaran/straw/pkg/validator"
-
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
 )
 
+// RelayHandler processes incoming relay HTTP requests, routing them to appropriate endpoints
+// based on tag matching, filtering, and rate limiting rules.
 type RelayHandler struct {
 	matcher         *router.Matcher
 	filter          *filter.Service
@@ -37,14 +40,17 @@ type RelayHandler struct {
 	allowPrivateIPs bool
 }
 
+// RelayHandlerOption configures a RelayHandler instance.
 type RelayHandlerOption func(*RelayHandler)
 
+// WithAllowPrivateIPs permits relay requests to target private IP addresses.
 func WithAllowPrivateIPs() RelayHandlerOption {
 	return func(h *RelayHandler) {
 		h.allowPrivateIPs = true
 	}
 }
 
+// NewRelayHandler creates a new RelayHandler with the provided dependencies and options.
 func NewRelayHandler(
 	matcher *router.Matcher,
 	filter *filter.Service,
@@ -69,6 +75,8 @@ func NewRelayHandler(
 	return h
 }
 
+// Handle processes an incoming relay HTTP request through validation, tag parsing, rule matching,
+// rate limiting, filtering, and execution before writing the response.
 func (h *RelayHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -76,15 +84,18 @@ func (h *RelayHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+
 	if !h.prepareRelayRequest(ctx, w, req) {
 		return
 	}
 
 	apiKey := relayAPIKey(r)
+
 	parseResult, ok := h.parseRelayTags(ctx, w, r, apiKey)
 	if !ok {
 		return
 	}
+
 	rule, ok := h.matchRelayRule(ctx, w, parseResult)
 	if !ok {
 		return
@@ -94,17 +105,20 @@ func (h *RelayHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	if !h.applyRelayRateLimit(ctx, w, rule, apiKey) {
 		return
 	}
+
 	if !h.allowByFilters(ctx, w, req, rule) {
 		return
 	}
 
 	sessionID, preferredEndpointID, currentSession := sessionPreference(ctx, req)
+
 	result, err := h.executor.Execute(ctx, req, rule, sessionID, preferredEndpointID)
 	if err != nil {
 		helper.WriteError(w, http.StatusBadGateway, "execution failed")
 
 		return
 	}
+
 	defer func() {
 		if result.Response != nil {
 			orchestrator.ReleaseResultMessage(result.Response)
@@ -117,6 +131,7 @@ func (h *RelayHandler) Handle(w http.ResponseWriter, r *http.Request) {
 
 func (h *RelayHandler) readRelayRequest(w http.ResponseWriter, r *http.Request) (*protocol.Request, bool) {
 	var reqDTO dto.RelayRequest
+
 	err := helper.ReadJSON(r, &reqDTO)
 	if err != nil {
 		var maxBytesErr *http.MaxBytesError
@@ -125,6 +140,7 @@ func (h *RelayHandler) readRelayRequest(w http.ResponseWriter, r *http.Request) 
 
 			return nil, false
 		}
+
 		helper.WriteError(w, http.StatusBadRequest, "invalid request body")
 
 		return nil, false
@@ -146,9 +162,11 @@ func (h *RelayHandler) prepareRelayRequest(ctx context.Context, w http.ResponseW
 
 		return false
 	}
+
 	if req.Method == "" {
 		req.Method = http.MethodGet
 	}
+
 	if req.ID == "" {
 		req.ID = fmt.Sprintf("req_%d", time.Now().UnixNano())
 	}
@@ -157,6 +175,7 @@ func (h *RelayHandler) prepareRelayRequest(ctx context.Context, w http.ResponseW
 	if h.allowPrivateIPs {
 		validationOpts = append(validationOpts, validator.WithAllowPrivateIPs())
 	}
+
 	err := validator.ValidateTargetURL(ctx, req.URL, validationOpts...)
 	if err != nil {
 		slog.WarnContext(ctx, "target url validation failed", "url", req.URL, "error", err)
@@ -168,13 +187,13 @@ func (h *RelayHandler) prepareRelayRequest(ctx context.Context, w http.ResponseW
 	return true
 }
 
-func relayAPIKey(r *http.Request) *domain.ApiKey {
+func relayAPIKey(r *http.Request) *domain.APIKey {
 	val := middleware.GetAPIKey(r)
 	if val == nil {
 		return nil
 	}
 
-	apiKey, _ := val.(*domain.ApiKey)
+	apiKey, _ := val.(*domain.APIKey)
 
 	return apiKey
 }
@@ -183,7 +202,7 @@ func (h *RelayHandler) parseRelayTags(
 	ctx context.Context,
 	w http.ResponseWriter,
 	r *http.Request,
-	apiKey *domain.ApiKey,
+	apiKey *domain.APIKey,
 ) (*router.ParseResult, bool) {
 	parseResult, err := h.tagParser.ParseTags(r, apiKey)
 	if err != nil {
@@ -203,7 +222,7 @@ func (h *RelayHandler) parseRelayTags(
 	return parseResult, true
 }
 
-func apiKeyAllowsTags(ctx context.Context, w http.ResponseWriter, apiKey *domain.ApiKey, tags []domain.Tag) bool {
+func apiKeyAllowsTags(ctx context.Context, w http.ResponseWriter, apiKey *domain.APIKey, tags []domain.Tag) bool {
 	if apiKey == nil || len(apiKey.Scopes) == 0 {
 		return true
 	}
@@ -229,6 +248,7 @@ func (h *RelayHandler) matchRelayRule(
 	parseResult *router.ParseResult,
 ) (*domain.RoutingRule, bool) {
 	tracer := otel.Tracer("router")
+
 	_, span := tracer.Start(ctx, "router.resolve")
 	defer span.End()
 
@@ -256,7 +276,7 @@ func (h *RelayHandler) applyRelayRateLimit(
 	ctx context.Context,
 	w http.ResponseWriter,
 	rule *domain.RoutingRule,
-	apiKey *domain.ApiKey,
+	apiKey *domain.APIKey,
 ) bool {
 	limitPerSecond := relayLimitPerSecond(rule, apiKey)
 	if limitPerSecond <= 0 && rule.RateLimitPerMinute <= 0 {
@@ -264,6 +284,7 @@ func (h *RelayHandler) applyRelayRateLimit(
 	}
 
 	quotaKey := relayQuotaKey(rule)
+
 	allowed, result, err := h.rateLimiter.Allow(ctx, quotaKey, limitPerSecond, rule.RateLimitPerMinute)
 	if err != nil {
 		slog.ErrorContext(ctx, "rate limit check failed", "error", err)
@@ -273,6 +294,7 @@ func (h *RelayHandler) applyRelayRateLimit(
 	}
 
 	writeRelayRateLimitHeaders(w, result)
+
 	if !allowed {
 		writeRelayRateLimitExceeded(ctx, w, rule, quotaKey, result)
 
@@ -282,7 +304,7 @@ func (h *RelayHandler) applyRelayRateLimit(
 	return true
 }
 
-func relayLimitPerSecond(rule *domain.RoutingRule, apiKey *domain.ApiKey) int {
+func relayLimitPerSecond(rule *domain.RoutingRule, apiKey *domain.APIKey) int {
 	if apiKey != nil && apiKey.RateLimitOverride != nil {
 		return *apiKey.RateLimitOverride
 	}
@@ -345,7 +367,7 @@ func (h *RelayHandler) allowByFilters(
 	}
 
 	if shouldBlock.Blocked {
-		helper.WriteError(w, http.StatusForbidden, fmt.Sprintf("request blocked: %s", shouldBlock.Reason))
+		helper.WriteError(w, http.StatusForbidden, "request blocked: "+shouldBlock.Reason)
 
 		return false
 	}
@@ -355,6 +377,7 @@ func (h *RelayHandler) allowByFilters(
 
 func sessionPreference(ctx context.Context, req *protocol.Request) (string, string, *domain.Session) {
 	sessionID := req.SessionID
+
 	existingSession := middleware.GetSessionFromContext(ctx)
 	if existingSession == nil {
 		return sessionID, "", nil
@@ -402,6 +425,7 @@ func (h *RelayHandler) writeFailedRelayResult(w http.ResponseWriter, result *orc
 	if len(result.AttemptErrors) > 0 {
 		msg = result.AttemptErrors[len(result.AttemptErrors)-1].Message
 	}
+
 	helper.WriteError(w, http.StatusBadGateway, msg)
 }
 
@@ -427,7 +451,7 @@ func decompressRelayResponse(ctx context.Context, w http.ResponseWriter, res *or
 func relayMetadata(result *orchestrator.RetryResult, res *orchestrator.ResultMessage) *orchestrator.RelayMetadata {
 	return &orchestrator.RelayMetadata{
 		Retries:    result.TotalRetries,
-		Pool:       fmt.Sprintf("%d", result.FinalPool),
+		Pool:       strconv.Itoa(result.FinalPool),
 		Timing:     res.Timing,
 		EndpointID: res.EndpointID,
 		SessionID:  res.SessionID,
@@ -443,6 +467,7 @@ func (h *RelayHandler) manageSession(
 	rule *domain.RoutingRule,
 ) {
 	ctx := r.Context()
+
 	if !result.Success || result.Response == nil {
 		return
 	}
@@ -458,6 +483,7 @@ func (h *RelayHandler) manageSession(
 		for i, t := range parseResult.Tags {
 			tagStrings[i] = t.String()
 		}
+
 		newSession, err := h.sessionService.CreateSession(ctx, result.Response.EndpointID, rule.ID, tagStrings)
 		if err != nil {
 			slog.ErrorContext(ctx, "failed to create session", "error", err)
@@ -491,5 +517,5 @@ func (h *RelayHandler) migrateSession(ctx context.Context, w http.ResponseWriter
 
 	w.Header().Set(middleware.HeaderSessionMigrated, "true")
 	w.Header().Set(middleware.HeaderSessionPreviousEndpoint, currentSession.EndpointID)
-	w.Header().Set(middleware.HeaderSessionMigrationCount, fmt.Sprintf("%d", updatedSession.MigrationCount))
+	w.Header().Set(middleware.HeaderSessionMigrationCount, strconv.Itoa(updatedSession.MigrationCount))
 }

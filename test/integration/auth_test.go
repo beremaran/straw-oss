@@ -15,6 +15,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const (
+	testAuthTag      = "target:auth_test"
+	testRateLimitTag = "target:rate_limit_test"
+	testScopeTag     = "target:scope_test"
+)
+
 func TestAuthenticationFlows(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
@@ -27,16 +33,16 @@ func TestAuthenticationFlows(t *testing.T) {
 
 	createRule := func(name string, priority int, reqTags []string, rateLimit int) {
 		err := CreateTestRoutingRule(ctx, suite.PostgresDSN(), name, priority, reqTags, nil, name, rateLimit, 0, "", []TestEndpointPool{
-			{Tier: 1, Endpoints: []string{"test-endpoint-1"}, MaxRetries: 1},
+			{Tier: 1, Endpoints: []string{testEndpointID}, MaxRetries: 1},
 		})
 		require.NoError(t, err)
 	}
 
-	createRule("AuthTestRule", 100, []string{"target:auth_test"}, 100)
+	createRule("AuthTestRule", 100, []string{testAuthTag}, 100)
 
 	err := CreateTestEndpoint(ctx, suite.PostgresDSN(), &TestEndpoint{
-		ID:        "test-endpoint-1",
-		Tags:      []string{"target:auth_test", "target:scope_test", "target:rate_limit_test"},
+		ID:        testEndpointID,
+		Tags:      []string{testAuthTag, testScopeTag, testRateLimitTag},
 		IsHealthy: true,
 	})
 	require.NoError(t, err)
@@ -49,13 +55,13 @@ func TestAuthenticationFlows(t *testing.T) {
 	})
 
 	tc.ReplaceMockEndpoint(NewMockEndpoint(tc.Broker, MockEndpointConfig{
-		EndpointID: "test-endpoint-1",
+		EndpointID: testEndpointID,
 		Secret:     []byte(testHMACSecret),
 		TargetURL:  tc.MockTarget.URL(),
-		Tags:       []string{"target:auth_test", "target:scope_test", "target:rate_limit_test"},
+		Tags:       []string{testAuthTag, testScopeTag, testRateLimitTag},
 	}))
 	require.NoError(t, tc.MockEndpoint.Start(ctx))
-	require.NoError(t, tc.WaitForEndpoint(ctx, "test-endpoint-1"))
+	require.NoError(t, tc.WaitForEndpoint(ctx, testEndpointID))
 
 	t.Run("Valid API Key", func(t *testing.T) {
 		keyName := "valid-user"
@@ -65,7 +71,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		client := NewHTTPTestClient(tc.ServerURL, apiKey.RawKey)
 		resp, err := client.SendRequest(ctx, &ProxyRequest{
 			URL:  tc.MockTarget.URL(),
-			Tags: []string{"target:auth_test"},
+			Tags: []string{testAuthTag},
 		})
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
@@ -75,7 +81,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		client := NewHTTPTestClient(tc.ServerURL, "invalid-key-format")
 		resp, err := client.SendRequest(ctx, &ProxyRequest{
 			URL:  tc.MockTarget.URL(),
-			Tags: []string{"target:auth_test"},
+			Tags: []string{testAuthTag},
 		})
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
@@ -83,7 +89,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		client = NewHTTPTestClient(tc.ServerURL, uuid.New().String()+":secret_123")
 		resp, err = client.SendRequest(ctx, &ProxyRequest{
 			URL:  tc.MockTarget.URL(),
-			Tags: []string{"target:auth_test"},
+			Tags: []string{testAuthTag},
 		})
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
@@ -108,31 +114,31 @@ func TestAuthenticationFlows(t *testing.T) {
 		client := NewHTTPTestClient(tc.ServerURL, token)
 		resp, err := client.SendRequest(ctx, &ProxyRequest{
 			URL:  tc.MockTarget.URL(),
-			Tags: []string{"target:auth_test"},
+			Tags: []string{testAuthTag},
 		})
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 	})
 
 	t.Run("Scope Restriction", func(t *testing.T) {
-		createRule("ScopeTestRule", 200, []string{"target:scope_test"}, 100)
+		createRule("ScopeTestRule", 200, []string{testScopeTag}, 100)
 		require.NoError(t, tc.Server.GetMatcher().LoadRules(ctx))
 
-		restrictedKey, err := CreateTestAPIKey(ctx, suite.PostgresDSN(), "restricted-user", []string{"target:auth_test"})
+		restrictedKey, err := CreateTestAPIKey(ctx, suite.PostgresDSN(), "restricted-user", []string{testAuthTag})
 		require.NoError(t, err)
 
 		client := NewHTTPTestClient(tc.ServerURL, restrictedKey.RawKey)
 
 		resp, err := client.SendRequest(ctx, &ProxyRequest{
 			URL:  tc.MockTarget.URL(),
-			Tags: []string{"target:auth_test"},
+			Tags: []string{testAuthTag},
 		})
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 		resp, err = client.SendRequest(ctx, &ProxyRequest{
 			URL:  tc.MockTarget.URL(),
-			Tags: []string{"target:scope_test"},
+			Tags: []string{testScopeTag},
 		})
 		require.NoError(t, err)
 
@@ -143,7 +149,7 @@ func TestAuthenticationFlows(t *testing.T) {
 	})
 
 	t.Run("Rate Limit Override", func(t *testing.T) {
-		createRule("RateLimitRule", 300, []string{"target:rate_limit_test"}, 1)
+		createRule("RateLimitRule", 300, []string{testRateLimitTag}, 1)
 		require.NoError(t, tc.Server.GetMatcher().LoadRules(ctx))
 
 		stdKey, err := CreateTestAPIKey(ctx, suite.PostgresDSN(), "std-user", []string{"*"})
@@ -153,20 +159,20 @@ func TestAuthenticationFlows(t *testing.T) {
 
 		resp, err := clientStd.SendRequest(ctx, &ProxyRequest{
 			URL:  tc.MockTarget.URL(),
-			Tags: []string{"target:rate_limit_test"},
+			Tags: []string{testRateLimitTag},
 		})
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 		resp, err = clientStd.SendRequest(ctx, &ProxyRequest{
 			URL:  tc.MockTarget.URL(),
-			Tags: []string{"target:rate_limit_test"},
+			Tags: []string{testRateLimitTag},
 		})
 		require.NoError(t, err)
 		if resp.StatusCode != http.StatusTooManyRequests {
 			resp, err = clientStd.SendRequest(ctx, &ProxyRequest{
 				URL:  tc.MockTarget.URL(),
-				Tags: []string{"target:rate_limit_test"},
+				Tags: []string{testRateLimitTag},
 			})
 			require.NoError(t, err)
 		}
@@ -198,10 +204,10 @@ func TestAuthenticationFlows(t *testing.T) {
 		time.Sleep(1100 * time.Millisecond)
 
 		successCount := 0
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			resp, err := clientPrem.SendRequest(ctx, &ProxyRequest{
 				URL:  tc.MockTarget.URL(),
-				Tags: []string{"target:rate_limit_test"},
+				Tags: []string{testRateLimitTag},
 			})
 			require.NoError(t, err)
 			if resp.StatusCode == http.StatusOK {

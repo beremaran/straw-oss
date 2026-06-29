@@ -6,23 +6,25 @@ import (
 	"github.com/beremaran/straw/internal/domain"
 )
 
+// AuditEvent represents an audit event in the system.
 type AuditEvent struct {
-	ID           int64       `json:"id"`
-	OccurredAt   time.Time   `json:"occurred_at"`
-	ActorType    string      `json:"actor_type"`
-	ActorID      string      `json:"actor_id"`
-	ActorDisplay string      `json:"actor_display"`
-	Action       string      `json:"action"`
-	EntityType   string      `json:"entity_type"`
-	EntityID     string      `json:"entity_id"`
-	OldValue     interface{} `json:"old_value,omitempty"`
-	NewValue     interface{} `json:"new_value,omitempty"`
-	RequestID    string      `json:"request_id,omitempty"`
-	TraceID      string      `json:"trace_id,omitempty"`
-	IP           string      `json:"ip,omitempty"`
-	UserAgent    string      `json:"user_agent,omitempty"`
+	ID           int64     `json:"id"`
+	OccurredAt   time.Time `json:"occurred_at"`
+	ActorType    string    `json:"actor_type"`
+	ActorID      string    `json:"actor_id"`
+	ActorDisplay string    `json:"actor_display"`
+	Action       string    `json:"action"`
+	EntityType   string    `json:"entity_type"`
+	EntityID     string    `json:"entity_id"`
+	OldValue     any       `json:"old_value,omitempty"`
+	NewValue     any       `json:"new_value,omitempty"`
+	RequestID    string    `json:"request_id,omitempty"`
+	TraceID      string    `json:"trace_id,omitempty"`
+	IP           string    `json:"ip,omitempty"`
+	UserAgent    string    `json:"user_agent,omitempty"`
 }
 
+// ListAuditEventsResponse is a paginated list of audit events.
 type ListAuditEventsResponse struct {
 	Data  []*AuditEvent `json:"data"`
 	Total int           `json:"total"`
@@ -30,6 +32,7 @@ type ListAuditEventsResponse struct {
 	Limit int           `json:"limit"`
 }
 
+// AuditRequest represents a recorded HTTP request for audit purposes.
 type AuditRequest struct {
 	ID               int64     `json:"id"`
 	Timestamp        time.Time `json:"timestamp"`
@@ -49,6 +52,7 @@ type AuditRequest struct {
 	TraceID          string    `json:"trace_id"`
 }
 
+// ListAuditRequestsResponse is a paginated list of audit requests.
 type ListAuditRequestsResponse struct {
 	Data  []*AuditRequest `json:"data"`
 	Total int             `json:"total"`
@@ -56,10 +60,12 @@ type ListAuditRequestsResponse struct {
 	Limit int             `json:"limit"`
 }
 
+// FromAuditEvent converts a domain audit event to a DTO.
 func FromAuditEvent(e *domain.ManagementAuditEvent, redactBody bool) *AuditEvent {
 	if e == nil {
 		return nil
 	}
+
 	dtoEvent := &AuditEvent{
 		ID:           e.ID,
 		OccurredAt:   e.OccurredAt,
@@ -82,6 +88,7 @@ func FromAuditEvent(e *domain.ManagementAuditEvent, redactBody bool) *AuditEvent
 	return dtoEvent
 }
 
+// FromAuditEvents converts a slice of domain audit events to DTOs.
 func FromAuditEvents(events []*domain.ManagementAuditEvent, redactBody bool) []*AuditEvent {
 	dtos := make([]*AuditEvent, len(events))
 	for i, e := range events {
@@ -91,6 +98,7 @@ func FromAuditEvents(events []*domain.ManagementAuditEvent, redactBody bool) []*
 	return dtos
 }
 
+// FromAuditRequest converts a domain audit request to a DTO.
 func FromAuditRequest(r *domain.ManagementAuditRequest) *AuditRequest {
 	if r == nil {
 		return nil
@@ -116,6 +124,7 @@ func FromAuditRequest(r *domain.ManagementAuditRequest) *AuditRequest {
 	}
 }
 
+// FromAuditRequests converts a slice of domain audit requests to DTOs.
 func FromAuditRequests(requests []*domain.ManagementAuditRequest) []*AuditRequest {
 	dtos := make([]*AuditRequest, len(requests))
 	for i, r := range requests {

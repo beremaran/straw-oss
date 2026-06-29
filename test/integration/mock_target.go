@@ -1,3 +1,4 @@
+// Package integration provides test helpers for integration tests.
 package integration
 
 import (
@@ -8,6 +9,7 @@ import (
 	"time"
 )
 
+// MockTargetConfig holds the response configuration for a mock target server.
 type MockTargetConfig struct {
 	StatusCode int
 	Headers    map[string]string
@@ -16,6 +18,7 @@ type MockTargetConfig struct {
 	Error      bool
 }
 
+// RecordedRequest captures an incoming HTTP request.
 type RecordedRequest struct {
 	Method  string
 	URL     string
@@ -24,6 +27,7 @@ type RecordedRequest struct {
 	Time    time.Time
 }
 
+// MockTargetServer is a test double that records requests and returns configurable responses.
 type MockTargetServer struct {
 	server     *httptest.Server
 	mu         sync.RWMutex
@@ -32,6 +36,7 @@ type MockTargetServer struct {
 	urlConfigs map[string]MockTargetConfig
 }
 
+// NewMockTargetServer creates a new mock target HTTP server.
 func NewMockTargetServer() *MockTargetServer {
 	m := &MockTargetServer{
 		config: MockTargetConfig{
@@ -46,29 +51,37 @@ func NewMockTargetServer() *MockTargetServer {
 	return m
 }
 
+// URL returns the server URL.
 func (m *MockTargetServer) URL() string {
 	return m.server.URL
 }
 
+// Close shuts down the mock server.
 func (m *MockTargetServer) Close() {
 	m.server.Close()
 }
 
+// SetDefaultResponse sets the response returned for all unmatched requests.
 func (m *MockTargetServer) SetDefaultResponse(config MockTargetConfig) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	m.config = config
 }
 
+// SetResponseForPath configures a custom response for requests to the given path.
 func (m *MockTargetServer) SetResponseForPath(path string, config MockTargetConfig) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	m.urlConfigs[path] = config
 }
 
+// ClearResponses resets the default response and removes all path-specific configurations.
 func (m *MockTargetServer) ClearResponses() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	m.config = MockTargetConfig{
 		StatusCode: http.StatusOK,
 		Body:       []byte("OK"),
@@ -76,21 +89,26 @@ func (m *MockTargetServer) ClearResponses() {
 	m.urlConfigs = make(map[string]MockTargetConfig)
 }
 
+// GetRequests returns a copy of all recorded requests.
 func (m *MockTargetServer) GetRequests() []RecordedRequest {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+
 	result := make([]RecordedRequest, len(m.requests))
 	copy(result, m.requests)
 
 	return result
 }
 
+// ClearRequests clears all recorded requests.
 func (m *MockTargetServer) ClearRequests() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	m.requests = nil
 }
 
+// RequestCount returns the number of recorded requests.
 func (m *MockTargetServer) RequestCount() int {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -115,10 +133,12 @@ func (m *MockTargetServer) handler(w http.ResponseWriter, r *http.Request) {
 	m.mu.Unlock()
 
 	m.mu.RLock()
+
 	config, ok := m.urlConfigs[r.URL.Path]
 	if !ok {
 		config = m.config
 	}
+
 	m.mu.RUnlock()
 
 	if config.Error {
@@ -148,6 +168,7 @@ func (m *MockTargetServer) handler(w http.ResponseWriter, r *http.Request) {
 	if statusCode == 0 {
 		statusCode = http.StatusOK
 	}
+
 	w.WriteHeader(statusCode)
 
 	if len(config.Body) > 0 {
@@ -162,13 +183,17 @@ func readBody(r *http.Request) ([]byte, error) {
 	defer func() { _ = r.Body.Close() }()
 
 	const maxBodySize = 1024 * 1024
+
+	const readBufSize = 1024
+
 	limited := http.MaxBytesReader(nil, r.Body, maxBodySize)
 
-	buf := make([]byte, 0, 1024)
+	buf := make([]byte, 0, readBufSize)
 	for {
-		tmp := make([]byte, 1024)
+		tmp := make([]byte, readBufSize)
 		n, err := limited.Read(tmp)
 		buf = append(buf, tmp[:n]...)
+
 		if err != nil {
 			break
 		}
@@ -177,7 +202,8 @@ func readBody(r *http.Request) ([]byte, error) {
 	return buf, nil
 }
 
-func JSONResponse(data interface{}) []byte {
+// JSONResponse marshals data to JSON bytes, panicking on error.
+func JSONResponse(data any) []byte {
 	b, err := json.Marshal(data)
 	if err != nil {
 		panic(err)
@@ -186,16 +212,18 @@ func JSONResponse(data interface{}) []byte {
 	return b
 }
 
-func MockTargetWithJSON(data interface{}) MockTargetConfig {
+// MockTargetWithJSON returns a config that responds with JSON data.
+func MockTargetWithJSON(data any) MockTargetConfig {
 	return MockTargetConfig{
 		StatusCode: http.StatusOK,
 		Headers: map[string]string{
-			"Content-Type": "application/json",
+			"Content-Type": httpContentTypeJSON,
 		},
 		Body: JSONResponse(data),
 	}
 }
 
+// MockTargetWithStatus returns a config that responds with the given status code and body.
 func MockTargetWithStatus(status int, body string) MockTargetConfig {
 	return MockTargetConfig{
 		StatusCode: status,
@@ -203,6 +231,7 @@ func MockTargetWithStatus(status int, body string) MockTargetConfig {
 	}
 }
 
+// MockTargetWithDelay returns a config that adds a delay before responding.
 func MockTargetWithDelay(delay time.Duration) MockTargetConfig {
 	return MockTargetConfig{
 		StatusCode: http.StatusOK,

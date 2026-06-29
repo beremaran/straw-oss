@@ -1,6 +1,7 @@
 package orchestrator
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/beremaran/straw/pkg/protocol"
@@ -12,8 +13,8 @@ func TestFailureType_String(t *testing.T) {
 		expected string
 	}{
 		{FailureNone, "none"},
-		{FailureTimeout, "timeout"},
-		{FailureConnection, "connection"},
+		{FailureTimeout, testFailureTimeoutStr},
+		{FailureConnection, testFailureConnectionStr},
 		{FailureRateLimited, "rate_limited"},
 		{FailureBlocked, "blocked"},
 		{FailureUpstream, "upstream"},
@@ -171,7 +172,7 @@ func TestClassifyFailure(t *testing.T) {
 			result: &ResultMessage{
 				Error: &protocol.ErrorInfo{
 					Code:    protocol.ErrCodeEndpointTimeout,
-					Message: "request timed out",
+					Message: testRequestTimedOut,
 				},
 			},
 			expected: FailureTimeout,
@@ -257,7 +258,7 @@ func TestIsBlockedResponse(t *testing.T) {
 			result: &ResultMessage{
 				StatusCode: 200,
 				Headers: protocol.HeaderMap{
-					{Key: "Content-Type", Value: "text/html; captcha=true"},
+					{Key: contentTypeValue, Value: "text/html; captcha=true"},
 				},
 			},
 			expected: true,
@@ -290,7 +291,7 @@ func TestIsRetryableStatusCode(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(string(rune(tt.statusCode)), func(t *testing.T) {
+		t.Run(fmt.Sprintf("status-%d", tt.statusCode), func(t *testing.T) {
 			if got := IsRetryableStatusCode(tt.statusCode); got != tt.expected {
 				t.Errorf("IsRetryableStatusCode(%d) = %v, want %v", tt.statusCode, got, tt.expected)
 			}
@@ -342,7 +343,7 @@ func TestClassifyErrorInfo_EdgeCases(t *testing.T) {
 	t.Run("upstream error with connection refused", func(t *testing.T) {
 		errInfo := &protocol.ErrorInfo{
 			Code:    protocol.ErrCodeUpstreamError,
-			Message: "connection refused",
+			Message: errConnectionRefused,
 		}
 		failure := classifyErrorInfo(errInfo)
 		if failure != FailureConnection {

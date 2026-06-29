@@ -1,3 +1,5 @@
+// Package fingerprint provides HTTP fingerprint presets for simulating
+// different browsers' TLS and HTTP/2 characteristics.
 package fingerprint
 
 import (
@@ -16,12 +18,60 @@ func registerBuiltinPresets(r *Registry) {
 	registerEdgePresets(r)
 }
 
+// DefaultPresetID is the ID of the default browser fingerprint preset.
+const DefaultPresetID = "chrome-133"
+
+const authorityPseudoHeader = ":authority"
+
+const methodPseudoHeader = ":method"
+
+const pathPseudoHeader = ":path"
+
+const schemePseudoHeader = ":scheme"
+
+const hostHeader = "Host"
+
+const connectionHeader = "Connection"
+
+const userAgentHeader = "User-Agent"
+
+const acceptHeader = "Accept"
+
+const secFetchSiteHeader = "Sec-Fetch-Site"
+
+const secFetchModeHeader = "Sec-Fetch-Mode"
+
+const secFetchDestHeader = "Sec-Fetch-Dest"
+
+const acceptEncodingHeader = "Accept-Encoding"
+
+const acceptLanguageHeader = "Accept-Language"
+
+// HTTP/2 settings magic numbers.
+const (
+	chromiumHeaderTableSize      = 65536
+	chromiumMaxConcurrentStreams = 1000
+	chromiumInitialWindowSize    = 6291456
+	chromiumMaxFrameSize         = 16384
+	chromiumMaxHeaderListSize    = 262144
+
+	firefoxHeaderTableSize      = 65536
+	firefoxMaxConcurrentStreams = 100
+	firefoxInitialWindowSize    = 131072
+	firefoxMaxFrameSize         = 16384
+
+	safariHeaderTableSize      = 4096
+	safariMaxConcurrentStreams = 100
+	safariInitialWindowSize    = 2097152
+	safariMaxFrameSize         = 16384
+)
+
 var (
-	chromePseudoHeaderOrder = []string{":method", ":authority", ":scheme", ":path"}
+	chromePseudoHeaderOrder = []string{methodPseudoHeader, authorityPseudoHeader, schemePseudoHeader, pathPseudoHeader}
 
-	firefoxPseudoHeaderOrder = []string{":method", ":path", ":authority", ":scheme"}
+	firefoxPseudoHeaderOrder = []string{methodPseudoHeader, pathPseudoHeader, authorityPseudoHeader, schemePseudoHeader}
 
-	safariPseudoHeaderOrder = []string{":method", ":scheme", ":path", ":authority"}
+	safariPseudoHeaderOrder = []string{methodPseudoHeader, schemePseudoHeader, pathPseudoHeader, authorityPseudoHeader}
 )
 
 func registerChromePresets(r *Registry) {
@@ -140,31 +190,31 @@ func chromiumPreset(
 
 func chromiumHTTP2Settings() *HTTP2Settings {
 	return &HTTP2Settings{
-		HeaderTableSize:      65536,
+		HeaderTableSize:      chromiumHeaderTableSize,
 		EnablePush:           false,
-		MaxConcurrentStreams: 1000,
-		InitialWindowSize:    6291456,
-		MaxFrameSize:         16384,
-		MaxHeaderListSize:    262144,
+		MaxConcurrentStreams: chromiumMaxConcurrentStreams,
+		InitialWindowSize:    chromiumInitialWindowSize,
+		MaxFrameSize:         chromiumMaxFrameSize,
+		MaxHeaderListSize:    chromiumMaxHeaderListSize,
 	}
 }
 
 func chromiumHeaderOrder() []string {
 	return []string{
-		"Host",
-		"Connection",
+		hostHeader,
+		connectionHeader,
 		"sec-ch-ua",
 		"sec-ch-ua-mobile",
 		"sec-ch-ua-platform",
 		"Upgrade-Insecure-Requests",
-		"User-Agent",
-		"Accept",
-		"Sec-Fetch-Site",
-		"Sec-Fetch-Mode",
+		userAgentHeader,
+		acceptHeader,
+		secFetchSiteHeader,
+		secFetchModeHeader,
 		"Sec-Fetch-User",
-		"Sec-Fetch-Dest",
-		"Accept-Encoding",
-		"Accept-Language",
+		secFetchDestHeader,
+		acceptEncodingHeader,
+		acceptLanguageHeader,
 	}
 }
 
@@ -183,27 +233,27 @@ func firefoxPreset(id string, hello utls.ClientHelloID, userAgent string, lastUp
 
 func firefoxHTTP2Settings() *HTTP2Settings {
 	return &HTTP2Settings{
-		HeaderTableSize:      65536,
+		HeaderTableSize:      firefoxHeaderTableSize,
 		EnablePush:           true,
-		MaxConcurrentStreams: 100,
-		InitialWindowSize:    131072,
-		MaxFrameSize:         16384,
+		MaxConcurrentStreams: firefoxMaxConcurrentStreams,
+		InitialWindowSize:    firefoxInitialWindowSize,
+		MaxFrameSize:         firefoxMaxFrameSize,
 		MaxHeaderListSize:    0,
 	}
 }
 
 func firefoxHeaderOrder() []string {
 	return []string{
-		"Host",
-		"User-Agent",
-		"Accept",
-		"Accept-Language",
-		"Accept-Encoding",
-		"Connection",
+		hostHeader,
+		userAgentHeader,
+		acceptHeader,
+		acceptLanguageHeader,
+		acceptEncodingHeader,
+		connectionHeader,
 		"Upgrade-Insecure-Requests",
-		"Sec-Fetch-Dest",
-		"Sec-Fetch-Mode",
-		"Sec-Fetch-Site",
+		secFetchDestHeader,
+		secFetchModeHeader,
+		secFetchSiteHeader,
 		"Sec-Fetch-User",
 	}
 }
@@ -223,25 +273,25 @@ func safariPreset(id string, hello utls.ClientHelloID, userAgent string, lastUpd
 
 func safariHTTP2Settings() *HTTP2Settings {
 	return &HTTP2Settings{
-		HeaderTableSize:      4096,
+		HeaderTableSize:      safariHeaderTableSize,
 		EnablePush:           false,
-		MaxConcurrentStreams: 100,
-		InitialWindowSize:    2097152,
-		MaxFrameSize:         16384,
+		MaxConcurrentStreams: safariMaxConcurrentStreams,
+		InitialWindowSize:    safariInitialWindowSize,
+		MaxFrameSize:         safariMaxFrameSize,
 		MaxHeaderListSize:    0,
 	}
 }
 
 func safariHeaderOrder() []string {
 	return []string{
-		"Host",
-		"Accept",
-		"Sec-Fetch-Site",
-		"Accept-Language",
-		"Sec-Fetch-Mode",
-		"User-Agent",
-		"Accept-Encoding",
-		"Sec-Fetch-Dest",
-		"Connection",
+		hostHeader,
+		acceptHeader,
+		secFetchSiteHeader,
+		acceptLanguageHeader,
+		secFetchModeHeader,
+		userAgentHeader,
+		acceptEncodingHeader,
+		secFetchDestHeader,
+		connectionHeader,
 	}
 }

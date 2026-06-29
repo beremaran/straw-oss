@@ -8,10 +8,14 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/beremaran/straw/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+
+	"github.com/beremaran/straw/internal/domain"
 )
+
+const testRuleID = "rule1"
 
 type MockRuleVersionManager struct {
 	mock.Mock
@@ -32,7 +36,7 @@ func TestRoutingRuleHandler_HandleListRoutingRules(t *testing.T) {
 	handler := NewRoutingRuleHandler(mockRepo, mockVerMgr, nil)
 
 	rules := []domain.RoutingRule{
-		{ID: "rule1", Name: "Rule 1"},
+		{ID: testRuleID, Name: "Rule 1"},
 	}
 	mockRepo.On("ListRules", mock.Anything, 20, 0).Return(rules, 1, nil).Once()
 
@@ -43,15 +47,15 @@ func TestRoutingRuleHandler_HandleListRoutingRules(t *testing.T) {
 
 func TestRoutingRuleHandler_HandleGetRoutingRule(t *testing.T) {
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/management/rules/rule1", nil)
-	req.SetPathValue("id", "rule1")
+	req.SetPathValue("id", testRuleID)
 	rec := httptest.NewRecorder()
 
 	mockRepo := new(MockRoutingRuleRepo)
 	mockVerMgr := new(MockRuleVersionManager)
 	handler := NewRoutingRuleHandler(mockRepo, mockVerMgr, nil)
 
-	rule := &domain.RoutingRule{ID: "rule1", Name: "Rule 1"}
-	mockRepo.On("GetRuleByID", mock.Anything, "rule1").Return(rule, nil).Once()
+	rule := &domain.RoutingRule{ID: testRuleID, Name: "Rule 1"}
+	mockRepo.On("GetRuleByID", mock.Anything, testRuleID).Return(rule, nil).Once()
 
 	handler.HandleGetRoutingRule(rec, req)
 
@@ -61,7 +65,7 @@ func TestRoutingRuleHandler_HandleGetRoutingRule(t *testing.T) {
 func TestRoutingRuleHandler_HandleCreateRoutingRule(t *testing.T) {
 	rule := domain.RoutingRule{Name: "New Rule", Priority: 10}
 	body, err := json.Marshal(rule)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/management/rules", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -83,21 +87,21 @@ func TestRoutingRuleHandler_HandleCreateRoutingRule(t *testing.T) {
 }
 
 func TestRoutingRuleHandler_HandleUpdateRoutingRule(t *testing.T) {
-	rule := domain.RoutingRule{ID: "rule1", Name: "Updated Rule", Priority: 20}
+	rule := domain.RoutingRule{ID: testRuleID, Name: "Updated Rule", Priority: 20}
 	body, err := json.Marshal(rule)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodPut, "/management/rules/rule1", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	req.SetPathValue("id", "rule1")
+	req.SetPathValue("id", testRuleID)
 	rec := httptest.NewRecorder()
 
 	mockRepo := new(MockRoutingRuleRepo)
 	mockVerMgr := new(MockRuleVersionManager)
 	handler := NewRoutingRuleHandler(mockRepo, mockVerMgr, nil)
 
-	mockRepo.On("GetRuleByID", mock.Anything, "rule1").Return((*domain.RoutingRule)(nil), nil).Once()
+	mockRepo.On("GetRuleByID", mock.Anything, testRuleID).Return((*domain.RoutingRule)(nil), nil).Once()
 	mockRepo.On("UpdateRule", mock.Anything, mock.MatchedBy(func(r *domain.RoutingRule) bool {
-		return r.ID == "rule1" && r.Name == "Updated Rule" && !r.UpdatedAt.IsZero()
+		return r.ID == testRuleID && r.Name == "Updated Rule" && !r.UpdatedAt.IsZero()
 	})).Return(nil).Once()
 
 	mockVerMgr.On("IncrementRulesVersion", mock.Anything).Return(int64(3), nil).Once()
@@ -110,15 +114,15 @@ func TestRoutingRuleHandler_HandleUpdateRoutingRule(t *testing.T) {
 
 func TestRoutingRuleHandler_HandleDeleteRoutingRule(t *testing.T) {
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodDelete, "/management/rules/rule1", nil)
-	req.SetPathValue("id", "rule1")
+	req.SetPathValue("id", testRuleID)
 	rec := httptest.NewRecorder()
 
 	mockRepo := new(MockRoutingRuleRepo)
 	mockVerMgr := new(MockRuleVersionManager)
 	handler := NewRoutingRuleHandler(mockRepo, mockVerMgr, nil)
 
-	mockRepo.On("GetRuleByID", mock.Anything, "rule1").Return((*domain.RoutingRule)(nil), nil).Once()
-	mockRepo.On("DeleteRule", mock.Anything, "rule1").Return(nil).Once()
+	mockRepo.On("GetRuleByID", mock.Anything, testRuleID).Return((*domain.RoutingRule)(nil), nil).Once()
+	mockRepo.On("DeleteRule", mock.Anything, testRuleID).Return(nil).Once()
 
 	mockVerMgr.On("IncrementRulesVersion", mock.Anything).Return(int64(4), nil).Once()
 

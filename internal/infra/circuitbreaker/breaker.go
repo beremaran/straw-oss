@@ -6,22 +6,31 @@ import (
 	"time"
 )
 
+// State represents the current state of the circuit breaker.
 type State int
 
 const (
+	// StateClosed indicates the circuit is closed and operations are allowed.
 	StateClosed State = iota
+	// StateOpen indicates the circuit is open and operations are rejected.
 	StateOpen
+	// StateHalfOpen indicates the circuit is half-open and operations are allowed.
 	StateHalfOpen
 )
 
+// ErrCircuitOpen is returned when an operation is attempted while the circuit breaker is open.
 var ErrCircuitOpen = errors.New("circuit breaker is open")
 
+const defaultResetTimeout = 60 * time.Second
+
+// Config holds the configuration for a CircuitBreaker.
 type Config struct {
 	Name             string
 	FailureThreshold uint
 	ResetTimeout     time.Duration
 }
 
+// CircuitBreaker tracks failures and rejects operations when the failure threshold is exceeded.
 type CircuitBreaker struct {
 	name             string
 	failureThreshold uint
@@ -32,12 +41,14 @@ type CircuitBreaker struct {
 	lastFailure      time.Time
 }
 
+// New creates a CircuitBreaker with the given configuration, applying defaults for zero values.
 func New(cfg Config) *CircuitBreaker {
 	if cfg.FailureThreshold == 0 {
 		cfg.FailureThreshold = 5
 	}
+
 	if cfg.ResetTimeout == 0 {
-		cfg.ResetTimeout = 60 * time.Second
+		cfg.ResetTimeout = defaultResetTimeout
 	}
 
 	return &CircuitBreaker{
@@ -48,6 +59,8 @@ func New(cfg Config) *CircuitBreaker {
 	}
 }
 
+// Execute runs the provided function, reporting success or failure to the circuit breaker.
+// Returns ErrCircuitOpen if the circuit is open.
 func (cb *CircuitBreaker) Execute(fn func() error) error {
 	if !cb.Allow() {
 		return ErrCircuitOpen
@@ -65,6 +78,8 @@ func (cb *CircuitBreaker) Execute(fn func() error) error {
 	return nil
 }
 
+// Allow reports whether an operation should be permitted.
+// It returns true when the circuit is closed, half-open, or has transitioned to half-open after the reset timeout.
 func (cb *CircuitBreaker) Allow() bool {
 	cb.mu.RLock()
 	state := cb.state
@@ -100,6 +115,7 @@ func (cb *CircuitBreaker) Allow() bool {
 	return false
 }
 
+// ReportSuccess records a successful operation, resetting the failure count and transitioning from half-open to closed.
 func (cb *CircuitBreaker) ReportSuccess() {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
@@ -115,6 +131,7 @@ func (cb *CircuitBreaker) ReportSuccess() {
 	}
 }
 
+// ReportFailure records a failed operation, incrementing the failure count and potentially opening the circuit.
 func (cb *CircuitBreaker) ReportFailure() {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
@@ -134,6 +151,7 @@ func (cb *CircuitBreaker) ReportFailure() {
 	}
 }
 
+// State returns the current state of the circuit breaker.
 func (cb *CircuitBreaker) State() State {
 	cb.mu.RLock()
 	defer cb.mu.RUnlock()

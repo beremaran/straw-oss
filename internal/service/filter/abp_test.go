@@ -13,7 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const sampleABPList = `[Adblock Plus 2.0]
+const (
+	sampleABPList = `[Adblock Plus 2.0]
 ! Title: Test Filter List
 ! Last modified: 2026-01-01
 ||googleanalytics.com^
@@ -21,6 +22,17 @@ const sampleABPList = `[Adblock Plus 2.0]
 ||facebook.com/tr/*
 ||ads.example.com^
 `
+	list1Content = `[Adblock Plus 2.0]
+||ads.example.com^
+`
+	list2Content = `[Adblock Plus 2.0]
+||tracking.example.com^
+`
+	testNormalURL   = "https://example.com/products/item"
+	testExampleHost = "example.com"
+	testList1Name   = "list1"
+	testList2Name   = "list2"
+)
 
 func TestNewABPMatcher(t *testing.T) {
 	matcher := NewABPMatcher(nil, DefaultABPMatcherConfig())
@@ -72,7 +84,7 @@ func TestABPMatcher_Match(t *testing.T) {
 		},
 		{
 			name:        "allows normal content",
-			url:         "https://example.com/products/item",
+			url:         testNormalURL,
 			wantBlocked: false,
 		},
 	}
@@ -95,7 +107,7 @@ func TestABPMatcher_Match_NonexistentList(t *testing.T) {
 }
 
 func TestABPMatcher_LoadList_FromServer(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(sampleABPList))
 	}))
@@ -116,7 +128,7 @@ func TestABPMatcher_LoadList_FromServer(t *testing.T) {
 }
 
 func TestABPMatcher_LoadList_HTTPError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer server.Close()
@@ -128,7 +140,7 @@ func TestABPMatcher_LoadList_HTTPError(t *testing.T) {
 
 	err := matcher.LoadList(context.Background(), "testlist", server.URL)
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unexpected status code")
 }
 
@@ -144,29 +156,22 @@ func TestABPMatcher_HasList(t *testing.T) {
 func TestABPMatcher_MultipleLists(t *testing.T) {
 	matcher := NewABPMatcher(nil, DefaultABPMatcherConfig())
 
-	list1 := `[Adblock Plus 2.0]
-||ads.example.com^
-`
-	list2 := `[Adblock Plus 2.0]
-||tracking.example.com^
-`
-
-	err := matcher.parseAndStore("list1", stringReader(list1))
+	err := matcher.parseAndStore(testList1Name, stringReader(list1Content))
 	require.NoError(t, err)
 
-	err = matcher.parseAndStore("list2", stringReader(list2))
+	err = matcher.parseAndStore(testList2Name, stringReader(list2Content))
 	require.NoError(t, err)
 
-	blocked1, _ := matcher.Match("https://ads.example.com/banner", []string{"list1"})
+	blocked1, _ := matcher.Match("https://ads.example.com/banner", []string{testList1Name})
 	assert.True(t, blocked1)
 
-	blocked2, _ := matcher.Match("https://tracking.example.com/pixel", []string{"list2"})
+	blocked2, _ := matcher.Match("https://tracking.example.com/pixel", []string{testList2Name})
 	assert.True(t, blocked2)
 
-	blocked3, _ := matcher.Match("https://tracking.example.com/pixel", []string{"list1"})
+	blocked3, _ := matcher.Match("https://tracking.example.com/pixel", []string{testList1Name})
 	assert.False(t, blocked3)
 
-	blocked4, _ := matcher.Match("https://ads.example.com/banner", []string{"list1", "list2"})
+	blocked4, _ := matcher.Match("https://ads.example.com/banner", []string{testList1Name, testList2Name})
 	assert.True(t, blocked4)
 }
 
@@ -175,10 +180,10 @@ func TestExtractDomain(t *testing.T) {
 		url  string
 		want string
 	}{
-		{"https://example.com/path", "example.com"},
+		{"https://example.com/path", testExampleHost},
 		{"http://www.example.com:8080/path", "www.example.com"},
 		{"https://sub.domain.example.com/", "sub.domain.example.com"},
-		{"example.com/path", "example.com"},
+		{"example.com/path", testExampleHost},
 	}
 
 	for _, tt := range tests {

@@ -13,18 +13,18 @@ func TestParseTag(t *testing.T) {
 	}{
 		{
 			name:  "valid tag",
-			input: "target:amazon",
-			want:  Tag{Key: "target", Value: "amazon"},
+			input: targetAmazon,
+			want:  Tag{Key: target, Value: amazon},
 		},
 		{
 			name:  "tag with whitespace",
 			input: "  target : amazon  ",
-			want:  Tag{Key: "target", Value: "amazon"},
+			want:  Tag{Key: target, Value: amazon},
 		},
 		{
 			name:  "tag with empty value",
 			input: "target:",
-			want:  Tag{Key: "target", Value: ""},
+			want:  Tag{Key: target, Value: ""},
 		},
 		{
 			name:    "empty string",
@@ -74,14 +74,14 @@ func TestParseTags(t *testing.T) {
 			name:  "multiple tags",
 			input: "target:amazon, type:search",
 			want: []Tag{
-				{Key: "target", Value: "amazon"},
-				{Key: "type", Value: "search"},
+				{Key: target, Value: amazon},
+				{Key: tagType, Value: search},
 			},
 		},
 		{
 			name:  "single tag",
-			input: "target:amazon",
-			want:  []Tag{{Key: "target", Value: "amazon"}},
+			input: targetAmazon,
+			want:  []Tag{{Key: target, Value: amazon}},
 		},
 		{
 			name:  "empty string",
@@ -111,9 +111,9 @@ func TestParseTags(t *testing.T) {
 }
 
 func TestTagString(t *testing.T) {
-	tag := Tag{Key: "target", Value: "amazon"}
-	if got := tag.String(); got != "target:amazon" {
-		t.Errorf("Tag.String() = %v, want %v", got, "target:amazon")
+	tag := Tag{Key: target, Value: amazon}
+	if got := tag.String(); got != targetAmazon {
+		t.Errorf("Tag.String() = %v, want %v", got, targetAmazon)
 	}
 }
 
@@ -126,26 +126,26 @@ func TestTagMatches(t *testing.T) {
 	}{
 		{
 			name:    "exact match",
-			tag:     Tag{Key: "target", Value: "amazon"},
-			pattern: Tag{Key: "target", Value: "amazon"},
+			tag:     Tag{Key: target, Value: amazon},
+			pattern: Tag{Key: target, Value: amazon},
 			want:    true,
 		},
 		{
 			name:    "wildcard match",
-			tag:     Tag{Key: "target", Value: "amazon"},
-			pattern: Tag{Key: "target", Value: "*"},
+			tag:     Tag{Key: target, Value: amazon},
+			pattern: Tag{Key: target, Value: "*"},
 			want:    true,
 		},
 		{
 			name:    "different key",
-			tag:     Tag{Key: "target", Value: "amazon"},
-			pattern: Tag{Key: "type", Value: "amazon"},
+			tag:     Tag{Key: target, Value: amazon},
+			pattern: Tag{Key: tagType, Value: amazon},
 			want:    false,
 		},
 		{
 			name:    "different value",
-			tag:     Tag{Key: "target", Value: "amazon"},
-			pattern: Tag{Key: "target", Value: "walmart"},
+			tag:     Tag{Key: target, Value: amazon},
+			pattern: Tag{Key: target, Value: "walmart"},
 			want:    false,
 		},
 	}
@@ -161,8 +161,8 @@ func TestTagMatches(t *testing.T) {
 
 func TestMatchesAll(t *testing.T) {
 	tags := []Tag{
-		{Key: "target", Value: "amazon"},
-		{Key: "type", Value: "search"},
+		{Key: target, Value: amazon},
+		{Key: tagType, Value: search},
 		{Key: "region", Value: "us"},
 	}
 
@@ -173,12 +173,12 @@ func TestMatchesAll(t *testing.T) {
 	}{
 		{
 			name:     "all required present",
-			required: []Tag{{Key: "target", Value: "amazon"}, {Key: "type", Value: "search"}},
+			required: []Tag{{Key: target, Value: amazon}, {Key: tagType, Value: search}},
 			want:     true,
 		},
 		{
 			name:     "one required missing",
-			required: []Tag{{Key: "target", Value: "walmart"}},
+			required: []Tag{{Key: target, Value: "walmart"}},
 			want:     false,
 		},
 		{
@@ -188,7 +188,7 @@ func TestMatchesAll(t *testing.T) {
 		},
 		{
 			name:     "wildcard required",
-			required: []Tag{{Key: "target", Value: "*"}},
+			required: []Tag{{Key: target, Value: "*"}},
 			want:     true,
 		},
 	}
@@ -204,8 +204,8 @@ func TestMatchesAll(t *testing.T) {
 
 func TestMatchesNone(t *testing.T) {
 	tags := []Tag{
-		{Key: "target", Value: "amazon"},
-		{Key: "type", Value: "search"},
+		{Key: target, Value: amazon},
+		{Key: tagType, Value: search},
 	}
 
 	tests := []struct {
@@ -220,7 +220,7 @@ func TestMatchesNone(t *testing.T) {
 		},
 		{
 			name:     "excluded present",
-			excluded: []Tag{{Key: "target", Value: "amazon"}},
+			excluded: []Tag{{Key: target, Value: amazon}},
 			want:     false,
 		},
 		{

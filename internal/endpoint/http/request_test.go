@@ -19,7 +19,7 @@ func TestBuildRequest_Basic(t *testing.T) {
 
 	req := &protocol.Request{
 		ID:     "test-123",
-		Method: "GET",
+		Method: getMethod,
 		URL:    "https://example.com/path",
 		Headers: protocol.HeaderMap{
 			{Key: "X-Custom-Header", Value: "custom-value"},
@@ -81,7 +81,7 @@ func TestBuildRequest_InvalidURL(t *testing.T) {
 
 	req := &protocol.Request{
 		ID:      "test-invalid",
-		Method:  "GET",
+		Method:  getMethod,
 		URL:     "://invalid-url",
 		Headers: protocol.HeaderMap{},
 	}
@@ -106,8 +106,8 @@ func TestBuildRequest_AppliesFingerprintHeaders(t *testing.T) {
 
 	req := &protocol.Request{
 		ID:      "test-fp-headers",
-		Method:  "GET",
-		URL:     "https://example.com",
+		Method:  getMethod,
+		URL:     exampleURL,
 		Headers: protocol.HeaderMap{},
 	}
 
@@ -139,11 +139,11 @@ func TestBuildRequest_DoesNotOverrideExistingHeaders(t *testing.T) {
 
 	req := &protocol.Request{
 		ID:     "test-no-override",
-		Method: "GET",
-		URL:    "https://example.com",
+		Method: getMethod,
+		URL:    exampleURL,
 		Headers: protocol.HeaderMap{
 			{Key: "User-Agent", Value: "Custom-Agent"},
-			{Key: "Accept", Value: "text/plain"},
+			{Key: AcceptHeader, Value: HeaderValueTextPlain},
 		},
 	}
 
@@ -196,7 +196,7 @@ func TestApplyHeaderOrder(t *testing.T) {
 		Method: "GET",
 		URL:    "https://example.com",
 		Headers: protocol.HeaderMap{
-			{Key: "X-Custom", Value: "value"},
+			{Key: HeaderValueXCustom, Value: "value"},
 			{Key: "Accept", Value: "text/html"},
 		},
 	}
@@ -214,15 +214,15 @@ func TestApplyHeaderOrder(t *testing.T) {
 
 func TestHeadersToProtocol(t *testing.T) {
 	fhttpHeaders := make(map[string][]string)
-	fhttpHeaders["Content-Type"] = []string{"application/json"}
-	fhttpHeaders["X-Custom"] = []string{"value1", "value2"}
+	fhttpHeaders[ContentTypeHeader] = []string{HeaderValueApplicationJSON}
+	fhttpHeaders[HeaderValueXCustom] = []string{HeaderValueValue1, "value2"}
 
 	result := HeadersToProtocol(fhttpHeaders)
 
 	foundContentType := false
 	customCount := 0
 	for _, h := range result {
-		if h.Key == "Content-Type" && h.Value == "application/json" {
+		if h.Key == ContentTypeHeader && h.Value == HeaderValueApplicationJSON {
 			foundContentType = true
 		}
 		if h.Key == "X-Custom" {

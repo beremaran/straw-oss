@@ -7,6 +7,7 @@ import (
 	"github.com/beremaran/straw/internal/server/helper"
 )
 
+// CircuitBreaker prevents requests from reaching downstream services when failures exceed a threshold.
 func CircuitBreaker(cb *circuitbreaker.CircuitBreaker) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -19,7 +20,7 @@ func CircuitBreaker(cb *circuitbreaker.CircuitBreaker) func(http.Handler) http.H
 			sw := NewStatusResponseWriter(w)
 			next.ServeHTTP(sw, r)
 
-			if sw.Status >= 500 {
+			if sw.Status >= http.StatusInternalServerError {
 				cb.ReportFailure()
 			} else {
 				cb.ReportSuccess()

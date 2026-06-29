@@ -8,6 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/beremaran/straw/internal/infra/circuitbreaker"
 	"github.com/beremaran/straw/internal/server"
 	"github.com/beremaran/straw/internal/service/auth"
@@ -18,8 +21,6 @@ import (
 	"github.com/beremaran/straw/internal/service/session"
 	"github.com/beremaran/straw/pkg/broker"
 	"github.com/beremaran/straw/test/integration"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestRequestValidation_SecurityScenarios(t *testing.T) {
@@ -34,7 +35,7 @@ func TestRequestValidation_SecurityScenarios(t *testing.T) {
 	authRepo := integration.NewTestAuthRepo(t, s.PostgresDSN())
 	authTokenRepo := integration.NewTestAuthTokenRepo(t, s.PostgresDSN())
 
-	rlRedis := integration.NewTestRedisClient(t, ctx, s.RedisAddr())
+	rlRedis := integration.NewTestRedisClient(ctx, t, s.RedisAddr())
 	authCache := auth.NewAuthCache(rlRedis, 10*time.Second)
 	authService := auth.NewAuthService(authRepo, authTokenRepo, authCache)
 	sessionRepo := session.NewRedisStore(rlRedis)

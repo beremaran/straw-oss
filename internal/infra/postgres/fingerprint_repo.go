@@ -7,20 +7,25 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/beremaran/straw/internal/domain"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/beremaran/straw/internal/domain"
 )
 
+// ErrPresetNotFound is returned when a fingerprint preset is not found.
 var ErrPresetNotFound = errors.New("preset not found")
 
+// FingerprintRepository persists and retrieves fingerprint presets.
 type FingerprintRepository struct {
 	client *Client
 }
 
+// NewFingerprintRepository creates a new FingerprintRepository backed by the given client.
 func NewFingerprintRepository(client *Client) *FingerprintRepository {
 	return &FingerprintRepository{client: client}
 }
 
+// ListPresets returns all fingerprint presets ordered by name.
 func (r *FingerprintRepository) ListPresets(ctx context.Context) ([]domain.FingerprintPreset, error) {
 	query := `
 		SELECT id, name, config, created_at, updated_at
@@ -28,30 +33,45 @@ func (r *FingerprintRepository) ListPresets(ctx context.Context) ([]domain.Finge
 		ORDER BY name ASC
 	`
 
-	var rows pgx.Rows
-	var err error
-	err = r.client.Execute(func() error {
-		rows, err = r.client.Pool.Query(ctx, query)
+	var (
+		rows pgx.Rows
+		err  error
+	)
 
-		return err
+	err = r.client.Execute(func() error {
+		var queryErr error
+
+		rows, queryErr = r.client.Pool.Query(ctx, query)
+		if queryErr != nil {
+			return fmt.Errorf("failed to execute query: %w", queryErr)
+		}
+
+		return nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to query presets: %w", err)
 	}
+
 	defer rows.Close()
 
 	var presets []domain.FingerprintPreset
+
 	for rows.Next() {
-		var p domain.FingerprintPreset
-		var configJSON []byte
+		var (
+			p          domain.FingerprintPreset
+			configJSON []byte
+		)
+
 		err := rows.Scan(&p.ID, &p.Name, &configJSON, &p.CreatedAt, &p.UpdatedAt)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan preset: %w", err)
 		}
+
 		err = json.Unmarshal(configJSON, &p.Config)
 		if err != nil {
 			return nil, fmt.Errorf("failed to unmarshal config for preset %s: %w", p.ID, err)
 		}
+
 		presets = append(presets, p)
 	}
 
@@ -63,6 +83,7 @@ func (r *FingerprintRepository) ListPresets(ctx context.Context) ([]domain.Finge
 	return presets, nil
 }
 
+// GetPreset returns the fingerprint preset with the given ID.
 func (r *FingerprintRepository) GetPreset(ctx context.Context, id string) (*domain.FingerprintPreset, error) {
 	query := `
 		SELECT id, name, config, created_at, updated_at
@@ -70,8 +91,11 @@ func (r *FingerprintRepository) GetPreset(ctx context.Context, id string) (*doma
 		WHERE id = $1
 	`
 
-	var p domain.FingerprintPreset
-	var configJSON []byte
+	var (
+		p          domain.FingerprintPreset
+		configJSON []byte
+	)
+
 	err := r.client.Execute(func() error {
 		return r.client.Pool.QueryRow(ctx, query, id).Scan(&p.ID, &p.Name, &configJSON, &p.CreatedAt, &p.UpdatedAt)
 	})
@@ -91,6 +115,7 @@ func (r *FingerprintRepository) GetPreset(ctx context.Context, id string) (*doma
 	return &p, nil
 }
 
+// CreatePreset inserts a new fingerprint preset.
 func (r *FingerprintRepository) CreatePreset(ctx context.Context, preset *domain.FingerprintPreset) error {
 	query := `
 		INSERT INTO fingerprint_presets (id, name, config, created_at, updated_at)
@@ -106,12 +131,16 @@ func (r *FingerprintRepository) CreatePreset(ctx context.Context, preset *domain
 	if preset.CreatedAt.IsZero() {
 		preset.CreatedAt = now
 	}
+
 	preset.UpdatedAt = now
 
 	err = r.client.Execute(func() error {
 		_, err := r.client.Pool.Exec(ctx, query, preset.ID, preset.Name, configJSON, preset.CreatedAt, preset.UpdatedAt)
+		if err != nil {
+			return fmt.Errorf("failed to insert preset: %w", err)
+		}
 
-		return err
+		return nil
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create preset: %w", err)
@@ -120,6 +149,7 @@ func (r *FingerprintRepository) CreatePreset(ctx context.Context, preset *domain
 	return nil
 }
 
+// UpdatePreset modifies an existing fingerprint preset.
 func (r *FingerprintRepository) UpdatePreset(ctx context.Context, preset *domain.FingerprintPreset) error {
 	query := `
 		UPDATE fingerprint_presets
@@ -146,6 +176,7 @@ func (r *FingerprintRepository) UpdatePreset(ctx context.Context, preset *domain
 	return nil
 }
 
+// DeletePreset removes a fingerprint preset by ID.
 func (r *FingerprintRepository) DeletePreset(ctx context.Context, id string) error {
 	query := `DELETE FROM fingerprint_presets WHERE id = $1`
 

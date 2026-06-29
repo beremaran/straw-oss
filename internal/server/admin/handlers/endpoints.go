@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/beremaran/straw/internal/domain"
 	"github.com/beremaran/straw/internal/server/admin/middleware"
@@ -15,9 +18,15 @@ import (
 	"github.com/beremaran/straw/internal/service/endpoint"
 	"github.com/beremaran/straw/pkg/broker"
 	"github.com/beremaran/straw/pkg/protocol"
-	"github.com/google/uuid"
 )
 
+const (
+	maxEndpointListLimit = 100
+	maxLogQueryLimit     = 500
+	recentCommandCount   = 5
+)
+
+// EndpointHandler manages endpoint CRUD and lifecycle operations.
 type EndpointHandler struct {
 	healthService *endpoint.HealthService
 	endpointRepo  domain.EndpointRepository
@@ -27,6 +36,7 @@ type EndpointHandler struct {
 	logRepo       domain.EndpointLogRepository
 }
 
+// NewEndpointHandler creates a new EndpointHandler.
 func NewEndpointHandler(
 	healthService *endpoint.HealthService,
 	endpointRepo domain.EndpointRepository,
@@ -45,8 +55,10 @@ func NewEndpointHandler(
 	}
 }
 
+// HandleCreateEndpoint creates or reactivates an endpoint.
 func (h *EndpointHandler) HandleCreateEndpoint(w http.ResponseWriter, r *http.Request) {
 	var req dto.CreateEndpointRequest
+
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
 		helper.WriteError(w, http.StatusBadRequest, "invalid request body")
@@ -88,6 +100,7 @@ func (h *EndpointHandler) HandleCreateEndpoint(w http.ResponseWriter, r *http.Re
 	helper.WriteJSON(w, http.StatusCreated, resp)
 }
 
+// HandleGetEndpoint retrieves a single endpoint.
 func (h *EndpointHandler) HandleGetEndpoint(w http.ResponseWriter, r *http.Request) {
 	ep, ok := h.loadEndpoint(w, r)
 	if !ok {
@@ -98,6 +111,7 @@ func (h *EndpointHandler) HandleGetEndpoint(w http.ResponseWriter, r *http.Reque
 	helper.WriteJSON(w, http.StatusOK, resp)
 }
 
+// HandlePatchEndpoint updates an existing endpoint.
 func (h *EndpointHandler) HandlePatchEndpoint(w http.ResponseWriter, r *http.Request) {
 	ep, ok := h.loadEndpoint(w, r)
 	if !ok {
@@ -105,6 +119,7 @@ func (h *EndpointHandler) HandlePatchEndpoint(w http.ResponseWriter, r *http.Req
 	}
 
 	var req dto.PatchEndpointRequest
+
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
 		helper.WriteError(w, http.StatusBadRequest, "invalid request body")
@@ -115,8 +130,10 @@ func (h *EndpointHandler) HandlePatchEndpoint(w http.ResponseWriter, r *http.Req
 	oldEp := *ep
 	h.applyPatchFields(ep, req)
 
-	var commandID string
-	var reqBy *string
+	var (
+		commandID string
+		reqBy     *string
+	)
 	if actor, ok := middleware.ActorFromContext(r.Context()); ok {
 		reqBy = &actor.ID
 	}
@@ -148,6 +165,7 @@ func (h *EndpointHandler) HandlePatchEndpoint(w http.ResponseWriter, r *http.Req
 	helper.WriteJSON(w, http.StatusOK, resp)
 }
 
+// HandleDeleteEndpoint deletes an endpoint.
 func (h *EndpointHandler) HandleDeleteEndpoint(w http.ResponseWriter, r *http.Request) {
 	ep, ok := h.loadEndpoint(w, r)
 	if !ok {
@@ -175,6 +193,7 @@ func (h *EndpointHandler) HandleDeleteEndpoint(w http.ResponseWriter, r *http.Re
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// HandleListEndpoints lists all endpoints.
 func (h *EndpointHandler) HandleListEndpoints(w http.ResponseWriter, r *http.Request) {
 	page, limit, includeDeleted := h.parseListParams(r)
 
@@ -204,6 +223,7 @@ func (h *EndpointHandler) HandleListEndpoints(w http.ResponseWriter, r *http.Req
 	})
 }
 
+// HandleDrainEndpoint drains an endpoint.
 func (h *EndpointHandler) HandleDrainEndpoint(w http.ResponseWriter, r *http.Request) {
 	ep, ok := h.loadEndpoint(w, r)
 	if !ok {
@@ -212,6 +232,7 @@ func (h *EndpointHandler) HandleDrainEndpoint(w http.ResponseWriter, r *http.Req
 
 	ep.DesiredState = domain.DesiredStateDraining
 	ep.UpdatedAt = time.Now().UTC()
+
 	err := h.endpointRepo.Update(r.Context(), ep)
 	if err != nil {
 		helper.WriteError(w, http.StatusInternalServerError, "failed to update endpoint state")
@@ -252,6 +273,7 @@ func (h *EndpointHandler) HandleDrainEndpoint(w http.ResponseWriter, r *http.Req
 	})
 }
 
+// HandleUndrainEndpoint undrains an endpoint.
 func (h *EndpointHandler) HandleUndrainEndpoint(w http.ResponseWriter, r *http.Request) {
 	ep, ok := h.loadEndpoint(w, r)
 	if !ok {
@@ -260,6 +282,7 @@ func (h *EndpointHandler) HandleUndrainEndpoint(w http.ResponseWriter, r *http.R
 
 	ep.DesiredState = domain.DesiredStateActive
 	ep.UpdatedAt = time.Now().UTC()
+
 	err := h.endpointRepo.Update(r.Context(), ep)
 	if err != nil {
 		helper.WriteError(w, http.StatusInternalServerError, "failed to update endpoint state")
@@ -296,6 +319,7 @@ func (h *EndpointHandler) HandleUndrainEndpoint(w http.ResponseWriter, r *http.R
 	})
 }
 
+// HandleRestartEndpoint restarts an endpoint.
 func (h *EndpointHandler) HandleRestartEndpoint(w http.ResponseWriter, r *http.Request) {
 	ep, ok := h.loadEndpoint(w, r)
 	if !ok {
@@ -331,6 +355,7 @@ func (h *EndpointHandler) HandleRestartEndpoint(w http.ResponseWriter, r *http.R
 	})
 }
 
+// HandleListEndpointCommands lists commands for an endpoint.
 func (h *EndpointHandler) HandleListEndpointCommands(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if id == "" {
@@ -362,6 +387,7 @@ func (h *EndpointHandler) HandleListEndpointCommands(w http.ResponseWriter, r *h
 	})
 }
 
+// HandleGetEndpointCommand retrieves a single endpoint command.
 func (h *EndpointHandler) HandleGetEndpointCommand(w http.ResponseWriter, r *http.Request) {
 	cmdID := r.PathValue("id")
 	if cmdID == "" {
@@ -382,6 +408,7 @@ func (h *EndpointHandler) HandleGetEndpointCommand(w http.ResponseWriter, r *htt
 
 		return
 	}
+
 	if cmd == nil {
 		helper.WriteError(w, http.StatusNotFound, "command not found")
 
@@ -391,6 +418,7 @@ func (h *EndpointHandler) HandleGetEndpointCommand(w http.ResponseWriter, r *htt
 	helper.WriteJSON(w, http.StatusOK, h.mapCommand(cmd))
 }
 
+// HandleGetEndpointLogs retrieves logs for an endpoint.
 func (h *EndpointHandler) HandleGetEndpointLogs(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if id == "" {
@@ -417,43 +445,12 @@ func (h *EndpointHandler) HandleGetEndpointLogs(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	limit := filter.Limit - 1
-	hasMore := len(entries) > limit
-	var responseEntries []domain.EndpointLogEntry
-	if hasMore {
-		responseEntries = entries[:limit]
-	} else {
-		responseEntries = entries
-	}
-
-	data := make([]dto.EndpointLogDTO, len(responseEntries))
-	for i, entry := range responseEntries {
-		data[i] = dto.EndpointLogDTO{
-			ID:         entry.ID,
-			EndpointID: entry.EndpointID,
-			ObservedAt: entry.ObservedAt.Format(time.RFC3339),
-			Level:      entry.Level,
-			Message:    entry.Message,
-			Attrs:      entry.Attrs,
-			TraceID:    entry.TraceID,
-			RequestID:  entry.RequestID,
-		}
-	}
-
-	var nextCursor string
-	if hasMore && len(responseEntries) > 0 {
-		nextCursor = strconv.FormatInt(responseEntries[len(responseEntries)-1].ID, 10)
-	}
-
-	resp := dto.EndpointLogListResponse{
-		Data:       data,
-		NextCursor: nextCursor,
-		HasMore:    hasMore,
-	}
+	resp := h.buildLogResponse(entries, filter.Limit)
 
 	helper.WriteJSON(w, http.StatusOK, resp)
 }
 
+// HandleStreamEndpointLogs streams endpoint logs via SSE.
 func (h *EndpointHandler) HandleStreamEndpointLogs(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if id == "" {
@@ -486,9 +483,11 @@ func (h *EndpointHandler) HandleStreamEndpointLogs(w http.ResponseWriter, r *htt
 	defer cancel()
 
 	subject := "endpoint.logs." + id
+
 	err := h.broker.Subscribe(ctx, subject, h.makeStreamHandler(w, flusher, cancel), broker.WithTransient())
 	if err != nil {
-		_, _ = fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error())
+		writeSSEEvent(w, "error", []byte(sanitizeSSE(err.Error())))
+
 		flusher.Flush()
 
 		return
@@ -519,6 +518,7 @@ func (h *EndpointHandler) loadEndpoint(w http.ResponseWriter, r *http.Request) (
 
 		return nil, false
 	}
+
 	if ep == nil {
 		helper.WriteError(w, http.StatusNotFound, "endpoint not found")
 
@@ -555,19 +555,31 @@ func (h *EndpointHandler) resolveCreateEndpoint(ctx context.Context, req dto.Cre
 
 func (h *EndpointHandler) saveNewOrReactivatedEndpoint(ctx context.Context, ep *domain.Endpoint, isReactivation bool) error {
 	if isReactivation {
-		return h.endpointRepo.Update(ctx, ep)
+		err := h.endpointRepo.Update(ctx, ep)
+		if err != nil {
+			return fmt.Errorf("updating endpoint: %w", err)
+		}
+
+		return nil
 	}
 
-	return h.endpointRepo.Create(ctx, ep)
+	err := h.endpointRepo.Create(ctx, ep)
+	if err != nil {
+		return fmt.Errorf("creating endpoint: %w", err)
+	}
+
+	return nil
 }
 
 func (h *EndpointHandler) reactivateEndpoint(ep *domain.Endpoint, req dto.CreateEndpointRequest) {
 	ep.DeletedAt = nil
 	ep.IsRegistered = true
+
 	ep.DesiredState = domain.DesiredState(req.DesiredState)
 	if ep.DesiredState == "" {
 		ep.DesiredState = domain.DesiredStateActive
 	}
+
 	ep.Tags = req.Tags
 	if req.Metadata != nil {
 		ep.Metadata = domain.EndpointMetadata{
@@ -578,6 +590,7 @@ func (h *EndpointHandler) reactivateEndpoint(ep *domain.Endpoint, req dto.Create
 			Provider:       req.Metadata.Provider,
 		}
 	}
+
 	ep.UpdatedAt = time.Now().UTC()
 }
 
@@ -586,6 +599,7 @@ func (h *EndpointHandler) createNewEndpoint(req dto.CreateEndpointRequest) *doma
 	if req.DesiredState != "" {
 		ep.DesiredState = domain.DesiredState(req.DesiredState)
 	}
+
 	if req.Metadata != nil {
 		ep.Metadata = domain.EndpointMetadata{
 			Version:        req.Metadata.Version,
@@ -603,6 +617,7 @@ func (h *EndpointHandler) applyPatchFields(ep *domain.Endpoint, req dto.PatchEnd
 	if req.Tags != nil {
 		ep.Tags = *req.Tags
 	}
+
 	if req.Metadata != nil {
 		ep.Metadata = domain.EndpointMetadata{
 			Version:        req.Metadata.Version,
@@ -612,31 +627,37 @@ func (h *EndpointHandler) applyPatchFields(ep *domain.Endpoint, req dto.PatchEnd
 			Provider:       req.Metadata.Provider,
 		}
 	}
+
 	if req.IsRegistered != nil {
 		ep.IsRegistered = *req.IsRegistered
 	}
 }
 
 func (h *EndpointHandler) handleDesiredStateChange(ctx context.Context, ep *domain.Endpoint, reqBy *string, newState domain.DesiredState) (string, error) {
-	var commandID string
-	var err error
+	var (
+		commandID string
+		err       error
+	)
 
 	switch newState {
 	case domain.DesiredStateDraining:
 		if h.healthService != nil {
 			_ = h.healthService.DrainEndpoint(ctx, ep.ID)
 		}
+
 		commandID, err = h.publishControlCommand(ctx, ep.ID, "drain", reqBy, nil)
 	case domain.DesiredStateActive:
 		if h.healthService != nil {
 			_ = h.healthService.SetDeleted(ctx, ep.ID, false)
 			_ = h.healthService.SetDraining(ctx, ep.ID, false)
 		}
+
 		commandID, err = h.publishControlCommand(ctx, ep.ID, "undrain", reqBy, nil)
 	case domain.DesiredStateDisabled:
 		if h.healthService != nil {
 			_ = h.healthService.SetDraining(ctx, ep.ID, false)
 		}
+
 		commandID, err = h.publishControlCommand(ctx, ep.ID, "disable", reqBy, nil)
 	case domain.DesiredStateDeleted:
 		// Handled via separate DELETE API path
@@ -661,9 +682,10 @@ func (h *EndpointHandler) publishControlCommand(ctx context.Context, endpointID,
 			RequestedBy: reqBy,
 			RequestedAt: now,
 		}
+
 		err := h.commandRepo.Create(ctx, cmd)
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("creating command: %w", err)
 		}
 	}
 
@@ -675,14 +697,17 @@ func (h *EndpointHandler) publishControlCommand(ctx context.Context, endpointID,
 			IssuedAt:   now,
 			Payload:    payload,
 		}
+
 		body, err := json.Marshal(cmdPayload)
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("marshaling command payload: %w", err)
 		}
+
 		subject := "endpoint.control." + endpointID
+
 		err = h.broker.Publish(ctx, subject, body)
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("publishing control command: %w", err)
 		}
 	}
 
@@ -695,6 +720,7 @@ func (h *EndpointHandler) auditCreate(r *http.Request, ep *domain.Endpoint, isRe
 		if isReactivation {
 			action = "reactivate"
 		}
+
 		event := middleware.NewAuditEvent(r, action, "endpoint", ep.ID, nil, ep)
 		_ = h.auditRepo.Create(r.Context(), event)
 	}
@@ -715,15 +741,14 @@ func (h *EndpointHandler) parseListParams(r *http.Request) (int, int, bool) {
 			page = p
 		}
 	}
+
 	if limitStr != "" {
 		l, err := strconv.Atoi(limitStr)
 		if err == nil && l > 0 {
-			limit = l
-			if limit > 100 {
-				limit = 100
-			}
+			limit = min(l, maxEndpointListLimit)
 		}
 	}
+
 	if includeDeletedStr == "true" {
 		includeDeleted = true
 	}
@@ -737,12 +762,14 @@ func (h *EndpointHandler) handleDynamicListFallback(w http.ResponseWriter, r *ht
 
 		return
 	}
+
 	endpoints, err := h.healthService.ListAllEndpoints(r.Context())
 	if err != nil {
 		helper.WriteError(w, http.StatusInternalServerError, "failed to list endpoints")
 
 		return
 	}
+
 	response := make([]dto.EndpointHealthResponse, len(endpoints))
 	for i, e := range endpoints {
 		response[i] = dto.EndpointHealthResponse{
@@ -754,6 +781,7 @@ func (h *EndpointHandler) handleDynamicListFallback(w http.ResponseWriter, r *ht
 			LastSeen:    e.LastSeen.Format(time.RFC3339),
 		}
 	}
+
 	helper.WriteJSON(w, http.StatusOK, response)
 }
 
@@ -770,13 +798,11 @@ func (h *EndpointHandler) parseCommandParams(r *http.Request) (int, int) {
 			page = p
 		}
 	}
+
 	if limitStr != "" {
 		l, err := strconv.Atoi(limitStr)
 		if err == nil && l > 0 {
-			limit = l
-			if limit > 100 {
-				limit = 100
-			}
+			limit = min(l, maxEndpointListLimit)
 		}
 	}
 
@@ -786,7 +812,7 @@ func (h *EndpointHandler) parseCommandParams(r *http.Request) (int, int) {
 func (h *EndpointHandler) reloadPatchResponseCommands(ctx context.Context, epID string, commandID string, resp *dto.EndpointResponse) {
 	if commandID != "" && len(resp.RecentCommands) > 0 {
 		if h.commandRepo != nil {
-			cmds, _, _ := h.commandRepo.ListByEndpointID(ctx, epID, 5, 0)
+			cmds, _, _ := h.commandRepo.ListByEndpointID(ctx, epID, recentCommandCount, 0)
 			resp.RecentCommands = h.mapCommands(cmds)
 		}
 	}
@@ -838,7 +864,7 @@ func (h *EndpointHandler) mapToResponse(ctx context.Context, ep *domain.Endpoint
 	}
 
 	if h.commandRepo != nil {
-		cmds, _, err := h.commandRepo.ListByEndpointID(ctx, ep.ID, 5, 0)
+		cmds, _, err := h.commandRepo.ListByEndpointID(ctx, ep.ID, recentCommandCount, 0)
 		if err == nil {
 			resp.RecentCommands = h.mapCommands(cmds)
 		}
@@ -871,10 +897,12 @@ func (h *EndpointHandler) mapCommand(c *domain.EndpointCommand) dto.EndpointComm
 		accStr := c.AcceptedAt.Format(time.RFC3339)
 		dtoCmd.AcceptedAt = &accStr
 	}
+
 	if c.CompletedAt != nil {
 		compStr := c.CompletedAt.Format(time.RFC3339)
 		dtoCmd.CompletedAt = &compStr
 	}
+
 	if c.Error != nil {
 		dtoCmd.Error = c.Error
 	}
@@ -890,16 +918,18 @@ func (h *EndpointHandler) parseLogFilterParams(w http.ResponseWriter, r *http.Re
 	if err != nil {
 		helper.WriteError(w, http.StatusBadRequest, "invalid start timestamp format, must be RFC3339")
 
-		return filter, err
+		return filter, fmt.Errorf("parsing start timestamp: %w", err)
 	}
+
 	filter.Start = t
 
 	t, err = parseLogTimeParam(q.Get("end"))
 	if err != nil {
 		helper.WriteError(w, http.StatusBadRequest, "invalid end timestamp format, must be RFC3339")
 
-		return filter, err
+		return filter, fmt.Errorf("parsing end timestamp: %w", err)
 	}
+
 	filter.End = t
 
 	filter.Level = q.Get("level")
@@ -912,13 +942,14 @@ func (h *EndpointHandler) parseLogFilterParams(w http.ResponseWriter, r *http.Re
 		if err != nil {
 			helper.WriteError(w, http.StatusBadRequest, "invalid cursor, must be an integer")
 
-			return filter, err
+			return filter, fmt.Errorf("parsing cursor: %w", err)
 		}
 
 		filter.Cursor = c
 	}
 
 	limit := 50
+
 	if limitStr := q.Get("limit"); limitStr != "" {
 		l, err := strconv.Atoi(limitStr)
 		if err == nil && l > 0 {
@@ -926,8 +957,8 @@ func (h *EndpointHandler) parseLogFilterParams(w http.ResponseWriter, r *http.Re
 		}
 	}
 
-	if limit > 500 {
-		limit = 500
+	if limit > maxLogQueryLimit {
+		limit = maxLogQueryLimit
 	}
 
 	filter.Limit = limit + 1
@@ -936,11 +967,13 @@ func (h *EndpointHandler) parseLogFilterParams(w http.ResponseWriter, r *http.Re
 }
 
 func (h *EndpointHandler) makeStreamHandler(w http.ResponseWriter, flusher http.Flusher, cancel context.CancelFunc) broker.Handler {
-	return func(ctx context.Context, body []byte) error {
+	return func(_ context.Context, body []byte) error {
 		var entry protocol.LogEntry
+
 		err := json.Unmarshal(body, &entry)
 		if err != nil {
-			return nil
+			// Skip invalid log entries silently
+			return skipErr()
 		}
 
 		dtoEntry := dto.EndpointLogDTO{
@@ -960,19 +993,57 @@ func (h *EndpointHandler) makeStreamHandler(w http.ResponseWriter, flusher http.
 
 		respBytes, err := json.Marshal(dtoEntry)
 		if err != nil {
-			return nil
+			// Skip entries that fail to marshal
+			return skipErr()
 		}
 
 		_, err = fmt.Fprintf(w, "data: %s\n\n", string(respBytes))
 		if err != nil {
 			cancel()
 
-			return err
+			return fmt.Errorf("writing log entry: %w", err)
 		}
 
 		flusher.Flush()
 
 		return nil
+	}
+}
+
+func (h *EndpointHandler) buildLogResponse(entries []domain.EndpointLogEntry, limit int) dto.EndpointLogListResponse {
+	limit--
+	hasMore := len(entries) > limit
+
+	var responseEntries []domain.EndpointLogEntry
+	if hasMore {
+		responseEntries = entries[:limit]
+	} else {
+		responseEntries = entries
+	}
+
+	data := make([]dto.EndpointLogDTO, len(responseEntries))
+	for i, entry := range responseEntries {
+		data[i] = dto.EndpointLogDTO{
+			ID:         entry.ID,
+			EndpointID: entry.EndpointID,
+			ObservedAt: entry.ObservedAt.Format(time.RFC3339),
+			Level:      entry.Level,
+			Message:    entry.Message,
+			Attrs:      entry.Attrs,
+			TraceID:    entry.TraceID,
+			RequestID:  entry.RequestID,
+		}
+	}
+
+	var nextCursor string
+	if hasMore && len(responseEntries) > 0 {
+		nextCursor = strconv.FormatInt(responseEntries[len(responseEntries)-1].ID, 10)
+	}
+
+	return dto.EndpointLogListResponse{
+		Data:       data,
+		NextCursor: nextCursor,
+		HasMore:    hasMore,
 	}
 }
 
@@ -983,8 +1054,26 @@ func parseLogTimeParam(val string) (*time.Time, error) {
 
 	t, err := time.Parse(time.RFC3339, val)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parsing timestamp: %w", err)
 	}
 
 	return &t, nil
+}
+
+func writeSSEEvent(w http.ResponseWriter, event string, data []byte) {
+	var buf strings.Builder
+	buf.WriteString("event: ")
+	buf.WriteString(event)
+	buf.WriteString("\ndata: ")
+	buf.Write(data)
+	buf.WriteString("\n\n")
+	_, _ = w.Write([]byte(buf.String()))
+}
+
+func sanitizeSSE(s string) string {
+	return strings.NewReplacer("\n", "\\n", "\r", "\\r").Replace(s)
+}
+
+func skipErr() error {
+	return nil
 }

@@ -6,15 +6,18 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/beremaran/straw/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/beremaran/straw/internal/config"
 )
+
+const defaultMaxBodySize = "10M"
 
 func TestNewServer(t *testing.T) {
 	cfg := config.ServerConfig{
 		HTTPPort:    0,
-		MaxBodySize: "10M",
+		MaxBodySize: defaultMaxBodySize,
 	}
 
 	srv := New(cfg, nil, nil, nil, nil, nil, nil)
@@ -25,7 +28,7 @@ func TestNewServer(t *testing.T) {
 func TestServerUseMiddleware(t *testing.T) {
 	cfg := config.ServerConfig{
 		HTTPPort:    0,
-		MaxBodySize: "10M",
+		MaxBodySize: defaultMaxBodySize,
 	}
 	srv := New(cfg, nil, nil, nil, nil, nil, nil)
 	assert.NotNil(t, srv)
@@ -34,7 +37,7 @@ func TestServerUseMiddleware(t *testing.T) {
 func TestServerHealthRoutes(t *testing.T) {
 	cfg := config.ServerConfig{
 		HTTPPort:    0,
-		MaxBodySize: "10M",
+		MaxBodySize: defaultMaxBodySize,
 	}
 	srv := New(cfg, nil, nil, nil, nil, nil, nil)
 

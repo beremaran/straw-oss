@@ -1,3 +1,4 @@
+// Package main implements the Straw relay server entrypoint.
 package main
 
 import (
@@ -13,6 +14,8 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/beremaran/straw/internal/config"
 	"github.com/beremaran/straw/internal/domain"
@@ -32,7 +35,6 @@ import (
 	"github.com/beremaran/straw/internal/service/router"
 	"github.com/beremaran/straw/internal/service/session"
 	"github.com/beremaran/straw/pkg/broker"
-	"github.com/google/uuid"
 )
 
 var (
@@ -41,9 +43,21 @@ var (
 	BuildTime = "unknown"
 )
 
-func intPtr(i int) *int {
-	return &i
-}
+const (
+	defaultUpdateInterval      = 24 * time.Hour
+	ruleCacheTTL               = 10 * time.Minute
+	authCacheTTL               = 10 * time.Minute
+	autoRefreshInterval        = 5 * time.Second
+	natsCBFailureThreshold     = 5
+	natsCBResetTimeout         = 20 * time.Second
+	keyByteSize                = 32
+	managementRateLimit        = 100
+	redisCBFailureThreshold    = 10
+	redisCBResetTimeout        = 10 * time.Second
+	postgresCBFailureThreshold = 5
+	postgresCBResetTimeout     = 30 * time.Second
+	metricsReadHeaderTimeout   = 30 * time.Second
+)
 
 func main() {
 	ctx := context.Background()
@@ -69,21 +83,22 @@ func main() {
 	sessionService := initSessionServices(redisClient)
 	ruleRepo, ruleCache := initRoutingServices(pgClient, redisClient)
 	rateLimiter := ratelimit.NewRateLimiter(redisClient)
-	filterService := initFilterService(redisClient, ctx)
+	filterService := initFilterService(ctx, redisClient)
 	endpointHealthStore, endpointSelector := initHealthServices(redisClient)
-	retryExecutor := initRetryablePubSubOrDie(natsBroker, endpointSelector, cfg, ctx)
-	matcher := initRouter(ruleRepo, ruleCache, ctx)
+	retryExecutor := initRetryablePubSubOrDie(ctx, natsBroker, endpointSelector, cfg)
+	matcher := initRouter(ctx, ruleRepo, ruleCache)
 
 	relayServer := createServer(cfg, authService, sessionService, matcher, rateLimiter, filterService, retryExecutor)
-	healthService := startHealthServiceOrDie(natsBroker, endpointHealthStore, ctx)
+
+	healthService := startHealthServiceOrDie(ctx, natsBroker, endpointHealthStore)
 	defer healthService.Stop()
 
-	commandService := startCommandServiceIfEnabled(natsBroker, pgClient, ctx)
+	commandService := startCommandServiceIfEnabled(ctx, natsBroker, pgClient)
 	if commandService != nil {
 		defer commandService.Stop()
 	}
 
-	logService := startLogServiceIfEnabled(natsBroker, pgClient, ctx)
+	logService := startLogServiceIfEnabled(ctx, natsBroker, pgClient)
 	if logService != nil {
 		defer logService.Stop()
 	}
@@ -91,7 +106,7 @@ func main() {
 	managementServer := getManagementServer(cfg, pgClient, redisClient, healthService, natsBroker, authService)
 	metricsServer := startMetricsServerIfEnabled(cfg)
 
-	ensureManagementKey(apiKeyRepo, ctx)
+	ensureManagementKey(ctx, apiKeyRepo)
 
 	fmt.Printf("Straw Proxy Relay Server %s started on %s\n", Version, relayServer.Address())
 
@@ -106,16 +121,16 @@ func initHealthServices(redisClient *redis.Client) (*redis.EndpointHealthStore, 
 	return endpointHealthStore, endpointSelector
 }
 
-func initFilterService(redisClient *redis.Client, ctx context.Context) *filter.Service {
-	abpMatcher := initAdBlockMatcher(redisClient, ctx)
+func initFilterService(ctx context.Context, redisClient *redis.Client) *filter.Service {
+	abpMatcher := initAdBlockMatcher(ctx, redisClient)
 	filterService := filter.NewService(abpMatcher)
 
 	return filterService
 }
 
-func initAdBlockMatcher(redisClient *redis.Client, ctx context.Context) *filter.ABPMatcher {
+func initAdBlockMatcher(ctx context.Context, redisClient *redis.Client) *filter.ABPMatcher {
 	abpMatcher := filter.NewABPMatcher(redisClient, filter.ABPMatcherConfig{
-		UpdateInterval: 24 * time.Hour,
+		UpdateInterval: defaultUpdateInterval,
 	})
 	go abpMatcher.StartAutoUpdate(ctx)
 
@@ -124,7 +139,7 @@ func initAdBlockMatcher(redisClient *redis.Client, ctx context.Context) *filter.
 
 func initRoutingServices(pgClient *postgres.Client, redisClient *redis.Client) (*postgres.RoutingRuleRepository, *router.RuleCache) {
 	ruleRepo := postgres.NewRoutingRuleRepository(pgClient)
-	ruleCache := router.NewRuleCache(redisClient.Client, 10*time.Minute)
+	ruleCache := router.NewRuleCache(redisClient.Client, ruleCacheTTL)
 
 	return ruleRepo, ruleCache
 }
@@ -136,12 +151,12 @@ func initSessionServices(redisClient *redis.Client) *session.Service {
 	return sessionService
 }
 
-func initAuthServices(pgClient *postgres.Client, redisClient *redis.Client) (*postgres.ApiKeyRepository, *auth.Service) {
-	apiKeyRepo := postgres.NewApiKeyRepository(pgClient)
-	apiKeyTokenRepo := postgres.NewApiKeyTokenRepository(pgClient)
+func initAuthServices(pgClient *postgres.Client, redisClient *redis.Client) (*postgres.APIKeyRepository, *auth.Service) {
+	apiKeyRepo := postgres.NewAPIKeyRepository(pgClient)
+	apiKeyTokenRepo := postgres.NewAPIKeyTokenRepository(pgClient)
 
 	// Build auth service
-	authCache := auth.NewAuthCache(redisClient, 10*time.Minute)
+	authCache := auth.NewAuthCache(redisClient, authCacheTTL)
 	authService := auth.NewAuthService(apiKeyRepo, apiKeyTokenRepo, authCache)
 
 	return apiKeyRepo, authService
@@ -166,14 +181,14 @@ func shutdown(ctx context.Context, cfg *config.ServerConfig, srv *server.Server,
 	ctx, cancel := context.WithTimeout(ctx, cfg.ShutdownTimeout)
 	defer cancel()
 
-	tryStopServer(srv, ctx)
-	tryStopManagementServer(managementSrv, ctx)
-	tryStopMetricsServer(metricsSrv, ctx)
+	tryStopServer(ctx, srv)
+	tryStopManagementServer(ctx, managementSrv)
+	tryStopMetricsServer(ctx, metricsSrv)
 
 	slog.Info("Server exiting")
 }
 
-func tryStopMetricsServer(metricsSrv *http.Server, ctx context.Context) {
+func tryStopMetricsServer(ctx context.Context, metricsSrv *http.Server) {
 	if metricsSrv != nil {
 		err := metricsSrv.Shutdown(ctx)
 		if err != nil {
@@ -182,14 +197,14 @@ func tryStopMetricsServer(metricsSrv *http.Server, ctx context.Context) {
 	}
 }
 
-func tryStopManagementServer(managementSrv *admin.Server, ctx context.Context) {
+func tryStopManagementServer(ctx context.Context, managementSrv *admin.Server) {
 	err := managementSrv.Stop(ctx)
 	if err != nil {
 		slog.Error("Management Server forced to shutdown", "error", err)
 	}
 }
 
-func tryStopServer(srv *server.Server, ctx context.Context) {
+func tryStopServer(ctx context.Context, srv *server.Server) {
 	err := srv.Stop(ctx)
 	if err != nil {
 		slog.Error("Server forced to shutdown", "error", err)
@@ -202,19 +217,23 @@ func startMetricsServerIfEnabled(cfg *config.ServerConfig) *http.Server {
 	}
 
 	var metricsSrv *http.Server
+
 	metrics.Init()
+
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", metrics.Handler())
 
 	metrics.RegisterPprof(mux)
 
 	metricsSrv = &http.Server{
-		Addr:    fmt.Sprintf(":%d", cfg.Observability.MetricsPort),
-		Handler: mux,
+		Addr:              fmt.Sprintf(":%d", cfg.Observability.MetricsPort),
+		Handler:           mux,
+		ReadHeaderTimeout: metricsReadHeaderTimeout,
 	}
 
 	go func() {
 		slog.Info("Starting metrics server", "addr", metricsSrv.Addr)
+
 		err := metricsSrv.ListenAndServe()
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("Metrics Server shutting down", "error", err)
@@ -238,10 +257,13 @@ func getManagementServer(cfg *config.ServerConfig, pgClient *postgres.Client, re
 
 func createServer(cfg *config.ServerConfig, authService *auth.Service, sessionService *session.Service, matcher *router.Matcher, rateLimiter *ratelimit.RateLimiter, filterService *filter.Service, retryExecutor *orchestrator.RetryExecutor) *server.Server {
 	var serverOpts []server.Option
+
 	if cfg.AllowPrivateIPs {
 		slog.Warn("Private IP validation disabled - SSRF protection bypassed (testing mode)")
+
 		serverOpts = append(serverOpts, server.WithAllowPrivateIPs())
 	}
+
 	srv := server.New(*cfg, authService, sessionService, matcher, rateLimiter, filterService, retryExecutor, serverOpts...)
 	go func() {
 		err := srv.Start()
@@ -253,8 +275,9 @@ func createServer(cfg *config.ServerConfig, authService *auth.Service, sessionSe
 	return srv
 }
 
-func startHealthServiceOrDie(natsBroker *broker.NatsBroker, endpointHealthStore *redis.EndpointHealthStore, ctx context.Context) *endpoint.HealthService {
+func startHealthServiceOrDie(ctx context.Context, natsBroker *broker.NatsBroker, endpointHealthStore *redis.EndpointHealthStore) *endpoint.HealthService {
 	healthService := endpoint.NewHealthService(natsBroker, endpointHealthStore)
+
 	err := healthService.Start(ctx)
 	if err != nil {
 		slog.Warn("Failed to start health service", "error", err)
@@ -264,22 +287,24 @@ func startHealthServiceOrDie(natsBroker *broker.NatsBroker, endpointHealthStore 
 	return healthService
 }
 
-func initRouter(ruleRepo *postgres.RoutingRuleRepository, ruleCache *router.RuleCache, ctx context.Context) *router.Matcher {
+func initRouter(ctx context.Context, ruleRepo *postgres.RoutingRuleRepository, ruleCache *router.RuleCache) *router.Matcher {
 	matcher := router.NewMatcher(ruleRepo, ruleCache)
+
 	err := matcher.LoadRules(ctx)
 	if err != nil {
 		slog.Warn("Failed to load initial routing rules", "error", err)
 	}
-	matcher.StartAutoRefresh(ctx, 5*time.Second)
+
+	matcher.StartAutoRefresh(ctx, autoRefreshInterval)
 
 	return matcher
 }
 
-func initRetryablePubSubOrDie(natsBroker *broker.NatsBroker, endpointSelector *orchestrator.SimpleEndpointSelector, cfg *config.ServerConfig, ctx context.Context) *orchestrator.RetryExecutor {
+func initRetryablePubSubOrDie(ctx context.Context, natsBroker *broker.NatsBroker, endpointSelector *orchestrator.SimpleEndpointSelector, cfg *config.ServerConfig) *orchestrator.RetryExecutor {
 	publisher := orchestrator.NewPublisher(natsBroker, endpointSelector, []byte(cfg.Security.HMACSecret), circuitbreaker.New(circuitbreaker.Config{
 		Name:             "nats",
-		FailureThreshold: 5,
-		ResetTimeout:     20 * time.Second,
+		FailureThreshold: natsCBFailureThreshold,
+		ResetTimeout:     natsCBResetTimeout,
 	}))
 	consumer := orchestrator.NewConsumer(natsBroker)
 
@@ -300,28 +325,30 @@ func initRetryablePubSubOrDie(natsBroker *broker.NatsBroker, endpointSelector *o
 	return retryExecutor
 }
 
-func ensureManagementKey(apiKeyRepo *postgres.ApiKeyRepository, ctx context.Context) {
+func ensureManagementKey(ctx context.Context, apiKeyRepo *postgres.APIKeyRepository) {
 	keysExist, err := apiKeyRepo.Exists(ctx)
 	if err != nil {
 		slog.Warn("Failed to check for existing API keys", "error", err)
 	} else if !keysExist {
-		generateInitialManagementKey(apiKeyRepo, ctx)
+		generateInitialManagementKey(ctx, apiKeyRepo)
 	}
 }
 
-func generateInitialManagementKey(apiKeyRepo *postgres.ApiKeyRepository, ctx context.Context) {
-	keyBytes := make([]byte, 32)
+func generateInitialManagementKey(ctx context.Context, apiKeyRepo *postgres.APIKeyRepository) {
+	keyBytes := make([]byte, keyByteSize)
+
 	_, err := rand.Read(keyBytes)
 	if err != nil {
 		slog.Error("Failed to generate management key", "error", err)
 		os.Exit(1)
 	}
+
 	rawKey := hex.EncodeToString(keyBytes)
 	hash := sha256.Sum256([]byte(rawKey))
 	tokenHash := hex.EncodeToString(hash[:])
 
-	managementKey := domain.NewApiKey(uuid.New().String(), tokenHash, "Default Management Key", []string{"target:*", "type:*", "region:*"})
-	managementKey.RateLimitOverride = intPtr(100)
+	managementKey := domain.NewAPIKey(uuid.New().String(), tokenHash, "Default Management Key", []string{"target:*", "type:*", "region:*"})
+	managementKey.RateLimitOverride = (func(i int) *int { return &i })(managementRateLimit)
 
 	err = apiKeyRepo.Create(ctx, managementKey)
 	if err != nil {
@@ -333,7 +360,7 @@ func generateInitialManagementKey(apiKeyRepo *postgres.ApiKeyRepository, ctx con
 	fmt.Println("Save this key — it will not be shown again.")
 }
 
-func initialiseNATSOrDie(natsBroker *broker.NatsBroker, ctx context.Context) {
+func initialiseNATSOrDie(ctx context.Context, natsBroker *broker.NatsBroker) {
 	err := natsBroker.DeclareStream(ctx, "heartbeats", "heartbeats.>")
 	if err != nil {
 		slog.Error("Failed to declare heartbeats stream", "error", err)
@@ -360,13 +387,14 @@ func getNATSConnectionOrDie(ctx context.Context, cfg *config.ServerConfig) *brok
 		broker.Addrs(cfg.NATS.URL),
 		broker.Token(cfg.NATS.Token),
 	)
+
 	err := natsBroker.Connect()
 	if err != nil {
 		slog.Error("Failed to connect to message broker", "error", err)
 		os.Exit(1)
 	}
 
-	initialiseNATSOrDie(natsBroker, ctx)
+	initialiseNATSOrDie(ctx, natsBroker)
 
 	return natsBroker
 }
@@ -374,10 +402,9 @@ func getNATSConnectionOrDie(ctx context.Context, cfg *config.ServerConfig) *brok
 func getRedisClientOrDie(ctx context.Context, cfg *config.ServerConfig) *redis.Client {
 	redisClient, err := redis.NewClient(ctx, cfg.Redis, circuitbreaker.New(circuitbreaker.Config{
 		Name:             "redis",
-		FailureThreshold: 10,
-		ResetTimeout:     10 * time.Second,
+		FailureThreshold: redisCBFailureThreshold,
+		ResetTimeout:     redisCBResetTimeout,
 	}))
-
 	if err != nil {
 		slog.Error("Failed to connect to Redis", "error", err)
 		os.Exit(1)
@@ -389,10 +416,9 @@ func getRedisClientOrDie(ctx context.Context, cfg *config.ServerConfig) *redis.C
 func getPostgresClientOrDie(ctx context.Context, cfg *config.ServerConfig) *postgres.Client {
 	pgClient, err := postgres.NewClient(ctx, cfg.Database.DSN, circuitbreaker.New(circuitbreaker.Config{
 		Name:             "postgres",
-		FailureThreshold: 5,
-		ResetTimeout:     30 * time.Second,
+		FailureThreshold: postgresCBFailureThreshold,
+		ResetTimeout:     postgresCBResetTimeout,
 	}))
-
 	if err != nil {
 		slog.Error("Failed to connect to Postgres", "error", err)
 		os.Exit(1)
@@ -428,6 +454,7 @@ func handleMigrations(ctx context.Context, cfg *config.ServerConfig) {
 	}
 
 	slog.Info("Applying pending migrations...")
+
 	err := postgres.RunEmbeddedMigrations(ctx, cfg.Database.DSN)
 	if err != nil {
 		slog.Error("Failed to run migrations", "error", err)
@@ -437,13 +464,14 @@ func handleMigrations(ctx context.Context, cfg *config.ServerConfig) {
 	slog.Info("Migrations applied successfully!")
 }
 
-func startCommandServiceIfEnabled(natsBroker *broker.NatsBroker, pgClient *postgres.Client, ctx context.Context) *endpoint.CommandService {
+func startCommandServiceIfEnabled(ctx context.Context, natsBroker *broker.NatsBroker, pgClient *postgres.Client) *endpoint.CommandService {
 	if pgClient == nil {
 		return nil
 	}
 
-	commandRepo := postgres.NewPostgresEndpointCommandRepository(pgClient)
+	commandRepo := postgres.NewEndpointCommandRepository(pgClient)
 	commandService := endpoint.NewCommandService(natsBroker, commandRepo, nil)
+
 	err := commandService.Start(ctx)
 	if err != nil {
 		slog.Warn("Failed to start command service", "error", err)
@@ -454,13 +482,14 @@ func startCommandServiceIfEnabled(natsBroker *broker.NatsBroker, pgClient *postg
 	return commandService
 }
 
-func startLogServiceIfEnabled(natsBroker *broker.NatsBroker, pgClient *postgres.Client, ctx context.Context) *endpoint.LogService {
+func startLogServiceIfEnabled(ctx context.Context, natsBroker *broker.NatsBroker, pgClient *postgres.Client) *endpoint.LogService {
 	if pgClient == nil {
 		return nil
 	}
 
-	logRepo := postgres.NewPostgresEndpointLogRepository(pgClient)
+	logRepo := postgres.NewEndpointLogRepository(pgClient)
 	logService := endpoint.NewLogService(natsBroker, logRepo, nil)
+
 	err := logService.Start(ctx)
 	if err != nil {
 		slog.Warn("Failed to start log service", "error", err)

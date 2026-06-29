@@ -1,91 +1,91 @@
 {
-    "$schema": "http://json-schema.org/draft-07/schema#",
-    "title": "Protocol Response",
-    "type": "object",
-    "properties": {
-        "request_id": {
-            "type": "string"
-        },
-        "status_code": {
-            "type": "integer"
-        },
-        "headers": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "key": {
-                        "type": "string"
-                    },
-                    "value": {
-                        "type": "string"
-                    }
-                },
-                "required": [
-                    "key",
-                    "value"
-                ]
-            }
-        },
-        "body": {
-            "type": "string",
-            "contentEncoding": "base64"
-        },
-        "error": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "type": "string"
-                },
-                "message": {
-                    "type": "string"
-                },
-                "retryable": {
-                    "type": "boolean"
-                },
-                "retry_after": {
-                    "type": "integer"
-                }
-            },
-            "required": [
-                "code",
-                "message",
-                "retryable"
-            ]
-        },
-        "timing": {
-            "type": "object",
-            "properties": {
-                "dns_lookup": {
-                    "type": "integer"
-                },
-                "tcp_connect": {
-                    "type": "integer"
-                },
-                "tls_handshake": {
-                    "type": "integer"
-                },
-                "first_byte": {
-                    "type": "integer"
-                },
-                "total": {
-                    "type": "integer"
-                }
-            },
-            "required": [
-                "total"
-            ]
-        },
-        "endpoint_id": {
-            "type": "string"
-        },
-        "session_id": {
-            "type": "string"
-        }
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Protocol Response",
+  "type": "object",
+  "properties": {
+    "request_id": {
+      "type": "string"
     },
-    "required": [
-        "request_id",
-        "status_code",
-        "headers"
-    ]
+    "status_code": {
+      "type": "integer"
+    },
+    "headers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "value"
+        ]
+      }
+    },
+    "body": {
+      "type": "string",
+      "contentEncoding": "base64"
+    },
+    "error": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "retry_after": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "retryable"
+      ]
+    },
+    "timing": {
+      "type": "object",
+      "properties": {
+        "dns_lookup": {
+          "type": "integer"
+        },
+        "tcp_connect": {
+          "type": "integer"
+        },
+        "tls_handshake": {
+          "type": "integer"
+        },
+        "first_byte": {
+          "type": "integer"
+        },
+        "total": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "total"
+      ]
+    },
+    "endpoint_id": {
+      "type": "string"
+    },
+    "session_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "request_id",
+    "status_code",
+    "headers"
+  ]
 }

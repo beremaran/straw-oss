@@ -16,11 +16,19 @@ import (
 )
 
 var (
+	// ErrChecksumMismatch is returned when the downloaded file SHA256 does not match the manifest.
 	ErrChecksumMismatch = errors.New("checksum mismatch")
-	ErrDownloadFailed   = errors.New("download failed")
-	ErrInstallFailed    = errors.New("installation failed")
+	// ErrDownloadFailed is returned when the HTTP download fails.
+	ErrDownloadFailed = errors.New("download failed")
+	// ErrInstallFailed is returned when the binary replacement or restart fails.
+	ErrInstallFailed = errors.New("installation failed")
+	// ErrBinaryPathNotAbsolute is returned when the binary path is not absolute.
+	ErrBinaryPathNotAbsolute = errors.New("binary path must be absolute")
 )
 
+const binaryPerms = 0o755
+
+// Installer downloads a new binary from a manifest and atomically replaces the running executable.
 type Installer struct {
 	httpClient *http.Client
 	logger     *slog.Logger
@@ -28,32 +36,38 @@ type Installer struct {
 	onProgress func(downloaded, total int64)
 }
 
+// InstallerOption configures an Installer.
 type InstallerOption func(*Installer)
 
+// WithInstallerLogger sets the logger used by the installer.
 func WithInstallerLogger(logger *slog.Logger) InstallerOption {
 	return func(i *Installer) {
 		i.logger = logger
 	}
 }
 
+// WithInstallerHTTPClient sets a custom HTTP client for downloads.
 func WithInstallerHTTPClient(client *http.Client) InstallerOption {
 	return func(i *Installer) {
 		i.httpClient = client
 	}
 }
 
+// WithBinaryPath sets the path of the binary to replace.
 func WithBinaryPath(path string) InstallerOption {
 	return func(i *Installer) {
 		i.binaryPath = path
 	}
 }
 
+// WithProgressCallback sets a callback invoked during downloads with (downloaded, total) bytes.
 func WithProgressCallback(cb func(downloaded, total int64)) InstallerOption {
 	return func(i *Installer) {
 		i.onProgress = cb
 	}
 }
 
+// NewInstaller creates an Installer with default settings.
 func NewInstaller(opts ...InstallerOption) *Installer {
 	i := &Installer{
 		httpClient: &http.Client{
@@ -69,6 +83,7 @@ func NewInstaller(opts ...InstallerOption) *Installer {
 	return i
 }
 
+// Install downloads the manifest version and atomically replaces the current binary.
 func (i *Installer) Install(ctx context.Context, manifest *VersionManifest) error {
 	i.logger.Info("starting update installation",
 		"version", manifest.Version,
@@ -112,6 +127,7 @@ func (i *Installer) Install(ctx context.Context, manifest *VersionManifest) erro
 	return nil
 }
 
+// DownloadAndVerify downloads the manifest version, verifies its checksum, and returns the temp path.
 func (i *Installer) DownloadAndVerify(ctx context.Context, manifest *VersionManifest) (string, error) {
 	i.logger.Debug("downloading update",
 		"url", manifest.URL,
@@ -124,8 +140,10 @@ func (i *Installer) DownloadAndVerify(ctx context.Context, manifest *VersionMani
 	}
 
 	success := false
+
 	defer func() {
 		_ = tmpFile.Close()
+
 		if !success {
 			_ = os.Remove(tmpPath)
 		}
@@ -138,6 +156,7 @@ func (i *Installer) DownloadAndVerify(ctx context.Context, manifest *VersionMani
 	defer func() { _ = resp.Body.Close() }()
 
 	hasher := sha256.New()
+
 	downloaded, err := copyDownload(tmpFile, hasher, resp, i.onProgress)
 	if err != nil {
 		return "", fmt.Errorf("%w: failed to download: %w", ErrDownloadFailed, err)
@@ -152,7 +171,7 @@ func (i *Installer) DownloadAndVerify(ctx context.Context, manifest *VersionMani
 
 	i.logger.Debug("checksum verified", "sha256", actualSum)
 
-	err = tmpFile.Chmod(0755)
+	err = tmpFile.Chmod(binaryPerms)
 	if err != nil {
 		return "", fmt.Errorf("%w: failed to set permissions: %w", ErrInstallFailed, err)
 	}
@@ -200,7 +219,12 @@ func copyDownload(
 	reader := downloadReader(resp, onProgress)
 	multiWriter := io.MultiWriter(tmpFile, hasher)
 
-	return io.Copy(multiWriter, reader)
+	n, err := io.Copy(multiWriter, reader)
+	if err != nil {
+		return n, fmt.Errorf("copy failed: %w", err)
+	}
+
+	return n, nil
 }
 
 func downloadReader(resp *http.Response, onProgress func(downloaded, total int64)) io.Reader {
@@ -224,8 +248,10 @@ func verifyChecksum(actual []byte, expected string) (string, error) {
 	return actualSum, nil
 }
 
+// ReplaceAndRestart replaces the current process with the new binary via exec.
 func (i *Installer) ReplaceAndRestart() error {
 	binaryPath := i.binaryPath
+
 	var err error
 	if binaryPath == "" {
 		binaryPath, err = os.Executable()
@@ -236,10 +262,25 @@ func (i *Installer) ReplaceAndRestart() error {
 
 	i.logger.Info("restarting with new binary", "path", binaryPath)
 
+	if !filepath.IsAbs(binaryPath) {
+		return ErrBinaryPathNotAbsolute
+	}
+
+	_, statErr := os.Stat(binaryPath)
+	if statErr != nil {
+		return fmt.Errorf("binary not found: %w", statErr)
+	}
+
 	args := os.Args
 	env := os.Environ()
 
-	return syscall.Exec(binaryPath, args, env)
+	//nolint:gosec // binaryPath validated: absolute path + os.Stat check
+	exErr := syscall.Exec(binaryPath, args, env)
+	if exErr != nil {
+		return fmt.Errorf("exec failed: %w", exErr)
+	}
+
+	return nil
 }
 
 func (i *Installer) atomicReplace(srcPath, dstPath string) error {
@@ -279,10 +320,19 @@ type progressReader struct {
 
 func (pr *progressReader) Read(p []byte) (int, error) {
 	n, err := pr.reader.Read(p)
+
 	pr.downloaded += int64(n)
 	if pr.onProgress != nil {
 		pr.onProgress(pr.downloaded, pr.total)
 	}
 
-	return n, err
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			return n, io.EOF
+		}
+
+		return n, fmt.Errorf("read failed: %w", err)
+	}
+
+	return n, nil
 }

@@ -7,11 +7,14 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/beremaran/straw/internal/domain"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/beremaran/straw/internal/domain"
 )
+
+const testCacheRuleID = "rule1"
 
 func newTestRedis(t *testing.T) *redis.Client {
 	mr, err := miniredis.Run()
@@ -31,15 +34,15 @@ func TestRuleCache_RulesVersion(t *testing.T) {
 	ctx := context.Background()
 
 	ver, err := cache.GetRulesVersion(ctx)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, int64(0), ver)
 
 	newVer, err := cache.IncrementRulesVersion(ctx)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, int64(1), newVer)
 
 	ver, err = cache.GetRulesVersion(ctx)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, int64(1), ver)
 }
 
@@ -50,27 +53,27 @@ func TestRuleCache_RulesByVersion(t *testing.T) {
 	version := int64(1)
 
 	rules := []domain.RoutingRule{
-		{ID: "rule1", Priority: 10},
+		{ID: testCacheRuleID, Priority: 10},
 		{ID: "rule2", Priority: 5},
 	}
 
 	cachedRules, err := cache.GetRulesByVersion(ctx, version)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Nil(t, cachedRules)
 
 	err = cache.SetRulesByVersion(ctx, version, rules)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	cachedRules, err = cache.GetRulesByVersion(ctx, version)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, rules, cachedRules)
 
 	key := ActiveRulesKeyPrefix + "1"
 	val, err := client.Get(ctx, key).Bytes()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	var fromRedis []domain.RoutingRule
 	err = json.Unmarshal(val, &fromRedis)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, rules, fromRedis)
 }
 
@@ -80,15 +83,15 @@ func TestRuleCache_Invalidate(t *testing.T) {
 	ctx := context.Background()
 	version := int64(1)
 
-	rules := []domain.RoutingRule{{ID: "rule1"}}
+	rules := []domain.RoutingRule{{ID: testCacheRuleID}}
 	err := cache.SetRulesByVersion(ctx, version, rules)
 	require.NoError(t, err)
 
 	err = cache.Invalidate(ctx, version)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	cachedRules, err := cache.GetRulesByVersion(ctx, version)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Nil(t, cachedRules)
 }
 
@@ -116,7 +119,7 @@ func TestRuleCache_ErrorCases(t *testing.T) {
 		_ = client.Close()
 
 		ver, err := cache.GetRulesVersion(ctx)
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Equal(t, int64(0), ver)
 		assert.Contains(t, err.Error(), "failed to get rules version")
 	})
@@ -127,7 +130,7 @@ func TestRuleCache_ErrorCases(t *testing.T) {
 		_ = newClient.Close()
 
 		rules, err := newCache.GetRulesByVersion(ctx, 1)
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Nil(t, rules)
 		assert.Contains(t, err.Error(), "failed to get rules from cache")
 	})
@@ -137,9 +140,9 @@ func TestRuleCache_ErrorCases(t *testing.T) {
 		newCache := NewRuleCache(newClient, time.Minute)
 		_ = newClient.Close()
 
-		rules := []domain.RoutingRule{{ID: "rule1"}}
+		rules := []domain.RoutingRule{{ID: testCacheRuleID}}
 		err := newCache.SetRulesByVersion(ctx, 1, rules)
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to set rules in cache")
 	})
 }

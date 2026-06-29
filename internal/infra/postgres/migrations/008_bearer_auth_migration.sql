@@ -8,7 +8,8 @@
 ALTER TABLE api_keys RENAME COLUMN key_hash TO token_hash;
 
 -- Update column comment
-COMMENT ON COLUMN api_keys.token_hash IS 'SHA256 hash of the Bearer token';
+COMMENT
+ON COLUMN api_keys.token_hash IS 'SHA256 hash of the Bearer token';
 
 -- Clear existing keys (bcrypt hashes won't work with new SHA256 lookup)
 -- This is safe since there is no production deployment
@@ -19,5 +20,6 @@ TRUNCATE TABLE api_keys CASCADE;
 -- +goose StatementBegin
 -- Restore key_hash column name
 ALTER TABLE api_keys RENAME COLUMN token_hash TO key_hash;
-COMMENT ON COLUMN api_keys.key_hash IS 'bcrypt hash of the API key';
+COMMENT
+ON COLUMN api_keys.key_hash IS 'bcrypt hash of the API key';
 -- +goose StatementEnd

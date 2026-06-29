@@ -2,57 +2,66 @@ package tls
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
+	"fmt"
 	"net"
 	"strings"
 	"sync"
 	"time"
 
+	utls "github.com/refraction-networking/utls"
+
 	"github.com/beremaran/straw/internal/endpoint/fingerprint"
 	"github.com/beremaran/straw/internal/endpoint/metrics"
-	utls "github.com/refraction-networking/utls"
 )
 
+// DialOptions configures the behavior of TLS dial operations.
 type DialOptions struct {
 	InsecureSkipVerify bool
 	ServerName         string
 	HandshakeTimeout   time.Duration
 }
 
+// DialOption is a function that modifies DialOptions.
 type DialOption func(*DialOptions)
 
+// WithInsecureSkipVerify configures the dialer to skip TLS certificate verification.
 func WithInsecureSkipVerify(skip bool) DialOption {
 	return func(o *DialOptions) {
 		o.InsecureSkipVerify = skip
 	}
 }
 
+// WithServerName sets the SNI server name to use during the TLS handshake.
 func WithServerName(name string) DialOption {
 	return func(o *DialOptions) {
 		o.ServerName = name
 	}
 }
 
+// WithHandshakeTimeout sets the maximum duration for the TLS handshake.
 func WithHandshakeTimeout(d time.Duration) DialOption {
 	return func(o *DialOptions) {
 		o.HandshakeTimeout = d
 	}
 }
 
+const defaultSessionCacheSize = 1000
+
 var (
-	sessionCache     = utls.NewLRUClientSessionCache(1000)
+	sessionCache     = utls.NewLRUClientSessionCache(defaultSessionCacheSize)
 	sessionCacheInit sync.Once
 )
 
 func getSessionCache() utls.ClientSessionCache {
 	sessionCacheInit.Do(func() {
-		sessionCache = utls.NewLRUClientSessionCache(1000)
+		sessionCache = utls.NewLRUClientSessionCache(defaultSessionCacheSize)
 	})
 
 	return sessionCache
 }
 
+// Dial connects to the given address using a TLS connection with the specified preset.
 func Dial(ctx context.Context, network, addr string, presetID string, opts ...DialOption) (net.Conn, error) {
 	options := newDialOptions(opts)
 
@@ -63,11 +72,13 @@ func Dial(ctx context.Context, network, addr string, presetID string, opts ...Di
 			Err:         ErrUnknownFingerprint,
 		}
 	}
+
 	clientHelloID := presetObj.TLSClientHello
 
 	host := serverName(addr, options.ServerName)
 
 	var d net.Dialer
+
 	rawConn, err := d.DialContext(ctx, network, addr)
 	if err != nil {
 		return nil, &DialError{
@@ -76,14 +87,9 @@ func Dial(ctx context.Context, network, addr string, presetID string, opts ...Di
 		}
 	}
 
-	tlsConfig := &tls.Config{
+	uConn := utls.UClient(rawConn, &utls.Config{
 		ServerName:         host,
 		InsecureSkipVerify: options.InsecureSkipVerify,
-	}
-
-	uConn := utls.UClient(rawConn, &utls.Config{
-		ServerName:         tlsConfig.ServerName,
-		InsecureSkipVerify: tlsConfig.InsecureSkipVerify,
 		ClientSessionCache: getSessionCache(),
 	}, clientHelloID)
 
@@ -143,7 +149,12 @@ func setHandshakeDeadline(conn net.Conn, timeout time.Duration) error {
 		return nil
 	}
 
-	return conn.SetDeadline(time.Now().Add(timeout))
+	err := conn.SetDeadline(time.Now().Add(timeout))
+	if err != nil {
+		return fmt.Errorf("set handshake deadline: %w", err)
+	}
+
+	return nil
 }
 
 func clearHandshakeDeadline(conn net.Conn, timeout time.Duration) error {
@@ -151,7 +162,12 @@ func clearHandshakeDeadline(conn net.Conn, timeout time.Duration) error {
 		return nil
 	}
 
-	return conn.SetDeadline(time.Time{})
+	err := conn.SetDeadline(time.Time{})
+	if err != nil {
+		return fmt.Errorf("clear handshake deadline: %w", err)
+	}
+
+	return nil
 }
 
 func classifyHandshakeError(addr string, err error) error {
@@ -186,6 +202,7 @@ func isCertificateError(err error) bool {
 	if err == nil {
 		return false
 	}
+
 	errStr := err.Error()
 
 	return strings.Contains(errStr, "certificate") ||
@@ -199,6 +216,7 @@ func isProtocolError(err error) bool {
 	if err == nil {
 		return false
 	}
+
 	errStr := err.Error()
 
 	return strings.Contains(errStr, "protocol") ||

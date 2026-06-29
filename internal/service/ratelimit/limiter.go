@@ -1,3 +1,4 @@
+// Package ratelimit provides sliding-window rate limiting backed by Redis.
 package ratelimit
 
 import (
@@ -8,6 +9,12 @@ import (
 	"github.com/beremaran/straw/internal/infra/redis"
 )
 
+const (
+	secondsPerMinute = 60
+	keyTTL           = 2
+)
+
+// Result describes the outcome of a rate limit check.
 type Result struct {
 	Allowed   bool
 	Remaining int
@@ -15,18 +22,23 @@ type Result struct {
 	Reset     time.Duration
 }
 
+// RateLimiter enforces per-second and per-minute rate limits using Redis.
 type RateLimiter struct {
 	redis *redis.Client
 }
 
+// NewRateLimiter creates a new RateLimiter using the given Redis client.
 func NewRateLimiter(redis *redis.Client) *RateLimiter {
 	return &RateLimiter{
 		redis: redis,
 	}
 }
 
+// Allow checks whether the request is within both the per-second and
+// per-minute rate limits for the given quotaKey.
 func (l *RateLimiter) Allow(ctx context.Context, quotaKey string, limitPerSecond, limitPerMinute int) (bool, Result, error) {
 	now := time.Now()
+
 	secResult, blocked, err := l.checkOptionalSecondLimit(ctx, quotaKey, limitPerSecond, now)
 	if err != nil || blocked {
 		return false, secResult, err
@@ -95,23 +107,19 @@ func (l *RateLimiter) checkSecondLimit(ctx context.Context, quotaKey string, lim
 
 	pipe := l.redis.Client.Pipeline()
 	incr := pipe.Incr(ctx, secKey)
-	pipe.Expire(ctx, secKey, 2*time.Second)
+	pipe.Expire(ctx, secKey, time.Duration(keyTTL)*time.Second)
+
 	_, err := pipe.Exec(ctx)
 	if err != nil {
 		return false, Result{}, fmt.Errorf("redis error (sec): %w", err)
 	}
 
 	count := incr.Val()
-	remaining := int64(limitPerSecond) - count
-	if remaining < 0 {
-		remaining = 0
-	}
+
+	remaining := max(int64(limitPerSecond)-count, 0)
 
 	if count > int64(limitPerSecond) {
-		reset := time.Until(now.Truncate(time.Second).Add(time.Second))
-		if reset < 0 {
-			reset = 0
-		}
+		reset := max(time.Until(now.Truncate(time.Second).Add(time.Second)), 0)
 
 		return false, Result{
 			Allowed:   false,
@@ -130,27 +138,23 @@ func (l *RateLimiter) checkSecondLimit(ctx context.Context, quotaKey string, lim
 }
 
 func (l *RateLimiter) checkMinuteLimit(ctx context.Context, quotaKey string, limitPerMinute int, now time.Time) (bool, Result, error) {
-	minKey := fmt.Sprintf("quota:%s:min:%d", quotaKey, now.Unix()/60)
+	minKey := fmt.Sprintf("quota:%s:min:%d", quotaKey, now.Unix()/secondsPerMinute)
 
 	pipe := l.redis.Client.Pipeline()
 	incr := pipe.Incr(ctx, minKey)
-	pipe.Expire(ctx, minKey, 2*time.Minute)
+	pipe.Expire(ctx, minKey, time.Duration(keyTTL)*time.Minute)
+
 	_, err := pipe.Exec(ctx)
 	if err != nil {
 		return false, Result{}, fmt.Errorf("redis error (min): %w", err)
 	}
 
 	count := incr.Val()
-	remaining := int64(limitPerMinute) - count
-	if remaining < 0 {
-		remaining = 0
-	}
+
+	remaining := max(int64(limitPerMinute)-count, 0)
 
 	if count > int64(limitPerMinute) {
-		reset := time.Until(now.Truncate(time.Minute).Add(time.Minute))
-		if reset < 0 {
-			reset = 0
-		}
+		reset := max(time.Until(now.Truncate(time.Minute).Add(time.Minute)), 0)
 
 		return false, Result{
 			Allowed:   false,

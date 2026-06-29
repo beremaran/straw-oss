@@ -5,21 +5,23 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 
 	"github.com/beremaran/straw/internal/domain"
 )
 
-var (
-	ErrInvalidKey = errors.New("invalid api key")
-)
+// ErrInvalidKey is returned when an API key is invalid.
+var ErrInvalidKey = errors.New("invalid api key")
 
+// Service handles API key validation and invalidation.
 type Service struct {
-	repo      domain.ApiKeyRepository
-	tokenRepo domain.ApiKeyTokenRepository
+	repo      domain.APIKeyRepository
+	tokenRepo domain.APIKeyTokenRepository
 	cache     *Cache
 }
 
-func NewAuthService(repo domain.ApiKeyRepository, tokenRepo domain.ApiKeyTokenRepository, cache *Cache) *Service {
+// NewAuthService creates a new Service with the given repositories and cache.
+func NewAuthService(repo domain.APIKeyRepository, tokenRepo domain.APIKeyTokenRepository, cache *Cache) *Service {
 	return &Service{
 		repo:      repo,
 		tokenRepo: tokenRepo,
@@ -27,7 +29,8 @@ func NewAuthService(repo domain.ApiKeyRepository, tokenRepo domain.ApiKeyTokenRe
 	}
 }
 
-func (s *Service) ValidateKey(ctx context.Context, rawToken string) (*domain.ApiKey, error) {
+// ValidateKey validates an API key token and returns the associated key.
+func (s *Service) ValidateKey(ctx context.Context, rawToken string) (*domain.APIKey, error) {
 	tokenHash := sha256Hash(rawToken)
 
 	cachedKey := s.cachedValidKey(ctx, tokenHash)
@@ -37,16 +40,18 @@ func (s *Service) ValidateKey(ctx context.Context, rawToken string) (*domain.Api
 
 	token, err := s.tokenRepo.GetByTokenHash(ctx, tokenHash)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get token by hash: %w", err)
 	}
+
 	if token == nil || !token.IsValid() {
 		return nil, ErrInvalidKey
 	}
 
-	apiKey, err := s.repo.GetByID(ctx, token.ApiKeyID)
+	apiKey, err := s.repo.GetByID(ctx, token.APIKeyID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get key by ID: %w", err)
 	}
+
 	if !validAPIKey(apiKey) {
 		return nil, ErrInvalidKey
 	}
@@ -58,23 +63,26 @@ func (s *Service) ValidateKey(ctx context.Context, rawToken string) (*domain.Api
 	return apiKey, nil
 }
 
+// InvalidateKey removes a cached API key by hashing the raw token.
 func (s *Service) InvalidateKey(ctx context.Context, rawToken string) error {
 	if s.cache == nil {
 		return nil
 	}
+
 	tokenHash := sha256Hash(rawToken)
 
 	return s.cache.InvalidateKey(ctx, tokenHash)
 }
 
+// InvalidateKeyByID removes cached entries for all tokens belonging to an API key.
 func (s *Service) InvalidateKeyByID(ctx context.Context, keyID string) error {
 	if s.cache == nil {
 		return nil
 	}
 
-	tokens, err := s.tokenRepo.ListByApiKeyID(ctx, keyID)
+	tokens, err := s.tokenRepo.ListByAPIKeyID(ctx, keyID)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to list tokens by API key ID: %w", err)
 	}
 
 	for _, token := range tokens {
@@ -87,7 +95,7 @@ func (s *Service) InvalidateKeyByID(ctx context.Context, keyID string) error {
 	return nil
 }
 
-func (s *Service) cachedValidKey(ctx context.Context, tokenHash string) *domain.ApiKey {
+func (s *Service) cachedValidKey(ctx context.Context, tokenHash string) *domain.APIKey {
 	if s.cache == nil {
 		return nil
 	}
@@ -100,7 +108,7 @@ func (s *Service) cachedValidKey(ctx context.Context, tokenHash string) *domain.
 	return cachedKey
 }
 
-func validAPIKey(apiKey *domain.ApiKey) bool {
+func validAPIKey(apiKey *domain.APIKey) bool {
 	return apiKey != nil && apiKey.IsValid()
 }
 

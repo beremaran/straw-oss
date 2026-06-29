@@ -7,16 +7,21 @@ import (
 )
 
 var (
-	ErrEmptyTag         = errors.New("empty tag string")
+	// ErrEmptyTag is returned when a tag string is empty.
+	ErrEmptyTag = errors.New("empty tag string")
+	// ErrInvalidTagFormat is returned when a tag string has an invalid format.
 	ErrInvalidTagFormat = errors.New("invalid tag format")
-	ErrEmptyTagKey      = errors.New("tag key cannot be empty")
+	// ErrEmptyTagKey is returned when a tag key is empty.
+	ErrEmptyTagKey = errors.New("tag key cannot be empty")
 )
 
+// Tag represents a key-value pair used for routing and filtering.
 type Tag struct {
 	Key   string `json:"key"`
 	Value string `json:"value"`
 }
 
+// ParseTag parses a tag string into a Tag. Supported formats: "key:value", "key=value", or "*" for wildcard.
 func ParseTag(s string) (Tag, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -42,6 +47,7 @@ func ParseTag(s string) (Tag, error) {
 	return Tag{Key: key, Value: value}, nil
 }
 
+// ParseTags parses a comma-separated string of tags.
 func ParseTags(s string) ([]Tag, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -61,6 +67,7 @@ func ParseTags(s string) ([]Tag, error) {
 		if err != nil {
 			return nil, err
 		}
+
 		tags = append(tags, tag)
 	}
 
@@ -71,10 +78,12 @@ func (t Tag) String() string {
 	return t.Key + ":" + t.Value
 }
 
+// Matches reports whether the tag matches the given pattern tag.
 func (t Tag) Matches(pattern Tag) bool {
 	if t.Key != pattern.Key {
 		return false
 	}
+
 	if pattern.Value == "*" {
 		return true
 	}
@@ -82,9 +91,11 @@ func (t Tag) Matches(pattern Tag) bool {
 	return t.Value == pattern.Value
 }
 
+// MatchesAll reports whether all required tags are found in the given tags.
 func MatchesAll(tags []Tag, required []Tag) bool {
 	for _, req := range required {
 		found := false
+
 		for _, tag := range tags {
 			if tag.Matches(req) {
 				found = true
@@ -92,6 +103,7 @@ func MatchesAll(tags []Tag, required []Tag) bool {
 				break
 			}
 		}
+
 		if !found {
 			return false
 		}
@@ -100,6 +112,7 @@ func MatchesAll(tags []Tag, required []Tag) bool {
 	return true
 }
 
+// MatchesNone reports that none of the excluded tags match the given tags.
 func MatchesNone(tags []Tag, excluded []Tag) bool {
 	for _, excl := range excluded {
 		for _, tag := range tags {
@@ -112,10 +125,12 @@ func MatchesNone(tags []Tag, excluded []Tag) bool {
 	return true
 }
 
+// TagsToStrings converts a slice of Tag to string representations.
 func TagsToStrings(tags []Tag) []string {
 	if tags == nil {
 		return nil
 	}
+
 	result := make([]string, len(tags))
 	for i, tag := range tags {
 		result[i] = tag.String()
@@ -124,16 +139,19 @@ func TagsToStrings(tags []Tag) []string {
 	return result
 }
 
+// StringsToTags converts a slice of tag strings to Tag values.
 func StringsToTags(strs []string) ([]Tag, error) {
 	if strs == nil {
 		return nil, nil
 	}
+
 	tags := make([]Tag, 0, len(strs))
 	for _, s := range strs {
 		tag, err := ParseTag(s)
 		if err != nil {
 			return nil, err
 		}
+
 		tags = append(tags, tag)
 	}
 

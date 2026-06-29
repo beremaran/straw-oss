@@ -14,6 +14,13 @@ import (
 	"github.com/beremaran/straw/pkg/protocol"
 )
 
+const (
+	testPublisherName = "test-publisher"
+	testMethod        = "GET"
+	testURL           = "http://example.com"
+	testRuleID        = "rule-1"
+)
+
 type mockBroker struct {
 	publishedMsgs []publishedMsg
 	subscriptions []subscription
@@ -33,7 +40,7 @@ type subscription struct {
 	Handler broker.Handler
 }
 
-func (m *mockBroker) Publish(ctx context.Context, subject string, body []byte) error {
+func (m *mockBroker) Publish(_ context.Context, subject string, body []byte) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.publishErr != nil {
@@ -47,7 +54,7 @@ func (m *mockBroker) Publish(ctx context.Context, subject string, body []byte) e
 	return nil
 }
 
-func (m *mockBroker) Subscribe(ctx context.Context, subject string, handler broker.Handler, opts ...broker.SubscribeOption) error {
+func (m *mockBroker) Subscribe(_ context.Context, subject string, handler broker.Handler, _ ...broker.SubscribeOption) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.subscribeErr != nil {
@@ -62,7 +69,7 @@ func (m *mockBroker) Subscribe(ctx context.Context, subject string, handler brok
 	return nil
 }
 
-func (m *mockBroker) ConsumeOnce(ctx context.Context, subject string, timeout time.Duration) ([]byte, error) {
+func (m *mockBroker) ConsumeOnce(_ context.Context, _ string, _ time.Duration) ([]byte, error) {
 	return nil, errors.New("not implemented in mock")
 }
 
@@ -70,7 +77,7 @@ func (m *mockBroker) Close() error {
 	return nil
 }
 
-func (m *mockBroker) DeclareStream(ctx context.Context, name string, subjects ...string) error {
+func (m *mockBroker) DeclareStream(_ context.Context, _ string, _ ...string) error {
 	return nil
 }
 
@@ -83,26 +90,26 @@ type mockSelector struct {
 	err        error
 }
 
-func (m *mockSelector) Select(ctx context.Context, rule *domain.RoutingRule) (string, error) {
+func (m *mockSelector) Select(_ context.Context, _ *domain.RoutingRule) (string, error) {
 	return m.endpointID, m.err
 }
 
-func (m *mockSelector) SelectWithSession(ctx context.Context, sessionID string) (string, error) {
+func (m *mockSelector) SelectWithSession(_ context.Context, _ string) (string, error) {
 	return m.endpointID, m.err
 }
 
 func TestPublisher_Publish(t *testing.T) {
 	mb := &mockBroker{}
-	ms := &mockSelector{endpointID: "ep-1"}
+	ms := &mockSelector{endpointID: testEndpointID}
 	secret := []byte("secret")
-	cb := circuitbreaker.New(circuitbreaker.Config{Name: "test-publisher"})
+	cb := circuitbreaker.New(circuitbreaker.Config{Name: testPublisherName})
 	p := NewPublisher(mb, ms, secret, cb)
 
 	req := &protocol.Request{
-		Method: "GET",
-		URL:    "http://example.com",
+		Method: testMethod,
+		URL:    testURL,
 	}
-	rule := &domain.RoutingRule{ID: "rule-1"}
+	rule := &domain.RoutingRule{ID: testRuleID}
 
 	replyQueue := "results.123"
 	eid, err := p.Publish(context.Background(), req, rule, "", "", replyQueue)
@@ -110,7 +117,7 @@ func TestPublisher_Publish(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if eid != "ep-1" {
+	if eid != testEndpointID {
 		t.Errorf("expected endpointID ep-1, got %s", eid)
 	}
 
@@ -151,7 +158,7 @@ func TestPublisher_Publish_SelectorError(t *testing.T) {
 	mb := &mockBroker{}
 	ms := &mockSelector{err: errors.New("no endpoints")}
 	secret := []byte("secret")
-	cb := circuitbreaker.New(circuitbreaker.Config{Name: "test-publisher"})
+	cb := circuitbreaker.New(circuitbreaker.Config{Name: testPublisherName})
 	p := NewPublisher(mb, ms, secret, cb)
 
 	req := &protocol.Request{}
@@ -165,11 +172,11 @@ func TestPublisher_Publish_SelectorError(t *testing.T) {
 
 func TestPublisher_Publish_SubscribeError(t *testing.T) {
 	mb := &mockBroker{subscribeErr: errors.New("sub failed")}
-	ms := &mockSelector{endpointID: "ep-1"}
-	cb := circuitbreaker.New(circuitbreaker.Config{Name: "test-publisher"})
+	ms := &mockSelector{endpointID: testEndpointID}
+	cb := circuitbreaker.New(circuitbreaker.Config{Name: testPublisherName})
 	p := NewPublisher(mb, ms, []byte("secret"), cb)
 
-	req := &protocol.Request{ID: "req-1"}
+	req := &protocol.Request{ID: testRequestID}
 	rule := &domain.RoutingRule{}
 
 	_, err := p.Publish(context.Background(), req, rule, "", "", "res-q")
@@ -180,11 +187,11 @@ func TestPublisher_Publish_SubscribeError(t *testing.T) {
 
 func TestPublisher_Publish_BrokerError(t *testing.T) {
 	mb := &mockBroker{publishErr: errors.New("publish failed")}
-	ms := &mockSelector{endpointID: "ep-1"}
-	cb := circuitbreaker.New(circuitbreaker.Config{Name: "test-publisher"})
+	ms := &mockSelector{endpointID: testEndpointID}
+	cb := circuitbreaker.New(circuitbreaker.Config{Name: testPublisherName})
 	p := NewPublisher(mb, ms, []byte("secret"), cb)
 
-	req := &protocol.Request{ID: "req-1"}
+	req := &protocol.Request{ID: testRequestID}
 	rule := &domain.RoutingRule{}
 
 	_, err := p.Publish(context.Background(), req, rule, "", "", "res-q")
@@ -202,11 +209,11 @@ func TestPublisher_Publish_WithSessionID(t *testing.T) {
 	mb := &mockBroker{}
 	ms := &mockSelector{endpointID: "ep-session-1"}
 	secret := []byte("secret")
-	cb := circuitbreaker.New(circuitbreaker.Config{Name: "test-publisher"})
+	cb := circuitbreaker.New(circuitbreaker.Config{Name: testPublisherName})
 	p := NewPublisher(mb, ms, secret, cb)
 
-	req := &protocol.Request{Method: "GET", URL: "http://example.com"}
-	rule := &domain.RoutingRule{ID: "rule-1"}
+	req := &protocol.Request{Method: testMethod, URL: testURL}
+	rule := &domain.RoutingRule{ID: testRuleID}
 
 	eid, err := p.Publish(context.Background(), req, rule, "session-123", "", "res-q")
 	if err != nil {
@@ -222,11 +229,11 @@ func TestPublisher_Publish_WithTargetEndpointID(t *testing.T) {
 	mb := &mockBroker{}
 	ms := &mockSelector{endpointID: "ep-default"}
 	secret := []byte("secret")
-	cb := circuitbreaker.New(circuitbreaker.Config{Name: "test-publisher"})
+	cb := circuitbreaker.New(circuitbreaker.Config{Name: testPublisherName})
 	p := NewPublisher(mb, ms, secret, cb)
 
-	req := &protocol.Request{Method: "GET", URL: "http://example.com"}
-	rule := &domain.RoutingRule{ID: "rule-1"}
+	req := &protocol.Request{Method: testMethod, URL: testURL}
+	rule := &domain.RoutingRule{ID: testRuleID}
 
 	eid, err := p.Publish(context.Background(), req, rule, "", "ep-target-1", "res-q")
 	if err != nil {
@@ -252,13 +259,13 @@ func TestPublisher_Publish_WithTargetEndpointID(t *testing.T) {
 
 func TestPublisher_Publish_GeneratesRequestID(t *testing.T) {
 	mb := &mockBroker{}
-	ms := &mockSelector{endpointID: "ep-1"}
+	ms := &mockSelector{endpointID: testEndpointID}
 	secret := []byte("secret")
-	cb := circuitbreaker.New(circuitbreaker.Config{Name: "test-publisher"})
+	cb := circuitbreaker.New(circuitbreaker.Config{Name: testPublisherName})
 	p := NewPublisher(mb, ms, secret, cb)
 
-	req := &protocol.Request{Method: "GET", URL: "http://example.com"}
-	rule := &domain.RoutingRule{ID: "rule-1"}
+	req := &protocol.Request{Method: testMethod, URL: testURL}
+	rule := &domain.RoutingRule{ID: testRuleID}
 
 	_, err := p.Publish(context.Background(), req, rule, "", "", "res-q")
 	if err != nil {
@@ -272,13 +279,13 @@ func TestPublisher_Publish_GeneratesRequestID(t *testing.T) {
 
 func TestPublisher_Publish_SignedTask(t *testing.T) {
 	mb := &mockBroker{}
-	ms := &mockSelector{endpointID: "ep-1"}
+	ms := &mockSelector{endpointID: testEndpointID}
 	secret := []byte("test-secret-key")
-	cb := circuitbreaker.New(circuitbreaker.Config{Name: "test-publisher"})
+	cb := circuitbreaker.New(circuitbreaker.Config{Name: testPublisherName})
 	p := NewPublisher(mb, ms, secret, cb)
 
-	req := &protocol.Request{ID: "req-123", Method: "GET", URL: "http://example.com"}
-	rule := &domain.RoutingRule{ID: "rule-1"}
+	req := &protocol.Request{ID: "req-123", Method: testMethod, URL: testURL}
+	rule := &domain.RoutingRule{ID: testRuleID}
 
 	_, err := p.Publish(context.Background(), req, rule, "", "", "res-q")
 	if err != nil {
@@ -314,20 +321,20 @@ func TestPublisher_Publish_SignedTask(t *testing.T) {
 
 func TestPublisher_Publish_NoResultHandler(t *testing.T) {
 	mb := &mockBroker{}
-	ms := &mockSelector{endpointID: "ep-1"}
+	ms := &mockSelector{endpointID: testEndpointID}
 	secret := []byte("secret")
-	cb := circuitbreaker.New(circuitbreaker.Config{Name: "test-publisher"})
+	cb := circuitbreaker.New(circuitbreaker.Config{Name: testPublisherName})
 	p := NewPublisher(mb, ms, secret, cb)
 
-	req := &protocol.Request{ID: "req-1", Method: "GET", URL: "http://example.com"}
-	rule := &domain.RoutingRule{ID: "rule-1"}
+	req := &protocol.Request{ID: testRequestID, Method: testMethod, URL: testURL}
+	rule := &domain.RoutingRule{ID: testRuleID}
 
 	eid, err := p.Publish(context.Background(), req, rule, "", "", "res-q-nofunc")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if eid != "ep-1" {
+	if eid != testEndpointID {
 		t.Errorf("expected endpointID 'ep-1', got %s", eid)
 	}
 

@@ -1,3 +1,4 @@
+// Package security provides test helpers for security tests.
 package security
 
 import (
@@ -6,21 +7,25 @@ import (
 	"github.com/beremaran/straw/internal/domain"
 )
 
+const dummyEndpoint = "dummy-endpoint"
+
 type dummySelector struct{}
 
-func (d *dummySelector) Select(ctx context.Context, rule *domain.RoutingRule) (string, error) {
-	return "dummy-endpoint", nil
+func (d *dummySelector) Select(_ context.Context, _ *domain.RoutingRule) (string, error) {
+	return dummyEndpoint, nil
 }
-func (d *dummySelector) SelectWithSession(ctx context.Context, sessionID string) (string, error) {
-	return "dummy-endpoint", nil
+
+func (d *dummySelector) SelectWithSession(_ context.Context, _ string) (string, error) {
+	return dummyEndpoint, nil
 }
 
 type dummyPoolManager struct{}
 
-func (d *dummyPoolManager) GetEndpointFromPool(ctx context.Context, rule *domain.RoutingRule, poolTier int, exclude []string) (string, error) {
-	return "dummy-endpoint", nil
+func (d *dummyPoolManager) GetEndpointFromPool(_ context.Context, _ *domain.RoutingRule, _ int, _ []string) (string, error) {
+	return dummyEndpoint, nil
 }
-func (d *dummyPoolManager) GetPoolConfig(rule *domain.RoutingRule, poolTier int) *domain.EndpointPool {
+
+func (d *dummyPoolManager) GetPoolConfig(rule *domain.RoutingRule, _ int) *domain.EndpointPool {
 	if len(rule.EndpointPools) > 0 {
 		return &rule.EndpointPools[0]
 	}

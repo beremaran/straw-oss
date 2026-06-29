@@ -21,6 +21,9 @@ var errFingerprintBrokerUnavailable = errors.New("fingerprint broker unavailable
 
 var sensitiveFingerprintConfigKeys = []string{"authorization", "password", "raw_key", "secret", "token"}
 
+const redactedPlaceholder = "[REDACTED]"
+
+// FingerprintHandler manages fingerprint preset operations.
 type FingerprintHandler struct {
 	repo            domain.FingerprintRepository
 	routingRuleRepo FingerprintRoutingRuleRepository
@@ -29,11 +32,13 @@ type FingerprintHandler struct {
 	auditRepo       domain.ManagementAuditRepository
 }
 
+// FingerprintRoutingRuleRepository handles routing rule operations for fingerprints.
 type FingerprintRoutingRuleRepository interface {
 	ListActiveRulesReferencingFingerprintPreset(ctx context.Context, presetID string) ([]domain.RoutingRuleReference, error)
 	DeleteRule(ctx context.Context, id string) error
 }
 
+// FingerprintIdentityRepository handles identity operations for fingerprints.
 type FingerprintIdentityRepository interface {
 	ListUserRoles(ctx context.Context, userID string) ([]domain.AdminRole, error)
 }
@@ -44,6 +49,7 @@ type fingerprintDeleteOptions struct {
 	deactivateRefs bool
 }
 
+// NewFingerprintHandler creates a new FingerprintHandler.
 func NewFingerprintHandler(repo domain.FingerprintRepository, routingRuleRepo FingerprintRoutingRuleRepository, identityRepo FingerprintIdentityRepository, broker broker.MessageBroker, auditRepo domain.ManagementAuditRepository) *FingerprintHandler {
 	return &FingerprintHandler{
 		repo:            repo,
@@ -54,6 +60,7 @@ func NewFingerprintHandler(repo domain.FingerprintRepository, routingRuleRepo Fi
 	}
 }
 
+// HandleListPresets lists all fingerprint presets.
 func (h *FingerprintHandler) HandleListPresets(w http.ResponseWriter, r *http.Request) {
 	presets, err := h.repo.ListPresets(r.Context())
 	if err != nil {
@@ -61,9 +68,11 @@ func (h *FingerprintHandler) HandleListPresets(w http.ResponseWriter, r *http.Re
 
 		return
 	}
+
 	helper.WriteJSON(w, http.StatusOK, dto.FromFingerprintPresets(presets))
 }
 
+// HandleGetPreset retrieves a single fingerprint preset.
 func (h *FingerprintHandler) HandleGetPreset(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if id == "" {
@@ -78,6 +87,7 @@ func (h *FingerprintHandler) HandleGetPreset(w http.ResponseWriter, r *http.Requ
 
 		return
 	}
+
 	if preset == nil {
 		helper.WriteError(w, http.StatusNotFound, "preset not found")
 
@@ -87,8 +97,10 @@ func (h *FingerprintHandler) HandleGetPreset(w http.ResponseWriter, r *http.Requ
 	helper.WriteJSON(w, http.StatusOK, dto.FromFingerprintPreset(preset))
 }
 
+// HandleCreatePreset creates a fingerprint preset.
 func (h *FingerprintHandler) HandleCreatePreset(w http.ResponseWriter, r *http.Request) {
 	var req dto.CreateFingerprintRequest
+
 	err := helper.ReadJSON(r, &req)
 	if err != nil {
 		helper.WriteError(w, http.StatusBadRequest, "invalid request body")
@@ -117,11 +129,13 @@ func (h *FingerprintHandler) HandleCreatePreset(w http.ResponseWriter, r *http.R
 
 		return
 	}
+
 	h.auditPresetChange(r, existing, preset)
 
 	helper.WriteJSON(w, http.StatusOK, dto.FromFingerprintPreset(preset))
 }
 
+// HandleDeletePreset deletes a fingerprint preset.
 func (h *FingerprintHandler) HandleDeletePreset(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if id == "" {
@@ -159,6 +173,7 @@ func (h *FingerprintHandler) HandleDeletePreset(w http.ResponseWriter, r *http.R
 	})
 }
 
+// HandleBroadcastPresets broadcasts all presets to endpoints.
 func (h *FingerprintHandler) HandleBroadcastPresets(w http.ResponseWriter, r *http.Request) {
 	err := h.broadcastPresets(r.Context())
 	if err != nil {
@@ -181,6 +196,7 @@ func (h *FingerprintHandler) authorizeForceDelete(w http.ResponseWriter, r *http
 
 		return false
 	}
+
 	if !allowed {
 		helper.WriteError(w, http.StatusForbidden, "force delete requires owner role")
 
@@ -197,6 +213,7 @@ func (h *FingerprintHandler) getPresetForDelete(w http.ResponseWriter, r *http.R
 
 		return nil, false
 	}
+
 	if preset == nil {
 		helper.WriteError(w, http.StatusNotFound, "preset not found")
 
@@ -213,14 +230,17 @@ func (h *FingerprintHandler) prepareReferencingRulesForDelete(w http.ResponseWri
 
 		return false
 	}
+
 	if len(referencingRules) == 0 {
 		return true
 	}
+
 	if !opts.force {
 		writeFingerprintDeleteConflict(w, referencingRules)
 
 		return false
 	}
+
 	if !opts.deactivateRefs {
 		helper.WriteJSON(w, http.StatusBadRequest, dto.ErrorResponse{
 			Error: "deactivate_referencing_rules=true is required when force=true and referencing rules exist",
@@ -293,10 +313,20 @@ func (h *FingerprintHandler) broadcastPresets(ctx context.Context) error {
 
 func (h *FingerprintHandler) savePreset(ctx context.Context, existing *domain.FingerprintPreset, preset *domain.FingerprintPreset) error {
 	if existing != nil {
-		return h.repo.UpdatePreset(ctx, preset)
+		err := h.repo.UpdatePreset(ctx, preset)
+		if err != nil {
+			return fmt.Errorf("updating preset: %w", err)
+		}
+
+		return nil
 	}
 
-	return h.repo.CreatePreset(ctx, preset)
+	err := h.repo.CreatePreset(ctx, preset)
+	if err != nil {
+		return fmt.Errorf("creating preset: %w", err)
+	}
+
+	return nil
 }
 
 func (h *FingerprintHandler) auditPresetChange(r *http.Request, existing *domain.FingerprintPreset, preset *domain.FingerprintPreset) {
@@ -305,7 +335,9 @@ func (h *FingerprintHandler) auditPresetChange(r *http.Request, existing *domain
 	}
 
 	action := domain.ActionCreate
-	var oldVal interface{}
+
+	var oldVal any
+
 	if existing != nil {
 		action = domain.ActionUpdate
 		oldVal = redactedFingerprintPreset(existing)
@@ -330,7 +362,7 @@ func (h *FingerprintHandler) deactivateReferencingRules(ctx context.Context, ref
 	for _, ref := range refs {
 		err := h.routingRuleRepo.DeleteRule(ctx, ref.ID)
 		if err != nil && !errors.Is(err, postgres.ErrRoutingRuleNotFound) {
-			return err
+			return fmt.Errorf("deleting referencing rule %s: %w", ref.ID, err)
 		}
 	}
 
@@ -342,16 +374,18 @@ func (h *FingerprintHandler) canForceDelete(ctx context.Context) (bool, error) {
 	if !ok {
 		return false, nil
 	}
+
 	if actor.Type == middleware.ActorTypeLegacy {
 		return true, nil
 	}
+
 	if actor.Type != middleware.ActorTypeUser || h.identityRepo == nil {
 		return false, nil
 	}
 
 	roles, err := h.identityRepo.ListUserRoles(ctx, actor.ID)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("listing user roles: %w", err)
 	}
 
 	return hasRoleName(roles, domain.RoleOwner), nil
@@ -391,7 +425,12 @@ func parseBoolQuery(value string, defaultValue bool) (bool, error) {
 		return defaultValue, nil
 	}
 
-	return strconv.ParseBool(value)
+	result, err := strconv.ParseBool(value)
+	if err != nil {
+		return false, fmt.Errorf("parsing bool query: %w", err)
+	}
+
+	return result, nil
 }
 
 func writeFingerprintDeleteConflict(w http.ResponseWriter, refs []domain.RoutingRuleReference) {
@@ -423,15 +462,15 @@ func redactedFingerprintPreset(preset *domain.FingerprintPreset) *dto.Fingerprin
 	return resp
 }
 
-func redactFingerprintConfig(config map[string]interface{}) map[string]interface{} {
+func redactFingerprintConfig(config map[string]any) map[string]any {
 	if config == nil {
 		return nil
 	}
 
-	redacted := make(map[string]interface{}, len(config))
+	redacted := make(map[string]any, len(config))
 	for key, value := range config {
 		if isSensitiveFingerprintConfigKey(key) {
-			redacted[key] = "[REDACTED]"
+			redacted[key] = redactedPlaceholder
 
 			continue
 		}
@@ -442,14 +481,14 @@ func redactFingerprintConfig(config map[string]interface{}) map[string]interface
 	return redacted
 }
 
-func redactFingerprintConfigValue(value interface{}) interface{} {
+func redactFingerprintConfigValue(value any) any {
 	switch typed := value.(type) {
-	case map[string]interface{}:
+	case map[string]any:
 		return redactFingerprintConfig(typed)
 	case domain.ConfigMap:
-		return redactFingerprintConfig(map[string]interface{}(typed))
-	case []interface{}:
-		values := make([]interface{}, len(typed))
+		return redactFingerprintConfig(map[string]any(typed))
+	case []any:
+		values := make([]any, len(typed))
 		for i, item := range typed {
 			values[i] = redactFingerprintConfigValue(item)
 		}

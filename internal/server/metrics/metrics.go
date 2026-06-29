@@ -1,30 +1,40 @@
+// Package metrics provides Prometheus collectors for the relay server.
 package metrics
 
 import (
 	"sync"
 
-	"github.com/beremaran/straw/internal/observability/metrics"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/beremaran/straw/internal/observability/metrics"
 )
 
 var (
+	// RequestsTotal counts the total number of relay requests processed.
 	RequestsTotal *prometheus.CounterVec
 
+	// RequestDuration measures the duration of relay requests in seconds.
 	RequestDuration *prometheus.HistogramVec
 
+	// QueueDepth tracks the depth of the relay request queue.
 	QueueDepth *prometheus.GaugeVec
 
+	// CacheHits counts the total number of cache hits.
 	CacheHits *prometheus.CounterVec
 
+	// CacheMisses counts the total number of cache misses.
 	CacheMisses *prometheus.CounterVec
 
+	// ActiveSessions tracks the number of active sessions (concurrent requests).
 	ActiveSessions prometheus.Gauge
 
+	// RateLimitExceeded counts the total number of requests that exceeded the rate limit.
 	RateLimitExceeded *prometheus.CounterVec
 
 	once sync.Once
 )
 
+// Init initializes the Prometheus collectors if not already done.
 func Init() {
 	once.Do(initCollectors)
 }

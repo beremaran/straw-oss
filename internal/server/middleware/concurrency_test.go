@@ -19,7 +19,7 @@ func TestConcurrencyLimiter(t *testing.T) {
 		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 		rec := httptest.NewRecorder()
 
-		handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handler := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte("OK"))
 		}))
@@ -35,7 +35,7 @@ func TestConcurrencyLimiter(t *testing.T) {
 		startCh := make(chan struct{})
 		holdCh := make(chan struct{})
 
-		handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handler := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			startCh <- struct{}{}
 			<-holdCh
 			w.WriteHeader(http.StatusOK)
@@ -43,14 +43,12 @@ func TestConcurrencyLimiter(t *testing.T) {
 		}))
 
 		var wg sync.WaitGroup
-		for i := 0; i < limit; i++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+		for range limit {
+			wg.Go(func() {
 				req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 				rec := httptest.NewRecorder()
 				handler.ServeHTTP(rec, req)
-			}()
+			})
 			<-startCh
 		}
 
@@ -70,7 +68,7 @@ func TestConcurrencyLimiter(t *testing.T) {
 		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 		rec := httptest.NewRecorder()
 
-		handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handler := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte("OK"))
 		}))
@@ -83,7 +81,7 @@ func TestConcurrencyLimiter(t *testing.T) {
 		limit := 1
 		mw := ConcurrencyLimiter(limit)
 
-		handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handler := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte("OK"))
 		}))
@@ -108,7 +106,7 @@ func TestConcurrencyLimiterWithBlock(t *testing.T) {
 		releaseCh := make(chan struct{})
 		var callCount atomic.Int32
 
-		handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handler := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			callCount.Add(1)
 			if callCount.Load() == 1 {
 				<-releaseCh
@@ -118,25 +116,21 @@ func TestConcurrencyLimiterWithBlock(t *testing.T) {
 		}))
 
 		var wg sync.WaitGroup
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 			rec := httptest.NewRecorder()
 			handler.ServeHTTP(rec, req)
-		}()
+		})
 
 		time.Sleep(10 * time.Millisecond)
 
 		secondDone := make(chan struct{})
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 			rec := httptest.NewRecorder()
 			handler.ServeHTTP(rec, req)
 			close(secondDone)
-		}()
+		})
 
 		select {
 		case <-secondDone:

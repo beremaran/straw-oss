@@ -29,7 +29,7 @@ type publishedMsg struct {
 	Body    []byte
 }
 
-func (m *mockBroker) Publish(ctx context.Context, subject string, body []byte) error {
+func (m *mockBroker) Publish(_ context.Context, subject string, body []byte) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.publishedMsgs = append(m.publishedMsgs, publishedMsg{
@@ -40,7 +40,7 @@ func (m *mockBroker) Publish(ctx context.Context, subject string, body []byte) e
 	return nil
 }
 
-func (m *mockBroker) Subscribe(ctx context.Context, subject string, handler broker.Handler, opts ...broker.SubscribeOption) error {
+func (m *mockBroker) Subscribe(ctx context.Context, subject string, handler broker.Handler, _ ...broker.SubscribeOption) error {
 	m.subscribeQueue = subject
 	m.subscribeHandler = handler
 
@@ -49,7 +49,7 @@ func (m *mockBroker) Subscribe(ctx context.Context, subject string, handler brok
 	return nil
 }
 
-func (m *mockBroker) ConsumeOnce(ctx context.Context, subject string, timeout time.Duration) ([]byte, error) {
+func (m *mockBroker) ConsumeOnce(_ context.Context, _ string, _ time.Duration) ([]byte, error) {
 	return nil, nil
 }
 
@@ -57,7 +57,7 @@ func (m *mockBroker) Close() error {
 	return nil
 }
 
-func (m *mockBroker) DeclareStream(ctx context.Context, name string, subjects ...string) error {
+func (m *mockBroker) DeclareStream(_ context.Context, _ string, _ ...string) error {
 	return nil
 }
 
@@ -69,13 +69,18 @@ type mockTransportProvider struct {
 	transport *fhttp.Transport
 }
 
-func (m *mockTransportProvider) GetTransport(host string, preset fingerprint.Preset) *fhttp.Transport {
+func (m *mockTransportProvider) GetTransport(_ string, _ fingerprint.Preset) *fhttp.Transport {
 	if m.transport != nil {
 		return m.transport
 	}
 
 	return &fhttp.Transport{}
 }
+
+const (
+	testRequestID = "test-req-1"
+	testMethod    = "GET"
+)
 
 func TestConsumer_New(t *testing.T) {
 	mb := &mockBroker{}
@@ -150,8 +155,8 @@ func TestConsumer_InvalidSignature(t *testing.T) {
 	c.ctx = context.Background()
 
 	req := &protocol.Request{
-		ID:     "test-req-1",
-		Method: "GET",
+		ID:     testRequestID,
+		Method: testMethod,
 		URL:    "https://example.com",
 	}
 
@@ -195,8 +200,8 @@ func TestConsumer_ReplayAttack(t *testing.T) {
 	c.ctx = context.Background()
 
 	req := &protocol.Request{
-		ID:     "test-req-1",
-		Method: "GET",
+		ID:     testRequestID,
+		Method: testMethod,
 		URL:    "https://example.com",
 	}
 
@@ -239,12 +244,11 @@ func TestConsumer_ConcurrencyLimit(t *testing.T) {
 		WithConcurrencyLimit(2),
 	)
 
-	var currentConcurrent int32
+	var currentConcurrent atomic.Int32
 	var maxConcurrent int32
 	var wg sync.WaitGroup
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	go func() {
 		_ = c.Start(ctx)
@@ -252,13 +256,10 @@ func TestConsumer_ConcurrencyLimit(t *testing.T) {
 
 	time.Sleep(50 * time.Millisecond)
 
-	for i := 0; i < 5; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-
+	for range 5 {
+		wg.Go(func() {
 			c.semaphore <- struct{}{}
-			current := atomic.AddInt32(&currentConcurrent, 1)
+			current := currentConcurrent.Add(1)
 
 			for {
 				theMaximum := atomic.LoadInt32(&maxConcurrent)
@@ -272,9 +273,9 @@ func TestConsumer_ConcurrencyLimit(t *testing.T) {
 
 			time.Sleep(10 * time.Millisecond)
 
-			atomic.AddInt32(&currentConcurrent, -1)
+			currentConcurrent.Add(-1)
 			<-c.semaphore
-		}()
+		})
 	}
 
 	wg.Wait()
@@ -318,7 +319,7 @@ func TestConsumer_ResultHandler(t *testing.T) {
 	secret := []byte("test-secret")
 
 	var receivedResponse *protocol.Response
-	handler := func(ctx context.Context, resp *protocol.Response, replyTo string) error {
+	handler := func(_ context.Context, resp *protocol.Response, _ string) error {
 		receivedResponse = resp
 
 		return nil
@@ -330,8 +331,8 @@ func TestConsumer_ResultHandler(t *testing.T) {
 	c.ctx = context.Background()
 
 	req := &protocol.Request{
-		ID:     "test-req-1",
-		Method: "GET",
+		ID:     testRequestID,
+		Method: testMethod,
 		URL:    "https://httpbin.org/get",
 	}
 
@@ -354,8 +355,8 @@ func TestConsumer_ResultHandler(t *testing.T) {
 		t.Fatal("expected result handler to be called")
 	}
 
-	if receivedResponse.RequestID != "test-req-1" {
-		t.Errorf("expected request ID 'test-req-1', got %s", receivedResponse.RequestID)
+	if receivedResponse.RequestID != testRequestID {
+		t.Errorf("expected request ID %q, got %s", testRequestID, receivedResponse.RequestID)
 	}
 
 	if receivedResponse.EndpointID != "test-endpoint" {

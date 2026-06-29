@@ -218,14 +218,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateApiKeyRequest'
+              $ref: '#/components/schemas/CreateAPIKeyRequest'
       responses:
         '201':
           description: "Created"
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CreateApiKeyResponse'
+                $ref: '#/components/schemas/CreateAPIKeyResponse'
         '400':
           $ref: '#/components/responses/ErrorResponse'
         '401':
@@ -261,7 +261,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ListApiKeysResponse'
+                $ref: '#/components/schemas/ListAPIKeysResponse'
         '401':
           $ref: '#/components/responses/ErrorResponse'
         '500':
@@ -288,7 +288,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiKeyDetailResponse'
+                $ref: '#/components/schemas/APIKeyDetailResponse'
         '401':
           $ref: '#/components/responses/ErrorResponse'
         '404':
@@ -315,14 +315,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateApiKeyRequest'
+              $ref: '#/components/schemas/UpdateAPIKeyRequest'
       responses:
         '200':
           description: "Updated API key detail"
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiKeyDetailResponse'
+                $ref: '#/components/schemas/APIKeyDetailResponse'
         '400':
           $ref: '#/components/responses/ErrorResponse'
         '401':
@@ -376,14 +376,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/RotateApiKeyRequest'
+              $ref: '#/components/schemas/RotateAPIKeyRequest'
       responses:
         '200':
           description: "Rotated API key token"
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RotateApiKeyResponse'
+                $ref: '#/components/schemas/RotateAPIKeyResponse'
         '400':
           $ref: '#/components/responses/ErrorResponse'
         '401':
@@ -414,7 +414,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiKeyDetailResponse'
+                $ref: '#/components/schemas/APIKeyDetailResponse'
         '400':
           $ref: '#/components/responses/ErrorResponse'
         '401':
@@ -1897,7 +1897,7 @@ components:
           format: int64
           description: "Limit response size in bytes."
 
-    CreateApiKeyRequest:
+    CreateAPIKeyRequest:
       type: object
       required:
         - name
@@ -1914,7 +1914,7 @@ components:
           type: integer
           description: "Optional rate limit override (requests per second)."
 
-    UpdateApiKeyRequest:
+    UpdateAPIKeyRequest:
       type: object
       properties:
         name:
@@ -1934,7 +1934,7 @@ components:
         is_active:
           type: boolean
 
-    ApiKeyResponse:
+    APIKeyResponse:
       type: object
       properties:
         id:
@@ -1959,7 +1959,7 @@ components:
           format: date-time
           nullable: true
 
-    ApiKeyTokenResponse:
+    APIKeyTokenResponse:
       type: object
       properties:
         id:
@@ -1979,26 +1979,26 @@ components:
           type: string
           format: date-time
 
-    ApiKeyDetailResponse:
+    APIKeyDetailResponse:
       allOf:
-        - $ref: '#/components/schemas/ApiKeyResponse'
+        - $ref: '#/components/schemas/APIKeyResponse'
         - type: object
           properties:
             tokens:
               type: array
               items:
-                $ref: '#/components/schemas/ApiKeyTokenResponse'
+                $ref: '#/components/schemas/APIKeyTokenResponse'
 
-    CreateApiKeyResponse:
+    CreateAPIKeyResponse:
       allOf:
-        - $ref: '#/components/schemas/ApiKeyResponse'
+        - $ref: '#/components/schemas/APIKeyResponse'
         - type: object
           properties:
             raw_key:
               type: string
               description: "Only returned once."
 
-    RotateApiKeyRequest:
+    RotateAPIKeyRequest:
       type: object
       properties:
         grace_period:
@@ -2008,7 +2008,7 @@ components:
           type: boolean
           description: "Revokes older accepted tokens immediately instead of allowing a grace period."
 
-    RotateApiKeyResponse:
+    RotateAPIKeyResponse:
       type: object
       properties:
         api_key_id:
@@ -2025,13 +2025,13 @@ components:
           format: date-time
           nullable: true
 
-    ListApiKeysResponse:
+    ListAPIKeysResponse:
       type: object
       properties:
         data:
           type: array
           items:
-            $ref: '#/components/schemas/ApiKeyResponse'
+            $ref: '#/components/schemas/APIKeyResponse'
         total:
           type: integer
         page:

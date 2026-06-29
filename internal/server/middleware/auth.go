@@ -1,3 +1,5 @@
+// Package middleware provides HTTP middleware functions for authentication,
+// rate limiting, session management, and request handling.
 package middleware
 
 import (
@@ -10,14 +12,20 @@ import (
 	"github.com/beremaran/straw/internal/service/auth"
 )
 
-type ContextApiKey struct {
+// ContextAPIKey is the context key type for storing the authenticated API key.
+type ContextAPIKey struct {
 	Value string
 }
 
 const (
+	// HeaderAuthorization is the HTTP header name for the Authorization header.
 	HeaderAuthorization string = "Authorization"
+
+	// APIKeyContextKey is the context value key for the API key.
+	APIKeyContextKey = "api_key"
 )
 
+// AuthMiddleware validates bearer tokens and stores the authenticated API key in the request context.
 func AuthMiddleware(validator *auth.Service) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -41,7 +49,7 @@ func AuthMiddleware(validator *auth.Service) func(http.Handler) http.Handler {
 				return
 			}
 
-			ctx := context.WithValue(r.Context(), ContextApiKey{Value: "api_key"}, apiKey)
+			ctx := context.WithValue(r.Context(), ContextAPIKey{Value: APIKeyContextKey}, apiKey)
 
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
@@ -50,13 +58,14 @@ func AuthMiddleware(validator *auth.Service) func(http.Handler) http.Handler {
 
 func extractBearerToken(r *http.Request) string {
 	authHeader := r.Header.Get(HeaderAuthorization)
-	if strings.HasPrefix(authHeader, "Bearer ") {
-		return strings.TrimPrefix(authHeader, "Bearer ")
+	if after, ok := strings.CutPrefix(authHeader, "Bearer "); ok {
+		return after
 	}
 
 	return ""
 }
 
-func GetAPIKey(r *http.Request) interface{} {
-	return r.Context().Value(ContextApiKey{Value: "api_key"})
+// GetAPIKey retrieves the authenticated API key from the request context.
+func GetAPIKey(r *http.Request) any {
+	return r.Context().Value(ContextAPIKey{Value: APIKeyContextKey})
 }

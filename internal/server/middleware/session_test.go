@@ -6,13 +6,14 @@ import (
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/beremaran/straw/internal/config"
 	"github.com/beremaran/straw/internal/domain"
 	"github.com/beremaran/straw/internal/infra/redis"
 	"github.com/beremaran/straw/internal/server/middleware"
 	"github.com/beremaran/straw/internal/service/session"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestSessionMiddleware(t *testing.T) {
@@ -72,7 +73,7 @@ func TestSessionMiddleware(t *testing.T) {
 		req.Header.Set(middleware.HeaderSessionID, "invalid-123")
 		rec := httptest.NewRecorder()
 
-		h := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		}))
 
@@ -86,7 +87,7 @@ func TestSessionMiddleware(t *testing.T) {
 		req.Header.Set(middleware.HeaderSessionEnd, "true")
 		rec := httptest.NewRecorder()
 
-		h := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		}))
 

@@ -3,20 +3,24 @@ package transport
 import (
 	"container/list"
 	"context"
-	tls "github.com/bogdanfinn/utls"
+	"fmt"
 	"net"
 	"sync"
 	"time"
 
 	fhttp "github.com/bogdanfinn/fhttp"
 	"github.com/bogdanfinn/fhttp/http2"
+	tls "github.com/bogdanfinn/utls"
 
 	"github.com/beremaran/straw/internal/endpoint/fingerprint"
 	"github.com/beremaran/straw/internal/endpoint/metrics"
 )
 
+// DialTLSFunc is a function that establishes a TLS connection with client
+// fingerprinting for protocol negotiation.
 type DialTLSFunc func(ctx context.Context, network, addr string, fingerprint string) (net.Conn, error)
 
+// PooledTransport manages per-host pooled HTTP transports with LRU eviction.
 type PooledTransport struct {
 	pools        map[string]*hostPool
 	lruList      *list.List
@@ -36,6 +40,7 @@ type hostPool struct {
 	lastUsed    time.Time
 }
 
+// NewPooledTransport creates a new PooledTransport with the given config and dialer.
 func NewPooledTransport(config PoolConfig, dialTLS DialTLSFunc) *PooledTransport {
 	pt := &PooledTransport{
 		pools:        make(map[string]*hostPool),
@@ -52,16 +57,20 @@ func NewPooledTransport(config PoolConfig, dialTLS DialTLSFunc) *PooledTransport
 	return pt
 }
 
+// GetTransport returns an existing or creates a new pooled transport for the
+// given host and fingerprint combination.
 func (pt *PooledTransport) GetTransport(host string, preset fingerprint.Preset) *fhttp.Transport {
 	key := pt.makeKey(host, preset.ID)
 
 	pt.mu.RLock()
+
 	if pool, ok := pt.pools[key]; ok {
 		pt.mu.RUnlock()
 		pt.touchPool(key)
 
 		return pool.transport
 	}
+
 	pt.mu.RUnlock()
 
 	pt.mu.Lock()
@@ -93,6 +102,7 @@ func (pt *PooledTransport) GetTransport(host string, preset fingerprint.Preset) 
 	return transport
 }
 
+// Close shuts down the eviction loop and closes all pooled transports.
 func (pt *PooledTransport) Close() error {
 	close(pt.stopEviction)
 	<-pt.evictionDone
@@ -104,12 +114,14 @@ func (pt *PooledTransport) Close() error {
 		pool.transport.CloseIdleConnections()
 		delete(pt.pools, key)
 	}
+
 	pt.lruList.Init()
 	pt.lruMap = make(map[string]*list.Element)
 
 	return nil
 }
 
+// Stats returns the current pool statistics.
 func (pt *PooledTransport) Stats() PoolStats {
 	pt.mu.RLock()
 	defer pt.mu.RUnlock()
@@ -120,6 +132,7 @@ func (pt *PooledTransport) Stats() PoolStats {
 	}
 }
 
+// PoolStats holds statistics about the transport pool.
 type PoolStats struct {
 	PoolCount    int
 	MaxPoolHosts int
@@ -133,13 +146,14 @@ type metricConn struct {
 func (c *metricConn) Close() error {
 	metrics.ConnectionsPooled.WithLabelValues(c.host).Dec()
 
-	return c.Conn.Close()
+	return fmt.Errorf("closing pooled connection: %w", c.Conn.Close())
 }
 
 func (pt *PooledTransport) createTransport(host string, preset fingerprint.Preset) *fhttp.Transport {
 	h2Transport := &http2.Transport{
-		DialTLS: func(network, addr string, cfg *tls.Config) (net.Conn, error) {
+		DialTLS: func(network, addr string, _ *tls.Config) (net.Conn, error) {
 			ctx := context.Background()
+
 			conn, err := pt.dialTLS(ctx, network, addr, preset.ID)
 			if err == nil {
 				hostVal, _, _ := net.SplitHostPort(addr)
@@ -195,7 +209,9 @@ type h2RoundTripper struct {
 func (rt *h2RoundTripper) RoundTrip(req *fhttp.Request) (*fhttp.Response, error) {
 	resp, err := rt.h2.RoundTrip(req)
 	if err != nil {
-		return rt.h1.RoundTrip(req)
+		h1Resp, h1Err := rt.h1.RoundTrip(req)
+
+		return h1Resp, fmt.Errorf("h1 fallback roundtrip: %w", h1Err)
 	}
 
 	return resp, nil
@@ -208,6 +224,7 @@ func (pt *PooledTransport) makeKey(host, fingerprint string) string {
 func (pt *PooledTransport) touchPool(key string) {
 	pt.mu.Lock()
 	defer pt.mu.Unlock()
+
 	pt.touchPoolLocked(key)
 }
 
@@ -215,6 +232,7 @@ func (pt *PooledTransport) touchPoolLocked(key string) {
 	if pool, ok := pt.pools[key]; ok {
 		pool.lastUsed = time.Now()
 	}
+
 	if elem, ok := pt.lruMap[key]; ok {
 		pt.lruList.MoveToFront(elem)
 	}
@@ -239,6 +257,7 @@ func (pt *PooledTransport) removePoolLocked(key string, elem *list.Element) {
 		pool.transport.CloseIdleConnections()
 		delete(pt.pools, key)
 	}
+
 	if elem != nil {
 		pt.lruList.Remove(elem)
 		delete(pt.lruMap, key)

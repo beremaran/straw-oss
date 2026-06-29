@@ -8,10 +8,17 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/beremaran/straw/internal/domain"
-	"github.com/beremaran/straw/internal/infra/postgres"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+
+	"github.com/beremaran/straw/internal/domain"
+	"github.com/beremaran/straw/internal/infra/postgres"
+)
+
+const (
+	testProviderName = "Okta"
+	testProviderType = "oidc"
 )
 
 func TestIdentityProviderHandler_HandleListIdentityProviders(t *testing.T) {
@@ -22,8 +29,8 @@ func TestIdentityProviderHandler_HandleListIdentityProviders(t *testing.T) {
 	handler := NewIdentityProviderHandler(mockRepo)
 
 	providers := []domain.AdminIdentityProvider{
-		{ID: "idp1", Name: "Okta", Type: "oidc", IsEnabled: true},
-		{ID: "idp2", Name: "Google", Type: "oidc", IsEnabled: false},
+		{ID: "idp1", Name: testProviderName, Type: testProviderType, IsEnabled: true},
+		{ID: "idp2", Name: "Google", Type: testProviderType, IsEnabled: false},
 	}
 	mockRepo.On("ListIdentityProviders", mock.Anything).Return(providers, nil).Once()
 
@@ -31,15 +38,15 @@ func TestIdentityProviderHandler_HandleListIdentityProviders(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 
-	var response map[string]interface{}
+	var response map[string]any
 	err := json.Unmarshal(rec.Body.Bytes(), &response)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Len(t, response["data"], 2)
 }
 
 func TestIdentityProviderHandler_HandleCreateIdentityProvider(t *testing.T) {
 	t.Run("Create success", func(t *testing.T) {
-		body := `{"name":"Okta","type":"oidc","client_id":"client-id","client_secret_ref":"vault://secret"}`
+		body := `{"name":testProviderName,"type":testProviderType,"client_id":"client-id","client_secret_ref":"vault://secret"}`
 		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/management/identity-providers", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
@@ -48,7 +55,7 @@ func TestIdentityProviderHandler_HandleCreateIdentityProvider(t *testing.T) {
 		handler := NewIdentityProviderHandler(mockRepo)
 
 		mockRepo.On("CreateIdentityProvider", mock.Anything, mock.MatchedBy(func(p *domain.AdminIdentityProvider) bool {
-			return p.Name == "Okta" && p.Type == "oidc" && p.ClientID == "client-id" && p.ClientSecretRef == "vault://secret"
+			return p.Name == testProviderName && p.Type == testProviderType && p.ClientID == "client-id" && p.ClientSecretRef == "vault://secret"
 		})).Return(nil).Once()
 
 		handler.HandleCreateIdentityProvider(rec, req)
@@ -57,7 +64,7 @@ func TestIdentityProviderHandler_HandleCreateIdentityProvider(t *testing.T) {
 	})
 
 	t.Run("Create fails on plaintext secret config", func(t *testing.T) {
-		body := `{"name":"Okta","type":"oidc","config":{"client_secret":"plaintext"}}`
+		body := `{"name":testProviderName,"type":testProviderType,"config":{"client_secret":"plaintext"}}`
 		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/management/identity-providers", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
@@ -82,7 +89,7 @@ func TestIdentityProviderHandler_HandleDeleteIdentityProvider(t *testing.T) {
 	mockRepo := new(MockIdentityRepo)
 	handler := NewIdentityProviderHandler(mockRepo)
 
-	provider := &domain.AdminIdentityProvider{ID: "idp1", Name: "Okta", Type: "oidc", IsEnabled: true}
+	provider := &domain.AdminIdentityProvider{ID: "idp1", Name: testProviderName, Type: testProviderType, IsEnabled: true}
 	mockRepo.On("GetIdentityProviderByID", mock.Anything, "idp1").Return(provider, nil).Once()
 	mockRepo.On("DisableIdentityProvider", mock.Anything, "idp1").Return(nil).Once()
 

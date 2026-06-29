@@ -6,43 +6,57 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/beremaran/straw/internal/domain"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/beremaran/straw/internal/domain"
 )
 
+// UsageRepository persists and retrieves usage summaries.
 type UsageRepository struct {
 	client *Client
 }
 
+// NewUsageRepository creates a new UsageRepository backed by the given client.
 func NewUsageRepository(client *Client) *UsageRepository {
 	return &UsageRepository{client: client}
 }
 
+// GetDailySummaries returns daily usage summaries between start and end dates.
 func (r *UsageRepository) GetDailySummaries(ctx context.Context, apiKeyID string, start, end time.Time) ([]domain.UsageSummary, error) {
 	sql := `
 		SELECT date, total_requests, total_bytes, cost_units, breakdown
 		FROM usage_daily_summary
 		WHERE date >= $1 AND date <= $2
 	`
-	args := []interface{}{start, end}
+	args := []any{start, end}
 
 	if apiKeyID != "" {
 		sql += ` AND api_key_id = $3`
+
 		args = append(args, apiKeyID)
 	}
 
 	sql += ` ORDER BY date DESC`
 
-	var rows pgx.Rows
-	var err error
-	err = r.client.Execute(func() error {
-		rows, err = r.client.Pool.Query(ctx, sql, args...)
+	var (
+		rows pgx.Rows
+		err  error
+	)
 
-		return err
+	err = r.client.Execute(func() error {
+		var queryErr error
+
+		rows, queryErr = r.client.Pool.Query(ctx, sql, args...)
+		if queryErr != nil {
+			return fmt.Errorf("failed to execute query: %w", queryErr)
+		}
+
+		return nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to query usage summaries: %w", err)
 	}
+
 	defer rows.Close()
 
 	var summaries []domain.UsageSummary
@@ -52,6 +66,7 @@ func (r *UsageRepository) GetDailySummaries(ctx context.Context, apiKeyID string
 		if err != nil {
 			return nil, err
 		}
+
 		summaries = append(summaries, summary)
 	}
 
@@ -64,11 +79,13 @@ func (r *UsageRepository) GetDailySummaries(ctx context.Context, apiKeyID string
 }
 
 func scanUsageSummary(rows pgx.Rows) (domain.UsageSummary, error) {
-	var date time.Time
-	var totalRequests int64
-	var totalBytes int64
-	var costUnits float64
-	var breakdownRaw []byte
+	var (
+		date          time.Time
+		totalRequests int64
+		totalBytes    int64
+		costUnits     float64
+		breakdownRaw  []byte
+	)
 
 	err := rows.Scan(&date, &totalRequests, &totalBytes, &costUnits, &breakdownRaw)
 	if err != nil {

@@ -9,13 +9,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+
 	"github.com/beremaran/straw/internal/domain"
 	"github.com/beremaran/straw/internal/server/admin/middleware"
 	"github.com/beremaran/straw/internal/server/dto"
 	"github.com/beremaran/straw/pkg/broker"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 )
+
+const testPresetName = "Preset 1"
 
 type mockFingerprintRepo struct {
 	mock.Mock
@@ -63,18 +67,23 @@ func (m *mockBroker) Publish(ctx context.Context, subject string, body []byte) e
 
 	return args.Error(0)
 }
-func (m *mockBroker) Subscribe(ctx context.Context, subject string, handler broker.Handler, opts ...broker.SubscribeOption) error {
+
+func (m *mockBroker) Subscribe(_ context.Context, _ string, _ broker.Handler, _ ...broker.SubscribeOption) error {
 	return nil
 }
-func (m *mockBroker) ConsumeOnce(ctx context.Context, subject string, timeout time.Duration) ([]byte, error) {
+
+func (m *mockBroker) ConsumeOnce(_ context.Context, _ string, _ time.Duration) ([]byte, error) {
 	return nil, nil
 }
+
 func (m *mockBroker) Close() error {
 	return nil
 }
-func (m *mockBroker) DeclareStream(ctx context.Context, name string, subjects ...string) error {
+
+func (m *mockBroker) DeclareStream(_ context.Context, _ string, _ ...string) error {
 	return nil
 }
+
 func (m *mockBroker) IsConnected() bool {
 	return true
 }
@@ -85,7 +94,7 @@ func TestFingerprintHandler_List(t *testing.T) {
 	h := NewFingerprintHandler(repo, nil, nil, mb, nil)
 
 	presets := []domain.FingerprintPreset{
-		{ID: "p1", Name: "Preset 1"},
+		{ID: "p1", Name: testPresetName},
 	}
 	repo.On("ListPresets", mock.Anything).Return(presets, nil)
 
@@ -103,9 +112,9 @@ func TestFingerprintHandler_Create(t *testing.T) {
 	mb := new(mockBroker)
 	h := NewFingerprintHandler(repo, nil, nil, mb, nil)
 
-	preset := domain.FingerprintPreset{ID: "p1", Name: "Preset 1", Config: domain.ConfigMap{"a": 1}}
+	preset := domain.FingerprintPreset{ID: "p1", Name: testPresetName, Config: domain.ConfigMap{"a": 1}}
 	body, err := json.Marshal(preset)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	repo.On("GetPreset", mock.Anything, "p1").Return((*domain.FingerprintPreset)(nil), nil)
 	repo.On("CreatePreset", mock.Anything, mock.MatchedBy(func(p *domain.FingerprintPreset) bool {
@@ -145,7 +154,7 @@ func TestFingerprintHandler_GetPreset(t *testing.T) {
 	repo := new(mockFingerprintRepo)
 	h := NewFingerprintHandler(repo, nil, nil, nil, nil)
 
-	preset := &domain.FingerprintPreset{ID: "p1", Name: "Preset 1"}
+	preset := &domain.FingerprintPreset{ID: "p1", Name: testPresetName}
 	repo.On("GetPreset", mock.Anything, "p1").Return(preset, nil)
 
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/management/fingerprints/p1", nil)
@@ -163,7 +172,7 @@ func TestFingerprintHandler_DeleteConflict(t *testing.T) {
 	ruleRepo := new(MockRoutingRuleRepo)
 	h := NewFingerprintHandler(repo, ruleRepo, nil, nil, nil)
 
-	preset := &domain.FingerprintPreset{ID: "p1", Name: "Preset 1"}
+	preset := &domain.FingerprintPreset{ID: "p1", Name: testPresetName}
 	refs := []domain.RoutingRuleReference{{ID: "r1", Name: "Default"}}
 	repo.On("GetPreset", mock.Anything, "p1").Return(preset, nil)
 	ruleRepo.On("ListActiveRulesReferencingFingerprintPreset", mock.Anything, "p1").Return(refs, nil)
@@ -211,7 +220,7 @@ func TestFingerprintHandler_DeleteForceDeactivatesRules(t *testing.T) {
 	identityRepo := new(MockIdentityRepo)
 	h := NewFingerprintHandler(repo, ruleRepo, identityRepo, nil, nil)
 
-	preset := &domain.FingerprintPreset{ID: "p1", Name: "Preset 1"}
+	preset := &domain.FingerprintPreset{ID: "p1", Name: testPresetName}
 	refs := []domain.RoutingRuleReference{{ID: "r1", Name: "Default"}}
 	identityRepo.On("ListUserRoles", mock.Anything, "owner-1").Return([]domain.AdminRole{{Name: domain.RoleOwner}}, nil)
 	repo.On("GetPreset", mock.Anything, "p1").Return(preset, nil)
@@ -244,10 +253,10 @@ func TestFingerprintHandler_DeleteAuditsAndSkipsBroadcast(t *testing.T) {
 
 	preset := &domain.FingerprintPreset{
 		ID:   "p1",
-		Name: "Preset 1",
+		Name: testPresetName,
 		Config: domain.ConfigMap{
 			"api_token": "secret-token",
-			"nested": map[string]interface{}{
+			"nested": map[string]any{
 				"client_secret": "secret-value",
 			},
 			"user_agent": "Mozilla/5.0",
@@ -277,14 +286,14 @@ func deleteAuditRedacted(event *domain.ManagementAuditEvent) bool {
 		return false
 	}
 
-	nested, ok := oldValue.Config["nested"].(map[string]interface{})
+	nested, ok := oldValue.Config["nested"].(map[string]any)
 	if !ok {
 		return false
 	}
 
 	return event.Action == domain.ActionDelete &&
 		event.EntityID == "p1" &&
-		oldValue.Config["api_token"] == "[REDACTED]" &&
-		nested["client_secret"] == "[REDACTED]" &&
+		oldValue.Config["api_token"] == redactedPlaceholder &&
+		nested["client_secret"] == redactedPlaceholder &&
 		oldValue.Config["user_agent"] == "Mozilla/5.0"
 }

@@ -12,6 +12,12 @@ import (
 	"github.com/beremaran/straw/pkg/protocol"
 )
 
+const (
+	testCmdID  = "cmd-1"
+	testEpID   = "ep-1"
+	testCmd2ID = "cmd-2"
+)
+
 type commandMockBroker struct {
 	mu        sync.Mutex
 	subs      map[string]broker.Handler
@@ -25,7 +31,7 @@ func newCommandMockBroker() *commandMockBroker {
 	}
 }
 
-func (m *commandMockBroker) Publish(ctx context.Context, subject string, body []byte) error {
+func (m *commandMockBroker) Publish(_ context.Context, subject string, body []byte) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.published[subject] = append(m.published[subject], body)
@@ -33,7 +39,7 @@ func (m *commandMockBroker) Publish(ctx context.Context, subject string, body []
 	return nil
 }
 
-func (m *commandMockBroker) Subscribe(ctx context.Context, subject string, handler broker.Handler, opts ...broker.SubscribeOption) error {
+func (m *commandMockBroker) Subscribe(_ context.Context, subject string, handler broker.Handler, _ ...broker.SubscribeOption) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.subs[subject] = handler
@@ -41,11 +47,11 @@ func (m *commandMockBroker) Subscribe(ctx context.Context, subject string, handl
 	return nil
 }
 
-func (m *commandMockBroker) ConsumeOnce(ctx context.Context, subject string, timeout time.Duration) ([]byte, error) {
+func (m *commandMockBroker) ConsumeOnce(_ context.Context, _ string, _ time.Duration) ([]byte, error) {
 	return nil, nil
 }
 
-func (m *commandMockBroker) DeclareStream(ctx context.Context, name string, subjects ...string) error {
+func (m *commandMockBroker) DeclareStream(_ context.Context, _ string, _ ...string) error {
 	return nil
 }
 
@@ -68,7 +74,7 @@ func newMockCommandRepo() *mockCommandRepo {
 	}
 }
 
-func (m *mockCommandRepo) Create(ctx context.Context, cmd *domain.EndpointCommand) error {
+func (m *mockCommandRepo) Create(_ context.Context, cmd *domain.EndpointCommand) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.commands[cmd.ID] = cmd
@@ -76,7 +82,7 @@ func (m *mockCommandRepo) Create(ctx context.Context, cmd *domain.EndpointComman
 	return nil
 }
 
-func (m *mockCommandRepo) GetByID(ctx context.Context, id string) (*domain.EndpointCommand, error) {
+func (m *mockCommandRepo) GetByID(_ context.Context, id string) (*domain.EndpointCommand, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if c, ok := m.commands[id]; ok {
@@ -86,7 +92,7 @@ func (m *mockCommandRepo) GetByID(ctx context.Context, id string) (*domain.Endpo
 	return nil, nil
 }
 
-func (m *mockCommandRepo) Update(ctx context.Context, cmd *domain.EndpointCommand) error {
+func (m *mockCommandRepo) Update(_ context.Context, cmd *domain.EndpointCommand) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.commands[cmd.ID] = cmd
@@ -94,11 +100,11 @@ func (m *mockCommandRepo) Update(ctx context.Context, cmd *domain.EndpointComman
 	return nil
 }
 
-func (m *mockCommandRepo) ListByEndpointID(ctx context.Context, endpointID string, limit, offset int) ([]domain.EndpointCommand, int, error) {
+func (m *mockCommandRepo) ListByEndpointID(_ context.Context, _ string, _ int, _ int) ([]domain.EndpointCommand, int, error) {
 	return nil, 0, nil
 }
 
-func (m *mockCommandRepo) ListPending(ctx context.Context, before time.Time) ([]domain.EndpointCommand, error) {
+func (m *mockCommandRepo) ListPending(_ context.Context, before time.Time) ([]domain.EndpointCommand, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var list []domain.EndpointCommand
@@ -127,8 +133,8 @@ func TestCommandService_HandleAck(t *testing.T) {
 
 	// Initial command
 	cmd := &domain.EndpointCommand{
-		ID:          "cmd-1",
-		EndpointID:  "ep-1",
+		ID:          testCmdID,
+		EndpointID:  testEpID,
 		Command:     "restart",
 		Status:      domain.CommandStatusAccepted,
 		RequestedAt: time.Now().Add(-5 * time.Second),
@@ -137,8 +143,8 @@ func TestCommandService_HandleAck(t *testing.T) {
 
 	// Simulate NATS acknowledgement message
 	ackMsg := protocol.CommandAck{
-		CommandID:  "cmd-1",
-		EndpointID: "ep-1",
+		CommandID:  testCmdID,
+		EndpointID: testEpID,
 		Status:     "acknowledged",
 		Timestamp:  time.Now(),
 	}
@@ -161,7 +167,7 @@ func TestCommandService_HandleAck(t *testing.T) {
 	}
 
 	// Verify command status updated to acknowledged
-	updatedCmd, err := repo.GetByID(ctx, "cmd-1")
+	updatedCmd, err := repo.GetByID(ctx, testCmdID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,8 +188,8 @@ func TestCommandService_Timeouts(t *testing.T) {
 
 	// Command 1: timed out (created 3 minutes ago)
 	cmd1 := &domain.EndpointCommand{
-		ID:          "cmd-1",
-		EndpointID:  "ep-1",
+		ID:          testCmdID,
+		EndpointID:  testEpID,
 		Command:     "drain",
 		Status:      domain.CommandStatusAccepted,
 		RequestedAt: time.Now().Add(-3 * time.Minute),
@@ -192,8 +198,8 @@ func TestCommandService_Timeouts(t *testing.T) {
 
 	// Command 2: not timed out (created 10 seconds ago)
 	cmd2 := &domain.EndpointCommand{
-		ID:          "cmd-2",
-		EndpointID:  "ep-1",
+		ID:          testCmd2ID,
+		EndpointID:  testEpID,
 		Command:     "restart",
 		Status:      domain.CommandStatusAccepted,
 		RequestedAt: time.Now().Add(-10 * time.Second),
@@ -203,7 +209,7 @@ func TestCommandService_Timeouts(t *testing.T) {
 	srv.checkTimeouts(ctx)
 
 	// Verify command 1 is timed_out
-	updatedCmd1, _ := repo.GetByID(ctx, "cmd-1")
+	updatedCmd1, _ := repo.GetByID(ctx, testCmdID)
 	if updatedCmd1.Status != domain.CommandStatusTimedOut {
 		t.Errorf("expected cmd-1 status to be %s, got %s", domain.CommandStatusTimedOut, updatedCmd1.Status)
 	}
@@ -212,7 +218,7 @@ func TestCommandService_Timeouts(t *testing.T) {
 	}
 
 	// Verify command 2 is still accepted
-	updatedCmd2, _ := repo.GetByID(ctx, "cmd-2")
+	updatedCmd2, _ := repo.GetByID(ctx, testCmd2ID)
 	if updatedCmd2.Status != domain.CommandStatusAccepted {
 		t.Errorf("expected cmd-2 status to be %s, got %s", domain.CommandStatusAccepted, updatedCmd2.Status)
 	}

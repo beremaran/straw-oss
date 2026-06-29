@@ -8,10 +8,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/beremaran/straw/internal/domain"
-	"github.com/beremaran/straw/internal/infra/postgres"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+
+	"github.com/beremaran/straw/internal/domain"
+	"github.com/beremaran/straw/internal/infra/postgres"
 )
 
 func TestRoleHandler_HandleListRoles(t *testing.T) {
@@ -31,9 +33,9 @@ func TestRoleHandler_HandleListRoles(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 
-	var response map[string]interface{}
+	var response map[string]any
 	err := json.Unmarshal(rec.Body.Bytes(), &response)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Len(t, response["data"], 2)
 }
 

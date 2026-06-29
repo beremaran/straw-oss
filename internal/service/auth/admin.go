@@ -1,3 +1,4 @@
+// Package auth provides authentication and authorization services.
 package auth
 
 import (
@@ -9,29 +10,41 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
-	"github.com/beremaran/straw/internal/domain"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
+
+	"github.com/beremaran/straw/internal/domain"
 )
 
 const (
 	defaultAdminAccessTTL  = 15 * time.Minute
 	defaultAdminRefreshTTL = 7 * 24 * time.Hour
+	minPasswordLen         = 8
+	refreshTokenByteLen    = 32
 )
 
 var (
-	ErrOwnerRoleNotFound  = errors.New("owner role not found")
+	// ErrOwnerRoleNotFound is returned when the owner role cannot be found.
+	ErrOwnerRoleNotFound = errors.New("owner role not found")
+	// ErrInvalidCredentials is returned when login credentials are invalid.
 	ErrInvalidCredentials = errors.New("invalid credentials")
+	// ErrInvalidAccessToken is returned when an access token is invalid.
 	ErrInvalidAccessToken = errors.New("invalid access token")
-	ErrInvalidRefresh     = errors.New("invalid refresh token")
-	ErrRefreshReuse       = errors.New("refresh token reused")
-	ErrOwnerExists        = errors.New("active owner already exists")
-	ErrWeakPassword       = errors.New("password must be at least 8 characters")
+	// ErrInvalidRefresh is returned when a refresh token is invalid.
+	ErrInvalidRefresh = errors.New("invalid refresh token")
+	// ErrRefreshReuse is returned when a refresh token is reused.
+	ErrRefreshReuse = errors.New("refresh token reused")
+	// ErrOwnerExists is returned when an active owner already exists.
+	ErrOwnerExists = errors.New("active owner already exists")
+	// ErrWeakPassword is returned when a password is too short.
+	ErrWeakPassword = errors.New("password must be at least 8 characters")
 )
 
+// AdminIdentityRepository provides access to admin identity operations.
 type AdminIdentityRepository interface {
 	CreateUser(ctx context.Context, user *domain.AdminUser) error
 	UpdateUser(ctx context.Context, user *domain.AdminUser) error
@@ -48,6 +61,7 @@ type AdminIdentityRepository interface {
 	GetIdentityProviderByName(ctx context.Context, name string) (*domain.AdminIdentityProvider, error)
 }
 
+// AdminService handles admin authentication operations.
 type AdminService struct {
 	repo       AdminIdentityRepository
 	secret     []byte
@@ -55,6 +69,7 @@ type AdminService struct {
 	refreshTTL time.Duration
 }
 
+// TokenPair contains the access and refresh tokens issued after authentication.
 type TokenPair struct {
 	AccessToken           string
 	RefreshToken          string
@@ -65,6 +80,7 @@ type TokenPair struct {
 	Permissions           []string
 }
 
+// AccessClaims contains the claims stored in an admin access token.
 type AccessClaims struct {
 	UserID      string   `json:"sub"`
 	SessionID   string   `json:"sid"`
@@ -74,10 +90,12 @@ type AccessClaims struct {
 	ExpiresAt   int64    `json:"exp"`
 }
 
+// NewAdminService creates a new AdminService with the given repository and configuration.
 func NewAdminService(repo AdminIdentityRepository, secret string, accessTTL, refreshTTL time.Duration) *AdminService {
 	if accessTTL <= 0 {
 		accessTTL = defaultAdminAccessTTL
 	}
+
 	if refreshTTL <= 0 {
 		refreshTTL = defaultAdminRefreshTTL
 	}
@@ -90,41 +108,47 @@ func NewAdminService(repo AdminIdentityRepository, secret string, accessTTL, ref
 	}
 }
 
+// HashAdminPassword hashes a password using bcrypt, returning ErrWeakPassword if too short.
 func HashAdminPassword(password string) (string, error) {
-	if len(password) < 8 {
+	if len(password) < minPasswordLen {
 		return "", ErrWeakPassword
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to hash password: %w", err)
 	}
 
 	return string(hash), nil
 }
 
+// Login authenticates an admin user and returns a token pair.
 func (s *AdminService) Login(ctx context.Context, email, password, userAgent, ip string) (*TokenPair, error) {
 	user, err := s.repo.GetUserByEmail(ctx, strings.TrimSpace(email))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get user by email: %w", err)
 	}
+
 	if user == nil || !user.IsActive || user.PasswordHash == "" {
 		return nil, ErrInvalidCredentials
 	}
+
 	if bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)) != nil {
 		return nil, ErrInvalidCredentials
 	}
 
 	now := time.Now()
 	user.LastLoginAt = &now
+
 	err = s.repo.UpdateUser(ctx, user)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to update user: %w", err)
 	}
 
 	return s.issueSession(ctx, user, userAgent, ip, uuid.New().String())
 }
 
+// Refresh rotates refresh tokens and returns a new token pair.
 func (s *AdminService) Refresh(ctx context.Context, rawRefreshToken string) (*TokenPair, error) {
 	sessionID, ok := refreshSessionID(rawRefreshToken)
 	if !ok {
@@ -133,8 +157,9 @@ func (s *AdminService) Refresh(ctx context.Context, rawRefreshToken string) (*To
 
 	session, err := s.repo.GetSessionByID(ctx, sessionID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get session: %w", err)
 	}
+
 	if session == nil || session.RevokedAt != nil || time.Now().After(session.ExpiresAt) {
 		return nil, ErrInvalidRefresh
 	}
@@ -148,8 +173,9 @@ func (s *AdminService) Refresh(ctx context.Context, rawRefreshToken string) (*To
 
 	user, err := s.repo.GetUserByID(ctx, session.UserID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get user: %w", err)
 	}
+
 	if user == nil || !user.IsActive {
 		return nil, ErrInvalidRefresh
 	}
@@ -157,19 +183,27 @@ func (s *AdminService) Refresh(ctx context.Context, rawRefreshToken string) (*To
 	return s.rotateSession(ctx, user, session)
 }
 
+// Logout revokes an admin session.
 func (s *AdminService) Logout(ctx context.Context, sessionID string) error {
 	if sessionID == "" {
 		return ErrInvalidAccessToken
 	}
 
-	return s.repo.RevokeSession(ctx, sessionID)
+	err := s.repo.RevokeSession(ctx, sessionID)
+	if err != nil {
+		return fmt.Errorf("failed to revoke session: %w", err)
+	}
+
+	return nil
 }
 
+// BootstrapOwner creates the first active owner user when none exists.
 func (s *AdminService) BootstrapOwner(ctx context.Context, email, displayName, password string) (*domain.AdminUser, error) {
 	exists, err := s.repo.ActiveOwnerExists(ctx)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to check owner exists: %w", err)
 	}
+
 	if exists {
 		return nil, ErrOwnerExists
 	}
@@ -181,8 +215,9 @@ func (s *AdminService) BootstrapOwner(ctx context.Context, email, displayName, p
 
 	role, err := s.repo.GetRoleByName(ctx, domain.RoleOwner)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get role: %w", err)
 	}
+
 	if role == nil {
 		return nil, ErrOwnerRoleNotFound
 	}
@@ -199,18 +234,21 @@ func (s *AdminService) BootstrapOwner(ctx context.Context, email, displayName, p
 		PasswordHash: passwordHash,
 		IsActive:     true,
 	}
+
 	err = s.repo.CreateUser(ctx, user)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create user: %w", err)
 	}
+
 	err = s.repo.SetUserRoles(ctx, user.ID, []string{role.ID})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to set user roles: %w", err)
 	}
 
 	return user, nil
 }
 
+// VerifyAccessToken validates an admin access token and returns its claims.
 func (s *AdminService) VerifyAccessToken(ctx context.Context, rawToken string) (*AccessClaims, error) {
 	claims, err := s.parseAccessToken(rawToken)
 	if err != nil {
@@ -224,8 +262,9 @@ func (s *AdminService) VerifyAccessToken(ctx context.Context, rawToken string) (
 
 	session, err := s.repo.GetSessionByID(ctx, claims.SessionID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get session: %w", err)
 	}
+
 	if !validAdminSession(session, now) {
 		return nil, ErrInvalidAccessToken
 	}
@@ -240,10 +279,12 @@ func (s *AdminService) parseAccessToken(rawToken string) (*AccessClaims, error) 
 	}
 
 	signed := parts[0] + "." + parts[1]
+
 	sig, err := base64.RawURLEncoding.DecodeString(parts[2])
 	if err != nil {
 		return nil, ErrInvalidAccessToken
 	}
+
 	if !hmac.Equal(sig, s.sign([]byte(signed))) {
 		return nil, ErrInvalidAccessToken
 	}
@@ -254,6 +295,7 @@ func (s *AdminService) parseAccessToken(rawToken string) (*AccessClaims, error) 
 	}
 
 	var claims AccessClaims
+
 	err = json.Unmarshal(payload, &claims)
 	if err != nil {
 		return nil, ErrInvalidAccessToken
@@ -273,7 +315,7 @@ func validAdminSession(session *domain.AdminSession, now time.Time) bool {
 func (s *AdminService) issueSession(ctx context.Context, user *domain.AdminUser, userAgent, ip, sessionID string) (*TokenPair, error) {
 	permissions, err := s.repo.EffectivePermissions(ctx, user.ID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get permissions: %w", err)
 	}
 
 	refreshToken, err := newRefreshToken(sessionID)
@@ -290,9 +332,10 @@ func (s *AdminService) issueSession(ctx context.Context, user *domain.AdminUser,
 		IP:               ip,
 		ExpiresAt:        now.Add(s.refreshTTL),
 	}
+
 	err = s.repo.CreateSession(ctx, session)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create session: %w", err)
 	}
 
 	accessToken, accessExpiresAt, err := s.newAccessToken(user, session.ID, permissions)
@@ -314,16 +357,17 @@ func (s *AdminService) issueSession(ctx context.Context, user *domain.AdminUser,
 func (s *AdminService) rotateSession(ctx context.Context, user *domain.AdminUser, session *domain.AdminSession) (*TokenPair, error) {
 	permissions, err := s.repo.EffectivePermissions(ctx, user.ID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get permissions: %w", err)
 	}
 
 	refreshToken, err := newRefreshToken(session.ID)
 	if err != nil {
 		return nil, err
 	}
+
 	err = s.repo.UpdateSessionRefreshHash(ctx, session.ID, sha256Hash(refreshToken))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to update session refresh hash: %w", err)
 	}
 
 	accessToken, accessExpiresAt, err := s.newAccessToken(user, session.ID, permissions)
@@ -348,10 +392,12 @@ func (s *AdminService) newAccessToken(user *domain.AdminUser, sessionID string, 
 	}
 
 	expiresAt := time.Now().Add(s.accessTTL)
+
 	header, err := json.Marshal(map[string]string{"alg": "HS256", "typ": "JWT"})
 	if err != nil {
-		return "", time.Time{}, err
+		return "", time.Time{}, fmt.Errorf("failed to marshal token header: %w", err)
 	}
+
 	payload, err := json.Marshal(AccessClaims{
 		UserID:      user.ID,
 		SessionID:   sessionID,
@@ -361,7 +407,7 @@ func (s *AdminService) newAccessToken(user *domain.AdminUser, sessionID string, 
 		ExpiresAt:   expiresAt.Unix(),
 	})
 	if err != nil {
-		return "", time.Time{}, err
+		return "", time.Time{}, fmt.Errorf("failed to marshal token payload: %w", err)
 	}
 
 	signed := encodeSegment(header) + "." + encodeSegment(payload)
@@ -378,10 +424,11 @@ func (s *AdminService) sign(data []byte) []byte {
 }
 
 func newRefreshToken(sessionID string) (string, error) {
-	b := make([]byte, 32)
+	b := make([]byte, refreshTokenByteLen)
+
 	_, err := rand.Read(b)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to generate random bytes: %w", err)
 	}
 
 	return sessionID + "." + hex.EncodeToString(b), nil

@@ -1,3 +1,4 @@
+// Package http provides an HTTP client for making upstream requests with TLS fingerprinting support.
 package http
 
 import (
@@ -8,6 +9,7 @@ import (
 	"net"
 	"net/http/httptrace"
 	"net/url"
+	"strconv"
 	"sync"
 	"time"
 
@@ -25,14 +27,18 @@ import (
 	"github.com/beremaran/straw/pkg/protocol"
 )
 
+// DefaultTimeout is the default timeout for HTTP requests.
 const DefaultTimeout = 30 * time.Second
 
+// DefaultMaxBodySize is the default maximum response body size (10 MB).
 const DefaultMaxBodySize = 10 * 1024 * 1024
 
+// TransportProvider provides HTTP transports for different hosts and presets.
 type TransportProvider interface {
 	GetTransport(host string, preset fingerprint.Preset) *fhttp.Transport
 }
 
+// Client makes HTTP requests with TLS fingerprinting support.
 type Client struct {
 	registry          *fingerprint.Registry
 	transportProvider TransportProvider
@@ -43,26 +49,31 @@ type Client struct {
 	tlsClients        map[string]tls_client.HttpClient
 }
 
+// ClientOption configures a Client.
 type ClientOption func(*Client)
 
+// WithDefaultTimeout sets the request timeout.
 func WithDefaultTimeout(d time.Duration) ClientOption {
 	return func(c *Client) {
 		c.defaultTimeout = d
 	}
 }
 
+// WithMaxBodySize sets the maximum response body size.
 func WithMaxBodySize(size int64) ClientOption {
 	return func(c *Client) {
 		c.maxBodySize = size
 	}
 }
 
+// WithEndpointID sets the endpoint identifier.
 func WithEndpointID(id string) ClientOption {
 	return func(c *Client) {
 		c.endpointID = id
 	}
 }
 
+// NewClient creates a new Client with the given registry and transport provider.
 func NewClient(registry *fingerprint.Registry, transportProvider TransportProvider, opts ...ClientOption) *Client {
 	c := &Client{
 		registry:          registry,
@@ -80,19 +91,19 @@ func NewClient(registry *fingerprint.Registry, transportProvider TransportProvid
 
 type dummyCookieJar struct{}
 
-func (d *dummyCookieJar) SetCookies(u *url.URL, cookies []*fhttp.Cookie) {}
-func (d *dummyCookieJar) Cookies(u *url.URL) []*fhttp.Cookie             { return nil }
+func (d *dummyCookieJar) SetCookies(_ *url.URL, _ []*fhttp.Cookie) {}
+func (d *dummyCookieJar) Cookies(_ *url.URL) []*fhttp.Cookie       { return nil }
 
 var presetProfiles = map[string]profiles.ClientProfile{
-	"chrome-133":  profiles.Chrome_133,
-	"chrome-131":  profiles.Chrome_131,
-	"chrome-129":  profiles.Chrome_120,
-	"firefox-133": profiles.Firefox_133,
-	"firefox-120": profiles.Firefox_120,
-	"safari-18":   profiles.Safari_IOS_18_0,
-	"safari-17":   profiles.Safari_IOS_17_0,
-	"edge-130":    profiles.Chrome_133,
-	"edge-106":    profiles.Chrome_106,
+	fingerprint.DefaultPresetID: profiles.Chrome_133,
+	"chrome-131":                profiles.Chrome_131,
+	"chrome-129":                profiles.Chrome_120,
+	"firefox-133":               profiles.Firefox_133,
+	"firefox-120":               profiles.Firefox_120,
+	"safari-18":                 profiles.Safari_IOS_18_0,
+	"safari-17":                 profiles.Safari_IOS_17_0,
+	"edge-130":                  profiles.Chrome_133,
+	"edge-106":                  profiles.Chrome_106,
 }
 
 func mapPresetToProfile(presetID string) (profiles.ClientProfile, bool) {
@@ -104,6 +115,7 @@ func mapPresetToProfile(presetID string) (profiles.ClientProfile, bool) {
 	return profile, true
 }
 
+// Do executes an HTTP request and returns the response.
 func (c *Client) Do(ctx context.Context, req *protocol.Request) (*protocol.Response, error) {
 	ctx, span := otel.Tracer("internal/endpoint/http").Start(ctx, "upstream.request")
 	defer span.End()
@@ -111,48 +123,44 @@ func (c *Client) Do(ctx context.Context, req *protocol.Request) (*protocol.Respo
 	startTime := time.Now()
 
 	var reusedConn bool
+
 	traceCtx := tracedRequestContext(ctx, req, span, &reusedConn)
 
 	preset, err := resolveClientPreset(c, req.Fingerprint)
 	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-
-		return nil, err
+		return nil, recordRequestError(span, err, err.Error())
 	}
 
 	fhttpReq, err := BuildRequest(traceCtx, req, preset)
 	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "failed to build request")
-
-		return nil, err
+		return nil, recordRequestError(span, err, "failed to build request")
 	}
 
 	host := requestHost(req.URL, fhttpReq)
 	span.SetAttributes(semconv.ServerAddressKey.String(host))
 
 	timeout := c.getTimeout(req)
+
 	client, err := c.getTLSClient(preset.ID, timeout, clientDialContext(c, host, preset))
 	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "failed to get tls client: "+err.Error())
-
-		return nil, err
+		return nil, recordRequestError(span, err, "failed to get tls client: "+err.Error())
 	}
 
 	var timing protocol.TimingInfo
+
 	resp, err := client.Do(fhttpReq)
 
 	span.SetAttributes(attribute.Bool("endpoint.connection_reused", reusedConn))
 
 	if err != nil {
 		timing.Total = time.Since(startTime)
+
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 
 		return upstreamErrorResponse(req, c.endpointID, timing, err), nil
 	}
+
 	defer func() { _ = resp.Body.Close() }()
 
 	timing.Total = time.Since(startTime)
@@ -165,6 +173,13 @@ func (c *Client) Do(ctx context.Context, req *protocol.Request) (*protocol.Respo
 	recordUpstreamResult(span, host, startTime, protocolResp, err)
 
 	return protocolResp, err
+}
+
+func recordRequestError(span trace.Span, err error, status string) error {
+	span.RecordError(err)
+	span.SetStatus(codes.Error, status)
+
+	return err
 }
 
 func tracedRequestContext(ctx context.Context, req *protocol.Request, span trace.Span, reusedConn *bool) context.Context {
@@ -224,11 +239,12 @@ func recordUpstreamResult(
 ) {
 	status := "unknown"
 	if err == nil {
-		status = fmt.Sprintf("%d", protocolResp.StatusCode)
+		status = strconv.Itoa(protocolResp.StatusCode)
 	} else {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "failed to build response")
 	}
+
 	metrics.UpstreamDuration.WithLabelValues(host, status).Observe(time.Since(startTime).Seconds())
 }
 
@@ -240,7 +256,7 @@ func resolveClientPreset(c *Client, presetID string) (fingerprint.Preset, error)
 		return preset, nil
 	}
 
-	preset, ok = c.registry.Get("chrome-133")
+	preset, ok = c.registry.Get(fingerprint.DefaultPresetID)
 	if ok {
 		return preset, nil
 	}
@@ -294,6 +310,7 @@ func isRetryableError(err error) bool {
 	return false
 }
 
+// ClientError represents a client-side error.
 type ClientError struct {
 	Code    string
 	Message string
@@ -303,12 +320,15 @@ func (e *ClientError) Error() string {
 	return e.Code + ": " + e.Message
 }
 
+// Close closes idle connections in the client.
 func (c *Client) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	for _, client := range c.tlsClients {
 		client.CloseIdleConnections()
 	}
+
 	c.tlsClients = make(map[string]tls_client.HttpClient)
 
 	return nil
@@ -337,7 +357,7 @@ func (c *Client) getTLSClient(presetID string, timeout time.Duration, dialContex
 
 	client, err := tls_client.NewHttpClient(tls_client.NewNoopLogger(), options...)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("creating tls client: %w", err)
 	}
 
 	c.tlsClients[key] = client
@@ -353,6 +373,7 @@ func (c *Client) getTimeout(req *protocol.Request) time.Duration {
 	return c.defaultTimeout
 }
 
+// NewRequest creates a new protocol request with a generated ID.
 func NewRequest(method, url string, body []byte) *protocol.Request {
 	return &protocol.Request{
 		ID:      generateRequestID(),

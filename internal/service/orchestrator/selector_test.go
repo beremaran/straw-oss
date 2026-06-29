@@ -6,11 +6,12 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/beremaran/straw/internal/domain"
-	"github.com/beremaran/straw/internal/infra/redis"
 	goredis "github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/beremaran/straw/internal/domain"
+	"github.com/beremaran/straw/internal/infra/redis"
 )
 
 func newTestHealthStore(t *testing.T) *redis.EndpointHealthStore {
@@ -34,9 +35,9 @@ func TestSimpleEndpointSelector_Select(t *testing.T) {
 	store := newTestHealthStore(t)
 	selector := NewSimpleEndpointSelector(store)
 
-	ep1 := &redis.EndpointHealth{EndpointID: "ep1", State: redis.HealthStateHealthy, Tags: []string{"region:us"}}
-	ep2 := &redis.EndpointHealth{EndpointID: "ep2", State: redis.HealthStateHealthy, Tags: []string{"region:eu"}}
-	ep3 := &redis.EndpointHealth{EndpointID: "ep3", State: redis.HealthStateUnhealthy, Tags: []string{"region:us"}}
+	ep1 := &redis.EndpointHealth{EndpointID: ep1ID, State: redis.HealthStateHealthy, Tags: []string{regionUSTag}}
+	ep2 := &redis.EndpointHealth{EndpointID: ep2ID, State: redis.HealthStateHealthy, Tags: []string{"region:eu"}}
+	ep3 := &redis.EndpointHealth{EndpointID: ep3ID, State: redis.HealthStateUnhealthy, Tags: []string{regionUSTag}}
 
 	ep1.LastSeen = time.Now()
 	ep2.LastSeen = time.Now()
@@ -48,15 +49,15 @@ func TestSimpleEndpointSelector_Select(t *testing.T) {
 
 	t.Run("Select Success", func(t *testing.T) {
 		rule := &domain.RoutingRule{
-			RequiredTags: []string{"region:us"},
+			RequiredTags: []string{regionUSTag},
 			EndpointPools: []domain.EndpointPool{
 				{Tier: 1},
 			},
 		}
 
 		epID, err := selector.Select(ctx, rule)
-		assert.NoError(t, err)
-		assert.Equal(t, "ep1", epID)
+		require.NoError(t, err)
+		assert.Equal(t, ep1ID, epID)
 	})
 
 	t.Run("No Healthy Endpoints", func(t *testing.T) {
@@ -68,31 +69,31 @@ func TestSimpleEndpointSelector_Select(t *testing.T) {
 		}
 
 		epID, err := selector.Select(ctx, rule)
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Empty(t, epID)
 	})
 
 	t.Run("Pool Tier Not Configured", func(t *testing.T) {
 		rule := &domain.RoutingRule{
-			RequiredTags:  []string{"region:us"},
+			RequiredTags:  []string{regionUSTag},
 			EndpointPools: []domain.EndpointPool{},
 		}
 
 		epID, err := selector.GetEndpointFromPool(context.Background(), rule, 2, nil)
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Empty(t, epID)
 	})
 
 	t.Run("Exclusion", func(t *testing.T) {
 		rule := &domain.RoutingRule{
-			RequiredTags: []string{"region:us"},
+			RequiredTags: []string{regionUSTag},
 			EndpointPools: []domain.EndpointPool{
 				{Tier: 1},
 			},
 		}
 
-		epID, err := selector.GetEndpointFromPool(context.Background(), rule, 1, []string{"ep1"})
-		assert.Error(t, err)
+		epID, err := selector.GetEndpointFromPool(context.Background(), rule, 1, []string{ep1ID})
+		require.Error(t, err)
 		assert.Empty(t, epID)
 	})
 }
@@ -102,7 +103,7 @@ func TestSimpleEndpointSelector_SelectWithSession(t *testing.T) {
 	selector := NewSimpleEndpointSelector(store)
 
 	_, err := selector.SelectWithSession(context.Background(), "sess1")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not implemented")
 }
 
@@ -154,9 +155,9 @@ func TestSimpleEndpointSelector_GetEndpointFromPool_MultipleEndpoints(t *testing
 	store := newTestHealthStore(t)
 	selector := NewSimpleEndpointSelector(store)
 
-	ep1 := &redis.EndpointHealth{EndpointID: "ep1", State: redis.HealthStateHealthy, Tags: []string{"region:us"}}
-	ep2 := &redis.EndpointHealth{EndpointID: "ep2", State: redis.HealthStateHealthy, Tags: []string{"region:us"}}
-	ep3 := &redis.EndpointHealth{EndpointID: "ep3", State: redis.HealthStateHealthy, Tags: []string{"region:us"}}
+	ep1 := &redis.EndpointHealth{EndpointID: ep1ID, State: redis.HealthStateHealthy, Tags: []string{regionUSTag}}
+	ep2 := &redis.EndpointHealth{EndpointID: ep2ID, State: redis.HealthStateHealthy, Tags: []string{regionUSTag}}
+	ep3 := &redis.EndpointHealth{EndpointID: ep3ID, State: redis.HealthStateHealthy, Tags: []string{regionUSTag}}
 
 	ep1.LastSeen = time.Now()
 	ep2.LastSeen = time.Now()
@@ -167,28 +168,28 @@ func TestSimpleEndpointSelector_GetEndpointFromPool_MultipleEndpoints(t *testing
 	require.NoError(t, store.UpdateHealth(context.Background(), ep3))
 
 	rule := &domain.RoutingRule{
-		RequiredTags: []string{"region:us"},
+		RequiredTags: []string{regionUSTag},
 	}
 
 	epID, err := selector.GetEndpointFromPool(context.Background(), rule, 1, nil)
-	assert.NoError(t, err)
-	assert.Contains(t, []string{"ep1", "ep2", "ep3"}, epID)
+	require.NoError(t, err)
+	assert.Contains(t, []string{ep1ID, ep2ID, ep3ID}, epID)
 }
 
 func TestSimpleEndpointSelector_GetEndpointFromPool_AllExcluded(t *testing.T) {
 	store := newTestHealthStore(t)
 	selector := NewSimpleEndpointSelector(store)
 
-	ep1 := &redis.EndpointHealth{EndpointID: "ep1", State: redis.HealthStateHealthy, Tags: []string{"region:us"}}
+	ep1 := &redis.EndpointHealth{EndpointID: ep1ID, State: redis.HealthStateHealthy, Tags: []string{regionUSTag}}
 	ep1.LastSeen = time.Now()
 	require.NoError(t, store.UpdateHealth(context.Background(), ep1))
 
 	rule := &domain.RoutingRule{
-		RequiredTags: []string{"region:us"},
+		RequiredTags: []string{regionUSTag},
 	}
 
-	epID, err := selector.GetEndpointFromPool(context.Background(), rule, 1, []string{"ep1"})
-	assert.Error(t, err)
+	epID, err := selector.GetEndpointFromPool(context.Background(), rule, 1, []string{ep1ID})
+	require.Error(t, err)
 	assert.Empty(t, epID)
 	assert.Contains(t, err.Error(), "no available endpoints")
 }

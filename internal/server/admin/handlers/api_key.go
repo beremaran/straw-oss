@@ -1,3 +1,4 @@
+// Package handlers provides HTTP request handlers for the admin management API.
 package handlers
 
 import (
@@ -13,11 +14,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/beremaran/straw/internal/domain"
 	"github.com/beremaran/straw/internal/server/admin/middleware"
 	"github.com/beremaran/straw/internal/server/dto"
 	"github.com/beremaran/straw/internal/server/helper"
-	"github.com/google/uuid"
 )
 
 type apiKeyInvalidator interface {
@@ -32,15 +34,19 @@ var (
 	errGracePeriodNonPositive = errors.New("grace_period must be greater than zero")
 )
 
-type ApiKeyHandler struct {
-	repo        domain.ApiKeyRepository
-	tokenRepo   domain.ApiKeyTokenRepository
+const apiKeyByteLength = 32
+
+// APIKeyHandler manages API key CRUD operations.
+type APIKeyHandler struct {
+	repo        domain.APIKeyRepository
+	tokenRepo   domain.APIKeyTokenRepository
 	auditRepo   domain.ManagementAuditRepository
 	invalidator apiKeyInvalidator
 }
 
-func NewApiKeyHandler(repo domain.ApiKeyRepository, tokenRepo domain.ApiKeyTokenRepository, auditRepo domain.ManagementAuditRepository, invalidator apiKeyInvalidator) *ApiKeyHandler {
-	return &ApiKeyHandler{
+// NewAPIKeyHandler creates a new APIKeyHandler.
+func NewAPIKeyHandler(repo domain.APIKeyRepository, tokenRepo domain.APIKeyTokenRepository, auditRepo domain.ManagementAuditRepository, invalidator apiKeyInvalidator) *APIKeyHandler {
+	return &APIKeyHandler{
 		repo:        repo,
 		tokenRepo:   tokenRepo,
 		auditRepo:   auditRepo,
@@ -48,15 +54,18 @@ func NewApiKeyHandler(repo domain.ApiKeyRepository, tokenRepo domain.ApiKeyToken
 	}
 }
 
-func (h *ApiKeyHandler) HandleListApiKeys(w http.ResponseWriter, r *http.Request) {
+// HandleListAPIKeys lists all API keys.
+func (h *APIKeyHandler) HandleListAPIKeys(w http.ResponseWriter, r *http.Request) {
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	if page < 1 {
 		page = 1
 	}
+
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	if limit < 1 || limit > 100 {
 		limit = 20
 	}
+
 	offset := (page - 1) * limit
 
 	keys, total, err := h.repo.List(r.Context(), limit, offset)
@@ -66,15 +75,16 @@ func (h *ApiKeyHandler) HandleListApiKeys(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	helper.WriteJSON(w, http.StatusOK, dto.ListApiKeysResponse{
-		Data:  dto.FromApiKeys(keys),
+	helper.WriteJSON(w, http.StatusOK, dto.ListAPIKeysResponse{
+		Data:  dto.FromAPIKeys(keys),
 		Total: total,
 		Page:  page,
 		Limit: limit,
 	})
 }
 
-func (h *ApiKeyHandler) HandleGetApiKey(w http.ResponseWriter, r *http.Request) {
+// HandleGetAPIKey retrieves a single API key with its tokens.
+func (h *APIKeyHandler) HandleGetAPIKey(w http.ResponseWriter, r *http.Request) {
 	key := h.loadAPIKey(w, r)
 	if key == nil {
 		return
@@ -90,8 +100,10 @@ func (h *ApiKeyHandler) HandleGetApiKey(w http.ResponseWriter, r *http.Request) 
 	helper.WriteJSON(w, http.StatusOK, detail)
 }
 
-func (h *ApiKeyHandler) HandleCreateApiKey(w http.ResponseWriter, r *http.Request) {
-	var req dto.CreateApiKeyRequest
+// HandleCreateAPIKey creates a new API key.
+func (h *APIKeyHandler) HandleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
+	var req dto.CreateAPIKeyRequest
+
 	err := helper.ReadJSON(r, &req)
 	if err != nil {
 		helper.WriteError(w, http.StatusBadRequest, "invalid request body")
@@ -105,12 +117,14 @@ func (h *ApiKeyHandler) HandleCreateApiKey(w http.ResponseWriter, r *http.Reques
 
 		return
 	}
+
 	err = validateAPIKeyScopes(req.Scopes)
 	if err != nil {
 		helper.WriteError(w, http.StatusBadRequest, err.Error())
 
 		return
 	}
+
 	err = validateRateLimitOverride(req.RateLimitOverride)
 	if err != nil {
 		helper.WriteError(w, http.StatusBadRequest, err.Error())
@@ -125,7 +139,7 @@ func (h *ApiKeyHandler) HandleCreateApiKey(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	apiKey := domain.NewApiKey(uuid.New().String(), tokenHash, name, req.Scopes)
+	apiKey := domain.NewAPIKey(uuid.New().String(), tokenHash, name, req.Scopes)
 	apiKey.RateLimitOverride = req.RateLimitOverride
 
 	err = h.repo.Create(r.Context(), apiKey)
@@ -135,25 +149,27 @@ func (h *ApiKeyHandler) HandleCreateApiKey(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	apiKeyResp := dto.FromApiKey(apiKey)
+	apiKeyResp := dto.FromAPIKey(apiKey)
 	if h.auditRepo != nil {
 		event := middleware.NewAuditEvent(r, domain.ActionCreate, "api_key", apiKey.ID, nil, apiKeyResp)
 		_ = h.auditRepo.Create(r.Context(), event)
 	}
 
-	helper.WriteJSON(w, http.StatusCreated, dto.CreateApiKeyResponse{
-		ApiKeyResponse: *apiKeyResp,
+	helper.WriteJSON(w, http.StatusCreated, dto.CreateAPIKeyResponse{
+		APIKeyResponse: *apiKeyResp,
 		RawKey:         rawKey,
 	})
 }
 
-func (h *ApiKeyHandler) HandleUpdateApiKey(w http.ResponseWriter, r *http.Request) {
+// HandleUpdateAPIKey updates an existing API key.
+func (h *APIKeyHandler) HandleUpdateAPIKey(w http.ResponseWriter, r *http.Request) {
 	key := h.loadAPIKey(w, r)
 	if key == nil {
 		return
 	}
 
-	var req dto.UpdateApiKeyRequest
+	var req dto.UpdateAPIKeyRequest
+
 	err := helper.ReadJSON(r, &req)
 	if err != nil {
 		helper.WriteError(w, http.StatusBadRequest, err.Error())
@@ -162,6 +178,7 @@ func (h *ApiKeyHandler) HandleUpdateApiKey(w http.ResponseWriter, r *http.Reques
 	}
 
 	oldKey := *key
+
 	err = applyAPIKeyUpdate(key, req)
 	if err != nil {
 		helper.WriteError(w, http.StatusBadRequest, err.Error())
@@ -186,25 +203,28 @@ func (h *ApiKeyHandler) HandleUpdateApiKey(w http.ResponseWriter, r *http.Reques
 	}
 
 	if h.auditRepo != nil {
-		event := middleware.NewAuditEvent(r, domain.ActionUpdate, "api_key", key.ID, dto.FromApiKey(&oldKey), detail)
+		event := middleware.NewAuditEvent(r, domain.ActionUpdate, "api_key", key.ID, dto.FromAPIKey(&oldKey), detail)
 		_ = h.auditRepo.Create(r.Context(), event)
 	}
 
 	helper.WriteJSON(w, http.StatusOK, detail)
 }
 
-func (h *ApiKeyHandler) HandleRotateApiKey(w http.ResponseWriter, r *http.Request) {
+// HandleRotateAPIKey rotates an API key's secret.
+func (h *APIKeyHandler) HandleRotateAPIKey(w http.ResponseWriter, r *http.Request) {
 	key := h.loadAPIKey(w, r)
 	if key == nil {
 		return
 	}
+
 	if key.ExpiresAt != nil && time.Now().After(*key.ExpiresAt) {
 		helper.WriteError(w, http.StatusBadRequest, "api key is expired")
 
 		return
 	}
 
-	var req dto.RotateApiKeyRequest
+	var req dto.RotateAPIKeyRequest
+
 	err := readOptionalJSON(r, &req)
 	if err != nil {
 		helper.WriteError(w, http.StatusBadRequest, err.Error())
@@ -226,7 +246,8 @@ func (h *ApiKeyHandler) HandleRotateApiKey(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	token := domain.NewApiKeyToken(uuid.New().String(), key.ID, tokenHash)
+	token := domain.NewAPIKeyToken(uuid.New().String(), key.ID, tokenHash)
+
 	err = h.tokenRepo.Rotate(r.Context(), key.ID, token, graceUntil, req.RevokeExisting)
 	if err != nil {
 		helper.WriteError(w, http.StatusInternalServerError, "failed to rotate api key")
@@ -236,31 +257,25 @@ func (h *ApiKeyHandler) HandleRotateApiKey(w http.ResponseWriter, r *http.Reques
 
 	h.invalidateAPIKey(r.Context(), key.ID)
 
-	response := dto.RotateApiKeyResponse{
+	response := dto.RotateAPIKeyResponse{
 		APIKeyID:                 key.ID,
 		RawKey:                   rawKey,
 		TokenID:                  token.ID,
 		PreviousTokensGraceUntil: graceUntil,
 	}
 
-	if h.auditRepo != nil {
-		event := middleware.NewAuditEvent(r, domain.ActionRotate, "api_key", key.ID, nil, map[string]interface{}{
-			"api_key_id":                  key.ID,
-			"token_id":                    token.ID,
-			"previous_tokens_grace_until": graceUntil,
-			"revoke_existing":             req.RevokeExisting,
-		})
-		_ = h.auditRepo.Create(r.Context(), event)
-	}
+	h.logRotateAudit(r, key, token, graceUntil, req.RevokeExisting)
 
 	helper.WriteJSON(w, http.StatusOK, response)
 }
 
-func (h *ApiKeyHandler) HandleReactivateApiKey(w http.ResponseWriter, r *http.Request) {
+// HandleReactivateAPIKey reactivates a revoked or expired API key.
+func (h *APIKeyHandler) HandleReactivateAPIKey(w http.ResponseWriter, r *http.Request) {
 	key := h.loadAPIKey(w, r)
 	if key == nil {
 		return
 	}
+
 	if key.ExpiresAt != nil && time.Now().After(*key.ExpiresAt) {
 		helper.WriteError(w, http.StatusBadRequest, "expired api key cannot be reactivated")
 
@@ -282,6 +297,7 @@ func (h *ApiKeyHandler) HandleReactivateApiKey(w http.ResponseWriter, r *http.Re
 
 	oldKey := *key
 	key.IsActive = true
+
 	err := h.repo.Update(r.Context(), key)
 	if err != nil {
 		helper.WriteError(w, http.StatusInternalServerError, "failed to reactivate api key")
@@ -299,14 +315,15 @@ func (h *ApiKeyHandler) HandleReactivateApiKey(w http.ResponseWriter, r *http.Re
 	}
 
 	if h.auditRepo != nil {
-		event := middleware.NewAuditEvent(r, domain.ActionReactivate, "api_key", key.ID, dto.FromApiKey(&oldKey), detail)
+		event := middleware.NewAuditEvent(r, domain.ActionReactivate, "api_key", key.ID, dto.FromAPIKey(&oldKey), detail)
 		_ = h.auditRepo.Create(r.Context(), event)
 	}
 
 	helper.WriteJSON(w, http.StatusOK, detail)
 }
 
-func (h *ApiKeyHandler) HandleRevokeApiKey(w http.ResponseWriter, r *http.Request) {
+// HandleRevokeAPIKey revokes an API key.
+func (h *APIKeyHandler) HandleRevokeAPIKey(w http.ResponseWriter, r *http.Request) {
 	key := h.loadAPIKey(w, r)
 	if key == nil {
 		return
@@ -322,38 +339,38 @@ func (h *ApiKeyHandler) HandleRevokeApiKey(w http.ResponseWriter, r *http.Reques
 	h.invalidateAPIKey(r.Context(), key.ID)
 
 	if h.auditRepo != nil {
-		newValue := map[string]interface{}{"is_active": false}
-		event := middleware.NewAuditEvent(r, domain.ActionRevoke, "api_key", key.ID, dto.FromApiKey(key), newValue)
+		newValue := map[string]any{"is_active": false}
+		event := middleware.NewAuditEvent(r, domain.ActionRevoke, "api_key", key.ID, dto.FromAPIKey(key), newValue)
 		_ = h.auditRepo.Create(r.Context(), event)
 	}
 
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *ApiKeyHandler) apiKeyDetail(ctx context.Context, key *domain.ApiKey) (*dto.ApiKeyDetailResponse, error) {
-	tokens, err := h.tokenRepo.ListByApiKeyID(ctx, key.ID)
+func (h *APIKeyHandler) apiKeyDetail(ctx context.Context, key *domain.APIKey) (*dto.APIKeyDetailResponse, error) {
+	tokens, err := h.tokenRepo.ListByAPIKeyID(ctx, key.ID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("listing api key tokens: %w", err)
 	}
 
-	response := dto.FromApiKey(key)
+	response := dto.FromAPIKey(key)
 	if response == nil {
 		return nil, errNilAPIKeyResponse
 	}
 
-	return &dto.ApiKeyDetailResponse{
-		ApiKeyResponse: *response,
-		Tokens:         dto.FromApiKeyTokens(tokens),
+	return &dto.APIKeyDetailResponse{
+		APIKeyResponse: *response,
+		Tokens:         dto.FromAPIKeyTokens(tokens),
 	}, nil
 }
 
-func (h *ApiKeyHandler) invalidateAPIKey(ctx context.Context, keyID string) {
+func (h *APIKeyHandler) invalidateAPIKey(ctx context.Context, keyID string) {
 	if h.invalidator != nil {
 		_ = h.invalidator.InvalidateKeyByID(ctx, keyID)
 	}
 }
 
-func (h *ApiKeyHandler) loadAPIKey(w http.ResponseWriter, r *http.Request) *domain.ApiKey {
+func (h *APIKeyHandler) loadAPIKey(w http.ResponseWriter, r *http.Request) *domain.APIKey {
 	id := r.PathValue("id")
 	if id == "" {
 		helper.WriteError(w, http.StatusBadRequest, "id is required")
@@ -367,6 +384,7 @@ func (h *ApiKeyHandler) loadAPIKey(w http.ResponseWriter, r *http.Request) *doma
 
 		return nil
 	}
+
 	if key == nil {
 		helper.WriteError(w, http.StatusNotFound, "api key not found")
 
@@ -376,12 +394,13 @@ func (h *ApiKeyHandler) loadAPIKey(w http.ResponseWriter, r *http.Request) *doma
 	return key
 }
 
-func applyAPIKeyUpdate(key *domain.ApiKey, req dto.UpdateApiKeyRequest) error {
+func applyAPIKeyUpdate(key *domain.APIKey, req dto.UpdateAPIKeyRequest) error {
 	if req.Name != nil {
 		name := strings.TrimSpace(*req.Name)
 		if name == "" {
 			return errAPIKeyNameEmpty
 		}
+
 		key.Name = name
 	}
 
@@ -390,6 +409,7 @@ func applyAPIKeyUpdate(key *domain.ApiKey, req dto.UpdateApiKeyRequest) error {
 		if err != nil {
 			return err
 		}
+
 		key.Scopes = *req.Scopes
 	}
 
@@ -398,6 +418,7 @@ func applyAPIKeyUpdate(key *domain.ApiKey, req dto.UpdateApiKeyRequest) error {
 		if err != nil {
 			return err
 		}
+
 		key.RateLimitOverride = req.RateLimitOverride
 	}
 
@@ -439,6 +460,7 @@ func parseGracePeriod(value string) (*time.Time, error) {
 	if err != nil {
 		return nil, errGracePeriodInvalid
 	}
+
 	if duration <= 0 {
 		return nil, errGracePeriodNonPositive
 	}
@@ -449,10 +471,11 @@ func parseGracePeriod(value string) (*time.Time, error) {
 }
 
 func generateAPIKeySecret() (string, string, error) {
-	keyBytes := make([]byte, 32)
+	keyBytes := make([]byte, apiKeyByteLength)
+
 	_, err := rand.Read(keyBytes)
 	if err != nil {
-		return "", "", err
+		return "", "", fmt.Errorf("generating api key secret: %w", err)
 	}
 
 	rawKey := hex.EncodeToString(keyBytes)
@@ -462,11 +485,29 @@ func generateAPIKeySecret() (string, string, error) {
 	return rawKey, tokenHash, nil
 }
 
-func readOptionalJSON(r *http.Request, v interface{}) error {
+func (h *APIKeyHandler) logRotateAudit(r *http.Request, key *domain.APIKey, token *domain.APIKeyToken, graceUntil *time.Time, revokeExisting bool) {
+	if h.auditRepo == nil {
+		return
+	}
+
+	event := middleware.NewAuditEvent(r, domain.ActionRotate, "api_key", key.ID, nil, map[string]any{
+		"api_key_id":                  key.ID,
+		"token_id":                    token.ID,
+		"previous_tokens_grace_until": graceUntil,
+		"revoke_existing":             revokeExisting,
+	})
+	_ = h.auditRepo.Create(r.Context(), event)
+}
+
+func readOptionalJSON(r *http.Request, v any) error {
 	err := helper.ReadJSON(r, v)
 	if errors.Is(err, io.EOF) {
 		return nil
 	}
 
-	return err
+	if err != nil {
+		return fmt.Errorf("reading optional json: %w", err)
+	}
+
+	return nil
 }
