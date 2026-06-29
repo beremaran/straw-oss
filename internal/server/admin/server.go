@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/beremaran/straw/internal/server/admin/handlers"
 	"github.com/beremaran/straw/internal/server/admin/middleware"
 	mw "github.com/beremaran/straw/internal/server/middleware"
+	adminauth "github.com/beremaran/straw/internal/service/auth"
 	"github.com/beremaran/straw/internal/service/endpoint"
 	"github.com/beremaran/straw/internal/service/router"
 	"github.com/beremaran/straw/pkg/broker"
@@ -26,10 +28,20 @@ type Server struct {
 	redisClient   *redis.Client
 	healthService *endpoint.HealthService
 	broker        broker.MessageBroker
+	authService   *adminauth.AdminService
 }
 
 func New(conf config.ServerConfig, client *postgres.Client, redisClient *redis.Client, healthService *endpoint.HealthService, broker broker.MessageBroker) *Server {
 	mux := http.NewServeMux()
+	var authService *adminauth.AdminService
+	if client != nil {
+		authService = adminauth.NewAdminService(
+			postgres.NewIdentityRepository(client),
+			conf.Security.HMACSecret,
+			conf.ManagementAccessTokenTTL,
+			conf.ManagementRefreshTokenTTL,
+		)
+	}
 
 	s := &Server{
 		mux:           mux,
@@ -38,6 +50,7 @@ func New(conf config.ServerConfig, client *postgres.Client, redisClient *redis.C
 		redisClient:   redisClient,
 		healthService: healthService,
 		broker:        broker,
+		authService:   authService,
 	}
 
 	s.registerRoutes()
@@ -48,7 +61,7 @@ func New(conf config.ServerConfig, client *postgres.Client, redisClient *redis.C
 		mw.RequestID(),
 		mw.LoggerMiddleware(),
 		mw.CORS(),
-		managementGlobalMiddleware(conf, client),
+		managementGlobalMiddleware(conf, client, authService),
 	)
 
 	s.server = &http.Server{
@@ -61,6 +74,7 @@ func New(conf config.ServerConfig, client *postgres.Client, redisClient *redis.C
 func (s *Server) Start() error {
 	addr := fmt.Sprintf(":%d", s.conf.ManagementPort)
 	s.server.Addr = addr
+	s.warnNoActiveOwner()
 
 	return s.server.ListenAndServe()
 }
@@ -101,6 +115,7 @@ func (s *Server) registerRoutes() {
 	endpointHandler := handlers.NewEndpointHandler(s.healthService)
 	fingerprintHandler := handlers.NewFingerprintHandler(fingerprintRepo, s.broker)
 	usageHandler := handlers.NewUsageHandler(usageRepo)
+	authHandler := handlers.NewAuthHandler(s.authService)
 
 	var cacheHandler *handlers.CacheHandler
 	if s.redisClient != nil {
@@ -131,6 +146,14 @@ func (s *Server) registerRoutes() {
 		s.management("POST /management/cache/clear", middleware.PermissionCacheWrite, cacheHandler.HandleClearCache)
 		s.management("GET /management/cache/stats", middleware.PermissionCacheRead, cacheHandler.HandleGetCacheStats)
 	}
+
+	if s.authService != nil {
+		s.mux.HandleFunc("POST /management/auth/login", authHandler.HandleLogin)
+		s.mux.HandleFunc("POST /management/auth/refresh", authHandler.HandleRefresh)
+		s.mux.HandleFunc("POST /management/auth/logout", authHandler.HandleLogout)
+		s.mux.HandleFunc("GET /management/auth/me", authHandler.HandleMe)
+		s.mux.HandleFunc("POST /management/users/bootstrap", authHandler.HandleBootstrapOwner)
+	}
 }
 
 func (s *Server) management(pattern, permission string, handler http.HandlerFunc) {
@@ -151,8 +174,13 @@ func applyMiddlewares(handler http.Handler, middlewares ...func(http.Handler) ht
 	return handler
 }
 
-func managementGlobalMiddleware(cfg config.ServerConfig, client *postgres.Client) func(http.Handler) http.Handler {
+func managementGlobalMiddleware(cfg config.ServerConfig, client *postgres.Client, verifier ...middleware.AccessTokenVerifier) func(http.Handler) http.Handler {
 	keyAuth := middleware.KeyAuth(cfg)
+	var accessVerifier middleware.AccessTokenVerifier
+	if len(verifier) > 0 {
+		accessVerifier = verifier[0]
+	}
+	sessionAuth := middleware.SessionAuth(accessVerifier)
 	var auditLog func(http.Handler) http.Handler
 	if client != nil && client.Pool != nil {
 		auditLogger := middleware.NewAuditLogger(client.Pool, 0, 0)
@@ -170,12 +198,39 @@ func managementGlobalMiddleware(cfg config.ServerConfig, client *postgres.Client
 				if auditLog != nil {
 					h = auditLog(h)
 				}
-				h = keyAuth(h)
+				if !isPublicAuthRoute(r) {
+					h = keyAuth(h)
+					h = sessionAuth(h)
+				}
 				h.ServeHTTP(w, r)
 
 				return
 			}
 			next.ServeHTTP(w, r)
 		})
+	}
+}
+
+func isPublicAuthRoute(r *http.Request) bool {
+	if r.Method != http.MethodPost {
+		return false
+	}
+
+	return r.URL.Path == "/management/auth/login" || r.URL.Path == "/management/auth/refresh"
+}
+
+func (s *Server) warnNoActiveOwner() {
+	if s.client == nil || s.client.Pool == nil {
+		return
+	}
+
+	exists, err := postgres.NewIdentityRepository(s.client).ActiveOwnerExists(context.Background())
+	if err != nil {
+		slog.Warn("failed to check management owner", "error", err)
+
+		return
+	}
+	if !exists {
+		slog.Warn("no active management owner exists; bootstrap one at /management/users/bootstrap")
 	}
 }

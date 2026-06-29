@@ -52,6 +52,8 @@ type ServerConfig struct {
 	ShutdownTimeout               time.Duration
 	ManagementAPIKey              string
 	ManagementLegacyTokenDisabled bool
+	ManagementAccessTokenTTL      time.Duration
+	ManagementRefreshTokenTTL     time.Duration
 	ResultTimeout                 time.Duration
 	MaxBodySize                   string
 	MaxConcurrentRequests         int
@@ -136,6 +138,8 @@ func LoadServerConfig() (*ServerConfig, error) {
 		ShutdownTimeout:               getEnvDuration("SHUTDOWN_TIMEOUT", 30*time.Second),
 		ManagementAPIKey:              getEnv("MANAGEMENT_API_KEY", ""),
 		ManagementLegacyTokenDisabled: !getEnvBool("MANAGEMENT_LEGACY_TOKEN_ENABLED", true),
+		ManagementAccessTokenTTL:      getEnvDuration("MANAGEMENT_ACCESS_TOKEN_TTL", 15*time.Minute),
+		ManagementRefreshTokenTTL:     getEnvDuration("MANAGEMENT_REFRESH_TOKEN_TTL", 7*24*time.Hour),
 		ResultTimeout:                 getEnvDuration("RESULT_TIMEOUT", 30*time.Second),
 		MaxBodySize:                   getEnv("MAX_BODY_SIZE", "2M"),
 		MaxConcurrentRequests:         getEnvInt("MAX_CONCURRENT_REQUESTS", 50),

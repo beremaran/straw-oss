@@ -401,6 +401,27 @@ func (r *IdentityRepository) CreateSession(ctx context.Context, session *domain.
 	return nil
 }
 
+func (r *IdentityRepository) GetSessionByID(ctx context.Context, id string) (*domain.AdminSession, error) {
+	query := sessionSelectSQL() + ` WHERE id = $1`
+
+	var session domain.AdminSession
+	err := r.client.Execute(func() error {
+		var scanErr error
+		session, scanErr = scanAdminSession(r.client.Pool.QueryRow(ctx, query, id).Scan)
+
+		return scanErr
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+
+		return nil, fmt.Errorf("failed to get admin session: %w", err)
+	}
+
+	return &session, nil
+}
+
 func (r *IdentityRepository) GetSessionByRefreshTokenHash(ctx context.Context, hash string) (*domain.AdminSession, error) {
 	query := sessionSelectSQL() + ` WHERE refresh_token_hash = $1`
 

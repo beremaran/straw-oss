@@ -152,6 +152,7 @@ type IdentityRepository interface {
 	ListRoles(ctx context.Context) ([]AdminRole, error)
 
 	CreateSession(ctx context.Context, session *AdminSession) error
+	GetSessionByID(ctx context.Context, id string) (*AdminSession, error)
 	GetSessionByRefreshTokenHash(ctx context.Context, hash string) (*AdminSession, error)
 	UpdateSessionRefreshHash(ctx context.Context, id, hash string) error
 	RevokeSession(ctx context.Context, id string) error

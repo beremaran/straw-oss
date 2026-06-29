@@ -48,6 +48,7 @@ type actorContextKey struct{}
 type Actor struct {
 	Type        string
 	ID          string
+	Email       string
 	DisplayName string
 	SessionID   string
 	Permissions []string
