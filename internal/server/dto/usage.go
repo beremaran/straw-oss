@@ -18,11 +18,20 @@ type UsageSummaryResponse struct {
 
 // BillingEstimateResponse contains a billing cost estimate.
 type BillingEstimateResponse struct {
-	TotalCostUnits float64 `json:"total_cost_units"`
-	EstimatedUSD   float64 `json:"estimated_usd"`
-	Currency       string  `json:"currency"`
-	Start          string  `json:"start"`
-	End            string  `json:"end"`
+	TotalCostUnits float64                `json:"total_cost_units"`
+	EstimatedUSD   float64                `json:"estimated_usd"`
+	Currency       string                 `json:"currency"`
+	Start          string                 `json:"start"`
+	End            string                 `json:"end"`
+	PricingVersion string                 `json:"pricing_version"`
+	Multipliers    []BillingMultiplierDTO `json:"multipliers,omitempty"`
+}
+
+// BillingMultiplierDTO identifies a multiplier used in billing estimates.
+type BillingMultiplierDTO struct {
+	EndpointTag string  `json:"endpoint_tag"`
+	Multiplier  float64 `json:"multiplier"`
+	Version     int     `json:"version"`
 }
 
 // ClearCacheResponse is the response body for clearing cache entries.
