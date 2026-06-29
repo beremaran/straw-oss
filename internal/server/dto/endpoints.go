@@ -23,17 +23,17 @@ type PatchEndpointRequest struct {
 }
 
 type EndpointResponse struct {
-	ID            string               `json:"id"`
-	Tags          []string             `json:"tags"`
-	LastHeartbeat string               `json:"last_heartbeat,omitempty"`
-	IsHealthy     bool                 `json:"is_healthy"`
-	Metadata      EndpointMetadataDTO  `json:"metadata"`
-	DesiredState  string               `json:"desired_state"`
-	IsRegistered  bool                 `json:"is_registered"`
-	DeletedAt     *string              `json:"deleted_at,omitempty"`
-	CreatedAt     string               `json:"created_at"`
-	UpdatedAt     string               `json:"updated_at"`
-	Health        *EndpointHealthDTO   `json:"health,omitempty"`
+	ID             string               `json:"id"`
+	Tags           []string             `json:"tags"`
+	LastHeartbeat  string               `json:"last_heartbeat,omitempty"`
+	IsHealthy      bool                 `json:"is_healthy"`
+	Metadata       EndpointMetadataDTO  `json:"metadata"`
+	DesiredState   string               `json:"desired_state"`
+	IsRegistered   bool                 `json:"is_registered"`
+	DeletedAt      *string              `json:"deleted_at,omitempty"`
+	CreatedAt      string               `json:"created_at"`
+	UpdatedAt      string               `json:"updated_at"`
+	Health         *EndpointHealthDTO   `json:"health,omitempty"`
 	RecentCommands []EndpointCommandDTO `json:"recent_commands,omitempty"`
 }
 

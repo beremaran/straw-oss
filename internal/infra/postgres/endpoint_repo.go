@@ -488,6 +488,59 @@ func (r *PostgresEndpointCommandRepository) ListByEndpointID(ctx context.Context
 	return commands, total, nil
 }
 
+func (r *PostgresEndpointCommandRepository) ListPending(ctx context.Context, before time.Time) ([]domain.EndpointCommand, error) {
+	query := `
+		SELECT id, endpoint_id, command, status, payload, requested_by,
+		       requested_at, accepted_at, completed_at, error
+		FROM endpoint_commands
+		WHERE status IN ('accepted', 'acknowledged', 'running') AND requested_at < $1
+	`
+
+	rows, err := r.client.Pool.Query(ctx, query, before)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query pending commands: %w", err)
+	}
+	defer rows.Close()
+
+	var commands []domain.EndpointCommand
+	for rows.Next() {
+		var cmd domain.EndpointCommand
+		var statusStr string
+		var payloadJSON []byte
+
+		err = rows.Scan(
+			&cmd.ID,
+			&cmd.EndpointID,
+			&cmd.Command,
+			&statusStr,
+			&payloadJSON,
+			&cmd.RequestedBy,
+			&cmd.RequestedAt,
+			&cmd.AcceptedAt,
+			&cmd.CompletedAt,
+			&cmd.Error,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan command: %w", err)
+		}
+
+		err = json.Unmarshal(payloadJSON, &cmd.Payload)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal payload: %w", err)
+		}
+		cmd.Status = domain.CommandStatus(statusStr)
+
+		commands = append(commands, cmd)
+	}
+
+	err = rows.Err()
+	if err != nil {
+		return nil, fmt.Errorf("rows iteration error: %w", err)
+	}
+
+	return commands, nil
+}
+
 type PostgresEndpointLogRepository struct {
 	client *Client
 }

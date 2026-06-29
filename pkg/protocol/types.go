@@ -239,3 +239,19 @@ type TimingInfo struct {
 	FirstByte    time.Duration `json:"first_byte,omitempty"`
 	Total        time.Duration `json:"total"`
 }
+
+type ControlCommand struct {
+	CommandID  string         `json:"command_id"`
+	EndpointID string         `json:"endpoint_id"`
+	Command    string         `json:"command"`
+	IssuedAt   time.Time      `json:"issued_at"`
+	Payload    map[string]any `json:"payload,omitempty"`
+}
+
+type CommandAck struct {
+	CommandID  string    `json:"command_id"`
+	EndpointID string    `json:"endpoint_id"`
+	Status     string    `json:"status"`
+	Message    string    `json:"message,omitempty"`
+	Timestamp  time.Time `json:"ts"`
+}

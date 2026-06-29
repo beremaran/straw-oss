@@ -2,6 +2,7 @@ package endpoint
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -23,11 +24,14 @@ import (
 	obsmetrics "github.com/beremaran/straw/internal/observability/metrics"
 	"github.com/beremaran/straw/internal/observability/tracing"
 	"github.com/beremaran/straw/pkg/broker"
+	"github.com/beremaran/straw/pkg/protocol"
 )
 
 var (
 	// Version is the build version of the endpoint worker.
 	Version = "dev"
+
+	ErrUnknownCommand = errors.New("unknown command")
 )
 
 // Worker wraps the endpoint components and manages their execution lifecycle.
@@ -132,6 +136,8 @@ func (w *Worker) Start(ctx context.Context) error {
 	healthServer := newHealthServer(cfg)
 
 	startWorkerServices(ctx, &wg, logger, hbSender, updateChecker, taskConsumer, healthServer)
+
+	w.handleControlCommands(ctx, mqBroker, taskConsumer, logger)
 
 	<-ctx.Done()
 
@@ -380,4 +386,80 @@ func setupHealthHandler() http.Handler {
 	obsmetrics.RegisterPprof(mux)
 
 	return mux
+}
+
+func (w *Worker) handleControlCommands(ctx context.Context, mqBroker broker.MessageBroker, taskConsumer *Consumer, logger *slog.Logger) {
+	subject := "endpoint.control." + w.cfg.ID
+	logger.Info("subscribing to control commands", "subject", subject)
+
+	err := mqBroker.Subscribe(ctx, subject, func(ctx context.Context, body []byte) error {
+		var cmd protocol.ControlCommand
+		err := json.Unmarshal(body, &cmd)
+		if err != nil {
+			logger.Error("failed to unmarshal control command", "error", err)
+
+			return nil
+		}
+
+		logger.Info("received control command", "command_id", cmd.CommandID, "command", cmd.Command)
+
+		w.publishCommandAck(ctx, mqBroker, cmd.CommandID, "acknowledged", "command received")
+		w.publishCommandAck(ctx, mqBroker, cmd.CommandID, "running", "executing command")
+
+		go func() {
+			var err error
+			var msg string
+
+			switch cmd.Command {
+			case "drain", "disable":
+				taskConsumer.Drain()
+				msg = cmd.Command + " complete"
+			case "undrain", "enable":
+				err = taskConsumer.Resume(ctx)
+				msg = cmd.Command + " complete"
+			case "restart":
+				taskConsumer.Drain()
+				w.publishCommandAck(ctx, mqBroker, cmd.CommandID, "succeeded", "restart initiated")
+				time.Sleep(500 * time.Millisecond)
+
+				execPath, execErr := os.Executable()
+				if execErr == nil {
+					_ = syscall.Exec(execPath, os.Args, os.Environ())
+				}
+				os.Exit(0)
+
+				return
+			default:
+				err = fmt.Errorf("%w: %s", ErrUnknownCommand, cmd.Command)
+			}
+
+			if err != nil {
+				w.publishCommandAck(ctx, mqBroker, cmd.CommandID, "failed", err.Error())
+			} else {
+				w.publishCommandAck(ctx, mqBroker, cmd.CommandID, "succeeded", msg)
+			}
+		}()
+
+		return nil
+	}, broker.WithTransient())
+
+	if err != nil {
+		logger.Error("failed to subscribe to control commands", "error", err)
+	}
+}
+
+func (w *Worker) publishCommandAck(ctx context.Context, mqBroker broker.MessageBroker, commandID string, status string, msg string) {
+	ack := protocol.CommandAck{
+		CommandID:  commandID,
+		EndpointID: w.cfg.ID,
+		Status:     status,
+		Message:    msg,
+		Timestamp:  time.Now().UTC(),
+	}
+	data, err := json.Marshal(ack)
+	if err != nil {
+		return
+	}
+	subject := fmt.Sprintf("endpoint.control.ack.%s", commandID)
+	_ = mqBroker.Publish(ctx, subject, data)
 }
