@@ -1,26 +1,46 @@
 package middleware
 
-import "context"
+import (
+	"context"
+
+	"github.com/beremaran/straw/internal/domain"
+)
 
 const (
 	ActorTypeLegacy = "legacy"
 	ActorTypeUser   = "user"
 
-	PermissionAll                   = "*"
-	PermissionAPIKeysRead           = "api_keys:read"
-	PermissionAPIKeysWrite          = "api_keys:write"
-	PermissionAPIKeysRevoke         = "api_keys:revoke"
-	PermissionRoutingRulesRead      = "routing_rules:read"
-	PermissionRoutingRulesWrite     = "routing_rules:write"
-	PermissionEndpointsRead         = "endpoints:read"
-	PermissionEndpointsControl      = "endpoints:control"
-	PermissionFingerprintsRead      = "fingerprints:read"
-	PermissionFingerprintsWrite     = "fingerprints:write"
-	PermissionFingerprintsBroadcast = "fingerprints:broadcast"
-	PermissionUsageRead             = "usage:read"
-	PermissionBillingRead           = "billing:read"
-	PermissionCacheRead             = "cache:read"
-	PermissionCacheWrite            = "cache:write"
+	PermissionAll                   = domain.PermissionAll
+	PermissionManagementRead        = domain.PermissionManagementRead
+	PermissionUsersRead             = domain.PermissionUsersRead
+	PermissionUsersWrite            = domain.PermissionUsersWrite
+	PermissionAPIKeysRead           = domain.PermissionAPIKeysRead
+	PermissionAPIKeysWrite          = domain.PermissionAPIKeysWrite
+	PermissionAPIKeysRotate         = domain.PermissionAPIKeysRotate
+	PermissionAPIKeysRevoke         = domain.PermissionAPIKeysRevoke
+	PermissionRoutingRulesRead      = domain.PermissionRoutingRulesRead
+	PermissionRoutingRulesWrite     = domain.PermissionRoutingRulesWrite
+	PermissionEndpointsRead         = domain.PermissionEndpointsRead
+	PermissionEndpointsWrite        = domain.PermissionEndpointsWrite
+	PermissionEndpointsControl      = domain.PermissionEndpointsControl
+	PermissionEndpointsLogs         = domain.PermissionEndpointsLogs
+	PermissionFingerprintsRead      = domain.PermissionFingerprintsRead
+	PermissionFingerprintsWrite     = domain.PermissionFingerprintsWrite
+	PermissionFingerprintsDelete    = domain.PermissionFingerprintsDelete
+	PermissionFingerprintsBroadcast = domain.PermissionFingerprintsBroadcast
+	PermissionUsageRead             = domain.PermissionUsageRead
+	PermissionBillingRead           = domain.PermissionBillingRead
+	PermissionCostMultipliersRead   = domain.PermissionCostMultipliersRead
+	PermissionCostMultipliersWrite  = domain.PermissionCostMultipliersWrite
+	PermissionAuditRead             = domain.PermissionAuditRead
+	PermissionReportsRead           = domain.PermissionReportsRead
+	PermissionReportsWrite          = domain.PermissionReportsWrite
+	PermissionReportsRun            = domain.PermissionReportsRun
+	PermissionAlertsRead            = domain.PermissionAlertsRead
+	PermissionAlertsWrite           = domain.PermissionAlertsWrite
+	PermissionNotificationsWrite    = domain.PermissionNotificationsWrite
+	PermissionCacheRead             = domain.PermissionCacheRead
+	PermissionCacheWrite            = domain.PermissionCacheWrite
 )
 
 type actorContextKey struct{}

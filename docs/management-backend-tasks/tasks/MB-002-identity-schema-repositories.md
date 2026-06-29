@@ -1,6 +1,6 @@
 # MB-002: Identity Schema And Repositories
 
-Status: not-started
+Status: done
 Phase: 1
 Depends on: MB-001
 Search tags: admin_users, admin_roles, admin_sessions, admin_identity_providers, repositories
@@ -26,15 +26,15 @@ Persist admin users, roles, permissions, sessions, and identity providers.
 
 ## Implementation Tasks
 
-- [ ] Create the identity migration after the current latest migration.
-- [ ] Add built-in role seed data for Owner, Operator, Security auditor, Finance, and Read only.
-- [ ] Add domain models for user, role, permission, session, and identity provider.
-- [ ] Add repositories for CRUD and lookup paths used by auth.
-- [ ] Cover repository create, update, list, and lookup behavior with tests.
+- [x] Create the identity migration after the current latest migration.
+- [x] Add built-in role seed data for Owner, Operator, Security auditor, Finance, and Read only.
+- [x] Add domain models for user, role, permission, session, and identity provider.
+- [x] Add repositories for CRUD and lookup paths used by auth.
+- [x] Cover repository create, update, list, and lookup behavior with tests.
 
 ## Done Criteria
 
-- [ ] Migrations apply cleanly on an empty database.
-- [ ] Built-in roles exist and have the permissions from the spec.
-- [ ] Repositories can resolve a user's effective permissions.
-- [ ] Session repository stores only refresh-token hashes.
+- [x] Migrations apply cleanly on an empty database.
+- [x] Built-in roles exist and have the permissions from the spec.
+- [x] Repositories can resolve a user's effective permissions.
+- [x] Session repository stores only refresh-token hashes.

@@ -18,7 +18,7 @@ Status values: `not-started`, `in-progress`, `blocked`, `done`.
 | Done | ID | Status | Task |
 | --- | --- | --- | --- |
 | [x] | [MB-001](tasks/MB-001-auth-rbac-compatibility.md) | done | Auth and RBAC compatibility foundation |
-| [ ] | [MB-002](tasks/MB-002-identity-schema-repositories.md) | not-started | Identity schema and repositories |
+| [x] | [MB-002](tasks/MB-002-identity-schema-repositories.md) | done | Identity schema and repositories |
 | [ ] | [MB-003](tasks/MB-003-local-sessions-bootstrap.md) | not-started | Local login, refresh sessions, logout, bootstrap owner |
 | [ ] | [MB-004](tasks/MB-004-users-roles-idp-apis.md) | not-started | Users, roles, and identity-provider management APIs |
 | [ ] | [MB-005](tasks/MB-005-oidc-sso.md) | not-started | OIDC SSO login flow |
