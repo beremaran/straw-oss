@@ -1,6 +1,6 @@
 # MU-008: Routing Rule List, Detail View, Filters, And Attention Indicators
 
-Status: not-started
+Status: done
 Phase: 2
 Depends on: MU-005
 Search tags: `/routing-rules`, rule detail, priority, required tags, endpoint pools, fingerprints, raw JSON, attention

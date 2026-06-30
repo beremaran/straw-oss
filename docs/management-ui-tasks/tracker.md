@@ -29,8 +29,8 @@ Status values: `not-started`, `in-progress`, `blocked`, `done`.
 | --- | --- | --- | --- |
 | [x] | [MU-006](tasks/MU-006-overview-dashboard.md) | done | Overview dashboard and operational attention panels |
 | [x] | [MU-007](tasks/MU-007-api-key-management.md) | done | API key list, creation, raw-key capture, and revoke |
-| [ ] | [MU-008](tasks/MU-008-routing-rule-list-detail.md) | not-started | Routing rule list, detail view, filters, and attention indicators |
-| [ ] | [MU-009](tasks/MU-009-routing-rule-editor.md) | not-started | Routing rule create, edit, duplicate, and version-conflict handling |
+| [x] | [MU-008](tasks/MU-008-routing-rule-list-detail.md) | done | Routing rule list, detail view, filters, and attention indicators |
+| [x] | [MU-009](tasks/MU-009-routing-rule-editor.md) | done | Routing rule create, edit, duplicate, and version-conflict handling |
 | [ ] | [MU-010](tasks/MU-010-endpoint-management.md) | not-started | Endpoint list, stale-state handling, and drain workflow |
 | [ ] | [MU-011](tasks/MU-011-fingerprint-presets.md) | not-started | Fingerprint preset list, JSON editor, upsert, duplicate, and broadcast |
 

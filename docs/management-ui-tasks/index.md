@@ -30,8 +30,8 @@ Update `tracker.md` when work starts, lands, or is blocked. Keep task files focu
 | [MU-005](tasks/MU-005-shared-controls-validation.md) | 1 | done | Shared controls, validation, and mutation workflows | MU-004 | validation, tags, scopes, dates, JSON, confirmation dialogs |
 | [MU-006](tasks/MU-006-overview-dashboard.md) | 2 | done | Overview dashboard and operational attention panels | MU-004, MU-005 | `/overview`, dashboard, endpoint pressure, routing attention, partial failure |
 | [MU-007](tasks/MU-007-api-key-management.md) | 2 | done | API key list, creation, raw-key capture, and revoke | MU-005 | `/api-keys`, raw_key, revoke, scopes, bulk revoke |
-| [MU-008](tasks/MU-008-routing-rule-list-detail.md) | 2 | not-started | Routing rule list, detail view, filters, and attention indicators | MU-005 | `/routing-rules`, priorities, fingerprints, endpoint pools, raw JSON |
-| [MU-009](tasks/MU-009-routing-rule-editor.md) | 2 | not-started | Routing rule create, edit, duplicate, and version-conflict handling | MU-008 | routing rule form, `CreateRoutingRuleRequest`, `UpdateRoutingRuleRequest`, version |
+| [MU-008](tasks/MU-008-routing-rule-list-detail.md) | 2 | done | Routing rule list, detail view, filters, and attention indicators | MU-005 | `/routing-rules`, priorities, fingerprints, endpoint pools, raw JSON |
+| [MU-009](tasks/MU-009-routing-rule-editor.md) | 2 | done | Routing rule create, edit, duplicate, and version-conflict handling | MU-008 | routing rule form, `CreateRoutingRuleRequest`, `UpdateRoutingRuleRequest`, version |
 | [MU-010](tasks/MU-010-endpoint-management.md) | 2 | not-started | Endpoint list, stale-state handling, and drain workflow | MU-005 | `/endpoints`, drain, health TTL, tags, active tasks |
 | [MU-011](tasks/MU-011-fingerprint-presets.md) | 2 | not-started | Fingerprint preset list, JSON editor, upsert, duplicate, and broadcast | MU-005 | `/fingerprints`, JSON config, upsert, broadcast, NATS |
 | [MU-012](tasks/MU-012-usage-billing.md) | 3 | not-started | Usage summary, billing estimate, filters, charts, and CSV export | MU-005, MU-007 | `/usage`, billing estimate, date range, CSV, charts |
