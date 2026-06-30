@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-DC="docker compose -f docker-compose.dev.yml"
+DC="docker compose -f docker/docker-compose.dev.yml"
 
 usage() {
   cat <<EOF

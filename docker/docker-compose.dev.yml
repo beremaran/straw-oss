@@ -2,7 +2,7 @@ services:
   dev:
     build:
       context: .
-      dockerfile: .docker/dev.Dockerfile
+      dockerfile: docker/dev.Dockerfile
     image: straw:dev
     volumes:
       - .:/app:cached

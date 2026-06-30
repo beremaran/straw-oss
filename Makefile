@@ -10,7 +10,7 @@ BUILD_TIME ?= $(shell date -u +'%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date +'%Y-%m-
 GO_PACKAGES = $(shell go list -f '{{.Dir}}' ./... | sed 's|^$(CURDIR)|.|' | grep -v '^./web/management/node_modules/')
 
 # Docker compose dev file (host-side only)
-DC = docker compose -f docker-compose.dev.yml
+DC = docker compose -f docker/docker-compose.dev.yml
 
 # Detect if running inside dev container (no docker compose available)
 # Inside the dev container, docker-cli exists but docker compose plugin does not
@@ -80,7 +80,7 @@ docker:
 		--build-arg COMMIT=$(COMMIT) \
 		--build-arg BUILD_TIME=$(BUILD_TIME) \
 		-t $(OWNER)/$(REPO):base \
-		-f .docker/base.Dockerfile .
+		-f docker/base.Dockerfile .
 	# Tag base image for local and GHCR formats
 	docker tag $(OWNER)/$(REPO):base $(REGISTRY)/$(OWNER)/$(REPO):base
 	docker tag $(OWNER)/$(REPO):base $(REGISTRY)/$(OWNER)/$(REPO)/base:$(VERSION)
@@ -91,7 +91,7 @@ docker:
 		--build-arg BINARY_NAME=relay \
 		--build-arg BASE_IMAGE=$(OWNER)/$(REPO):base \
 		-t $(OWNER)/$(REPO):relay \
-		-f .docker/Dockerfile .
+		-f docker/Dockerfile .
 	# Tag relay image for local and GHCR formats
 	docker tag $(OWNER)/$(REPO):relay $(REGISTRY)/$(OWNER)/$(REPO):relay
 	docker tag $(OWNER)/$(REPO):relay $(REGISTRY)/$(OWNER)/$(REPO)/relay:$(VERSION)
@@ -102,7 +102,7 @@ docker:
 		--build-arg BINARY_NAME=endpoint \
 		--build-arg BASE_IMAGE=$(OWNER)/$(REPO):base \
 		-t $(OWNER)/$(REPO):endpoint \
-		-f .docker/Dockerfile .
+		-f docker/Dockerfile .
 	# Tag endpoint image for local and GHCR formats
 	docker tag $(OWNER)/$(REPO):endpoint $(REGISTRY)/$(OWNER)/$(REPO):endpoint
 	docker tag $(OWNER)/$(REPO):endpoint $(REGISTRY)/$(OWNER)/$(REPO)/endpoint:$(VERSION)
@@ -112,7 +112,7 @@ docker:
 	docker build \
 		--build-arg VERSION=$(VERSION) \
 		-t $(OWNER)/$(REPO):web \
-		-f web/management/Dockerfile web/management
+		-f web/management/docker/Dockerfile web/management
 	# Tag web image for local and GHCR formats
 	docker tag $(OWNER)/$(REPO):web $(REGISTRY)/$(OWNER)/$(REPO):web
 	docker tag $(OWNER)/$(REPO):web $(REGISTRY)/$(OWNER)/$(REPO)/web:$(VERSION)

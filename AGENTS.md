@@ -15,7 +15,7 @@ Straw is a Go 1.25 module (`github.com/beremaran/straw`). Entrypoints live in `c
 - `make docs-serve`: serves local documentation.
 - `make install-tools`: installs `govulncheck` and `golangci-lint`.
 
-Use `.relay.env.example` and `.endpoint.env.example` as starting points for local service configuration.
+Use `config/.relay.env.example` and `config/.endpoint.env.example` as starting points for local service configuration.
 
 ## Coding Style & Naming Conventions
 
