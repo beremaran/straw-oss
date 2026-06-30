@@ -19,7 +19,7 @@ const routes = {
   '#/api-keys': ApiKeysPage,
   '#/routing-rules': RoutingRulesPage,
   '#/routing-rules/new': RoutingRuleEditorPage,
-  '#/routing-rules/edit': RoutingRuleEditorPage, // handled with query params e.g. #/routing-rules/edit?id=...
+  '#/routing-rules/edit': RoutingRuleEditorPage,
   '#/endpoints': EndpointsPage,
   '#/fingerprints': FingerprintsPage,
   '#/usage': UsagePage,
@@ -29,23 +29,19 @@ const routes = {
 
 export function initRouter() {
   window.addEventListener('hashchange', handleRouteChange);
-  // Initial routing
   handleRouteChange();
 }
 
 export function handleRouteChange() {
   const hash = window.location.hash || '#/overview';
   
-  // Normalize the route key
   let routeKey = hash;
   if (hash.startsWith('#/routing-rules/edit')) {
     routeKey = '#/routing-rules/edit';
   } else if (hash.startsWith('#/routing-rules/') && hash !== '#/routing-rules/new' && !hash.includes('?')) {
-    // Dynamic rule detail, route to edit page or detail page
     routeKey = '#/routing-rules/edit';
   }
 
-  // Auth guard
   const hasToken = !!state.token;
   if (!hasToken && routeKey !== '#/login') {
     window.location.hash = '#/login';
@@ -64,15 +60,23 @@ export function handleRouteChange() {
     appDiv.innerHTML = page.render(state);
     if (page.afterRender) page.afterRender(state);
   } else {
-    // Render inside the App Shell
     appDiv.innerHTML = renderShell(state, page.render(state));
-    // Attach Shell events
     attachShellEvents();
     if (page.afterRender) page.afterRender(state);
   }
 }
 
 function attachShellEvents() {
+  // Mobile sidebar toggle
+  const toggleBtn = document.getElementById('sidebar-toggle');
+  const sidebar = document.getElementById('app-sidebar');
+  if (toggleBtn && sidebar) {
+    toggleBtn.addEventListener('click', () => {
+      sidebar.classList.toggle('active');
+    });
+  }
+
+  // Sign out
   const signOutBtn = document.getElementById('shell-sign-out');
   if (signOutBtn) {
     signOutBtn.addEventListener('click', (e) => {
@@ -97,6 +101,36 @@ function attachShellEvents() {
       const page = routes[routeKey];
       if (page && page.refresh) {
         page.refresh(state);
+      }
+    });
+  }
+
+  // Confirmation dialog actions
+  const confirmCancel = document.getElementById('confirm-cancel-btn');
+  if (confirmCancel) {
+    confirmCancel.addEventListener('click', () => {
+      import('./state.js').then(({ closeConfirm }) => closeConfirm());
+    });
+  }
+
+  const confirmInput = document.getElementById('confirm-input');
+  const confirmOk = document.getElementById('confirm-ok-btn');
+  if (confirmInput && confirmOk) {
+    confirmInput.addEventListener('input', (e) => {
+      confirmOk.disabled = e.target.value !== state.confirmDialog.confirmText;
+    });
+  }
+
+  if (confirmOk) {
+    confirmOk.addEventListener('click', () => {
+      if (state.confirmDialog && state.confirmDialog.callback) {
+        // Set loading state on the button
+        confirmOk.disabled = true;
+        confirmOk.innerHTML = '<span class="spinner"></span>';
+        
+        Promise.resolve(state.confirmDialog.callback()).finally(() => {
+          import('./state.js').then(({ closeConfirm }) => closeConfirm());
+        });
       }
     });
   }
