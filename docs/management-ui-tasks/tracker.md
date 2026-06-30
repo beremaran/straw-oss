@@ -10,8 +10,8 @@ Status values: `not-started`, `in-progress`, `blocked`, `done`.
 | --- | --- |
 | Current task | none |
 | Current owner | unassigned |
-| Last updated | 2026-06-29 |
-| Notes | Backlog created from the Management UI Specification. |
+| Last updated | 2026-06-30 |
+| Notes | All tasks completed. First release ready for acceptance pass. |
 
 ## Phase 1: UI Foundation
 
@@ -38,17 +38,17 @@ Status values: `not-started`, `in-progress`, `blocked`, `done`.
 
 | Done | ID | Status | Task |
 | --- | --- | --- | --- |
-| [ ] | [MU-012](tasks/MU-012-usage-billing.md) | not-started | Usage summary, billing estimate, filters, charts, and CSV export |
-| [ ] | [MU-013](tasks/MU-013-cache-controls.md) | not-started | Cache stats, Redis info viewer, and pattern clear workflow |
-| [ ] | [MU-014](tasks/MU-014-system-diagnostics.md) | not-started | System diagnostics, capability detection, and backend gap display |
+| [x] | [MU-012](tasks/MU-012-usage-billing.md) | done | Usage summary, billing estimate, filters, charts, and CSV export |
+| [x] | [MU-013](tasks/MU-013-cache-controls.md) | done | Cache stats, Redis info viewer, and pattern clear workflow |
+| [x] | [MU-014](tasks/MU-014-system-diagnostics.md) | done | System diagnostics, capability detection, and backend gap display |
 
 ## Phase 4: Release Readiness
 
 | Done | ID | Status | Task |
 | --- | --- | --- | --- |
-| [ ] | [MU-015](tasks/MU-015-accessibility-responsive-visual.md) | not-started | Accessibility, responsive behavior, and visual design pass |
-| [ ] | [MU-016](tasks/MU-016-tests-mocked-api.md) | not-started | Tests, mocked Management API coverage, and route regression checks |
-| [ ] | [MU-017](tasks/MU-017-docs-operator-handoff.md) | not-started | Operator documentation and implementation handoff |
+| [x] | [MU-015](tasks/MU-015-accessibility-responsive-visual.md) | done | Accessibility, responsive behavior, and visual design pass |
+| [x] | [MU-016](tasks/MU-016-tests-mocked-api.md) | done | Tests, mocked Management API coverage, and route regression checks |
+| [x] | [MU-017](tasks/MU-017-docs-operator-handoff.md) | done | Operator documentation and implementation handoff |
 
 ## Cross-Cutting Closeout
 
@@ -65,4 +65,3 @@ None.
 - Keep task tracking in Markdown so `rg`, reviews, and ordinary diffs are enough.
 - Keep the UI backlog separate from `docs/management-backend-tasks`; unsupported backend actions stay documented gaps until APIs exist.
 - Do not edit `mkdocs.yml` until these planning docs need to be published.
-
