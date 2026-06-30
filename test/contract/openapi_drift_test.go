@@ -16,10 +16,14 @@ import (
 )
 
 const (
-	regionUS     = "region:us"
-	endDate      = "2026-06-28"
-	targetAll    = "target:*"
-	chromePreset = "chrome-130"
+	regionUS        = "region:us"
+	startDate       = "2026-06-01"
+	endDate         = "2026-06-28"
+	targetAll       = "target:*"
+	chromePreset    = "chrome-130"
+	primaryUUID     = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"
+	secondaryUUID   = "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12"
+	typeResidential = "type:residential"
 )
 
 // loadOpenAPIDoc loads the api/openapi.yaml file and parses it as a map.
@@ -197,7 +201,7 @@ func TestOpenApiSpecificationDrift(t *testing.T) {
 	t.Run("APIKeyResponse Schema", func(t *testing.T) {
 		now := time.Now()
 		validRes := dto.APIKeyResponse{
-			ID:                "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+			ID:                primaryUUID,
 			Name:              "Test Key",
 			Scopes:            []string{targetAll},
 			RateLimitOverride: nil,
@@ -212,7 +216,7 @@ func TestOpenApiSpecificationDrift(t *testing.T) {
 		now := time.Now()
 		validRes := dto.CreateAPIKeyResponse{
 			APIKeyResponse: dto.APIKeyResponse{
-				ID:        "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+				ID:        primaryUUID,
 				Name:      "Test Key",
 				Scopes:    []string{targetAll},
 				IsActive:  true,
@@ -226,7 +230,7 @@ func TestOpenApiSpecificationDrift(t *testing.T) {
 	t.Run("CreateRoutingRuleRequest Schema", func(t *testing.T) {
 		validRule := dto.CreateRoutingRuleRequest{
 			Name:                 "US Residential Egress",
-			RequiredTags:         []string{"type:residential", regionUS},
+			RequiredTags:         []string{typeResidential, regionUS},
 			ExcludedTags:         []string{"type:datacenter"},
 			Priority:             100,
 			HardTimeout:          "30s",
@@ -268,7 +272,7 @@ func TestOpenApiSpecificationDrift(t *testing.T) {
 
 	t.Run("RoutingRuleResponse Schema", func(t *testing.T) {
 		validRule := dto.RoutingRuleResponse{
-			ID:                   "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12",
+			ID:                   secondaryUUID,
 			Name:                 "Rule 1",
 			Priority:             10,
 			IsActive:             true,
@@ -320,7 +324,7 @@ func TestOpenApiSpecificationDrift(t *testing.T) {
 					Breakdown:     map[string]int64{"residential": 1500},
 				},
 			},
-			Start: "2026-06-01",
+			Start: startDate,
 			End:   endDate,
 		}
 		assertValid(t, doc, "UsageSummaryResponse", validUsage)
@@ -331,10 +335,88 @@ func TestOpenApiSpecificationDrift(t *testing.T) {
 			TotalCostUnits: 150.0,
 			EstimatedUSD:   1.50,
 			Currency:       "USD",
-			Start:          "2026-06-01",
+			Start:          startDate,
 			End:            endDate,
+			PricingVersion: "base",
+			Multipliers: []dto.BillingMultiplierDTO{
+				{EndpointTag: typeResidential, Multiplier: 1.5, Version: 1},
+			},
 		}
 		assertValid(t, doc, "BillingEstimateResponse", validBilling)
+	})
+
+	t.Run("CostMultiplierResponse Schema", func(t *testing.T) {
+		validMultiplier := dto.CostMultiplierResponse{
+			ID:          primaryUUID,
+			EndpointTag: typeResidential,
+			Multiplier:  1.5,
+			Description: "Residential traffic",
+			IsActive:    true,
+			Version:     1,
+			CreatedAt:   time.Now(),
+			UpdatedAt:   time.Now(),
+		}
+		assertValid(t, doc, "CostMultiplierResponse", validMultiplier)
+	})
+
+	t.Run("ReportResponse Schema", func(t *testing.T) {
+		validReport := dto.ReportResponse{
+			ID:        primaryUUID,
+			Name:      "Usage",
+			Type:      "usage_summary",
+			Filters:   map[string]any{"start": startDate, "end": endDate},
+			Format:    "csv",
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+		assertValid(t, doc, "ReportResponse", validReport)
+	})
+
+	t.Run("NotificationChannelResponse Schema", func(t *testing.T) {
+		validChannel := dto.NotificationChannelResponse{
+			ID:        primaryUUID,
+			Name:      "Ops",
+			Type:      "webhook",
+			Config:    map[string]any{"team": "ops"},
+			HasSecret: true,
+			IsEnabled: true,
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+		assertValid(t, doc, "NotificationChannelResponse", validChannel)
+	})
+
+	t.Run("AlertRuleResponse Schema", func(t *testing.T) {
+		validRule := dto.AlertRuleResponse{
+			ID:                     primaryUUID,
+			Name:                   "High requests",
+			Metric:                 "usage_requests",
+			Condition:              "greater_than",
+			Threshold:              100,
+			Window:                 "5m",
+			Filters:                map[string]any{},
+			Severity:               "warning",
+			IsActive:               true,
+			Cooldown:               "15m",
+			NotificationChannelIDs: []string{secondaryUUID},
+			CreatedAt:              time.Now(),
+			UpdatedAt:              time.Now(),
+		}
+		assertValid(t, doc, "AlertRuleResponse", validRule)
+	})
+
+	t.Run("AlertEventResponse Schema", func(t *testing.T) {
+		resolvedAt := time.Now()
+		validEvent := dto.AlertEventResponse{
+			ID:          primaryUUID,
+			AlertRuleID: secondaryUUID,
+			Status:      "resolved",
+			Value:       0,
+			StartedAt:   time.Now(),
+			ResolvedAt:  &resolvedAt,
+			Details:     map[string]any{"metric": "usage_requests"},
+		}
+		assertValid(t, doc, "AlertEventResponse", validEvent)
 	})
 
 	t.Run("ClearCacheResponse Schema", func(t *testing.T) {
@@ -345,4 +427,73 @@ func TestOpenApiSpecificationDrift(t *testing.T) {
 		}
 		assertValid(t, doc, "ClearCacheResponse", validClear)
 	})
+}
+
+func TestOpenAPIIncludesManagementRoutes(t *testing.T) {
+	doc := loadOpenAPIDoc(t)
+	paths, ok := doc["paths"].(map[string]any)
+	require.True(t, ok)
+
+	for _, path := range []string{
+		"/management/auth/login",
+		"/management/auth/refresh",
+		"/management/auth/logout",
+		"/management/auth/me",
+		"/management/users/bootstrap",
+		"/management/auth/sso/{provider}/start",
+		"/management/auth/sso/{provider}/callback",
+		"/management/api-keys",
+		"/management/api-keys/{id}",
+		"/management/api-keys/{id}/rotate",
+		"/management/api-keys/{id}/reactivate",
+		"/management/api-keys/{id}/revoke",
+		"/management/rules",
+		"/management/rules/{id}",
+		"/management/endpoints",
+		"/management/endpoints/{id}",
+		"/management/endpoints/{id}/drain",
+		"/management/endpoints/{id}/undrain",
+		"/management/endpoints/{id}/restart",
+		"/management/endpoints/{id}/commands",
+		"/management/commands/{id}",
+		"/management/endpoints/{id}/logs",
+		"/management/endpoints/{id}/logs/stream",
+		"/management/fingerprints",
+		"/management/fingerprints/{id}",
+		"/management/fingerprints/broadcast",
+		"/management/usage/summary",
+		"/management/billing/estimate",
+		"/management/cost-multipliers",
+		"/management/cost-multipliers/{id}",
+		"/management/reports",
+		"/management/reports/{id}",
+		"/management/reports/{id}/run",
+		"/management/reports/{id}/runs",
+		"/management/report-runs/{run_id}",
+		"/management/report-runs/{run_id}/download",
+		"/management/report-schedules",
+		"/management/report-schedules/{id}",
+		"/management/notification-channels",
+		"/management/notification-channels/{id}",
+		"/management/notification-channels/{id}/test",
+		"/management/notification-preferences",
+		"/management/alerts/rules",
+		"/management/alerts/rules/{id}",
+		"/management/alerts/events",
+		"/management/alerts/events/{id}/ack",
+		"/management/cache/clear",
+		"/management/cache/stats",
+		"/management/audit/events",
+		"/management/audit/events/{id}",
+		"/management/audit/requests",
+		"/management/audit/export",
+		"/management/users",
+		"/management/users/{id}",
+		"/management/roles",
+		"/management/roles/{id}",
+		"/management/identity-providers",
+		"/management/identity-providers/{id}",
+	} {
+		assert.Contains(t, paths, path)
+	}
 }

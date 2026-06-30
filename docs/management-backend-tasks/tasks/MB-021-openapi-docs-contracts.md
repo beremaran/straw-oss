@@ -1,6 +1,6 @@
 # MB-021: OpenAPI, Docs, And Contract Test Sweep
 
-Status: not-started
+Status: done
 Phase: cross-cutting
 Depends on: MB-003 through MB-020
 Search tags: openapi, management-api, contract tests, response schemas, compatibility
@@ -28,15 +28,15 @@ Keep the public Management API contract accurate and compatibility-tested as bac
 
 ## Implementation Tasks
 
-- [ ] Add OpenAPI paths, request schemas, response schemas, and error responses for new routes.
-- [ ] Update Management API docs with auth modes and new capabilities.
-- [ ] Add contract schemas where response shape needs drift protection.
-- [ ] Verify existing `POST /management/api-keys`, `GET /management/api-keys`, `DELETE /management/api-keys/{id}`, `POST /management/endpoints/{id}/drain`, `POST /management/fingerprints`, and billing estimate behavior.
-- [ ] Run contract tests and fix drift.
+- [x] Add OpenAPI paths, request schemas, response schemas, and error responses for new routes.
+- [x] Update Management API docs with auth modes and new capabilities.
+- [x] Add contract schemas where response shape needs drift protection.
+- [x] Verify existing `POST /management/api-keys`, `GET /management/api-keys`, `DELETE /management/api-keys/{id}`, `POST /management/endpoints/{id}/drain`, `POST /management/fingerprints`, and billing estimate behavior.
+- [x] Run contract tests and fix drift.
 
 ## Done Criteria
 
-- [ ] OpenAPI includes all implemented Management API routes.
-- [ ] Docs match implemented behavior.
-- [ ] Contract tests pass.
-- [ ] Existing route compatibility is explicitly tested.
+- [x] OpenAPI includes all implemented Management API routes.
+- [x] Docs match implemented behavior.
+- [x] Contract tests pass.
+- [x] Existing route compatibility is explicitly tested.
