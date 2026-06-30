@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"errors"
-	"log/slog"
 	"net/http"
 	"strings"
 
@@ -16,12 +15,13 @@ import (
 
 // RoleHandler manages admin role operations.
 type RoleHandler struct {
-	repo domain.IdentityRepository
+	repo      domain.IdentityRepository
+	auditRepo domain.ManagementAuditRepository
 }
 
 // NewRoleHandler creates a new RoleHandler.
-func NewRoleHandler(repo domain.IdentityRepository) *RoleHandler {
-	return &RoleHandler{repo: repo}
+func NewRoleHandler(repo domain.IdentityRepository, auditRepo domain.ManagementAuditRepository) *RoleHandler {
+	return &RoleHandler{repo: repo, auditRepo: auditRepo}
 }
 
 // HandleListRoles lists all admin roles.
@@ -77,12 +77,7 @@ func (h *RoleHandler) HandleCreateRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	slog.InfoContext(r.Context(), "audit event",
-		"action", "role:create",
-		"entity_type", "role",
-		"entity_id", roleID,
-		"new_value", role,
-	)
+	recordAuditEvent(r, h.auditRepo, domain.ActionCreate, "role", roleID, nil, dto.FromDomainRole(*role))
 
 	helper.WriteJSON(w, http.StatusCreated, dto.FromDomainRole(*role))
 }
@@ -141,7 +136,7 @@ func (h *RoleHandler) HandleUpdateRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.logRoleUpdateAudit(r, id, oldRole, *role)
+	recordAuditEvent(r, h.auditRepo, domain.ActionUpdate, "role", id, dto.FromDomainRole(oldRole), dto.FromDomainRole(*role))
 
 	helper.WriteJSON(w, http.StatusOK, dto.FromDomainRole(*role))
 }
@@ -185,23 +180,9 @@ func (h *RoleHandler) HandleDeleteRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	slog.InfoContext(r.Context(), "audit event",
-		"action", "role:delete",
-		"entity_type", "role",
-		"entity_id", id,
-	)
+	recordAuditEvent(r, h.auditRepo, domain.ActionDelete, "role", id, dto.FromDomainRole(*role), nil)
 
 	w.WriteHeader(http.StatusNoContent)
-}
-
-func (h *RoleHandler) logRoleUpdateAudit(r *http.Request, id string, oldRole, newRole domain.AdminRole) {
-	slog.InfoContext(r.Context(), "audit event",
-		"action", "role:update",
-		"entity_type", "role",
-		"entity_id", id,
-		"old_value", oldRole,
-		"new_value", newRole,
-	)
 }
 
 func applyRoleUpdate(role *domain.AdminRole, req dto.UpdateRoleRequest, name string) {

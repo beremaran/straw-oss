@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/beremaran/straw/internal/domain"
+	"github.com/beremaran/straw/internal/server/dto"
 )
 
 func TestUserHandler_HandleListUsers(t *testing.T) {
@@ -20,7 +21,7 @@ func TestUserHandler_HandleListUsers(t *testing.T) {
 	rec := httptest.NewRecorder()
 
 	mockRepo := new(MockIdentityRepo)
-	handler := NewUserHandler(mockRepo)
+	handler := NewUserHandler(mockRepo, nil)
 
 	users := []domain.AdminUser{
 		{ID: "user1", Email: "user1@test.com"},
@@ -45,15 +46,22 @@ func TestUserHandler_HandleCreateUser(t *testing.T) {
 	rec := httptest.NewRecorder()
 
 	mockRepo := new(MockIdentityRepo)
-	handler := NewUserHandler(mockRepo)
+	auditRepo := new(MockManagementAuditRepo)
+	handler := NewUserHandler(mockRepo, auditRepo)
 
 	mockRepo.On("CreateUser", mock.Anything, mock.MatchedBy(func(u *domain.AdminUser) bool {
 		return u.Email == "new@test.com" && u.DisplayName == "New User"
+	})).Return(nil).Once()
+	auditRepo.On("Create", mock.Anything, mock.MatchedBy(func(event *domain.ManagementAuditEvent) bool {
+		_, ok := event.NewValue.(dto.AdminUserResponse)
+
+		return event.Action == domain.ActionCreate && event.EntityType == "user" && ok
 	})).Return(nil).Once()
 
 	handler.HandleCreateUser(rec, req)
 
 	assert.Equal(t, http.StatusCreated, rec.Code)
+	auditRepo.AssertExpectations(t)
 }
 
 func TestUserHandler_HandleGetUser(t *testing.T) {
@@ -62,7 +70,7 @@ func TestUserHandler_HandleGetUser(t *testing.T) {
 	rec := httptest.NewRecorder()
 
 	mockRepo := new(MockIdentityRepo)
-	handler := NewUserHandler(mockRepo)
+	handler := NewUserHandler(mockRepo, nil)
 
 	user := &domain.AdminUser{ID: "user1", Email: "user1@test.com", DisplayName: "User One", IsActive: true}
 	mockRepo.On("GetUserByID", mock.Anything, "user1").Return(user, nil).Once()
@@ -82,7 +90,7 @@ func TestUserHandler_HandleUpdateUser_LastActiveOwnerProtection(t *testing.T) {
 		rec := httptest.NewRecorder()
 
 		mockRepo := new(MockIdentityRepo)
-		handler := NewUserHandler(mockRepo)
+		handler := NewUserHandler(mockRepo, nil)
 
 		user := &domain.AdminUser{ID: "owner1", Email: "owner1@test.com", DisplayName: "Owner One", IsActive: true}
 		mockRepo.On("GetUserByID", mock.Anything, "owner1").Return(user, nil).Once()
@@ -105,7 +113,7 @@ func TestUserHandler_HandleUpdateUser_LastActiveOwnerProtection(t *testing.T) {
 		rec := httptest.NewRecorder()
 
 		mockRepo := new(MockIdentityRepo)
-		handler := NewUserHandler(mockRepo)
+		handler := NewUserHandler(mockRepo, nil)
 
 		user := &domain.AdminUser{ID: "owner1", Email: "owner1@test.com", DisplayName: "Owner One", IsActive: true}
 		mockRepo.On("GetUserByID", mock.Anything, "owner1").Return(user, nil).Once()

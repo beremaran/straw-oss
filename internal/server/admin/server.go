@@ -164,9 +164,9 @@ func (s *Server) registerAllSubRoutes() {
 	}
 
 	s.registerIdentityAndAuthRoutes(
-		handlers.NewUserHandler(identityRepo),
-		handlers.NewRoleHandler(identityRepo),
-		handlers.NewIdentityProviderHandler(identityRepo),
+		handlers.NewUserHandler(identityRepo, auditRepo),
+		handlers.NewRoleHandler(identityRepo, auditRepo),
+		handlers.NewIdentityProviderHandler(identityRepo, auditRepo),
 		handlers.NewAuthHandler(s.authService),
 	)
 	s.registerAPIKeyRoutes(handlers.NewAPIKeyHandler(apiKeyRepo, apiKeyTokenRepo, auditRepo, s.apiKeyAuth))
