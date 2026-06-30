@@ -22,3 +22,10 @@ repos:
         types: [file]
         files: '\.go$'
         pass_filenames: false
+      - id: frontend-lint
+        name: frontend lint
+        entry: cd web/management && npm run lint
+        language: system
+        types_or: [javascript, jsx, tsx]
+        files: '^web/management/src/'
+        pass_filenames: false
