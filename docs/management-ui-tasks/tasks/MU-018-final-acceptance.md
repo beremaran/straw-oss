@@ -1,6 +1,6 @@
 # MU-018: Final First-Release Acceptance Pass
 
-Status: not-started
+Status: done
 Phase: cross-cutting
 Depends on: MU-015, MU-016, MU-017
 Search tags: acceptance checklist, route coverage, first release, unsupported backend actions, final verification
@@ -29,16 +29,26 @@ Verify the implemented Management UI satisfies the full first-release acceptance
 
 ## Implementation Tasks
 
-- [ ] Execute the first-release acceptance checklist from the UI spec.
-- [ ] Compare implemented API calls against `api/openapi.yaml` and `docs/management-api.md`.
-- [ ] Run the frontend build and tests.
-- [ ] Run any backend checks needed to prove integration was not broken.
-- [ ] Update `docs/management-ui-tasks/tracker.md` and task statuses.
+- [x] Execute the first-release acceptance checklist from the UI spec.
+- [x] Compare implemented API calls against `api/openapi.yaml` and `docs/management-api.md`.
+- [x] Run the frontend build and tests.
+- [x] Run any backend checks needed to prove integration was not broken.
+- [x] Update `docs/management-ui-tasks/tracker.md` and task statuses.
 
 ## Done Criteria
 
-- [ ] Every item in the UI spec First-Release Acceptance Checklist is satisfied or explicitly blocked.
-- [ ] Blocked items name the missing backend/API dependency and link to the relevant task when available.
-- [ ] Build and test commands pass.
-- [ ] Tracker shows no stale in-progress work.
+- [x] Every item in the UI spec First-Release Acceptance Checklist is satisfied or explicitly blocked.
+- [x] Blocked items name the missing backend/API dependency and link to the relevant task when available.
+- [x] Build and test commands pass.
+- [x] Tracker shows no stale in-progress work.
 
+## Validation
+
+2026-06-30:
+
+- `npm run test` passed: 91 tests.
+- `npm run lint` passed.
+- `npm run build` passed.
+- `go test -race -shuffle=on ./...` passed.
+- `make lint` passed.
+- Browser smoke passed against a mock Management API using backend-style paginated `data` list responses: sign-in, Overview, API Keys, and 390px mobile Overview.

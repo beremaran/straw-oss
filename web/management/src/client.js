@@ -70,6 +70,13 @@ export async function apiRequest(method, path, options = {}) {
   }
 }
 
+function listBody(body, legacyKey) {
+  if (Array.isArray(body)) return body
+  if (body && Array.isArray(body.data)) return body.data
+  if (legacyKey && body && Array.isArray(body[legacyKey])) return body[legacyKey]
+  return body
+}
+
 // Health Check
 export async function healthCheck() {
   return apiRequest('GET', '/healthz')
@@ -78,7 +85,7 @@ export async function healthCheck() {
 // API Keys
 export async function listApiKeys({ page = 1, limit = 20 } = {}) {
   const lim = Math.min(Math.max(1, limit), 100)
-  return apiRequest('GET', `/management/api-keys?page=${page}&limit=${lim}`)
+  return listBody(await apiRequest('GET', `/management/api-keys?page=${page}&limit=${lim}`), 'keys')
 }
 
 export async function createApiKey(payload) {
@@ -92,7 +99,7 @@ export async function revokeApiKey(id) {
 // Routing Rules
 export async function listRoutingRules({ page = 1, limit = 20 } = {}) {
   const lim = Math.min(Math.max(1, limit), 100)
-  return apiRequest('GET', `/management/rules?page=${page}&limit=${lim}`)
+  return listBody(await apiRequest('GET', `/management/rules?page=${page}&limit=${lim}`))
 }
 
 export async function getRoutingRule(id) {
@@ -113,7 +120,7 @@ export async function deleteRoutingRule(id) {
 
 // Endpoints
 export async function listEndpoints() {
-  return apiRequest('GET', '/management/endpoints')
+  return listBody(await apiRequest('GET', '/management/endpoints'))
 }
 
 export async function drainEndpoint(id) {

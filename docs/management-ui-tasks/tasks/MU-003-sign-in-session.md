@@ -29,16 +29,16 @@ Implement connection sign-in, token safety, remembered connection behavior, and 
 
 ## Implementation Tasks
 
-- [ ] Create sign-in form, validation, submit state, and error display.
-- [ ] Handle `401` as "Invalid management token".
-- [ ] Show network/CORS failures with attempted URL and connection hints.
-- [ ] Never log or display the management token after entry.
-- [ ] Redirect authenticated users to `/overview` and unauthenticated deep links to `/login`.
+- [x] Create sign-in form, validation, submit state, and error display.
+- [x] Handle `401` as "Invalid management token".
+- [x] Show network/CORS failures with attempted URL and connection hints.
+- [x] Never log or display the management token after entry.
+- [x] Redirect authenticated users to `/overview` and unauthenticated deep links to `/login`.
 
 ## Done Criteria
 
-- [ ] Valid connection details reach `/overview`.
-- [ ] Invalid token stays on `/login` and does not persist the token.
-- [ ] Sign-out removes persisted credentials and cached management data.
-- [ ] Raw API keys and management tokens are never persisted by accident.
+- [x] Valid connection details reach `/overview`.
+- [x] Invalid token stays on `/login` and does not persist the token.
+- [x] Sign-out removes persisted credentials and cached management data.
+- [x] Raw API keys and management tokens are never persisted by accident.
 

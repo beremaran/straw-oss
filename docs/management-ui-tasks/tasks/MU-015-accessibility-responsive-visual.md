@@ -1,6 +1,6 @@
 # MU-015: Accessibility, Responsive Behavior, And Visual Design Pass
 
-Status: not-started
+Status: done
 Phase: 4
 Depends on: MU-006 through MU-014
 Search tags: accessibility, responsive, keyboard, mobile cards, charts, aria-label, focus, visual design
@@ -29,16 +29,16 @@ Verify and finish the first-release UI against the spec accessibility, responsiv
 
 ## Implementation Tasks
 
-- [ ] Run keyboard-only pass across all routes.
-- [ ] Check screen-reader-visible labels for all controls and icon buttons.
-- [ ] Verify mobile card replacements for dense tables.
-- [ ] Verify responsive form section order and sticky footer behavior.
-- [ ] Fix text overflow, overlapping controls, and color-only status indicators.
+- [x] Run keyboard-only pass across all routes.
+- [x] Check screen-reader-visible labels for all controls and icon buttons.
+- [x] Verify mobile card replacements for dense tables.
+- [x] Verify responsive form section order and sticky footer behavior.
+- [x] Fix text overflow, overlapping controls, and color-only status indicators.
 
 ## Done Criteria
 
-- [ ] Accessibility requirements in `docs/management-ui-spec.md` are satisfied.
-- [ ] Desktop, tablet, and mobile layouts expose the same first-release actions.
-- [ ] Destructive actions remain behind confirmation at every viewport size.
-- [ ] Charts have same-page table alternatives.
+- [x] Accessibility requirements in `docs/management-ui-spec.md` are satisfied.
+- [x] Desktop, tablet, and mobile layouts expose the same first-release actions.
+- [x] Destructive actions remain behind confirmation at every viewport size.
+- [x] Charts have same-page table alternatives.
 

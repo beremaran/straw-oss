@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { handleRouteChange } from './router.js'
-import { state } from './state.js'
+import { state, subscribe } from './state.js'
 
 describe('Router & App Shell Guarding', () => {
   let appDiv
@@ -40,5 +40,28 @@ describe('Router & App Shell Guarding', () => {
     expect(document.querySelector('.app-layout')).toBeTruthy()
     expect(document.querySelector('.app-sidebar')).toBeTruthy()
     expect(document.getElementById('shell-sign-out')).toBeTruthy()
+  })
+
+  it('does not recurse when a state subscriber rerenders the current route', () => {
+    state.token = 'valid-token'
+    state.currentPage = '#/login'
+    state.overviewData = {
+      endpoints: [],
+      rules: [],
+      apiKeys: [],
+      usage: {},
+      billing: {},
+      cacheStats: {},
+      fingerprints: []
+    }
+    window.location.hash = '#/overview'
+
+    const unsubscribe = subscribe(() => handleRouteChange())
+    try {
+      expect(() => handleRouteChange()).not.toThrow()
+      expect(state.currentPage).toBe('#/overview')
+    } finally {
+      unsubscribe()
+    }
   })
 })

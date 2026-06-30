@@ -28,16 +28,16 @@ Implement endpoint monitoring and the one supported endpoint mutation: drain.
 
 ## Implementation Tasks
 
-- [ ] Build endpoint table and mobile card equivalent.
-- [ ] Add state and stale-age filters.
-- [ ] Add drain confirmation with active task count and backend effect copy.
-- [ ] Disable drain for endpoints already in `draining`.
-- [ ] Optimistically mark state as Draining after successful request while refresh is pending.
+- [x] Build endpoint table and mobile card equivalent.
+- [x] Add state and stale-age filters.
+- [x] Add drain confirmation with active task count and backend effect copy.
+- [x] Disable drain for endpoints already in `draining`.
+- [x] Optimistically mark state as Draining after successful request while refresh is pending.
 
 ## Done Criteria
 
-- [ ] All backend endpoint states are visible with text labels.
-- [ ] Drain is confirmed, pending-state protected, and refreshes the list after success.
-- [ ] The UI clearly says undrain, create, delete, restart, logs, and metrics detail are not first-release actions.
-- [ ] No unsupported endpoint mutation is exposed.
+- [x] All backend endpoint states are visible with text labels.
+- [x] Drain is confirmed, pending-state protected, and refreshes the list after success.
+- [x] The UI clearly says undrain, create, delete, restart, logs, and metrics detail are not first-release actions.
+- [x] No unsupported endpoint mutation is exposed.
 

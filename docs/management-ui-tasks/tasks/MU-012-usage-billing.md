@@ -1,6 +1,6 @@
 # MU-012: Usage Summary, Billing Estimate, Filters, Charts, And CSV Export
 
-Status: not-started
+Status: done
 Phase: 3
 Depends on: MU-005, MU-007
 Search tags: `/usage`, usage summary, billing estimate, date range, api_key_id, CSV, charts, cost units
@@ -29,16 +29,16 @@ Implement usage and billing views from the existing daily summary and estimate e
 
 ## Implementation Tasks
 
-- [ ] Build filters and keep invalid date edits local until fixed.
-- [ ] Format bytes as B, KB, MB, or GB.
-- [ ] Label billing as an estimate, not an invoice.
-- [ ] Show backend `400` date parse errors at the invalid field.
-- [ ] Add empty state copy for new installs, no traffic, or missing summary job data.
+- [x] Build filters and keep invalid date edits local until fixed.
+- [x] Format bytes as B, KB, MB, or GB.
+- [x] Label billing as an estimate, not an invoice.
+- [x] Show backend `400` date parse errors at the invalid field.
+- [x] Add empty state copy for new installs, no traffic, or missing summary job data.
 
 ## Done Criteria
 
-- [ ] Usage and billing filters send `YYYY-MM-DD` dates and optional `api_key_id`.
-- [ ] Daily table and chart alternatives expose the same data.
-- [ ] CSV export includes only loaded data and a useful filename.
-- [ ] Hourly drilldown, cost multiplier management, invoices, payments, and organizations are not exposed.
+- [x] Usage and billing filters send `YYYY-MM-DD` dates and optional `api_key_id`.
+- [x] Daily table and chart alternatives expose the same data.
+- [x] CSV export includes only loaded data and a useful filename.
+- [x] Hourly drilldown, cost multiplier management, invoices, payments, and organizations are not exposed.
 

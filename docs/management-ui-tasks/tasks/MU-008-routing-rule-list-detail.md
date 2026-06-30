@@ -28,16 +28,16 @@ Implement the routing rule list and detail view, including filters and client-si
 
 ## Implementation Tasks
 
-- [ ] Build routing rules table and mobile card equivalent.
-- [ ] Implement client-side filters for loaded rows.
-- [ ] Load fingerprints and endpoints needed for attention indicators.
-- [ ] Build detail tabs with the fields named in the spec.
-- [ ] Add duplicate action entry point that sends sanitized rule data into the create flow.
+- [x] Build routing rules table and mobile card equivalent.
+- [x] Implement client-side filters for loaded rows.
+- [x] Load fingerprints and endpoints needed for attention indicators.
+- [x] Build detail tabs with the fields named in the spec.
+- [x] Add duplicate action entry point that sends sanitized rule data into the create flow.
 
 ## Done Criteria
 
-- [ ] Routing rule list and detail cover every display field in the spec.
-- [ ] Attention indicators are visible without blocking valid backend data.
-- [ ] Raw JSON is read-only in detail view and copyable.
-- [ ] Duplicate does not carry `id`, `version`, `created_at`, or `updated_at`.
+- [x] Routing rule list and detail cover every display field in the spec.
+- [x] Attention indicators are visible without blocking valid backend data.
+- [x] Raw JSON is read-only in detail view and copyable.
+- [x] Duplicate does not carry `id`, `version`, `created_at`, or `updated_at`.
 

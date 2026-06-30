@@ -26,16 +26,16 @@ Create the minimal frontend workspace needed to build and run the Management UI 
 
 ## Implementation Tasks
 
-- [ ] Create the frontend project skeleton.
-- [ ] Add a runnable placeholder route that proves the app boots.
-- [ ] Document install, dev, build, and test commands.
-- [ ] Ensure generated/build output is ignored.
-- [ ] Keep the backend build and tests unaffected.
+- [x] Create the frontend project skeleton.
+- [x] Add a runnable placeholder route that proves the app boots.
+- [x] Document install, dev, build, and test commands.
+- [x] Ensure generated/build output is ignored.
+- [x] Keep the backend build and tests unaffected.
 
 ## Done Criteria
 
-- [ ] A developer can run the Management UI locally with one documented command after installing dependencies.
-- [ ] A production build command produces static assets.
-- [ ] The repository still passes existing backend checks.
-- [ ] No Management API behavior changes are required by this task.
+- [x] A developer can run the Management UI locally with one documented command after installing dependencies.
+- [x] A production build command produces static assets.
+- [x] The repository still passes existing backend checks.
+- [x] No Management API behavior changes are required by this task.
 

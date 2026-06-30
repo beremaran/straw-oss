@@ -30,16 +30,16 @@ Implement the routing rule create/edit form with every first-release request fie
 
 ## Implementation Tasks
 
-- [ ] Build sectioned form with desktop summary panel and smaller-screen sticky footer.
-- [ ] Validate required tags, excluded tags, durations, rate limits, endpoint pools, A/B weights, and pinned certificate hash.
-- [ ] Submit only create/update DTO fields; omit server-owned fields on create.
-- [ ] Include loaded `version` on update.
-- [ ] Add review-latest-version flow for conflict-like errors.
+- [x] Build sectioned form with desktop summary panel and smaller-screen sticky footer.
+- [x] Validate required tags, excluded tags, durations, rate limits, endpoint pools, A/B weights, and pinned certificate hash.
+- [x] Submit only create/update DTO fields; omit server-owned fields on create.
+- [x] Include loaded `version` on update.
+- [x] Add review-latest-version flow for conflict-like errors.
 
 ## Done Criteria
 
-- [ ] The editor covers every field in `CreateRoutingRuleRequest` and `UpdateRoutingRuleRequest`.
-- [ ] Save, duplicate, active toggle, priority change, and deactivate use existing Management API routes.
-- [ ] Version conflicts are never silently retried.
-- [ ] Inactive rules remain visible when filters include inactive/all.
+- [x] The editor covers every field in `CreateRoutingRuleRequest` and `UpdateRoutingRuleRequest`.
+- [x] Save, duplicate, active toggle, priority change, and deactivate use existing Management API routes.
+- [x] Version conflicts are never silently retried.
+- [x] Inactive rules remain visible when filters include inactive/all.
 

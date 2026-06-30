@@ -1,6 +1,6 @@
 # MU-013: Cache Stats, Redis Info Viewer, And Pattern Clear Workflow
 
-Status: not-started
+Status: done
 Phase: 3
 Depends on: MU-005
 Search tags: `/cache`, Redis, cache stats, INFO, clear pattern, `CLEAR ALL`, deleted count
@@ -28,16 +28,16 @@ Implement Redis cache inspection and pattern-based cache clearing.
 
 ## Implementation Tasks
 
-- [ ] Build stats panel with raw Redis info search and copy.
-- [ ] Parse quick facts defensively from raw info text.
-- [ ] Add unavailable-state detection when cache routes fail but other management routes work.
-- [ ] Add clear-cache form and high-friction confirmation.
-- [ ] Show backend scan/delete errors without inventing partial counts.
+- [x] Build stats panel with raw Redis info search and copy.
+- [x] Parse quick facts defensively from raw info text.
+- [x] Add unavailable-state detection when cache routes fail but other management routes work.
+- [x] Add clear-cache form and high-friction confirmation.
+- [x] Show backend scan/delete errors without inventing partial counts.
 
 ## Done Criteria
 
-- [ ] Cache stats and clear pattern workflows match the spec.
-- [ ] `*` clear cannot run without the required confirmation phrase.
-- [ ] Successful clear shows backend `deleted` count and refreshes stats.
-- [ ] Cache controls are clearly unavailable when the server has no Redis client route.
+- [x] Cache stats and clear pattern workflows match the spec.
+- [x] `*` clear cannot run without the required confirmation phrase.
+- [x] Successful clear shows backend `deleted` count and refreshes stats.
+- [x] Cache controls are clearly unavailable when the server has no Redis client route.
 

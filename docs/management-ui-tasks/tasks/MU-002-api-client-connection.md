@@ -28,16 +28,16 @@ Add the shared client layer that all UI pages use to call the Management API saf
 
 ## Implementation Tasks
 
-- [ ] Create a fetch wrapper for JSON requests, auth injection, and response parsing.
-- [ ] Add typed helpers for health, API keys, routing rules, endpoints, fingerprints, usage, billing, and cache routes.
-- [ ] Preserve method, URL, status, backend `error`, `code`, and `details` in normalized errors.
-- [ ] Add pagination helpers for list endpoints.
-- [ ] Add a small mocked-client check that fails if auth is sent to `/healthz` or omitted from `/management/*`.
+- [x] Create a fetch wrapper for JSON requests, auth injection, and response parsing.
+- [x] Add typed helpers for health, API keys, routing rules, endpoints, fingerprints, usage, billing, and cache routes.
+- [x] Preserve method, URL, status, backend `error`, `code`, and `details` in normalized errors.
+- [x] Add pagination helpers for list endpoints.
+- [x] Add a small mocked-client check that fails if auth is sent to `/healthz` or omitted from `/management/*`.
 
 ## Done Criteria
 
-- [ ] Shared API helpers cover every endpoint listed in the UI spec API coverage matrix.
-- [ ] `401` responses can be recognized by callers for sign-in redirect behavior.
-- [ ] Network and CORS failures preserve the attempted URL and method for display.
-- [ ] No page component builds its own ad hoc Management API request.
+- [x] Shared API helpers cover every endpoint listed in the UI spec API coverage matrix.
+- [x] `401` responses can be recognized by callers for sign-in redirect behavior.
+- [x] Network and CORS failures preserve the attempted URL and method for display.
+- [x] No page component builds its own ad hoc Management API request.
 
