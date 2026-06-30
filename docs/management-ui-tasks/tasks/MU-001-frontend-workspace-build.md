@@ -1,6 +1,6 @@
 # MU-001: Frontend Workspace And Build Integration
 
-Status: not-started
+Status: done
 Phase: 1
 Depends on: none
 Search tags: frontend workspace, dev server, build, test, `web/management`, static assets
