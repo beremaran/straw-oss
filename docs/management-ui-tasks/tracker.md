@@ -20,7 +20,7 @@ Status values: `not-started`, `in-progress`, `blocked`, `done`.
 | [x] | [MU-001](tasks/MU-001-frontend-workspace-build.md) | done | Frontend workspace and build integration |
 | [x] | [MU-002](tasks/MU-002-api-client-connection.md) | done | Management API client and connection model |
 | [x] | [MU-003](tasks/MU-003-sign-in-session.md) | done | Sign-in, token handling, and session lifecycle |
-| [ ] | [MU-004](tasks/MU-004-app-shell-routes-data.md) | not-started | App shell, routes, navigation, and global data states |
+| [x] | [MU-004](tasks/MU-004-app-shell-routes-data.md) | done | App shell, routes, navigation, and global data states |
 | [ ] | [MU-005](tasks/MU-005-shared-controls-validation.md) | not-started | Shared controls, validation, and mutation workflows |
 
 ## Phase 2: Core Operations Surfaces
