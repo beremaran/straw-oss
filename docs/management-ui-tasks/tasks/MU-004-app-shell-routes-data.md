@@ -1,6 +1,6 @@
 # MU-004: App Shell, Routes, Navigation, And Global Data States
 
-Status: not-started
+Status: done
 Phase: 1
 Depends on: MU-003
 Search tags: app shell, routes, navigation, top bar, refresh, loading, empty, errors, stale data
