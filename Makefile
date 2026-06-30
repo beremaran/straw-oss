@@ -92,5 +92,18 @@ generate-clients:
 	npx -y @openapitools/openapi-generator-cli generate -i api/openapi.yaml -g typescript-fetch -o client/typescript
 	npx -y @openapitools/openapi-generator-cli generate -i api/openapi.yaml -g go -o client/go
 
+web-install:
+	cd web/management && npm install
+
+web-dev:
+	cd web/management && npm run dev
+
+web-build:
+	cd web/management && npm run build
+
+web-test:
+	cd web/management && npm run test
+
 clean:
-	rm -rf bin/ site/ docs/openapi.yaml docs/api-reference.html client/
+	rm -rf bin/ site/ docs/openapi.yaml docs/api-reference.html client/ web/management/dist/
+
