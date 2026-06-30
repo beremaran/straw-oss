@@ -32,7 +32,7 @@ Status values: `not-started`, `in-progress`, `blocked`, `done`.
 | [x] | [MU-008](tasks/MU-008-routing-rule-list-detail.md) | done | Routing rule list, detail view, filters, and attention indicators |
 | [x] | [MU-009](tasks/MU-009-routing-rule-editor.md) | done | Routing rule create, edit, duplicate, and version-conflict handling |
 | [x] | [MU-010](tasks/MU-010-endpoint-management.md) | done | Endpoint list, stale-state handling, and drain workflow |
-| [ ] | [MU-011](tasks/MU-011-fingerprint-presets.md) | not-started | Fingerprint preset list, JSON editor, upsert, duplicate, and broadcast |
+| [x] | [MU-011](tasks/MU-011-fingerprint-presets.md) | done | Fingerprint preset list, JSON editor, upsert, duplicate, and broadcast |
 
 ## Phase 3: Reporting, Cache, And System
 
