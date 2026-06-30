@@ -7,6 +7,7 @@ REPO ?= straw
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "latest")
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_TIME ?= $(shell date -u +'%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date +'%Y-%m-%dT%H:%M:%SZ')
+GO_PACKAGES = $(shell go list -f '{{.Dir}}' ./... | sed 's|^$(CURDIR)|.|' | grep -v '^./web/management/node_modules/')
 
 .PHONY: docker server endpoint web build all test load-test security format lint lint-autofix clean docs docs-serve install-tools web-lint web-format
 
@@ -67,19 +68,19 @@ build: server endpoint
 all: build test docker
 
 test:
-	go test -race ./...
+	go test -race $(GO_PACKAGES)
 
 load-test: docker
 	@./scripts/run-load-test.sh
 
 security:
-	$$(go env GOPATH)/bin/govulncheck ./...
+	$$(go env GOPATH)/bin/govulncheck $(GO_PACKAGES)
 
 format:
 	gofmt -w ./
 
 lint:
-	golangci-lint run --max-issues-per-linter 0 --max-same-issues 0 ./...
+	golangci-lint run --max-issues-per-linter 0 --max-same-issues 0 $(GO_PACKAGES)
 
 lint-autofix:
 	@./scripts/lint-fix-loop.sh
@@ -122,4 +123,3 @@ web-format:
 
 clean:
 	rm -rf bin/ site/ docs/openapi.yaml docs/api-reference.html client/ web/management/dist/
-

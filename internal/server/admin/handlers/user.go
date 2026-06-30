@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"slices"
 	"strconv"
@@ -35,12 +34,13 @@ var (
 
 // UserHandler manages admin user operations.
 type UserHandler struct {
-	repo domain.IdentityRepository
+	repo      domain.IdentityRepository
+	auditRepo domain.ManagementAuditRepository
 }
 
 // NewUserHandler creates a new UserHandler.
-func NewUserHandler(repo domain.IdentityRepository) *UserHandler {
-	return &UserHandler{repo: repo}
+func NewUserHandler(repo domain.IdentityRepository, auditRepo domain.ManagementAuditRepository) *UserHandler {
+	return &UserHandler{repo: repo, auditRepo: auditRepo}
 }
 
 // HandleListUsers lists all admin users.
@@ -128,12 +128,7 @@ func (h *UserHandler) HandleCreateUser(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	slog.InfoContext(r.Context(), "audit event",
-		"action", "user:create",
-		"entity_type", "user",
-		"entity_id", userID,
-		"new_value", user,
-	)
+	recordAuditEvent(r, h.auditRepo, domain.ActionCreate, "user", userID, nil, dto.FromDomainUser(*user))
 
 	helper.WriteJSON(w, http.StatusCreated, dto.FromDomainUser(*user))
 }
@@ -243,7 +238,7 @@ func (h *UserHandler) HandleUpdateUser(w http.ResponseWriter, r *http.Request) {
 		_ = h.repo.RevokeUserSessions(r.Context(), id)
 	}
 
-	logUserUpdate(r.Context(), id, oldUser, user)
+	recordAuditEvent(r, h.auditRepo, domain.ActionUpdate, "user", id, dto.FromDomainUser(oldUser), dto.FromDomainUser(*user))
 	h.writeUserDetail(r.Context(), w, id, user, "failed to fetch updated user roles")
 }
 
@@ -269,6 +264,7 @@ func (h *UserHandler) HandleDeactivateUser(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	oldUser := *user
 	if user.IsActive {
 		isLast, err := h.checkLastActiveOwner(r.Context(), id)
 		if err != nil {
@@ -295,11 +291,7 @@ func (h *UserHandler) HandleDeactivateUser(w http.ResponseWriter, r *http.Reques
 		_ = h.repo.RevokeUserSessions(r.Context(), id)
 	}
 
-	slog.InfoContext(r.Context(), "audit event",
-		"action", "user:deactivate",
-		"entity_type", "user",
-		"entity_id", id,
-	)
+	recordAuditEvent(r, h.auditRepo, domain.ActionDelete, "user", id, dto.FromDomainUser(oldUser), dto.FromDomainUser(*user))
 
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -529,14 +521,4 @@ func userActiveAfterUpdate(user *domain.AdminUser, req dto.UpdateUserRequest) bo
 
 func deactivatesUser(req dto.UpdateUserRequest) bool {
 	return req.IsActive != nil && !*req.IsActive
-}
-
-func logUserUpdate(ctx context.Context, id string, oldUser domain.AdminUser, user *domain.AdminUser) {
-	slog.InfoContext(ctx, "audit event",
-		"action", "user:update",
-		"entity_type", "user",
-		"entity_id", id,
-		"old_value", oldUser,
-		"new_value", user,
-	)
 }

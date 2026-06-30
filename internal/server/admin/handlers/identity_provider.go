@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"errors"
-	"log/slog"
 	"maps"
 	"net/http"
 	"strings"
@@ -17,12 +16,13 @@ import (
 
 // IdentityProviderHandler manages identity provider operations.
 type IdentityProviderHandler struct {
-	repo domain.IdentityRepository
+	repo      domain.IdentityRepository
+	auditRepo domain.ManagementAuditRepository
 }
 
 // NewIdentityProviderHandler creates a new IdentityProviderHandler.
-func NewIdentityProviderHandler(repo domain.IdentityRepository) *IdentityProviderHandler {
-	return &IdentityProviderHandler{repo: repo}
+func NewIdentityProviderHandler(repo domain.IdentityRepository, auditRepo domain.ManagementAuditRepository) *IdentityProviderHandler {
+	return &IdentityProviderHandler{repo: repo, auditRepo: auditRepo}
 }
 
 // HandleListIdentityProviders lists all identity providers.
@@ -72,12 +72,7 @@ func (h *IdentityProviderHandler) HandleCreateIdentityProvider(w http.ResponseWr
 		return
 	}
 
-	slog.InfoContext(r.Context(), "audit event",
-		"action", "identity_provider:create",
-		"entity_type", "identity_provider",
-		"entity_id", providerID,
-		"new_value", provider,
-	)
+	recordAuditEvent(r, h.auditRepo, domain.ActionCreate, "identity_provider", providerID, nil, dto.FromDomainIdentityProvider(*provider))
 
 	helper.WriteJSON(w, http.StatusCreated, dto.FromDomainIdentityProvider(*provider))
 }
@@ -128,13 +123,7 @@ func (h *IdentityProviderHandler) HandleUpdateIdentityProvider(w http.ResponseWr
 		return
 	}
 
-	slog.InfoContext(r.Context(), "audit event",
-		"action", "identity_provider:update",
-		"entity_type", "identity_provider",
-		"entity_id", id,
-		"old_value", oldProvider,
-		"new_value", provider,
-	)
+	recordAuditEvent(r, h.auditRepo, domain.ActionUpdate, "identity_provider", id, dto.FromDomainIdentityProvider(oldProvider), dto.FromDomainIdentityProvider(*provider))
 
 	helper.WriteJSON(w, http.StatusOK, dto.FromDomainIdentityProvider(*provider))
 }
@@ -168,11 +157,7 @@ func (h *IdentityProviderHandler) HandleDeleteIdentityProvider(w http.ResponseWr
 		return
 	}
 
-	slog.InfoContext(r.Context(), "audit event",
-		"action", "identity_provider:disable",
-		"entity_type", "identity_provider",
-		"entity_id", id,
-	)
+	recordAuditEvent(r, h.auditRepo, domain.ActionDelete, "identity_provider", id, dto.FromDomainIdentityProvider(*provider), nil)
 
 	w.WriteHeader(http.StatusNoContent)
 }

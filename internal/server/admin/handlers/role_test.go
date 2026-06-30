@@ -14,6 +14,7 @@ import (
 
 	"github.com/beremaran/straw/internal/domain"
 	"github.com/beremaran/straw/internal/infra/postgres"
+	"github.com/beremaran/straw/internal/server/dto"
 )
 
 func TestRoleHandler_HandleListRoles(t *testing.T) {
@@ -21,7 +22,7 @@ func TestRoleHandler_HandleListRoles(t *testing.T) {
 	rec := httptest.NewRecorder()
 
 	mockRepo := new(MockIdentityRepo)
-	handler := NewRoleHandler(mockRepo)
+	handler := NewRoleHandler(mockRepo, nil)
 
 	roles := []domain.AdminRole{
 		{ID: "role1", Name: "Role 1", IsBuiltin: true},
@@ -46,15 +47,22 @@ func TestRoleHandler_HandleCreateRole(t *testing.T) {
 	rec := httptest.NewRecorder()
 
 	mockRepo := new(MockIdentityRepo)
-	handler := NewRoleHandler(mockRepo)
+	auditRepo := new(MockManagementAuditRepo)
+	handler := NewRoleHandler(mockRepo, auditRepo)
 
 	mockRepo.On("CreateRole", mock.Anything, mock.MatchedBy(func(r *domain.AdminRole) bool {
 		return r.Name == "Custom Operator" && len(r.Permissions) == 1 && r.Permissions[0] == "routing_rules:read"
+	})).Return(nil).Once()
+	auditRepo.On("Create", mock.Anything, mock.MatchedBy(func(event *domain.ManagementAuditEvent) bool {
+		_, ok := event.NewValue.(dto.AdminRoleResponse)
+
+		return event.Action == domain.ActionCreate && event.EntityType == "role" && ok
 	})).Return(nil).Once()
 
 	handler.HandleCreateRole(rec, req)
 
 	assert.Equal(t, http.StatusCreated, rec.Code)
+	auditRepo.AssertExpectations(t)
 }
 
 func TestRoleHandler_HandleUpdateRole_BuiltinProtection(t *testing.T) {
@@ -66,7 +74,7 @@ func TestRoleHandler_HandleUpdateRole_BuiltinProtection(t *testing.T) {
 		rec := httptest.NewRecorder()
 
 		mockRepo := new(MockIdentityRepo)
-		handler := NewRoleHandler(mockRepo)
+		handler := NewRoleHandler(mockRepo, nil)
 
 		role := &domain.AdminRole{ID: "builtin-id", Name: "Owner", IsBuiltin: true}
 		mockRepo.On("GetRoleByID", mock.Anything, "builtin-id").Return(role, nil).Once()
@@ -85,7 +93,7 @@ func TestRoleHandler_HandleDeleteRole_BuiltinProtection(t *testing.T) {
 		rec := httptest.NewRecorder()
 
 		mockRepo := new(MockIdentityRepo)
-		handler := NewRoleHandler(mockRepo)
+		handler := NewRoleHandler(mockRepo, nil)
 
 		role := &domain.AdminRole{ID: "builtin-id", Name: "Owner", IsBuiltin: true}
 		mockRepo.On("GetRoleByID", mock.Anything, "builtin-id").Return(role, nil).Once()
@@ -102,7 +110,7 @@ func TestRoleHandler_HandleDeleteRole_BuiltinProtection(t *testing.T) {
 		rec := httptest.NewRecorder()
 
 		mockRepo := new(MockIdentityRepo)
-		handler := NewRoleHandler(mockRepo)
+		handler := NewRoleHandler(mockRepo, nil)
 
 		role := &domain.AdminRole{ID: "custom-id", Name: "Custom Role", IsBuiltin: false}
 		mockRepo.On("GetRoleByID", mock.Anything, "custom-id").Return(role, nil).Once()

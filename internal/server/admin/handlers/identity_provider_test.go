@@ -14,6 +14,7 @@ import (
 
 	"github.com/beremaran/straw/internal/domain"
 	"github.com/beremaran/straw/internal/infra/postgres"
+	"github.com/beremaran/straw/internal/server/dto"
 )
 
 const (
@@ -26,7 +27,7 @@ func TestIdentityProviderHandler_HandleListIdentityProviders(t *testing.T) {
 	rec := httptest.NewRecorder()
 
 	mockRepo := new(MockIdentityRepo)
-	handler := NewIdentityProviderHandler(mockRepo)
+	handler := NewIdentityProviderHandler(mockRepo, nil)
 
 	providers := []domain.AdminIdentityProvider{
 		{ID: "idp1", Name: testProviderName, Type: testProviderType, IsEnabled: true},
@@ -52,15 +53,22 @@ func TestIdentityProviderHandler_HandleCreateIdentityProvider(t *testing.T) {
 		rec := httptest.NewRecorder()
 
 		mockRepo := new(MockIdentityRepo)
-		handler := NewIdentityProviderHandler(mockRepo)
+		auditRepo := new(MockManagementAuditRepo)
+		handler := NewIdentityProviderHandler(mockRepo, auditRepo)
 
 		mockRepo.On("CreateIdentityProvider", mock.Anything, mock.MatchedBy(func(p *domain.AdminIdentityProvider) bool {
 			return p.Name == testProviderName && p.Type == testProviderType && p.ClientID == "client-id" && p.ClientSecretRef == "vault://secret"
+		})).Return(nil).Once()
+		auditRepo.On("Create", mock.Anything, mock.MatchedBy(func(event *domain.ManagementAuditEvent) bool {
+			_, ok := event.NewValue.(dto.AdminIdentityProviderResponse)
+
+			return event.Action == domain.ActionCreate && event.EntityType == "identity_provider" && ok
 		})).Return(nil).Once()
 
 		handler.HandleCreateIdentityProvider(rec, req)
 
 		assert.Equal(t, http.StatusCreated, rec.Code)
+		auditRepo.AssertExpectations(t)
 	})
 
 	t.Run("Create fails on plaintext secret config", func(t *testing.T) {
@@ -70,7 +78,7 @@ func TestIdentityProviderHandler_HandleCreateIdentityProvider(t *testing.T) {
 		rec := httptest.NewRecorder()
 
 		mockRepo := new(MockIdentityRepo)
-		handler := NewIdentityProviderHandler(mockRepo)
+		handler := NewIdentityProviderHandler(mockRepo, nil)
 
 		mockRepo.On("CreateIdentityProvider", mock.Anything, mock.Anything).Return(postgres.ErrPlaintextProviderSecret).Once()
 
@@ -87,7 +95,7 @@ func TestIdentityProviderHandler_HandleDeleteIdentityProvider(t *testing.T) {
 	rec := httptest.NewRecorder()
 
 	mockRepo := new(MockIdentityRepo)
-	handler := NewIdentityProviderHandler(mockRepo)
+	handler := NewIdentityProviderHandler(mockRepo, nil)
 
 	provider := &domain.AdminIdentityProvider{ID: "idp1", Name: testProviderName, Type: testProviderType, IsEnabled: true}
 	mockRepo.On("GetIdentityProviderByID", mock.Anything, "idp1").Return(provider, nil).Once()
