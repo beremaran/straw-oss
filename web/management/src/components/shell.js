@@ -22,8 +22,8 @@ export function renderShell(state, contentHtml) {
   const sidebarNavHtml = navItems.map(item => {
     const isActive = currentHash.startsWith(item.hash) ? 'active' : '';
     return `
-      <a href="${item.hash}" class="sidebar-nav-link ${isActive}" data-hash="${item.hash}">
-        <svg class="sidebar-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <a href="${item.hash}" class="sidebar-nav-link ${isActive}" data-hash="${item.hash}" role="link" aria-current="${isActive ? 'page' : 'false'}">
+        <svg class="sidebar-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
           <path stroke-linecap="round" stroke-linejoin="round" d="${item.icon}" />
         </svg>
         <span class="sidebar-nav-text">${item.label}</span>
@@ -33,28 +33,28 @@ export function renderShell(state, contentHtml) {
 
   // Global Toasts / Dialogs rendering
   const toastHtml = state.toast 
-    ? `<div class="toast toast-${state.toast.type || 'info'} animate-slide-in">
+    ? `<div class="toast toast-${state.toast.type || 'info'} animate-slide-in" role="alert" aria-live="polite">
         <span class="toast-message">${state.toast.message}</span>
        </div>`
     : '';
 
   const confirmHtml = state.confirmDialog
-    ? `<div class="modal-overlay active">
+    ? `<div class="modal-overlay active" role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title">
         <div class="modal-card animate-zoom-in">
           <div class="modal-header">
-            <h3 class="modal-title">${state.confirmDialog.title}</h3>
+            <h3 class="modal-title" id="confirm-dialog-title">${state.confirmDialog.title}</h3>
           </div>
           <div class="modal-body">
             <p>${state.confirmDialog.body}</p>
             ${state.confirmDialog.requiresInput 
               ? `<div class="form-group" style="margin-top: 1rem;">
-                  <input type="text" id="confirm-input" class="form-control" placeholder="Type '${state.confirmDialog.confirmText}' to confirm..." />
+                  <input type="text" id="confirm-input" class="form-control" placeholder="Type '${state.confirmDialog.confirmText}' to confirm..." aria-label="Confirmation text" />
                  </div>`
               : ''}
           </div>
           <div class="modal-footer">
-            <button class="btn btn-secondary" id="confirm-cancel-btn">Cancel</button>
-            <button class="btn btn-danger" id="confirm-ok-btn" ${state.confirmDialog.requiresInput ? 'disabled' : ''}>
+            <button class="btn btn-secondary" id="confirm-cancel-btn" aria-label="Cancel confirmation">Cancel</button>
+            <button class="btn btn-danger" id="confirm-ok-btn" ${state.confirmDialog.requiresInput ? 'disabled' : ''} aria-label="Confirm action">
               ${state.confirmDialog.loading ? '<span class="spinner"></span>' : 'Confirm'}
             </button>
           </div>
@@ -63,11 +63,12 @@ export function renderShell(state, contentHtml) {
     : '';
 
   return `
+    <a href="#app-content" class="skip-link">Skip to main content</a>
     <div class="app-layout">
       <!-- App Sidebar -->
-      <aside class="app-sidebar" id="app-sidebar">
+      <aside class="app-sidebar" id="app-sidebar" role="navigation" aria-label="Main navigation">
         <div class="sidebar-brand">
-          <svg class="brand-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg class="brand-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
           </svg>
           <div class="brand-details">
@@ -75,7 +76,7 @@ export function renderShell(state, contentHtml) {
             <span class="brand-badge">Local Node</span>
           </div>
         </div>
-        <nav class="sidebar-nav">
+        <nav class="sidebar-nav" aria-label="Pages">
           ${sidebarNavHtml}
         </nav>
       </aside>
@@ -83,34 +84,34 @@ export function renderShell(state, contentHtml) {
       <!-- App Content Wrapper -->
       <div class="app-main">
         <!-- App Top Bar -->
-        <header class="app-topbar">
+        <header class="app-topbar" role="banner">
           <div class="topbar-left">
-            <button class="btn-icon sidebar-toggle-btn" id="sidebar-toggle" aria-label="Toggle Sidebar">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px;">
+            <button class="btn-icon sidebar-toggle-btn" id="sidebar-toggle" aria-label="Toggle Sidebar" title="Toggle navigation">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px;" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
-            <div class="connection-status">
-              <span class="status-indicator online"></span>
-              <span class="connection-url">${state.baseUrl}</span>
+            <div class="connection-status" aria-label="Connection status">
+              <span class="status-indicator online" aria-hidden="true"></span>
+              <span class="connection-url">${escapeHtml(state.baseUrl)}</span>
             </div>
           </div>
           <div class="topbar-right">
-            <span class="refresh-time">Refreshed: ${lastRefreshed}</span>
-            <button class="btn btn-secondary btn-sm btn-icon-label" id="shell-refresh" title="Manual Refresh">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;">
+            <span class="refresh-time" aria-label="Last refresh time">Refreshed: ${lastRefreshed}</span>
+            <button class="btn btn-secondary btn-sm btn-icon-label" id="shell-refresh" title="Manual Refresh" aria-label="Refresh page data">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8H16" />
               </svg>
               <span>Refresh</span>
             </button>
-            <button class="btn btn-secondary btn-sm" id="shell-sign-out">Sign Out</button>
+            <button class="btn btn-secondary btn-sm" id="shell-sign-out" aria-label="Sign out">Sign Out</button>
           </div>
         </header>
 
         <!-- App View Main Content -->
-        <div class="app-content-view">
+        <main class="app-content-view" id="app-content" role="main" aria-label="Main content">
           ${contentHtml}
-        </div>
+        </main>
       </div>
       
       <!-- Global Toasts -->
@@ -120,4 +121,13 @@ export function renderShell(state, contentHtml) {
       ${confirmHtml}
     </div>
   `;
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
