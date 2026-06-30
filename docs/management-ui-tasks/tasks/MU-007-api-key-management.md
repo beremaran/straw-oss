@@ -1,6 +1,6 @@
 # MU-007: API Key List, Creation, Raw-Key Capture, And Revoke
 
-Status: not-started
+Status: done
 Phase: 2
 Depends on: MU-005
 Search tags: `/api-keys`, `raw_key`, revoke, scopes, rate limit override, bulk revoke, copy ID
