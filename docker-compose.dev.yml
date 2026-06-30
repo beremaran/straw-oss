@@ -1,0 +1,74 @@
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: .docker/dev.Dockerfile
+    image: straw:dev
+    volumes:
+      - .:/app:cached
+      - go-mod-cache:/root/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
+      - node-cache:/root/.npm
+      - /var/run/docker.sock:/var/run/docker.sock
+    working_dir: /app
+    environment:
+      - CGO_ENABLED=0
+      - GOFLAGS=-mod=mod
+      - POSTGRES_DSN=postgres://straw:straw@postgres:5432/straw?sslmode=disable
+      - NATS_URL=nats://nats:4222
+      - REDIS_ADDR=redis:6379
+      - HMAC_SECRET=dev-secret-change-me
+      - LOG_LEVEL=debug
+      - LOG_FORMAT=text
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_started
+      redis:
+        condition: service_started
+    ports:
+      - "8080:8080"    # relay HTTP
+      - "8081:8081"    # relay admin
+      - "9090:9090"    # relay metrics
+      - "3000:3000"    # web management dev
+      - "9229:9229"    # node debug
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: straw
+      POSTGRES_PASSWORD: straw
+      POSTGRES_DB: straw
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U straw"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  nats:
+    image: nats:2.10-alpine
+    ports:
+      - "4222:4222"
+    volumes:
+      - nats-data:/data
+    command: ["-js", "-m", "8222"]
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+volumes:
+  go-mod-cache:
+  go-build-cache:
+  node-cache:
+  postgres-data:
+  nats-data:
+  redis-data:

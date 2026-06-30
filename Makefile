@@ -9,7 +9,69 @@ COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_TIME ?= $(shell date -u +'%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date +'%Y-%m-%dT%H:%M:%SZ')
 GO_PACKAGES = $(shell go list -f '{{.Dir}}' ./... | sed 's|^$(CURDIR)|.|' | grep -v '^./web/management/node_modules/')
 
-.PHONY: docker server endpoint web build all test load-test security format lint lint-autofix clean docs docs-serve install-tools web-lint web-format
+# Docker compose dev file (host-side only)
+DC = docker compose -f docker-compose.dev.yml
+
+# Detect if running inside dev container (no docker compose available)
+# Inside the dev container, docker-cli exists but docker compose plugin does not
+ifeq ($(shell command -v docker 2>/dev/null && docker compose version >/dev/null 2>&1; echo $$?),0)
+  DC_RUN = $(DC) run --rm dev
+else
+  DC_RUN =
+endif
+
+.PHONY: dev-up dev-down dev-shell docker server endpoint web build all test load-test security format lint lint-autofix clean docs docs-serve install-tools web-lint web-format dev-build dev-test dev-lint dev-docs
+
+# ── Docker Compose Dev Environment (host-side) ───────────────────────────────
+
+dev-up:
+	$(DC) up -d postgres nats redis
+
+dev-down:
+	$(DC) down
+
+dev-shell:
+	$(DC) run --rm dev sh
+
+# ── Dev Targets (auto-detect host vs container) ──────────────────────────────
+
+dev-build:
+ifeq ($(DC_RUN),)
+	go build -ldflags "-w -s -X main.Version=$(VERSION) -X main.GitCommit=$(COMMIT) -X main.BuildTime=$(BUILD_TIME)" -o bin/relay ./cmd/relay
+	go build -ldflags "-w -s -X main.Version=$(VERSION) -X main.GitCommit=$(COMMIT) -X main.BuildTime=$(BUILD_TIME)" -o bin/endpoint ./cmd/endpoint
+else
+	$(DC_RUN) go build -ldflags "-w -s -X main.Version=$(VERSION) -X main.GitCommit=$(COMMIT) -X main.BuildTime=$(BUILD_TIME)" -o bin/relay ./cmd/relay
+	$(DC_RUN) go build -ldflags "-w -s -X main.Version=$(VERSION) -X main.GitCommit=$(COMMIT) -X main.BuildTime=$(BUILD_TIME)" -o bin/endpoint ./cmd/endpoint
+endif
+
+dev-test:
+ifeq ($(DC_RUN),)
+	go test -race -shuffle=on $(GO_PACKAGES)
+else
+	$(DC_RUN) go test -race -shuffle=on $(GO_PACKAGES)
+endif
+
+dev-lint:
+ifeq ($(DC_RUN),)
+	golangci-lint run --max-issues-per-linter 0 --max-same-issues 0 $(GO_PACKAGES)
+else
+	$(DC_RUN) golangci-lint run --max-issues-per-linter 0 --max-same-issues 0 $(GO_PACKAGES)
+endif
+
+dev-docs:
+ifeq ($(DC_RUN),)
+	npx -y @redocly/cli lint api/openapi.yaml
+	cp api/openapi.yaml docs/openapi.yaml
+	npx -y @redocly/cli build-docs api/openapi.yaml -o docs/api-reference.html
+	uvx --with mkdocs-material mkdocs build --strict
+else
+	$(DC_RUN) npx -y @redocly/cli lint api/openapi.yaml
+	$(DC_RUN) cp api/openapi.yaml docs/openapi.yaml
+	$(DC_RUN) npx -y @redocly/cli build-docs api/openapi.yaml -o docs/api-reference.html
+	$(DC_RUN) uvx --with mkdocs-material mkdocs build --strict
+endif
+
+# ── Local Docker Builds (Production) ─────────────────────────────────────────
 
 docker:
 	# Build base image

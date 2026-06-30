@@ -97,6 +97,25 @@ curl -X POST http://localhost:8080/v1/request \
 
 ---
 
+
+---
+
+## 🐳 Development Environment
+
+All development runs inside a **fully dockerized** environment — no local Go, Node.js, Python, or tooling installation required.
+
+```bash
+./scripts/dev.sh up          # Start infra + dev shell
+./scripts/dev.sh shell       # Open interactive dev shell
+./scripts/dev.sh test        # Run tests in container
+./scripts/dev.sh lint        # Run linter in container
+./scripts/dev.sh build       # Build binaries in container
+```
+
+All `make dev-*` targets (build, test, lint, docs) auto-detect whether you're on the host or inside the container and execute accordingly.
+
+See [Getting Started → Dockerized Development Environment](docs/getting-started.md#-fully-dockerized-development-environment) for full details.
+
 ## 🔌 Building Custom Workers (Go SDK)
 
 Straw Proxy exports its message protocol and worker interfaces as a modular Go SDK. You can compile your own custom workers integrating commercial residential proxy pools, rotators, or custom TLS spoofing:

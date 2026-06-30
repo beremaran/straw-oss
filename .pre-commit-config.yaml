@@ -2,29 +2,32 @@ repos:
   - repo: local
     hooks:
       - id: make-build
-        name: make build
-        entry: make build
+        name: make build (docker)
+        entry: docker compose -f docker-compose.dev.yml run --rm dev make dev-build
         language: system
         types: [file]
         files: '\.go$'
         pass_filenames: false
+        require_serial: true
       - id: make-test
-        name: make test
-        entry: make test
+        name: make test (docker)
+        entry: docker compose -f docker-compose.dev.yml run --rm dev make dev-test
         language: system
         types: [file]
         files: '\.go$'
         pass_filenames: false
+        require_serial: true
       - id: make-lint
-        name: make lint
-        entry: make lint
+        name: make lint (docker)
+        entry: docker compose -f docker-compose.dev.yml run --rm dev make dev-lint
         language: system
         types: [file]
         files: '\.go$'
         pass_filenames: false
+        require_serial: true
       - id: frontend-lint
-        name: frontend lint
-        entry: cd web/management && yarn lint
+        name: frontend lint (docker)
+        entry: docker compose -f docker-compose.dev.yml run --rm dev make web-lint
         language: system
         types_or: [javascript, jsx, tsx]
         files: '^web/management/src/'

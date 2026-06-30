@@ -5,8 +5,6 @@
 # Go
 vendor/
 /bin/
-# Ignore all binaries (only if they are files, but dockerignore uses glob)
-# Better to ignore them by specific paths if they are known to be built in root
 /relay
 /relay-server
 /endpoint
@@ -35,7 +33,7 @@ coverage.out
 /test_run.log
 /test_run_v2.log
 
-# Docker
+# Docker (host-only configs, not needed in container)
 docker-compose*.yml
 Dockerfile*
 .dockerignore
@@ -46,14 +44,12 @@ Dockerfile*
 /coverage/
 /repomix-output.xml
 
-# Project specific (not needed for binary build)
-/scripts/
-/test/
-/deploy/
-/.github/
-/Makefile
-/README.md
-/LICENSE
-/CONTRIBUTING.md
-/mkdocs.yml
-/migrations/
+# Docs output (generated)
+/site/
+/docs/api-reference.html
+/docs/openapi.yaml
+/client/
+
+# Pre-built binaries
+bin/
+MAKEFILE
