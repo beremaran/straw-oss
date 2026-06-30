@@ -24,7 +24,7 @@ repos:
         pass_filenames: false
       - id: frontend-lint
         name: frontend lint
-        entry: cd web/management && npm run lint
+        entry: cd web/management && yarn lint
         language: system
         types_or: [javascript, jsx, tsx]
         files: '^web/management/src/'
