@@ -1,6 +1,6 @@
 # Management UI Task Index
 
-Status: planning backlog
+Status: all tasks completed
 
 Source spec: `docs/management-ui-spec.md`
 
@@ -34,13 +34,13 @@ Update `tracker.md` when work starts, lands, or is blocked. Keep task files focu
 | [MU-009](tasks/MU-009-routing-rule-editor.md) | 2 | done | Routing rule create, edit, duplicate, and version-conflict handling | MU-008 | routing rule form, `CreateRoutingRuleRequest`, `UpdateRoutingRuleRequest`, version |
 | [MU-010](tasks/MU-010-endpoint-management.md) | 2 | done | Endpoint list, stale-state handling, and drain workflow | MU-005 | `/endpoints`, drain, health TTL, tags, active tasks |
 | [MU-011](tasks/MU-011-fingerprint-presets.md) | 2 | done | Fingerprint preset list, JSON editor, upsert, duplicate, and broadcast | MU-005 | `/fingerprints`, JSON config, upsert, broadcast, NATS |
-| [MU-012](tasks/MU-012-usage-billing.md) | 3 | not-started | Usage summary, billing estimate, filters, charts, and CSV export | MU-005, MU-007 | `/usage`, billing estimate, date range, CSV, charts |
-| [MU-013](tasks/MU-013-cache-controls.md) | 3 | not-started | Cache stats, Redis info viewer, and pattern clear workflow | MU-005 | `/cache`, Redis, INFO, clear pattern, CLEAR ALL |
-| [MU-014](tasks/MU-014-system-diagnostics.md) | 3 | not-started | System diagnostics, capability detection, and backend gap display | MU-004 | `/system`, healthz, capabilities, backend gaps, docs links |
-| [MU-015](tasks/MU-015-accessibility-responsive-visual.md) | 4 | not-started | Accessibility, responsive behavior, and visual design pass | MU-006 through MU-014 | accessibility, responsive, mobile cards, keyboard, charts |
-| [MU-016](tasks/MU-016-tests-mocked-api.md) | 4 | not-started | Tests, mocked Management API coverage, and route regression checks | MU-002 through MU-014 | tests, mocked API, e2e, route coverage, error states |
-| [MU-017](tasks/MU-017-docs-operator-handoff.md) | 4 | not-started | Operator documentation and implementation handoff | MU-001 through MU-014 | docs, runbook, backend gaps, unsupported actions |
-| [MU-018](tasks/MU-018-final-acceptance.md) | cross-cutting | not-started | Final first-release acceptance pass | MU-015, MU-016, MU-017 | acceptance checklist, route coverage, unsupported backend actions |
+| [MU-012](tasks/MU-012-usage-billing.md) | 3 | done | Usage summary, billing estimate, filters, charts, and CSV export | MU-005, MU-007 | `/usage`, billing estimate, date range, CSV, charts |
+| [MU-013](tasks/MU-013-cache-controls.md) | 3 | done | Cache stats, Redis info viewer, and pattern clear workflow | MU-005 | `/cache`, Redis, INFO, clear pattern, CLEAR ALL |
+| [MU-014](tasks/MU-014-system-diagnostics.md) | 3 | done | System diagnostics, capability detection, and backend gap display | MU-004 | `/system`, healthz, capabilities, backend gaps, docs links |
+| [MU-015](tasks/MU-015-accessibility-responsive-visual.md) | 4 | done | Accessibility, responsive behavior, and visual design pass | MU-006 through MU-014 | accessibility, responsive, mobile cards, keyboard, charts |
+| [MU-016](tasks/MU-016-tests-mocked-api.md) | 4 | done | Tests, mocked Management API coverage, and route regression checks | MU-002 through MU-014 | tests, mocked API, e2e, route coverage, error states |
+| [MU-017](tasks/MU-017-docs-operator-handoff.md) | 4 | done | Operator documentation and implementation handoff | MU-001 through MU-014 | docs, runbook, backend gaps, unsupported actions |
+| [MU-018](tasks/MU-018-final-acceptance.md) | cross-cutting | done | Final first-release acceptance pass | MU-015, MU-016, MU-017 | acceptance checklist, route coverage, unsupported backend actions |
 
 ## Coverage Map
 
