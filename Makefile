@@ -8,7 +8,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "lat
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_TIME ?= $(shell date -u +'%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date +'%Y-%m-%dT%H:%M:%SZ')
 
-.PHONY: docker server endpoint build all test load-test security format lint lint-autofix clean docs docs-serve install-tools
+.PHONY: docker server endpoint web build all test load-test security format lint lint-autofix clean docs docs-serve install-tools
 
 docker:
 	# Build base image
@@ -44,6 +44,16 @@ docker:
 	docker tag $(OWNER)/$(REPO):endpoint $(REGISTRY)/$(OWNER)/$(REPO):endpoint
 	docker tag $(OWNER)/$(REPO):endpoint $(REGISTRY)/$(OWNER)/$(REPO)/endpoint:$(VERSION)
 	docker tag $(OWNER)/$(REPO):endpoint $(REGISTRY)/$(OWNER)/$(REPO)/endpoint:latest
+
+	# Build web image
+	docker build \
+		--build-arg VERSION=$(VERSION) \
+		-t $(OWNER)/$(REPO):web \
+		-f web/management/Dockerfile web/management
+	# Tag web image for local and GHCR formats
+	docker tag $(OWNER)/$(REPO):web $(REGISTRY)/$(OWNER)/$(REPO):web
+	docker tag $(OWNER)/$(REPO):web $(REGISTRY)/$(OWNER)/$(REPO)/web:$(VERSION)
+	docker tag $(OWNER)/$(REPO):web $(REGISTRY)/$(OWNER)/$(REPO)/web:latest
 
 
 server:
