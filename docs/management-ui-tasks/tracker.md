@@ -28,7 +28,7 @@ Status values: `not-started`, `in-progress`, `blocked`, `done`.
 | Done | ID | Status | Task |
 | --- | --- | --- | --- |
 | [x] | [MU-006](tasks/MU-006-overview-dashboard.md) | done | Overview dashboard and operational attention panels |
-| [ ] | [MU-007](tasks/MU-007-api-key-management.md) | not-started | API key list, creation, raw-key capture, and revoke |
+| [x] | [MU-007](tasks/MU-007-api-key-management.md) | done | API key list, creation, raw-key capture, and revoke |
 | [ ] | [MU-008](tasks/MU-008-routing-rule-list-detail.md) | not-started | Routing rule list, detail view, filters, and attention indicators |
 | [ ] | [MU-009](tasks/MU-009-routing-rule-editor.md) | not-started | Routing rule create, edit, duplicate, and version-conflict handling |
 | [ ] | [MU-010](tasks/MU-010-endpoint-management.md) | not-started | Endpoint list, stale-state handling, and drain workflow |
