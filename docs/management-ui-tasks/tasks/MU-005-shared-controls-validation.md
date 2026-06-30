@@ -1,6 +1,6 @@
 # MU-005: Shared Controls, Validation, And Mutation Workflows
 
-Status: not-started
+Status: done
 Phase: 1
 Depends on: MU-004
 Search tags: validation, tags, scopes, durations, dates, JSON, confirmation dialogs, partial failure, toasts
