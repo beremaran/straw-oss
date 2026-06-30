@@ -11,7 +11,7 @@ Status values: `not-started`, `in-progress`, `blocked`, `done`.
 | Current task | none |
 | Current owner | unassigned |
 | Last updated | 2026-06-30 |
-| Notes | All tasks completed. First release ready for acceptance pass. |
+| Notes | All tasks completed. First release ready. |
 
 ## Phase 1: UI Foundation
 
@@ -54,7 +54,7 @@ Status values: `not-started`, `in-progress`, `blocked`, `done`.
 
 | Done | ID | Status | Task |
 | --- | --- | --- | --- |
-| [ ] | [MU-018](tasks/MU-018-final-acceptance.md) | not-started | Final first-release acceptance pass |
+| [x] | [MU-018](tasks/MU-018-final-acceptance.md) | done | Final first-release acceptance pass |
 
 ## Blocked Items
 
