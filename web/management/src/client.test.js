@@ -1,23 +1,23 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { apiRequest, ApiError, listApiKeys, healthCheck } from './client.js';
-import { state } from './state.js';
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { ApiError, listApiKeys, healthCheck } from './client.js'
+import { state } from './state.js'
 
 describe('API Client', () => {
   beforeEach(() => {
-    state.baseUrl = 'http://localhost:8081';
-    state.token = 'test-token';
-    vi.stubGlobal('fetch', vi.fn());
-  });
+    state.baseUrl = 'http://localhost:8081'
+    state.token = 'test-token'
+    vi.stubGlobal('fetch', vi.fn())
+  })
 
   it('does not send authorization header to /healthz', async () => {
     global.fetch.mockResolvedValueOnce({
       ok: true,
       headers: { get: () => 'text/plain' },
       text: async () => 'OK'
-    });
+    })
 
-    await healthCheck();
-    
+    await healthCheck()
+
     expect(global.fetch).toHaveBeenCalledWith(
       'http://localhost:8081/healthz',
       expect.objectContaining({
@@ -25,17 +25,17 @@ describe('API Client', () => {
           Authorization: expect.any(String)
         })
       })
-    );
-  });
+    )
+  })
 
   it('sends authorization header to /management/*', async () => {
     global.fetch.mockResolvedValueOnce({
       ok: true,
       headers: { get: () => 'application/json' },
       json: async () => ({ keys: [] })
-    });
+    })
 
-    await listApiKeys();
+    await listApiKeys()
 
     expect(global.fetch).toHaveBeenCalledWith(
       'http://localhost:8081/management/api-keys?page=1&limit=20',
@@ -44,8 +44,8 @@ describe('API Client', () => {
           Authorization: 'Bearer test-token'
         })
       })
-    );
-  });
+    )
+  })
 
   it('normalizes error payloads', async () => {
     global.fetch.mockResolvedValueOnce({
@@ -53,18 +53,22 @@ describe('API Client', () => {
       status: 400,
       statusText: 'Bad Request',
       headers: { get: () => 'application/json' },
-      json: async () => ({ error: 'invalid name', code: 'INVALID_INPUT', details: ['name must be trimmed'] })
-    });
+      json: async () => ({
+        error: 'invalid name',
+        code: 'INVALID_INPUT',
+        details: ['name must be trimmed']
+      })
+    })
 
     try {
-      await listApiKeys();
-      expect.fail('should have thrown ApiError');
+      await listApiKeys()
+      expect.fail('should have thrown ApiError')
     } catch (err) {
-      expect(err).toBeInstanceOf(ApiError);
-      expect(err.message).toBe('invalid name');
-      expect(err.status).toBe(400);
-      expect(err.code).toBe('INVALID_INPUT');
-      expect(err.details).toEqual(['name must be trimmed']);
+      expect(err).toBeInstanceOf(ApiError)
+      expect(err.message).toBe('invalid name')
+      expect(err.status).toBe(400)
+      expect(err.code).toBe('INVALID_INPUT')
+      expect(err.details).toEqual(['name must be trimmed'])
     }
-  });
-});
+  })
+})

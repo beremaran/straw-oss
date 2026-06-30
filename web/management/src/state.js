@@ -1,6 +1,6 @@
 // Straw Management UI Global State Store
 
-const subscribers = [];
+const subscribers = []
 
 export const state = {
   baseUrl: localStorage.getItem('straw_baseUrl') || 'http://localhost:8081',
@@ -20,28 +20,28 @@ export const state = {
   usageData: null,
   cacheData: null,
   systemData: null
-};
+}
 
 export function setState(changes) {
-  Object.assign(state, changes);
-  subscribers.forEach(cb => cb(state));
+  Object.assign(state, changes)
+  subscribers.forEach((cb) => cb(state))
 }
 
 export function subscribe(cb) {
-  subscribers.push(cb);
+  subscribers.push(cb)
   return () => {
-    const idx = subscribers.indexOf(cb);
-    if (idx !== -1) subscribers.splice(idx, 1);
-  };
+    const idx = subscribers.indexOf(cb)
+    if (idx !== -1) subscribers.splice(idx, 1)
+  }
 }
 
 export function showToast(message, type = 'success') {
-  setState({ toast: { message, type } });
+  setState({ toast: { message, type } })
   setTimeout(() => {
     if (state.toast && state.toast.message === message) {
-      setState({ toast: null });
+      setState({ toast: null })
     }
-  }, 4000);
+  }, 4000)
 }
 
 export function showConfirm(options) {
@@ -51,11 +51,11 @@ export function showConfirm(options) {
       inputVal: '',
       loading: false
     }
-  });
+  })
 }
 
 export function closeConfirm() {
-  setState({ confirmDialog: null });
+  setState({ confirmDialog: null })
 }
 
 export function clearSession() {
@@ -69,12 +69,12 @@ export function clearSession() {
     usageData: null,
     cacheData: null,
     systemData: null
-  });
+  })
   if (state.remember) {
-    localStorage.removeItem('straw_token');
+    localStorage.removeItem('straw_token')
   } else {
-    localStorage.removeItem('straw_token');
-    localStorage.removeItem('straw_baseUrl');
-    localStorage.removeItem('straw_remember');
+    localStorage.removeItem('straw_token')
+    localStorage.removeItem('straw_baseUrl')
+    localStorage.removeItem('straw_remember')
   }
 }

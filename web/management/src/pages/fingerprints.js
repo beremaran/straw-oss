@@ -1,53 +1,51 @@
 // Fingerprint Presets Management Page
 
-import { state, setState, showToast, showConfirm } from '../state.js';
-import { 
-  listFingerprints, 
-  createFingerprint, 
-  broadcastFingerprints, 
-  listRoutingRules, 
-  ApiError 
-} from '../client.js';
-import { validateJsonObject } from '../validation.js';
+import { setState, showToast, showConfirm } from '../state.js'
+import {
+  listFingerprints,
+  createFingerprint,
+  broadcastFingerprints,
+  listRoutingRules
+} from '../client.js'
+import { validateJsonObject } from '../validation.js'
 
 export const FingerprintsPage = {
   render(state) {
-    const presets = state.fingerprintsData || [];
-    const rules = state.rulesData || [];
-    const isLoading = state.fingerprintsLoading;
-    const error = state.fingerprintsError;
+    const presets = state.fingerprintsData || []
+    const rules = state.rulesData || []
 
     // Build map of preset usage in rules
-    const usageCounts = {};
-    rules.forEach(r => {
+    const usageCounts = {}
+    rules.forEach((r) => {
       if (r.fingerprint_preset) {
-        usageCounts[r.fingerprint_preset] = (usageCounts[r.fingerprint_preset] || 0) + 1;
+        usageCounts[r.fingerprint_preset] = (usageCounts[r.fingerprint_preset] || 0) + 1
       }
       if (r.fingerprint_ab_test && r.fingerprint_ab_test.variants) {
-        r.fingerprint_ab_test.variants.forEach(v => {
+        r.fingerprint_ab_test.variants.forEach((v) => {
           if (v.preset_id) {
-            usageCounts[v.preset_id] = (usageCounts[v.preset_id] || 0) + 1;
+            usageCounts[v.preset_id] = (usageCounts[v.preset_id] || 0) + 1
           }
-        });
+        })
       }
-    });
+    })
 
-    const rowsHtml = presets.map(p => {
-      const config = p.config || {};
-      const userAgent = config.user_agent || config.UserAgent || 'N/A';
-      
-      // Infer browser family
-      let browserFamily = 'Unknown';
-      const uaLower = userAgent.toLowerCase();
-      if (uaLower.includes('firefox')) browserFamily = 'Firefox';
-      else if (uaLower.includes('chrome')) browserFamily = 'Chrome';
-      else if (uaLower.includes('safari')) browserFamily = 'Safari';
-      else if (uaLower.includes('edge')) browserFamily = 'Edge';
+    const rowsHtml = presets
+      .map((p) => {
+        const config = p.config || {}
+        const userAgent = config.user_agent || config.UserAgent || 'N/A'
 
-      const usageCount = usageCounts[p.id] || 0;
-      const updatedStr = p.updated_at ? new Date(p.updated_at).toLocaleDateString() : 'N/A';
+        // Infer browser family
+        let browserFamily = 'Unknown'
+        const uaLower = userAgent.toLowerCase()
+        if (uaLower.includes('firefox')) browserFamily = 'Firefox'
+        else if (uaLower.includes('chrome')) browserFamily = 'Chrome'
+        else if (uaLower.includes('safari')) browserFamily = 'Safari'
+        else if (uaLower.includes('edge')) browserFamily = 'Edge'
 
-      return `
+        const usageCount = usageCounts[p.id] || 0
+        const updatedStr = p.updated_at ? new Date(p.updated_at).toLocaleDateString() : 'N/A'
+
+        return `
         <tr>
           <td><code class="symbol-link">${p.id}</code></td>
           <td><strong class="font-medium">${p.name || p.id}</strong></td>
@@ -67,20 +65,24 @@ export const FingerprintsPage = {
             </div>
           </td>
         </tr>
-      `;
-    }).join('');
+      `
+      })
+      .join('')
 
-    const noPresetsHtml = presets.length === 0 
-      ? `<tr><td colspan="7" class="table-empty">No fingerprint presets registered. Create one below.</td></tr>` 
-      : '';
+    const noPresetsHtml =
+      presets.length === 0
+        ? `<tr><td colspan="7" class="table-empty">No fingerprint presets registered. Create one below.</td></tr>`
+        : ''
 
     // Create/Edit Modal
-    const modalShow = state.fingerprintsShowModal;
-    const modalIsEdit = state.fingerprintsModalIsEdit;
-    const modalRule = state.fingerprintsModalRule || {};
-    const modalTitle = modalIsEdit 
-      ? 'Edit Fingerprint Preset' 
-      : (state.fingerprintsModalIsDuplicate ? 'Duplicate Fingerprint Preset' : 'Create Fingerprint Preset');
+    const modalShow = state.fingerprintsShowModal
+    const modalIsEdit = state.fingerprintsModalIsEdit
+    const modalRule = state.fingerprintsModalRule || {}
+    const modalTitle = modalIsEdit
+      ? 'Edit Fingerprint Preset'
+      : state.fingerprintsModalIsDuplicate
+        ? 'Duplicate Fingerprint Preset'
+        : 'Create Fingerprint Preset'
 
     const modalHtml = modalShow
       ? `<div class="modal-overlay active">
@@ -116,7 +118,7 @@ export const FingerprintsPage = {
             </form>
           </div>
          </div>`
-      : '';
+      : ''
 
     return `
       <div class="page-header">
@@ -177,43 +179,43 @@ export const FingerprintsPage = {
 
       <!-- Modal -->
       ${modalHtml}
-    `;
+    `
   },
 
-  async refresh(state) {
-    setState({ fingerprintsLoading: true, fingerprintsError: null });
+  async refresh(_) {
+    setState({ fingerprintsLoading: true, fingerprintsError: null })
     try {
-      const presets = await listFingerprints();
-      const rules = await listRoutingRules({ limit: 100 }).catch(() => []);
-      setState({ 
-        fingerprintsData: presets, 
+      const presets = await listFingerprints()
+      const rules = await listRoutingRules({ limit: 100 }).catch(() => [])
+      setState({
+        fingerprintsData: presets,
         rulesData: rules,
-        fingerprintsLoading: false 
-      });
+        fingerprintsLoading: false
+      })
     } catch (err) {
-      setState({ fingerprintsLoading: false, fingerprintsError: err.message });
-      showToast(`Failed to load presets: ${err.message}`, 'error');
+      setState({ fingerprintsLoading: false, fingerprintsError: err.message })
+      showToast(`Failed to load presets: ${err.message}`, 'error')
     }
   },
 
   afterRender(state) {
     if (!state.fingerprintsData && !state.fingerprintsLoading) {
-      this.refresh(state);
-      return;
+      this.refresh(state)
+      return
     }
 
     // Copy JSON config trigger
-    const copyBtns = document.querySelectorAll('.btn-copy-preset-json');
-    copyBtns.forEach(btn => {
+    const copyBtns = document.querySelectorAll('.btn-copy-preset-json')
+    copyBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
-        const configStr = decodeURIComponent(btn.getAttribute('data-config'));
-        navigator.clipboard.writeText(configStr);
-        showToast('Preset config JSON copied', 'success');
-      });
-    });
+        const configStr = decodeURIComponent(btn.getAttribute('data-config'))
+        navigator.clipboard.writeText(configStr)
+        showToast('Preset config JSON copied', 'success')
+      })
+    })
 
     // Create Preset trigger
-    const createBtn = document.getElementById('btn-create-preset');
+    const createBtn = document.getElementById('btn-create-preset')
     if (createBtn) {
       createBtn.addEventListener('click', () => {
         setState({
@@ -221,33 +223,33 @@ export const FingerprintsPage = {
           fingerprintsModalIsEdit: false,
           fingerprintsModalIsDuplicate: false,
           fingerprintsModalRule: { config: {} }
-        });
-      });
+        })
+      })
     }
 
     // Edit Preset trigger
-    const editBtns = document.querySelectorAll('.btn-edit-preset');
-    editBtns.forEach(btn => {
+    const editBtns = document.querySelectorAll('.btn-edit-preset')
+    editBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
-        const id = btn.getAttribute('data-id');
-        const preset = state.fingerprintsData.find(p => p.id === id);
+        const id = btn.getAttribute('data-id')
+        const preset = state.fingerprintsData.find((p) => p.id === id)
         if (preset) {
           setState({
             fingerprintsShowModal: true,
             fingerprintsModalIsEdit: true,
             fingerprintsModalIsDuplicate: false,
             fingerprintsModalRule: { ...preset }
-          });
+          })
         }
-      });
-    });
+      })
+    })
 
     // Duplicate Preset trigger
-    const duplicateBtns = document.querySelectorAll('.btn-duplicate-preset');
-    duplicateBtns.forEach(btn => {
+    const duplicateBtns = document.querySelectorAll('.btn-duplicate-preset')
+    duplicateBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
-        const id = btn.getAttribute('data-id');
-        const preset = state.fingerprintsData.find(p => p.id === id);
+        const id = btn.getAttribute('data-id')
+        const preset = state.fingerprintsData.find((p) => p.id === id)
         if (preset) {
           setState({
             fingerprintsShowModal: true,
@@ -258,13 +260,13 @@ export const FingerprintsPage = {
               name: `${preset.name || preset.id} Copy`,
               config: JSON.parse(JSON.stringify(preset.config || {}))
             }
-          });
+          })
         }
-      });
-    });
+      })
+    })
 
     // Broadcast Presets trigger
-    const broadcastBtn = document.getElementById('btn-broadcast-presets');
+    const broadcastBtn = document.getElementById('btn-broadcast-presets')
     if (broadcastBtn) {
       broadcastBtn.addEventListener('click', () => {
         showConfirm({
@@ -273,81 +275,82 @@ export const FingerprintsPage = {
           confirmText: 'confirm',
           callback: async () => {
             try {
-              await broadcastFingerprints();
-              showToast('Broadcast requested successfully', 'success');
+              await broadcastFingerprints()
+              showToast('Broadcast requested successfully', 'success')
             } catch (err) {
-              showToast(`Failed to broadcast: ${err.message}`, 'error');
+              showToast(`Failed to broadcast: ${err.message}`, 'error')
             }
           }
-        });
-      });
+        })
+      })
     }
 
     // Modal forms event bindings
     if (state.fingerprintsShowModal) {
-      const cancelBtn = document.getElementById('btn-preset-cancel');
+      const cancelBtn = document.getElementById('btn-preset-cancel')
       if (cancelBtn) {
         cancelBtn.addEventListener('click', () => {
-          setState({ fingerprintsShowModal: false });
-        });
+          setState({ fingerprintsShowModal: false })
+        })
       }
 
-      const form = document.getElementById('preset-form');
+      const form = document.getElementById('preset-form')
       if (form) {
         form.addEventListener('submit', async (e) => {
-          e.preventDefault();
-          
-          const idInput = document.getElementById('preset-id');
-          const nameInput = document.getElementById('preset-name');
-          const configInput = document.getElementById('preset-config');
+          e.preventDefault()
 
-          const idErr = document.getElementById('preset-id-error');
-          const nameErr = document.getElementById('preset-name-error');
-          const configErr = document.getElementById('preset-config-error');
+          const idInput = document.getElementById('preset-id')
+          const nameInput = document.getElementById('preset-name')
+          const configInput = document.getElementById('preset-config')
 
-          idErr.textContent = '';
-          nameErr.textContent = '';
-          configErr.textContent = '';
-          idInput.classList.remove('is-invalid');
-          nameInput.classList.remove('is-invalid');
-          configInput.classList.remove('is-invalid');
+          const idErr = document.getElementById('preset-id-error')
+          const nameErr = document.getElementById('preset-name-error')
+          const configErr = document.getElementById('preset-config-error')
 
-          let isValid = true;
-          const idVal = idInput.value.trim();
-          const nameVal = nameInput.value.trim();
-          const configVal = configInput.value.trim();
+          idErr.textContent = ''
+          nameErr.textContent = ''
+          configErr.textContent = ''
+          idInput.classList.remove('is-invalid')
+          nameInput.classList.remove('is-invalid')
+          configInput.classList.remove('is-invalid')
+
+          let isValid = true
+          const idVal = idInput.value.trim()
+          const nameVal = nameInput.value.trim()
+          const configVal = configInput.value.trim()
 
           if (!state.fingerprintsModalIsEdit) {
             if (!idVal) {
-              idErr.textContent = 'Preset ID is required.';
-              idInput.classList.add('is-invalid');
-              isValid = false;
+              idErr.textContent = 'Preset ID is required.'
+              idInput.classList.add('is-invalid')
+              isValid = false
             } else if (!/^[a-z0-9-_]+$/.test(idVal)) {
-              idErr.textContent = 'Preset ID must be alphanumeric and slug format (only lowercase, numbers, dashes, underscores).';
-              idInput.classList.add('is-invalid');
-              isValid = false;
+              idErr.textContent =
+                'Preset ID must be alphanumeric and slug format (only lowercase, numbers, dashes, underscores).'
+              idInput.classList.add('is-invalid')
+              isValid = false
             }
           }
 
           if (!nameVal) {
-            nameErr.textContent = 'Preset Name is required.';
-            nameInput.classList.add('is-invalid');
-            isValid = false;
+            nameErr.textContent = 'Preset Name is required.'
+            nameInput.classList.add('is-invalid')
+            isValid = false
           }
 
-          let parsedConfig = null;
+          let parsedConfig = null
           try {
-            parsedConfig = validateJsonObject(configVal);
+            parsedConfig = validateJsonObject(configVal)
           } catch (err) {
-            configErr.textContent = err.message;
-            configInput.classList.add('is-invalid');
-            isValid = false;
+            configErr.textContent = err.message
+            configInput.classList.add('is-invalid')
+            isValid = false
           }
 
           if (!isValid) {
-            const firstInvalid = form.querySelector('.is-invalid');
-            if (firstInvalid) firstInvalid.focus();
-            return;
+            const firstInvalid = form.querySelector('.is-invalid')
+            if (firstInvalid) firstInvalid.focus()
+            return
           }
 
           try {
@@ -355,16 +358,16 @@ export const FingerprintsPage = {
               id: state.fingerprintsModalIsEdit ? state.fingerprintsModalRule.id : idVal,
               name: nameVal,
               config: parsedConfig
-            });
+            })
 
-            showToast('Preset saved successfully', 'success');
-            setState({ fingerprintsShowModal: false });
-            this.refresh(state);
+            showToast('Preset saved successfully', 'success')
+            setState({ fingerprintsShowModal: false })
+            this.refresh(state)
           } catch (err) {
-            showToast(`Failed to save preset: ${err.message}`, 'error');
+            showToast(`Failed to save preset: ${err.message}`, 'error')
           }
-        });
+        })
       }
     }
   }
-};
+}

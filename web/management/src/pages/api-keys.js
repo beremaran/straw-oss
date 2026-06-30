@@ -1,66 +1,81 @@
 // API Key Management Page
 
-import { state, setState, showToast, showConfirm } from '../state.js';
-import { listApiKeys, createApiKey, revokeApiKey, listEndpoints, listRoutingRules, ApiError } from '../client.js';
-import { parseTag, validateScope, validatePositiveInteger } from '../validation.js';
+import { setState, showToast, showConfirm } from '../state.js'
+import {
+  listApiKeys,
+  createApiKey,
+  revokeApiKey,
+  listEndpoints,
+  listRoutingRules,
+  ApiError
+} from '../client.js'
+import { validateScope, validatePositiveInteger } from '../validation.js'
 
 export const ApiKeysPage = {
   render(state) {
-    const data = state.apiKeysData || { keys: [] };
-    const keys = data.keys || [];
-    const isLoading = state.apiKeysLoading;
-    const error = state.apiKeysError;
+    const data = state.apiKeysData || { keys: [] }
+    const keys = data.keys || []
 
     // Filters from state
-    const filterStatus = state.apiKeysFilterStatus || 'all';
-    const filterScope = (state.apiKeysFilterScope || '').trim().toLowerCase();
-    const filterSearch = (state.apiKeysFilterSearch || '').trim().toLowerCase();
+    const filterStatus = state.apiKeysFilterStatus || 'all'
+    const filterScope = (state.apiKeysFilterScope || '').trim().toLowerCase()
+    const filterSearch = (state.apiKeysFilterSearch || '').trim().toLowerCase()
 
     // Client-side filtering
-    const filteredKeys = keys.filter(k => {
+    const filteredKeys = keys.filter((k) => {
       // 1. Status
-      if (filterStatus === 'active' && !k.is_active) return false;
-      if (filterStatus === 'revoked' && k.is_active) return false;
-      
+      if (filterStatus === 'active' && !k.is_active) return false
+      if (filterStatus === 'revoked' && k.is_active) return false
+
       // 2. Scope search
       if (filterScope) {
-        const scopes = k.scopes || [];
-        const hasMatch = scopes.some(s => s.toLowerCase().includes(filterScope));
-        if (!hasMatch) return false;
+        const scopes = k.scopes || []
+        const hasMatch = scopes.some((s) => s.toLowerCase().includes(filterScope))
+        if (!hasMatch) return false
       }
 
       // 3. Name or ID search
       if (filterSearch) {
-        const nameMatch = (k.name || '').toLowerCase().includes(filterSearch);
-        const idMatch = (k.id || '').toLowerCase().includes(filterSearch);
-        if (!nameMatch && !idMatch) return false;
+        const nameMatch = (k.name || '').toLowerCase().includes(filterSearch)
+        const idMatch = (k.id || '').toLowerCase().includes(filterSearch)
+        if (!nameMatch && !idMatch) return false
       }
 
-      return true;
-    });
+      return true
+    })
 
-    const isBulkSelected = state.apiKeysBulkSelected || [];
-    const isAllSelected = filteredKeys.length > 0 && filteredKeys.every(k => k.is_active && isBulkSelected.includes(k.id));
+    const isBulkSelected = state.apiKeysBulkSelected || []
+    const isAllSelected =
+      filteredKeys.length > 0 &&
+      filteredKeys.every((k) => k.is_active && isBulkSelected.includes(k.id))
 
     // Render Table rows
-    const rowsHtml = filteredKeys.map(k => {
-      const isSelected = isBulkSelected.includes(k.id);
-      const rowChecked = isSelected ? 'checked' : '';
-      const scopesHtml = (k.scopes || []).map(s => `<span class="badge badge-secondary badge-sm">${s}</span>`).join(' ');
-      const rateLimitHtml = k.rate_limit_override ? `<strong>${k.rate_limit_override}</strong>/m` : '<span class="text-muted">None</span>';
-      
-      const createdStr = k.created_at ? new Date(k.created_at).toLocaleDateString() : 'N/A';
-      const expiresStr = k.expires_at ? new Date(k.expires_at).toLocaleDateString() : '<span class="text-muted">Never</span>';
-      const statusBadge = k.is_active 
-        ? `<span class="badge badge-success">Active</span>`
-        : `<span class="badge badge-danger">Revoked</span>`;
+    const rowsHtml = filteredKeys
+      .map((k) => {
+        const isSelected = isBulkSelected.includes(k.id)
+        const rowChecked = isSelected ? 'checked' : ''
+        const scopesHtml = (k.scopes || [])
+          .map((s) => `<span class="badge badge-secondary badge-sm">${s}</span>`)
+          .join(' ')
+        const rateLimitHtml = k.rate_limit_override
+          ? `<strong>${k.rate_limit_override}</strong>/m`
+          : '<span class="text-muted">None</span>'
 
-      return `
+        const createdStr = k.created_at ? new Date(k.created_at).toLocaleDateString() : 'N/A'
+        const expiresStr = k.expires_at
+          ? new Date(k.expires_at).toLocaleDateString()
+          : '<span class="text-muted">Never</span>'
+        const statusBadge = k.is_active
+          ? `<span class="badge badge-success">Active</span>`
+          : `<span class="badge badge-danger">Revoked</span>`
+
+        return `
         <tr class="${k.is_active ? '' : 'row-disabled'}">
           <td>
-            ${k.is_active 
-              ? `<input type="checkbox" class="key-select-check" data-id="${k.id}" ${rowChecked} />`
-              : `<input type="checkbox" disabled />`
+            ${
+              k.is_active
+                ? `<input type="checkbox" class="key-select-check" data-id="${k.id}" ${rowChecked} />`
+                : `<input type="checkbox" disabled />`
             }
           </td>
           <td>
@@ -82,24 +97,31 @@ export const ApiKeysPage = {
           <td>${createdStr}</td>
           <td>${expiresStr}</td>
           <td style="text-align: right;">
-            ${k.is_active 
-              ? `<button class="btn btn-secondary btn-xs btn-danger btn-revoke-key" data-id="${k.id}" data-name="${k.name}">Revoke</button>`
-              : `<span class="text-muted" style="font-size: 0.85rem;">Inactive</span>`
+            ${
+              k.is_active
+                ? `<button class="btn btn-secondary btn-xs btn-danger btn-revoke-key" data-id="${k.id}" data-name="${k.name}">Revoke</button>`
+                : `<span class="text-muted" style="font-size: 0.85rem;">Inactive</span>`
             }
           </td>
         </tr>
-      `;
-    }).join('');
+      `
+      })
+      .join('')
 
-    const noKeysHtml = filteredKeys.length === 0 
-      ? `<tr><td colspan="8" class="table-empty">No API keys match the current filters.</td></tr>` 
-      : '';
+    const noKeysHtml =
+      filteredKeys.length === 0
+        ? `<tr><td colspan="8" class="table-empty">No API keys match the current filters.</td></tr>`
+        : ''
 
     // Suggestions collected from endpoints and rules
-    const liveTags = state.apiKeysSuggestions || [];
-    const suggestionsHtml = liveTags.map(tag => `
+    const liveTags = state.apiKeysSuggestions || []
+    const suggestionsHtml = liveTags
+      .map(
+        (tag) => `
       <button type="button" class="btn btn-secondary btn-xs tag-suggestion-btn" data-tag="${tag}">${tag}</button>
-    `).join(' ');
+    `
+      )
+      .join(' ')
 
     // Create Modal HTML
     const createModalHtml = state.apiKeysShowCreateModal
@@ -143,7 +165,7 @@ export const ApiKeysPage = {
             </form>
           </div>
          </div>`
-      : '';
+      : ''
 
     // Success Modal HTML (displays raw_key once)
     const successModalHtml = state.apiKeysRawKey
@@ -179,7 +201,7 @@ export const ApiKeysPage = {
             </div>
           </div>
          </div>`
-      : '';
+      : ''
 
     return `
       <div class="page-header">
@@ -215,12 +237,13 @@ export const ApiKeysPage = {
           </div>
         </div>
 
-        ${isBulkSelected.length > 0
-          ? `<div class="bulk-actions-strip animate-fade-in">
+        ${
+          isBulkSelected.length > 0
+            ? `<div class="bulk-actions-strip animate-fade-in">
               <span><strong>${isBulkSelected.length}</strong> keys selected</span>
               <button class="btn btn-danger btn-xs" id="btn-bulk-revoke">Bulk Revoke</button>
              </div>`
-          : ''
+            : ''
         }
       </div>
 
@@ -253,376 +276,385 @@ export const ApiKeysPage = {
       <!-- Modals -->
       ${createModalHtml}
       ${successModalHtml}
-    `;
+    `
   },
 
-  async refresh(state) {
-    setState({ apiKeysLoading: true, apiKeysError: null });
+  async refresh(_) {
+    setState({ apiKeysLoading: true, apiKeysError: null })
     try {
-      const keys = await listApiKeys({ limit: 100 });
-      setState({ apiKeysData: keys, apiKeysLoading: false });
+      const keys = await listApiKeys({ limit: 100 })
+      setState({ apiKeysData: keys, apiKeysLoading: false })
 
       // Gather tags suggestions asynchronously
-      const endpoints = await listEndpoints().catch(() => []);
-      const rules = await listRoutingRules({ limit: 100 }).catch(() => []);
-      
-      const suggestions = new Set(['*', 'target:*', 'region:us', 'region:eu', 'type:residential', 'type:datacenter']);
-      endpoints.forEach(ep => {
-        (ep.tags || []).forEach(t => suggestions.add(t));
-      });
-      rules.forEach(r => {
-        (r.required_tags || []).forEach(t => suggestions.add(t));
-        (r.excluded_tags || []).forEach(t => suggestions.add(t));
-      });
-      setState({ apiKeysSuggestions: Array.from(suggestions) });
+      const endpoints = await listEndpoints().catch(() => [])
+      const rules = await listRoutingRules({ limit: 100 }).catch(() => [])
 
+      const suggestions = new Set([
+        '*',
+        'target:*',
+        'region:us',
+        'region:eu',
+        'type:residential',
+        'type:datacenter'
+      ])
+      endpoints.forEach((ep) => {
+        ;(ep.tags || []).forEach((t) => suggestions.add(t))
+      })
+      rules.forEach((r) => {
+        ;(r.required_tags || []).forEach((t) => suggestions.add(t))
+        ;(r.excluded_tags || []).forEach((t) => suggestions.add(t))
+      })
+      setState({ apiKeysSuggestions: Array.from(suggestions) })
     } catch (err) {
-      setState({ apiKeysError: err.message, apiKeysLoading: false });
-      showToast(`Failed to load API keys: ${err.message}`, 'error');
+      setState({ apiKeysError: err.message, apiKeysLoading: false })
+      showToast(`Failed to load API keys: ${err.message}`, 'error')
     }
   },
 
   afterRender(state) {
     if (!state.apiKeysData && !state.apiKeysLoading) {
-      this.refresh(state);
-      return;
+      this.refresh(state)
+      return
     }
 
     // Bind filters
     const bindFilter = (id, stateKey) => {
-      const el = document.getElementById(id);
+      const el = document.getElementById(id)
       if (el) {
         el.addEventListener('input', (e) => {
-          setState({ [stateKey]: e.target.value });
-        });
+          setState({ [stateKey]: e.target.value })
+        })
       }
-    };
-    bindFilter('filter-status', 'apiKeysFilterStatus');
-    bindFilter('filter-scope', 'apiKeysFilterScope');
-    bindFilter('filter-search', 'apiKeysFilterSearch');
+    }
+    bindFilter('filter-status', 'apiKeysFilterStatus')
+    bindFilter('filter-scope', 'apiKeysFilterScope')
+    bindFilter('filter-search', 'apiKeysFilterSearch')
 
     // Create modal open
-    const openCreateBtn = document.getElementById('btn-open-create-key');
+    const openCreateBtn = document.getElementById('btn-open-create-key')
     if (openCreateBtn) {
       openCreateBtn.addEventListener('click', () => {
-        setState({ apiKeysShowCreateModal: true, apiKeysNewChips: [] });
-      });
+        setState({ apiKeysShowCreateModal: true, apiKeysNewChips: [] })
+      })
     }
 
     // Modal forms and input elements
     if (state.apiKeysShowCreateModal) {
-      const cancelBtn = document.getElementById('btn-create-cancel');
+      const cancelBtn = document.getElementById('btn-create-cancel')
       if (cancelBtn) {
         cancelBtn.addEventListener('click', () => {
-          setState({ apiKeysShowCreateModal: false });
-        });
+          setState({ apiKeysShowCreateModal: false })
+        })
       }
 
-      const scopeInput = document.getElementById('new-key-scope-input');
-      const chipsContainer = document.getElementById('new-key-chips');
-      const scopeError = document.getElementById('new-key-scope-error');
+      const scopeInput = document.getElementById('new-key-scope-input')
+      const chipsContainer = document.getElementById('new-key-chips')
+      const scopeError = document.getElementById('new-key-scope-error')
 
       const renderChips = () => {
-        const chips = state.apiKeysNewChips || [];
-        chipsContainer.innerHTML = chips.map((c, i) => `
+        const chips = state.apiKeysNewChips || []
+        chipsContainer.innerHTML = chips
+          .map(
+            (c, i) => `
           <span class="chip">
             <span>${c}</span>
             <button type="button" class="btn-remove-chip" data-idx="${i}">&times;</button>
           </span>
-        `).join('');
-        
+        `
+          )
+          .join('')
+
         // Bind removals
-        chipsContainer.querySelectorAll('.btn-remove-chip').forEach(btn => {
+        chipsContainer.querySelectorAll('.btn-remove-chip').forEach((btn) => {
           btn.addEventListener('click', () => {
-            const idx = parseInt(btn.getAttribute('data-idx'));
-            const updated = [...(state.apiKeysNewChips || [])];
-            updated.splice(idx, 1);
-            setState({ apiKeysNewChips: updated });
-          });
-        });
-      };
-      renderChips();
+            const idx = parseInt(btn.getAttribute('data-idx'))
+            const updated = [...(state.apiKeysNewChips || [])]
+            updated.splice(idx, 1)
+            setState({ apiKeysNewChips: updated })
+          })
+        })
+      }
+      renderChips()
 
       // Suggestions binding
-      const suggestionBtns = document.querySelectorAll('.tag-suggestion-btn');
-      suggestionBtns.forEach(btn => {
+      const suggestionBtns = document.querySelectorAll('.tag-suggestion-btn')
+      suggestionBtns.forEach((btn) => {
         btn.addEventListener('click', () => {
-          const tag = btn.getAttribute('data-tag');
-          const chips = state.apiKeysNewChips || [];
+          const tag = btn.getAttribute('data-tag')
+          const chips = state.apiKeysNewChips || []
           if (!chips.includes(tag)) {
             try {
-              validateScope(tag);
-              setState({ apiKeysNewChips: [...chips, tag] });
+              validateScope(tag)
+              setState({ apiKeysNewChips: [...chips, tag] })
             } catch (err) {
-              scopeError.textContent = err.message;
+              scopeError.textContent = err.message
             }
           }
-        });
-      });
+        })
+      })
 
       if (scopeInput) {
         scopeInput.addEventListener('keydown', (e) => {
           if (e.key === 'Enter' || e.key === ',') {
-            e.preventDefault();
-            const val = scopeInput.value.trim();
+            e.preventDefault()
+            const val = scopeInput.value.trim()
             if (val) {
               try {
-                validateScope(val);
-                scopeError.textContent = '';
-                const chips = state.apiKeysNewChips || [];
+                validateScope(val)
+                scopeError.textContent = ''
+                const chips = state.apiKeysNewChips || []
                 if (!chips.includes(val)) {
-                  setState({ apiKeysNewChips: [...chips, val] });
+                  setState({ apiKeysNewChips: [...chips, val] })
                 }
-                scopeInput.value = '';
+                scopeInput.value = ''
               } catch (err) {
-                scopeError.textContent = err.message;
+                scopeError.textContent = err.message
               }
             }
           }
-        });
+        })
       }
 
-      const createForm = document.getElementById('create-key-form');
+      const createForm = document.getElementById('create-key-form')
       if (createForm) {
         createForm.addEventListener('submit', async (e) => {
-          e.preventDefault();
-          const nameInput = document.getElementById('new-key-name');
-          const rateLimitInput = document.getElementById('new-key-rate-limit');
-          
-          const nameErr = document.getElementById('new-key-name-error');
-          const limitErr = document.getElementById('new-key-rate-limit-error');
+          e.preventDefault()
+          const nameInput = document.getElementById('new-key-name')
+          const rateLimitInput = document.getElementById('new-key-rate-limit')
 
-          nameErr.textContent = '';
-          limitErr.textContent = '';
-          nameInput.classList.remove('is-invalid');
-          rateLimitInput.classList.remove('is-invalid');
+          const nameErr = document.getElementById('new-key-name-error')
+          const limitErr = document.getElementById('new-key-rate-limit-error')
 
-          let isValid = true;
-          const nameVal = nameInput.value.trim();
-          const limitVal = rateLimitInput.value.trim();
+          nameErr.textContent = ''
+          limitErr.textContent = ''
+          nameInput.classList.remove('is-invalid')
+          rateLimitInput.classList.remove('is-invalid')
+
+          let isValid = true
+          const nameVal = nameInput.value.trim()
+          const limitVal = rateLimitInput.value.trim()
 
           if (!nameVal) {
-            nameErr.textContent = 'Key Name is required.';
-            nameInput.classList.add('is-invalid');
-            isValid = false;
+            nameErr.textContent = 'Key Name is required.'
+            nameInput.classList.add('is-invalid')
+            isValid = false
           } else if (nameVal.length > 120) {
-            nameErr.textContent = 'Name must be 120 characters or less.';
-            nameInput.classList.add('is-invalid');
-            isValid = false;
+            nameErr.textContent = 'Name must be 120 characters or less.'
+            nameInput.classList.add('is-invalid')
+            isValid = false
           }
 
           if (limitVal) {
             try {
-              validatePositiveInteger(limitVal, 'Rate limit override');
+              validatePositiveInteger(limitVal, 'Rate limit override')
             } catch (err) {
-              limitErr.textContent = err.message;
-              rateLimitInput.classList.add('is-invalid');
-              isValid = false;
+              limitErr.textContent = err.message
+              rateLimitInput.classList.add('is-invalid')
+              isValid = false
             }
           }
 
           if (!isValid) {
-            const firstInvalid = createForm.querySelector('.is-invalid');
-            if (firstInvalid) firstInvalid.focus();
-            return;
+            const firstInvalid = createForm.querySelector('.is-invalid')
+            if (firstInvalid) firstInvalid.focus()
+            return
           }
 
           try {
             const payload = {
               name: nameVal,
               scopes: state.apiKeysNewChips || []
-            };
+            }
             if (limitVal) {
-              payload.rate_limit_override = parseInt(limitVal);
+              payload.rate_limit_override = parseInt(limitVal)
             }
 
-            const response = await createApiKey(payload);
-            showToast('API Key generated successfully', 'success');
-            
+            const response = await createApiKey(payload)
+            showToast('API Key generated successfully', 'success')
+
             // Success! Close creation modal and open raw key display modal
             setState({
               apiKeysShowCreateModal: false,
               apiKeysRawKey: response.raw_key
-            });
+            })
             // Reload keys list in background
-            ApiKeysPage.refresh(state);
-
+            ApiKeysPage.refresh(state)
           } catch (err) {
-            showToast(`Failed to create API key: ${err.message}`, 'error');
+            showToast(`Failed to create API key: ${err.message}`, 'error')
           }
-        });
+        })
       }
     }
 
     // Success Modal logic
     if (state.apiKeysRawKey) {
-      const displayInput = document.getElementById('raw-key-display');
-      const revealBtn = document.getElementById('btn-reveal-raw-key');
-      const copyBtn = document.getElementById('btn-copy-raw-key');
-      const savedCheckbox = document.getElementById('raw-key-saved-check');
-      const closeBtn = document.getElementById('btn-close-raw-key');
-      const downloadBtn = document.getElementById('btn-download-raw-key');
+      const displayInput = document.getElementById('raw-key-display')
+      const revealBtn = document.getElementById('btn-reveal-raw-key')
+      const copyBtn = document.getElementById('btn-copy-raw-key')
+      const savedCheckbox = document.getElementById('raw-key-saved-check')
+      const closeBtn = document.getElementById('btn-close-raw-key')
+      const downloadBtn = document.getElementById('btn-download-raw-key')
 
       if (revealBtn && displayInput) {
         revealBtn.addEventListener('click', () => {
           if (displayInput.type === 'password') {
-            displayInput.type = 'text';
-            revealBtn.textContent = 'Hide';
+            displayInput.type = 'text'
+            revealBtn.textContent = 'Hide'
           } else {
-            displayInput.type = 'password';
-            revealBtn.textContent = 'Reveal';
+            displayInput.type = 'password'
+            revealBtn.textContent = 'Reveal'
           }
-        });
+        })
       }
 
       if (copyBtn) {
         copyBtn.addEventListener('click', () => {
-          navigator.clipboard.writeText(state.apiKeysRawKey);
-          showToast('Raw key copied to clipboard', 'success');
-        });
+          navigator.clipboard.writeText(state.apiKeysRawKey)
+          showToast('Raw key copied to clipboard', 'success')
+        })
       }
 
       if (downloadBtn) {
         downloadBtn.addEventListener('click', () => {
-          const blob = new Blob([state.apiKeysRawKey], { type: 'text/plain' });
-          const a = document.createElement('a');
-          a.href = URL.createObjectURL(blob);
-          a.download = `straw-key-${Date.now()}.txt`;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-        });
+          const blob = new Blob([state.apiKeysRawKey], { type: 'text/plain' })
+          const a = document.createElement('a')
+          a.href = URL.createObjectURL(blob)
+          a.download = `straw-key-${Date.now()}.txt`
+          document.body.appendChild(a)
+          a.click()
+          document.body.removeChild(a)
+        })
       }
 
       if (savedCheckbox && closeBtn) {
         savedCheckbox.addEventListener('change', (e) => {
-          closeBtn.disabled = !e.target.checked;
-        });
+          closeBtn.disabled = !e.target.checked
+        })
 
         closeBtn.addEventListener('click', () => {
-          setState({ apiKeysRawKey: null });
-        });
+          setState({ apiKeysRawKey: null })
+        })
       }
     }
 
     // Row selection and check-all
-    const checkAll = document.getElementById('check-all-keys');
-    const rowChecks = document.querySelectorAll('.key-select-check');
-    
+    const checkAll = document.getElementById('check-all-keys')
+    const rowChecks = document.querySelectorAll('.key-select-check')
+
     if (checkAll) {
       checkAll.addEventListener('change', (e) => {
         if (e.target.checked) {
           // Select all visible active keys
-          const keys = state.apiKeysData?.keys || [];
-          const activeIds = keys.filter(k => k.is_active).map(k => k.id);
-          setState({ apiKeysBulkSelected: activeIds });
+          const keys = state.apiKeysData?.keys || []
+          const activeIds = keys.filter((k) => k.is_active).map((k) => k.id)
+          setState({ apiKeysBulkSelected: activeIds })
         } else {
-          setState({ apiKeysBulkSelected: [] });
+          setState({ apiKeysBulkSelected: [] })
         }
-      });
+      })
     }
 
-    rowChecks.forEach(ch => {
-      ch.addEventListener('change', (e) => {
-        const id = ch.getAttribute('data-id');
-        let selected = [...(state.apiKeysBulkSelected || [])];
+    rowChecks.forEach((ch) => {
+      ch.addEventListener('change', (_) => {
+        const id = ch.getAttribute('data-id')
+        let selected = [...(state.apiKeysBulkSelected || [])]
         if (ch.checked) {
-          if (!selected.includes(id)) selected.push(id);
+          if (!selected.includes(id)) selected.push(id)
         } else {
-          selected = selected.filter(sid => sid !== id);
+          selected = selected.filter((sid) => sid !== id)
         }
-        setState({ apiKeysBulkSelected: selected });
-      });
-    });
+        setState({ apiKeysBulkSelected: selected })
+      })
+    })
 
     // Copy Key ID triggers
-    const copyIdBtns = document.querySelectorAll('.btn-copy-id');
-    copyIdBtns.forEach(btn => {
+    const copyIdBtns = document.querySelectorAll('.btn-copy-id')
+    copyIdBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
-        const val = btn.getAttribute('data-copy');
-        navigator.clipboard.writeText(val);
-        showToast('ID copied to clipboard', 'success');
-      });
-    });
+        const val = btn.getAttribute('data-copy')
+        navigator.clipboard.writeText(val)
+        showToast('ID copied to clipboard', 'success')
+      })
+    })
 
     // Single Key Revocation
-    const revokeBtns = document.querySelectorAll('.btn-revoke-key');
-    revokeBtns.forEach(btn => {
+    const revokeBtns = document.querySelectorAll('.btn-revoke-key')
+    revokeBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
-        const id = btn.getAttribute('data-id');
-        const name = btn.getAttribute('data-name');
-        
+        const id = btn.getAttribute('data-id')
+        const name = btn.getAttribute('data-name')
+
         showConfirm({
           title: 'Revoke API Key',
           body: `Are you sure you want to revoke API key <strong>${name}</strong>? Clients using this credential will lose proxy access immediately. This action is irreversible.`,
           confirmText: 'confirm',
           callback: async () => {
             try {
-              await revokeApiKey(id);
-              showToast(`API Key ${name} revoked`, 'success');
-              
+              await revokeApiKey(id)
+              showToast(`API Key ${name} revoked`, 'success')
+
               // Optimistically update key in loaded list
               if (state.apiKeysData && state.apiKeysData.keys) {
-                state.apiKeysData.keys = state.apiKeysData.keys.map(k => {
-                  if (k.id === id) return { ...k, is_active: false };
-                  return k;
-                });
-                setState({ apiKeysData: state.apiKeysData });
+                state.apiKeysData.keys = state.apiKeysData.keys.map((k) => {
+                  if (k.id === id) return { ...k, is_active: false }
+                  return k
+                })
+                setState({ apiKeysData: state.apiKeysData })
               }
             } catch (err) {
               if (err instanceof ApiError && err.status === 404) {
-                showToast(`Key already removed or revoked`, 'warning');
-                ApiKeysPage.refresh(state);
+                showToast(`Key already removed or revoked`, 'warning')
+                ApiKeysPage.refresh(state)
               } else {
-                showToast(`Failed to revoke key: ${err.message}`, 'error');
+                showToast(`Failed to revoke key: ${err.message}`, 'error')
               }
             }
           }
-        });
-      });
-    });
+        })
+      })
+    })
 
     // Bulk Revoke action
-    const bulkRevokeBtn = document.getElementById('btn-bulk-revoke');
+    const bulkRevokeBtn = document.getElementById('btn-bulk-revoke')
     if (bulkRevokeBtn) {
       bulkRevokeBtn.addEventListener('click', () => {
-        const selectedIds = state.apiKeysBulkSelected || [];
+        const selectedIds = state.apiKeysBulkSelected || []
         showConfirm({
           title: 'Bulk Revoke API Keys',
           body: `Are you sure you want to revoke all <strong>${selectedIds.length}</strong> selected API keys? Clients using these credentials will lose proxy access immediately. This action is irreversible.`,
           confirmText: 'confirm',
           callback: async () => {
-            let succeeded = 0;
-            let failed = 0;
-            const errors = [];
+            let succeeded = 0
+            let failed = 0
+            const errors = []
 
             for (const id of selectedIds) {
               try {
-                await revokeApiKey(id);
-                succeeded++;
+                await revokeApiKey(id)
+                succeeded++
               } catch (err) {
-                failed++;
-                errors.push(`${id}: ${err.message}`);
+                failed++
+                errors.push(`${id}: ${err.message}`)
               }
             }
 
             if (failed === 0) {
-              showToast(`Successfully revoked ${succeeded} keys`, 'success');
+              showToast(`Successfully revoked ${succeeded} keys`, 'success')
             } else if (succeeded > 0) {
-              showToast(`Partial failure: Revoked ${succeeded} keys, ${failed} failed.`, 'warning');
+              showToast(`Partial failure: Revoked ${succeeded} keys, ${failed} failed.`, 'warning')
             } else {
-              showToast(`Failed to revoke selected keys.`, 'error');
+              showToast(`Failed to revoke selected keys.`, 'error')
             }
 
-            setState({ apiKeysBulkSelected: [] });
-            ApiKeysPage.refresh(state);
+            setState({ apiKeysBulkSelected: [] })
+            ApiKeysPage.refresh(state)
           }
-        });
-      });
+        })
+      })
     }
   }
-};
+}
 
 function rowChecked(val) {
-  return val ? 'checked' : '';
+  return val ? 'checked' : ''
 }

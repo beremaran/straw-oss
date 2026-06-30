@@ -8,7 +8,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "lat
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_TIME ?= $(shell date -u +'%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date +'%Y-%m-%dT%H:%M:%SZ')
 
-.PHONY: docker server endpoint web build all test load-test security format lint lint-autofix clean docs docs-serve install-tools
+.PHONY: docker server endpoint web build all test load-test security format lint lint-autofix clean docs docs-serve install-tools web-lint web-format
 
 docker:
 	# Build base image
@@ -113,6 +113,12 @@ web-build:
 
 web-test:
 	cd web/management && npm run test
+
+web-lint:
+	cd web/management && npm run lint
+
+web-format:
+	cd web/management && npm run format
 
 clean:
 	rm -rf bin/ site/ docs/openapi.yaml docs/api-reference.html client/ web/management/dist/

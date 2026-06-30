@@ -1,131 +1,136 @@
 // Routing Rules List and Details Page
 
-import { state, setState, showToast, showConfirm } from '../state.js';
-import { 
-  listRoutingRules, 
-  getRoutingRule, 
-  deleteRoutingRule, 
+import { setState, showToast, showConfirm } from '../state.js'
+import {
+  listRoutingRules,
+  getRoutingRule,
+  deleteRoutingRule,
   updateRoutingRule,
   listEndpoints,
-  listFingerprints,
-  ApiError
-} from '../client.js';
+  listFingerprints
+} from '../client.js'
 
 export const RoutingRulesPage = {
   render(state) {
-    const hash = state.currentPage || '#/routing-rules';
-    
+    const hash = state.currentPage || '#/routing-rules'
+
     // Check if we are viewing a specific rule's details
-    const urlParams = new URLSearchParams(hash.includes('?') ? hash.split('?')[1] : '');
-    const ruleId = urlParams.get('id');
+    const urlParams = new URLSearchParams(hash.includes('?') ? hash.split('?')[1] : '')
+    const ruleId = urlParams.get('id')
 
     if (ruleId) {
-      return this.renderDetails(state, ruleId);
+      return this.renderDetails(state, ruleId)
     }
 
-    return this.renderList(state);
+    return this.renderList(state)
   },
 
   renderList(state) {
-    const data = state.rulesData || [];
-    const isLoading = state.rulesLoading;
-    
-    const filterStatus = state.rulesFilterStatus || 'all';
-    const filterTag = (state.rulesFilterTag || '').trim().toLowerCase();
-    const filterPreset = state.rulesFilterPreset || 'all';
-    const filterSearch = (state.rulesFilterSearch || '').trim().toLowerCase();
+    const data = state.rulesData || []
+
+    const filterStatus = state.rulesFilterStatus || 'all'
+    const filterTag = (state.rulesFilterTag || '').trim().toLowerCase()
+    const filterPreset = state.rulesFilterPreset || 'all'
+    const filterSearch = (state.rulesFilterSearch || '').trim().toLowerCase()
 
     // Client-side filtering
-    const filteredRules = data.filter(r => {
-      if (filterStatus === 'active' && !r.is_active) return false;
-      if (filterStatus === 'inactive' && r.is_active) return false;
+    const filteredRules = data.filter((r) => {
+      if (filterStatus === 'active' && !r.is_active) return false
+      if (filterStatus === 'inactive' && r.is_active) return false
 
       if (filterTag) {
-        const required = r.required_tags || [];
-        const excluded = r.excluded_tags || [];
-        const hasTag = [...required, ...excluded].some(t => t.toLowerCase().includes(filterTag));
-        if (!hasTag) return false;
+        const required = r.required_tags || []
+        const excluded = r.excluded_tags || []
+        const hasTag = [...required, ...excluded].some((t) => t.toLowerCase().includes(filterTag))
+        if (!hasTag) return false
       }
 
       if (filterPreset !== 'all') {
-        if (filterPreset === 'none' && r.fingerprint_preset) return false;
-        if (filterPreset !== 'none' && r.fingerprint_preset !== filterPreset) return false;
+        if (filterPreset === 'none' && r.fingerprint_preset) return false
+        if (filterPreset !== 'none' && r.fingerprint_preset !== filterPreset) return false
       }
 
       if (filterSearch) {
-        const nameMatch = (r.name || '').toLowerCase().includes(filterSearch);
-        const idMatch = (r.id || '').toLowerCase().includes(filterSearch);
-        if (!nameMatch && !idMatch) return false;
+        const nameMatch = (r.name || '').toLowerCase().includes(filterSearch)
+        const idMatch = (r.id || '').toLowerCase().includes(filterSearch)
+        if (!nameMatch && !idMatch) return false
       }
 
-      return true;
-    });
+      return true
+    })
 
     // Extract presets list for dropdown filter
-    const presets = Array.from(new Set(data.map(r => r.fingerprint_preset).filter(Boolean)));
+    const presets = Array.from(new Set(data.map((r) => r.fingerprint_preset).filter(Boolean)))
 
     // Attention check data (collect endpoints and fingerprints for verification)
-    const endpoints = state.endpointsData || [];
-    const endpointIds = new Set(endpoints.map(e => e.id));
-    const fingerprints = state.fingerprintsData || [];
-    const fingerprintIds = new Set(fingerprints.map(f => f.id));
+    const endpoints = state.endpointsData || []
+    const endpointIds = new Set(endpoints.map((e) => e.id))
+    const fingerprints = state.fingerprintsData || []
+    const fingerprintIds = new Set(fingerprints.map((f) => f.id))
 
     // Calculate active rule priorities count to detect duplicates
-    const activePriorities = {};
-    data.forEach(r => {
+    const activePriorities = {}
+    data.forEach((r) => {
       if (r.is_active) {
-        activePriorities[r.priority] = (activePriorities[r.priority] || 0) + 1;
+        activePriorities[r.priority] = (activePriorities[r.priority] || 0) + 1
       }
-    });
+    })
 
     // Render table rows
-    const rowsHtml = filteredRules.map(r => {
-      // Run attention checks
-      const warnings = [];
-      if (r.is_active) {
-        if (activePriorities[r.priority] > 1) {
-          warnings.push(`Shares priority ${r.priority} with another active rule`);
+    const rowsHtml = filteredRules
+      .map((r) => {
+        // Run attention checks
+        const warnings = []
+        if (r.is_active) {
+          if (activePriorities[r.priority] > 1) {
+            warnings.push(`Shares priority ${r.priority} with another active rule`)
+          }
+          if (!r.required_tags || r.required_tags.length === 0) {
+            warnings.push('Active rule matches all traffic (no required tags)')
+          }
+          if (r.allow_insecure_tls) {
+            warnings.push('Insecure TLS verification enabled')
+          }
+          if (r.fingerprint_preset && !fingerprintIds.has(r.fingerprint_preset)) {
+            warnings.push(`Missing fingerprint preset: ${r.fingerprint_preset}`)
+          }
+          if (r.endpoint_pools) {
+            r.endpoint_pools.forEach((pool) => {
+              if (pool.endpoint_ids) {
+                pool.endpoint_ids.forEach((epId) => {
+                  if (!endpointIds.has(epId)) {
+                    warnings.push(`Missing endpoint "${epId}" in pool tier ${pool.tier}`)
+                  }
+                })
+              }
+            })
+          }
         }
-        if (!r.required_tags || r.required_tags.length === 0) {
-          warnings.push('Active rule matches all traffic (no required tags)');
-        }
-        if (r.allow_insecure_tls) {
-          warnings.push('Insecure TLS verification enabled');
-        }
-        if (r.fingerprint_preset && !fingerprintIds.has(r.fingerprint_preset)) {
-          warnings.push(`Missing fingerprint preset: ${r.fingerprint_preset}`);
-        }
-        if (r.endpoint_pools) {
-          r.endpoint_pools.forEach(pool => {
-            if (pool.endpoint_ids) {
-              pool.endpoint_ids.forEach(epId => {
-                if (!endpointIds.has(epId)) {
-                  warnings.push(`Missing endpoint "${epId}" in pool tier ${pool.tier}`);
-                }
-              });
-            }
-          });
-        }
-      }
 
-      const warningIcon = warnings.length > 0
-        ? `<span class="warning-indicator" title="${warnings.join('\n')}">
+        const warningIcon =
+          warnings.length > 0
+            ? `<span class="warning-indicator" title="${warnings.join('\n')}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px; color: var(--color-amber-500);">
               <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
            </span>`
-        : '';
+            : ''
 
-      const requiredTagsHtml = (r.required_tags || []).map(t => `<span class="badge badge-secondary badge-sm">${t}</span>`).join(' ');
-      const statusBadge = r.is_active 
-        ? `<span class="badge badge-success">Active</span>`
-        : `<span class="badge badge-secondary">Inactive</span>`;
-      
-      const fpMode = r.fingerprint_ab_test ? 'A/B Test' : (r.fingerprint_preset ? `Preset (${r.fingerprint_preset})` : 'None');
-      const rateLimitText = r.rate_limit_per_minute ? `${r.rate_limit_per_minute}/m` : 'None';
-      const createdStr = r.updated_at ? new Date(r.updated_at).toLocaleDateString() : 'N/A';
+        const requiredTagsHtml = (r.required_tags || [])
+          .map((t) => `<span class="badge badge-secondary badge-sm">${t}</span>`)
+          .join(' ')
+        const statusBadge = r.is_active
+          ? `<span class="badge badge-success">Active</span>`
+          : `<span class="badge badge-secondary">Inactive</span>`
 
-      return `
+        const fpMode = r.fingerprint_ab_test
+          ? 'A/B Test'
+          : r.fingerprint_preset
+            ? `Preset (${r.fingerprint_preset})`
+            : 'None'
+        const rateLimitText = r.rate_limit_per_minute ? `${r.rate_limit_per_minute}/m` : 'None'
+
+        return `
         <tr class="${r.is_active ? '' : 'row-disabled'}">
           <td><strong>${r.priority}</strong></td>
           <td>
@@ -156,12 +161,14 @@ export const RoutingRulesPage = {
             </div>
           </td>
         </tr>
-      `;
-    }).join('');
+      `
+      })
+      .join('')
 
-    const noRulesHtml = filteredRules.length === 0 
-      ? `<tr><td colspan="9" class="table-empty">No routing rules match the current filters.</td></tr>` 
-      : '';
+    const noRulesHtml =
+      filteredRules.length === 0
+        ? `<tr><td colspan="9" class="table-empty">No routing rules match the current filters.</td></tr>`
+        : ''
 
     return `
       <div class="page-header">
@@ -196,7 +203,7 @@ export const RoutingRulesPage = {
             <select id="filter-preset" class="form-control select-control">
               <option value="all" ${filterPreset === 'all' ? 'selected' : ''}>All Presets</option>
               <option value="none" ${filterPreset === 'none' ? 'selected' : ''}>None</option>
-              ${presets.map(p => `<option value="${p}" ${filterPreset === p ? 'selected' : ''}>${p}</option>`).join('')}
+              ${presets.map((p) => `<option value="${p}" ${filterPreset === p ? 'selected' : ''}>${p}</option>`).join('')}
             </select>
           </div>
 
@@ -231,12 +238,12 @@ export const RoutingRulesPage = {
           </table>
         </div>
       </div>
-    `;
+    `
   },
 
   renderDetails(state, ruleId) {
-    const rule = state.selectedRuleDetail;
-    const isLoading = state.selectedRuleLoading;
+    const rule = state.selectedRuleDetail
+    const isLoading = state.selectedRuleLoading
 
     if (isLoading || !rule || rule.id !== ruleId) {
       return `
@@ -250,18 +257,18 @@ export const RoutingRulesPage = {
           <div class="skeleton" style="width: 80%; height: 1rem; margin-bottom: 0.5rem;"></div>
           <div class="skeleton" style="width: 70%; height: 1rem;"></div>
         </div>
-      `;
+      `
     }
 
-    const activeTab = state.selectedRuleTab || 'summary';
+    const activeTab = state.selectedRuleTab || 'summary'
 
     const renderTabBtn = (tabId, label) => {
-      const activeClass = activeTab === tabId ? 'active' : '';
-      return `<button class="tab-btn ${activeClass}" data-tab="${tabId}">${label}</button>`;
-    };
+      const activeClass = activeTab === tabId ? 'active' : ''
+      return `<button class="tab-btn ${activeClass}" data-tab="${tabId}">${label}</button>`
+    }
 
     // Prepare tab contents
-    let tabContentHtml = '';
+    let tabContentHtml = ''
 
     if (activeTab === 'summary') {
       tabContentHtml = `
@@ -303,25 +310,42 @@ export const RoutingRulesPage = {
             <span class="detail-value">${rule.updated_at ? new Date(rule.updated_at).toLocaleString() : 'N/A'}</span>
           </div>
         </div>
-      `;
+      `
     } else if (activeTab === 'match') {
-      const requiredTags = (rule.required_tags || []).map(t => `<span class="badge badge-secondary">${t}</span>`).join(' ');
-      const excludedTags = (rule.excluded_tags || []).map(t => `<span class="badge badge-secondary alert-danger" style="color:var(--color-rose-500); border-color:transparent;">${t}</span>`).join(' ');
-      const allowedEpTypes = (rule.allowed_endpoint_types || []).map(t => `<span class="badge badge-secondary">${t}</span>`).join(' ');
-      const requiredEpCaps = (rule.required_endpoint_caps || []).map(t => `<span class="badge badge-secondary">${t}</span>`).join(' ');
+      const requiredTags = (rule.required_tags || [])
+        .map((t) => `<span class="badge badge-secondary">${t}</span>`)
+        .join(' ')
+      const excludedTags = (rule.excluded_tags || [])
+        .map(
+          (t) =>
+            `<span class="badge badge-secondary alert-danger" style="color:var(--color-rose-500); border-color:transparent;">${t}</span>`
+        )
+        .join(' ')
+      const allowedEpTypes = (rule.allowed_endpoint_types || [])
+        .map((t) => `<span class="badge badge-secondary">${t}</span>`)
+        .join(' ')
+      const requiredEpCaps = (rule.required_endpoint_caps || [])
+        .map((t) => `<span class="badge badge-secondary">${t}</span>`)
+        .join(' ')
 
       // Endpoint pools tier list
-      const poolsHtml = (rule.endpoint_pools || []).map(pool => `
+      const poolsHtml =
+        (rule.endpoint_pools || [])
+          .map(
+            (pool) => `
         <div class="pool-tier card" style="margin-top: 0.5rem; padding: 0.75rem;">
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <strong>Tier ${pool.tier}</strong>
             <span style="font-size:0.85rem; color:var(--color-slate-400);">Max Retries: ${pool.max_retries || 0}</span>
           </div>
           <div style="margin-top:0.5rem; font-size:0.9rem;">
-            Endpoints: ${(pool.endpoint_ids || []).map(id => `<code>${id}</code>`).join(', ') || '<span class="text-muted">None</span>'}
+            Endpoints: ${(pool.endpoint_ids || []).map((id) => `<code>${id}</code>`).join(', ') || '<span class="text-muted">None</span>'}
           </div>
         </div>
-      `).join('') || '<span class="text-muted">No endpoint pools configured. Routing uses tag matching.</span>';
+      `
+          )
+          .join('') ||
+        '<span class="text-muted">No endpoint pools configured. Routing uses tag matching.</span>'
 
       tabContentHtml = `
         <div style="display:flex; flex-direction:column; gap: 1.5rem;">
@@ -358,7 +382,7 @@ export const RoutingRulesPage = {
             ${poolsHtml}
           </div>
         </div>
-      `;
+      `
     } else if (activeTab === 'limits') {
       tabContentHtml = `
         <div class="detail-grid">
@@ -383,10 +407,10 @@ export const RoutingRulesPage = {
             <span class="detail-value"><code>${rule.pinned_cert_hash || 'None'}</code></span>
           </div>
         </div>
-      `;
+      `
     } else if (activeTab === 'fingerprints') {
-      let fpDetailHtml = '<span class="text-muted">No fingerprinting overrides active.</span>';
-      
+      let fpDetailHtml = '<span class="text-muted">No fingerprinting overrides active.</span>'
+
       if (rule.fingerprint_preset) {
         fpDetailHtml = `
           <div class="detail-field">
@@ -397,16 +421,20 @@ export const RoutingRulesPage = {
             <span class="detail-label">Preset ID</span>
             <span class="detail-value"><code>${rule.fingerprint_preset}</code></span>
           </div>
-        `;
+        `
       } else if (rule.fingerprint_ab_test) {
-        const ab = rule.fingerprint_ab_test;
-        const variantsHtml = (ab.variants || []).map(v => `
+        const ab = rule.fingerprint_ab_test
+        const variantsHtml = (ab.variants || [])
+          .map(
+            (v) => `
           <tr>
             <td><code>${v.preset_id}</code></td>
             <td><strong>${v.weight}</strong></td>
           </tr>
-        `).join('');
-        
+        `
+          )
+          .join('')
+
         fpDetailHtml = `
           <div class="detail-field">
             <span class="detail-label">Fingerprint Mode</span>
@@ -430,15 +458,19 @@ export const RoutingRulesPage = {
               </tbody>
             </table>
           </div>
-        `;
+        `
       }
 
-      tabContentHtml = `<div class="detail-grid">${fpDetailHtml}</div>`;
+      tabContentHtml = `<div class="detail-grid">${fpDetailHtml}</div>`
     } else if (activeTab === 'filters') {
-      const filters = rule.request_filters || {};
-      const blockDomains = (filters.block_domains || []).map(d => `<span class="badge badge-secondary">${d}</span>`).join(' ');
-      const blockContentTypes = (filters.block_content_types || []).map(c => `<span class="badge badge-secondary">${c}</span>`).join(' ');
-      
+      const filters = rule.request_filters || {}
+      const blockDomains = (filters.block_domains || [])
+        .map((d) => `<span class="badge badge-secondary">${d}</span>`)
+        .join(' ')
+      const blockContentTypes = (filters.block_content_types || [])
+        .map((c) => `<span class="badge badge-secondary">${c}</span>`)
+        .join(' ')
+
       tabContentHtml = `
         <div style="display:flex; flex-direction:column; gap: 1.25rem;">
           <div class="detail-grid">
@@ -470,15 +502,15 @@ export const RoutingRulesPage = {
             <span class="detail-value">${blockDomains || 'None'}</span>
           </div>
         </div>
-      `;
+      `
     } else if (activeTab === 'raw') {
-      const ruleJson = JSON.stringify(rule, null, 2);
+      const ruleJson = JSON.stringify(rule, null, 2)
       tabContentHtml = `
         <div class="raw-json-actions" style="margin-bottom:0.75rem; display:flex; justify-content:flex-end;">
           <button class="btn btn-secondary btn-sm" id="btn-copy-rule-json" data-json="${encodeURIComponent(ruleJson)}">Copy JSON Payload</button>
         </div>
         <pre class="raw-json-panel"><code>${ruleJson}</code></pre>
-      `;
+      `
     }
 
     return `
@@ -511,167 +543,173 @@ export const RoutingRulesPage = {
           ${tabContentHtml}
         </div>
       </div>
-    `;
+    `
   },
 
-  async refresh(state) {
-    setState({ rulesLoading: true, rulesError: null });
+  async refresh(_) {
+    setState({ rulesLoading: true, rulesError: null })
     try {
-      const rules = await listRoutingRules({ limit: 100 });
+      const rules = await listRoutingRules({ limit: 100 })
       // Fetch endpoints and fingerprints to check rule validity warnings
-      const endpoints = await listEndpoints().catch(() => []);
-      const fingerprints = await listFingerprints().catch(() => []);
+      const endpoints = await listEndpoints().catch(() => [])
+      const fingerprints = await listFingerprints().catch(() => [])
 
-      setState({ 
-        rulesData: rules, 
+      setState({
+        rulesData: rules,
         endpointsData: endpoints,
         fingerprintsData: fingerprints,
-        rulesLoading: false 
-      });
+        rulesLoading: false
+      })
     } catch (err) {
-      setState({ rulesError: err.message, rulesLoading: false });
-      showToast(`Failed to load routing rules: ${err.message}`, 'error');
+      setState({ rulesError: err.message, rulesLoading: false })
+      showToast(`Failed to load routing rules: ${err.message}`, 'error')
     }
   },
 
   afterRender(state) {
-    const hash = state.currentPage || '#/routing-rules';
-    const urlParams = new URLSearchParams(hash.includes('?') ? hash.split('?')[1] : '');
-    const ruleId = urlParams.get('id');
+    const hash = state.currentPage || '#/routing-rules'
+    const urlParams = new URLSearchParams(hash.includes('?') ? hash.split('?')[1] : '')
+    const ruleId = urlParams.get('id')
 
     if (ruleId) {
-      this.afterRenderDetails(state, ruleId);
-      return;
+      this.afterRenderDetails(state, ruleId)
+      return
     }
 
-    this.afterRenderList(state);
+    this.afterRenderList(state)
   },
 
   afterRenderList(state) {
     if (!state.rulesData && !state.rulesLoading) {
-      this.refresh(state);
-      return;
+      this.refresh(state)
+      return
     }
 
     // Bind filters
     const bindFilter = (id, stateKey) => {
-      const el = document.getElementById(id);
+      const el = document.getElementById(id)
       if (el) {
         el.addEventListener('input', (e) => {
-          setState({ [stateKey]: e.target.value });
-        });
+          setState({ [stateKey]: e.target.value })
+        })
       }
-    };
-    bindFilter('filter-status', 'rulesFilterStatus');
-    bindFilter('filter-tag', 'rulesFilterTag');
-    bindFilter('filter-preset', 'rulesFilterPreset');
-    bindFilter('filter-search', 'rulesFilterSearch');
+    }
+    bindFilter('filter-status', 'rulesFilterStatus')
+    bindFilter('filter-tag', 'rulesFilterTag')
+    bindFilter('filter-preset', 'rulesFilterPreset')
+    bindFilter('filter-search', 'rulesFilterSearch')
 
     // Rule toggle active
-    const toggleBtns = document.querySelectorAll('.btn-toggle-rule');
-    toggleBtns.forEach(btn => {
+    const toggleBtns = document.querySelectorAll('.btn-toggle-rule')
+    toggleBtns.forEach((btn) => {
       btn.addEventListener('click', async () => {
-        const id = btn.getAttribute('data-id');
-        const isActive = btn.getAttribute('data-active') === 'true';
-        
+        const id = btn.getAttribute('data-id')
+        const isActive = btn.getAttribute('data-active') === 'true'
+
         try {
-          const rule = state.rulesData.find(r => r.id === id);
-          if (!rule) return;
-          
+          const rule = state.rulesData.find((r) => r.id === id)
+          if (!rule) return
+
           await updateRoutingRule(id, {
             ...rule,
             is_active: !isActive
-          });
-          
-          showToast(`Rule "${rule.name}" ${!isActive ? 'activated' : 'deactivated'}`, 'success');
-          this.refresh(state);
+          })
+
+          showToast(`Rule "${rule.name}" ${!isActive ? 'activated' : 'deactivated'}`, 'success')
+          this.refresh(state)
         } catch (err) {
-          showToast(`Failed to update rule status: ${err.message}`, 'error');
+          showToast(`Failed to update rule status: ${err.message}`, 'error')
         }
-      });
-    });
+      })
+    })
 
     // Rule Delete action
-    const deleteBtns = document.querySelectorAll('.btn-delete-rule');
-    deleteBtns.forEach(btn => {
+    const deleteBtns = document.querySelectorAll('.btn-delete-rule')
+    deleteBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
-        const id = btn.getAttribute('data-id');
-        const name = btn.getAttribute('data-name');
-        
+        const id = btn.getAttribute('data-id')
+        const name = btn.getAttribute('data-name')
+
         showConfirm({
           title: 'Delete Routing Rule',
           body: `Are you sure you want to delete routing rule <strong>${name}</strong>? This is a soft-delete and sets the rule status to inactive.`,
           confirmText: 'confirm',
           callback: async () => {
             try {
-              await deleteRoutingRule(id);
-              showToast(`Routing rule "${name}" deleted`, 'success');
-              this.refresh(state);
+              await deleteRoutingRule(id)
+              showToast(`Routing rule "${name}" deleted`, 'success')
+              this.refresh(state)
             } catch (err) {
-              showToast(`Failed to delete rule: ${err.message}`, 'error');
+              showToast(`Failed to delete rule: ${err.message}`, 'error')
             }
           }
-        });
-      });
-    });
+        })
+      })
+    })
 
     // Rule Duplication action
-    const duplicateBtns = document.querySelectorAll('.btn-duplicate-rule');
-    duplicateBtns.forEach(btn => {
+    const duplicateBtns = document.querySelectorAll('.btn-duplicate-rule')
+    duplicateBtns.forEach((btn) => {
       btn.addEventListener('click', async () => {
-        const id = btn.getAttribute('data-id');
+        const id = btn.getAttribute('data-id')
         try {
-          const rule = await getRoutingRule(id);
-          
+          const rule = await getRoutingRule(id)
+
           // Sanitize rule data: remove identity/timestamps for create flow
-          const { id: _, version: __, created_at: ___, updated_at: ____, ...sanitized } = rule;
-          
+          const {
+            id: _id,
+            version: _version,
+            created_at: _createdAt,
+            updated_at: _updatedAt,
+            ...sanitized
+          } = rule
+
           // Save in state for the editor flow
           setState({
             editingRule: sanitized,
             editingRuleId: null // clear ID to mark as new
-          });
-          
-          showToast(`Rule "${rule.name}" duplicated. Redirecting to form...`, 'success');
-          window.location.hash = '#/routing-rules/new';
+          })
+
+          showToast(`Rule "${rule.name}" duplicated. Redirecting to form...`, 'success')
+          window.location.hash = '#/routing-rules/new'
         } catch (err) {
-          showToast(`Failed to duplicate rule: ${err.message}`, 'error');
+          showToast(`Failed to duplicate rule: ${err.message}`, 'error')
         }
-      });
-    });
+      })
+    })
   },
 
   async afterRenderDetails(state, ruleId) {
     if (!state.selectedRuleDetail || state.selectedRuleDetail.id !== ruleId) {
-      setState({ selectedRuleLoading: true });
+      setState({ selectedRuleLoading: true })
       try {
-        const rule = await getRoutingRule(ruleId);
-        setState({ selectedRuleDetail: rule, selectedRuleLoading: false });
+        const rule = await getRoutingRule(ruleId)
+        setState({ selectedRuleDetail: rule, selectedRuleLoading: false })
       } catch (err) {
-        setState({ selectedRuleLoading: false });
-        showToast(`Failed to load rule details: ${err.message}`, 'error');
-        window.location.hash = '#/routing-rules';
-        return;
+        setState({ selectedRuleLoading: false })
+        showToast(`Failed to load rule details: ${err.message}`, 'error')
+        window.location.hash = '#/routing-rules'
+        return
       }
     }
 
     // Bind tab clicks
-    const tabBtns = document.querySelectorAll('.tab-btn');
-    tabBtns.forEach(btn => {
+    const tabBtns = document.querySelectorAll('.tab-btn')
+    tabBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
-        const tabId = btn.getAttribute('data-tab');
-        setState({ selectedRuleTab: tabId });
-      });
-    });
+        const tabId = btn.getAttribute('data-tab')
+        setState({ selectedRuleTab: tabId })
+      })
+    })
 
     // Copy JSON button
-    const copyJsonBtn = document.getElementById('btn-copy-rule-json');
+    const copyJsonBtn = document.getElementById('btn-copy-rule-json')
     if (copyJsonBtn) {
       copyJsonBtn.addEventListener('click', () => {
-        const json = decodeURIComponent(copyJsonBtn.getAttribute('data-json'));
-        navigator.clipboard.writeText(json);
-        showToast('Rule JSON payload copied to clipboard', 'success');
-      });
+        const json = decodeURIComponent(copyJsonBtn.getAttribute('data-json'))
+        navigator.clipboard.writeText(json)
+        showToast('Rule JSON payload copied to clipboard', 'success')
+      })
     }
   }
-};
+}
