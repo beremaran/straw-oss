@@ -1,6 +1,6 @@
 # MU-011: Fingerprint Preset List, JSON Editor, Upsert, Duplicate, And Broadcast
 
-Status: not-started
+Status: done
 Phase: 2
 Depends on: MU-005
 Search tags: `/fingerprints`, fingerprint preset, JSON config, upsert, duplicate, broadcast, NATS, delete gap
