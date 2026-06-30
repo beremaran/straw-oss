@@ -1,6 +1,8 @@
 // App Shell Component
 
-export function renderShell(state, contentHtml) {
+import type { AppState } from '../types.js'
+
+export function renderShell(state: AppState, contentHtml: string): string {
   const currentHash = state.currentPage || '#/overview'
   const navItems = [
     {
@@ -158,7 +160,7 @@ export function renderShell(state, contentHtml) {
   `
 }
 
-function escapeHtml(str) {
+function escapeHtml(str: string): string {
   if (!str) return ''
   return str
     .replace(/&/g, '&amp;')

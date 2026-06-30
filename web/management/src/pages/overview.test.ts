@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { OverviewPage } from './overview.js'
 import { state, showConfirm } from '../state.js'
+import { firstCall, mustQuery } from '../test-utils.js'
 
 vi.mock('../client.js', () => ({
   listEndpoints: vi.fn(),
@@ -11,7 +12,8 @@ vi.mock('../client.js', () => ({
   getCacheStats: vi.fn(),
   drainEndpoint: vi.fn(),
   ApiError: class ApiError extends Error {
-    constructor(message, status) {
+    status: number
+    constructor(message: string, status: number) {
       super(message)
       this.status = status
     }
@@ -27,14 +29,14 @@ vi.mock('../state.js', () => {
   }
   return {
     state,
-    setState: vi.fn((changes) => Object.assign(state, changes)),
+    setState: vi.fn((changes: Record<string, unknown>) => Object.assign(state, changes)),
     showToast: vi.fn(),
     showConfirm: vi.fn()
   }
 })
 
 describe('Overview Dashboard Page', () => {
-  let container
+  let container: HTMLElement
 
   beforeEach(() => {
     container = document.createElement('div')
@@ -45,8 +47,14 @@ describe('Overview Dashboard Page', () => {
         { id: 'ep-2', state: 'draining', active_tasks: 0, tags: ['mobile'] }
       ],
       rules: [
-        { name: 'Rule 1', is_active: true, priority: 10, required_tags: ['residential'] },
-        { name: 'Rule 2', is_active: false, priority: 5, required_tags: [] }
+        {
+          id: 'rule-1',
+          name: 'Rule 1',
+          is_active: true,
+          priority: 10,
+          required_tags: ['residential']
+        },
+        { id: 'rule-2', name: 'Rule 2', is_active: false, priority: 5, required_tags: [] }
       ],
       apiKeys: [
         { id: 'key-1', is_active: true },
@@ -77,7 +85,7 @@ describe('Overview Dashboard Page', () => {
   it('renders endpoint rows and attention indicators', () => {
     container.innerHTML = OverviewPage.render(state)
 
-    expect(container.querySelector('.badge-success').textContent).toBe('1 healthy') // endpoint healthy badge
+    expect(mustQuery<HTMLElement>(container, '.badge-success').textContent).toBe('1 healthy') // endpoint healthy badge
     expect(container.textContent).toContain('Rule "Rule 2" is inactive')
   })
 
@@ -85,14 +93,11 @@ describe('Overview Dashboard Page', () => {
     container.innerHTML = OverviewPage.render(state)
     OverviewPage.afterRender(state)
 
-    const drainBtn = container.querySelector('.btn-drain')
+    const drainBtn = mustQuery<HTMLButtonElement>(container, '.btn-drain')
     drainBtn.click()
 
-    expect(showConfirm).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: 'Drain Endpoint',
-        body: expect.stringContaining('ep-1')
-      })
-    )
+    const [options] = firstCall(vi.mocked(showConfirm))
+    expect(options.title).toBe('Drain Endpoint')
+    expect(options.body).toContain('ep-1')
   })
 })

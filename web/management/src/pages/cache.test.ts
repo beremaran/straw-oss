@@ -1,12 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { CachePage } from './cache.js'
 import { state } from '../state.js'
+import { mustQuery } from '../test-utils.js'
 
 vi.mock('../client.js', () => ({
   getCacheStats: vi.fn(),
   clearCache: vi.fn(),
   ApiError: class ApiError extends Error {
-    constructor(message, status) {
+    status: number
+    constructor(message: string, status: number) {
       super(message)
       this.status = status
     }
@@ -17,14 +19,14 @@ vi.mock('../state.js', () => {
   const state = {}
   return {
     state,
-    setState: vi.fn((changes) => Object.assign(state, changes)),
+    setState: vi.fn((changes: Record<string, unknown>) => Object.assign(state, changes)),
     showToast: vi.fn(),
     showConfirm: vi.fn()
   }
 })
 
 describe('Cache Control Page', () => {
-  let container
+  let container: HTMLElement
 
   beforeEach(() => {
     container = document.createElement('div')
@@ -99,8 +101,8 @@ describe('Cache Control Page', () => {
     expect(container.textContent).toContain('Clear Cache')
     expect(container.textContent).toContain('Confirm pattern')
     // Check the pattern is in the input value attribute
-    const patternInput = container.querySelector('#cache-clear-pattern')
-    expect(patternInput?.value).toBe('prefix:*')
+    const patternInput = mustQuery<HTMLInputElement>(container, '#cache-clear-pattern')
+    expect(patternInput.value).toBe('prefix:*')
   })
 
   it('filters Redis INFO text on search', () => {

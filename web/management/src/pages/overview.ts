@@ -8,8 +8,16 @@ import {
   getUsageSummary,
   getBillingEstimate,
   getCacheStats,
-  drainEndpoint
+  drainEndpoint,
+  ApiError
 } from '../client.js'
+import { attr, errorMessage } from '../utils.js'
+import type { OverviewData, Page } from '../types.js'
+
+interface AttentionItem {
+  type: 'warning' | 'danger' | 'info'
+  message: string
+}
 
 export const OverviewPage = {
   render(state) {
@@ -41,7 +49,12 @@ export const OverviewPage = {
 
     // Process endpoints data
     const endpoints = data.endpoints || []
-    const endpointStates = { healthy: 0, suspect: 0, unhealthy: 0, draining: 0 }
+    const endpointStates: Record<string, number> = {
+      healthy: 0,
+      suspect: 0,
+      unhealthy: 0,
+      draining: 0
+    }
     let totalActiveTasks = 0
     endpoints.forEach((ep) => {
       const st = ep.state || 'unhealthy'
@@ -63,12 +76,12 @@ export const OverviewPage = {
     const billing = data.billing || { total_cost_units: 0, estimated_usd: 0.0 }
 
     // Format bytes
-    const formatBytes = (bytes) => {
+    const formatBytes = (bytes?: number) => {
       if (!bytes) return '0 B'
       const k = 1024
       const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
       const i = Math.floor(Math.log(bytes) / Math.log(k))
-      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+      return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`
     }
 
     // Cache status
@@ -76,8 +89,8 @@ export const OverviewPage = {
     const cacheOnline = cacheStats.status === 'online' || cacheStats.redis_connected || false
 
     // Client-side Routing Attention Checks
-    const attentionList = []
-    const priorities = {}
+    const attentionList: AttentionItem[] = []
+    const priorities: Record<number, number> = {}
     const fingerprintIds = new Set((data.fingerprints || []).map((f) => f.id))
     const endpointIds = new Set(endpoints.map((e) => e.id))
 
@@ -364,7 +377,7 @@ export const OverviewPage = {
     setState({ overviewLoading: true, overviewErrors: null })
 
     // Dates
-    const getFormattedDate = (daysAgo) => {
+    const getFormattedDate = (daysAgo: number) => {
       const d = new Date()
       d.setDate(d.getDate() - daysAgo)
       const year = d.getFullYear()
@@ -377,27 +390,29 @@ export const OverviewPage = {
     const startMTD = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-01`
     const today = getFormattedDate(0)
 
-    const endpointsPromise = listEndpoints().catch((e) => {
+    const endpointsPromise = listEndpoints().catch((e: unknown) => {
       console.error(e)
       throw e
     })
-    const rulesPromise = listRoutingRules({ limit: 100 }).catch((e) => {
+    const rulesPromise = listRoutingRules({ limit: 100 }).catch((e: unknown) => {
       console.error(e)
       throw e
     })
-    const apiKeysPromise = listApiKeys({ limit: 100 }).catch((e) => {
+    const apiKeysPromise = listApiKeys({ limit: 100 }).catch((e: unknown) => {
       console.error(e)
       throw e
     })
-    const usagePromise = getUsageSummary({ start: start7, end: today }).catch((e) => {
+    const usagePromise = getUsageSummary({ start: start7, end: today }).catch((e: unknown) => {
       console.error(e)
       throw e
     })
-    const billingPromise = getBillingEstimate({ start: startMTD, end: today }).catch((e) => {
-      console.error(e)
-      throw e
-    })
-    const cacheStatsPromise = getCacheStats().catch((e) => {
+    const billingPromise = getBillingEstimate({ start: startMTD, end: today }).catch(
+      (e: unknown) => {
+        console.error(e)
+        throw e
+      }
+    )
+    const cacheStatsPromise = getCacheStats().catch((e: unknown) => {
       console.error(e)
       throw e
     })
@@ -417,17 +432,17 @@ export const OverviewPage = {
       fingerprintsPromise
     ])
 
-    const data = { ...state.overviewData }
-    const errors = {}
+    const data: OverviewData = { ...(state.overviewData || {}) }
+    const errors: Record<string, string | null> = {}
 
     const keys = ['endpoints', 'rules', 'apiKeys', 'usage', 'billing', 'cacheStats', 'fingerprints']
     results.forEach((res, i) => {
       const key = keys[i]
       if (res.status === 'fulfilled') {
-        data[key] = res.value
+        ;(data as Record<string, unknown>)[key] = res.value
         errors[key] = null
       } else {
-        errors[key] = res.reason.message || res.reason
+        errors[key] = errorMessage(res.reason, String(res.reason))
       }
     })
 
@@ -440,10 +455,11 @@ export const OverviewPage = {
 
     // Check if auth failed across everything - if so, client.js already handles redirects, but let's be safe
     const unauthorizedCount = results.filter(
-      (res) => res.status === 'rejected' && res.reason && res.reason.status === 401
+      (res) =>
+        res.status === 'rejected' && res.reason instanceof ApiError && res.reason.status === 401
     ).length
     if (unauthorizedCount > 3) {
-      import('../state.js').then(({ clearSession }) => {
+      void import('../state.js').then(({ clearSession }) => {
         clearSession()
         window.location.hash = '#/login'
       })
@@ -452,7 +468,7 @@ export const OverviewPage = {
 
   afterRender(state) {
     if (!state.overviewData && !state.overviewLoading) {
-      this.refresh(state)
+      void OverviewPage.refresh(state)
       return
     }
 
@@ -460,15 +476,15 @@ export const OverviewPage = {
     const retryBtn = document.getElementById('retry-failed-panels')
     if (retryBtn) {
       retryBtn.addEventListener('click', () => {
-        this.refresh(state)
+        void OverviewPage.refresh(state)
       })
     }
 
     const drainBtns = document.querySelectorAll('.btn-drain')
     drainBtns.forEach((btn) => {
       btn.addEventListener('click', (_) => {
-        const id = btn.getAttribute('data-id')
-        const tasks = btn.getAttribute('data-tasks') || '0'
+        const id = attr(btn, 'data-id')
+        const tasks = attr(btn, 'data-tasks') || '0'
 
         showConfirm({
           title: 'Drain Endpoint',
@@ -491,15 +507,15 @@ export const OverviewPage = {
                 setState({ overviewData: state.overviewData })
               }
             } catch (err) {
-              showToast(`Failed to drain endpoint: ${err.message}`, 'error')
+              showToast(`Failed to drain endpoint: ${errorMessage(err)}`, 'error')
             }
           }
         })
       })
     })
   }
-}
+} satisfies Page
 
-function failedPanelsCount(errors) {
+function failedPanelsCount(errors: Record<string, string | null>): number {
   return Object.values(errors).filter(Boolean).length
 }

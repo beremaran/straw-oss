@@ -3,6 +3,8 @@
 import { setState, showToast } from '../state.js'
 import { getUsageSummary, getBillingEstimate, listApiKeys, ApiError } from '../client.js'
 import { validateDate } from '../validation.js'
+import { errorMessage, eventValue } from '../utils.js'
+import type { Page } from '../types.js'
 
 export const UsagePage = {
   render(state) {
@@ -21,7 +23,7 @@ export const UsagePage = {
     const viewMode = state.usageViewMode || 'chart' // 'chart' or 'table'
 
     // Compute effective dates
-    const getFormattedDate = (daysAgo) => {
+    const getFormattedDate = (daysAgo: number) => {
       const d = new Date()
       d.setDate(d.getDate() - daysAgo)
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -53,12 +55,12 @@ export const UsagePage = {
     }
 
     // Format bytes
-    const formatBytes = (bytes) => {
+    const formatBytes = (bytes?: number) => {
       if (!bytes || bytes === 0) return '0 B'
       const k = 1024
       const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
       const i = Math.floor(Math.log(bytes) / Math.log(k))
-      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+      return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`
     }
 
     // Usage totals
@@ -87,11 +89,12 @@ export const UsagePage = {
             )
             const bars = dailyData
               .map((d, _) => {
-                const height = Math.max(2, (d.requests / maxRequests) * 120)
+                const requests = d.requests || 0
+                const height = Math.max(2, (requests / maxRequests) * 120)
                 const dateLabel = d.date ? d.date.slice(5) : '' // MM-DD
                 return `
               <div style="display: inline-flex; flex-direction: column; align-items: center; margin: 0 ${gap / 2}px;">
-                <span style="font-size: 11px; color: var(--text); margin-bottom: 2px;">${d.requests.toLocaleString()}</span>
+                <span style="font-size: 11px; color: var(--text); margin-bottom: 2px;">${requests.toLocaleString()}</span>
                 <div style="width: ${barWidth}px; height: ${height}px; background: var(--accent); border-radius: 2px 2px 0 0; min-height: 2px;"></div>
                 <span style="font-size: 10px; color: var(--text); margin-top: 2px;">${dateLabel}</span>
               </div>
@@ -322,7 +325,7 @@ export const UsagePage = {
     const customEnd = state.usageCustomEnd || ''
     const selectedApiKey = state.usageApiKeyFilter || ''
 
-    const getFormattedDate = (daysAgo) => {
+    const getFormattedDate = (daysAgo: number) => {
       const d = new Date()
       d.setDate(d.getDate() - daysAgo)
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -353,14 +356,8 @@ export const UsagePage = {
         end = today
     }
 
-    const usagePromise = getUsageSummary({ start, end, api_key_id: selectedApiKey }).catch((e) => {
-      throw e
-    })
-    const billingPromise = getBillingEstimate({ start, end, api_key_id: selectedApiKey }).catch(
-      (e) => {
-        throw e
-      }
-    )
+    const usagePromise = getUsageSummary({ start, end, api_key_id: selectedApiKey })
+    const billingPromise = getBillingEstimate({ start, end, api_key_id: selectedApiKey })
 
     const [apiKeysResult, usageResult, billingResult] = await Promise.allSettled([
       apiKeysPromise,
@@ -370,22 +367,24 @@ export const UsagePage = {
 
     // Process API keys for suggestions
     if (apiKeysResult.status === 'fulfilled') {
-      const keys = Array.isArray(apiKeysResult.value)
-        ? apiKeysResult.value
-        : apiKeysResult.value.keys || apiKeysResult.value.data || []
-      setState({ apiKeysSuggestions: keys })
+      setState({ apiKeysSuggestions: apiKeysResult.value })
     }
 
     // Process usage
     if (usageResult.status === 'fulfilled') {
       setState({ usageData: usageResult.value, usageLoading: false, lastRefreshed: Date.now() })
     } else {
-      const err = usageResult.reason
-      if (err instanceof ApiError && err.status === 400) {
+      if (usageResult.reason instanceof ApiError && usageResult.reason.status === 400) {
         // Date parse error from backend - set field-level error
-        setState({ usageLoading: false, usageDateError: err.message || 'Invalid date format' })
+        setState({
+          usageLoading: false,
+          usageDateError: errorMessage(usageResult.reason, 'Invalid date format')
+        })
       } else {
-        setState({ usageError: err.message || 'Failed to load usage data', usageLoading: false })
+        setState({
+          usageError: errorMessage(usageResult.reason, 'Failed to load usage data'),
+          usageLoading: false
+        })
       }
     }
 
@@ -393,16 +392,15 @@ export const UsagePage = {
     if (billingResult.status === 'fulfilled') {
       setState({ billingData: billingResult.value })
     } else {
-      const err = billingResult.reason
-      if (!(err instanceof ApiError && err.status === 400)) {
-        console.warn('Billing estimate failed:', err.message)
+      if (!(billingResult.reason instanceof ApiError && billingResult.reason.status === 400)) {
+        console.warn('Billing estimate failed:', errorMessage(billingResult.reason))
       }
     }
   },
 
   afterRender(state) {
     if (!state.usageData && !state.usageLoading && !state.usageError) {
-      this.refresh(state)
+      void UsagePage.refresh(state)
       return
     }
 
@@ -411,8 +409,9 @@ export const UsagePage = {
     const customDatesDiv = document.getElementById('usage-custom-dates')
     if (presetSelect && customDatesDiv) {
       presetSelect.addEventListener('change', (e) => {
-        customDatesDiv.style.display = e.target.value === 'custom' ? '' : 'none'
-        setState({ usageDatePreset: e.target.value })
+        const value = eventValue(e)
+        customDatesDiv.style.display = value === 'custom' ? '' : 'none'
+        setState({ usageDatePreset: value })
       })
     }
 
@@ -421,22 +420,24 @@ export const UsagePage = {
     if (applyBtn) {
       applyBtn.addEventListener('click', () => {
         const datePreset = state.usageDatePreset || '7d'
-        const customStart = document.getElementById('usage-custom-start')?.value || ''
-        const customEnd = document.getElementById('usage-custom-end')?.value || ''
-        const selectedApiKey = document.getElementById('usage-api-key')?.value || ''
+        const customStart =
+          (document.getElementById('usage-custom-start') as HTMLInputElement | null)?.value || ''
+        const customEnd =
+          (document.getElementById('usage-custom-end') as HTMLInputElement | null)?.value || ''
+        const selectedApiKey =
+          (document.getElementById('usage-api-key') as HTMLSelectElement | null)?.value || ''
 
         // Validate dates
         let hasError = false
         if (datePreset === 'custom') {
-          const startErr = validateDate(customStart)
-          const endErr = validateDate(customEnd)
-          if (startErr) {
-            setState({ usageDateError: startErr })
+          try {
+            validateDate(customStart)
+            validateDate(customEnd)
+          } catch (err) {
+            setState({ usageDateError: errorMessage(err, 'Invalid date') })
             hasError = true
-          } else if (endErr) {
-            setState({ usageDateError: endErr })
-            hasError = true
-          } else if (customStart && customEnd && customStart > customEnd) {
+          }
+          if (!hasError && customStart && customEnd && customStart > customEnd) {
             setState({ usageDateError: 'Start date must be on or before end date' })
             hasError = true
           }
@@ -449,7 +450,7 @@ export const UsagePage = {
             usageApiKeyFilter: selectedApiKey,
             usageDateError: ''
           })
-          this.refresh(state)
+          void UsagePage.refresh(state)
         }
       })
     }
@@ -460,13 +461,13 @@ export const UsagePage = {
     if (chartBtn) {
       chartBtn.addEventListener('click', () => {
         setState({ usageViewMode: 'chart' })
-        UsagePage.refresh(state)
+        void UsagePage.refresh(state)
       })
     }
     if (tableBtn) {
       tableBtn.addEventListener('click', () => {
         setState({ usageViewMode: 'table' })
-        UsagePage.refresh(state)
+        void UsagePage.refresh(state)
       })
     }
 
@@ -509,8 +510,8 @@ export const UsagePage = {
     const retryBtn = document.getElementById('usage-retry-btn')
     if (retryBtn) {
       retryBtn.addEventListener('click', () => {
-        this.refresh(state)
+        void UsagePage.refresh(state)
       })
     }
   }
-}
+} satisfies Page

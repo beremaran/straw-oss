@@ -10,8 +10,10 @@ import {
   ApiError
 } from '../client.js'
 import { validateScope, validatePositiveInteger } from '../validation.js'
+import { attr, errorMessage, eventChecked, eventValue } from '../utils.js'
+import type { ApiKey, AppState, Page } from '../types.js'
 
-function apiKeyRows(data) {
+function apiKeyRows(data: AppState['apiKeysData']): ApiKey[] {
   if (Array.isArray(data)) return data
   return data?.keys || data?.data || []
 }
@@ -118,7 +120,7 @@ export const ApiKeysPage = {
         : ''
 
     // Suggestions collected from endpoints and rules
-    const liveTags = state.apiKeysSuggestions || []
+    const liveTags = state.apiKeysScopeSuggestions || []
     const suggestionsHtml = liveTags
       .map(
         (tag) => `
@@ -308,25 +310,25 @@ export const ApiKeysPage = {
         ;(r.required_tags || []).forEach((t) => suggestions.add(t))
         ;(r.excluded_tags || []).forEach((t) => suggestions.add(t))
       })
-      setState({ apiKeysSuggestions: Array.from(suggestions) })
+      setState({ apiKeysScopeSuggestions: Array.from(suggestions) })
     } catch (err) {
-      setState({ apiKeysError: err.message, apiKeysLoading: false })
-      showToast(`Failed to load API keys: ${err.message}`, 'error')
+      setState({ apiKeysError: errorMessage(err), apiKeysLoading: false })
+      showToast(`Failed to load API keys: ${errorMessage(err)}`, 'error')
     }
   },
 
   afterRender(state) {
     if (!state.apiKeysData && !state.apiKeysLoading) {
-      this.refresh(state)
+      void ApiKeysPage.refresh(state)
       return
     }
 
     // Bind filters
-    const bindFilter = (id, stateKey) => {
+    const bindFilter = (id: string, stateKey: keyof AppState) => {
       const el = document.getElementById(id)
       if (el) {
         el.addEventListener('input', (e) => {
-          setState({ [stateKey]: e.target.value })
+          setState({ [stateKey]: eventValue(e) })
         })
       }
     }
@@ -351,9 +353,9 @@ export const ApiKeysPage = {
         })
       }
 
-      const scopeInput = document.getElementById('new-key-scope-input')
-      const chipsContainer = document.getElementById('new-key-chips')
-      const scopeError = document.getElementById('new-key-scope-error')
+      const scopeInput = document.getElementById('new-key-scope-input') as HTMLInputElement
+      const chipsContainer = document.getElementById('new-key-chips') as HTMLElement
+      const scopeError = document.getElementById('new-key-scope-error') as HTMLElement
 
       const renderChips = () => {
         const chips = state.apiKeysNewChips || []
@@ -371,7 +373,7 @@ export const ApiKeysPage = {
         // Bind removals
         chipsContainer.querySelectorAll('.btn-remove-chip').forEach((btn) => {
           btn.addEventListener('click', () => {
-            const idx = parseInt(btn.getAttribute('data-idx'))
+            const idx = parseInt(attr(btn, 'data-idx'))
             const updated = [...(state.apiKeysNewChips || [])]
             updated.splice(idx, 1)
             setState({ apiKeysNewChips: updated })
@@ -384,50 +386,48 @@ export const ApiKeysPage = {
       const suggestionBtns = document.querySelectorAll('.tag-suggestion-btn')
       suggestionBtns.forEach((btn) => {
         btn.addEventListener('click', () => {
-          const tag = btn.getAttribute('data-tag')
+          const tag = attr(btn, 'data-tag')
           const chips = state.apiKeysNewChips || []
           if (!chips.includes(tag)) {
             try {
               validateScope(tag)
               setState({ apiKeysNewChips: [...chips, tag] })
             } catch (err) {
-              scopeError.textContent = err.message
+              scopeError.textContent = errorMessage(err)
             }
           }
         })
       })
 
-      if (scopeInput) {
-        scopeInput.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter' || e.key === ',') {
-            e.preventDefault()
-            const val = scopeInput.value.trim()
-            if (val) {
-              try {
-                validateScope(val)
-                scopeError.textContent = ''
-                const chips = state.apiKeysNewChips || []
-                if (!chips.includes(val)) {
-                  setState({ apiKeysNewChips: [...chips, val] })
-                }
-                scopeInput.value = ''
-              } catch (err) {
-                scopeError.textContent = err.message
+      scopeInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ',') {
+          e.preventDefault()
+          const val = scopeInput.value.trim()
+          if (val) {
+            try {
+              validateScope(val)
+              scopeError.textContent = ''
+              const chips = state.apiKeysNewChips || []
+              if (!chips.includes(val)) {
+                setState({ apiKeysNewChips: [...chips, val] })
               }
+              scopeInput.value = ''
+            } catch (err) {
+              scopeError.textContent = errorMessage(err)
             }
           }
-        })
-      }
+        }
+      })
 
       const createForm = document.getElementById('create-key-form')
       if (createForm) {
         createForm.addEventListener('submit', async (e) => {
           e.preventDefault()
-          const nameInput = document.getElementById('new-key-name')
-          const rateLimitInput = document.getElementById('new-key-rate-limit')
+          const nameInput = document.getElementById('new-key-name') as HTMLInputElement
+          const rateLimitInput = document.getElementById('new-key-rate-limit') as HTMLInputElement
 
-          const nameErr = document.getElementById('new-key-name-error')
-          const limitErr = document.getElementById('new-key-rate-limit-error')
+          const nameErr = document.getElementById('new-key-name-error') as HTMLElement
+          const limitErr = document.getElementById('new-key-rate-limit-error') as HTMLElement
 
           nameErr.textContent = ''
           limitErr.textContent = ''
@@ -452,20 +452,20 @@ export const ApiKeysPage = {
             try {
               validatePositiveInteger(limitVal, 'Rate limit override')
             } catch (err) {
-              limitErr.textContent = err.message
+              limitErr.textContent = errorMessage(err)
               rateLimitInput.classList.add('is-invalid')
               isValid = false
             }
           }
 
           if (!isValid) {
-            const firstInvalid = createForm.querySelector('.is-invalid')
+            const firstInvalid = createForm.querySelector<HTMLElement>('.is-invalid')
             if (firstInvalid) firstInvalid.focus()
             return
           }
 
           try {
-            const payload = {
+            const payload: { name: string; scopes: string[]; rate_limit_override?: number } = {
               name: nameVal,
               scopes: state.apiKeysNewChips || []
             }
@@ -482,9 +482,9 @@ export const ApiKeysPage = {
               apiKeysRawKey: response.raw_key
             })
             // Reload keys list in background
-            ApiKeysPage.refresh(state)
+            void ApiKeysPage.refresh(state)
           } catch (err) {
-            showToast(`Failed to create API key: ${err.message}`, 'error')
+            showToast(`Failed to create API key: ${errorMessage(err)}`, 'error')
           }
         })
       }
@@ -492,11 +492,13 @@ export const ApiKeysPage = {
 
     // Success Modal logic
     if (state.apiKeysRawKey) {
-      const displayInput = document.getElementById('raw-key-display')
+      const displayInput = document.getElementById('raw-key-display') as HTMLInputElement | null
       const revealBtn = document.getElementById('btn-reveal-raw-key')
       const copyBtn = document.getElementById('btn-copy-raw-key')
-      const savedCheckbox = document.getElementById('raw-key-saved-check')
-      const closeBtn = document.getElementById('btn-close-raw-key')
+      const savedCheckbox = document.getElementById(
+        'raw-key-saved-check'
+      ) as HTMLInputElement | null
+      const closeBtn = document.getElementById('btn-close-raw-key') as HTMLButtonElement | null
       const downloadBtn = document.getElementById('btn-download-raw-key')
 
       if (revealBtn && displayInput) {
@@ -513,14 +515,14 @@ export const ApiKeysPage = {
 
       if (copyBtn) {
         copyBtn.addEventListener('click', () => {
-          navigator.clipboard.writeText(state.apiKeysRawKey)
+          void navigator.clipboard.writeText(state.apiKeysRawKey || '')
           showToast('Raw key copied to clipboard', 'success')
         })
       }
 
       if (downloadBtn) {
         downloadBtn.addEventListener('click', () => {
-          const blob = new Blob([state.apiKeysRawKey], { type: 'text/plain' })
+          const blob = new Blob([state.apiKeysRawKey || ''], { type: 'text/plain' })
           const a = document.createElement('a')
           a.href = URL.createObjectURL(blob)
           a.download = `straw-key-${Date.now()}.txt`
@@ -532,7 +534,7 @@ export const ApiKeysPage = {
 
       if (savedCheckbox && closeBtn) {
         savedCheckbox.addEventListener('change', (e) => {
-          closeBtn.disabled = !e.target.checked
+          closeBtn.disabled = !eventChecked(e)
         })
 
         closeBtn.addEventListener('click', () => {
@@ -543,11 +545,11 @@ export const ApiKeysPage = {
 
     // Row selection and check-all
     const checkAll = document.getElementById('check-all-keys')
-    const rowChecks = document.querySelectorAll('.key-select-check')
+    const rowChecks = document.querySelectorAll<HTMLInputElement>('.key-select-check')
 
     if (checkAll) {
       checkAll.addEventListener('change', (e) => {
-        if (e.target.checked) {
+        if (eventChecked(e)) {
           // Select all visible active keys
           const keys = apiKeyRows(state.apiKeysData)
           const activeIds = keys.filter((k) => k.is_active).map((k) => k.id)
@@ -560,7 +562,7 @@ export const ApiKeysPage = {
 
     rowChecks.forEach((ch) => {
       ch.addEventListener('change', (_) => {
-        const id = ch.getAttribute('data-id')
+        const id = attr(ch, 'data-id')
         let selected = [...(state.apiKeysBulkSelected || [])]
         if (ch.checked) {
           if (!selected.includes(id)) selected.push(id)
@@ -575,8 +577,8 @@ export const ApiKeysPage = {
     const copyIdBtns = document.querySelectorAll('.btn-copy-id')
     copyIdBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
-        const val = btn.getAttribute('data-copy')
-        navigator.clipboard.writeText(val)
+        const val = attr(btn, 'data-copy')
+        void navigator.clipboard.writeText(val)
         showToast('ID copied to clipboard', 'success')
       })
     })
@@ -585,8 +587,8 @@ export const ApiKeysPage = {
     const revokeBtns = document.querySelectorAll('.btn-revoke-key')
     revokeBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
-        const id = btn.getAttribute('data-id')
-        const name = btn.getAttribute('data-name')
+        const id = attr(btn, 'data-id')
+        const name = attr(btn, 'data-name')
 
         showConfirm({
           title: 'Revoke API Key',
@@ -608,9 +610,9 @@ export const ApiKeysPage = {
             } catch (err) {
               if (err instanceof ApiError && err.status === 404) {
                 showToast(`Key already removed or revoked`, 'warning')
-                ApiKeysPage.refresh(state)
+                void ApiKeysPage.refresh(state)
               } else {
-                showToast(`Failed to revoke key: ${err.message}`, 'error')
+                showToast(`Failed to revoke key: ${errorMessage(err)}`, 'error')
               }
             }
           }
@@ -630,7 +632,7 @@ export const ApiKeysPage = {
           callback: async () => {
             let succeeded = 0
             let failed = 0
-            const errors = []
+            const errors: string[] = []
 
             for (const id of selectedIds) {
               try {
@@ -638,7 +640,7 @@ export const ApiKeysPage = {
                 succeeded++
               } catch (err) {
                 failed++
-                errors.push(`${id}: ${err.message}`)
+                errors.push(`${id}: ${errorMessage(err)}`)
               }
             }
 
@@ -651,14 +653,14 @@ export const ApiKeysPage = {
             }
 
             setState({ apiKeysBulkSelected: [] })
-            ApiKeysPage.refresh(state)
+            void ApiKeysPage.refresh(state)
           }
         })
       })
     }
   }
-}
+} satisfies Page
 
-function rowChecked(val) {
+function rowChecked(val: boolean): string {
   return val ? 'checked' : ''
 }

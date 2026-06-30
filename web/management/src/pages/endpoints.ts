@@ -2,6 +2,8 @@
 
 import { setState, showToast, showConfirm } from '../state.js'
 import { listEndpoints, drainEndpoint } from '../client.js'
+import { attr, errorMessage, eventValue } from '../utils.js'
+import type { Page } from '../types.js'
 
 export const EndpointsPage = {
   render(state) {
@@ -198,22 +200,22 @@ export const EndpointsPage = {
       setState({ endpointsData: endpoints, endpointsLoading: false })
     } catch (err) {
       setState({ endpointsLoading: false })
-      showToast(`Failed to load endpoints: ${err.message}`, 'error')
+      showToast(`Failed to load endpoints: ${errorMessage(err)}`, 'error')
     }
   },
 
   afterRender(state) {
     if (!state.endpointsData && !state.endpointsLoading) {
-      this.refresh(state)
+      void EndpointsPage.refresh(state)
       return
     }
 
     // Bind filters
-    const bindFilter = (id, stateKey) => {
+    const bindFilter = (id: string, stateKey: keyof typeof state) => {
       const el = document.getElementById(id)
       if (el) {
         el.addEventListener('input', (e) => {
-          setState({ [stateKey]: e.target.value })
+          setState({ [stateKey]: eventValue(e) })
         })
       }
     }
@@ -227,8 +229,8 @@ export const EndpointsPage = {
     const copyIdBtns = document.querySelectorAll('.btn-copy-id')
     copyIdBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
-        const val = btn.getAttribute('data-copy')
-        navigator.clipboard.writeText(val)
+        const val = attr(btn, 'data-copy')
+        void navigator.clipboard.writeText(val)
         showToast('Endpoint ID copied', 'success')
       })
     })
@@ -237,8 +239,8 @@ export const EndpointsPage = {
     const copyTagsBtns = document.querySelectorAll('.btn-copy-tags')
     copyTagsBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
-        const tags = btn.getAttribute('data-tags')
-        navigator.clipboard.writeText(tags)
+        const tags = attr(btn, 'data-tags')
+        void navigator.clipboard.writeText(tags)
         showToast('Endpoint tags copied', 'success')
       })
     })
@@ -248,8 +250,8 @@ export const EndpointsPage = {
     tagChips.forEach((chip) => {
       chip.addEventListener('click', (e) => {
         e.stopPropagation()
-        const tag = chip.getAttribute('data-tag')
-        navigator.clipboard.writeText(tag)
+        const tag = attr(chip, 'data-tag')
+        void navigator.clipboard.writeText(tag)
         showToast(`Tag '${tag}' copied`, 'success')
       })
     })
@@ -258,7 +260,7 @@ export const EndpointsPage = {
     const findRulesBtns = document.querySelectorAll('.btn-find-rules')
     findRulesBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
-        const tags = btn.getAttribute('data-tags')
+        const tags = attr(btn, 'data-tags')
         if (tags) {
           const firstTag = tags.split(',')[0]
           // Redirect to rules page with tag filter preset
@@ -274,8 +276,8 @@ export const EndpointsPage = {
     const drainBtns = document.querySelectorAll('.btn-drain-endpoint')
     drainBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
-        const id = btn.getAttribute('data-id')
-        const tasks = btn.getAttribute('data-tasks') || '0'
+        const id = attr(btn, 'data-id')
+        const tasks = attr(btn, 'data-tasks') || '0'
 
         showConfirm({
           title: 'Drain Endpoint',
@@ -295,11 +297,11 @@ export const EndpointsPage = {
                 setState({ endpointsData: state.endpointsData })
               }
             } catch (err) {
-              showToast(`Failed to drain endpoint: ${err.message}`, 'error')
+              showToast(`Failed to drain endpoint: ${errorMessage(err)}`, 'error')
             }
           }
         })
       })
     })
   }
-}
+} satisfies Page

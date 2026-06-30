@@ -1,8 +1,12 @@
 // Straw Management UI Global State Store
 
-const subscribers = []
+import type { AppState, ConfirmDialog, ToastType } from './types.js'
 
-export const state = {
+type Subscriber = (state: AppState) => void
+
+const subscribers: Subscriber[] = []
+
+export const state: AppState = {
   baseUrl: localStorage.getItem('straw_baseUrl') || 'http://localhost:8081',
   token: localStorage.getItem('straw_token') || '',
   remember: localStorage.getItem('straw_remember') === 'true',
@@ -22,12 +26,12 @@ export const state = {
   systemData: null
 }
 
-export function setState(changes) {
+export function setState(changes: Partial<AppState>) {
   Object.assign(state, changes)
   subscribers.forEach((cb) => cb(state))
 }
 
-export function subscribe(cb) {
+export function subscribe(cb: Subscriber) {
   subscribers.push(cb)
   return () => {
     const idx = subscribers.indexOf(cb)
@@ -35,7 +39,7 @@ export function subscribe(cb) {
   }
 }
 
-export function showToast(message, type = 'success') {
+export function showToast(message: string, type: ToastType = 'success') {
   setState({ toast: { message, type } })
   setTimeout(() => {
     if (state.toast && state.toast.message === message) {
@@ -44,7 +48,7 @@ export function showToast(message, type = 'success') {
   }, 4000)
 }
 
-export function showConfirm(options) {
+export function showConfirm(options: Omit<ConfirmDialog, 'inputVal' | 'loading'>) {
   setState({
     confirmDialog: {
       ...options,

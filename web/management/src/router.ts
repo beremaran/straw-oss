@@ -12,8 +12,10 @@ import { UsagePage } from './pages/usage.js'
 import { CachePage } from './pages/cache.js'
 import { SystemPage } from './pages/system.js'
 import { renderShell } from './components/shell.js'
+import { eventValue } from './utils.js'
+import type { Page } from './types.js'
 
-const routes = {
+const routes: Record<string, Page> = {
   '#/login': LoginPage,
   '#/overview': OverviewPage,
   '#/api-keys': ApiKeysPage,
@@ -61,14 +63,15 @@ export function handleRouteChange() {
     setState({ currentPage: hash })
   }
 
-  const appDiv = document.querySelector('#app')
+  const appDiv = document.querySelector<HTMLElement>('#app')
+  if (!appDiv) return
   if (routeKey === '#/login') {
     appDiv.innerHTML = page.render(state)
-    if (page.afterRender) page.afterRender(state)
+    if (page.afterRender) void page.afterRender(state)
   } else {
     appDiv.innerHTML = renderShell(state, page.render(state))
     attachShellEvents()
-    if (page.afterRender) page.afterRender(state)
+    if (page.afterRender) void page.afterRender(state)
   }
 }
 
@@ -87,7 +90,7 @@ function attachShellEvents() {
   if (signOutBtn) {
     signOutBtn.addEventListener('click', (e) => {
       e.preventDefault()
-      import('./state.js').then(({ clearSession }) => {
+      void import('./state.js').then(({ clearSession }) => {
         clearSession()
         window.location.hash = '#/login'
       })
@@ -111,7 +114,7 @@ function attachShellEvents() {
       }
       const page = routes[routeKey]
       if (page && page.refresh) {
-        page.refresh(state)
+        void page.refresh(state)
       }
     })
   }
@@ -120,27 +123,28 @@ function attachShellEvents() {
   const confirmCancel = document.getElementById('confirm-cancel-btn')
   if (confirmCancel) {
     confirmCancel.addEventListener('click', () => {
-      import('./state.js').then(({ closeConfirm }) => closeConfirm())
+      void import('./state.js').then(({ closeConfirm }) => closeConfirm())
     })
   }
 
   const confirmInput = document.getElementById('confirm-input')
-  const confirmOk = document.getElementById('confirm-ok-btn')
+  const confirmOk = document.getElementById('confirm-ok-btn') as HTMLButtonElement | null
   if (confirmInput && confirmOk) {
     confirmInput.addEventListener('input', (e) => {
-      confirmOk.disabled = e.target.value !== state.confirmDialog.confirmText
+      confirmOk.disabled = eventValue(e) !== state.confirmDialog?.confirmText
     })
   }
 
   if (confirmOk) {
     confirmOk.addEventListener('click', () => {
-      if (state.confirmDialog && state.confirmDialog.callback) {
+      const dialog = state.confirmDialog
+      if (dialog?.callback) {
         // Set loading state on the button
         confirmOk.disabled = true
         confirmOk.innerHTML = '<span class="spinner"></span>'
 
-        Promise.resolve(state.confirmDialog.callback()).finally(() => {
-          import('./state.js').then(({ closeConfirm }) => closeConfirm())
+        void Promise.resolve(dialog.callback()).finally(() => {
+          void import('./state.js').then(({ closeConfirm }) => closeConfirm())
         })
       }
     })

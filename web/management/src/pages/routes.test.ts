@@ -9,7 +9,7 @@ vi.mock('../../state.js', () => {
   }
   return {
     state,
-    setState: vi.fn((changes) => Object.assign(state, changes)),
+    setState: vi.fn((changes: Record<string, unknown>) => Object.assign(state, changes)),
     showToast: vi.fn(),
     showConfirm: vi.fn(),
     clearSession: vi.fn()
@@ -18,7 +18,8 @@ vi.mock('../../state.js', () => {
 
 vi.mock('../../client.js', () => ({
   ApiError: class ApiError extends Error {
-    constructor(message, status) {
+    status: number
+    constructor(message: string, status: number) {
       super(message)
       this.status = status
     }
@@ -36,9 +37,10 @@ import { UsagePage } from './usage.js'
 import { CachePage } from './cache.js'
 import { SystemPage } from './system.js'
 import { LoginPage } from './login.js'
+import { testState } from '../test-utils.js'
 
 describe('Route Smoke Tests', () => {
-  let container
+  let container: HTMLElement
 
   beforeEach(() => {
     container = document.createElement('div')
@@ -50,55 +52,67 @@ describe('Route Smoke Tests', () => {
   })
 
   it('OverviewPage renders without crashing', () => {
-    container.innerHTML = OverviewPage.render({ overviewData: null, overviewLoading: false })
+    container.innerHTML = OverviewPage.render(
+      testState({ overviewData: null, overviewLoading: false })
+    )
     expect(container.textContent).toContain('Overview Dashboard')
   })
 
   it('ApiKeysPage renders without crashing', () => {
-    container.innerHTML = ApiKeysPage.render({ apiKeysData: null, apiKeysLoading: false })
+    container.innerHTML = ApiKeysPage.render(
+      testState({ apiKeysData: null, apiKeysLoading: false })
+    )
     expect(container.textContent).toContain('API Keys')
   })
 
   it('RoutingRulesPage renders without crashing', () => {
-    container.innerHTML = RoutingRulesPage.render({ rulesData: null, rulesLoading: false })
+    container.innerHTML = RoutingRulesPage.render(
+      testState({ rulesData: null, rulesLoading: false })
+    )
     expect(container.textContent).toContain('Routing Rules')
   })
 
   it('RoutingRuleEditorPage renders without crashing', () => {
-    container.innerHTML = RoutingRuleEditorPage.render({ ruleEditorData: null })
+    container.innerHTML = RoutingRuleEditorPage.render(testState())
     expect(container.textContent).toContain('Routing Rule')
   })
 
   it('EndpointsPage renders without crashing', () => {
-    container.innerHTML = EndpointsPage.render({ endpointsData: null, endpointsLoading: false })
+    container.innerHTML = EndpointsPage.render(
+      testState({ endpointsData: null, endpointsLoading: false })
+    )
     expect(container.textContent).toContain('Active Endpoint Nodes')
   })
 
   it('FingerprintsPage renders without crashing', () => {
-    container.innerHTML = FingerprintsPage.render({
-      fingerprintsData: null,
-      fingerprintsLoading: false
-    })
+    container.innerHTML = FingerprintsPage.render(
+      testState({
+        fingerprintsData: null,
+        fingerprintsLoading: false
+      })
+    )
     expect(container.textContent).toContain('Fingerprint Presets')
   })
 
   it('UsagePage renders without crashing', () => {
-    container.innerHTML = UsagePage.render({ usageData: null, usageLoading: false })
+    container.innerHTML = UsagePage.render(testState({ usageData: null, usageLoading: false }))
     expect(container.textContent).toContain('Usage & Billing')
   })
 
   it('CachePage renders without crashing', () => {
-    container.innerHTML = CachePage.render({ cacheData: null, cacheLoading: false })
+    container.innerHTML = CachePage.render(testState({ cacheData: null, cacheLoading: false }))
     expect(container.textContent).toContain('Cache Control')
   })
 
   it('SystemPage renders without crashing', () => {
-    container.innerHTML = SystemPage.render({ systemHealth: null, systemHealthLoading: false })
+    container.innerHTML = SystemPage.render(
+      testState({ systemHealth: null, systemHealthLoading: false })
+    )
     expect(container.textContent).toContain('System Info')
   })
 
   it('LoginPage renders without crashing', () => {
-    container.innerHTML = LoginPage.render({ loginError: null })
+    container.innerHTML = LoginPage.render(testState({ loginError: null }))
     expect(container.textContent).toContain('Straw Console')
   })
 })
