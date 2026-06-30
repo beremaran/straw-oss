@@ -11,11 +11,16 @@ The Management API serves as the control gateway for managing API keys, routing 
 
 ## 🔒 Authentication
 
-All requests targeting the Management API endpoints (`/management/*`) must be authenticated by supplying the `MANAGEMENT_API_KEY` configured in your Relay environment as a Bearer token in the `Authorization` header:
+Most Management API requests (`/management/*`) require a Bearer token. Two auth modes are supported:
+
+* **Session access token**: log in through `POST /management/auth/login` or SSO, then send the returned access token.
+* **Legacy management token**: send the configured `MANAGEMENT_API_KEY`; this remains available unless disabled.
 
 ```http
-Authorization: Bearer <MANAGEMENT_API_KEY>
+Authorization: Bearer <token>
 ```
+
+`POST /management/auth/login`, `POST /management/auth/refresh`, and SSO start/callback routes are public auth routes. `POST /management/users/bootstrap` requires the legacy token and only works before an active owner exists. Management routes are protected by RBAC permissions such as `api_keys:read`, `endpoints:control`, `reports:write`, and `alerts:read`.
 
 ---
 
@@ -427,7 +432,7 @@ Retrieves history of control commands dispatched to the endpoint.
 ### Get Command Status
 Retrieves details and execution status of a single control command.
 
-* **URL**: `GET /management/endpoints/commands/{command_id}`
+* **URL**: `GET /management/commands/{id}`
 * **Response (Status 200 OK)**:
   ```json
   {
@@ -591,9 +596,70 @@ Aggregates daily summaries and calculates estimated costs in USD.
     "estimated_usd": 14.022,
     "currency": "USD",
     "start": "2026-06-01",
-    "end": "2026-06-28"
+    "end": "2026-06-28",
+    "pricing_version": "cost-multipliers:type:residential@1",
+    "multipliers": [
+      {
+        "endpoint_tag": "type:residential",
+        "multiplier": 1.5,
+        "version": 1
+      }
+    ]
   }
   ```
+
+---
+
+## 💸 Cost Multipliers
+
+Cost multipliers adjust billing estimates for endpoint tags. Updates use optimistic locking through the `version` field.
+
+* **List**: `GET /management/cost-multipliers`
+* **Create**: `POST /management/cost-multipliers`
+* **Detail**: `GET /management/cost-multipliers/{id}`
+* **Update**: `PUT /management/cost-multipliers/{id}`
+* **Deactivate**: `DELETE /management/cost-multipliers/{id}`
+
+Create body:
+
+```json
+{
+  "endpoint_tag": "type:residential",
+  "multiplier": 1.5,
+  "description": "Residential endpoint cost weight",
+  "is_active": true
+}
+```
+
+## 📑 Reports And Schedules
+
+Saved reports can be run immediately or scheduled. First-release report artifacts are CSV files.
+
+* **Reports**: `GET /management/reports`, `POST /management/reports`, `GET/PATCH/DELETE /management/reports/{id}`
+* **Run now**: `POST /management/reports/{id}/run`
+* **Run history**: `GET /management/reports/{id}/runs`, `GET /management/report-runs/{run_id}`, `GET /management/report-runs/{run_id}/download`
+* **Schedules**: `GET /management/report-schedules`, `POST /management/report-schedules`, `PATCH/DELETE /management/report-schedules/{id}`
+
+Supported report types are `usage_summary`, `billing_estimate`, `api_key_inventory`, `endpoint_health`, and `audit_events`.
+
+## 🔔 Notifications
+
+Notification channels define delivery destinations for alerting and report workflows. Secrets are accepted on create/update but responses only include `has_secret`.
+
+* **Channels**: `GET /management/notification-channels`, `POST /management/notification-channels`, `PATCH/DELETE /management/notification-channels/{id}`
+* **Test channel**: `POST /management/notification-channels/{id}/test`
+* **Current-user preferences**: `GET /management/notification-preferences`, `PATCH /management/notification-preferences`
+
+Supported channel types are `webhook`, `email`, and `slack_webhook`.
+
+## 🚨 Alerts
+
+Alert rules evaluate supported metrics, record firing/resolved event lifecycles, and notify configured notification channels while respecting cooldowns.
+
+* **Rules**: `GET /management/alerts/rules`, `POST /management/alerts/rules`, `GET/PATCH/DELETE /management/alerts/rules/{id}`
+* **Events**: `GET /management/alerts/events`, `POST /management/alerts/events/{id}/ack`
+
+Supported metrics are `endpoint_unhealthy_count`, `endpoint_draining_count`, `endpoint_active_tasks`, `usage_requests`, `usage_bytes`, `billing_estimated_usd`, and `cache_error_rate`. Supported conditions are `greater_than`, `greater_than_or_equal`, `less_than`, `less_than_or_equal`, and `equals`.
 
 ---
 
