@@ -2,6 +2,8 @@
 
 import { setState, clearSession } from '../state.js'
 import { healthCheck } from '../client.js'
+import { errorMessage } from '../utils.js'
+import type { AppState, Page } from '../types.js'
 
 // Known backend gaps from the UI spec
 const BACKEND_GAPS = [
@@ -15,7 +17,13 @@ const BACKEND_GAPS = [
   'Hourly drilldown, invoices, payments, and organizations in usage'
 ]
 
-export const SystemPage = {
+type SystemPageType = Page & {
+  refresh(state: AppState): Promise<void>
+  detectCapabilities(state: AppState): Promise<void>
+  afterRender(state: AppState): void
+}
+
+export const SystemPage: SystemPageType = {
   render(state) {
     const healthData = state.systemHealth || null
     const healthError = state.systemHealthError || null
@@ -184,12 +192,12 @@ export const SystemPage = {
     } catch (err) {
       setState({
         systemHealthLoading: false,
-        systemHealthError: err.message || 'Health check failed'
+        systemHealthError: errorMessage(err, 'Health check failed')
       })
     }
   },
 
-  async detectCapabilities(_) {
+  async detectCapabilities(_state: AppState) {
     setState({ systemCapabilitiesLoading: true })
     const results = await Promise.allSettled([
       import('../client.js').then((m) => m.getCacheStats().catch(() => null)),
@@ -203,7 +211,7 @@ export const SystemPage = {
     ])
 
     const keys = ['cache', 'fingerprints', 'usage', 'rules', 'endpoints', 'apiKeys']
-    const caps = {}
+    const caps: Record<string, boolean> = {}
     results.forEach((res, i) => {
       caps[keys[i]] = res.status === 'fulfilled' && res.value !== null
     })
@@ -224,26 +232,26 @@ export const SystemPage = {
     // Health refresh
     const healthRefreshBtn = document.getElementById('system-health-refresh')
     if (healthRefreshBtn) {
-      healthRefreshBtn.addEventListener('click', () => this.refresh(state))
+      healthRefreshBtn.addEventListener('click', () => void SystemPage.refresh(state))
     }
 
     // Capabilities re-detect
     const capsRefreshBtn = document.getElementById('system-capabilities-refresh')
     if (capsRefreshBtn) {
-      capsRefreshBtn.addEventListener('click', () => this.detectCapabilities(state))
+      capsRefreshBtn.addEventListener('click', () => void SystemPage.detectCapabilities(state))
     }
 
     // Initial load
     if (!state.systemHealth && !state.systemHealthLoading) {
-      this.refresh(state)
+      void SystemPage.refresh(state)
     }
     if (!state.systemCapabilities) {
-      this.detectCapabilities(state)
+      void SystemPage.detectCapabilities(state)
     }
   }
 }
 
-function escapeHtml(str) {
+function escapeHtml(str: string): string {
   if (!str) return ''
   return str
     .replace(/&/g, '&amp;')

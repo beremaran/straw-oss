@@ -3,7 +3,7 @@ import { handleRouteChange } from './router.js'
 import { state, subscribe } from './state.js'
 
 describe('Router & App Shell Guarding', () => {
-  let appDiv
+  let appDiv: HTMLElement
 
   beforeEach(() => {
     appDiv = document.createElement('div')

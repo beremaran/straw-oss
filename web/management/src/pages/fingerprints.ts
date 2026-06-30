@@ -8,6 +8,8 @@ import {
   listRoutingRules
 } from '../client.js'
 import { validateJsonObject } from '../validation.js'
+import { attr, errorMessage } from '../utils.js'
+import type { Page } from '../types.js'
 
 export const FingerprintsPage = {
   render(state) {
@@ -15,7 +17,7 @@ export const FingerprintsPage = {
     const rules = state.rulesData || []
 
     // Build map of preset usage in rules
-    const usageCounts = {}
+    const usageCounts: Record<string, number> = {}
     rules.forEach((r) => {
       if (r.fingerprint_preset) {
         usageCounts[r.fingerprint_preset] = (usageCounts[r.fingerprint_preset] || 0) + 1
@@ -193,14 +195,14 @@ export const FingerprintsPage = {
         fingerprintsLoading: false
       })
     } catch (err) {
-      setState({ fingerprintsLoading: false, fingerprintsError: err.message })
-      showToast(`Failed to load presets: ${err.message}`, 'error')
+      setState({ fingerprintsLoading: false, fingerprintsError: errorMessage(err) })
+      showToast(`Failed to load presets: ${errorMessage(err)}`, 'error')
     }
   },
 
   afterRender(state) {
     if (!state.fingerprintsData && !state.fingerprintsLoading) {
-      this.refresh(state)
+      void FingerprintsPage.refresh(state)
       return
     }
 
@@ -208,8 +210,8 @@ export const FingerprintsPage = {
     const copyBtns = document.querySelectorAll('.btn-copy-preset-json')
     copyBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
-        const configStr = decodeURIComponent(btn.getAttribute('data-config'))
-        navigator.clipboard.writeText(configStr)
+        const configStr = decodeURIComponent(attr(btn, 'data-config'))
+        void navigator.clipboard.writeText(configStr)
         showToast('Preset config JSON copied', 'success')
       })
     })
@@ -231,8 +233,8 @@ export const FingerprintsPage = {
     const editBtns = document.querySelectorAll('.btn-edit-preset')
     editBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
-        const id = btn.getAttribute('data-id')
-        const preset = state.fingerprintsData.find((p) => p.id === id)
+        const id = attr(btn, 'data-id')
+        const preset = (state.fingerprintsData || []).find((p) => p.id === id)
         if (preset) {
           setState({
             fingerprintsShowModal: true,
@@ -248,8 +250,8 @@ export const FingerprintsPage = {
     const duplicateBtns = document.querySelectorAll('.btn-duplicate-preset')
     duplicateBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
-        const id = btn.getAttribute('data-id')
-        const preset = state.fingerprintsData.find((p) => p.id === id)
+        const id = attr(btn, 'data-id')
+        const preset = (state.fingerprintsData || []).find((p) => p.id === id)
         if (preset) {
           setState({
             fingerprintsShowModal: true,
@@ -258,7 +260,7 @@ export const FingerprintsPage = {
             fingerprintsModalRule: {
               id: `${preset.id}-copy`,
               name: `${preset.name || preset.id} Copy`,
-              config: JSON.parse(JSON.stringify(preset.config || {}))
+              config: structuredClone(preset.config || {})
             }
           })
         }
@@ -278,7 +280,7 @@ export const FingerprintsPage = {
               await broadcastFingerprints()
               showToast('Broadcast requested successfully', 'success')
             } catch (err) {
-              showToast(`Failed to broadcast: ${err.message}`, 'error')
+              showToast(`Failed to broadcast: ${errorMessage(err)}`, 'error')
             }
           }
         })
@@ -299,13 +301,13 @@ export const FingerprintsPage = {
         form.addEventListener('submit', async (e) => {
           e.preventDefault()
 
-          const idInput = document.getElementById('preset-id')
-          const nameInput = document.getElementById('preset-name')
-          const configInput = document.getElementById('preset-config')
+          const idInput = document.getElementById('preset-id') as HTMLInputElement
+          const nameInput = document.getElementById('preset-name') as HTMLInputElement
+          const configInput = document.getElementById('preset-config') as HTMLTextAreaElement
 
-          const idErr = document.getElementById('preset-id-error')
-          const nameErr = document.getElementById('preset-name-error')
-          const configErr = document.getElementById('preset-config-error')
+          const idErr = document.getElementById('preset-id-error') as HTMLElement
+          const nameErr = document.getElementById('preset-name-error') as HTMLElement
+          const configErr = document.getElementById('preset-config-error') as HTMLElement
 
           idErr.textContent = ''
           nameErr.textContent = ''
@@ -338,36 +340,37 @@ export const FingerprintsPage = {
             isValid = false
           }
 
-          let parsedConfig = null
+          let parsedConfig: Record<string, unknown> = {}
           try {
             parsedConfig = validateJsonObject(configVal)
           } catch (err) {
-            configErr.textContent = err.message
+            configErr.textContent = errorMessage(err)
             configInput.classList.add('is-invalid')
             isValid = false
           }
 
           if (!isValid) {
-            const firstInvalid = form.querySelector('.is-invalid')
+            const firstInvalid = form.querySelector<HTMLElement>('.is-invalid')
             if (firstInvalid) firstInvalid.focus()
             return
           }
 
+          const modalRule = state.fingerprintsModalRule
           try {
             await createFingerprint({
-              id: state.fingerprintsModalIsEdit ? state.fingerprintsModalRule.id : idVal,
+              id: state.fingerprintsModalIsEdit ? modalRule?.id || idVal : idVal,
               name: nameVal,
               config: parsedConfig
             })
 
             showToast('Preset saved successfully', 'success')
             setState({ fingerprintsShowModal: false })
-            this.refresh(state)
+            void FingerprintsPage.refresh(state)
           } catch (err) {
-            showToast(`Failed to save preset: ${err.message}`, 'error')
+            showToast(`Failed to save preset: ${errorMessage(err)}`, 'error')
           }
         })
       }
     }
   }
-}
+} satisfies Page

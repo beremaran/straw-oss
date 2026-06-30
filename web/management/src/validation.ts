@@ -1,6 +1,20 @@
 // Straw Management UI Shared Validation Rules
 
-export function parseTag(tagStr) {
+export interface ParsedTag {
+  key: string
+  value: string
+  warning?: string
+}
+
+function messageFromError(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+export function parseTag(tagStr: string): ParsedTag {
   const trimmed = (tagStr || '').trim()
   if (!trimmed) throw new Error('Tag cannot be empty')
 
@@ -28,7 +42,7 @@ export function parseTag(tagStr) {
   return { key, value }
 }
 
-export function validateScope(scopeStr) {
+export function validateScope(scopeStr: string): true {
   const trimmed = (scopeStr || '').trim()
   if (!trimmed) throw new Error('Scope cannot be empty')
   if (trimmed === '*') return true // match all
@@ -56,7 +70,7 @@ export function validateScope(scopeStr) {
   }
 }
 
-export function validateDuration(durationStr) {
+export function validateDuration(durationStr: string): true {
   const trimmed = (durationStr || '').trim()
   if (!trimmed) return true // empty is allowed (optional field)
 
@@ -70,7 +84,7 @@ export function validateDuration(durationStr) {
   return true
 }
 
-export function validateDate(dateStr) {
+export function validateDate(dateStr: string): true {
   const trimmed = (dateStr || '').trim()
   if (!trimmed) return true // optional
 
@@ -86,22 +100,22 @@ export function validateDate(dateStr) {
   return true
 }
 
-export function validateJsonObject(jsonStr) {
+export function validateJsonObject(jsonStr: string): Record<string, unknown> {
   const trimmed = (jsonStr || '').trim()
   if (!trimmed) throw new Error('JSON configuration is required')
 
   try {
-    const parsed = JSON.parse(trimmed)
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    const parsed = JSON.parse(trimmed) as unknown
+    if (!isJsonObject(parsed)) {
       throw new Error('Configuration must be a valid JSON object')
     }
     return parsed
   } catch (err) {
-    throw new Error(`Invalid JSON syntax: ${err.message}`, { cause: err })
+    throw new Error(`Invalid JSON syntax: ${messageFromError(err)}`, { cause: err })
   }
 }
 
-export function validatePositiveInteger(val, fieldName) {
+export function validatePositiveInteger(val: string | number, fieldName: string): number {
   const num = Number(val)
   if (!Number.isInteger(num) || num <= 0) {
     throw new Error(`${fieldName} must be a positive integer`)
@@ -109,7 +123,7 @@ export function validatePositiveInteger(val, fieldName) {
   return num
 }
 
-export function validateNonNegativeInteger(val, fieldName) {
+export function validateNonNegativeInteger(val: string | number, fieldName: string): number {
   const num = Number(val)
   if (!Number.isInteger(num) || num < 0) {
     throw new Error(`${fieldName} must be a non-negative integer`)

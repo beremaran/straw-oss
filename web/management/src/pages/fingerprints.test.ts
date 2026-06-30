@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { FingerprintsPage } from './fingerprints.js'
 import { state, showConfirm } from '../state.js'
+import { firstCall, mustQuery } from '../test-utils.js'
 
 vi.mock('../client.js', () => ({
   listFingerprints: vi.fn(),
@@ -8,7 +9,8 @@ vi.mock('../client.js', () => ({
   broadcastFingerprints: vi.fn(),
   listRoutingRules: vi.fn(),
   ApiError: class ApiError extends Error {
-    constructor(message, status) {
+    status: number
+    constructor(message: string, status: number) {
       super(message)
       this.status = status
     }
@@ -27,14 +29,14 @@ vi.mock('../state.js', () => {
   }
   return {
     state,
-    setState: vi.fn((changes) => Object.assign(state, changes)),
+    setState: vi.fn((changes: Record<string, unknown>) => Object.assign(state, changes)),
     showToast: vi.fn(),
     showConfirm: vi.fn()
   }
 })
 
 describe('Fingerprints Presets Page', () => {
-  let container
+  let container: HTMLElement
 
   beforeEach(() => {
     container = document.createElement('div')
@@ -55,8 +57,8 @@ describe('Fingerprints Presets Page', () => {
       }
     ]
     state.rulesData = [
-      { id: 'rule-1', fingerprint_preset: 'chrome-desktop' },
-      { id: 'rule-2', fingerprint_preset: 'chrome-desktop' }
+      { id: 'rule-1', name: 'Rule 1', priority: 1, fingerprint_preset: 'chrome-desktop' },
+      { id: 'rule-2', name: 'Rule 2', priority: 2, fingerprint_preset: 'chrome-desktop' }
     ]
     state.fingerprintsShowModal = false
     vi.clearAllMocks()
@@ -80,7 +82,7 @@ describe('Fingerprints Presets Page', () => {
     container.innerHTML = FingerprintsPage.render(state)
     FingerprintsPage.afterRender(state)
 
-    container.querySelector('#btn-create-preset').click()
+    mustQuery<HTMLButtonElement>(container, '#btn-create-preset').click()
     expect(state.fingerprintsShowModal).toBe(true)
     expect(state.fingerprintsModalIsEdit).toBe(false)
   })
@@ -89,12 +91,9 @@ describe('Fingerprints Presets Page', () => {
     container.innerHTML = FingerprintsPage.render(state)
     FingerprintsPage.afterRender(state)
 
-    container.querySelector('#btn-broadcast-presets').click()
-    expect(showConfirm).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: 'Broadcast Presets',
-        body: expect.stringContaining('NATS')
-      })
-    )
+    mustQuery<HTMLButtonElement>(container, '#btn-broadcast-presets').click()
+    const [options] = firstCall(vi.mocked(showConfirm))
+    expect(options.title).toBe('Broadcast Presets')
+    expect(options.body).toContain('NATS')
   })
 })

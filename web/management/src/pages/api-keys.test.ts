@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { ApiKeysPage } from './api-keys.js'
 import { state, showConfirm } from '../state.js'
+import { firstCall, mustQuery } from '../test-utils.js'
 
 vi.mock('../client.js', () => ({
   listApiKeys: vi.fn(),
@@ -9,7 +10,8 @@ vi.mock('../client.js', () => ({
   listEndpoints: vi.fn(),
   listRoutingRules: vi.fn(),
   ApiError: class ApiError extends Error {
-    constructor(message, status) {
+    status: number
+    constructor(message: string, status: number) {
       super(message)
       this.status = status
     }
@@ -29,14 +31,14 @@ vi.mock('../state.js', () => {
   }
   return {
     state,
-    setState: vi.fn((changes) => Object.assign(state, changes)),
+    setState: vi.fn((changes: Record<string, unknown>) => Object.assign(state, changes)),
     showToast: vi.fn(),
     showConfirm: vi.fn()
   }
 })
 
 describe('API Keys Management Page', () => {
-  let container
+  let container: HTMLElement
 
   beforeEach(() => {
     container = document.createElement('div')
@@ -97,22 +99,19 @@ describe('API Keys Management Page', () => {
     container.innerHTML = ApiKeysPage.render(state)
     ApiKeysPage.afterRender(state)
 
-    const revokeBtn = container.querySelector('.btn-revoke-key')
+    const revokeBtn = mustQuery<HTMLButtonElement>(container, '.btn-revoke-key')
     revokeBtn.click()
 
-    expect(showConfirm).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: 'Revoke API Key',
-        body: expect.stringContaining('Production Key')
-      })
-    )
+    const [options] = firstCall(vi.mocked(showConfirm))
+    expect(options.title).toBe('Revoke API Key')
+    expect(options.body).toContain('Production Key')
   })
 
   it('verifies bulk check selecting active keys', () => {
     container.innerHTML = ApiKeysPage.render(state)
     ApiKeysPage.afterRender(state)
 
-    const checkAll = container.querySelector('#check-all-keys')
+    const checkAll = mustQuery<HTMLInputElement>(container, '#check-all-keys')
     checkAll.checked = true
     checkAll.dispatchEvent(new Event('change'))
 

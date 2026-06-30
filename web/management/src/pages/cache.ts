@@ -2,6 +2,8 @@
 
 import { setState, showToast } from '../state.js'
 import { getCacheStats, clearCache, ApiError } from '../client.js'
+import { errorMessage, eventValue } from '../utils.js'
+import type { Page } from '../types.js'
 
 export const CachePage = {
   render(state) {
@@ -15,15 +17,16 @@ export const CachePage = {
     const infoSearch = state.cacheInfoSearch || ''
 
     // Parse quick facts from raw Redis INFO
-    const quickFacts = cacheData ? parseQuickFacts(cacheData.info) : {}
+    const cacheInfo = cacheData?.info || ''
+    const quickFacts = parseQuickFacts(cacheInfo)
 
     // Filter raw info text
     const filteredInfo = infoSearch
-      ? cacheData?.info
+      ? cacheInfo
           .split('\n')
           .filter((line) => line.toLowerCase().includes(infoSearch.toLowerCase()))
           .join('\n')
-      : cacheData?.info || ''
+      : cacheInfo
 
     // Availability state
     if (cacheUnavailable) {
@@ -91,7 +94,7 @@ export const CachePage = {
       ? `<div class="alert alert-success" role="status" style="margin-top:1rem;">
            <div class="alert-title">Cache Cleared</div>
            <div class="alert-body" style="font-size:0.875rem;margin-top:0.5rem;">
-             Pattern: <code>${escapeHtml(clearResult.pattern)}</code> &middot; Deleted: <strong>${clearResult.deleted.toLocaleString()}</strong> keys
+             Pattern: <code>${escapeHtml(clearResult.pattern || '')}</code> &middot; Deleted: <strong>${clearResult.deleted.toLocaleString()}</strong> keys
            </div>
          </div>`
       : ''
@@ -188,29 +191,29 @@ export const CachePage = {
           setState({ cacheError: err.message })
         }
       } else {
-        setState({ cacheError: err.message || 'Failed to load cache stats' })
+        setState({ cacheError: errorMessage(err, 'Failed to load cache stats') })
       }
     }
   },
 
   afterRender(state) {
     if (!state.cacheData && !state.cacheLoading && !state.cacheError && !state.cacheUnavailable) {
-      this.refresh(state)
+      void CachePage.refresh(state)
       return
     }
 
     // Retry button
     const retryBtn = document.getElementById('cache-retry-btn')
     if (retryBtn) {
-      retryBtn.addEventListener('click', () => this.refresh(state))
+      retryBtn.addEventListener('click', () => void CachePage.refresh(state))
     }
 
     // INFO search
     const searchInput = document.getElementById('cache-info-search')
     if (searchInput) {
       searchInput.addEventListener('input', (e) => {
-        setState({ cacheInfoSearch: e.target.value })
-        CachePage.refresh(state)
+        setState({ cacheInfoSearch: eventValue(e) })
+        void CachePage.refresh(state)
       })
     }
 
@@ -234,7 +237,7 @@ export const CachePage = {
     const clearBtn = document.getElementById('cache-clear-btn')
     if (clearBtn) {
       clearBtn.addEventListener('click', async () => {
-        const patternInput = document.getElementById('cache-clear-pattern')
+        const patternInput = document.getElementById('cache-clear-pattern') as HTMLInputElement
         const pattern = patternInput?.value.trim() || '*'
         const isWildcard = pattern === '*'
 
@@ -246,14 +249,18 @@ export const CachePage = {
 
         // Wildcard requires CLEAR ALL confirmation
         if (isWildcard) {
-          const confirmInput = document.getElementById('cache-clear-confirm')
+          const confirmInput = document.getElementById(
+            'cache-clear-confirm'
+          ) as HTMLInputElement | null
           if (confirmInput?.value.trim() !== 'CLEAR ALL') {
             showToast('Type CLEAR ALL to confirm wildcard clear', 'error')
             return
           }
         } else {
           // Non-wildcard requires retype confirmation
-          const confirmInput = document.getElementById('cache-clear-confirm-other')
+          const confirmInput = document.getElementById(
+            'cache-clear-confirm-other'
+          ) as HTMLInputElement | null
           if (confirmInput?.value.trim() !== pattern) {
             showToast(`Type the exact pattern "${pattern}" to confirm`, 'error')
             return
@@ -262,7 +269,7 @@ export const CachePage = {
 
         // Set loading state
         setState({ cacheClearLoading: true })
-        clearBtn.disabled = true
+        ;(clearBtn as HTMLButtonElement).disabled = true
         clearBtn.innerHTML = '<span class="spinner"></span> Clearing...'
 
         try {
@@ -273,25 +280,25 @@ export const CachePage = {
           })
           showToast(`Cleared ${result.deleted} keys matching "${pattern}"`, 'success')
           // Refresh stats
-          this.refresh(state)
+          void CachePage.refresh(state)
         } catch (err) {
           setState({ cacheClearLoading: false })
-          showToast(`Cache clear failed: ${err.message}`, 'error')
-          clearBtn.disabled = false
+          showToast(`Cache clear failed: ${errorMessage(err)}`, 'error')
+          ;(clearBtn as HTMLButtonElement).disabled = false
           clearBtn.innerHTML = 'Clear Cache'
         }
       })
     }
   }
-}
+} satisfies Page
 
 // Parse quick facts from raw Redis INFO text
-function parseQuickFacts(info) {
+function parseQuickFacts(info: string | undefined): Record<string, string | number | null> {
   if (!info || typeof info !== 'string') return {}
 
-  const facts = {}
+  const facts: Record<string, string | number | null> = {}
 
-  const extract = (key) => {
+  const extract = (key: string) => {
     const match = info.match(new RegExp(`^${key}:([\\S\\s]*?)$`, 'm'))
     return match ? match[1].trim() : null
   }
@@ -319,7 +326,7 @@ function parseQuickFacts(info) {
   return facts
 }
 
-function escapeHtml(str) {
+function escapeHtml(str: string): string {
   if (!str) return ''
   return str
     .replace(/&/g, '&amp;')

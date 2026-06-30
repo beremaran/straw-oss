@@ -9,8 +9,18 @@ import {
   listEndpoints,
   listFingerprints
 } from '../client.js'
+import { attr, errorMessage, eventValue } from '../utils.js'
+import type { AppState, Page } from '../types.js'
 
-export const RoutingRulesPage = {
+type RoutingRulesPageType = Page & {
+  refresh(state: AppState): Promise<void>
+  renderList(state: AppState): string
+  renderDetails(state: AppState, ruleId: string): string
+  afterRenderList(state: AppState): void
+  afterRenderDetails(state: AppState, ruleId: string): Promise<void>
+}
+
+export const RoutingRulesPage: RoutingRulesPageType = {
   render(state) {
     const hash = state.currentPage || '#/routing-rules'
 
@@ -69,7 +79,7 @@ export const RoutingRulesPage = {
     const fingerprintIds = new Set(fingerprints.map((f) => f.id))
 
     // Calculate active rule priorities count to detect duplicates
-    const activePriorities = {}
+    const activePriorities: Record<number, number> = {}
     data.forEach((r) => {
       if (r.is_active) {
         activePriorities[r.priority] = (activePriorities[r.priority] || 0) + 1
@@ -262,7 +272,7 @@ export const RoutingRulesPage = {
 
     const activeTab = state.selectedRuleTab || 'summary'
 
-    const renderTabBtn = (tabId, label) => {
+    const renderTabBtn = (tabId: string, label: string) => {
       const activeClass = activeTab === tabId ? 'active' : ''
       return `<button class="tab-btn ${activeClass}" data-tab="${tabId}">${label}</button>`
     }
@@ -561,8 +571,8 @@ export const RoutingRulesPage = {
         rulesLoading: false
       })
     } catch (err) {
-      setState({ rulesError: err.message, rulesLoading: false })
-      showToast(`Failed to load routing rules: ${err.message}`, 'error')
+      setState({ rulesError: errorMessage(err), rulesLoading: false })
+      showToast(`Failed to load routing rules: ${errorMessage(err)}`, 'error')
     }
   },
 
@@ -572,7 +582,7 @@ export const RoutingRulesPage = {
     const ruleId = urlParams.get('id')
 
     if (ruleId) {
-      this.afterRenderDetails(state, ruleId)
+      void this.afterRenderDetails(state, ruleId)
       return
     }
 
@@ -581,16 +591,16 @@ export const RoutingRulesPage = {
 
   afterRenderList(state) {
     if (!state.rulesData && !state.rulesLoading) {
-      this.refresh(state)
+      void RoutingRulesPage.refresh(state)
       return
     }
 
     // Bind filters
-    const bindFilter = (id, stateKey) => {
+    const bindFilter = (id: string, stateKey: keyof AppState) => {
       const el = document.getElementById(id)
       if (el) {
         el.addEventListener('input', (e) => {
-          setState({ [stateKey]: e.target.value })
+          setState({ [stateKey]: eventValue(e) })
         })
       }
     }
@@ -603,11 +613,11 @@ export const RoutingRulesPage = {
     const toggleBtns = document.querySelectorAll('.btn-toggle-rule')
     toggleBtns.forEach((btn) => {
       btn.addEventListener('click', async () => {
-        const id = btn.getAttribute('data-id')
-        const isActive = btn.getAttribute('data-active') === 'true'
+        const id = attr(btn, 'data-id')
+        const isActive = attr(btn, 'data-active') === 'true'
 
         try {
-          const rule = state.rulesData.find((r) => r.id === id)
+          const rule = (state.rulesData || []).find((r) => r.id === id)
           if (!rule) return
 
           await updateRoutingRule(id, {
@@ -616,9 +626,9 @@ export const RoutingRulesPage = {
           })
 
           showToast(`Rule "${rule.name}" ${!isActive ? 'activated' : 'deactivated'}`, 'success')
-          this.refresh(state)
+          void RoutingRulesPage.refresh(state)
         } catch (err) {
-          showToast(`Failed to update rule status: ${err.message}`, 'error')
+          showToast(`Failed to update rule status: ${errorMessage(err)}`, 'error')
         }
       })
     })
@@ -627,8 +637,8 @@ export const RoutingRulesPage = {
     const deleteBtns = document.querySelectorAll('.btn-delete-rule')
     deleteBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
-        const id = btn.getAttribute('data-id')
-        const name = btn.getAttribute('data-name')
+        const id = attr(btn, 'data-id')
+        const name = attr(btn, 'data-name')
 
         showConfirm({
           title: 'Delete Routing Rule',
@@ -638,9 +648,9 @@ export const RoutingRulesPage = {
             try {
               await deleteRoutingRule(id)
               showToast(`Routing rule "${name}" deleted`, 'success')
-              this.refresh(state)
+              void RoutingRulesPage.refresh(state)
             } catch (err) {
-              showToast(`Failed to delete rule: ${err.message}`, 'error')
+              showToast(`Failed to delete rule: ${errorMessage(err)}`, 'error')
             }
           }
         })
@@ -651,7 +661,7 @@ export const RoutingRulesPage = {
     const duplicateBtns = document.querySelectorAll('.btn-duplicate-rule')
     duplicateBtns.forEach((btn) => {
       btn.addEventListener('click', async () => {
-        const id = btn.getAttribute('data-id')
+        const id = attr(btn, 'data-id')
         try {
           const rule = await getRoutingRule(id)
 
@@ -673,7 +683,7 @@ export const RoutingRulesPage = {
           showToast(`Rule "${rule.name}" duplicated. Redirecting to form...`, 'success')
           window.location.hash = '#/routing-rules/new'
         } catch (err) {
-          showToast(`Failed to duplicate rule: ${err.message}`, 'error')
+          showToast(`Failed to duplicate rule: ${errorMessage(err)}`, 'error')
         }
       })
     })
@@ -687,7 +697,7 @@ export const RoutingRulesPage = {
         setState({ selectedRuleDetail: rule, selectedRuleLoading: false })
       } catch (err) {
         setState({ selectedRuleLoading: false })
-        showToast(`Failed to load rule details: ${err.message}`, 'error')
+        showToast(`Failed to load rule details: ${errorMessage(err)}`, 'error')
         window.location.hash = '#/routing-rules'
         return
       }
@@ -697,7 +707,7 @@ export const RoutingRulesPage = {
     const tabBtns = document.querySelectorAll('.tab-btn')
     tabBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
-        const tabId = btn.getAttribute('data-tab')
+        const tabId = attr(btn, 'data-tab')
         setState({ selectedRuleTab: tabId })
       })
     })
@@ -706,8 +716,8 @@ export const RoutingRulesPage = {
     const copyJsonBtn = document.getElementById('btn-copy-rule-json')
     if (copyJsonBtn) {
       copyJsonBtn.addEventListener('click', () => {
-        const json = decodeURIComponent(copyJsonBtn.getAttribute('data-json'))
-        navigator.clipboard.writeText(json)
+        const json = decodeURIComponent(attr(copyJsonBtn, 'data-json'))
+        void navigator.clipboard.writeText(json)
         showToast('Rule JSON payload copied to clipboard', 'success')
       })
     }

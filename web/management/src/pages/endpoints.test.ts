@@ -1,12 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { EndpointsPage } from './endpoints.js'
 import { state, showConfirm } from '../state.js'
+import { firstCall, mustQuery } from '../test-utils.js'
 
 vi.mock('../client.js', () => ({
   listEndpoints: vi.fn(),
   drainEndpoint: vi.fn(),
   ApiError: class ApiError extends Error {
-    constructor(message, status) {
+    status: number
+    constructor(message: string, status: number) {
       super(message)
       this.status = status
     }
@@ -21,14 +23,14 @@ vi.mock('../state.js', () => {
   }
   return {
     state,
-    setState: vi.fn((changes) => Object.assign(state, changes)),
+    setState: vi.fn((changes: Record<string, unknown>) => Object.assign(state, changes)),
     showToast: vi.fn(),
     showConfirm: vi.fn()
   }
 })
 
 describe('Endpoints Monitoring Page', () => {
-  let container
+  let container: HTMLElement
 
   beforeEach(() => {
     container = document.createElement('div')
@@ -106,14 +108,11 @@ describe('Endpoints Monitoring Page', () => {
     container.innerHTML = EndpointsPage.render(state)
     EndpointsPage.afterRender(state)
 
-    const drainBtn = container.querySelector('.btn-drain-endpoint')
+    const drainBtn = mustQuery<HTMLButtonElement>(container, '.btn-drain-endpoint')
     drainBtn.click()
 
-    expect(showConfirm).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: 'Drain Endpoint',
-        body: expect.stringContaining('ep-active')
-      })
-    )
+    const [options] = firstCall(vi.mocked(showConfirm))
+    expect(options.title).toBe('Drain Endpoint')
+    expect(options.body).toContain('ep-active')
   })
 })

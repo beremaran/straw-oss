@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { RoutingRuleEditorPage } from './routing-rule-editor.js'
 import { state, showConfirm } from '../state.js'
 import * as client from '../client.js'
+import { mustQuery } from '../test-utils.js'
 
 vi.mock('../client.js', () => ({
   getRoutingRule: vi.fn(),
@@ -10,7 +11,13 @@ vi.mock('../client.js', () => ({
   listEndpoints: vi.fn(),
   listFingerprints: vi.fn(),
   ApiError: class ApiError extends Error {
-    constructor(message, status) {
+    status: number
+    constructor(
+      message: string,
+      _methodOrStatus: string | number,
+      _url = '',
+      status = typeof _methodOrStatus === 'number' ? _methodOrStatus : 0
+    ) {
       super(message)
       this.status = status
     }
@@ -28,14 +35,14 @@ vi.mock('../state.js', () => {
   }
   return {
     state,
-    setState: vi.fn((changes) => Object.assign(state, changes)),
+    setState: vi.fn((changes: Record<string, unknown>) => Object.assign(state, changes)),
     showToast: vi.fn(),
     showConfirm: vi.fn()
   }
 })
 
 describe('Routing Rule Editor Page', () => {
-  let container
+  let container: HTMLElement
 
   beforeEach(() => {
     container = document.createElement('div')
@@ -70,23 +77,25 @@ describe('Routing Rule Editor Page', () => {
   it('renders form inputs with state values', () => {
     container.innerHTML = RoutingRuleEditorPage.render(state)
 
-    expect(container.querySelector('#rule-name').value).toBe('Test Rule')
-    expect(container.querySelector('#rule-priority').value).toBe('10')
-    expect(container.querySelector('#rule-active').checked).toBe(true)
-    expect(container.querySelector('#rule-fp-preset-select').value).toBe('fp-chrome')
+    expect(mustQuery<HTMLInputElement>(container, '#rule-name').value).toBe('Test Rule')
+    expect(mustQuery<HTMLInputElement>(container, '#rule-priority').value).toBe('10')
+    expect(mustQuery<HTMLInputElement>(container, '#rule-active').checked).toBe(true)
+    expect(mustQuery<HTMLSelectElement>(container, '#rule-fp-preset-select').value).toBe(
+      'fp-chrome'
+    )
   })
 
   it('displays validation error on invalid timeout duration', async () => {
     container.innerHTML = RoutingRuleEditorPage.render(state)
     RoutingRuleEditorPage.afterRender(state)
 
-    const timeoutInput = container.querySelector('#rule-timeout')
+    const timeoutInput = mustQuery<HTMLInputElement>(container, '#rule-timeout')
     timeoutInput.value = '30 seconds' // Natural language is invalid
 
-    const form = container.querySelector('form')
+    const form = mustQuery<HTMLFormElement>(container, 'form')
     form.dispatchEvent(new Event('submit'))
 
-    expect(container.querySelector('#rule-timeout-error').textContent).toContain(
+    expect(mustQuery<HTMLElement>(container, '#rule-timeout-error').textContent).toContain(
       'Invalid Go duration'
     )
   })
@@ -95,23 +104,30 @@ describe('Routing Rule Editor Page', () => {
     container.innerHTML = RoutingRuleEditorPage.render(state)
     RoutingRuleEditorPage.afterRender(state)
 
-    const nameInput = container.querySelector('#rule-name')
+    const nameInput = mustQuery<HTMLInputElement>(container, '#rule-name')
     nameInput.value = 'Updated Name'
     nameInput.dispatchEvent(new Event('input'))
 
-    const jsonTextarea = container.querySelector('#raw-json-editor')
+    const jsonTextarea = mustQuery<HTMLTextAreaElement>(container, '#raw-json-editor')
     expect(jsonTextarea.value).toContain('Updated Name')
   })
 
   it('triggers conflict confirmation on optimistic locking error (status 500)', async () => {
-    client.updateRoutingRule.mockRejectedValueOnce(
-      new client.ApiError('routing rule not found', 500)
+    vi.mocked(client.updateRoutingRule).mockRejectedValueOnce(
+      new client.ApiError(
+        'routing rule not found',
+        'PUT',
+        '/management/rules/rule-123',
+        500,
+        null,
+        null
+      )
     )
 
     container.innerHTML = RoutingRuleEditorPage.render(state)
     RoutingRuleEditorPage.afterRender(state)
 
-    const form = container.querySelector('form')
+    const form = mustQuery<HTMLFormElement>(container, 'form')
     form.dispatchEvent(new Event('submit'))
 
     await new Promise((r) => setTimeout(r, 20))

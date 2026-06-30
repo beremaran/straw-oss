@@ -10,6 +10,45 @@ import {
   ApiError
 } from '../client.js'
 import { parseTag, validateDuration } from '../validation.js'
+import { attr, errorMessage, eventValue } from '../utils.js'
+import type {
+  EndpointPool,
+  FingerprintVariant,
+  Page,
+  RequestFilters,
+  RoutingRule
+} from '../types.js'
+
+interface EditorFormState {
+  required_tags: string[]
+  excluded_tags: string[]
+  allowed_endpoint_types: string[]
+  required_endpoint_caps: string[]
+  endpoint_pools: EndpointPool[]
+  ab_variants: FingerprintVariant[]
+  block_content_types: string[]
+  block_domains: string[]
+}
+
+type ChipListKey =
+  | 'required_tags'
+  | 'excluded_tags'
+  | 'allowed_endpoint_types'
+  | 'required_endpoint_caps'
+  | 'block_content_types'
+  | 'block_domains'
+
+interface RulePayload extends Omit<Partial<RoutingRule>, 'request_filters'> {
+  name: string
+  priority: number
+  is_active: boolean
+  required_tags: string[]
+  excluded_tags: string[]
+  allowed_endpoint_types: string[]
+  required_endpoint_caps: string[]
+  endpoint_pools: EndpointPool[]
+  request_filters: RequestFilters
+}
 
 export const RoutingRuleEditorPage = {
   render(state) {
@@ -308,41 +347,46 @@ export const RoutingRuleEditorPage = {
       }
     } catch (err) {
       setState({ rulesLoading: false })
-      showToast(`Failed to initialize editor data: ${err.message}`, 'error')
+      showToast(`Failed to initialize editor data: ${errorMessage(err)}`, 'error')
     }
   },
 
   afterRender(state) {
     const hash = state.currentPage || ''
     const urlParams = new URLSearchParams(hash.includes('?') ? hash.split('?')[1] : '')
-    const ruleId = urlParams.get('id') || state.editingRuleId
-    const isEdit = !!ruleId
+    const ruleId = urlParams.get('id') || state.editingRuleId || ''
+    const isEdit = ruleId !== ''
 
     if (!state.endpointsData && !state.rulesLoading) {
-      this.refresh(state)
+      void RoutingRuleEditorPage.refresh(state)
       return
     }
 
     const form = document.getElementById('rule-form')
     if (!form) return
 
+    const input = (id: string) => document.getElementById(id) as HTMLInputElement
+    const select = (id: string) => document.getElementById(id) as HTMLSelectElement
+    const textArea = (id: string) => document.getElementById(id) as HTMLTextAreaElement
+    const element = (id: string) => document.getElementById(id) as HTMLElement
+
     // Track dynamic form values in memory
-    const formState = {
+    const filters = state.editingRule?.request_filters || {}
+    const formState: EditorFormState = {
       required_tags: [...(state.editingRule?.required_tags || [])],
       excluded_tags: [...(state.editingRule?.excluded_tags || [])],
       allowed_endpoint_types: [...(state.editingRule?.allowed_endpoint_types || [])],
       required_endpoint_caps: [...(state.editingRule?.required_endpoint_caps || [])],
-      endpoint_pools: JSON.parse(JSON.stringify(state.editingRule?.endpoint_pools || [])),
-      ab_variants: JSON.parse(
-        JSON.stringify(state.editingRule?.fingerprint_ab_test?.variants || [])
-      )
+      endpoint_pools: structuredClone(state.editingRule?.endpoint_pools || []),
+      ab_variants: structuredClone(state.editingRule?.fingerprint_ab_test?.variants || []),
+      block_content_types: [...(filters.block_content_types || [])],
+      block_domains: [...(filters.block_domains || [])]
     }
 
     // Helper functions for chip lists
-    const setupChipList = (inputId, containerId, listKey) => {
-      const input = document.getElementById(inputId)
-      const container = document.getElementById(containerId)
-      if (!input || !container) return
+    const setupChipList = (inputId: string, containerId: string, listKey: ChipListKey) => {
+      const inputEl = input(inputId)
+      const container = element(containerId)
 
       const render = () => {
         container.innerHTML = formState[listKey]
@@ -358,7 +402,7 @@ export const RoutingRuleEditorPage = {
 
         container.querySelectorAll('.btn-remove-chip').forEach((btn) => {
           btn.addEventListener('click', () => {
-            const idx = parseInt(btn.getAttribute('data-idx'))
+            const idx = parseInt(attr(btn, 'data-idx'))
             formState[listKey].splice(idx, 1)
             render()
             updateRawJsonPayload()
@@ -366,16 +410,16 @@ export const RoutingRuleEditorPage = {
         })
       }
 
-      input.addEventListener('keydown', (e) => {
+      inputEl.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ',') {
           e.preventDefault()
-          const val = input.value.trim()
+          const val = inputEl.value.trim()
           if (val) {
             if (listKey === 'required_tags' || listKey === 'excluded_tags') {
               try {
                 parseTag(val)
               } catch (err) {
-                showToast(`Tag error: ${err.message}`, 'error')
+                showToast(`Tag error: ${errorMessage(err)}`, 'error')
                 return
               }
             }
@@ -384,7 +428,7 @@ export const RoutingRuleEditorPage = {
               render()
               updateRawJsonPayload()
             }
-            input.value = ''
+            inputEl.value = ''
           }
         }
       })
@@ -396,17 +440,11 @@ export const RoutingRuleEditorPage = {
     setupChipList('excluded-tags-input', 'excluded-tags-chips', 'excluded_tags')
     setupChipList('ep-types-input', 'ep-types-chips', 'allowed_endpoint_types')
     setupChipList('ep-caps-input', 'ep-caps-chips', 'required_endpoint_caps')
-
-    // Blocked content types and blocked domains
-    const filters = state.editingRule?.request_filters || {}
-    formState.block_content_types = [...(filters.block_content_types || [])]
-    formState.block_domains = [...(filters.block_domains || [])]
-
     setupChipList('block-types-input', 'block-types-chips', 'block_content_types')
     setupChipList('block-domains-input', 'block-domains-chips', 'block_domains')
 
     // Repeater lists renders
-    const poolsContainer = document.getElementById('pool-tiers-list')
+    const poolsContainer = element('pool-tiers-list')
     const renderPoolTiers = () => {
       poolsContainer.innerHTML = formState.endpoint_pools
         .map((pool, idx) => {
@@ -444,32 +482,34 @@ export const RoutingRuleEditorPage = {
       // Bind dynamic change listeners for pools
       poolsContainer.querySelectorAll('.btn-remove-pool').forEach((btn) => {
         btn.addEventListener('click', () => {
-          const idx = parseInt(btn.getAttribute('data-idx'))
+          const idx = parseInt(attr(btn, 'data-idx'))
           formState.endpoint_pools.splice(idx, 1)
           renderPoolTiers()
           updateRawJsonPayload()
         })
       })
 
-      poolsContainer.querySelectorAll('.pool-tier-input').forEach((input) => {
-        input.addEventListener('change', (e) => {
-          const idx = parseInt(input.getAttribute('data-idx'))
-          formState.endpoint_pools[idx].tier = parseInt(e.target.value) || 0
+      poolsContainer.querySelectorAll<HTMLInputElement>('.pool-tier-input').forEach((inputEl) => {
+        inputEl.addEventListener('change', (e) => {
+          const idx = parseInt(attr(inputEl, 'data-idx'))
+          formState.endpoint_pools[idx].tier = parseInt(eventValue(e)) || 0
           updateRawJsonPayload()
         })
       })
 
-      poolsContainer.querySelectorAll('.pool-retries-input').forEach((input) => {
-        input.addEventListener('change', (e) => {
-          const idx = parseInt(input.getAttribute('data-idx'))
-          formState.endpoint_pools[idx].max_retries = parseInt(e.target.value) || 0
-          updateRawJsonPayload()
+      poolsContainer
+        .querySelectorAll<HTMLInputElement>('.pool-retries-input')
+        .forEach((inputEl) => {
+          inputEl.addEventListener('change', (e) => {
+            const idx = parseInt(attr(inputEl, 'data-idx'))
+            formState.endpoint_pools[idx].max_retries = parseInt(eventValue(e)) || 0
+            updateRawJsonPayload()
+          })
         })
-      })
 
-      poolsContainer.querySelectorAll('.pool-eps-select').forEach((sel) => {
+      poolsContainer.querySelectorAll<HTMLSelectElement>('.pool-eps-select').forEach((sel) => {
         sel.addEventListener('change', () => {
-          const idx = parseInt(sel.getAttribute('data-idx'))
+          const idx = parseInt(attr(sel, 'data-idx'))
           const selected = Array.from(sel.selectedOptions).map((opt) => opt.value)
           formState.endpoint_pools[idx].endpoint_ids = selected
           updateRawJsonPayload()
@@ -493,9 +533,9 @@ export const RoutingRuleEditorPage = {
     renderPoolTiers()
 
     // Fingerprint Mode toggles
-    const fpModeSelect = document.getElementById('rule-fp-mode')
-    const fpPresetGroup = document.getElementById('fp-preset-group')
-    const fpAbGroup = document.getElementById('fp-ab-group')
+    const fpModeSelect = select('rule-fp-mode')
+    const fpPresetGroup = element('fp-preset-group')
+    const fpAbGroup = element('fp-ab-group')
 
     const updateFpVisibility = () => {
       const mode = fpModeSelect.value
@@ -518,7 +558,7 @@ export const RoutingRuleEditorPage = {
     updateFpVisibility()
 
     // A/B test variants list render
-    const abVariantsContainer = document.getElementById('ab-variants-rows')
+    const abVariantsContainer = element('ab-variants-rows')
     const renderAbVariants = () => {
       const presetsList = state.fingerprintsData || []
       abVariantsContainer.innerHTML = formState.ab_variants
@@ -556,35 +596,39 @@ export const RoutingRuleEditorPage = {
       // Bind variant changes
       abVariantsContainer.querySelectorAll('.btn-remove-variant').forEach((btn) => {
         btn.addEventListener('click', () => {
-          const idx = parseInt(btn.getAttribute('data-idx'))
+          const idx = parseInt(attr(btn, 'data-idx'))
           formState.ab_variants.splice(idx, 1)
           renderAbVariants()
           updateRawJsonPayload()
         })
       })
 
-      abVariantsContainer.querySelectorAll('.ab-preset-select').forEach((sel) => {
-        sel.addEventListener('change', (e) => {
-          const idx = parseInt(sel.getAttribute('data-idx'))
-          formState.ab_variants[idx].preset_id = e.target.value
-          updateRawJsonPayload()
+      abVariantsContainer
+        .querySelectorAll<HTMLSelectElement>('.ab-preset-select')
+        .forEach((sel) => {
+          sel.addEventListener('change', (e) => {
+            const idx = parseInt(attr(sel, 'data-idx'))
+            formState.ab_variants[idx].preset_id = eventValue(e)
+            updateRawJsonPayload()
+          })
         })
-      })
 
-      abVariantsContainer.querySelectorAll('.ab-weight-input').forEach((input) => {
-        input.addEventListener('change', (e) => {
-          const idx = parseInt(input.getAttribute('data-idx'))
-          formState.ab_variants[idx].weight = parseInt(e.target.value) || 0
-          calculatePercentages()
-          updateRawJsonPayload()
+      abVariantsContainer
+        .querySelectorAll<HTMLInputElement>('.ab-weight-input')
+        .forEach((inputEl) => {
+          inputEl.addEventListener('change', (e) => {
+            const idx = parseInt(attr(inputEl, 'data-idx'))
+            formState.ab_variants[idx].weight = parseInt(eventValue(e)) || 0
+            calculatePercentages()
+            updateRawJsonPayload()
+          })
         })
-      })
     }
 
     const calculatePercentages = () => {
       const totalWeight = formState.ab_variants.reduce((acc, curr) => acc + (curr.weight || 0), 0)
       abVariantsContainer.querySelectorAll('.ab-percentage-cell').forEach((cell) => {
-        const idx = parseInt(cell.getAttribute('data-idx'))
+        const idx = parseInt(attr(cell, 'data-idx'))
         const weight = formState.ab_variants[idx].weight || 0
         const pct = totalWeight > 0 ? ((weight / totalWeight) * 100).toFixed(1) : '0'
         cell.textContent = `${pct}%`
@@ -606,52 +650,48 @@ export const RoutingRuleEditorPage = {
     renderAbVariants()
 
     // Assemble form data into single request JSON payload
-    const getPayloadFromInputs = () => {
-      const name = document.getElementById('rule-name').value.trim()
-      const priority = parseInt(document.getElementById('rule-priority').value) || 0
-      const is_active = document.getElementById('rule-active').checked
-      const quota_key = document.getElementById('rule-quota-key').value.trim() || null
+    const getPayloadFromInputs = (): RulePayload => {
+      const name = input('rule-name').value.trim()
+      const priority = parseInt(input('rule-priority').value) || 0
+      const is_active = input('rule-active').checked
+      const quota_key = input('rule-quota-key').value.trim() || null
 
-      const hard_timeout = document.getElementById('rule-timeout').value.trim() || null
-      const rate_limit_per_minute =
-        parseInt(document.getElementById('rule-limit-min').value) || null
-      const rate_limit_per_second =
-        parseInt(document.getElementById('rule-limit-sec').value) || null
+      const hard_timeout = input('rule-timeout').value.trim() || null
+      const rate_limit_per_minute = parseInt(input('rule-limit-min').value) || null
+      const rate_limit_per_second = parseInt(input('rule-limit-sec').value) || null
 
-      const allow_insecure_tls = document.getElementById('rule-insecure-tls').checked
-      const pinned_cert_hash = document.getElementById('rule-cert-hash').value.trim() || null
+      const allow_insecure_tls = input('rule-insecure-tls').checked
+      const pinned_cert_hash = input('rule-cert-hash').value.trim() || null
 
       // Fingerprinting
-      let fingerprint_preset = null
-      let fingerprint_ab_test = null
+      let fingerprint_preset: string | null = null
+      let fingerprint_ab_test: RulePayload['fingerprint_ab_test'] = null
       const fpMode = fpModeSelect.value
       if (fpMode === 'preset') {
-        fingerprint_preset = document.getElementById('rule-fp-preset-select').value || null
+        fingerprint_preset = select('rule-fp-preset-select').value || null
       } else if (fpMode === 'ab') {
         fingerprint_ab_test = {
-          strategy: document.getElementById('rule-ab-strategy').value.trim() || 'weighted',
+          strategy: input('rule-ab-strategy').value.trim() || 'weighted',
           variants: formState.ab_variants.filter((v) => v.preset_id)
         }
       }
 
       // Filters
       const request_filters = {
-        enable_adblock: document.getElementById('rule-filters-adblock').checked,
-        adblock_lists: document
-          .getElementById('rule-filters-lists')
+        enable_adblock: input('rule-filters-adblock').checked,
+        adblock_lists: textArea('rule-filters-lists')
           .value.split('\n')
           .map((l) => l.trim())
           .filter(Boolean),
         block_content_types: formState.block_content_types,
-        block_url_patterns: document
-          .getElementById('rule-filters-patterns')
+        block_url_patterns: textArea('rule-filters-patterns')
           .value.split('\n')
           .map((p) => p.trim())
           .filter(Boolean),
         block_domains: formState.block_domains
       }
 
-      const payload = {
+      const payload: RulePayload = {
         name,
         priority,
         is_active,
@@ -680,7 +720,7 @@ export const RoutingRuleEditorPage = {
       return payload
     }
 
-    const rawJsonTextarea = document.getElementById('raw-json-editor')
+    const rawJsonTextarea = textArea('raw-json-editor')
 
     const updateRawJsonPayload = () => {
       const payload = getPayloadFromInputs()
@@ -717,55 +757,47 @@ export const RoutingRuleEditorPage = {
       syncRawJsonBtn.addEventListener('click', () => {
         setState({ ruleJsonError: null })
         try {
-          const parsed = JSON.parse(rawJsonTextarea.value)
+          const parsed = JSON.parse(rawJsonTextarea.value) as Partial<RulePayload>
           if (typeof parsed !== 'object' || parsed === null) {
             throw new Error('Payload must be a JSON object')
           }
 
           // Load parsed data back into local form state
-          document.getElementById('rule-name').value = parsed.name || ''
-          document.getElementById('rule-priority').value = parsed.priority || 0
-          document.getElementById('rule-active').checked = parsed.is_active !== false
-          document.getElementById('rule-quota-key').value = parsed.quota_key || ''
+          input('rule-name').value = parsed.name || ''
+          input('rule-priority').value = String(parsed.priority || 0)
+          input('rule-active').checked = parsed.is_active !== false
+          input('rule-quota-key').value = parsed.quota_key || ''
 
-          document.getElementById('rule-timeout').value = parsed.hard_timeout || ''
-          document.getElementById('rule-limit-min').value = parsed.rate_limit_per_minute || ''
-          document.getElementById('rule-limit-sec').value = parsed.rate_limit_per_second || ''
+          input('rule-timeout').value = parsed.hard_timeout || ''
+          input('rule-limit-min').value = String(parsed.rate_limit_per_minute || '')
+          input('rule-limit-sec').value = String(parsed.rate_limit_per_second || '')
 
           formState.required_tags = [...(parsed.required_tags || [])]
           formState.excluded_tags = [...(parsed.excluded_tags || [])]
           formState.allowed_endpoint_types = [...(parsed.allowed_endpoint_types || [])]
           formState.required_endpoint_caps = [...(parsed.required_endpoint_caps || [])]
-          formState.endpoint_pools = JSON.parse(JSON.stringify(parsed.endpoint_pools || []))
+          formState.endpoint_pools = structuredClone(parsed.endpoint_pools || [])
 
           // Filters
           const filters = parsed.request_filters || {}
-          document.getElementById('rule-filters-adblock').checked = !!filters.enable_adblock
-          document.getElementById('rule-filters-lists').value = (filters.adblock_lists || []).join(
-            '\n'
-          )
+          input('rule-filters-adblock').checked = !!filters.enable_adblock
+          textArea('rule-filters-lists').value = (filters.adblock_lists || []).join('\n')
           formState.block_content_types = [...(filters.block_content_types || [])]
-          document.getElementById('rule-filters-patterns').value = (
-            filters.block_url_patterns || []
-          ).join('\n')
+          textArea('rule-filters-patterns').value = (filters.block_url_patterns || []).join('\n')
           formState.block_domains = [...(filters.block_domains || [])]
 
           // TLS
-          document.getElementById('rule-insecure-tls').checked = !!parsed.allow_insecure_tls
-          document.getElementById('rule-cert-hash').value = parsed.pinned_cert_hash || ''
+          input('rule-insecure-tls').checked = !!parsed.allow_insecure_tls
+          input('rule-cert-hash').value = parsed.pinned_cert_hash || ''
 
           // Fingerprinting
           if (parsed.fingerprint_preset) {
             fpModeSelect.value = 'preset'
-            const selPreset = document.getElementById('rule-fp-preset-select')
-            if (selPreset) selPreset.value = parsed.fingerprint_preset
+            select('rule-fp-preset-select').value = parsed.fingerprint_preset
           } else if (parsed.fingerprint_ab_test) {
             fpModeSelect.value = 'ab'
-            document.getElementById('rule-ab-strategy').value =
-              parsed.fingerprint_ab_test.strategy || 'weighted'
-            formState.ab_variants = JSON.parse(
-              JSON.stringify(parsed.fingerprint_ab_test.variants || [])
-            )
+            input('rule-ab-strategy').value = parsed.fingerprint_ab_test.strategy || 'weighted'
+            formState.ab_variants = structuredClone(parsed.fingerprint_ab_test.variants || [])
           } else {
             fpModeSelect.value = 'none'
           }
@@ -784,7 +816,7 @@ export const RoutingRuleEditorPage = {
 
           showToast('Form synced with JSON successfully', 'success')
         } catch (err) {
-          setState({ ruleJsonError: err.message })
+          setState({ ruleJsonError: errorMessage(err) })
           showToast('JSON Sync Failed', 'error')
         }
       })
@@ -799,13 +831,13 @@ export const RoutingRuleEditorPage = {
       form.querySelectorAll('.invalid-feedback').forEach((el) => (el.textContent = ''))
 
       let isValid = true
-      const nameInput = document.getElementById('rule-name')
-      const priorityInput = document.getElementById('rule-priority')
-      const timeoutInput = document.getElementById('rule-timeout')
+      const nameInput = input('rule-name')
+      const priorityInput = input('rule-priority')
+      const timeoutInput = input('rule-timeout')
 
-      const nameErr = document.getElementById('rule-name-error')
-      const priorityErr = document.getElementById('rule-priority-error')
-      const timeoutErr = document.getElementById('rule-timeout-error')
+      const nameErr = element('rule-name-error')
+      const priorityErr = element('rule-priority-error')
+      const timeoutErr = element('rule-timeout-error')
 
       if (!nameInput.value.trim()) {
         nameErr.textContent = 'Rule name is required.'
@@ -823,15 +855,15 @@ export const RoutingRuleEditorPage = {
         try {
           validateDuration(timeoutInput.value)
         } catch (err) {
-          timeoutErr.textContent = err.message
+          timeoutErr.textContent = errorMessage(err)
           timeoutInput.classList.add('is-invalid')
           isValid = false
         }
       }
 
       // Validate A/B testing variants if mode active
-      const abErr = document.getElementById('ab-variants-error')
-      if (abErr) abErr.textContent = ''
+      const abErr = element('ab-variants-error')
+      abErr.textContent = ''
       if (fpModeSelect.value === 'ab') {
         const validVariants = formState.ab_variants.filter((v) => v.preset_id && v.weight > 0)
         if (validVariants.length < 2) {
@@ -841,14 +873,14 @@ export const RoutingRuleEditorPage = {
       }
 
       if (!isValid) {
-        const firstInvalid = form.querySelector('.is-invalid')
+        const firstInvalid = form.querySelector<HTMLElement>('.is-invalid')
         if (firstInvalid) firstInvalid.focus()
         return
       }
 
       // Proceed to save
       const payload = getPayloadFromInputs()
-      const saveBtn = document.getElementById('btn-save-rule')
+      const saveBtn = document.getElementById('btn-save-rule') as HTMLButtonElement
       saveBtn.disabled = true
       saveBtn.innerHTML = '<span class="spinner"></span> Saving...'
 
@@ -869,10 +901,11 @@ export const RoutingRuleEditorPage = {
         saveBtn.textContent = 'Save Routing Rule'
 
         // Conflict check: optimistic lock version clash
+        const message = errorMessage(err)
         if (
           err instanceof ApiError &&
           err.status === 500 &&
-          (err.message.includes('routing rule not found') || err.message.includes('not found'))
+          (message.includes('routing rule not found') || message.includes('not found'))
         ) {
           // Rule version conflict
           showConfirm({
@@ -887,20 +920,22 @@ export const RoutingRuleEditorPage = {
                 showToast('Loaded latest version for review', 'info')
 
                 // Reload page view
-                const appDiv = document.querySelector('#app')
-                import('../components/shell.js').then(({ renderShell }) => {
-                  appDiv.innerHTML = renderShell(state, RoutingRuleEditorPage.render(state))
-                  RoutingRuleEditorPage.afterRender(state)
+                const appDiv = document.querySelector<HTMLElement>('#app')
+                void import('../components/shell.js').then(({ renderShell }) => {
+                  if (appDiv) {
+                    appDiv.innerHTML = renderShell(state, RoutingRuleEditorPage.render(state))
+                    RoutingRuleEditorPage.afterRender(state)
+                  }
                 })
               } catch (e) {
-                showToast(`Failed to fetch latest: ${e.message}`, 'error')
+                showToast(`Failed to fetch latest: ${errorMessage(e)}`, 'error')
               }
             }
           })
         } else {
-          showToast(`Save failed: ${err.message}`, 'error')
+          showToast(`Save failed: ${errorMessage(err)}`, 'error')
         }
       }
     })
   }
-}
+} satisfies Page

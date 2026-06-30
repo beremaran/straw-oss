@@ -2,6 +2,8 @@
 
 import { setState, showToast } from '../state.js'
 import { healthCheck, listApiKeys, ApiError } from '../client.js'
+import { errorMessage } from '../utils.js'
+import type { Page } from '../types.js'
 
 export const LoginPage = {
   render(state) {
@@ -65,16 +67,18 @@ export const LoginPage = {
     form.addEventListener('submit', async (e) => {
       e.preventDefault()
 
-      const baseUrlInput = document.getElementById('baseUrl')
-      const tokenInput = document.getElementById('token')
-      const rememberCheckbox = document.getElementById('remember')
-      const submitBtn = document.getElementById('btn-login-submit')
+      const baseUrlInput = document.getElementById('baseUrl') as HTMLInputElement
+      const tokenInput = document.getElementById('token') as HTMLInputElement
+      const rememberCheckbox = document.getElementById('remember') as HTMLInputElement
+      const submitBtn = document.getElementById('btn-login-submit') as HTMLButtonElement
       const spinner = document.getElementById('login-spinner')
+      const baseUrlError = document.getElementById('baseUrl-error') as HTMLElement
+      const tokenError = document.getElementById('token-error') as HTMLElement
 
       // Clean previous errors
       setState({ loginError: null })
-      document.getElementById('baseUrl-error').textContent = ''
-      document.getElementById('token-error').textContent = ''
+      baseUrlError.textContent = ''
+      tokenError.textContent = ''
       baseUrlInput.classList.remove('is-invalid')
       tokenInput.classList.remove('is-invalid')
 
@@ -84,36 +88,35 @@ export const LoginPage = {
       const tokenVal = tokenInput.value.trim()
 
       if (!baseUrlVal) {
-        document.getElementById('baseUrl-error').textContent = 'API URL is required.'
+        baseUrlError.textContent = 'API URL is required.'
         baseUrlInput.classList.add('is-invalid')
         isValid = false
       } else {
         try {
           new URL(baseUrlVal)
         } catch {
-          document.getElementById('baseUrl-error').textContent =
-            'API URL must include a protocol (e.g. http:// or https://).'
+          baseUrlError.textContent = 'API URL must include a protocol (e.g. http:// or https://).'
           baseUrlInput.classList.add('is-invalid')
           isValid = false
         }
       }
 
       if (!tokenVal) {
-        document.getElementById('token-error').textContent = 'Management token is required.'
+        tokenError.textContent = 'Management token is required.'
         tokenInput.classList.add('is-invalid')
         isValid = false
       }
 
       if (!isValid) {
         // Focus first invalid field
-        const firstInvalid = form.querySelector('.is-invalid')
+        const firstInvalid = form.querySelector<HTMLElement>('.is-invalid')
         if (firstInvalid) firstInvalid.focus()
         return
       }
 
       // Start loading
       submitBtn.disabled = true
-      spinner.style.display = 'inline-block'
+      if (spinner) spinner.style.display = 'inline-block'
 
       // Temporarily set baseUrl and token for verification calls
       const oldBaseUrl = state.baseUrl
@@ -171,9 +174,9 @@ export const LoginPage = {
         state.baseUrl = oldBaseUrl
         state.token = oldToken
 
-        setState({ loginError: err.message })
+        setState({ loginError: errorMessage(err) })
         submitBtn.disabled = false
-        spinner.style.display = 'none'
+        if (spinner) spinner.style.display = 'none'
 
         // Re-render to show error message
         const appDiv = document.querySelector('#app') || form.parentElement
@@ -184,4 +187,4 @@ export const LoginPage = {
       }
     })
   }
-}
+} satisfies Page
