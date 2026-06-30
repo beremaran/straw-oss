@@ -26,16 +26,16 @@ Build the Overview page from existing Management API endpoints without adding a 
 
 ## Implementation Tasks
 
-- [ ] Fetch all Overview panel data through shared API helpers.
-- [ ] Calculate endpoint state counts and active task totals.
-- [ ] Calculate active/inactive API key and routing-rule totals.
-- [ ] Detect routing attention conditions client-side.
-- [ ] Keep successful panels visible when another panel fails.
+- [x] Fetch all Overview panel data through shared API helpers.
+- [x] Calculate endpoint state counts and active task totals.
+- [x] Calculate active/inactive API key and routing-rule totals.
+- [x] Detect routing attention conditions client-side.
+- [x] Keep successful panels visible when another panel fails.
 
 ## Done Criteria
 
-- [ ] `/overview` matches the spec cards and main sections.
-- [ ] Auth failure across aggregate requests returns the user to sign-in.
-- [ ] Partial backend failure shows successful data plus a retryable warning.
-- [ ] No unsupported backend action is implied by the Overview page.
+- [x] `/overview` matches the spec cards and main sections.
+- [x] Auth failure across aggregate requests returns the user to sign-in.
+- [x] Partial backend failure shows successful data plus a retryable warning.
+- [x] No unsupported backend action is implied by the Overview page.
 

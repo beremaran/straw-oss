@@ -11,10 +11,14 @@ import {
 } from '../client.js'
 import { validateScope, validatePositiveInteger } from '../validation.js'
 
+function apiKeyRows(data) {
+  if (Array.isArray(data)) return data
+  return data?.keys || data?.data || []
+}
+
 export const ApiKeysPage = {
   render(state) {
-    const data = state.apiKeysData || { keys: [] }
-    const keys = data.keys || []
+    const keys = apiKeyRows(state.apiKeysData)
 
     // Filters from state
     const filterStatus = state.apiKeysFilterStatus || 'all'
@@ -545,7 +549,7 @@ export const ApiKeysPage = {
       checkAll.addEventListener('change', (e) => {
         if (e.target.checked) {
           // Select all visible active keys
-          const keys = state.apiKeysData?.keys || []
+          const keys = apiKeyRows(state.apiKeysData)
           const activeIds = keys.filter((k) => k.is_active).map((k) => k.id)
           setState({ apiKeysBulkSelected: activeIds })
         } else {
@@ -594,12 +598,12 @@ export const ApiKeysPage = {
               showToast(`API Key ${name} revoked`, 'success')
 
               // Optimistically update key in loaded list
-              if (state.apiKeysData && state.apiKeysData.keys) {
-                state.apiKeysData.keys = state.apiKeysData.keys.map((k) => {
-                  if (k.id === id) return { ...k, is_active: false }
-                  return k
+              if (state.apiKeysData) {
+                setState({
+                  apiKeysData: apiKeyRows(state.apiKeysData).map((k) =>
+                    k.id === id ? { ...k, is_active: false } : k
+                  )
                 })
-                setState({ apiKeysData: state.apiKeysData })
               }
             } catch (err) {
               if (err instanceof ApiError && err.status === 404) {

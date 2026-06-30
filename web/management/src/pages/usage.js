@@ -314,7 +314,7 @@ export const UsagePage = {
     setState({ usageLoading: true, usageError: null, usageDateError: '' })
 
     // Load API keys for filter dropdown
-    const apiKeysPromise = listApiKeys({ limit: 100 }).catch(() => ({ keys: [] }))
+    const apiKeysPromise = listApiKeys({ limit: 100 }).catch(() => [])
 
     // Load usage and billing with current filters
     const datePreset = state.usageDatePreset || '7d'
@@ -370,7 +370,9 @@ export const UsagePage = {
 
     // Process API keys for suggestions
     if (apiKeysResult.status === 'fulfilled') {
-      const keys = apiKeysResult.value.keys || []
+      const keys = Array.isArray(apiKeysResult.value)
+        ? apiKeysResult.value
+        : apiKeysResult.value.keys || apiKeysResult.value.data || []
       setState({ apiKeysSuggestions: keys })
     }
 

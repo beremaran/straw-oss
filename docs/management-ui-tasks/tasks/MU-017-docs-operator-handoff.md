@@ -1,6 +1,6 @@
 # MU-017: Operator Documentation And Implementation Handoff
 
-Status: not-started
+Status: done
 Phase: 4
 Depends on: MU-001 through MU-014
 Search tags: docs, runbook, frontend commands, backend gaps, unsupported actions, operator handoff
@@ -26,16 +26,16 @@ Document how to run, build, test, and operate the Management UI after implementa
 
 ## Implementation Tasks
 
-- [ ] Add frontend run/build/test instructions.
-- [ ] Add token storage warning and sign-out behavior notes.
-- [ ] Add backend gap list matching the System page.
-- [ ] Add troubleshooting notes for `401`, network/CORS failures, unavailable cache controls, and missing usage summaries.
-- [ ] Update task tracker statuses for completed implementation work.
+- [x] Add frontend run/build/test instructions.
+- [x] Add token storage warning and sign-out behavior notes.
+- [x] Add backend gap list matching the System page.
+- [x] Add troubleshooting notes for `401`, network/CORS failures, unavailable cache controls, and missing usage summaries.
+- [x] Update task tracker statuses for completed implementation work.
 
 ## Done Criteria
 
-- [ ] A new developer can run and test the UI from documentation.
-- [ ] Operators can identify unsupported first-release backend actions without guessing.
-- [ ] Docs do not expose secrets or example real tokens.
-- [ ] Tracker and task files reflect implementation status at handoff.
+- [x] A new developer can run and test the UI from documentation.
+- [x] Operators can identify unsupported first-release backend actions without guessing.
+- [x] Docs do not expose secrets or example real tokens.
+- [x] Tracker and task files reflect implementation status at handoff.
 

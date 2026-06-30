@@ -28,16 +28,16 @@ Implement the API key management surface for listing, creating, capturing raw ke
 
 ## Implementation Tasks
 
-- [ ] Build paginated dense table and mobile card equivalent.
-- [ ] Add create form validation for name, scopes, and rate limit override.
-- [ ] Prevent raw key modal dismissal until the save acknowledgement is checked.
-- [ ] Never store `raw_key` outside transient UI state.
-- [ ] Handle not-found/server-error revoke responses by refreshing and showing the spec copy.
+- [x] Build paginated dense table and mobile card equivalent.
+- [x] Add create form validation for name, scopes, and rate limit override.
+- [x] Prevent raw key modal dismissal until the save acknowledgement is checked.
+- [x] Never store `raw_key` outside transient UI state.
+- [x] Handle not-found/server-error revoke responses by refreshing and showing the spec copy.
 
 ## Done Criteria
 
-- [ ] API key create, raw-key capture, revoke, and bulk revoke work through existing APIs.
-- [ ] Raw API keys are shown only immediately after creation.
-- [ ] Revoked keys remain in the list and show Revoked status.
-- [ ] Unsupported update, rotate, reactivation, and expiration-edit actions are not exposed.
+- [x] API key create, raw-key capture, revoke, and bulk revoke work through existing APIs.
+- [x] Raw API keys are shown only immediately after creation.
+- [x] Revoked keys remain in the list and show Revoked status.
+- [x] Unsupported update, rotate, reactivation, and expiration-edit actions are not exposed.
 

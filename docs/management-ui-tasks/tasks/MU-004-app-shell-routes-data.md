@@ -28,16 +28,16 @@ Add the console shell, first-release routes, navigation, refresh behavior, and s
 
 ## Implementation Tasks
 
-- [ ] Create authenticated route guards and default post-login redirect to `/overview`.
-- [ ] Add shell navigation labels exactly matching the spec.
-- [ ] Add refresh actions and last-refreshed display to route-level data.
-- [ ] Add skeleton rows/cards matching final layout shapes.
-- [ ] Route `401` from authenticated pages back to sign-in with "Session token rejected".
+- [x] Create authenticated route guards and default post-login redirect to `/overview`.
+- [x] Add shell navigation labels exactly matching the spec.
+- [x] Add refresh actions and last-refreshed display to route-level data.
+- [x] Add skeleton rows/cards matching final layout shapes.
+- [x] Route `401` from authenticated pages back to sign-in with "Session token rejected".
 
 ## Done Criteria
 
-- [ ] All first-release routes exist and are protected behind connection details.
-- [ ] Navigation works by mouse and keyboard.
-- [ ] Global state components are reused across pages instead of reimplemented per page.
-- [ ] A failed panel can show an inline retry without blanking successful panels.
+- [x] All first-release routes exist and are protected behind connection details.
+- [x] Navigation works by mouse and keyboard.
+- [x] Global state components are reused across pages instead of reimplemented per page.
+- [x] A failed panel can show an inline retry without blanking successful panels.
 

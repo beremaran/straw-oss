@@ -26,16 +26,16 @@ Build the small set of shared controls and validators needed by the domain pages
 
 ## Implementation Tasks
 
-- [ ] Implement routing tag parsing for `key:value` and `key=value`, normalized to `key:value`.
-- [ ] Warn, but allow, rarely useful or future-facing values where the spec allows them.
-- [ ] Reject natural-language durations such as `30 seconds`.
-- [ ] Validate fingerprint config JSON as an object.
-- [ ] Add confirmation dialog behavior that disables repeated clicks while pending.
+- [x] Implement routing tag parsing for `key:value` and `key=value`, normalized to `key:value`.
+- [x] Warn, but allow, rarely useful or future-facing values where the spec allows them.
+- [x] Reject natural-language durations such as `30 seconds`.
+- [x] Validate fingerprint config JSON as an object.
+- [x] Add confirmation dialog behavior that disables repeated clicks while pending.
 
 ## Done Criteria
 
-- [ ] Domain pages can reuse one validator for each spec validation rule.
-- [ ] Destructive dialogs name the affected object and backend effect.
-- [ ] Partial failures show completed and failed items, with retry for failed items only.
-- [ ] Icon-only actions have labels/tooltips available to assistive technology.
+- [x] Domain pages can reuse one validator for each spec validation rule.
+- [x] Destructive dialogs name the affected object and backend effect.
+- [x] Partial failures show completed and failed items, with retry for failed items only.
+- [x] Icon-only actions have labels/tooltips available to assistive technology.
 

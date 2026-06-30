@@ -29,16 +29,16 @@ Implement fingerprint preset management using the current list, upsert, and broa
 
 ## Implementation Tasks
 
-- [ ] Build preset table and mobile card equivalent.
-- [ ] Calculate used-by-rules count from routing rules.
-- [ ] Add create/edit dialog or route with JSON object validation.
-- [ ] Add duplicate flow that requires a new ID.
-- [ ] Add broadcast confirmation and broker-error display.
+- [x] Build preset table and mobile card equivalent.
+- [x] Calculate used-by-rules count from routing rules.
+- [x] Add create/edit dialog or route with JSON object validation.
+- [x] Add duplicate flow that requires a new ID.
+- [x] Add broadcast confirmation and broker-error display.
 
 ## Done Criteria
 
-- [ ] Fingerprint list, create, edit/upsert, duplicate, copy JSON, and broadcast work through existing APIs.
-- [ ] Arbitrary config object shapes are preserved.
-- [ ] Broadcast errors keep existing presets untouched in the UI.
-- [ ] Fingerprint delete is not shown until a Management API route exists.
+- [x] Fingerprint list, create, edit/upsert, duplicate, copy JSON, and broadcast work through existing APIs.
+- [x] Arbitrary config object shapes are preserved.
+- [x] Broadcast errors keep existing presets untouched in the UI.
+- [x] Fingerprint delete is not shown until a Management API route exists.
 

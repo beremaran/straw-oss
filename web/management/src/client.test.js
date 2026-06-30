@@ -32,7 +32,7 @@ describe('API Client', () => {
     global.fetch.mockResolvedValueOnce({
       ok: true,
       headers: { get: () => 'application/json' },
-      json: async () => ({ keys: [] })
+      json: async () => ({ data: [] })
     })
 
     await listApiKeys()
@@ -45,6 +45,16 @@ describe('API Client', () => {
         })
       })
     )
+  })
+
+  it('unwraps paginated list responses', async () => {
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      headers: { get: () => 'application/json' },
+      json: async () => ({ data: [{ id: 'key-1' }], total: 1, page: 1, limit: 20 })
+    })
+
+    await expect(listApiKeys()).resolves.toEqual([{ id: 'key-1' }])
   })
 
   it('normalizes error payloads', async () => {

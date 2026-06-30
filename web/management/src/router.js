@@ -57,7 +57,9 @@ export function handleRouteChange() {
   }
 
   const page = routes[routeKey] || OverviewPage
-  setState({ currentPage: hash })
+  if (state.currentPage !== hash) {
+    setState({ currentPage: hash })
+  }
 
   const appDiv = document.querySelector('#app')
   if (routeKey === '#/login') {
