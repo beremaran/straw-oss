@@ -6,21 +6,21 @@ Browser-based control surface for the Straw Proxy management API.
 
 ```sh
 cd web/management
-npm install
-npm run dev        # Start Vite dev server on localhost:5173
-npm run build      # Production build to dist/
-npm run test       # Run Vitest tests
-npm run preview    # Preview production build locally
+yarn install
+yarn dev        # Start Vite dev server on localhost:5173
+yarn build      # Production build to dist/
+yarn test       # Run Vitest tests
+yarn preview    # Preview production build locally
 ```
 
 ## Development
 
 | Command | Description |
 | --- | --- |
-| `npm run dev` | Start Vite dev server (localhost:5173) with HMR |
-| `npm run build` | Build production bundle to `dist/` |
-| `npm run test` | Run all tests (jsdom environment) |
-| `npm run preview` | Preview production build on localhost:4173 |
+| `yarn dev` | Start Vite dev server (localhost:5173) with HMR |
+| `yarn build` | Build production bundle to `dist/` |
+| `yarn test` | Run all tests (jsdom environment) |
+| `yarn preview` | Preview production build on localhost:4173 |
 
 The dev server proxies to the Straw relay node (default `http://localhost:8081`). Configure the target URL in the sign-in screen.
 

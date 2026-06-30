@@ -46,9 +46,9 @@ Verify the implemented Management UI satisfies the full first-release acceptance
 
 2026-06-30:
 
-- `npm run test` passed: 91 tests.
-- `npm run lint` passed.
-- `npm run build` passed.
+- `yarn test` passed: 91 tests.
+- `yarn lint` passed.
+- `yarn build` passed.
 - `go test -race -shuffle=on ./...` passed.
 - `make lint` passed.
 - Browser smoke passed against a mock Management API using backend-style paginated `data` list responses: sign-in, Overview, API Keys, and 390px mobile Overview.

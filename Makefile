@@ -104,22 +104,22 @@ generate-clients:
 	npx -y @openapitools/openapi-generator-cli generate -i api/openapi.yaml -g go -o client/go
 
 web-install:
-	cd web/management && npm install
+	cd web/management && yarn install
 
 web-dev:
-	cd web/management && npm run dev
+	cd web/management && yarn dev
 
 web-build:
-	cd web/management && npm run build
+	cd web/management && yarn build
 
 web-test:
-	cd web/management && npm run test
+	cd web/management && yarn test
 
 web-lint:
-	cd web/management && npm run lint
+	cd web/management && yarn lint
 
 web-format:
-	cd web/management && npm run format
+	cd web/management && yarn format
 
 clean:
 	rm -rf bin/ site/ docs/openapi.yaml docs/api-reference.html client/ web/management/dist/
