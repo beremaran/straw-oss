@@ -13,8 +13,13 @@ Thank you for your interest in contributing to the Straw Proxy project.
 4. **Test**: Ensure all tests pass.
 
     ```bash
-    make test
-    make lint
+    # Dockerized dev environment (recommended)
+    ./scripts/dev.sh test
+    ./scripts/dev.sh lint
+
+    # Or use Makefile targets (auto-detects host vs container)
+    make dev-test
+    make dev-lint
     ```
 
 5. **Submit PR**: Create a Pull Request targeting the `main` branch.

@@ -93,10 +93,95 @@ services:
       dockerfile: .docker/Dockerfile
       args:
         BINARY_NAME: endpoint
-    container_name: straw-worker-us-residential
-    environment:
-      - ENDPOINT_ID=worker-us-residential-01
-      - NATS_URL=nats://nats:4222
+
+---
+
+## 🐳 Fully Dockerized Development Environment
+
+Straw Proxy uses a fully dockerized development workflow. **No local dependencies are required** — all tooling (Go, Node.js, Python, linters, formatters) runs inside a single dev container. This ensures every contributor works in an identical environment.
+
+### Quick Start
+
+Start the development environment:
+
+```bash
+./scripts/dev.sh up
+```
+
+This starts PostgreSQL, Redis, NATS, and an interactive dev shell with all tools pre-installed.
+
+### Makefile Targets
+
+All development targets are available as `make dev-*` commands:
+
+```bash
+make dev-build      # Build relay and endpoint binaries
+make dev-test       # Run tests with race detector
+make dev-lint       # Run golangci-lint
+make dev-docs       # Build documentation
+make dev-shell      # Open interactive dev shell
+```
+
+When running **on the host**, these targets use Docker Compose to execute inside the dev container. When running **inside the dev container**, they execute natively.
+
+### Interactive Shell
+
+Open a dev shell with all tools available:
+
+```bash
+./scripts/dev.sh shell
+# or
+make dev-shell
+```
+
+Inside the shell, all standard commands work directly:
+
+```bash
+make dev-build
+make dev-test
+make dev-lint
+go test -race ./...
+golangci-lint run ./...
+```
+
+### Infrastructure Services
+
+The dev environment includes managed infrastructure services:
+
+| Service    | Port  | Purpose                          |
+|------------|-------|----------------------------------|
+| PostgreSQL | 5432  | API keys, routing rules, audits  |
+| Redis      | 6379  | Sessions, cache, rate limits     |
+| NATS       | 4222  | Message broker                   |
+
+Start/stop infrastructure independently:
+
+```bash
+./scripts/dev.sh up    # Start infra only
+./scripts/dev.sh down  # Stop infra
+```
+
+### Docker Compose Configuration
+
+The development environment is defined in `docker-compose.dev.yml`:
+
+- **`dev`** — Full dev container with Go, Node.js, Python, linters, and all tooling
+- **`postgres`** — PostgreSQL 16 with health checks
+- **`nats`** — NATS 2.10 with JetStream enabled
+- **`redis`** — Redis 7
+
+Volumes are configured for fast builds (Go module cache, build cache, npm cache) and persistent data (PostgreSQL, NATS, Redis).
+
+### Pre-commit Hooks
+
+Pre-commit hooks run inside the dev container by default:
+
+```bash
+pre-commit install
+pre-commit run --all-files
+```
+
+Hooks: `make dev-build`, `make dev-test`, `make dev-lint`, and frontend lint — all execute inside the dockerized environment.
       - HMAC_SECRET=your-secure-hmac-signing-secret
       - ENDPOINT_TAGS=type:residential,region:us
       - CONCURRENCY_LIMIT=25
