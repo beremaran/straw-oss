@@ -1,6 +1,6 @@
 # MU-006: Overview Dashboard And Operational Attention Panels
 
-Status: not-started
+Status: done
 Phase: 2
 Depends on: MU-004, MU-005
 Search tags: `/overview`, dashboard, endpoint health, usage, billing, cache, routing attention, partial failure
