@@ -138,6 +138,8 @@ func (s *Server) registerAllSubRoutes() {
 	costMultiplierRepo := postgres.NewCostMultiplierRepository(s.client)
 	notificationChannelRepo := postgres.NewNotificationChannelRepository(s.client)
 	notificationPreferenceRepo := postgres.NewNotificationPreferenceRepository(s.client)
+	alertRuleRepo := postgres.NewAlertRuleRepository(s.client)
+	alertEventRepo := postgres.NewAlertEventRepository(s.client)
 
 	var auditRepo domain.ManagementAuditRepository
 	if s.client != nil {
@@ -175,6 +177,7 @@ func (s *Server) registerAllSubRoutes() {
 	s.registerCostMultiplierRoutes(handlers.NewCostMultiplierHandler(costMultiplierRepo, auditRepo))
 	s.registerReportFeatures(usageRepo, apiKeyRepo, endpointRepo, auditRepo, costMultiplierRepo)
 	s.registerNotificationRoutes(handlers.NewNotificationHandler(notificationChannelRepo, notificationPreferenceRepo, auditRepo, nil))
+	s.registerAlertRoutes(handlers.NewAlertHandler(alertRuleRepo, alertEventRepo, auditRepo))
 
 	if s.redisClient != nil {
 		s.registerCacheRoutes(handlers.NewCacheHandler(s.redisClient, auditRepo))
@@ -328,6 +331,16 @@ func (s *Server) registerNotificationRoutes(notificationHandler *handlers.Notifi
 	s.management("POST /management/notification-channels/{id}/test", middleware.PermissionNotificationsWrite, notificationHandler.HandleTestChannel)
 	s.mux.HandleFunc("GET /management/notification-preferences", notificationHandler.HandleGetPreferences)
 	s.mux.HandleFunc("PATCH /management/notification-preferences", notificationHandler.HandleUpdatePreferences)
+}
+
+func (s *Server) registerAlertRoutes(alertHandler *handlers.AlertHandler) {
+	s.management("GET /management/alerts/rules", middleware.PermissionAlertsRead, alertHandler.HandleListRules)
+	s.management("POST /management/alerts/rules", middleware.PermissionAlertsWrite, alertHandler.HandleCreateRule)
+	s.management("GET /management/alerts/rules/{id}", middleware.PermissionAlertsRead, alertHandler.HandleGetRule)
+	s.management("PATCH /management/alerts/rules/{id}", middleware.PermissionAlertsWrite, alertHandler.HandleUpdateRule)
+	s.management("DELETE /management/alerts/rules/{id}", middleware.PermissionAlertsWrite, alertHandler.HandleDeleteRule)
+	s.management("GET /management/alerts/events", middleware.PermissionAlertsRead, alertHandler.HandleListEvents)
+	s.management("POST /management/alerts/events/{id}/ack", middleware.PermissionAlertsWrite, alertHandler.HandleAcknowledgeEvent)
 }
 
 func (s *Server) startReportScheduler(ctx context.Context) error {

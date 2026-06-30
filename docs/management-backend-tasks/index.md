@@ -42,7 +42,7 @@ Update `tracker.md` when work starts, lands, or is blocked. Keep task files focu
 | [MB-017](tasks/MB-017-saved-reports.md) | 5 | done | Saved reports, report runs, and artifact download | MB-001, MB-006 | reports, report_runs, download, artifacts |
 | [MB-018](tasks/MB-018-report-scheduler.md) | 5 | done | Report scheduler and due-run worker | MB-017 | schedules, cron, row locking, report worker |
 | [MB-019](tasks/MB-019-notification-settings.md) | 5 | done | Notification channels and preferences | MB-001, MB-006 | notification channels, preferences, webhook, email, slack |
-| [MB-020](tasks/MB-020-alerting.md) | 5 | not-started | Alert rules, evaluator, events, and delivery | MB-019 | alerts, evaluator, ack, resolved, delivery |
+| [MB-020](tasks/MB-020-alerting.md) | 5 | done | Alert rules, evaluator, events, and delivery | MB-019 | alerts, evaluator, ack, resolved, delivery |
 | [MB-021](tasks/MB-021-openapi-docs-contracts.md) | cross-cutting | not-started | OpenAPI, docs, and contract test sweep | MB-003 through MB-020 | openapi, management-api, contract tests, compatibility |
 | [MB-022](tasks/MB-022-final-acceptance.md) | cross-cutting | not-started | Final acceptance and compatibility pass | MB-021 | acceptance checklist, legacy routes, regression |
 
