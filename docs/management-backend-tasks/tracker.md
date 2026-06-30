@@ -11,7 +11,7 @@ Status values: `not-started`, `in-progress`, `blocked`, `done`.
 | Current task | none |
 | Current owner | unassigned |
 | Last updated | 2026-06-30 |
-| Notes | MB-021 completed; next unblocked backend task is MB-022. |
+| Notes | MB-022 completed; management backend task queue is complete. |
 
 ## Phase 1: Identity And Audit Foundation
 
@@ -63,7 +63,7 @@ Status values: `not-started`, `in-progress`, `blocked`, `done`.
 | Done | ID | Status | Task |
 | --- | --- | --- | --- |
 | [x] | [MB-021](tasks/MB-021-openapi-docs-contracts.md) | done | OpenAPI, docs, and contract test sweep |
-| [ ] | [MB-022](tasks/MB-022-final-acceptance.md) | not-started | Final acceptance and compatibility pass |
+| [x] | [MB-022](tasks/MB-022-final-acceptance.md) | done | Final acceptance and compatibility pass |
 
 ## Blocked Items
 
