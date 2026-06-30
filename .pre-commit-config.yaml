@@ -6,19 +6,19 @@ repos:
         entry: make build
         language: system
         types: [file]
+        files: '\.go$'
         pass_filenames: false
-        always_run: true
       - id: make-test
         name: make test
         entry: make test
         language: system
         types: [file]
+        files: '\.go$'
         pass_filenames: false
-        always_run: true
       - id: make-lint
         name: make lint
         entry: make lint
         language: system
         types: [file]
+        files: '\.go$'
         pass_filenames: false
-        always_run: true
