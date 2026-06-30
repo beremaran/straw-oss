@@ -62,7 +62,7 @@ services:
   relay-server:
     build:
       context: .
-      dockerfile: .docker/Dockerfile
+      dockerfile: docker/Dockerfile
       args:
         BINARY_NAME: relay
     container_name: straw-relay
@@ -90,7 +90,7 @@ services:
   endpoint-worker:
     build:
       context: .
-      dockerfile: .docker/Dockerfile
+      dockerfile: docker/Dockerfile
       args:
         BINARY_NAME: endpoint
 
@@ -163,7 +163,7 @@ Start/stop infrastructure independently:
 
 ### Docker Compose Configuration
 
-The development environment is defined in `docker-compose.dev.yml`:
+The development environment is defined in `docker/docker-compose.dev.yml`:
 
 - **`dev`** — Full dev container with Go, Node.js, Python, linters, and all tooling
 - **`postgres`** — PostgreSQL 16 with health checks
@@ -227,8 +227,8 @@ This compiles:
 
 2. **Configure environment variables**: Copy the example configuration files and fill in values:
    ```bash
-   cp .relay.env.example .relay.env
-   cp .endpoint.env.example .endpoint.env
+   cp config/.relay.env.example .relay.env
+   cp config/.endpoint.env.example .endpoint.env
    ```
 
 3. **Run database migrations**: Set `DB_AUTO_MIGRATE=true` on the Relay Server startup to automatically apply all embedded SQL schema migrations on startup, or use a goose-compatible migration tool.
