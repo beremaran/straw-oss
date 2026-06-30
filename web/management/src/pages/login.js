@@ -1,17 +1,16 @@
 // Login Page implementation
 
-import { state, setState, showToast } from '../state.js';
-import { healthCheck, listApiKeys, ApiError } from '../client.js';
-import { handleRouteChange } from '../router.js';
+import { setState, showToast } from '../state.js'
+import { healthCheck, listApiKeys, ApiError } from '../client.js'
 
 export const LoginPage = {
   render(state) {
-    const errorHtml = state.loginError 
+    const errorHtml = state.loginError
       ? `<div class="alert alert-error" role="alert" style="margin-bottom: 1.5rem;">
           <div class="alert-title">Connection Failed</div>
           <div class="alert-body" style="font-size: 0.875rem;">${state.loginError}</div>
          </div>`
-      : '';
+      : ''
 
     return `
       <div class="login-wrapper">
@@ -56,128 +55,133 @@ export const LoginPage = {
           </form>
         </div>
       </div>
-    `;
+    `
   },
 
   afterRender(state) {
-    const form = document.getElementById('login-form');
-    if (!form) return;
+    const form = document.getElementById('login-form')
+    if (!form) return
 
     form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      
-      const baseUrlInput = document.getElementById('baseUrl');
-      const tokenInput = document.getElementById('token');
-      const rememberCheckbox = document.getElementById('remember');
-      const submitBtn = document.getElementById('btn-login-submit');
-      const spinner = document.getElementById('login-spinner');
-      
-      // Clean previous errors
-      setState({ loginError: null });
-      document.getElementById('baseUrl-error').textContent = '';
-      document.getElementById('token-error').textContent = '';
-      baseUrlInput.classList.remove('is-invalid');
-      tokenInput.classList.remove('is-invalid');
+      e.preventDefault()
 
-      let isValid = true;
-      
-      const baseUrlVal = baseUrlInput.value.trim();
-      const tokenVal = tokenInput.value.trim();
-      
+      const baseUrlInput = document.getElementById('baseUrl')
+      const tokenInput = document.getElementById('token')
+      const rememberCheckbox = document.getElementById('remember')
+      const submitBtn = document.getElementById('btn-login-submit')
+      const spinner = document.getElementById('login-spinner')
+
+      // Clean previous errors
+      setState({ loginError: null })
+      document.getElementById('baseUrl-error').textContent = ''
+      document.getElementById('token-error').textContent = ''
+      baseUrlInput.classList.remove('is-invalid')
+      tokenInput.classList.remove('is-invalid')
+
+      let isValid = true
+
+      const baseUrlVal = baseUrlInput.value.trim()
+      const tokenVal = tokenInput.value.trim()
+
       if (!baseUrlVal) {
-        document.getElementById('baseUrl-error').textContent = 'API URL is required.';
-        baseUrlInput.classList.add('is-invalid');
-        isValid = false;
+        document.getElementById('baseUrl-error').textContent = 'API URL is required.'
+        baseUrlInput.classList.add('is-invalid')
+        isValid = false
       } else {
         try {
-          new URL(baseUrlVal);
-        } catch (_) {
-          document.getElementById('baseUrl-error').textContent = 'API URL must include a protocol (e.g. http:// or https://).';
-          baseUrlInput.classList.add('is-invalid');
-          isValid = false;
+          new URL(baseUrlVal)
+        } catch {
+          document.getElementById('baseUrl-error').textContent =
+            'API URL must include a protocol (e.g. http:// or https://).'
+          baseUrlInput.classList.add('is-invalid')
+          isValid = false
         }
       }
 
       if (!tokenVal) {
-        document.getElementById('token-error').textContent = 'Management token is required.';
-        tokenInput.classList.add('is-invalid');
-        isValid = false;
+        document.getElementById('token-error').textContent = 'Management token is required.'
+        tokenInput.classList.add('is-invalid')
+        isValid = false
       }
 
       if (!isValid) {
         // Focus first invalid field
-        const firstInvalid = form.querySelector('.is-invalid');
-        if (firstInvalid) firstInvalid.focus();
-        return;
+        const firstInvalid = form.querySelector('.is-invalid')
+        if (firstInvalid) firstInvalid.focus()
+        return
       }
 
       // Start loading
-      submitBtn.disabled = true;
-      spinner.style.display = 'inline-block';
-      
+      submitBtn.disabled = true
+      spinner.style.display = 'inline-block'
+
       // Temporarily set baseUrl and token for verification calls
-      const oldBaseUrl = state.baseUrl;
-      const oldToken = state.token;
-      
-      state.baseUrl = baseUrlVal;
-      state.token = tokenVal;
+      const oldBaseUrl = state.baseUrl
+      const oldToken = state.token
+
+      state.baseUrl = baseUrlVal
+      state.token = tokenVal
 
       try {
         // Step 1: Health check (public endpoint)
         try {
-          await healthCheck();
+          await healthCheck()
         } catch (err) {
-          throw new Error(`Reachability check failed: Could not connect to API at ${baseUrlVal}. Verify the URL, port, CORS settings, or network configuration.`);
+          throw new Error(
+            `Reachability check failed: Could not connect to API at ${baseUrlVal}. Verify the URL, port, CORS settings, or network configuration.`,
+            { cause: err }
+          )
         }
 
         // Step 2: Authenticated test request
         try {
-          await listApiKeys({ limit: 1 });
+          await listApiKeys({ limit: 1 })
         } catch (err) {
           if (err instanceof ApiError && err.status === 401) {
-            throw new Error('Invalid management token. Access denied by Straw Node.');
+            throw new Error('Invalid management token. Access denied by Straw Node.', {
+              cause: err
+            })
           }
-          throw err;
+          throw err
         }
 
         // Verification successful! Save settings
-        const remember = rememberCheckbox.checked;
+        const remember = rememberCheckbox.checked
         setState({
           baseUrl: baseUrlVal,
           token: tokenVal,
           remember,
           loginError: null
-        });
+        })
 
         if (remember) {
-          localStorage.setItem('straw_baseUrl', baseUrlVal);
-          localStorage.setItem('straw_token', tokenVal);
-          localStorage.setItem('straw_remember', 'true');
+          localStorage.setItem('straw_baseUrl', baseUrlVal)
+          localStorage.setItem('straw_token', tokenVal)
+          localStorage.setItem('straw_remember', 'true')
         } else {
-          localStorage.setItem('straw_baseUrl', baseUrlVal);
-          localStorage.setItem('straw_remember', 'false');
-          localStorage.removeItem('straw_token');
+          localStorage.setItem('straw_baseUrl', baseUrlVal)
+          localStorage.setItem('straw_remember', 'false')
+          localStorage.removeItem('straw_token')
         }
 
-        showToast('Connected to Straw Node', 'success');
-        window.location.hash = '#/overview';
-
+        showToast('Connected to Straw Node', 'success')
+        window.location.hash = '#/overview'
       } catch (err) {
         // Restore old credentials
-        state.baseUrl = oldBaseUrl;
-        state.token = oldToken;
-        
-        setState({ loginError: err.message });
-        submitBtn.disabled = false;
-        spinner.style.display = 'none';
-        
+        state.baseUrl = oldBaseUrl
+        state.token = oldToken
+
+        setState({ loginError: err.message })
+        submitBtn.disabled = false
+        spinner.style.display = 'none'
+
         // Re-render to show error message
-        const appDiv = document.querySelector('#app') || form.parentElement;
+        const appDiv = document.querySelector('#app') || form.parentElement
         if (appDiv) {
-          appDiv.innerHTML = LoginPage.render(state);
-          LoginPage.afterRender(state);
+          appDiv.innerHTML = LoginPage.render(state)
+          LoginPage.afterRender(state)
         }
       }
-    });
+    })
   }
-};
+}

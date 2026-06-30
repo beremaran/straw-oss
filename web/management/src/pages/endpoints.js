@@ -1,73 +1,77 @@
 // Endpoints Monitoring Page
 
-import { state, setState, showToast, showConfirm } from '../state.js';
-import { listEndpoints, drainEndpoint, ApiError } from '../client.js';
+import { setState, showToast, showConfirm } from '../state.js'
+import { listEndpoints, drainEndpoint } from '../client.js'
 
 export const EndpointsPage = {
   render(state) {
-    const endpoints = state.endpointsData || [];
-    const isLoading = state.endpointsLoading;
+    const endpoints = state.endpointsData || []
 
-    const filterStatus = state.endpointsFilterStatus || 'all';
-    const filterTag = (state.endpointsFilterTag || '').trim().toLowerCase();
-    const filterVersion = (state.endpointsFilterVersion || '').trim().toLowerCase();
-    const filterAge = state.endpointsFilterAge || 'all';
-    const filterSearch = (state.endpointsFilterSearch || '').trim().toLowerCase();
+    const filterStatus = state.endpointsFilterStatus || 'all'
+    const filterTag = (state.endpointsFilterTag || '').trim().toLowerCase()
+    const filterVersion = (state.endpointsFilterVersion || '').trim().toLowerCase()
+    const filterAge = state.endpointsFilterAge || 'all'
+    const filterSearch = (state.endpointsFilterSearch || '').trim().toLowerCase()
 
     // Client-side filtering
-    const filteredEndpoints = endpoints.filter(ep => {
+    const filteredEndpoints = endpoints.filter((ep) => {
       // 1. Status
-      if (filterStatus !== 'all' && ep.state !== filterStatus) return false;
-      
+      if (filterStatus !== 'all' && ep.state !== filterStatus) return false
+
       // 2. Tag
       if (filterTag) {
-        const tags = ep.tags || [];
-        const hasTag = tags.some(t => t.toLowerCase().includes(filterTag));
-        if (!hasTag) return false;
+        const tags = ep.tags || []
+        const hasTag = tags.some((t) => t.toLowerCase().includes(filterTag))
+        if (!hasTag) return false
       }
 
       // 3. Version
       if (filterVersion) {
-        const ver = (ep.version || '').toLowerCase();
-        if (!ver.includes(filterVersion)) return false;
+        const ver = (ep.version || '').toLowerCase()
+        if (!ver.includes(filterVersion)) return false
       }
 
       // 4. Stale Age (Redis TTL default 60s)
       if (filterAge !== 'all' && ep.last_seen) {
-        const lastSeenMs = Date.now() - new Date(ep.last_seen).getTime();
-        if (filterAge === 'active' && lastSeenMs > 30000) return false;
-        if (filterAge === 'stale' && (lastSeenMs <= 30000 || lastSeenMs > 60000)) return false;
-        if (filterAge === 'disconnected' && lastSeenMs <= 60000) return false;
+        const lastSeenMs = Date.now() - new Date(ep.last_seen).getTime()
+        if (filterAge === 'active' && lastSeenMs > 30000) return false
+        if (filterAge === 'stale' && (lastSeenMs <= 30000 || lastSeenMs > 60000)) return false
+        if (filterAge === 'disconnected' && lastSeenMs <= 60000) return false
       }
 
       // 5. Search ID
       if (filterSearch) {
-        const id = (ep.id || '').toLowerCase();
-        if (!id.includes(filterSearch)) return false;
+        const id = (ep.id || '').toLowerCase()
+        if (!id.includes(filterSearch)) return false
       }
 
-      return true;
-    });
+      return true
+    })
 
-    const rowsHtml = filteredEndpoints.map(ep => {
-      const isDraining = ep.state === 'draining';
-      const lastSeen = ep.last_seen ? new Date(ep.last_seen).toLocaleTimeString() : 'N/A';
-      const tagsHtml = (ep.tags || []).map(t => `
+    const rowsHtml = filteredEndpoints
+      .map((ep) => {
+        const isDraining = ep.state === 'draining'
+        const lastSeen = ep.last_seen ? new Date(ep.last_seen).toLocaleTimeString() : 'N/A'
+        const tagsHtml = (ep.tags || [])
+          .map(
+            (t) => `
         <span class="badge badge-secondary badge-sm ep-tag-chip" data-tag="${t}" style="cursor: pointer;" title="Copy Tag">${t}</span>
-      `).join(' ');
+      `
+          )
+          .join(' ')
 
-      // Check if stale
-      let staleIndicator = '';
-      if (ep.last_seen) {
-        const ageMs = Date.now() - new Date(ep.last_seen).getTime();
-        if (ageMs > 60000) {
-          staleIndicator = `<span class="badge badge-danger badge-sm" style="margin-left: 0.5rem;">Disconnected</span>`;
-        } else if (ageMs > 30000) {
-          staleIndicator = `<span class="badge badge-warning badge-sm" style="margin-left: 0.5rem;">Stale</span>`;
+        // Check if stale
+        let staleIndicator = ''
+        if (ep.last_seen) {
+          const ageMs = Date.now() - new Date(ep.last_seen).getTime()
+          if (ageMs > 60000) {
+            staleIndicator = `<span class="badge badge-danger badge-sm" style="margin-left: 0.5rem;">Disconnected</span>`
+          } else if (ageMs > 30000) {
+            staleIndicator = `<span class="badge badge-warning badge-sm" style="margin-left: 0.5rem;">Stale</span>`
+          }
         }
-      }
 
-      return `
+        return `
         <tr class="${isDraining ? 'row-disabled' : ''}">
           <td>
             <div style="display:flex; align-items:center; gap:0.5rem;">
@@ -92,12 +96,14 @@ export const EndpointsPage = {
             </div>
           </td>
         </tr>
-      `;
-    }).join('');
+      `
+      })
+      .join('')
 
-    const noEndpointsHtml = filteredEndpoints.length === 0 
-      ? `<tr><td colspan="7" class="table-empty">No active endpoint nodes monitored.</td></tr>` 
-      : '';
+    const noEndpointsHtml =
+      filteredEndpoints.length === 0
+        ? `<tr><td colspan="7" class="table-empty">No active endpoint nodes monitored.</td></tr>`
+        : ''
 
     return `
       <div class="page-header">
@@ -182,94 +188,94 @@ export const EndpointsPage = {
           </div>
         </div>
       </div>
-    `;
+    `
   },
 
-  async refresh(state) {
-    setState({ endpointsLoading: true });
+  async refresh(_) {
+    setState({ endpointsLoading: true })
     try {
-      const endpoints = await listEndpoints();
-      setState({ endpointsData: endpoints, endpointsLoading: false });
+      const endpoints = await listEndpoints()
+      setState({ endpointsData: endpoints, endpointsLoading: false })
     } catch (err) {
-      setState({ endpointsLoading: false });
-      showToast(`Failed to load endpoints: ${err.message}`, 'error');
+      setState({ endpointsLoading: false })
+      showToast(`Failed to load endpoints: ${err.message}`, 'error')
     }
   },
 
   afterRender(state) {
     if (!state.endpointsData && !state.endpointsLoading) {
-      this.refresh(state);
-      return;
+      this.refresh(state)
+      return
     }
 
     // Bind filters
     const bindFilter = (id, stateKey) => {
-      const el = document.getElementById(id);
+      const el = document.getElementById(id)
       if (el) {
         el.addEventListener('input', (e) => {
-          setState({ [stateKey]: e.target.value });
-        });
+          setState({ [stateKey]: e.target.value })
+        })
       }
-    };
-    bindFilter('filter-status', 'endpointsFilterStatus');
-    bindFilter('filter-tag', 'endpointsFilterTag');
-    bindFilter('filter-version', 'endpointsFilterVersion');
-    bindFilter('filter-age', 'endpointsFilterAge');
-    bindFilter('filter-search', 'endpointsFilterSearch');
+    }
+    bindFilter('filter-status', 'endpointsFilterStatus')
+    bindFilter('filter-tag', 'endpointsFilterTag')
+    bindFilter('filter-version', 'endpointsFilterVersion')
+    bindFilter('filter-age', 'endpointsFilterAge')
+    bindFilter('filter-search', 'endpointsFilterSearch')
 
     // Copy ID triggers
-    const copyIdBtns = document.querySelectorAll('.btn-copy-id');
-    copyIdBtns.forEach(btn => {
+    const copyIdBtns = document.querySelectorAll('.btn-copy-id')
+    copyIdBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
-        const val = btn.getAttribute('data-copy');
-        navigator.clipboard.writeText(val);
-        showToast('Endpoint ID copied', 'success');
-      });
-    });
+        const val = btn.getAttribute('data-copy')
+        navigator.clipboard.writeText(val)
+        showToast('Endpoint ID copied', 'success')
+      })
+    })
 
     // Copy Tags triggers
-    const copyTagsBtns = document.querySelectorAll('.btn-copy-tags');
-    copyTagsBtns.forEach(btn => {
+    const copyTagsBtns = document.querySelectorAll('.btn-copy-tags')
+    copyTagsBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
-        const tags = btn.getAttribute('data-tags');
-        navigator.clipboard.writeText(tags);
-        showToast('Endpoint tags copied', 'success');
-      });
-    });
+        const tags = btn.getAttribute('data-tags')
+        navigator.clipboard.writeText(tags)
+        showToast('Endpoint tags copied', 'success')
+      })
+    })
 
     // Individual chip copy trigger
-    const tagChips = document.querySelectorAll('.ep-tag-chip');
-    tagChips.forEach(chip => {
+    const tagChips = document.querySelectorAll('.ep-tag-chip')
+    tagChips.forEach((chip) => {
       chip.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const tag = chip.getAttribute('data-tag');
-        navigator.clipboard.writeText(tag);
-        showToast(`Tag '${tag}' copied`, 'success');
-      });
-    });
+        e.stopPropagation()
+        const tag = chip.getAttribute('data-tag')
+        navigator.clipboard.writeText(tag)
+        showToast(`Tag '${tag}' copied`, 'success')
+      })
+    })
 
     // Find rules routing redirect
-    const findRulesBtns = document.querySelectorAll('.btn-find-rules');
-    findRulesBtns.forEach(btn => {
+    const findRulesBtns = document.querySelectorAll('.btn-find-rules')
+    findRulesBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
-        const tags = btn.getAttribute('data-tags');
+        const tags = btn.getAttribute('data-tags')
         if (tags) {
-          const firstTag = tags.split(',')[0];
+          const firstTag = tags.split(',')[0]
           // Redirect to rules page with tag filter preset
-          setState({ rulesFilterTag: firstTag });
-          window.location.hash = '#/routing-rules';
+          setState({ rulesFilterTag: firstTag })
+          window.location.hash = '#/routing-rules'
         } else {
-          showToast('Endpoint has no tags to match', 'warning');
+          showToast('Endpoint has no tags to match', 'warning')
         }
-      });
-    });
+      })
+    })
 
     // Drain endpoint trigger
-    const drainBtns = document.querySelectorAll('.btn-drain-endpoint');
-    drainBtns.forEach(btn => {
+    const drainBtns = document.querySelectorAll('.btn-drain-endpoint')
+    drainBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
-        const id = btn.getAttribute('data-id');
-        const tasks = btn.getAttribute('data-tasks') || '0';
+        const id = btn.getAttribute('data-id')
+        const tasks = btn.getAttribute('data-tasks') || '0'
 
         showConfirm({
           title: 'Drain Endpoint',
@@ -277,23 +283,23 @@ export const EndpointsPage = {
           confirmText: 'confirm',
           callback: async () => {
             try {
-              await drainEndpoint(id);
-              showToast(`Endpoint ${id} is now draining`, 'success');
-              
+              await drainEndpoint(id)
+              showToast(`Endpoint ${id} is now draining`, 'success')
+
               // Optimistically update local view
               if (state.endpointsData) {
-                state.endpointsData = state.endpointsData.map(ep => {
-                  if (ep.id === id) return { ...ep, state: 'draining' };
-                  return ep;
-                });
-                setState({ endpointsData: state.endpointsData });
+                state.endpointsData = state.endpointsData.map((ep) => {
+                  if (ep.id === id) return { ...ep, state: 'draining' }
+                  return ep
+                })
+                setState({ endpointsData: state.endpointsData })
               }
             } catch (err) {
-              showToast(`Failed to drain endpoint: ${err.message}`, 'error');
+              showToast(`Failed to drain endpoint: ${err.message}`, 'error')
             }
           }
-        });
-      });
-    });
+        })
+      })
+    })
   }
-};
+}

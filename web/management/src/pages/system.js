@@ -1,7 +1,7 @@
 // System Diagnostics Page
 
-import { state, setState, clearSession, showToast } from '../state.js';
-import { healthCheck, ApiError } from '../client.js';
+import { setState, clearSession } from '../state.js'
+import { healthCheck } from '../client.js'
 
 // Known backend gaps from the UI spec
 const BACKEND_GAPS = [
@@ -13,16 +13,16 @@ const BACKEND_GAPS = [
   'Cost multiplier management (API exists but not exposed in UI)',
   'Saved reports, scheduled exports, alerts, and notification preferences',
   'Hourly drilldown, invoices, payments, and organizations in usage'
-];
+]
 
 export const SystemPage = {
   render(state) {
-    const healthData = state.systemHealth || null;
-    const healthError = state.systemHealthError || null;
-    const healthLoading = state.systemHealthLoading || false;
-    const healthResponseTime = state.systemHealthResponseTime || null;
-    const capabilities = state.systemCapabilities || {};
-    const lastChecked = state.systemLastChecked || null;
+    const healthData = state.systemHealth || null
+    const healthError = state.systemHealthError || null
+    const healthLoading = state.systemHealthLoading || false
+    const healthResponseTime = state.systemHealthResponseTime || null
+    const capabilities = state.systemCapabilities || {}
+    const lastChecked = state.systemLastChecked || null
 
     // Capability labels
     const capabilityItems = [
@@ -32,19 +32,23 @@ export const SystemPage = {
       { key: 'rules', label: 'Routing Rules', available: capabilities.rules },
       { key: 'endpoints', label: 'Endpoints', available: capabilities.endpoints },
       { key: 'apiKeys', label: 'API Keys', available: capabilities.apiKeys }
-    ];
+    ]
 
-    const capabilityHtml = capabilityItems.map(item =>
-      `<div style="display:flex;justify-content:space-between;align-items:center;padding:0.5rem 0;border-bottom:1px solid var(--border);">
+    const capabilityHtml = capabilityItems
+      .map(
+        (item) =>
+          `<div style="display:flex;justify-content:space-between;align-items:center;padding:0.5rem 0;border-bottom:1px solid var(--border);">
          <span>${item.label}</span>
          <span class="badge badge-${item.available ? 'success' : 'danger'}">${item.available ? 'Available' : 'Unavailable'}</span>
        </div>`
-    ).join('');
+      )
+      .join('')
 
     // Backend gaps
-    const gapsHtml = BACKEND_GAPS.map(gap =>
-      `<li style="margin-bottom:0.5rem;padding:0.5rem 0;border-bottom:1px solid var(--border);font-size:0.875rem;">${gap}</li>`
-    ).join('');
+    const gapsHtml = BACKEND_GAPS.map(
+      (gap) =>
+        `<li style="margin-bottom:0.5rem;padding:0.5rem 0;border-bottom:1px solid var(--border);font-size:0.875rem;">${gap}</li>`
+    ).join('')
 
     // Health status
     const healthStatusHtml = healthLoading
@@ -53,12 +57,10 @@ export const SystemPage = {
         ? `<span class="badge badge-danger">Error</span>`
         : healthData
           ? `<span class="badge badge-success">Healthy</span>`
-          : `<span class="badge badge-warning">Unknown</span>`;
+          : `<span class="badge badge-warning">Unknown</span>`
 
     // Response time
-    const responseTimeHtml = healthResponseTime !== null
-      ? `${healthResponseTime}ms`
-      : '';
+    const responseTimeHtml = healthResponseTime !== null ? `${healthResponseTime}ms` : ''
 
     return `
       <div class="page-header">
@@ -101,21 +103,27 @@ export const SystemPage = {
             <span style="font-size:0.875rem;">Response Time</span>
             <code style="font-size:0.8rem;">${responseTimeHtml || 'N/A'}</code>
           </div>
-          ${healthData && !healthError
-            ? `<div style="font-size:0.875rem;">
+          ${
+            healthData && !healthError
+              ? `<div style="font-size:0.875rem;">
                  <strong>Response:</strong> <code>${escapeHtml(typeof healthData === 'string' ? healthData : JSON.stringify(healthData))}</code>
                </div>`
-            : ''}
-          ${healthError
-            ? `<div style="font-size:0.875rem;color:var(--text);margin-top:0.5rem;">
+              : ''
+          }
+          ${
+            healthError
+              ? `<div style="font-size:0.875rem;color:var(--text);margin-top:0.5rem;">
                  <strong>Error:</strong> ${escapeHtml(healthError)}
                </div>`
-            : ''}
-          ${lastChecked
-            ? `<div style="font-size:0.75rem;color:var(--text);margin-top:0.5rem;">
+              : ''
+          }
+          ${
+            lastChecked
+              ? `<div style="font-size:0.75rem;color:var(--text);margin-top:0.5rem;">
                  Last checked: ${new Date(lastChecked).toLocaleString()}
                </div>`
-            : ''}
+              : ''
+          }
         </div>
       </div>
 
@@ -158,86 +166,88 @@ export const SystemPage = {
           </ul>
         </div>
       </div>
-    `;
+    `
   },
 
-  async refresh(state) {
-    setState({ systemHealthLoading: true, systemHealthError: null });
-    const start = performance.now();
+  async refresh(_) {
+    setState({ systemHealthLoading: true, systemHealthError: null })
+    const start = performance.now()
     try {
-      const result = await healthCheck();
-      const elapsed = Math.round(performance.now() - start);
+      const result = await healthCheck()
+      const elapsed = Math.round(performance.now() - start)
       setState({
         systemHealth: result,
         systemHealthLoading: false,
         systemHealthResponseTime: elapsed,
         systemLastChecked: Date.now()
-      });
+      })
     } catch (err) {
       setState({
         systemHealthLoading: false,
         systemHealthError: err.message || 'Health check failed'
-      });
+      })
     }
   },
 
-  async detectCapabilities(state) {
-    setState({ systemCapabilitiesLoading: true });
+  async detectCapabilities(_) {
+    setState({ systemCapabilitiesLoading: true })
     const results = await Promise.allSettled([
-      import('../client.js').then(m => m.getCacheStats().catch(() => null)),
-      import('../client.js').then(m => m.listFingerprints().catch(() => null)),
-      import('../client.js').then(m => m.getUsageSummary({ start: '2026-01-01', end: '2026-01-02' }).catch(() => null)),
-      import('../client.js').then(m => m.listRoutingRules({ limit: 1 }).catch(() => null)),
-      import('../client.js').then(m => m.listEndpoints().catch(() => null)),
-      import('../client.js').then(m => m.listApiKeys({ limit: 1 }).catch(() => null))
-    ]);
+      import('../client.js').then((m) => m.getCacheStats().catch(() => null)),
+      import('../client.js').then((m) => m.listFingerprints().catch(() => null)),
+      import('../client.js').then((m) =>
+        m.getUsageSummary({ start: '2026-01-01', end: '2026-01-02' }).catch(() => null)
+      ),
+      import('../client.js').then((m) => m.listRoutingRules({ limit: 1 }).catch(() => null)),
+      import('../client.js').then((m) => m.listEndpoints().catch(() => null)),
+      import('../client.js').then((m) => m.listApiKeys({ limit: 1 }).catch(() => null))
+    ])
 
-    const keys = ['cache', 'fingerprints', 'usage', 'rules', 'endpoints', 'apiKeys'];
-    const caps = {};
+    const keys = ['cache', 'fingerprints', 'usage', 'rules', 'endpoints', 'apiKeys']
+    const caps = {}
     results.forEach((res, i) => {
-      caps[keys[i]] = res.status === 'fulfilled' && res.value !== null;
-    });
+      caps[keys[i]] = res.status === 'fulfilled' && res.value !== null
+    })
 
-    setState({ systemCapabilities: caps, systemCapabilitiesLoading: false });
+    setState({ systemCapabilities: caps, systemCapabilitiesLoading: false })
   },
 
   afterRender(state) {
     // Sign out
-    const signOutBtn = document.getElementById('system-sign-out');
+    const signOutBtn = document.getElementById('system-sign-out')
     if (signOutBtn) {
       signOutBtn.addEventListener('click', () => {
-        clearSession();
-        window.location.hash = '#/login';
-      });
+        clearSession()
+        window.location.hash = '#/login'
+      })
     }
 
     // Health refresh
-    const healthRefreshBtn = document.getElementById('system-health-refresh');
+    const healthRefreshBtn = document.getElementById('system-health-refresh')
     if (healthRefreshBtn) {
-      healthRefreshBtn.addEventListener('click', () => this.refresh(state));
+      healthRefreshBtn.addEventListener('click', () => this.refresh(state))
     }
 
     // Capabilities re-detect
-    const capsRefreshBtn = document.getElementById('system-capabilities-refresh');
+    const capsRefreshBtn = document.getElementById('system-capabilities-refresh')
     if (capsRefreshBtn) {
-      capsRefreshBtn.addEventListener('click', () => this.detectCapabilities(state));
+      capsRefreshBtn.addEventListener('click', () => this.detectCapabilities(state))
     }
 
     // Initial load
     if (!state.systemHealth && !state.systemHealthLoading) {
-      this.refresh(state);
+      this.refresh(state)
     }
     if (!state.systemCapabilities) {
-      this.detectCapabilities(state);
+      this.detectCapabilities(state)
     }
   }
-};
+}
 
 function escapeHtml(str) {
-  if (!str) return '';
+  if (!str) return ''
   return str
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
 }

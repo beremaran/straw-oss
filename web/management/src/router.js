@@ -1,17 +1,17 @@
 // Straw Management UI Hash Router
 
-import { state, setState } from './state.js';
-import { LoginPage } from './pages/login.js';
-import { OverviewPage } from './pages/overview.js';
-import { ApiKeysPage } from './pages/api-keys.js';
-import { RoutingRulesPage } from './pages/routing-rules.js';
-import { RoutingRuleEditorPage } from './pages/routing-rule-editor.js';
-import { EndpointsPage } from './pages/endpoints.js';
-import { FingerprintsPage } from './pages/fingerprints.js';
-import { UsagePage } from './pages/usage.js';
-import { CachePage } from './pages/cache.js';
-import { SystemPage } from './pages/system.js';
-import { renderShell } from './components/shell.js';
+import { state, setState } from './state.js'
+import { LoginPage } from './pages/login.js'
+import { OverviewPage } from './pages/overview.js'
+import { ApiKeysPage } from './pages/api-keys.js'
+import { RoutingRulesPage } from './pages/routing-rules.js'
+import { RoutingRuleEditorPage } from './pages/routing-rule-editor.js'
+import { EndpointsPage } from './pages/endpoints.js'
+import { FingerprintsPage } from './pages/fingerprints.js'
+import { UsagePage } from './pages/usage.js'
+import { CachePage } from './pages/cache.js'
+import { SystemPage } from './pages/system.js'
+import { renderShell } from './components/shell.js'
 
 const routes = {
   '#/login': LoginPage,
@@ -25,113 +25,122 @@ const routes = {
   '#/usage': UsagePage,
   '#/cache': CachePage,
   '#/system': SystemPage
-};
+}
 
 export function initRouter() {
-  window.addEventListener('hashchange', handleRouteChange);
-  handleRouteChange();
+  window.addEventListener('hashchange', handleRouteChange)
+  handleRouteChange()
 }
 
 export function handleRouteChange() {
-  const hash = window.location.hash || '#/overview';
-  
-  let routeKey = hash;
+  const hash = window.location.hash || '#/overview'
+
+  let routeKey = hash
   if (hash.startsWith('#/routing-rules/edit')) {
-    routeKey = '#/routing-rules/edit';
-  } else if (hash.startsWith('#/routing-rules/') && hash !== '#/routing-rules/new' && !hash.includes('?')) {
-    routeKey = '#/routing-rules/edit';
+    routeKey = '#/routing-rules/edit'
+  } else if (
+    hash.startsWith('#/routing-rules/') &&
+    hash !== '#/routing-rules/new' &&
+    !hash.includes('?')
+  ) {
+    routeKey = '#/routing-rules/edit'
   }
 
-  const hasToken = !!state.token;
+  const hasToken = !!state.token
   if (!hasToken && routeKey !== '#/login') {
-    window.location.hash = '#/login';
-    return;
+    window.location.hash = '#/login'
+    return
   }
   if (hasToken && routeKey === '#/login') {
-    window.location.hash = '#/overview';
-    return;
+    window.location.hash = '#/overview'
+    return
   }
 
-  const page = routes[routeKey] || OverviewPage;
-  setState({ currentPage: hash });
+  const page = routes[routeKey] || OverviewPage
+  setState({ currentPage: hash })
 
-  const appDiv = document.querySelector('#app');
+  const appDiv = document.querySelector('#app')
   if (routeKey === '#/login') {
-    appDiv.innerHTML = page.render(state);
-    if (page.afterRender) page.afterRender(state);
+    appDiv.innerHTML = page.render(state)
+    if (page.afterRender) page.afterRender(state)
   } else {
-    appDiv.innerHTML = renderShell(state, page.render(state));
-    attachShellEvents();
-    if (page.afterRender) page.afterRender(state);
+    appDiv.innerHTML = renderShell(state, page.render(state))
+    attachShellEvents()
+    if (page.afterRender) page.afterRender(state)
   }
 }
 
 function attachShellEvents() {
   // Mobile sidebar toggle
-  const toggleBtn = document.getElementById('sidebar-toggle');
-  const sidebar = document.getElementById('app-sidebar');
+  const toggleBtn = document.getElementById('sidebar-toggle')
+  const sidebar = document.getElementById('app-sidebar')
   if (toggleBtn && sidebar) {
     toggleBtn.addEventListener('click', () => {
-      sidebar.classList.toggle('active');
-    });
+      sidebar.classList.toggle('active')
+    })
   }
 
   // Sign out
-  const signOutBtn = document.getElementById('shell-sign-out');
+  const signOutBtn = document.getElementById('shell-sign-out')
   if (signOutBtn) {
     signOutBtn.addEventListener('click', (e) => {
-      e.preventDefault();
+      e.preventDefault()
       import('./state.js').then(({ clearSession }) => {
-        clearSession();
-        window.location.hash = '#/login';
-      });
-    });
+        clearSession()
+        window.location.hash = '#/login'
+      })
+    })
   }
-  
+
   // Refresh button
-  const refreshBtn = document.getElementById('shell-refresh');
+  const refreshBtn = document.getElementById('shell-refresh')
   if (refreshBtn) {
     refreshBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      const hash = window.location.hash || '#/overview';
-      let routeKey = hash;
-      if (hash.startsWith('#/routing-rules/edit') || (hash.startsWith('#/routing-rules/') && hash !== '#/routing-rules/new' && !hash.includes('?'))) {
-        routeKey = '#/routing-rules/edit';
+      e.preventDefault()
+      const hash = window.location.hash || '#/overview'
+      let routeKey = hash
+      if (
+        hash.startsWith('#/routing-rules/edit') ||
+        (hash.startsWith('#/routing-rules/') &&
+          hash !== '#/routing-rules/new' &&
+          !hash.includes('?'))
+      ) {
+        routeKey = '#/routing-rules/edit'
       }
-      const page = routes[routeKey];
+      const page = routes[routeKey]
       if (page && page.refresh) {
-        page.refresh(state);
+        page.refresh(state)
       }
-    });
+    })
   }
 
   // Confirmation dialog actions
-  const confirmCancel = document.getElementById('confirm-cancel-btn');
+  const confirmCancel = document.getElementById('confirm-cancel-btn')
   if (confirmCancel) {
     confirmCancel.addEventListener('click', () => {
-      import('./state.js').then(({ closeConfirm }) => closeConfirm());
-    });
+      import('./state.js').then(({ closeConfirm }) => closeConfirm())
+    })
   }
 
-  const confirmInput = document.getElementById('confirm-input');
-  const confirmOk = document.getElementById('confirm-ok-btn');
+  const confirmInput = document.getElementById('confirm-input')
+  const confirmOk = document.getElementById('confirm-ok-btn')
   if (confirmInput && confirmOk) {
     confirmInput.addEventListener('input', (e) => {
-      confirmOk.disabled = e.target.value !== state.confirmDialog.confirmText;
-    });
+      confirmOk.disabled = e.target.value !== state.confirmDialog.confirmText
+    })
   }
 
   if (confirmOk) {
     confirmOk.addEventListener('click', () => {
       if (state.confirmDialog && state.confirmDialog.callback) {
         // Set loading state on the button
-        confirmOk.disabled = true;
-        confirmOk.innerHTML = '<span class="spinner"></span>';
-        
+        confirmOk.disabled = true
+        confirmOk.innerHTML = '<span class="spinner"></span>'
+
         Promise.resolve(state.confirmDialog.callback()).finally(() => {
-          import('./state.js').then(({ closeConfirm }) => closeConfirm());
-        });
+          import('./state.js').then(({ closeConfirm }) => closeConfirm())
+        })
       }
-    });
+    })
   }
 }

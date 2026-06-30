@@ -7,10 +7,17 @@
     "dev": "vite",
     "build": "vite build",
     "test": "vitest run --environment jsdom",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "lint": "eslint src/",
+    "format": "prettier --write src/"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.6.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.7.0",
     "jsdom": "^29.1.1",
+    "prettier": "^3.9.4",
     "vite": "^8.1.0",
     "vitest": "^4.1.9"
   }
