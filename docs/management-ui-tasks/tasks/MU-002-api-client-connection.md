@@ -1,6 +1,6 @@
 # MU-002: Management API Client And Connection Model
 
-Status: not-started
+Status: done
 Phase: 1
 Depends on: MU-001
 Search tags: api client, base URL, bearer token, error normalization, OpenAPI, pagination, query keys

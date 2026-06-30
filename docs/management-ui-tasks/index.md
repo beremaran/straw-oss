@@ -24,7 +24,7 @@ Update `tracker.md` when work starts, lands, or is blocked. Keep task files focu
 | ID | Phase | Status | Task | Depends on | Search tags |
 | --- | --- | --- | --- | --- | --- |
 | [MU-001](tasks/MU-001-frontend-workspace-build.md) | 1 | done | Frontend workspace and build integration | none | frontend workspace, dev server, build, test, `web/management` |
-| [MU-002](tasks/MU-002-api-client-connection.md) | 1 | not-started | Management API client and connection model | MU-001 | api client, base URL, bearer token, error normalization, OpenAPI |
+| [MU-002](tasks/MU-002-api-client-connection.md) | 1 | done | Management API client and connection model | MU-001 | api client, base URL, bearer token, error normalization, OpenAPI |
 | [MU-003](tasks/MU-003-sign-in-session.md) | 1 | not-started | Sign-in, token handling, and session lifecycle | MU-002 | `/login`, auth, local storage, healthz, management token |
 | [MU-004](tasks/MU-004-app-shell-routes-data.md) | 1 | not-started | App shell, routes, navigation, and global data states | MU-003 | app shell, routes, navigation, refresh, loading, errors |
 | [MU-005](tasks/MU-005-shared-controls-validation.md) | 1 | not-started | Shared controls, validation, and mutation workflows | MU-004 | validation, tags, scopes, dates, JSON, confirmation dialogs |
