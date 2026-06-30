@@ -1,6 +1,6 @@
 # MU-010: Endpoint List, Stale-State Handling, And Drain Workflow
 
-Status: not-started
+Status: done
 Phase: 2
 Depends on: MU-005
 Search tags: `/endpoints`, drain, healthy, suspect, unhealthy, draining, health TTL, stale, tags, active tasks
