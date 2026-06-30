@@ -1,6 +1,6 @@
 # MU-003: Sign-In, Token Handling, And Session Lifecycle
 
-Status: not-started
+Status: done
 Phase: 1
 Depends on: MU-002
 Search tags: `/login`, auth, local storage, remember connection, healthz, management token, sign out
