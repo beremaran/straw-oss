@@ -27,7 +27,7 @@ Update `tracker.md` when work starts, lands, or is blocked. Keep task files focu
 | [MU-002](tasks/MU-002-api-client-connection.md) | 1 | done | Management API client and connection model | MU-001 | api client, base URL, bearer token, error normalization, OpenAPI |
 | [MU-003](tasks/MU-003-sign-in-session.md) | 1 | done | Sign-in, token handling, and session lifecycle | MU-002 | `/login`, auth, local storage, healthz, management token |
 | [MU-004](tasks/MU-004-app-shell-routes-data.md) | 1 | done | App shell, routes, navigation, and global data states | MU-003 | app shell, routes, navigation, refresh, loading, errors |
-| [MU-005](tasks/MU-005-shared-controls-validation.md) | 1 | not-started | Shared controls, validation, and mutation workflows | MU-004 | validation, tags, scopes, dates, JSON, confirmation dialogs |
+| [MU-005](tasks/MU-005-shared-controls-validation.md) | 1 | done | Shared controls, validation, and mutation workflows | MU-004 | validation, tags, scopes, dates, JSON, confirmation dialogs |
 | [MU-006](tasks/MU-006-overview-dashboard.md) | 2 | not-started | Overview dashboard and operational attention panels | MU-004, MU-005 | `/overview`, dashboard, endpoint pressure, routing attention, partial failure |
 | [MU-007](tasks/MU-007-api-key-management.md) | 2 | not-started | API key list, creation, raw-key capture, and revoke | MU-005 | `/api-keys`, raw_key, revoke, scopes, bulk revoke |
 | [MU-008](tasks/MU-008-routing-rule-list-detail.md) | 2 | not-started | Routing rule list, detail view, filters, and attention indicators | MU-005 | `/routing-rules`, priorities, fingerprints, endpoint pools, raw JSON |
