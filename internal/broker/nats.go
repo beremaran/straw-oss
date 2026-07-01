@@ -135,8 +135,9 @@ func subjectMatchesPattern(pattern, subject string) bool {
 	pTokens := strings.Split(pattern, ".")
 	sTokens := strings.Split(subject, ".")
 
-	wildcard := pTokens[len(pTokens)-1] == ">"
 	pLen := len(pTokens)
+
+	wildcard := pTokens[pLen-1] == ">"
 	if wildcard {
 		pLen--
 	}
@@ -146,16 +147,32 @@ func subjectMatchesPattern(pattern, subject string) bool {
 	}
 
 	for i := 0; i < pLen; i++ {
-		pt := pTokens[i]
-		if pt == ">" {
-			return true
-		}
-		if pt != "*" && pt != sTokens[i] {
+		if !tokenMatches(pTokens[i], sTokens[i]) {
 			return false
 		}
 	}
 
-	return wildcard && len(sTokens) > pLen || (!wildcard && len(sTokens) == pLen)
+	return matchLength(wildcard, len(sTokens), pLen)
+}
+
+func tokenMatches(patternToken, subjectToken string) bool {
+	if patternToken == "*" {
+		return true
+	}
+
+	if patternToken == ">" {
+		return true
+	}
+
+	return patternToken == subjectToken
+}
+
+func matchLength(wildcard bool, subjectLen, patternLen int) bool {
+	if wildcard {
+		return subjectLen > patternLen
+	}
+
+	return subjectLen == patternLen
 }
 
 // DeclareStream creates or updates a stream for the given name and subjects.
