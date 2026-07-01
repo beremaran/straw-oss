@@ -91,12 +91,20 @@ func RunWithConfig(cfg *config.ControlConfig, version string) error {
 	}
 	defer func() { _ = natsBroker.Close() }()
 
-	err = natsBroker.DeclareStream(context.Background(), "tasks", "tasks.>")
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.StreamTimeout)
+	err = natsBroker.DeclareStream(ctx, "tasks", "tasks.>")
+
+	cancel()
+
 	if err != nil {
 		return fmt.Errorf("declare stream tasks: %w", err)
 	}
 
-	err = natsBroker.DeclareStream(context.Background(), "results", "results.>")
+	ctx, cancel = context.WithTimeout(context.Background(), cfg.StreamTimeout)
+	err = natsBroker.DeclareStream(ctx, "results", "results.>")
+
+	cancel()
+
 	if err != nil {
 		return fmt.Errorf("declare stream results: %w", err)
 	}
