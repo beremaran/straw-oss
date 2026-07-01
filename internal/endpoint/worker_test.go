@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/beremaran/straw/internal/config"
-	"github.com/beremaran/straw/pkg/protocol"
+	"github.com/beremaran/straw/internal/protocol"
 )
 
 func TestNewWorkerAppliesCustomExecutor(t *testing.T) {

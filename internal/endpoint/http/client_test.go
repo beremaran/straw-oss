@@ -10,7 +10,7 @@ import (
 	fhttp "github.com/bogdanfinn/fhttp"
 
 	"github.com/beremaran/straw/internal/endpoint/fingerprint"
-	"github.com/beremaran/straw/pkg/protocol"
+	"github.com/beremaran/straw/internal/protocol"
 )
 
 const exampleURL = "https://example.com"

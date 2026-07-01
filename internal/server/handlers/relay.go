@@ -12,11 +12,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/beremaran/straw/internal/broker"
+	"github.com/beremaran/straw/internal/protocol"
 	"github.com/beremaran/straw/internal/server/dto"
 	"github.com/beremaran/straw/internal/server/helper"
-	"github.com/beremaran/straw/pkg/broker"
-	"github.com/beremaran/straw/pkg/protocol"
-	"github.com/beremaran/straw/pkg/validator"
+	"github.com/beremaran/straw/internal/validator"
 )
 
 // RelayHandler sends an incoming HTTP request to one configured endpoint.
