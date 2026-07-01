@@ -1,0 +1,171 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  binaries:
+    name: Build Binaries
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Build relay
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          go build -ldflags "-w -s" -o bin/relay-${{ matrix.goos }}-${{ matrix.goarch }} ./cmd/relay
+
+      - name: Build endpoint
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          go build -ldflags "-w -s" -o bin/endpoint-${{ matrix.goos }}-${{ matrix.goarch }} ./cmd/endpoint
+
+      - name: Upload relay binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: relay-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: bin/relay-${{ matrix.goos }}-${{ matrix.goarch }}
+
+      - name: Upload endpoint binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: endpoint-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: bin/endpoint-${{ matrix.goos }}-${{ matrix.goarch }}
+
+  release:
+    name: Create Release
+    needs: binaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          ASSETS=()
+          for dir in relay-* endpoint-*; do
+            if [ -d "$dir" ]; then
+              ASSETS+=("$dir/*")
+            fi
+          done
+          gh release create "$TAG" \
+            --title "Release $TAG" \
+            --generate-notes \
+            ${ASSETS[@]+"${ASSETS[@]}"}
+
+  docker:
+    name: Publish Docker Images
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/straw
+          tags: |
+            type=ref,event=tag
+            type=sha,prefix=commit-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push base image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/base.Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/straw:base
+            ghcr.io/${{ github.repository_owner }}/straw/base:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/straw/base:latest
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ github.ref_name }}
+            COMMIT=${{ github.sha }}
+            BUILD_TIME=${{ github.event.head_commit.timestamp }}
+
+      - name: Build and push relay image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/straw:relay
+            ghcr.io/${{ github.repository_owner }}/straw/relay:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/straw/relay:latest
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BINARY_NAME=relay
+            BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/straw:base
+
+      - name: Build and push endpoint image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/straw:endpoint
+            ghcr.io/${{ github.repository_owner }}/straw/endpoint:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/straw/endpoint:latest
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BINARY_NAME=endpoint
+            BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/straw:base
