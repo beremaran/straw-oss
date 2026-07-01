@@ -7,8 +7,6 @@ import (
 	"github.com/beremaran/straw/internal/protocol/wirepb"
 )
 
-const testTunnelID = "tun-1"
-
 func TestMarshalRequestRoundTrip(t *testing.T) {
 	req := &wirepb.Request{
 		Id:              "req-1",
@@ -104,33 +102,5 @@ func TestUnmarshalRequestRejectsInvalidProtobuf(t *testing.T) {
 	_, err := UnmarshalRequest([]byte{0xff, 0xff, 0xff})
 	if err == nil {
 		t.Fatal("UnmarshalRequest() expected error")
-	}
-}
-
-func TestTunnelMessagesRoundTrip(t *testing.T) {
-	openData, err := MarshalTunnelOpen(&wirepb.TunnelOpen{TunnelId: testTunnelID, Host: "example.com", Port: 443})
-	if err != nil {
-		t.Fatalf("MarshalTunnelOpen() error = %v", err)
-	}
-
-	open, err := UnmarshalTunnelOpen(openData)
-	if err != nil {
-		t.Fatalf("UnmarshalTunnelOpen() error = %v", err)
-	}
-	if open.GetTunnelId() != testTunnelID || open.GetPort() != 443 {
-		t.Fatalf("open = %#v", open)
-	}
-
-	chunkData, err := MarshalTunnelChunk(&wirepb.TunnelChunk{TunnelId: testTunnelID, Seq: 7, Data: []byte("abc")})
-	if err != nil {
-		t.Fatalf("MarshalTunnelChunk() error = %v", err)
-	}
-
-	chunk, err := UnmarshalTunnelChunk(chunkData)
-	if err != nil {
-		t.Fatalf("UnmarshalTunnelChunk() error = %v", err)
-	}
-	if chunk.GetSeq() != 7 || string(chunk.GetData()) != "abc" {
-		t.Fatalf("chunk = %#v", chunk)
 	}
 }

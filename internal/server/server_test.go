@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/beremaran/straw/internal/broker"
 	"github.com/beremaran/straw/internal/config"
 )
 
@@ -110,18 +109,6 @@ func (noopBroker) Publish(context.Context, string, []byte) error { return nil }
 func (noopBroker) ConsumeOnce(context.Context, string, time.Duration) ([]byte, error) {
 	return nil, nil
 }
-
-func (noopBroker) CoreRequest(context.Context, string, []byte) ([]byte, error) { return nil, nil }
-
-func (noopBroker) CorePublish(context.Context, string, []byte) error { return nil }
-
-func (noopBroker) CoreSubscribe(context.Context, string, broker.Handler) (broker.Subscription, error) {
-	return noopSubscription{}, nil
-}
-
-type noopSubscription struct{}
-
-func (noopSubscription) Unsubscribe() error { return nil }
 
 func TestServerAddress(t *testing.T) {
 	cfg := config.ControlConfig{
