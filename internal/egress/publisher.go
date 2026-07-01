@@ -7,6 +7,7 @@ import (
 	"log/slog"
 
 	"github.com/beremaran/straw/internal/protocol"
+	"github.com/beremaran/straw/internal/protocol/wirepb"
 )
 
 var (
@@ -35,12 +36,12 @@ func NewPublisher(b publishBroker) *Publisher {
 }
 
 // Publish marshals and sends a task result to the message broker.
-func (p *Publisher) Publish(ctx context.Context, resp *protocol.Response, replyTo string) error {
+func (p *Publisher) Publish(ctx context.Context, resp *wirepb.Response, replyTo string) error {
 	if resp == nil {
 		return ErrResponseCannotBeNil
 	}
 
-	if resp.RequestID == "" {
+	if resp.GetRequestId() == "" {
 		return ErrMissingRequestID
 	}
 
@@ -49,16 +50,16 @@ func (p *Publisher) Publish(ctx context.Context, resp *protocol.Response, replyT
 		return fmt.Errorf("marshal result message: %w", err)
 	}
 
-	resultSubject := "results." + resp.RequestID
+	resultSubject := "results." + resp.GetRequestId()
 	if replyTo != "" {
 		resultSubject = replyTo
 	}
 
 	p.logger.Debug("publishing result",
-		"request_id", resp.RequestID,
+		"request_id", resp.GetRequestId(),
 		"subject", resultSubject,
-		"status_code", resp.StatusCode,
-		"has_error", resp.Error != nil,
+		"status_code", resp.GetStatusCode(),
+		"has_error", resp.GetError() != nil,
 		"body_size", len(msg),
 	)
 

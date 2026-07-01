@@ -9,7 +9,7 @@ import (
 
 	fhttp "github.com/bogdanfinn/fhttp"
 
-	"github.com/beremaran/straw/internal/protocol"
+	"github.com/beremaran/straw/internal/protocol/wirepb"
 )
 
 const (
@@ -44,8 +44,8 @@ var (
 )
 
 // BuildRequest creates an fhttp.Request from a protocol request with Chrome headers applied.
-func BuildRequest(ctx context.Context, req *protocol.Request) (*fhttp.Request, error) {
-	parsedURL, err := url.Parse(req.URL)
+func BuildRequest(ctx context.Context, req *wirepb.Request) (*fhttp.Request, error) {
+	parsedURL, err := url.Parse(req.GetUrl())
 	if err != nil {
 		return nil, &ClientError{
 			Code:    "INVALID_URL",
@@ -54,15 +54,15 @@ func BuildRequest(ctx context.Context, req *protocol.Request) (*fhttp.Request, e
 	}
 
 	var bodyReader *bytes.Reader
-	if len(req.Body) > 0 {
-		bodyReader = bytes.NewReader(req.Body)
+	if len(req.GetBody()) > 0 {
+		bodyReader = bytes.NewReader(req.GetBody())
 	}
 
 	var fhttpReq *fhttp.Request
 	if bodyReader != nil {
-		fhttpReq, err = fhttp.NewRequestWithContext(ctx, req.Method, req.URL, bodyReader)
+		fhttpReq, err = fhttp.NewRequestWithContext(ctx, req.GetMethod(), req.GetUrl(), bodyReader)
 	} else {
-		fhttpReq, err = fhttp.NewRequestWithContext(ctx, req.Method, req.URL, nil)
+		fhttpReq, err = fhttp.NewRequestWithContext(ctx, req.GetMethod(), req.GetUrl(), nil)
 	}
 
 	if err != nil {
@@ -74,7 +74,7 @@ func BuildRequest(ctx context.Context, req *protocol.Request) (*fhttp.Request, e
 
 	fhttpReq.Host = parsedURL.Host
 
-	applyHeaders(fhttpReq, req.Headers)
+	applyHeaders(fhttpReq, req.GetHeaders())
 
 	applyHeaderOrder(fhttpReq, chromeHeaderOrder)
 
@@ -85,13 +85,13 @@ func BuildRequest(ctx context.Context, req *protocol.Request) (*fhttp.Request, e
 	return fhttpReq, nil
 }
 
-func applyHeaders(req *fhttp.Request, headers protocol.HeaderMap) {
+func applyHeaders(req *fhttp.Request, headers []*wirepb.Header) {
 	for _, h := range headers {
-		if strings.HasPrefix(h.Key, ":") || strings.EqualFold(h.Key, "host") {
+		if strings.HasPrefix(h.GetKey(), ":") || strings.EqualFold(h.GetKey(), "host") {
 			continue
 		}
 
-		req.Header.Set(h.Key, h.Value)
+		req.Header.Set(h.GetKey(), h.GetValue())
 	}
 }
 
@@ -155,15 +155,15 @@ func setHeaderDefault(req *fhttp.Request, key, value string) {
 }
 
 // HeadersToProtocol converts fhttp headers to protocol headers.
-func HeadersToProtocol(headers fhttp.Header) protocol.HeaderMap {
-	result := make(protocol.HeaderMap, 0, len(headers))
+func HeadersToProtocol(headers fhttp.Header) []*wirepb.Header {
+	result := make([]*wirepb.Header, 0, len(headers))
 	for key, values := range headers {
 		if key == fhttp.PHeaderOrderKey || key == fhttp.HeaderOrderKey {
 			continue
 		}
 
 		for _, value := range values {
-			result = append(result, protocol.Header{Key: key, Value: value})
+			result = append(result, &wirepb.Header{Key: key, Value: value})
 		}
 	}
 

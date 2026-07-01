@@ -9,6 +9,7 @@ import (
 
 	"github.com/beremaran/straw/internal/broker"
 	"github.com/beremaran/straw/internal/protocol"
+	"github.com/beremaran/straw/internal/protocol/wirepb"
 )
 
 const (
@@ -20,10 +21,9 @@ type subscriber interface {
 	Subscribe(ctx context.Context, subject string, handler broker.Handler, maxAckPending int) error
 }
 
-// RequestExecutor defines the interface for executing a proxy request.
-// This allows users to supply their own request executors or HTTP clients.
+// RequestExecutor executes a protobuf proxy request.
 type RequestExecutor interface {
-	Do(ctx context.Context, req *protocol.Request) (*protocol.Response, error)
+	Do(ctx context.Context, req *wirepb.Request) (*wirepb.Response, error)
 }
 
 // Consumer manages task consumption from a message broker and execution of proxy requests.
@@ -34,13 +34,9 @@ type Consumer struct {
 	taskSubject      string
 	concurrencyLimit int
 	semaphore        chan struct{}
-	cancel           context.CancelFunc
 	wg               sync.WaitGroup
-	resultHandler    func(ctx context.Context, resp *protocol.Response, replyTo string) error
+	resultHandler    func(ctx context.Context, resp *wirepb.Response, replyTo string) error
 	logger           *slog.Logger
-	mu               sync.Mutex
-	subCtx           context.Context
-	subCancel        context.CancelFunc
 }
 
 // NewConsumer creates a new Consumer with the given broker and executor.
@@ -49,7 +45,7 @@ func NewConsumer(
 	httpClient RequestExecutor,
 	egressID string,
 	concurrencyLimit int,
-	resultHandler func(ctx context.Context, resp *protocol.Response, replyTo string) error,
+	resultHandler func(ctx context.Context, resp *wirepb.Response, replyTo string) error,
 ) *Consumer {
 	if concurrencyLimit <= 0 {
 		concurrencyLimit = DefaultConcurrencyLimit
@@ -72,72 +68,24 @@ func NewConsumer(
 
 // Start begins consuming tasks and blocks until the context is canceled.
 func (c *Consumer) Start(ctx context.Context) error {
-	ctx, c.cancel = context.WithCancel(ctx)
-
 	c.logger.Info("starting consumer",
 		"egress_id", c.egressID,
 		"subject", c.taskSubject,
 		"concurrency_limit", c.concurrencyLimit,
 	)
 
-	err := c.Resume(ctx)
+	err := c.broker.Subscribe(ctx, c.taskSubject, c.handleMessage, c.concurrencyLimit)
 	if err != nil {
-		return err
+		return fmt.Errorf("subscribe to %s: %w", c.taskSubject, err)
 	}
 
 	<-ctx.Done()
 
-	c.Drain()
+	c.wg.Wait()
 
 	c.logger.Info("consumer stopped", "egress_id", c.egressID)
 
 	return nil
-}
-
-// Stop signals the Consumer to stop consuming tasks.
-func (c *Consumer) Stop() {
-	if c.cancel != nil {
-		c.cancel()
-	}
-}
-
-// Resume subscribes the Consumer to its task subject if not already subscribed.
-func (c *Consumer) Resume(ctx context.Context) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if c.subCancel != nil {
-		return nil
-	}
-
-	c.logger.Info("subscribing task consumer", "subject", c.taskSubject)
-
-	subCtx, subCancel := context.WithCancel(ctx)
-	c.subCtx = subCtx
-	c.subCancel = subCancel
-
-	err := c.broker.Subscribe(subCtx, c.taskSubject, c.handleMessage, c.concurrencyLimit)
-	if err != nil {
-		subCancel()
-		c.subCancel = nil
-
-		return fmt.Errorf("subscribe to %s: %w", c.taskSubject, err)
-	}
-
-	return nil
-}
-
-// Drain unsubscribes the Consumer and waits for in-flight tasks to complete.
-func (c *Consumer) Drain() {
-	c.mu.Lock()
-	if c.subCancel != nil {
-		c.logger.Info("draining task consumer (unsubscribing)", "subject", c.taskSubject)
-		c.subCancel()
-		c.subCancel = nil
-	}
-	c.mu.Unlock()
-
-	c.wg.Wait()
 }
 
 // TaskError represents a recoverable task processing error.
@@ -148,16 +96,6 @@ type TaskError struct {
 
 func (e *TaskError) Error() string {
 	return e.Code + ": " + e.Message
-}
-
-// TaskSubject returns the NATS subject on which tasks are consumed.
-func (c *Consumer) TaskSubject() string {
-	return c.taskSubject
-}
-
-// ConcurrencyLimit returns the maximum number of concurrent tasks.
-func (c *Consumer) ConcurrencyLimit() int {
-	return c.concurrencyLimit
 }
 
 func (c *Consumer) handleMessage(ctx context.Context, body []byte) error {
@@ -189,9 +127,9 @@ func (c *Consumer) processTask(ctx context.Context, body []byte) error {
 	}
 
 	c.logger.Info("processing task",
-		"request_id", req.ID,
-		"method", req.Method,
-		"url", req.URL,
+		"request_id", req.GetId(),
+		"method", req.GetMethod(),
+		"url", req.GetUrl(),
 	)
 
 	resp := c.executeRequest(ctx, req)
@@ -200,7 +138,7 @@ func (c *Consumer) processTask(ctx context.Context, body []byte) error {
 	return c.publishResult(ctx, req, resp)
 }
 
-func (c *Consumer) parseTask(body []byte) (*protocol.Request, error) {
+func (c *Consumer) parseTask(body []byte) (*wirepb.Request, error) {
 	req, err := protocol.UnmarshalRequest(body)
 	if err != nil {
 		c.logger.Warn("failed to unmarshal task",
@@ -217,18 +155,18 @@ func (c *Consumer) parseTask(body []byte) (*protocol.Request, error) {
 	return req, nil
 }
 
-func (c *Consumer) executeRequest(ctx context.Context, req *protocol.Request) *protocol.Response {
+func (c *Consumer) executeRequest(ctx context.Context, req *wirepb.Request) *wirepb.Response {
 	resp, err := c.httpClient.Do(ctx, req)
 	if err != nil {
 		c.logger.Error("HTTP request failed",
-			"request_id", req.ID,
+			"request_id", req.GetId(),
 			"error", err,
 		)
 
-		resp = &protocol.Response{
-			RequestID: req.ID,
-			EgressID:  c.egressID,
-			Error: &protocol.ErrorInfo{
+		resp = &wirepb.Response{
+			RequestId: req.GetId(),
+			EgressId:  c.egressID,
+			Error: &wirepb.ErrorInfo{
 				Code:      protocol.ErrCodeUpstreamError,
 				Message:   err.Error(),
 				Retryable: true,
@@ -236,25 +174,25 @@ func (c *Consumer) executeRequest(ctx context.Context, req *protocol.Request) *p
 		}
 	}
 
-	resp.EgressID = c.egressID
+	resp.EgressId = c.egressID
 
 	return resp
 }
 
-func (c *Consumer) recordTaskCompletion(req *protocol.Request, resp *protocol.Response) {
+func (c *Consumer) recordTaskCompletion(req *wirepb.Request, resp *wirepb.Response) {
 	c.logger.Info("task completed",
-		"request_id", req.ID,
-		"status_code", resp.StatusCode,
-		"has_error", resp.Error != nil,
+		"request_id", req.GetId(),
+		"status_code", resp.GetStatusCode(),
+		"has_error", resp.GetError() != nil,
 	)
 }
 
-func (c *Consumer) publishResult(ctx context.Context, req *protocol.Request, resp *protocol.Response) error {
+func (c *Consumer) publishResult(ctx context.Context, req *wirepb.Request, resp *wirepb.Response) error {
 	if c.resultHandler != nil {
-		err := c.resultHandler(ctx, resp, req.ReplyTo)
+		err := c.resultHandler(ctx, resp, req.GetReplyTo())
 		if err != nil {
 			c.logger.Error("failed to publish result",
-				"request_id", req.ID,
+				"request_id", req.GetId(),
 				"error", err,
 			)
 

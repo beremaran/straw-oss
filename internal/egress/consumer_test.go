@@ -11,6 +11,7 @@ import (
 	"github.com/beremaran/straw/internal/broker"
 	egresshttp "github.com/beremaran/straw/internal/egress/http"
 	"github.com/beremaran/straw/internal/protocol"
+	"github.com/beremaran/straw/internal/protocol/wirepb"
 )
 
 type mockBroker struct {
@@ -94,18 +95,6 @@ func TestConsumer_WithConcurrencyLimit(t *testing.T) {
 	}
 }
 
-func TestConsumer_TaskSubject(t *testing.T) {
-	mb := &mockBroker{}
-	httpClient := egresshttp.NewClient("")
-
-	c := NewConsumer(mb, httpClient, "my-egress", 0, nil)
-
-	expected := "tasks.my-egress.tasks"
-	if c.TaskSubject() != expected {
-		t.Errorf("expected TaskSubject %q, got %q", expected, c.TaskSubject())
-	}
-}
-
 func TestConsumer_InvalidProtobuf(t *testing.T) {
 	mb := &mockBroker{}
 	httpClient := egresshttp.NewClient("")
@@ -179,8 +168,8 @@ func TestConsumer_ResultHandler(t *testing.T) {
 	mb := &mockBroker{}
 	httpClient := egresshttp.NewClient("")
 
-	var receivedResponse *protocol.Response
-	handler := func(_ context.Context, resp *protocol.Response, _ string) error {
+	var receivedResponse *wirepb.Response
+	handler := func(_ context.Context, resp *wirepb.Response, _ string) error {
 		receivedResponse = resp
 
 		return nil
@@ -188,10 +177,10 @@ func TestConsumer_ResultHandler(t *testing.T) {
 
 	c := NewConsumer(mb, httpClient, "test-egress", 0, handler)
 
-	req := &protocol.Request{
-		ID:     testRequestID,
+	req := &wirepb.Request{
+		Id:     testRequestID,
 		Method: testMethod,
-		URL:    "https://httpbin.org/get",
+		Url:    "https://httpbin.org/get",
 	}
 
 	body, err := protocol.MarshalRequest(req)
@@ -208,44 +197,12 @@ func TestConsumer_ResultHandler(t *testing.T) {
 		t.Fatal("expected result handler to be called")
 	}
 
-	if receivedResponse.RequestID != testRequestID {
-		t.Errorf("expected request ID %q, got %s", testRequestID, receivedResponse.RequestID)
+	if receivedResponse.GetRequestId() != testRequestID {
+		t.Errorf("expected request ID %q, got %s", testRequestID, receivedResponse.GetRequestId())
 	}
 
-	if receivedResponse.EgressID != "test-egress" {
-		t.Errorf("expected egress ID 'test-egress', got %s", receivedResponse.EgressID)
-	}
-}
-
-func TestConsumer_Stop(t *testing.T) {
-	mb := &mockBroker{}
-	httpClient := egresshttp.NewClient("")
-
-	c := NewConsumer(mb, httpClient, "test-egress", 0, nil)
-
-	// Stop with no cancel set should not panic
-	c.Stop()
-
-	// Set cancel and stop
-	cancelCalled := false
-	c.cancel = func() {
-		cancelCalled = true
-	}
-	c.Stop()
-
-	if !cancelCalled {
-		t.Fatal("expected cancel to be called")
-	}
-}
-
-func TestConsumer_ConcurrencyLimitGetter(t *testing.T) {
-	mb := &mockBroker{}
-	httpClient := egresshttp.NewClient("")
-
-	c := NewConsumer(mb, httpClient, "test-egress", 10, nil)
-
-	if c.ConcurrencyLimit() != 10 {
-		t.Errorf("expected concurrencyLimit 10, got %d", c.ConcurrencyLimit())
+	if receivedResponse.GetEgressId() != "test-egress" {
+		t.Errorf("expected egress ID 'test-egress', got %s", receivedResponse.GetEgressId())
 	}
 }
 
@@ -284,10 +241,10 @@ func TestConsumer_ExecuteRequest(t *testing.T) {
 
 	c := NewConsumer(mb, httpClient, "test-egress", 0, nil)
 
-	req := &protocol.Request{
-		ID:     "test-req-2",
+	req := &wirepb.Request{
+		Id:     "test-req-2",
 		Method: "POST",
-		URL:    "https://httpbin.org/post",
+		Url:    "https://httpbin.org/post",
 	}
 
 	// Replace httpClient with dummy
@@ -300,8 +257,8 @@ func TestConsumer_ExecuteRequest(t *testing.T) {
 	if resp == nil {
 		t.Fatal("expected response")
 	}
-	if resp.RequestID != "test-req-2" {
-		t.Errorf("request ID = %q, want test-req-2", resp.RequestID)
+	if resp.GetRequestId() != "test-req-2" {
+		t.Errorf("request ID = %q, want test-req-2", resp.GetRequestId())
 	}
 }
 
@@ -311,7 +268,7 @@ func TestConsumer_PublishResult(t *testing.T) {
 
 	var receivedReplyTo string
 	var resultHandlerCalled bool
-	handler := func(_ context.Context, _ *protocol.Response, replyTo string) error {
+	handler := func(_ context.Context, _ *wirepb.Response, replyTo string) error {
 		resultHandlerCalled = true
 		receivedReplyTo = replyTo
 
@@ -320,14 +277,14 @@ func TestConsumer_PublishResult(t *testing.T) {
 
 	c := NewConsumer(mb, httpClient, "test-egress", 0, handler)
 
-	req := &protocol.Request{
-		ID:      "test-req-3",
+	req := &wirepb.Request{
+		Id:      "test-req-3",
 		Method:  "GET",
-		URL:     "https://httpbin.org/get",
+		Url:     "https://httpbin.org/get",
 		ReplyTo: "results.test-req-3",
 	}
-	resp := &protocol.Response{
-		RequestID:  "test-req-3",
+	resp := &wirepb.Response{
+		RequestId:  "test-req-3",
 		StatusCode: 200,
 		Body:       []byte("ok"),
 	}
@@ -343,35 +300,4 @@ func TestConsumer_PublishResult(t *testing.T) {
 	if receivedReplyTo != "results.test-req-3" {
 		t.Errorf("replyTo = %q, want results.test-req-3", receivedReplyTo)
 	}
-}
-
-func TestConsumer_Resume(t *testing.T) {
-	mb := &mockBroker{}
-	httpClient := egresshttp.NewClient("")
-
-	c := NewConsumer(mb, httpClient, "test-egress", 0, nil)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	err := c.Resume(ctx)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Resume again should be a no-op
-	err = c.Resume(ctx)
-	if err != nil {
-		t.Fatalf("unexpected error on second resume: %v", err)
-	}
-}
-
-func TestConsumer_Drain(_ *testing.T) {
-	mb := &mockBroker{}
-	httpClient := egresshttp.NewClient("")
-
-	c := NewConsumer(mb, httpClient, "test-egress", 0, nil)
-
-	// Drain with no subscription should not panic
-	c.Drain()
 }

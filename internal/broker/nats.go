@@ -87,8 +87,8 @@ func (b *NatsBroker) Publish(ctx context.Context, subject string, body []byte) e
 
 // Subscribe creates a JetStream consumer for the given subject and routes messages to the handler.
 func (b *NatsBroker) Subscribe(ctx context.Context, subject string, handler Handler, maxAckPending int) error {
-	streamName := b.findStreamForSubject(ctx, subject)
-	if streamName == "" {
+	streamName, err := b.findStreamForSubject(ctx, subject)
+	if err != nil {
 		return fmt.Errorf("%w: %s", ErrNoStreamForSubject, subject)
 	}
 
@@ -127,54 +127,6 @@ func (b *NatsBroker) Subscribe(ctx context.Context, subject string, handler Hand
 	return nil
 }
 
-func subjectMatchesPattern(pattern, subject string) bool {
-	if pattern == subject {
-		return true
-	}
-
-	pTokens := strings.Split(pattern, ".")
-	sTokens := strings.Split(subject, ".")
-
-	pLen := len(pTokens)
-
-	wildcard := pTokens[pLen-1] == ">"
-	if wildcard {
-		pLen--
-	}
-
-	if len(sTokens) < pLen {
-		return false
-	}
-
-	for i := 0; i < pLen; i++ {
-		if !tokenMatches(pTokens[i], sTokens[i]) {
-			return false
-		}
-	}
-
-	return matchLength(wildcard, len(sTokens), pLen)
-}
-
-func tokenMatches(patternToken, subjectToken string) bool {
-	if patternToken == "*" {
-		return true
-	}
-
-	if patternToken == ">" {
-		return true
-	}
-
-	return patternToken == subjectToken
-}
-
-func matchLength(wildcard bool, subjectLen, patternLen int) bool {
-	if wildcard {
-		return subjectLen > patternLen
-	}
-
-	return subjectLen == patternLen
-}
-
 // DeclareStream creates or updates a stream for the given name and subjects.
 func (b *NatsBroker) DeclareStream(ctx context.Context, name string, subjects ...string) error {
 	if len(subjects) == 0 {
@@ -194,8 +146,8 @@ func (b *NatsBroker) DeclareStream(ctx context.Context, name string, subjects ..
 
 // ConsumeOnce returns the first persisted message for subject.
 func (b *NatsBroker) ConsumeOnce(ctx context.Context, subject string, timeout time.Duration) ([]byte, error) {
-	streamName := b.findStreamForSubject(ctx, subject)
-	if streamName == "" {
+	streamName, err := b.findStreamForSubject(ctx, subject)
+	if err != nil {
 		return nil, fmt.Errorf("%w: %s", ErrNoStreamForSubject, subject)
 	}
 
@@ -233,15 +185,11 @@ func (b *NatsBroker) ConsumeOnce(ctx context.Context, subject string, timeout ti
 	return nil, ErrTimeout
 }
 
-func (b *NatsBroker) findStreamForSubject(ctx context.Context, subject string) string {
-	streams := b.js.ListStreams(ctx)
-	for stream := range streams.Info() {
-		for _, pattern := range stream.Config.Subjects {
-			if subjectMatchesPattern(pattern, subject) {
-				return stream.Config.Name
-			}
-		}
+func (b *NatsBroker) findStreamForSubject(ctx context.Context, subject string) (string, error) {
+	streamName, err := b.js.StreamNameBySubject(ctx, subject)
+	if err != nil {
+		return "", fmt.Errorf("find stream for subject %s: %w", subject, err)
 	}
 
-	return ""
+	return streamName, nil
 }

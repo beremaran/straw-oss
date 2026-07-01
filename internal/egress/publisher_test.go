@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/beremaran/straw/internal/protocol"
+	"github.com/beremaran/straw/internal/protocol/wirepb"
 )
 
 const testEgressID = "egress-001"
@@ -56,14 +57,14 @@ func TestPublisher_Publish(t *testing.T) {
 	mb := &mockPublisherBroker{}
 	p := NewPublisher(mb)
 
-	resp := &protocol.Response{
-		RequestID:  "test-request-123",
-		EgressID:   testEgressID,
+	resp := &wirepb.Response{
+		RequestId:  "test-request-123",
+		EgressId:   testEgressID,
 		StatusCode: 200,
-		Headers:    protocol.HeaderMap{{Key: "Content-Type", Value: "application/json"}},
+		Headers:    []*wirepb.Header{{Key: "Content-Type", Value: "application/json"}},
 		Body:       []byte(`{"message": "hello world"}`),
-		Timing: &protocol.TimingInfo{
-			Total: 100 * time.Millisecond,
+		Timing: &wirepb.TimingInfo{
+			TotalNanos: int64(100 * time.Millisecond),
 		},
 	}
 
@@ -86,23 +87,23 @@ func TestPublisher_Publish(t *testing.T) {
 
 	result := decodePublishedResponse(t, msg.Body)
 
-	if result.RequestID != "test-request-123" {
-		t.Errorf("expected request ID 'test-request-123', got %q", result.RequestID)
+	if result.GetRequestId() != "test-request-123" {
+		t.Errorf("expected request ID 'test-request-123', got %q", result.GetRequestId())
 	}
 
-	if result.EgressID != testEgressID {
-		t.Errorf("expected egress ID %q, got %q", testEgressID, result.EgressID)
+	if result.GetEgressId() != testEgressID {
+		t.Errorf("expected egress ID %q, got %q", testEgressID, result.GetEgressId())
 	}
 
-	if result.StatusCode != http.StatusOK {
-		t.Errorf("expected status code 200, got %d", result.StatusCode)
+	if result.GetStatusCode() != http.StatusOK {
+		t.Errorf("expected status code 200, got %d", result.GetStatusCode())
 	}
 
-	if string(result.Body) != `{"message": "hello world"}` {
-		t.Errorf("unexpected body: %s", string(result.Body))
+	if string(result.GetBody()) != `{"message": "hello world"}` {
+		t.Errorf("unexpected body: %s", string(result.GetBody()))
 	}
 
-	if result.Timing == nil {
+	if result.GetTiming() == nil {
 		t.Error("expected timing to be set")
 	}
 }
@@ -111,8 +112,8 @@ func TestPublisher_Publish_EmptyBody(t *testing.T) {
 	mb := &mockPublisherBroker{}
 	p := NewPublisher(mb)
 
-	resp := &protocol.Response{
-		RequestID:  "test-request-456",
+	resp := &wirepb.Response{
+		RequestId:  "test-request-456",
 		StatusCode: 204,
 	}
 
@@ -128,7 +129,7 @@ func TestPublisher_Publish_EmptyBody(t *testing.T) {
 
 	result := decodePublishedResponse(t, msgs[0].Body)
 
-	if len(result.Body) != 0 {
+	if len(result.GetBody()) != 0 {
 		t.Error("expected empty body")
 	}
 }
@@ -137,10 +138,10 @@ func TestPublisher_Publish_ErrorResponse(t *testing.T) {
 	mb := &mockPublisherBroker{}
 	p := NewPublisher(mb)
 
-	resp := &protocol.Response{
-		RequestID: "test-request-789",
-		EgressID:  testEgressID,
-		Error: &protocol.ErrorInfo{
+	resp := &wirepb.Response{
+		RequestId: "test-request-789",
+		EgressId:  testEgressID,
+		Error: &wirepb.ErrorInfo{
 			Code:      protocol.ErrCodeUpstreamError,
 			Message:   "connection refused",
 			Retryable: true,
@@ -159,19 +160,19 @@ func TestPublisher_Publish_ErrorResponse(t *testing.T) {
 
 	result := decodePublishedResponse(t, msgs[0].Body)
 
-	if result.Error == nil {
+	if result.GetError() == nil {
 		t.Fatal("expected error to be set")
 	}
 
-	if result.Error.Code != protocol.ErrCodeUpstreamError {
-		t.Errorf("expected error code %q, got %q", protocol.ErrCodeUpstreamError, result.Error.Code)
+	if result.GetError().GetCode() != protocol.ErrCodeUpstreamError {
+		t.Errorf("expected error code %q, got %q", protocol.ErrCodeUpstreamError, result.GetError().GetCode())
 	}
 
-	if result.Error.Message != "connection refused" {
-		t.Errorf("expected error message 'connection refused', got %q", result.Error.Message)
+	if result.GetError().GetMessage() != "connection refused" {
+		t.Errorf("expected error message 'connection refused', got %q", result.GetError().GetMessage())
 	}
 
-	if !result.Error.Retryable {
+	if !result.GetError().GetRetryable() {
 		t.Error("expected error to be retryable")
 	}
 }
@@ -190,7 +191,7 @@ func TestPublisher_Publish_MissingRequestID(t *testing.T) {
 	mb := &mockPublisherBroker{}
 	p := NewPublisher(mb)
 
-	resp := &protocol.Response{
+	resp := &wirepb.Response{
 		StatusCode: 200,
 	}
 
@@ -209,8 +210,8 @@ func TestPublisher_Publish_LargeBody(t *testing.T) {
 		largeBody[i] = byte('A' + (i % 26))
 	}
 
-	resp := &protocol.Response{
-		RequestID:  "test-large-body",
+	resp := &wirepb.Response{
+		RequestId:  "test-large-body",
 		StatusCode: 200,
 		Body:       largeBody,
 	}
@@ -226,16 +227,16 @@ func TestPublisher_Publish_LargeBody(t *testing.T) {
 	}
 
 	result := decodePublishedResponse(t, msgs[0].Body)
-	if len(result.Body) != len(largeBody) {
-		t.Errorf("body size mismatch: %d != %d", len(result.Body), len(largeBody))
+	if len(result.GetBody()) != len(largeBody) {
+		t.Errorf("body size mismatch: %d != %d", len(result.GetBody()), len(largeBody))
 	}
 
-	if string(result.Body) != string(largeBody) {
+	if string(result.GetBody()) != string(largeBody) {
 		t.Error("body bytes changed")
 	}
 }
 
-func decodePublishedResponse(t *testing.T, data []byte) *protocol.Response {
+func decodePublishedResponse(t *testing.T, data []byte) *wirepb.Response {
 	t.Helper()
 
 	result, err := protocol.UnmarshalResponse(data)
