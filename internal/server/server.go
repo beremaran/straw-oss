@@ -84,53 +84,45 @@ func RunWithConfig(cfg *config.ControlConfig, version string) error {
 	slog.Info("starting straw control", "version", version, "egress_id", cfg.EgressID)
 
 	natsBroker := broker.NewNatsBroker(cfg.NATS.URL, cfg.NATS.Token)
+	defer func() { _ = natsBroker.Close() }()
 
 	err := natsBroker.Connect()
 	if err != nil {
 		return fmt.Errorf("connect to NATS: %w", err)
 	}
-	defer func() { _ = natsBroker.Close() }()
 
-	ctx, cancel := context.WithTimeout(context.Background(), cfg.StreamTimeout)
-	err = natsBroker.DeclareStream(ctx, "tasks", "tasks.>")
-
-	cancel()
-
+	err = declareStreamWithTimeout(cfg, natsBroker, "tasks", "tasks.>")
 	if err != nil {
 		return fmt.Errorf("declare stream tasks: %w", err)
 	}
 
-	ctx, cancel = context.WithTimeout(context.Background(), cfg.StreamTimeout)
-	err = natsBroker.DeclareStream(ctx, "results", "results.>")
-
-	cancel()
-
+	err = declareStreamWithTimeout(cfg, natsBroker, "results", "results.>")
 	if err != nil {
 		return fmt.Errorf("declare stream results: %w", err)
 	}
 
-	s := New(*cfg, natsBroker)
+	controlServer := New(*cfg, natsBroker)
 
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	interruptSignalChannel := make(chan os.Signal, 1)
 
-	defer signal.Stop(c)
+	signal.Notify(interruptSignalChannel, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(interruptSignalChannel)
 
 	go func() {
-		err := s.Start()
+		err := controlServer.Start()
 		if err != nil {
 			slog.Error("server stopped", "error", err)
 		}
 	}()
 
-	fmt.Printf("Straw control %s started on %s, egress %s\n", version, s.Address(), cfg.EgressID)
+	fmt.Printf("Straw control %s started on %s, egress %s\n", version, controlServer.Address(), cfg.EgressID)
 
-	<-c
+	<-interruptSignalChannel
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer shutdownCancel()
 
-	err = s.Stop(shutdownCtx)
+	err = controlServer.Stop(shutdownCtx)
 	if err != nil {
 		slog.Error("server forced to shutdown", "error", err)
 	}
@@ -220,4 +212,16 @@ func parseBytesSize(s string) int64 {
 	_, _ = fmt.Sscanf(s, "%d", &val)
 
 	return val * multiplier
+}
+
+func declareStreamWithTimeout(cfg *config.ControlConfig, natsBroker *broker.NatsBroker, name string, subjects ...string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.StreamTimeout)
+	defer cancel()
+
+	err := natsBroker.DeclareStream(ctx, name, subjects...)
+	if err != nil {
+		return fmt.Errorf("declare stream tasks: %w", err)
+	}
+
+	return nil
 }
