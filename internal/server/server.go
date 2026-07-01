@@ -179,6 +179,11 @@ func applyMiddlewares(handler http.Handler, middlewares ...func(http.Handler) ht
 
 const (
 	headerTimeout = 30 * time.Second
+
+	// Byte multipliers for size parsing.
+	byteK = 1024
+	byteM = 1024 * 1024
+	byteG = 1024 * 1024 * 1024
 )
 
 func parseBytesSize(s string) int64 {
@@ -191,13 +196,13 @@ func parseBytesSize(s string) int64 {
 
 	switch {
 	case strings.HasSuffix(s, "G"):
-		multiplier = 1024 * 1024 * 1024
+		multiplier = byteG
 		s = s[:len(s)-1]
 	case strings.HasSuffix(s, "M"):
-		multiplier = 1024 * 1024
+		multiplier = byteM
 		s = s[:len(s)-1]
 	case strings.HasSuffix(s, "K"):
-		multiplier = 1024
+		multiplier = byteK
 		s = s[:len(s)-1]
 	case strings.HasSuffix(s, "B"):
 		s = s[:len(s)-1]

@@ -69,4 +69,3 @@ func (p *Publisher) Publish(ctx context.Context, resp *protocol.Response, replyT
 
 	return nil
 }
-
