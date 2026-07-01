@@ -11,9 +11,11 @@ const (
 	envNatsURL        = "NATS_URL"
 	envEgressID       = "EGRESS_ID"
 	envControlEgress  = "CONTROL_EGRESS_ID"
+	envControlRoutes  = "CONTROL_ROUTES"
 	natsLocalURL      = "nats://localhost:4222"
 	testEgressID      = "egress-001"
 	testControlEgress = "control-egress"
+	testAuthToken     = "secret"
 )
 
 func TestLoadControlConfig_Defaults(t *testing.T) {
@@ -74,6 +76,58 @@ func TestLoadControlConfig_StreamTimeout(t *testing.T) {
 	}
 }
 
+func TestLoadControlConfig_AuthAndRoutes(t *testing.T) {
+	setEnvVars(t, map[string]string{
+		envControlEgress:     testControlEgress,
+		envNatsURL:           natsLocalURL,
+		"CONTROL_AUTH_TOKEN": testAuthToken,
+		envControlRoutes:     `[{"egress_id":"us-res-1","country":"US","ip_type":"residential"}]`,
+	})
+
+	cfg, err := LoadControlConfig()
+	if err != nil {
+		t.Fatalf("LoadControlConfig() error = %v", err)
+	}
+
+	if cfg.AuthToken != testAuthToken {
+		t.Fatalf("AuthToken = %q, want secret", cfg.AuthToken)
+	}
+	if len(cfg.Routes) != 1 {
+		t.Fatalf("routes len = %d, want 1", len(cfg.Routes))
+	}
+	if cfg.Routes[0].EgressID != "us-res-1" {
+		t.Fatalf("route egress_id = %q, want us-res-1", cfg.Routes[0].EgressID)
+	}
+}
+
+func TestLoadControlConfig_InvalidRoutes(t *testing.T) {
+	setEnvVars(t, map[string]string{
+		envControlEgress: testControlEgress,
+		envNatsURL:       natsLocalURL,
+		envControlRoutes: `not-json`,
+	})
+
+	_, err := LoadControlConfig()
+	if err == nil {
+		t.Fatal("LoadControlConfig() expected error, got nil")
+	}
+}
+
+func TestLoadControlConfig_ProxyRequiresAuth(t *testing.T) {
+	setEnvVars(t, map[string]string{
+		envControlEgress: testControlEgress,
+		envNatsURL:       natsLocalURL,
+		"PROXY_PORT":     "8081",
+	})
+
+	_, err := LoadControlConfig()
+	if err == nil {
+		t.Fatal("LoadControlConfig() expected error, got nil")
+	}
+
+	assertValidationError(t, err, "CONTROL_AUTH_TOKEN is required when PROXY_PORT is set")
+}
+
 func TestLoadControlConfig_MissingRequired(t *testing.T) {
 	setEnvVars(t, map[string]string{
 		envNatsURL: natsLocalURL,
@@ -103,6 +157,9 @@ func TestLoadEgressConfig_Defaults(t *testing.T) {
 	}
 	if cfg.ID != testEgressID {
 		t.Errorf("ID = %v, want %v", cfg.ID, testEgressID)
+	}
+	if cfg.TunnelChunkSize != defaultTunnelChunkSize {
+		t.Errorf("TunnelChunkSize = %v, want %v", cfg.TunnelChunkSize, defaultTunnelChunkSize)
 	}
 }
 
@@ -144,6 +201,11 @@ func setEnvVars(t *testing.T, vars map[string]string) {
 		"NATS_STREAM_TIMEOUT",
 		"MAX_CONCURRENT_REQUESTS",
 		"CONCURRENCY_LIMIT",
+		"CONTROL_AUTH_TOKEN",
+		envControlRoutes,
+		"PROXY_PORT",
+		"MAX_CONCURRENT_TUNNELS",
+		"TUNNEL_CHUNK_SIZE",
 	} {
 		t.Setenv(key, "")
 		_ = os.Unsetenv(key)

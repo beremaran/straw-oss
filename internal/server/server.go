@@ -3,6 +3,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -22,14 +23,19 @@ import (
 type controlBroker interface {
 	Publish(ctx context.Context, subject string, body []byte) error
 	ConsumeOnce(ctx context.Context, subject string, timeout time.Duration) ([]byte, error)
+	CoreRequest(ctx context.Context, subject string, body []byte) ([]byte, error)
+	CorePublish(ctx context.Context, subject string, body []byte) error
+	CoreSubscribe(ctx context.Context, subject string, handler broker.Handler) (broker.Subscription, error)
 }
 
 // Server is the HTTP server for the Straw control.
 type Server struct {
-	mux    *http.ServeMux
-	server *http.Server
-	conf   config.ControlConfig
-	broker controlBroker
+	mux     *http.ServeMux
+	server  *http.Server
+	proxy   *http.Server
+	conf    config.ControlConfig
+	broker  controlBroker
+	initErr error
 }
 
 // New creates a control server.
@@ -56,11 +62,37 @@ func New(conf config.ControlConfig, b controlBroker) *Server {
 		ReadHeaderTimeout: headerTimeout,
 	}
 
+	if conf.ProxyPort != 0 {
+		proxyHandler, err := handlers.NewProxyHandler(b, conf)
+		if err != nil {
+			s.initErr = err
+		} else {
+			s.proxy = &http.Server{
+				Addr:              fmt.Sprintf(":%d", conf.ProxyPort),
+				Handler:           proxyHandler,
+				ReadHeaderTimeout: headerTimeout,
+			}
+		}
+	}
+
 	return s
 }
 
 // Start begins serving HTTP requests.
 func (s *Server) Start() error {
+	if s.initErr != nil {
+		return s.initErr
+	}
+
+	if s.proxy != nil {
+		go func() {
+			err := s.proxy.ListenAndServe()
+			if err != nil && !errors.Is(err, http.ErrServerClosed) {
+				slog.Error("proxy server stopped", "error", err)
+			}
+		}()
+	}
+
 	s.server.Addr = fmt.Sprintf(":%d", s.conf.HTTPPort)
 	if s.conf.Security.TLSCertFile != "" && s.conf.Security.TLSKeyFile != "" {
 		return fmt.Errorf("listen TLS: %w", s.server.ListenAndServeTLS(s.conf.Security.TLSCertFile, s.conf.Security.TLSKeyFile))
@@ -132,6 +164,13 @@ func RunWithConfig(cfg *config.ControlConfig, version string) error {
 
 // Stop gracefully shuts down the server.
 func (s *Server) Stop(ctx context.Context) error {
+	if s.proxy != nil {
+		err := s.proxy.Shutdown(ctx)
+		if err != nil {
+			return fmt.Errorf("shutdown proxy: %w", err)
+		}
+	}
+
 	err := s.server.Shutdown(ctx)
 	if err != nil {
 		return fmt.Errorf("shutdown: %w", err)
@@ -152,6 +191,8 @@ func (s *Server) registerRoutes() {
 	controlHandler := handlers.NewControlHandler(
 		s.broker,
 		s.conf.EgressID,
+		s.conf.AuthToken,
+		s.conf.Routes,
 		s.conf.ResultTimeout,
 		s.conf.AllowPrivateIPs,
 	)

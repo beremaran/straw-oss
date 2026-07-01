@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/beremaran/straw/internal/broker"
+	"github.com/beremaran/straw/internal/config"
 	"github.com/beremaran/straw/internal/protocol"
 	"github.com/beremaran/straw/internal/protocol/wirepb"
 	"github.com/beremaran/straw/internal/validator"
@@ -29,6 +30,8 @@ const errorMessageKey = "message"
 type ControlHandler struct {
 	broker          brokerClient
 	egressID        string
+	authToken       string
+	routes          []config.Route
 	resultTimeout   time.Duration
 	allowPrivateIPs bool
 }
@@ -47,12 +50,16 @@ type controlRequest struct {
 func NewControlHandler(
 	b brokerClient,
 	egressID string,
+	authToken string,
+	routes []config.Route,
 	resultTimeout time.Duration,
 	allowPrivateIPs bool,
 ) *ControlHandler {
 	return &ControlHandler{
 		broker:          b,
 		egressID:        egressID,
+		authToken:       authToken,
+		routes:          routes,
 		resultTimeout:   resultTimeout,
 		allowPrivateIPs: allowPrivateIPs,
 	}
@@ -62,7 +69,16 @@ func NewControlHandler(
 func (h *ControlHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
+	if !h.authorize(w, r) {
+		return
+	}
+
 	req, ok := h.readControlRequest(w, r)
+	if !ok {
+		return
+	}
+
+	egressID, ok := h.resolveEgress(w, r)
 	if !ok {
 		return
 	}
@@ -71,13 +87,69 @@ func (h *ControlHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, ok := h.sendAndWait(ctx, w, req)
+	result, ok := h.sendAndWait(ctx, w, egressID, req)
 	if !ok {
 		return
 	}
 
 	writeControlResult(w, result)
 	slog.InfoContext(ctx, "request proxied", "request_id", req.GetId(), "egress_id", result.GetEgressId())
+}
+
+func (h *ControlHandler) authorize(w http.ResponseWriter, r *http.Request) bool {
+	if h.authToken == "" {
+		return true
+	}
+
+	if r.Header.Get("Authorization") == "Bearer "+h.authToken {
+		return true
+	}
+
+	writeError(w, http.StatusUnauthorized, "missing or invalid authorization")
+
+	return false
+}
+
+func (h *ControlHandler) resolveEgress(w http.ResponseWriter, r *http.Request) (string, bool) {
+	want := config.Route{
+		EgressID: r.Header.Get("X-Straw-Egress-ID"),
+		Country:  r.Header.Get("X-Straw-Country"),
+		IPType:   r.Header.Get("X-Straw-IP-Type"),
+	}
+
+	if want.EgressID == "" && want.Country == "" && want.IPType == "" {
+		return h.egressID, true
+	}
+
+	if want.EgressID != "" {
+		return h.resolveEgressID(w, want.EgressID)
+	}
+
+	for _, route := range h.routes {
+		if strings.EqualFold(route.Country, want.Country) && strings.EqualFold(route.IPType, want.IPType) {
+			return route.EgressID, true
+		}
+	}
+
+	writeError(w, http.StatusForbidden, "egress route not allowed")
+
+	return "", false
+}
+
+func (h *ControlHandler) resolveEgressID(w http.ResponseWriter, egressID string) (string, bool) {
+	if egressID == h.egressID {
+		return egressID, true
+	}
+
+	for _, route := range h.routes {
+		if route.EgressID == egressID {
+			return route.EgressID, true
+		}
+	}
+
+	writeError(w, http.StatusForbidden, "egress route not allowed")
+
+	return "", false
 }
 
 func (h *ControlHandler) readControlRequest(w http.ResponseWriter, r *http.Request) (*wirepb.Request, bool) {
@@ -164,7 +236,7 @@ func (h *ControlHandler) prepareControlRequest(w http.ResponseWriter, r *http.Re
 	return true
 }
 
-func (h *ControlHandler) sendAndWait(ctx context.Context, w http.ResponseWriter, req *wirepb.Request) (*wirepb.Response, bool) {
+func (h *ControlHandler) sendAndWait(ctx context.Context, w http.ResponseWriter, egressID string, req *wirepb.Request) (*wirepb.Response, bool) {
 	replyTo := "results." + req.GetId()
 	req.ReplyTo = replyTo
 
@@ -175,7 +247,7 @@ func (h *ControlHandler) sendAndWait(ctx context.Context, w http.ResponseWriter,
 		return nil, false
 	}
 
-	subject := "tasks." + h.egressID + ".tasks"
+	subject := "tasks." + egressID + ".tasks"
 
 	err = h.broker.Publish(ctx, subject, body)
 	if err != nil {

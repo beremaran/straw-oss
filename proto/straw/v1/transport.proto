@@ -44,3 +44,26 @@ message TimingInfo {
   int64 first_byte_nanos = 4;
   int64 total_nanos = 5;
 }
+
+message TunnelOpen {
+  string tunnel_id = 1;
+  string host = 2;
+  int32 port = 3;
+}
+
+message TunnelOpenResult {
+  string tunnel_id = 1;
+  ErrorInfo error = 2;
+}
+
+message TunnelChunk {
+  string tunnel_id = 1;
+  uint64 seq = 2;
+  bytes data = 3;
+}
+
+message TunnelClose {
+  string tunnel_id = 1;
+  string side = 2;
+  string reason = 3;
+}

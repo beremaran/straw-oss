@@ -16,6 +16,8 @@ import (
 // Version is the build version of the egress worker.
 var Version = "dev"
 
+const workerRoutines = 2
+
 // Worker wraps the egress components.
 type Worker struct {
 	cfg      *config.EgressConfig
@@ -72,8 +74,18 @@ func (w *Worker) Start(ctx context.Context) error {
 		w.cfg.ConcurrencyLimit,
 		resultPublisher.Publish,
 	)
+	tunnelConsumer := NewTunnelConsumer(mqBroker, w.cfg.ID, w.cfg.TunnelChunkSize)
 
-	return taskConsumer.Start(ctx)
+	errCh := make(chan error, workerRoutines)
+	go func() { errCh <- taskConsumer.Start(ctx) }()
+	go func() { errCh <- tunnelConsumer.Start(ctx) }()
+
+	select {
+	case err := <-errCh:
+		return err
+	case <-ctx.Done():
+		return nil
+	}
 }
 
 func connectWorkerBroker(cfg *config.EgressConfig) (*broker.NatsBroker, error) {
