@@ -409,238 +409,6 @@ func (x *TimingInfo) GetTotalNanos() int64 {
 	return 0
 }
 
-type TunnelOpen struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	TunnelId      string                 `protobuf:"bytes,1,opt,name=tunnel_id,json=tunnelId,proto3" json:"tunnel_id,omitempty"`
-	Host          string                 `protobuf:"bytes,2,opt,name=host,proto3" json:"host,omitempty"`
-	Port          int32                  `protobuf:"varint,3,opt,name=port,proto3" json:"port,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *TunnelOpen) Reset() {
-	*x = TunnelOpen{}
-	mi := &file_straw_v1_transport_proto_msgTypes[5]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *TunnelOpen) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*TunnelOpen) ProtoMessage() {}
-
-func (x *TunnelOpen) ProtoReflect() protoreflect.Message {
-	mi := &file_straw_v1_transport_proto_msgTypes[5]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use TunnelOpen.ProtoReflect.Descriptor instead.
-func (*TunnelOpen) Descriptor() ([]byte, []int) {
-	return file_straw_v1_transport_proto_rawDescGZIP(), []int{5}
-}
-
-func (x *TunnelOpen) GetTunnelId() string {
-	if x != nil {
-		return x.TunnelId
-	}
-	return ""
-}
-
-func (x *TunnelOpen) GetHost() string {
-	if x != nil {
-		return x.Host
-	}
-	return ""
-}
-
-func (x *TunnelOpen) GetPort() int32 {
-	if x != nil {
-		return x.Port
-	}
-	return 0
-}
-
-type TunnelOpenResult struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	TunnelId      string                 `protobuf:"bytes,1,opt,name=tunnel_id,json=tunnelId,proto3" json:"tunnel_id,omitempty"`
-	Error         *ErrorInfo             `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *TunnelOpenResult) Reset() {
-	*x = TunnelOpenResult{}
-	mi := &file_straw_v1_transport_proto_msgTypes[6]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *TunnelOpenResult) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*TunnelOpenResult) ProtoMessage() {}
-
-func (x *TunnelOpenResult) ProtoReflect() protoreflect.Message {
-	mi := &file_straw_v1_transport_proto_msgTypes[6]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use TunnelOpenResult.ProtoReflect.Descriptor instead.
-func (*TunnelOpenResult) Descriptor() ([]byte, []int) {
-	return file_straw_v1_transport_proto_rawDescGZIP(), []int{6}
-}
-
-func (x *TunnelOpenResult) GetTunnelId() string {
-	if x != nil {
-		return x.TunnelId
-	}
-	return ""
-}
-
-func (x *TunnelOpenResult) GetError() *ErrorInfo {
-	if x != nil {
-		return x.Error
-	}
-	return nil
-}
-
-type TunnelChunk struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	TunnelId      string                 `protobuf:"bytes,1,opt,name=tunnel_id,json=tunnelId,proto3" json:"tunnel_id,omitempty"`
-	Seq           uint64                 `protobuf:"varint,2,opt,name=seq,proto3" json:"seq,omitempty"`
-	Data          []byte                 `protobuf:"bytes,3,opt,name=data,proto3" json:"data,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *TunnelChunk) Reset() {
-	*x = TunnelChunk{}
-	mi := &file_straw_v1_transport_proto_msgTypes[7]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *TunnelChunk) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*TunnelChunk) ProtoMessage() {}
-
-func (x *TunnelChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_straw_v1_transport_proto_msgTypes[7]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use TunnelChunk.ProtoReflect.Descriptor instead.
-func (*TunnelChunk) Descriptor() ([]byte, []int) {
-	return file_straw_v1_transport_proto_rawDescGZIP(), []int{7}
-}
-
-func (x *TunnelChunk) GetTunnelId() string {
-	if x != nil {
-		return x.TunnelId
-	}
-	return ""
-}
-
-func (x *TunnelChunk) GetSeq() uint64 {
-	if x != nil {
-		return x.Seq
-	}
-	return 0
-}
-
-func (x *TunnelChunk) GetData() []byte {
-	if x != nil {
-		return x.Data
-	}
-	return nil
-}
-
-type TunnelClose struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	TunnelId      string                 `protobuf:"bytes,1,opt,name=tunnel_id,json=tunnelId,proto3" json:"tunnel_id,omitempty"`
-	Side          string                 `protobuf:"bytes,2,opt,name=side,proto3" json:"side,omitempty"`
-	Reason        string                 `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *TunnelClose) Reset() {
-	*x = TunnelClose{}
-	mi := &file_straw_v1_transport_proto_msgTypes[8]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *TunnelClose) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*TunnelClose) ProtoMessage() {}
-
-func (x *TunnelClose) ProtoReflect() protoreflect.Message {
-	mi := &file_straw_v1_transport_proto_msgTypes[8]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use TunnelClose.ProtoReflect.Descriptor instead.
-func (*TunnelClose) Descriptor() ([]byte, []int) {
-	return file_straw_v1_transport_proto_rawDescGZIP(), []int{8}
-}
-
-func (x *TunnelClose) GetTunnelId() string {
-	if x != nil {
-		return x.TunnelId
-	}
-	return ""
-}
-
-func (x *TunnelClose) GetSide() string {
-	if x != nil {
-		return x.Side
-	}
-	return ""
-}
-
-func (x *TunnelClose) GetReason() string {
-	if x != nil {
-		return x.Reason
-	}
-	return ""
-}
-
 var File_straw_v1_transport_proto protoreflect.FileDescriptor
 
 const file_straw_v1_transport_proto_rawDesc = "" +
@@ -680,23 +448,7 @@ const file_straw_v1_transport_proto_rawDesc = "" +
 	"\x13tls_handshake_nanos\x18\x03 \x01(\x03R\x11tlsHandshakeNanos\x12(\n" +
 	"\x10first_byte_nanos\x18\x04 \x01(\x03R\x0efirstByteNanos\x12\x1f\n" +
 	"\vtotal_nanos\x18\x05 \x01(\x03R\n" +
-	"totalNanos\"Q\n" +
-	"\n" +
-	"TunnelOpen\x12\x1b\n" +
-	"\ttunnel_id\x18\x01 \x01(\tR\btunnelId\x12\x12\n" +
-	"\x04host\x18\x02 \x01(\tR\x04host\x12\x12\n" +
-	"\x04port\x18\x03 \x01(\x05R\x04port\"Z\n" +
-	"\x10TunnelOpenResult\x12\x1b\n" +
-	"\ttunnel_id\x18\x01 \x01(\tR\btunnelId\x12)\n" +
-	"\x05error\x18\x02 \x01(\v2\x13.straw.v1.ErrorInfoR\x05error\"P\n" +
-	"\vTunnelChunk\x12\x1b\n" +
-	"\ttunnel_id\x18\x01 \x01(\tR\btunnelId\x12\x10\n" +
-	"\x03seq\x18\x02 \x01(\x04R\x03seq\x12\x12\n" +
-	"\x04data\x18\x03 \x01(\fR\x04data\"V\n" +
-	"\vTunnelClose\x12\x1b\n" +
-	"\ttunnel_id\x18\x01 \x01(\tR\btunnelId\x12\x12\n" +
-	"\x04side\x18\x02 \x01(\tR\x04side\x12\x16\n" +
-	"\x06reason\x18\x03 \x01(\tR\x06reasonB<Z:github.com/beremaran/straw/internal/protocol/wirepb;wirepbb\x06proto3"
+	"totalNanosB<Z:github.com/beremaran/straw/internal/protocol/wirepb;wirepbb\x06proto3"
 
 var (
 	file_straw_v1_transport_proto_rawDescOnce sync.Once
@@ -710,29 +462,24 @@ func file_straw_v1_transport_proto_rawDescGZIP() []byte {
 	return file_straw_v1_transport_proto_rawDescData
 }
 
-var file_straw_v1_transport_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_straw_v1_transport_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_straw_v1_transport_proto_goTypes = []any{
-	(*Request)(nil),          // 0: straw.v1.Request
-	(*Response)(nil),         // 1: straw.v1.Response
-	(*Header)(nil),           // 2: straw.v1.Header
-	(*ErrorInfo)(nil),        // 3: straw.v1.ErrorInfo
-	(*TimingInfo)(nil),       // 4: straw.v1.TimingInfo
-	(*TunnelOpen)(nil),       // 5: straw.v1.TunnelOpen
-	(*TunnelOpenResult)(nil), // 6: straw.v1.TunnelOpenResult
-	(*TunnelChunk)(nil),      // 7: straw.v1.TunnelChunk
-	(*TunnelClose)(nil),      // 8: straw.v1.TunnelClose
+	(*Request)(nil),    // 0: straw.v1.Request
+	(*Response)(nil),   // 1: straw.v1.Response
+	(*Header)(nil),     // 2: straw.v1.Header
+	(*ErrorInfo)(nil),  // 3: straw.v1.ErrorInfo
+	(*TimingInfo)(nil), // 4: straw.v1.TimingInfo
 }
 var file_straw_v1_transport_proto_depIdxs = []int32{
 	2, // 0: straw.v1.Request.headers:type_name -> straw.v1.Header
 	2, // 1: straw.v1.Response.headers:type_name -> straw.v1.Header
 	3, // 2: straw.v1.Response.error:type_name -> straw.v1.ErrorInfo
 	4, // 3: straw.v1.Response.timing:type_name -> straw.v1.TimingInfo
-	3, // 4: straw.v1.TunnelOpenResult.error:type_name -> straw.v1.ErrorInfo
-	5, // [5:5] is the sub-list for method output_type
-	5, // [5:5] is the sub-list for method input_type
-	5, // [5:5] is the sub-list for extension type_name
-	5, // [5:5] is the sub-list for extension extendee
-	0, // [0:5] is the sub-list for field type_name
+	4, // [4:4] is the sub-list for method output_type
+	4, // [4:4] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_straw_v1_transport_proto_init() }
@@ -746,7 +493,7 @@ func file_straw_v1_transport_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_straw_v1_transport_proto_rawDesc), len(file_straw_v1_transport_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   9,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

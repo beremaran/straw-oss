@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/beremaran/straw/internal/broker"
-	"github.com/beremaran/straw/internal/config"
 	"github.com/beremaran/straw/internal/protocol"
 	"github.com/beremaran/straw/internal/protocol/wirepb"
 )
@@ -18,7 +17,6 @@ import (
 const (
 	testReqID           = "req-1"
 	testEgressID        = "egress-1"
-	testRouteEgressID   = "us-res-1"
 	testContentType     = "text/plain"
 	testJSONContentType = "application/json"
 )
@@ -44,7 +42,7 @@ func TestControlHandlerPublishesAndWritesEgressResult(t *testing.T) {
 	mb := &controlMockBroker{
 		result: resultBody,
 	}
-	handler := NewControlHandler(mb, "egress-1", "", nil, time.Second, false)
+	handler := NewControlHandler(mb, "egress-1", time.Second, false)
 
 	req := httptest.NewRequestWithContext(
 		context.Background(),
@@ -83,7 +81,7 @@ func TestControlHandlerPublishesAndWritesEgressResult(t *testing.T) {
 
 func TestControlHandlerRejectsInvalidJSON(t *testing.T) {
 	mb := &controlMockBroker{}
-	handler := NewControlHandler(mb, "egress-1", "", nil, time.Second, false)
+	handler := NewControlHandler(mb, "egress-1", time.Second, false)
 
 	req := httptest.NewRequestWithContext(
 		context.Background(),
@@ -102,7 +100,7 @@ func TestControlHandlerRejectsInvalidJSON(t *testing.T) {
 
 func TestControlHandlerRejectsMissingURL(t *testing.T) {
 	mb := &controlMockBroker{}
-	handler := NewControlHandler(mb, "egress-1", "", nil, time.Second, false)
+	handler := NewControlHandler(mb, "egress-1", time.Second, false)
 
 	req := httptest.NewRequestWithContext(
 		context.Background(),
@@ -119,86 +117,6 @@ func TestControlHandlerRejectsMissingURL(t *testing.T) {
 	}
 }
 
-func TestControlHandlerRequiresBearerTokenWhenConfigured(t *testing.T) {
-	mb := &controlMockBroker{}
-	handler := NewControlHandler(mb, "egress-1", "secret", nil, time.Second, false)
-
-	req := httptest.NewRequestWithContext(
-		context.Background(),
-		http.MethodPost,
-		"/v1/request",
-		strings.NewReader(`{"id":"req-1","method":"GET","url":"https://example.com"}`),
-	)
-	rec := httptest.NewRecorder()
-
-	handler.Handle(rec, req)
-
-	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusUnauthorized)
-	}
-	if mb.publishSubject != "" {
-		t.Fatalf("publish subject = %q, want empty", mb.publishSubject)
-	}
-}
-
-func TestControlHandlerUsesAllowedRouteFromHeaders(t *testing.T) {
-	resultBody, _ := protocol.MarshalResponse(&wirepb.Response{
-		RequestId:  testReqID,
-		EgressId:   testRouteEgressID,
-		StatusCode: http.StatusOK,
-		Body:       []byte("ok"),
-	})
-
-	mb := &controlMockBroker{result: resultBody}
-	handler := NewControlHandler(mb, "egress-1", "", []config.Route{
-		{EgressID: testRouteEgressID, Country: "US", IPType: "residential"},
-	}, time.Second, false)
-
-	req := httptest.NewRequestWithContext(
-		context.Background(),
-		http.MethodPost,
-		"/v1/request",
-		strings.NewReader(`{"id":"req-1","method":"GET","url":"https://example.com"}`),
-	)
-	req.Header.Set("X-Straw-Country", "us")
-	req.Header.Set("X-Straw-IP-Type", "RESIDENTIAL")
-	rec := httptest.NewRecorder()
-
-	handler.Handle(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
-	}
-	if mb.publishSubject != "tasks.us-res-1.tasks" {
-		t.Fatalf("publish subject = %q, want tasks.us-res-1.tasks", mb.publishSubject)
-	}
-}
-
-func TestControlHandlerRejectsUnknownRoute(t *testing.T) {
-	mb := &controlMockBroker{}
-	handler := NewControlHandler(mb, "egress-1", "", []config.Route{
-		{EgressID: testRouteEgressID, Country: "US", IPType: "residential"},
-	}, time.Second, false)
-
-	req := httptest.NewRequestWithContext(
-		context.Background(),
-		http.MethodPost,
-		"/v1/request",
-		strings.NewReader(`{"id":"req-1","method":"GET","url":"https://example.com"}`),
-	)
-	req.Header.Set("X-Straw-Egress-ID", "eu-mobile-1")
-	rec := httptest.NewRecorder()
-
-	handler.Handle(rec, req)
-
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusForbidden)
-	}
-	if mb.publishSubject != "" {
-		t.Fatalf("publish subject = %q, want empty", mb.publishSubject)
-	}
-}
-
 func TestControlHandlerDefaultsMethodToGet(t *testing.T) {
 	resultBody, _ := protocol.MarshalResponse(&wirepb.Response{
 		RequestId:  testReqID,
@@ -208,7 +126,7 @@ func TestControlHandlerDefaultsMethodToGet(t *testing.T) {
 	})
 
 	mb := &controlMockBroker{result: resultBody}
-	handler := NewControlHandler(mb, "egress-1", "", nil, time.Second, false)
+	handler := NewControlHandler(mb, "egress-1", time.Second, false)
 
 	req := httptest.NewRequestWithContext(
 		context.Background(),
@@ -238,7 +156,7 @@ func TestControlHandlerUsesRequestIDFromHeader(t *testing.T) {
 	})
 
 	mb := &controlMockBroker{result: resultBody}
-	handler := NewControlHandler(mb, "egress-1", "", nil, time.Second, false)
+	handler := NewControlHandler(mb, "egress-1", time.Second, false)
 
 	req := httptest.NewRequestWithContext(
 		context.Background(),
@@ -264,7 +182,7 @@ func TestControlHandlerPublishFailure(t *testing.T) {
 	mb := &controlMockBroker{
 		publishErr: broker.ErrTimeout,
 	}
-	handler := NewControlHandler(mb, "egress-1", "", nil, time.Second, false)
+	handler := NewControlHandler(mb, "egress-1", time.Second, false)
 
 	req := httptest.NewRequestWithContext(
 		context.Background(),
@@ -285,7 +203,7 @@ func TestControlHandlerTimeout(t *testing.T) {
 	mb := &controlMockBroker{
 		consumeErr: broker.ErrTimeout,
 	}
-	handler := NewControlHandler(mb, "egress-1", "", nil, time.Second, false)
+	handler := NewControlHandler(mb, "egress-1", time.Second, false)
 
 	req := httptest.NewRequestWithContext(
 		context.Background(),
@@ -315,7 +233,7 @@ func TestControlHandlerInvalidEgressResponse(t *testing.T) {
 	mb := &controlMockBroker{
 		result: []byte("not valid protobuf"),
 	}
-	handler := NewControlHandler(mb, "egress-1", "", nil, time.Second, false)
+	handler := NewControlHandler(mb, "egress-1", time.Second, false)
 
 	req := httptest.NewRequestWithContext(
 		context.Background(),

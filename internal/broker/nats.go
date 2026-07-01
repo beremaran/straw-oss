@@ -85,68 +85,6 @@ func (b *NatsBroker) Publish(ctx context.Context, subject string, body []byte) e
 	return nil
 }
 
-// CoreRequest sends a core NATS request and waits for the reply.
-func (b *NatsBroker) CoreRequest(ctx context.Context, subject string, body []byte) ([]byte, error) {
-	msg, err := b.conn.RequestWithContext(ctx, subject, body)
-	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, nats.ErrTimeout) {
-			return nil, ErrTimeout
-		}
-
-		return nil, fmt.Errorf("core request %s: %w", subject, err)
-	}
-
-	return append([]byte(nil), msg.Data...), nil
-}
-
-// CorePublish sends a core NATS message and flushes the connection.
-func (b *NatsBroker) CorePublish(ctx context.Context, subject string, body []byte) error {
-	err := b.conn.Publish(subject, body)
-	if err != nil {
-		return fmt.Errorf("core publish %s: %w", subject, err)
-	}
-
-	err = b.conn.FlushWithContext(ctx)
-	if err != nil {
-		return fmt.Errorf("core flush %s: %w", subject, err)
-	}
-
-	return nil
-}
-
-// CoreSubscribe subscribes to live core NATS messages.
-func (b *NatsBroker) CoreSubscribe(ctx context.Context, subject string, handler Handler) (Subscription, error) {
-	sub, err := b.conn.Subscribe(subject, func(msg *nats.Msg) {
-		err := handler(ctx, msg.Data)
-		if err != nil {
-			// Core NATS has no ack path; handler errors are intentionally dropped.
-			return
-		}
-	})
-	if err != nil {
-		return nil, fmt.Errorf("core subscribe %s: %w", subject, err)
-	}
-
-	return sub, nil
-}
-
-// CoreSubscribeRequest subscribes to core NATS request/reply messages.
-func (b *NatsBroker) CoreSubscribeRequest(ctx context.Context, subject string, handler RequestHandler) (Subscription, error) {
-	sub, err := b.conn.Subscribe(subject, func(msg *nats.Msg) {
-		reply, err := handler(ctx, msg.Data)
-		if err != nil {
-			return
-		}
-
-		_ = msg.Respond(reply)
-	})
-	if err != nil {
-		return nil, fmt.Errorf("core request subscribe %s: %w", subject, err)
-	}
-
-	return sub, nil
-}
-
 // Subscribe creates a JetStream consumer for the given subject and routes messages to the handler.
 func (b *NatsBroker) Subscribe(ctx context.Context, subject string, handler Handler, maxAckPending int) error {
 	streamName, err := b.findStreamForSubject(ctx, subject)
