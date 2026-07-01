@@ -42,11 +42,8 @@ func BuildResponse(
 	}, nil
 }
 
-func readResponseBody(resp *fhttp.Response, maxSize int64) ([]byte, error) {
-	return readRawResponseBody(resp, maxSize)
-}
 
-func readRawResponseBody(resp *fhttp.Response, maxSize int64) ([]byte, error) {
+func readResponseBody(resp *fhttp.Response, maxSize int64) ([]byte, error) {
 	if resp.Body == nil {
 		return nil, nil
 	}

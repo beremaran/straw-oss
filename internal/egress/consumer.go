@@ -34,7 +34,6 @@ type Consumer struct {
 	taskSubject      string
 	concurrencyLimit int
 	semaphore        chan struct{}
-	ctx              context.Context
 	cancel           context.CancelFunc
 	wg               sync.WaitGroup
 	resultHandler    func(ctx context.Context, resp *protocol.Response, replyTo string) error
@@ -73,7 +72,7 @@ func NewConsumer(
 
 // Start begins consuming tasks and blocks until the context is canceled.
 func (c *Consumer) Start(ctx context.Context) error {
-	c.ctx, c.cancel = context.WithCancel(ctx)
+	ctx, c.cancel = context.WithCancel(ctx)
 
 	c.logger.Info("starting consumer",
 		"egress_id", c.egressID,
@@ -86,7 +85,7 @@ func (c *Consumer) Start(ctx context.Context) error {
 		return err
 	}
 
-	<-c.ctx.Done()
+	<-ctx.Done()
 
 	c.Drain()
 

@@ -44,9 +44,9 @@ func (p *Publisher) Publish(ctx context.Context, resp *protocol.Response, replyT
 		return ErrMissingRequestID
 	}
 
-	msg, err := p.buildMessage(resp)
+	msg, err := protocol.MarshalResponse(resp)
 	if err != nil {
-		return fmt.Errorf("failed to build message: %w", err)
+		return fmt.Errorf("marshal result message: %w", err)
 	}
 
 	resultSubject := "results." + resp.RequestID
@@ -70,11 +70,3 @@ func (p *Publisher) Publish(ctx context.Context, resp *protocol.Response, replyT
 	return nil
 }
 
-func (p *Publisher) buildMessage(resp *protocol.Response) ([]byte, error) {
-	data, err := protocol.MarshalResponse(resp)
-	if err != nil {
-		return nil, fmt.Errorf("marshal result message: %w", err)
-	}
-
-	return data, nil
-}

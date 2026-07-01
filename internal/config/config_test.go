@@ -153,3 +153,79 @@ func setEnvVars(t *testing.T, vars map[string]string) {
 		t.Setenv(key, val)
 	}
 }
+
+func TestGetEnvBool(t *testing.T) {
+	t.Setenv("TEST_BOOL_TRUE", "true")
+	t.Setenv("TEST_BOOL_FALSE", "false")
+	t.Setenv("TEST_BOOL_EMPTY", "")
+	t.Setenv("TEST_BOOL_INVALID", "notabool")
+
+	if !getEnvBool("TEST_BOOL_TRUE", false) {
+		t.Error("expected true for 'true'")
+	}
+	if getEnvBool("TEST_BOOL_FALSE", true) {
+		t.Error("expected false for 'false'")
+	}
+	if getEnvBool("TEST_BOOL_EMPTY", false) {
+		t.Error("expected default false for empty string")
+	}
+	if getEnvBool("TEST_BOOL_INVALID", false) {
+		t.Error("expected default false for invalid value")
+	}
+}
+
+func TestGetEnvInt(t *testing.T) {
+	t.Setenv("TEST_INT_42", "42")
+	t.Setenv("TEST_INT_0", "0")
+	t.Setenv("TEST_INT_EMPTY", "")
+	t.Setenv("TEST_INT_INVALID", "notanint")
+
+	if getEnvInt("TEST_INT_42", 0) != 42 {
+		t.Error("expected 42 for '42'")
+	}
+	if getEnvInt("TEST_INT_0", 10) != 0 {
+		t.Error("expected 0 for '0'")
+	}
+	if getEnvInt("TEST_INT_EMPTY", 10) != 10 {
+		t.Error("expected default 10 for empty string")
+	}
+	if getEnvInt("TEST_INT_INVALID", 10) != 10 {
+		t.Error("expected default 10 for invalid value")
+	}
+}
+
+func TestValidationError(t *testing.T) {
+	err := &ValidationError{
+		Errors: []string{"error 1", "error 2"},
+	}
+	expected := "configuration validation failed: error 1; error 2"
+	if err.Error() != expected {
+		t.Errorf("Error() = %q, want %q", err.Error(), expected)
+	}
+}
+
+func TestLoadNATSConfig(t *testing.T) {
+	t.Setenv(envNatsURL, "nats://custom:4222")
+	t.Setenv("NATS_TOKEN", "secret")
+
+	cfg := LoadNATSConfig()
+	if cfg.URL != "nats://custom:4222" {
+		t.Errorf("URL = %q, want nats://custom:4222", cfg.URL)
+	}
+	if cfg.Token != "secret" {
+		t.Errorf("Token = %q, want secret", cfg.Token)
+	}
+}
+
+func TestLoadSecurityConfig(t *testing.T) {
+	t.Setenv("TLS_CERT_FILE", "/path/to/cert")
+	t.Setenv("TLS_KEY_FILE", "/path/to/key")
+
+	cfg := LoadSecurityConfig()
+	if cfg.TLSCertFile != "/path/to/cert" {
+		t.Errorf("TLSCertFile = %q, want /path/to/cert", cfg.TLSCertFile)
+	}
+	if cfg.TLSKeyFile != "/path/to/key" {
+		t.Errorf("TLSKeyFile = %q, want /path/to/key", cfg.TLSKeyFile)
+	}
+}
