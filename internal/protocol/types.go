@@ -46,7 +46,7 @@ type Header struct {
 // case-insensitive comparison. It returns an empty string if no match exists.
 func (h HeaderMap) Get(key string) string {
 	for _, header := range h {
-		if equalFold(header.Key, key) {
+		if strings.EqualFold(header.Key, key) {
 			return header.Value
 		}
 	}
@@ -58,7 +58,7 @@ func (h HeaderMap) Get(key string) string {
 // a new header if no match exists.
 func (h *HeaderMap) Set(key, value string) {
 	for i, header := range *h {
-		if equalFold(header.Key, key) {
+		if strings.EqualFold(header.Key, key) {
 			(*h)[i].Value = value
 
 			return
@@ -73,7 +73,7 @@ func (h *HeaderMap) Set(key, value string) {
 func (h *HeaderMap) Del(key string) {
 	result := (*h)[:0]
 	for _, header := range *h {
-		if !equalFold(header.Key, key) {
+		if !strings.EqualFold(header.Key, key) {
 			result = append(result, header)
 		}
 	}
@@ -181,29 +181,6 @@ func decodeHeaderJSONValue(rawValue json.RawMessage) (string, error) {
 	return value, nil
 }
 
-func equalFold(a, b string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-
-	for i := 0; i < len(a); i++ {
-		ca, cb := a[i], b[i]
-		if ca >= 'A' && ca <= 'Z' {
-			ca += 'a' - 'A'
-		}
-
-		if cb >= 'A' && cb <= 'Z' {
-			cb += 'a' - 'A'
-		}
-
-		if ca != cb {
-			return false
-		}
-	}
-
-	return true
-}
-
 // ErrorInfo describes an error returned by an egress.
 type ErrorInfo struct {
 	Code       string        `json:"code"`
@@ -227,18 +204,3 @@ type TimingInfo struct {
 	FirstByte    time.Duration `json:"first_byte,omitempty"`
 	Total        time.Duration `json:"total"`
 }
-
-// Test constants shared across protocol test files.
-const (
-	testReqID           = "req-123"
-	testReqIDLong       = "req-12345"
-	testMethodGet       = "GET"
-	testMethodPost      = "POST"
-	testURL             = "https://example.com"
-	testContentType     = "Content-Type"
-	testUserAgent       = "User-Agent"
-	testAccept          = "Accept"
-	testCustomValue     = "custom-value"
-	testJSONContentType = "application/json"
-	testK6UserAgent     = "k6-load-test"
-)

@@ -8,10 +8,7 @@ import (
 	"testing"
 	"time"
 
-	fhttp "github.com/bogdanfinn/fhttp"
-
 	"github.com/beremaran/straw/internal/broker"
-	"github.com/beremaran/straw/internal/egress/fingerprint"
 	egresshttp "github.com/beremaran/straw/internal/egress/http"
 	"github.com/beremaran/straw/internal/protocol"
 )
@@ -39,7 +36,7 @@ func (m *mockBroker) Publish(_ context.Context, subject string, body []byte) err
 	return nil
 }
 
-func (m *mockBroker) Subscribe(ctx context.Context, subject string, handler broker.Handler, _ ...broker.SubscribeOption) error {
+func (m *mockBroker) Subscribe(ctx context.Context, subject string, handler broker.Handler, _ int) error {
 	m.subscribeQueue = subject
 	m.subscribeHandler = handler
 
@@ -60,21 +57,7 @@ func (m *mockBroker) DeclareStream(_ context.Context, _ string, _ ...string) err
 	return nil
 }
 
-func (m *mockBroker) IsConnected() bool {
-	return true
-}
-
-type mockTransportProvider struct {
-	transport *fhttp.Transport
-}
-
-func (m *mockTransportProvider) GetTransport(_ string, _ fingerprint.Preset) *fhttp.Transport {
-	if m.transport != nil {
-		return m.transport
-	}
-
-	return &fhttp.Transport{}
-}
+func (m *mockBroker) IsConnected() bool { return true }
 
 const (
 	testRequestID = "test-req-1"
@@ -83,11 +66,9 @@ const (
 
 func TestConsumer_New(t *testing.T) {
 	mb := &mockBroker{}
-	registry := fingerprint.NewRegistry()
-	provider := &mockTransportProvider{}
-	httpClient := egresshttp.NewClient(registry, provider)
+	httpClient := egresshttp.NewClient("")
 
-	c := NewConsumer(mb, httpClient, "test-egress")
+	c := NewConsumer(mb, httpClient, "test-egress", 0, nil)
 
 	if c.egressID != "test-egress" {
 		t.Errorf("expected egressID 'test-egress', got %s", c.egressID)
@@ -102,15 +83,11 @@ func TestConsumer_New(t *testing.T) {
 	}
 }
 
-func TestConsumer_WithOptions(t *testing.T) {
+func TestConsumer_WithConcurrencyLimit(t *testing.T) {
 	mb := &mockBroker{}
-	registry := fingerprint.NewRegistry()
-	provider := &mockTransportProvider{}
-	httpClient := egresshttp.NewClient(registry, provider)
+	httpClient := egresshttp.NewClient("")
 
-	c := NewConsumer(mb, httpClient, "test-egress",
-		WithConcurrencyLimit(50),
-	)
+	c := NewConsumer(mb, httpClient, "test-egress", 50, nil)
 
 	if c.concurrencyLimit != 50 {
 		t.Errorf("expected concurrencyLimit 50, got %d", c.concurrencyLimit)
@@ -119,11 +96,9 @@ func TestConsumer_WithOptions(t *testing.T) {
 
 func TestConsumer_TaskSubject(t *testing.T) {
 	mb := &mockBroker{}
-	registry := fingerprint.NewRegistry()
-	provider := &mockTransportProvider{}
-	httpClient := egresshttp.NewClient(registry, provider)
+	httpClient := egresshttp.NewClient("")
 
-	c := NewConsumer(mb, httpClient, "my-egress")
+	c := NewConsumer(mb, httpClient, "my-egress", 0, nil)
 
 	expected := "tasks.my-egress.tasks"
 	if c.TaskSubject() != expected {
@@ -133,11 +108,9 @@ func TestConsumer_TaskSubject(t *testing.T) {
 
 func TestConsumer_InvalidProtobuf(t *testing.T) {
 	mb := &mockBroker{}
-	registry := fingerprint.NewRegistry()
-	provider := &mockTransportProvider{}
-	httpClient := egresshttp.NewClient(registry, provider)
+	httpClient := egresshttp.NewClient("")
 
-	c := NewConsumer(mb, httpClient, "test-egress")
+	c := NewConsumer(mb, httpClient, "test-egress", 0, nil)
 	c.ctx = context.Background()
 
 	err := c.processTask(context.Background(), []byte{0xff, 0xff, 0xff})
@@ -158,13 +131,9 @@ func TestConsumer_InvalidProtobuf(t *testing.T) {
 
 func TestConsumer_ConcurrencyLimit(t *testing.T) {
 	mb := &mockBroker{}
-	registry := fingerprint.NewRegistry()
-	provider := &mockTransportProvider{}
-	httpClient := egresshttp.NewClient(registry, provider)
+	httpClient := egresshttp.NewClient("")
 
-	c := NewConsumer(mb, httpClient, "test-egress",
-		WithConcurrencyLimit(2),
-	)
+	c := NewConsumer(mb, httpClient, "test-egress", 2, nil)
 
 	var currentConcurrent atomic.Int32
 	var maxConcurrent int32
@@ -209,9 +178,7 @@ func TestConsumer_ConcurrencyLimit(t *testing.T) {
 
 func TestConsumer_ResultHandler(t *testing.T) {
 	mb := &mockBroker{}
-	registry := fingerprint.NewRegistry()
-	provider := &mockTransportProvider{}
-	httpClient := egresshttp.NewClient(registry, provider)
+	httpClient := egresshttp.NewClient("")
 
 	var receivedResponse *protocol.Response
 	handler := func(_ context.Context, resp *protocol.Response, _ string) error {
@@ -220,9 +187,7 @@ func TestConsumer_ResultHandler(t *testing.T) {
 		return nil
 	}
 
-	c := NewConsumer(mb, httpClient, "test-egress",
-		WithResultHandler(handler),
-	)
+	c := NewConsumer(mb, httpClient, "test-egress", 0, handler)
 	c.ctx = context.Background()
 
 	req := &protocol.Request{

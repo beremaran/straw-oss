@@ -6,6 +6,17 @@ import (
 	"time"
 )
 
+const (
+	testReqIDLong       = "req-12345"
+	testMethodPost      = "POST"
+	testContentType     = "Content-Type"
+	testUserAgent       = "User-Agent"
+	testAccept          = "Accept"
+	testCustomValue     = "custom-value"
+	testJSONContentType = "application/json"
+	testK6UserAgent     = "k6-load-test"
+)
+
 func TestRequest_JSONRoundTrip(t *testing.T) {
 	req := &Request{
 		ID:      testReqIDLong,

@@ -12,7 +12,7 @@ func TestNewWorkerAppliesCustomExecutor(t *testing.T) {
 	executor := &dummyExecutor{}
 	cfg := &config.EgressConfig{ID: "egress-1"}
 
-	w := NewWorker(cfg, WithRequestExecutor(executor))
+	w := NewWorker(cfg, executor)
 
 	if w.executor != executor {
 		t.Fatal("custom executor was not applied")

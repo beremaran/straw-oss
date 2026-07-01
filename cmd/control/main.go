@@ -14,11 +14,7 @@ import (
 	"github.com/beremaran/straw/internal/server"
 )
 
-var (
-	Version   = "dev"
-	GitCommit = "unknown"
-	BuildTime = "unknown"
-)
+var Version = "dev"
 
 func main() {
 	ctx := context.Background()
@@ -52,10 +48,7 @@ func loadConfigOrDie() *config.ControlConfig {
 }
 
 func connectNATSOrDie(ctx context.Context, cfg *config.ControlConfig) *broker.NatsBroker {
-	natsBroker := broker.NewNatsBroker(
-		broker.Addrs(cfg.NATS.URL),
-		broker.Token(cfg.NATS.Token),
-	)
+	natsBroker := broker.NewNatsBroker(cfg.NATS.URL, cfg.NATS.Token)
 
 	err := natsBroker.Connect()
 	if err != nil {

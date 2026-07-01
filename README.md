@@ -56,7 +56,6 @@ Egress:
 - `EGRESS_ID`: worker ID. The control targets this value.
 - `NATS_URL`, `NATS_TOKEN`: NATS connection.
 - `CONCURRENCY_LIMIT`: worker task concurrency. Default `25`.
-- `MAX_POOL_HOSTS`, `IDLE_CONNS_PER_HOST`, `IDLE_CONN_TIMEOUT`: egress HTTP transport pool tuning.
 
 ## Development
 

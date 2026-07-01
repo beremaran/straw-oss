@@ -16,32 +16,22 @@ var ErrNoStreamForSubject = errors.New("no stream found for subject")
 
 // NatsBroker is a NATS JetStream message broker implementation.
 type NatsBroker struct {
-	url  string
-	conn *nats.Conn
-	js   jetstream.JetStream
-	opts []Option
+	url   string
+	token string
+	conn  *nats.Conn
+	js    jetstream.JetStream
 }
 
-// NewNatsBroker creates a new NATS broker with the given options.
-func NewNatsBroker(opts ...Option) *NatsBroker {
-	options := Options{
-		Addrs: []string{nats.DefaultURL},
-	}
-	for _, o := range opts {
-		o(&options)
+// NewNatsBroker creates a new NATS broker.
+func NewNatsBroker(addr, token string) *NatsBroker {
+	if addr == "" {
+		addr = nats.DefaultURL
 	}
 
-	url := options.Addrs[0]
-	if len(options.Addrs) > 0 {
-		url = strings.Join(options.Addrs, ",")
+	return &NatsBroker{
+		url:   addr,
+		token: token,
 	}
-
-	b := &NatsBroker{
-		url:  url,
-		opts: opts,
-	}
-
-	return b
 }
 
 // Connect establishes the NATS connection and JetStream context.
@@ -50,15 +40,8 @@ func (b *NatsBroker) Connect() error {
 		nats.Name("straw"),
 	}
 
-	if len(b.opts) > 0 {
-		config := Options{}
-		for _, o := range b.opts {
-			o(&config)
-		}
-
-		if config.Token != "" {
-			opts = append(opts, nats.Token(config.Token))
-		}
+	if b.token != "" {
+		opts = append(opts, nats.Token(b.token))
 	}
 
 	nc, err := nats.Connect(b.url, opts...)
@@ -103,30 +86,20 @@ func (b *NatsBroker) Publish(ctx context.Context, subject string, body []byte) e
 }
 
 // Subscribe creates a JetStream consumer for the given subject and routes messages to the handler.
-func (b *NatsBroker) Subscribe(ctx context.Context, subject string, handler Handler, opts ...SubscribeOption) error {
-	subOpts := SubscribeOptions{}
-	for _, o := range opts {
-		o(&subOpts)
-	}
-
+func (b *NatsBroker) Subscribe(ctx context.Context, subject string, handler Handler, maxAckPending int) error {
 	streamName := b.findStreamForSubject(ctx, subject)
 	if streamName == "" {
 		return fmt.Errorf("%w: %s", ErrNoStreamForSubject, subject)
 	}
 
-	var durableName string
-	if subOpts.Durable != nil {
-		durableName = *subOpts.Durable
-	} else {
-		durableName = strings.NewReplacer(".", "_", "*", "_", ">", "_").Replace(subject)
-	}
+	durableName := strings.NewReplacer(".", "_", "*", "_", ">", "_").Replace(subject)
 
 	consumerConfig := jetstream.ConsumerConfig{
 		Durable:       durableName,
 		FilterSubject: subject,
 		DeliverPolicy: jetstream.DeliverNewPolicy,
 		AckPolicy:     jetstream.AckExplicitPolicy,
-		MaxAckPending: subOpts.MaxAckPending,
+		MaxAckPending: maxAckPending,
 	}
 
 	cons, err := b.js.CreateOrUpdateConsumer(ctx, streamName, consumerConfig)

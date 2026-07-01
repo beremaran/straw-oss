@@ -13,9 +13,6 @@ const (
 	defaultShutdownTimeout       = 30 * time.Second
 	defaultResultTimeout         = 30 * time.Second
 	defaultConcurrencyLimit      = 25
-	defaultMaxPoolHosts          = 1000
-	defaultIdleConnsPerHost      = 10
-	defaultIdleConnTimeout       = 90 * time.Second
 	defaultMaxConcurrentRequests = 50
 )
 
@@ -50,9 +47,6 @@ type EgressConfig struct {
 	Security         SecurityConfig
 	ID               string
 	ConcurrencyLimit int
-	MaxPoolHosts     int
-	IdleConnsPerHost int
-	IdleConnTimeout  time.Duration
 }
 
 func getEnv(key, defaultVal string) string {
@@ -151,9 +145,6 @@ func LoadEgressConfig() (*EgressConfig, error) {
 		Security:         LoadSecurityConfig(),
 		ID:               getEnv("EGRESS_ID", ""),
 		ConcurrencyLimit: getEnvInt("CONCURRENCY_LIMIT", defaultConcurrencyLimit),
-		MaxPoolHosts:     getEnvInt("MAX_POOL_HOSTS", defaultMaxPoolHosts),
-		IdleConnsPerHost: getEnvInt("IDLE_CONNS_PER_HOST", defaultIdleConnsPerHost),
-		IdleConnTimeout:  getEnvDuration("IDLE_CONN_TIMEOUT", defaultIdleConnTimeout),
 	}
 
 	err := validateEgressConfig(cfg)

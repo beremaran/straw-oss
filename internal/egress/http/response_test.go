@@ -12,6 +12,15 @@ import (
 	"github.com/beremaran/straw/internal/protocol"
 )
 
+const (
+	contentEncodingHeader = "Content-Encoding"
+	contentTypeHeader     = "Content-Type"
+	contentTypeJSON       = "application/json"
+	contentTypeTextPlain  = "text/plain"
+	xCustomHeader         = "X-Custom"
+	xCustomValue          = "value1"
+)
+
 type nopCloser struct {
 	io.Reader
 }
@@ -23,7 +32,7 @@ func TestBuildResponse_Basic(t *testing.T) {
 	resp := &fhttp.Response{
 		StatusCode: 200,
 		Header: fhttp.Header{
-			ContentTypeHeader: []string{HeaderValueTextPlain},
+			contentTypeHeader: []string{contentTypeTextPlain},
 		},
 		Body: nopCloser{bytes.NewReader(body)},
 	}
@@ -68,8 +77,8 @@ func TestBuildResponse_GzipBodyPreserved(t *testing.T) {
 	resp := &fhttp.Response{
 		StatusCode: 200,
 		Header: fhttp.Header{
-			ContentEncoding:   []string{"gzip"},
-			ContentTypeHeader: []string{HeaderValueTextPlain},
+			contentEncodingHeader: []string{"gzip"},
+			contentTypeHeader:     []string{contentTypeTextPlain},
 		},
 		Body: nopCloser{bytes.NewReader(buf.Bytes())},
 	}
@@ -83,8 +92,8 @@ func TestBuildResponse_GzipBodyPreserved(t *testing.T) {
 	if !bytes.Equal(protoResp.Body, rawBody) {
 		t.Errorf("expected raw gzip body %v, got %v", rawBody, protoResp.Body)
 	}
-	if protoResp.Headers.Get(ContentEncoding) != "gzip" {
-		t.Errorf("expected Content-Encoding gzip, got %q", protoResp.Headers.Get(ContentEncoding))
+	if protoResp.Headers.Get(contentEncodingHeader) != "gzip" {
+		t.Errorf("expected Content-Encoding gzip, got %q", protoResp.Headers.Get(contentEncodingHeader))
 	}
 }
 
@@ -94,8 +103,8 @@ func TestBuildResponse_BrotliBodyPreserved(t *testing.T) {
 	resp := &fhttp.Response{
 		StatusCode: 200,
 		Header: fhttp.Header{
-			ContentEncoding:   []string{"br"},
-			ContentTypeHeader: []string{HeaderValueTextPlain},
+			contentEncodingHeader: []string{"br"},
+			contentTypeHeader:     []string{contentTypeTextPlain},
 		},
 		Body: nopCloser{bytes.NewReader(body)},
 	}
@@ -116,7 +125,7 @@ func TestBuildResponse_NoCompression(t *testing.T) {
 	resp := &fhttp.Response{
 		StatusCode: 200,
 		Header: fhttp.Header{
-			ContentTypeHeader: []string{HeaderValueTextPlain},
+			contentTypeHeader: []string{contentTypeTextPlain},
 		},
 		Body: nopCloser{bytes.NewReader(body)},
 	}
@@ -137,8 +146,8 @@ func TestBuildResponse_IdentityEncoding(t *testing.T) {
 	resp := &fhttp.Response{
 		StatusCode: 200,
 		Header: fhttp.Header{
-			ContentEncoding:   []string{"identity"},
-			ContentTypeHeader: []string{HeaderValueTextPlain},
+			contentEncodingHeader: []string{"identity"},
+			contentTypeHeader:     []string{contentTypeTextPlain},
 		},
 		Body: nopCloser{bytes.NewReader(body)},
 	}
@@ -197,10 +206,10 @@ func TestBuildResponse_HeadersPreserved(t *testing.T) {
 	resp := &fhttp.Response{
 		StatusCode: 200,
 		Header: fhttp.Header{
-			ContentTypeHeader:  []string{HeaderValueApplicationJSON},
-			HeaderValueXCustom: []string{HeaderValueValue1},
-			"X-Multi-Value":    []string{"a", "b"},
-			"Cache-Control":    []string{"no-cache"},
+			contentTypeHeader: []string{contentTypeJSON},
+			xCustomHeader:     []string{xCustomValue},
+			"X-Multi-Value":   []string{"a", "b"},
+			"Cache-Control":   []string{"no-cache"},
 		},
 		Body: nopCloser{bytes.NewReader([]byte("{}"))},
 	}
@@ -211,88 +220,15 @@ func TestBuildResponse_HeadersPreserved(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if protoResp.Headers.Get(ContentTypeHeader) != HeaderValueApplicationJSON {
-		t.Errorf("expected Content-Type '%s', got %s", HeaderValueApplicationJSON, protoResp.Headers.Get(ContentTypeHeader))
+	if protoResp.Headers.Get(contentTypeHeader) != contentTypeJSON {
+		t.Errorf("expected Content-Type '%s', got %s", contentTypeJSON, protoResp.Headers.Get(contentTypeHeader))
 	}
 
-	if protoResp.Headers.Get(HeaderValueXCustom) != HeaderValueValue1 {
-		t.Errorf("expected X-Custom '%s', got %s", HeaderValueValue1, protoResp.Headers.Get(HeaderValueXCustom))
+	if protoResp.Headers.Get(xCustomHeader) != xCustomValue {
+		t.Errorf("expected X-Custom '%s', got %s", xCustomValue, protoResp.Headers.Get(xCustomHeader))
 	}
 
 	if protoResp.Headers.Get("Cache-Control") != "no-cache" {
 		t.Errorf("expected Cache-Control 'no-cache', got %s", protoResp.Headers.Get("Cache-Control"))
-	}
-}
-
-func TestBuildResponseWithOptions_BufferedResponse(t *testing.T) {
-	body := []byte("Normal content to buffer")
-	resp := &fhttp.Response{
-		StatusCode: 200,
-		Header: fhttp.Header{
-			ContentTypeHeader: []string{HeaderValueTextPlain},
-		},
-		Body: nopCloser{bytes.NewReader(body)},
-	}
-
-	timing := protocol.TimingInfo{Total: 50}
-	opts := ResponseOptions{
-		MaxBodySize: DefaultMaxBodySize,
-	}
-
-	protoResp, err := BuildResponseWithOptions("req-buffered", resp, timing, opts, "")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if string(protoResp.Body) != "Normal content to buffer" {
-		t.Errorf("expected body 'Normal content to buffer', got %s", string(protoResp.Body))
-	}
-}
-
-func TestBuildResponseWithOptions_CustomMaxBodySize(t *testing.T) {
-	customMaxSize := int64(10)
-	largeBody := bytes.Repeat([]byte("x"), 50)
-
-	resp := &fhttp.Response{
-		StatusCode: 200,
-		Header:     fhttp.Header{},
-		Body:       nopCloser{bytes.NewReader(largeBody)},
-	}
-
-	timing := protocol.TimingInfo{Total: 50}
-	opts := ResponseOptions{
-		MaxBodySize: customMaxSize,
-	}
-
-	protoResp, err := BuildResponseWithOptions("req-custom-size", resp, timing, opts, "")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if int64(len(protoResp.Body)) != customMaxSize {
-		t.Errorf("expected body to be truncated to %d bytes, got %d", customMaxSize, len(protoResp.Body))
-	}
-}
-
-func TestBuildResponseWithOptions_DefaultMaxBodySize(t *testing.T) {
-	body := []byte("Small content")
-	resp := &fhttp.Response{
-		StatusCode: 200,
-		Header:     fhttp.Header{},
-		Body:       nopCloser{bytes.NewReader(body)},
-	}
-
-	timing := protocol.TimingInfo{Total: 50}
-	opts := ResponseOptions{
-		MaxBodySize: 0,
-	}
-
-	protoResp, err := BuildResponseWithOptions("req-default-size", resp, timing, opts, "")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if string(protoResp.Body) != "Small content" {
-		t.Errorf("expected body 'Small content', got %s", string(protoResp.Body))
 	}
 }

@@ -10,22 +10,26 @@ import (
 	"strings"
 	"time"
 
-	"github.com/beremaran/straw/internal/broker"
 	"github.com/beremaran/straw/internal/config"
 	"github.com/beremaran/straw/internal/server/handlers"
 	mw "github.com/beremaran/straw/internal/server/middleware"
 )
+
+type controlBroker interface {
+	Publish(ctx context.Context, subject string, body []byte) error
+	ConsumeOnce(ctx context.Context, subject string, timeout time.Duration) ([]byte, error)
+}
 
 // Server is the HTTP server for the Straw control.
 type Server struct {
 	mux    *http.ServeMux
 	server *http.Server
 	conf   config.ControlConfig
-	broker broker.MessageBroker
+	broker controlBroker
 }
 
 // New creates a control server.
-func New(conf config.ControlConfig, b broker.MessageBroker) *Server {
+func New(conf config.ControlConfig, b controlBroker) *Server {
 	mux := http.NewServeMux()
 	s := &Server{
 		mux:    mux,
@@ -86,16 +90,6 @@ func (s *Server) Address() string {
 	return fmt.Sprintf(":%d", s.conf.HTTPPort)
 }
 
-// GetMux returns the HTTP serve mux.
-func (s *Server) GetMux() *http.ServeMux {
-	return s.mux
-}
-
-// GetHandler returns the server's HTTP handler.
-func (s *Server) GetHandler() http.Handler {
-	return s.server.Handler
-}
-
 func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /healthz", healthCheck)
 	s.mux.HandleFunc("GET /readyz", healthCheck)
@@ -104,7 +98,7 @@ func (s *Server) registerRoutes() {
 		s.broker,
 		s.conf.EgressID,
 		s.conf.ResultTimeout,
-		handlers.WithAllowPrivateIPs(s.conf.AllowPrivateIPs),
+		s.conf.AllowPrivateIPs,
 	)
 
 	v1Handler := applyMiddlewares(

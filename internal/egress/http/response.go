@@ -42,27 +42,6 @@ func BuildResponse(
 	}, nil
 }
 
-// ResponseOptions configures response building behavior.
-type ResponseOptions struct {
-	MaxBodySize int64
-}
-
-// BuildResponseWithOptions creates a protocol response with custom options.
-func BuildResponseWithOptions(
-	requestID string,
-	resp *fhttp.Response,
-	timing protocol.TimingInfo,
-	opts ResponseOptions,
-	egressID string,
-) (*protocol.Response, error) {
-	maxSize := opts.MaxBodySize
-	if maxSize <= 0 {
-		maxSize = DefaultMaxBodySize
-	}
-
-	return BuildResponse(requestID, resp, timing, maxSize, egressID)
-}
-
 func readResponseBody(resp *fhttp.Response, maxSize int64) ([]byte, error) {
 	return readRawResponseBody(resp, maxSize)
 }

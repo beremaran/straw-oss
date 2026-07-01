@@ -6,15 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/beremaran/straw/internal/broker"
 	"github.com/beremaran/straw/internal/protocol"
-)
-
-const (
-	// HTTPServerErrorCode is the lowest HTTP status code for server errors (5xx).
-	HTTPServerErrorCode = 500
-	// HTTPStatusClassUpperBound is the exclusive upper bound for 5xx status codes.
-	HTTPStatusClassUpperBound = 600
 )
 
 var (
@@ -24,34 +16,22 @@ var (
 	ErrMissingRequestID = errors.New("response must have a request ID")
 )
 
+type publishBroker interface {
+	Publish(ctx context.Context, subject string, body []byte) error
+}
+
 // Publisher publishes task results to a message broker.
 type Publisher struct {
-	broker broker.MessageBroker
+	broker publishBroker
 	logger *slog.Logger
 }
 
-// PublisherOption configures a Publisher.
-type PublisherOption func(*Publisher)
-
-// WithPublisherLogger sets the logger used by the Publisher.
-func WithPublisherLogger(logger *slog.Logger) PublisherOption {
-	return func(p *Publisher) {
-		p.logger = logger
-	}
-}
-
-// NewPublisher creates a new Publisher with the given broker and options.
-func NewPublisher(b broker.MessageBroker, opts ...PublisherOption) *Publisher {
-	p := &Publisher{
+// NewPublisher creates a new Publisher with the given broker.
+func NewPublisher(b publishBroker) *Publisher {
+	return &Publisher{
 		broker: b,
 		logger: slog.Default(),
 	}
-
-	for _, opt := range opts {
-		opt(p)
-	}
-
-	return p
 }
 
 // Publish marshals and sends a task result to the message broker.
@@ -88,61 +68,6 @@ func (p *Publisher) Publish(ctx context.Context, resp *protocol.Response, replyT
 	}
 
 	return nil
-}
-
-// PublishError publishes a result containing an error.
-func (p *Publisher) PublishError(ctx context.Context, requestID, egressID string, errInfo *protocol.ErrorInfo, replyTo string) error {
-	resp := &protocol.Response{
-		RequestID:  requestID,
-		EgressID:   egressID,
-		StatusCode: 0,
-		Error:      errInfo,
-	}
-
-	return p.Publish(ctx, resp, replyTo)
-}
-
-// NewNetworkError creates an ErrorInfo for a network failure.
-func NewNetworkError(message string, retryable bool) *protocol.ErrorInfo {
-	return &protocol.ErrorInfo{
-		Code:      protocol.ErrCodeUpstreamError,
-		Message:   "network error: " + message,
-		Retryable: retryable,
-	}
-}
-
-// NewTLSError creates an ErrorInfo for a TLS failure.
-func NewTLSError(message string) *protocol.ErrorInfo {
-	return &protocol.ErrorInfo{
-		Code:      protocol.ErrCodeUpstreamError,
-		Message:   "tls error: " + message,
-		Retryable: false,
-	}
-}
-
-// NewHTTPError creates an ErrorInfo for an HTTP status code error.
-func NewHTTPError(statusCode int, message string) *protocol.ErrorInfo {
-	retryable := statusCode >= HTTPServerErrorCode && statusCode < HTTPStatusClassUpperBound
-
-	return &protocol.ErrorInfo{
-		Code:      protocol.ErrCodeUpstreamError,
-		Message:   fmt.Sprintf("http error %d: %s", statusCode, message),
-		Retryable: retryable,
-	}
-}
-
-// NewTimeoutError creates an ErrorInfo for a timeout failure.
-func NewTimeoutError(message string) *protocol.ErrorInfo {
-	return &protocol.ErrorInfo{
-		Code:      protocol.ErrCodeEgressTimeout,
-		Message:   "timeout: " + message,
-		Retryable: true,
-	}
-}
-
-// Handler returns a function that publishes a task result, suitable as a broker handler.
-func (p *Publisher) Handler() func(ctx context.Context, resp *protocol.Response, replyTo string) error {
-	return p.Publish
 }
 
 func (p *Publisher) buildMessage(resp *protocol.Response) ([]byte, error) {

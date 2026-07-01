@@ -7,10 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-
-	"github.com/beremaran/straw/internal/broker"
 	"github.com/beremaran/straw/internal/config"
 )
 
@@ -28,8 +24,12 @@ func TestNewServer(t *testing.T) {
 	}
 
 	srv := New(cfg, noopBroker{})
-	assert.NotNil(t, srv)
-	assert.NotNil(t, srv.mux)
+	if srv == nil {
+		t.Fatal("expected server")
+	}
+	if srv.mux == nil {
+		t.Fatal("expected mux")
+	}
 }
 
 func TestServerUseMiddleware(t *testing.T) {
@@ -40,7 +40,9 @@ func TestServerUseMiddleware(t *testing.T) {
 		MaxConcurrentRequests: 1,
 	}
 	srv := New(cfg, noopBroker{})
-	assert.NotNil(t, srv)
+	if srv == nil {
+		t.Fatal("expected server")
+	}
 }
 
 func TestServerHealthRoutes(t *testing.T) {
@@ -68,22 +70,34 @@ func TestServerHealthRoutes(t *testing.T) {
 
 	t.Run("Healthz", func(t *testing.T) {
 		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, baseURL+"/healthz", nil)
-		require.NoError(t, err)
+		if err != nil {
+			t.Fatalf("new request: %v", err)
+		}
 		resp, err := http.DefaultClient.Do(req)
-		require.NoError(t, err)
+		if err != nil {
+			t.Fatalf("do request: %v", err)
+		}
 		defer func() { _ = resp.Body.Close() }()
 
-		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+		}
 	})
 
 	t.Run("Readyz", func(t *testing.T) {
 		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, baseURL+"/readyz", nil)
-		require.NoError(t, err)
+		if err != nil {
+			t.Fatalf("new request: %v", err)
+		}
 		resp, err := http.DefaultClient.Do(req)
-		require.NoError(t, err)
+		if err != nil {
+			t.Fatalf("do request: %v", err)
+		}
 		defer func() { _ = resp.Body.Close() }()
 
-		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+		}
 	})
 }
 
@@ -91,16 +105,6 @@ type noopBroker struct{}
 
 func (noopBroker) Publish(context.Context, string, []byte) error { return nil }
 
-func (noopBroker) Subscribe(context.Context, string, broker.Handler, ...broker.SubscribeOption) error {
-	return nil
-}
-
 func (noopBroker) ConsumeOnce(context.Context, string, time.Duration) ([]byte, error) {
-	return nil, broker.ErrTimeout
+	return nil, nil
 }
-
-func (noopBroker) DeclareStream(context.Context, string, ...string) error { return nil }
-
-func (noopBroker) IsConnected() bool { return true }
-
-func (noopBroker) Close() error { return nil }
