@@ -3,13 +3,17 @@ package server
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"os"
+	"os/signal"
 	"slices"
 	"strings"
+	"syscall"
 	"time"
 
+	"github.com/beremaran/straw/internal/broker"
 	"github.com/beremaran/straw/internal/config"
 	"github.com/beremaran/straw/internal/server/handlers"
 	mw "github.com/beremaran/straw/internal/server/middleware"
@@ -57,19 +61,70 @@ func New(conf config.ControlConfig, b controlBroker) *Server {
 
 // Start begins serving HTTP requests.
 func (s *Server) Start() error {
-	addr := fmt.Sprintf(":%d", s.conf.HTTPPort)
-
-	s.server.Addr = addr
-
-	var err error
+	s.server.Addr = fmt.Sprintf(":%d", s.conf.HTTPPort)
 	if s.conf.Security.TLSCertFile != "" && s.conf.Security.TLSKeyFile != "" {
-		err = s.server.ListenAndServeTLS(s.conf.Security.TLSCertFile, s.conf.Security.TLSKeyFile)
-	} else {
-		err = s.server.ListenAndServe()
+		return fmt.Errorf("listen TLS: %w", s.server.ListenAndServeTLS(s.conf.Security.TLSCertFile, s.conf.Security.TLSKeyFile))
 	}
 
-	if err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return fmt.Errorf("listen: %w", err)
+	return fmt.Errorf("listen: %w", s.server.ListenAndServe())
+}
+
+// Run loads configuration from the environment and starts the control server.
+func Run(version string) error {
+	cfg, err := config.LoadControlConfig()
+	if err != nil {
+		return fmt.Errorf("load configuration: %w", err)
+	}
+
+	return RunWithConfig(cfg, version)
+}
+
+// RunWithConfig starts the control server with the provided configuration.
+func RunWithConfig(cfg *config.ControlConfig, version string) error {
+	slog.Info("starting straw control", "version", version, "egress_id", cfg.EgressID)
+
+	natsBroker := broker.NewNatsBroker(cfg.NATS.URL, cfg.NATS.Token)
+
+	err := natsBroker.Connect()
+	if err != nil {
+		return fmt.Errorf("connect to NATS: %w", err)
+	}
+	defer func() { _ = natsBroker.Close() }()
+
+	err = natsBroker.DeclareStream(context.Background(), "tasks", "tasks.>")
+	if err != nil {
+		return fmt.Errorf("declare stream tasks: %w", err)
+	}
+
+	err = natsBroker.DeclareStream(context.Background(), "results", "results.>")
+	if err != nil {
+		return fmt.Errorf("declare stream results: %w", err)
+	}
+
+	s := New(*cfg, natsBroker)
+
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+
+	defer signal.Stop(c)
+
+	go func() {
+		err := s.Start()
+		if err != nil {
+			slog.Error("server stopped", "error", err)
+		}
+	}()
+
+	fmt.Printf("Straw control %s started on %s, egress %s\n", version, s.Address(), cfg.EgressID)
+
+	<-c
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+	defer shutdownCancel()
+
+	err = s.Stop(shutdownCtx)
+	if err != nil {
+		slog.Error("server forced to shutdown", "error", err)
 	}
 
 	return nil
