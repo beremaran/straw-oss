@@ -12,31 +12,10 @@ import (
 // ErrPrivateIP is returned when the target URL resolves to a private IP address.
 var ErrPrivateIP = errors.New("target resolves to private ip")
 
-// ValidationOptions configures URL validation behavior.
-type ValidationOptions struct {
-	// AllowPrivateIPs permits targets that resolve to private, loopback, or link-local addresses.
-	AllowPrivateIPs bool
-}
-
-// ValidationOption modifies ValidationOptions.
-type ValidationOption func(*ValidationOptions)
-
-// WithAllowPrivateIPs returns an option that allows targets resolving to private IPs.
-func WithAllowPrivateIPs() ValidationOption {
-	return func(o *ValidationOptions) {
-		o.AllowPrivateIPs = true
-	}
-}
-
 // ValidateTargetURL validates that targetURL is well-formed and does not resolve
 // to a private IP address. It returns ErrPrivateIP if a private address is found
-// and AllowPrivateIPs is not set.
-func ValidateTargetURL(ctx context.Context, targetURL string, opts ...ValidationOption) error {
-	options := &ValidationOptions{}
-	for _, opt := range opts {
-		opt(options)
-	}
-
+// and allowPrivateIPs is false.
+func ValidateTargetURL(ctx context.Context, targetURL string, allowPrivateIPs bool) error {
 	u, err := url.Parse(targetURL)
 	if err != nil {
 		return fmt.Errorf("invalid url: %w", err)
@@ -55,7 +34,7 @@ func ValidateTargetURL(ctx context.Context, targetURL string, opts ...Validation
 		ips = append(ips, ipAddr.IP)
 	}
 
-	if !options.AllowPrivateIPs {
+	if !allowPrivateIPs {
 		for _, ip := range ips {
 			if isPrivateIP(ip) {
 				return fmt.Errorf("%w: %s", ErrPrivateIP, ip.String())

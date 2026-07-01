@@ -4,24 +4,17 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"net"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/beremaran/straw/internal/broker"
 	"github.com/beremaran/straw/internal/config"
-	"github.com/beremaran/straw/internal/egress/fingerprint"
 	egresshttp "github.com/beremaran/straw/internal/egress/http"
-	egresstls "github.com/beremaran/straw/internal/egress/tls"
-	egresstransport "github.com/beremaran/straw/internal/egress/transport"
 )
 
 // Version is the build version of the egress worker.
 var Version = "dev"
-
-const defaultTimeout = 30 * time.Second
 
 // Worker wraps the egress components.
 type Worker struct {
@@ -29,24 +22,9 @@ type Worker struct {
 	executor RequestExecutor
 }
 
-// WorkerOption configures a Worker.
-type WorkerOption func(*Worker)
-
-// WithRequestExecutor configures the Worker to use a custom RequestExecutor.
-func WithRequestExecutor(executor RequestExecutor) WorkerOption {
-	return func(w *Worker) {
-		w.executor = executor
-	}
-}
-
 // NewWorker initializes a worker.
-func NewWorker(cfg *config.EgressConfig, opts ...WorkerOption) *Worker {
-	w := &Worker{cfg: cfg}
-	for _, opt := range opts {
-		opt(w)
-	}
-
-	return w
+func NewWorker(cfg *config.EgressConfig, executor RequestExecutor) *Worker {
+	return &Worker{cfg: cfg, executor: executor}
 }
 
 // Run loads configuration from the environment and starts a worker.
@@ -61,7 +39,7 @@ func Run() error {
 
 // RunWithConfig starts the worker with the provided configuration.
 func RunWithConfig(cfg *config.EgressConfig) error {
-	w := NewWorker(cfg)
+	w := NewWorker(cfg, nil)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -91,18 +69,15 @@ func (w *Worker) Start(ctx context.Context) error {
 		mqBroker,
 		executor,
 		w.cfg.ID,
-		WithConcurrencyLimit(w.cfg.ConcurrencyLimit),
-		WithResultHandler(resultPublisher.Handler()),
+		w.cfg.ConcurrencyLimit,
+		resultPublisher.Publish,
 	)
 
 	return taskConsumer.Start(ctx)
 }
 
-func connectWorkerBroker(cfg *config.EgressConfig) (broker.MessageBroker, error) {
-	mqBroker := broker.NewNatsBroker(
-		broker.Addrs(cfg.NATS.URL),
-		broker.Token(cfg.NATS.Token),
-	)
+func connectWorkerBroker(cfg *config.EgressConfig) (*broker.NatsBroker, error) {
+	mqBroker := broker.NewNatsBroker(cfg.NATS.URL, cfg.NATS.Token)
 
 	err := mqBroker.Connect()
 	if err != nil {
@@ -120,25 +95,9 @@ func setupEgressExecutor(
 		return executor, func() {}
 	}
 
-	registry := fingerprint.DefaultRegistry()
-
-	poolConfig := egresstransport.DefaultPoolConfig().
-		WithMaxPoolHosts(cfg.MaxPoolHosts).
-		WithIdleConnsPerHost(cfg.IdleConnsPerHost).
-		WithIdleConnTimeout(cfg.IdleConnTimeout)
-
-	pooledTransport := egresstransport.NewPooledTransport(poolConfig, func(ctx context.Context, network, addr, fp string) (net.Conn, error) {
-		return egresstls.Dial(ctx, network, addr, fp)
-	})
-	httpClient := egresshttp.NewClient(
-		registry,
-		pooledTransport,
-		egresshttp.WithEgressID(cfg.ID),
-		egresshttp.WithDefaultTimeout(defaultTimeout),
-	)
+	httpClient := egresshttp.NewClient(cfg.ID)
 
 	return httpClient, func() {
 		_ = httpClient.Close()
-		_ = pooledTransport.Close()
 	}
 }

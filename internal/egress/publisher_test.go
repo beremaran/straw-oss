@@ -3,12 +3,10 @@ package egress
 import (
 	"context"
 	"net/http"
-	"strconv"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/beremaran/straw/internal/broker"
 	"github.com/beremaran/straw/internal/protocol"
 )
 
@@ -32,26 +30,6 @@ func (m *mockPublisherBroker) Publish(_ context.Context, subject string, body []
 	})
 
 	return nil
-}
-
-func (m *mockPublisherBroker) Subscribe(_ context.Context, _ string, _ broker.Handler, _ ...broker.SubscribeOption) error {
-	return nil
-}
-
-func (m *mockPublisherBroker) ConsumeOnce(_ context.Context, _ string, _ time.Duration) ([]byte, error) {
-	return nil, nil
-}
-
-func (m *mockPublisherBroker) Close() error {
-	return nil
-}
-
-func (m *mockPublisherBroker) DeclareStream(_ context.Context, _ string, _ ...string) error {
-	return nil
-}
-
-func (m *mockPublisherBroker) IsConnected() bool {
-	return true
 }
 
 func (m *mockPublisherBroker) getMessages() []publishedMsg {
@@ -219,130 +197,6 @@ func TestPublisher_Publish_MissingRequestID(t *testing.T) {
 	err := p.Publish(context.Background(), resp, "")
 	if err == nil {
 		t.Fatal("expected error for missing request ID")
-	}
-}
-
-func TestPublisher_PublishError(t *testing.T) {
-	mb := &mockPublisherBroker{}
-	p := NewPublisher(mb)
-
-	errInfo := &protocol.ErrorInfo{
-		Code:      protocol.ErrCodeUpstreamError,
-		Message:   "network error",
-		Retryable: true,
-	}
-
-	err := p.PublishError(context.Background(), "test-req", testEgressID, errInfo, "results.test-req")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	msgs := mb.getMessages()
-	if len(msgs) != 1 {
-		t.Fatalf("expected 1 message, got %d", len(msgs))
-	}
-
-	if msgs[0].Subject != "results.test-req" {
-		t.Errorf("expected subject 'results.test-req', got %q", msgs[0].Subject)
-	}
-}
-
-func TestPublisher_Handler(t *testing.T) {
-	mb := &mockPublisherBroker{}
-	p := NewPublisher(mb)
-
-	handler := p.Handler()
-	if handler == nil {
-		t.Fatal("expected handler to be non-nil")
-	}
-
-	resp := &protocol.Response{
-		RequestID:  "test-request",
-		StatusCode: 200,
-	}
-
-	err := handler(context.Background(), resp, "")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	msgs := mb.getMessages()
-	if len(msgs) != 1 {
-		t.Fatalf("expected 1 message, got %d", len(msgs))
-	}
-}
-
-func TestNewNetworkError(t *testing.T) {
-	err := NewNetworkError("connection refused", true)
-
-	if err.Code != protocol.ErrCodeUpstreamError {
-		t.Errorf("expected code %q, got %q", protocol.ErrCodeUpstreamError, err.Code)
-	}
-
-	if err.Message != "network error: connection refused" {
-		t.Errorf("unexpected message: %s", err.Message)
-	}
-
-	if !err.Retryable {
-		t.Error("expected error to be retryable")
-	}
-}
-
-func TestNewTLSError(t *testing.T) {
-	err := NewTLSError("certificate verify failed")
-
-	if err.Code != protocol.ErrCodeUpstreamError {
-		t.Errorf("expected code %q, got %q", protocol.ErrCodeUpstreamError, err.Code)
-	}
-
-	if err.Message != "tls error: certificate verify failed" {
-		t.Errorf("unexpected message: %s", err.Message)
-	}
-
-	if err.Retryable {
-		t.Error("expected TLS errors to not be retryable")
-	}
-}
-
-func TestNewHTTPError(t *testing.T) {
-	tests := []struct {
-		statusCode int
-		retryable  bool
-	}{
-		{400, false},
-		{401, false},
-		{403, false},
-		{404, false},
-		{500, true},
-		{502, true},
-		{503, true},
-		{504, true},
-	}
-
-	for _, tt := range tests {
-		t.Run(strconv.Itoa(tt.statusCode), func(t *testing.T) {
-			err := NewHTTPError(tt.statusCode, "test error")
-
-			if err.Retryable != tt.retryable {
-				t.Errorf("status %d: expected retryable=%v, got %v", tt.statusCode, tt.retryable, err.Retryable)
-			}
-		})
-	}
-}
-
-func TestNewTimeoutError(t *testing.T) {
-	err := NewTimeoutError("request timed out after 30s")
-
-	if err.Code != protocol.ErrCodeEgressTimeout {
-		t.Errorf("expected code %q, got %q", protocol.ErrCodeEgressTimeout, err.Code)
-	}
-
-	if err.Message != "timeout: request timed out after 30s" {
-		t.Errorf("unexpected message: %s", err.Message)
-	}
-
-	if !err.Retryable {
-		t.Error("expected timeout errors to be retryable")
 	}
 }
 

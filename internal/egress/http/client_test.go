@@ -7,9 +7,6 @@ import (
 	"testing"
 	"time"
 
-	fhttp "github.com/bogdanfinn/fhttp"
-
-	"github.com/beremaran/straw/internal/egress/fingerprint"
 	"github.com/beremaran/straw/internal/protocol"
 )
 
@@ -19,23 +16,8 @@ const testID = "test-123"
 
 const getMethod = "GET"
 
-type mockTransportProvider struct {
-	transport *fhttp.Transport
-}
-
-func (m *mockTransportProvider) GetTransport(_ string, _ fingerprint.Preset) *fhttp.Transport {
-	if m.transport != nil {
-		return m.transport
-	}
-
-	return &fhttp.Transport{}
-}
-
 func TestNewClient(t *testing.T) {
-	registry := fingerprint.DefaultRegistry()
-	provider := &mockTransportProvider{}
-
-	client := NewClient(registry, provider)
+	client := NewClient("")
 	if client == nil {
 		t.Fatal("expected non-nil client")
 	}
@@ -49,25 +31,8 @@ func TestNewClient(t *testing.T) {
 	}
 }
 
-func TestNewClient_WithOptions(t *testing.T) {
-	registry := fingerprint.DefaultRegistry()
-	provider := &mockTransportProvider{}
-
-	client := NewClient(
-		registry,
-		provider,
-		WithDefaultTimeout(60*time.Second),
-		WithMaxBodySize(5*1024*1024),
-		WithEgressID("test-egress"),
-	)
-
-	if client.defaultTimeout != 60*time.Second {
-		t.Errorf("expected timeout 60s, got %v", client.defaultTimeout)
-	}
-
-	if client.maxBodySize != 5*1024*1024 {
-		t.Errorf("expected max body size 5MB, got %v", client.maxBodySize)
-	}
+func TestNewClient_WithEgressID(t *testing.T) {
+	client := NewClient("test-egress")
 
 	if client.egressID != "test-egress" {
 		t.Errorf("expected egress ID 'test-egress', got %v", client.egressID)
@@ -75,42 +40,11 @@ func TestNewClient_WithOptions(t *testing.T) {
 }
 
 func TestClient_Close(t *testing.T) {
-	registry := fingerprint.DefaultRegistry()
-	provider := &mockTransportProvider{}
-	client := NewClient(registry, provider)
+	client := NewClient("")
 
 	err := client.Close()
 	if err != nil {
 		t.Errorf("unexpected error on close: %v", err)
-	}
-}
-
-func TestNewRequest(t *testing.T) {
-	req := NewRequest(getMethod, exampleURL, nil)
-
-	if req.Method != http.MethodGet {
-		t.Errorf("expected method GET, got %s", req.Method)
-	}
-
-	if req.URL != exampleURL {
-		t.Errorf("expected URL https://example.com, got %s", req.URL)
-	}
-
-	if req.ID == "" {
-		t.Error("expected non-empty request ID")
-	}
-}
-
-func TestNewRequest_WithBody(t *testing.T) {
-	body := []byte(`{"key": "value"}`)
-	req := NewRequest("POST", "https://example.com/api", body)
-
-	if req.Method != http.MethodPost {
-		t.Errorf("expected method POST, got %s", req.Method)
-	}
-
-	if string(req.Body) != `{"key": "value"}` {
-		t.Errorf("expected body %s, got %s", `{"key": "value"}`, string(req.Body))
 	}
 }
 
@@ -122,10 +56,7 @@ func TestClient_Do_MockServer(t *testing.T) {
 	}))
 	defer server.Close()
 
-	registry := fingerprint.DefaultRegistry()
-
-	provider := &mockTransportProvider{}
-	client := NewClient(registry, provider, WithEgressID("test-ep"))
+	client := NewClient("test-ep")
 
 	req := &protocol.Request{
 		ID:      testID,
@@ -160,15 +91,14 @@ func TestClient_Do_MockServer(t *testing.T) {
 }
 
 func TestClient_Do_Error(t *testing.T) {
-	registry := fingerprint.DefaultRegistry()
-	provider := &mockTransportProvider{}
-	client := NewClient(registry, provider, WithDefaultTimeout(100*time.Millisecond))
+	client := NewClient("")
 
 	req := &protocol.Request{
 		ID:      "test-error",
 		Method:  getMethod,
 		URL:     "http://localhost:1",
 		Headers: protocol.HeaderMap{},
+		Timeout: 100 * time.Millisecond,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
@@ -188,16 +118,14 @@ func TestClient_Do_Error(t *testing.T) {
 	}
 }
 
-func TestClient_Do_DefaultFingerprint(t *testing.T) {
+func TestClient_Do_DefaultChromeProfile(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	}))
 	defer server.Close()
 
-	registry := fingerprint.DefaultRegistry()
-	provider := &mockTransportProvider{}
-	client := NewClient(registry, provider)
+	client := NewClient("")
 
 	req := &protocol.Request{
 		ID:      "test-default",

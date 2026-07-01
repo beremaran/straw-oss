@@ -9,12 +9,42 @@ import (
 
 	fhttp "github.com/bogdanfinn/fhttp"
 
-	"github.com/beremaran/straw/internal/egress/fingerprint"
 	"github.com/beremaran/straw/internal/protocol"
 )
 
-// BuildRequest creates an fhttp.Request from a protocol request with fingerprint headers applied.
-func BuildRequest(ctx context.Context, req *protocol.Request, preset fingerprint.Preset) (*fhttp.Request, error) {
+const (
+	chromeUserAgent       = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
+	chromeAcceptLanguage  = "en-US,en;q=0.9"
+	chromeSecCHUA         = `"Chromium";v="133", "Not-A.Brand";v="24", "Google Chrome";v="133"`
+	chromeSecCHUAMobile   = "?0"
+	chromeSecCHUAPlatform = `"Windows"`
+	userAgentHeader       = "User-Agent"
+	acceptHeader          = "Accept"
+	acceptAll             = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"
+)
+
+var (
+	chromeHeaderOrder = []string{
+		"Host",
+		"Connection",
+		"sec-ch-ua",
+		"sec-ch-ua-mobile",
+		"sec-ch-ua-platform",
+		"Upgrade-Insecure-Requests",
+		userAgentHeader,
+		acceptHeader,
+		"Sec-Fetch-Site",
+		"Sec-Fetch-Mode",
+		"Sec-Fetch-User",
+		"Sec-Fetch-Dest",
+		"Accept-Encoding",
+		"Accept-Language",
+	}
+	chromePseudoHeaderOrder = []string{":method", ":authority", ":scheme", ":path"}
+)
+
+// BuildRequest creates an fhttp.Request from a protocol request with Chrome headers applied.
+func BuildRequest(ctx context.Context, req *protocol.Request) (*fhttp.Request, error) {
 	parsedURL, err := url.Parse(req.URL)
 	if err != nil {
 		return nil, &ClientError{
@@ -46,13 +76,11 @@ func BuildRequest(ctx context.Context, req *protocol.Request, preset fingerprint
 
 	applyHeaders(fhttpReq, req.Headers)
 
-	applyHeaderOrder(fhttpReq, preset.HeaderOrder)
+	applyHeaderOrder(fhttpReq, chromeHeaderOrder)
 
-	if len(preset.PseudoHeaderOrder) > 0 {
-		fhttpReq.Header[fhttp.PHeaderOrderKey] = preset.PseudoHeaderOrder
-	}
+	fhttpReq.Header[fhttp.PHeaderOrderKey] = chromePseudoHeaderOrder
 
-	applyFingerprintHeaders(fhttpReq, preset)
+	applyDefaultChromeHeaders(fhttpReq)
 
 	return fhttpReq, nil
 }
@@ -109,8 +137,8 @@ func applyHeaderOrder(req *fhttp.Request, order []string) {
 	req.Header[fhttp.HeaderOrderKey] = orderedHeaders
 }
 
-func applyFingerprintHeaders(req *fhttp.Request, preset fingerprint.Preset) {
-	for _, h := range defaultFingerprintHeaders(preset) {
+func applyDefaultChromeHeaders(req *fhttp.Request) {
+	for _, h := range defaultChromeHeaders() {
 		setHeaderDefault(req, h.key, h.value)
 	}
 }
@@ -120,14 +148,14 @@ type defaultHeader struct {
 	value string
 }
 
-func defaultFingerprintHeaders(preset fingerprint.Preset) []defaultHeader {
+func defaultChromeHeaders() []defaultHeader {
 	return []defaultHeader{
-		{key: "User-Agent", value: preset.UserAgent},
-		{key: "Accept-Language", value: preset.AcceptLanguage},
-		{key: "Sec-CH-UA", value: preset.SecCHUA},
-		{key: "Sec-CH-UA-Mobile", value: preset.SecCHUAMobile},
-		{key: "Sec-CH-UA-Platform", value: preset.SecCHUAPlatform},
-		{key: AcceptHeader, value: AcceptAll},
+		{key: userAgentHeader, value: chromeUserAgent},
+		{key: "Accept-Language", value: chromeAcceptLanguage},
+		{key: "Sec-CH-UA", value: chromeSecCHUA},
+		{key: "Sec-CH-UA-Mobile", value: chromeSecCHUAMobile},
+		{key: "Sec-CH-UA-Platform", value: chromeSecCHUAPlatform},
+		{key: acceptHeader, value: acceptAll},
 		{key: "Accept-Encoding", value: "gzip, deflate, br"},
 		{key: "Connection", value: "keep-alive"},
 	}

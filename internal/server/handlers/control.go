@@ -15,45 +15,37 @@ import (
 	"github.com/beremaran/straw/internal/broker"
 	"github.com/beremaran/straw/internal/protocol"
 	"github.com/beremaran/straw/internal/server/dto"
-	"github.com/beremaran/straw/internal/server/helper"
 	"github.com/beremaran/straw/internal/validator"
 )
 
+type brokerClient interface {
+	Publish(ctx context.Context, subject string, body []byte) error
+	ConsumeOnce(ctx context.Context, subject string, timeout time.Duration) ([]byte, error)
+}
+
+const errorMessageKey = "message"
+
 // ControlHandler sends an incoming HTTP request to one configured egress.
 type ControlHandler struct {
-	broker          broker.MessageBroker
+	broker          brokerClient
 	egressID        string
 	resultTimeout   time.Duration
 	allowPrivateIPs bool
 }
 
-// ControlHandlerOption configures a ControlHandler.
-type ControlHandlerOption func(*ControlHandler)
-
-// WithAllowPrivateIPs permits control requests to target private IP addresses.
-func WithAllowPrivateIPs(allow bool) ControlHandlerOption {
-	return func(h *ControlHandler) {
-		h.allowPrivateIPs = allow
-	}
-}
-
 // NewControlHandler creates a control handler.
 func NewControlHandler(
-	b broker.MessageBroker,
+	b brokerClient,
 	egressID string,
 	resultTimeout time.Duration,
-	opts ...ControlHandlerOption,
+	allowPrivateIPs bool,
 ) *ControlHandler {
-	h := &ControlHandler{
-		broker:        b,
-		egressID:      egressID,
-		resultTimeout: resultTimeout,
+	return &ControlHandler{
+		broker:          b,
+		egressID:        egressID,
+		resultTimeout:   resultTimeout,
+		allowPrivateIPs: allowPrivateIPs,
 	}
-	for _, opt := range opts {
-		opt(h)
-	}
-
-	return h
 }
 
 // Handle proxies a request through the configured egress.
@@ -81,23 +73,23 @@ func (h *ControlHandler) Handle(w http.ResponseWriter, r *http.Request) {
 func (h *ControlHandler) readControlRequest(w http.ResponseWriter, r *http.Request) (*protocol.Request, bool) {
 	var reqDTO dto.ControlRequest
 
-	err := helper.ReadJSON(r, &reqDTO)
+	err := readJSON(r, &reqDTO)
 	if err != nil {
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) || strings.Contains(err.Error(), "request body too large") {
-			helper.WriteError(w, http.StatusRequestEntityTooLarge, "request body too large")
+			writeError(w, http.StatusRequestEntityTooLarge, "request body too large")
 
 			return nil, false
 		}
 
-		helper.WriteError(w, http.StatusBadRequest, "invalid request body")
+		writeError(w, http.StatusBadRequest, "invalid request body")
 
 		return nil, false
 	}
 
 	req, err := reqDTO.ToProtocolRequest()
 	if err != nil {
-		helper.WriteError(w, http.StatusBadRequest, err.Error())
+		writeError(w, http.StatusBadRequest, err.Error())
 
 		return nil, false
 	}
@@ -107,7 +99,7 @@ func (h *ControlHandler) readControlRequest(w http.ResponseWriter, r *http.Reque
 
 func (h *ControlHandler) prepareControlRequest(w http.ResponseWriter, r *http.Request, req *protocol.Request) bool {
 	if req.URL == "" {
-		helper.WriteError(w, http.StatusBadRequest, "missing url")
+		writeError(w, http.StatusBadRequest, "missing url")
 
 		return false
 	}
@@ -124,14 +116,9 @@ func (h *ControlHandler) prepareControlRequest(w http.ResponseWriter, r *http.Re
 		req.ID = "req_" + strconv.FormatInt(time.Now().UnixNano(), 10)
 	}
 
-	validationOpts := []validator.ValidationOption{}
-	if h.allowPrivateIPs {
-		validationOpts = append(validationOpts, validator.WithAllowPrivateIPs())
-	}
-
-	err := validator.ValidateTargetURL(r.Context(), req.URL, validationOpts...)
+	err := validator.ValidateTargetURL(r.Context(), req.URL, h.allowPrivateIPs)
 	if err != nil {
-		helper.WriteError(w, http.StatusForbidden, fmt.Sprintf("invalid target url: %v", err))
+		writeError(w, http.StatusForbidden, fmt.Sprintf("invalid target url: %v", err))
 
 		return false
 	}
@@ -145,7 +132,7 @@ func (h *ControlHandler) sendAndWait(ctx context.Context, w http.ResponseWriter,
 
 	body, err := protocol.MarshalRequest(req)
 	if err != nil {
-		helper.WriteError(w, http.StatusInternalServerError, "failed to encode request")
+		writeError(w, http.StatusInternalServerError, "failed to encode request")
 
 		return nil, false
 	}
@@ -155,7 +142,7 @@ func (h *ControlHandler) sendAndWait(ctx context.Context, w http.ResponseWriter,
 	err = h.broker.Publish(ctx, subject, body)
 	if err != nil {
 		slog.Error("failed to publish task", "error", err, "subject", subject)
-		helper.WriteError(w, http.StatusBadGateway, "failed to publish request")
+		writeError(w, http.StatusBadGateway, "failed to publish request")
 
 		return nil, false
 	}
@@ -166,7 +153,7 @@ func (h *ControlHandler) sendAndWait(ctx context.Context, w http.ResponseWriter,
 			writeTimeoutResponse(w, req.ID)
 		} else {
 			slog.Error("failed to consume result", "error", err, "subject", replyTo)
-			helper.WriteError(w, http.StatusBadGateway, "failed to receive response")
+			writeError(w, http.StatusBadGateway, "failed to receive response")
 		}
 
 		return nil, false
@@ -174,7 +161,7 @@ func (h *ControlHandler) sendAndWait(ctx context.Context, w http.ResponseWriter,
 
 	result, err := protocol.UnmarshalResponse(resultBody)
 	if err != nil {
-		helper.WriteError(w, http.StatusBadGateway, "invalid egress response")
+		writeError(w, http.StatusBadGateway, "invalid egress response")
 
 		return nil, false
 	}
@@ -244,9 +231,9 @@ func writeEgressError(w http.ResponseWriter, status int, errInfo *protocol.Error
 
 	err := json.NewEncoder(w).Encode(errorResponse{
 		Error: errorBody{
-			"code":      errInfo.Code,
-			"message":   errInfo.Message,
-			"retryable": errInfo.Retryable,
+			"code":          errInfo.Code,
+			errorMessageKey: errInfo.Message,
+			"retryable":     errInfo.Retryable,
 		},
 	})
 	if err != nil {
@@ -260,10 +247,10 @@ func writeTimeoutResponse(w http.ResponseWriter, requestID string) {
 
 	err := json.NewEncoder(w).Encode(errorResponse{
 		Error: errorBody{
-			"code":       protocol.ErrCodeEgressTimeout,
-			"message":    "egress did not respond in time",
-			"retryable":  true,
-			"request_id": requestID,
+			"code":          protocol.ErrCodeEgressTimeout,
+			errorMessageKey: "egress did not respond in time",
+			"retryable":     true,
+			"request_id":    requestID,
 		},
 	})
 	if err != nil {
@@ -276,3 +263,24 @@ type errorResponse struct {
 }
 
 type errorBody map[string]any
+
+func readJSON(r *http.Request, dst any) error {
+	err := json.NewDecoder(r.Body).Decode(dst)
+	if err != nil {
+		return fmt.Errorf("decode json request: %w", err)
+	}
+
+	return nil
+}
+
+func writeError(w http.ResponseWriter, status int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+
+	err := json.NewEncoder(w).Encode(errorResponse{
+		Error: errorBody{errorMessageKey: message},
+	})
+	if err != nil {
+		slog.Error("failed to encode error response", "error", err)
+	}
+}

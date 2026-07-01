@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/beremaran/straw/internal/broker"
 	"github.com/beremaran/straw/internal/protocol"
 )
 
@@ -33,7 +32,7 @@ func TestControlHandlerPublishesAndWritesEgressResult(t *testing.T) {
 	mb := &controlMockBroker{
 		result: resultBody,
 	}
-	handler := NewControlHandler(mb, "egress-1", time.Second)
+	handler := NewControlHandler(mb, "egress-1", time.Second, false)
 
 	req := httptest.NewRequestWithContext(
 		context.Background(),
@@ -84,18 +83,8 @@ func (m *controlMockBroker) Publish(_ context.Context, subject string, body []by
 	return nil
 }
 
-func (m *controlMockBroker) Subscribe(context.Context, string, broker.Handler, ...broker.SubscribeOption) error {
-	return nil
-}
-
 func (m *controlMockBroker) ConsumeOnce(_ context.Context, subject string, _ time.Duration) ([]byte, error) {
 	m.consumeSubject = subject
 
 	return m.result, nil
 }
-
-func (m *controlMockBroker) DeclareStream(context.Context, string, ...string) error { return nil }
-
-func (m *controlMockBroker) IsConnected() bool { return true }
-
-func (m *controlMockBroker) Close() error { return nil }

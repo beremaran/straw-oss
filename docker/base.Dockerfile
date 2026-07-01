@@ -11,13 +11,11 @@ RUN go mod download
 COPY . .
 
 ARG VERSION=dev
-ARG COMMIT=unknown
-ARG BUILD_TIME=unknown
 
 RUN CGO_ENABLED=0 GOOS=linux go build \
-    -ldflags "-w -s -X main.Version=${VERSION} -X main.GitCommit=${COMMIT} -X main.BuildTime=${BUILD_TIME}" \
+    -ldflags "-w -s -X main.Version=${VERSION}" \
     -o /app/control ./cmd/control
 
 RUN CGO_ENABLED=0 GOOS=linux go build \
-    -ldflags "-w -s -X main.Version=${VERSION} -X main.GitCommit=${COMMIT} -X main.BuildTime=${BUILD_TIME}" \
+    -ldflags "-w -s -X main.Version=${VERSION}" \
     -o /app/egress ./cmd/egress

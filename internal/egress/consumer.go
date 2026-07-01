@@ -16,6 +16,10 @@ const (
 	DefaultConcurrencyLimit = 25
 )
 
+type subscriber interface {
+	Subscribe(ctx context.Context, subject string, handler broker.Handler, maxAckPending int) error
+}
+
 // RequestExecutor defines the interface for executing a proxy request.
 // This allows users to supply their own request executors or HTTP clients.
 type RequestExecutor interface {
@@ -24,7 +28,7 @@ type RequestExecutor interface {
 
 // Consumer manages task consumption from a message broker and execution of proxy requests.
 type Consumer struct {
-	broker           broker.MessageBroker
+	broker           subscriber
 	httpClient       RequestExecutor
 	egressID         string
 	taskSubject      string
@@ -40,50 +44,26 @@ type Consumer struct {
 	subCancel        context.CancelFunc
 }
 
-// Option configures a Consumer.
-type Option func(*Consumer)
-
-// WithConcurrencyLimit sets the maximum number of concurrent tasks the Consumer will process.
-func WithConcurrencyLimit(n int) Option {
-	return func(c *Consumer) {
-		if n > 0 {
-			c.concurrencyLimit = n
-		}
-	}
-}
-
-// WithResultHandler sets a callback invoked when a task result is ready to be published.
-func WithResultHandler(h func(ctx context.Context, resp *protocol.Response, replyTo string) error) Option {
-	return func(c *Consumer) {
-		c.resultHandler = h
-	}
-}
-
-// WithLogger sets the logger used by the Consumer.
-func WithLogger(logger *slog.Logger) Option {
-	return func(c *Consumer) {
-		c.logger = logger
-	}
-}
-
-// NewConsumer creates a new Consumer with the given broker, executor, and options.
+// NewConsumer creates a new Consumer with the given broker and executor.
 func NewConsumer(
-	b broker.MessageBroker,
+	b subscriber,
 	httpClient RequestExecutor,
 	egressID string,
-	opts ...Option,
+	concurrencyLimit int,
+	resultHandler func(ctx context.Context, resp *protocol.Response, replyTo string) error,
 ) *Consumer {
+	if concurrencyLimit <= 0 {
+		concurrencyLimit = DefaultConcurrencyLimit
+	}
+
 	c := &Consumer{
 		broker:           b,
 		httpClient:       httpClient,
 		egressID:         egressID,
 		taskSubject:      "tasks." + egressID + ".tasks",
-		concurrencyLimit: DefaultConcurrencyLimit,
+		concurrencyLimit: concurrencyLimit,
+		resultHandler:    resultHandler,
 		logger:           slog.Default(),
-	}
-
-	for _, opt := range opts {
-		opt(c)
 	}
 
 	c.semaphore = make(chan struct{}, c.concurrencyLimit)
@@ -137,7 +117,7 @@ func (c *Consumer) Resume(ctx context.Context) error {
 	c.subCtx = subCtx
 	c.subCancel = subCancel
 
-	err := c.broker.Subscribe(subCtx, c.taskSubject, c.handleMessage, broker.WithMaxAckPending(c.concurrencyLimit))
+	err := c.broker.Subscribe(subCtx, c.taskSubject, c.handleMessage, c.concurrencyLimit)
 	if err != nil {
 		subCancel()
 		c.subCancel = nil

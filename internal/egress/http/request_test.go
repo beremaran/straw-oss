@@ -7,16 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/beremaran/straw/internal/egress/fingerprint"
 	"github.com/beremaran/straw/internal/protocol"
 )
 
 func TestBuildRequest_Basic(t *testing.T) {
-	preset, ok := fingerprint.Get("chrome-133")
-	if !ok {
-		t.Fatal("chrome-133 preset not found")
-	}
-
 	req := &protocol.Request{
 		ID:     "test-123",
 		Method: getMethod,
@@ -27,7 +21,7 @@ func TestBuildRequest_Basic(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	fhttpReq, err := BuildRequest(ctx, req, preset)
+	fhttpReq, err := BuildRequest(ctx, req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -50,8 +44,6 @@ func TestBuildRequest_Basic(t *testing.T) {
 }
 
 func TestBuildRequest_WithBody(t *testing.T) {
-	preset, _ := fingerprint.Get("chrome-133")
-
 	body := []byte(`{"key": "value"}`)
 	req := &protocol.Request{
 		ID:      "test-body",
@@ -62,7 +54,7 @@ func TestBuildRequest_WithBody(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	fhttpReq, err := BuildRequest(ctx, req, preset)
+	fhttpReq, err := BuildRequest(ctx, req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -77,8 +69,6 @@ func TestBuildRequest_WithBody(t *testing.T) {
 }
 
 func TestBuildRequest_InvalidURL(t *testing.T) {
-	preset, _ := fingerprint.Get("chrome-133")
-
 	req := &protocol.Request{
 		ID:      "test-invalid",
 		Method:  getMethod,
@@ -87,7 +77,7 @@ func TestBuildRequest_InvalidURL(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	_, err := BuildRequest(ctx, req, preset)
+	_, err := BuildRequest(ctx, req)
 	if err == nil {
 		t.Error("expected error for invalid URL")
 	}
@@ -101,9 +91,7 @@ func TestBuildRequest_InvalidURL(t *testing.T) {
 	}
 }
 
-func TestBuildRequest_AppliesFingerprintHeaders(t *testing.T) {
-	preset, _ := fingerprint.Get("chrome-133")
-
+func TestBuildRequest_AppliesDefaultChromeHeaders(t *testing.T) {
 	req := &protocol.Request{
 		ID:      "test-fp-headers",
 		Method:  getMethod,
@@ -112,13 +100,13 @@ func TestBuildRequest_AppliesFingerprintHeaders(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	fhttpReq, err := BuildRequest(ctx, req, preset)
+	fhttpReq, err := BuildRequest(ctx, req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if preset.UserAgent != "" && fhttpReq.Header.Get("User-Agent") != preset.UserAgent {
-		t.Errorf("expected User-Agent %q, got %q", preset.UserAgent, fhttpReq.Header.Get("User-Agent"))
+	if fhttpReq.Header.Get("User-Agent") != chromeUserAgent {
+		t.Errorf("expected User-Agent %q, got %q", chromeUserAgent, fhttpReq.Header.Get("User-Agent"))
 	}
 
 	if fhttpReq.Header.Get("Accept") == "" {
@@ -135,20 +123,18 @@ func TestBuildRequest_AppliesFingerprintHeaders(t *testing.T) {
 }
 
 func TestBuildRequest_DoesNotOverrideExistingHeaders(t *testing.T) {
-	preset, _ := fingerprint.Get("chrome-133")
-
 	req := &protocol.Request{
 		ID:     "test-no-override",
 		Method: getMethod,
 		URL:    exampleURL,
 		Headers: protocol.HeaderMap{
-			{Key: "User-Agent", Value: "Custom-Agent"},
-			{Key: AcceptHeader, Value: HeaderValueTextPlain},
+			{Key: userAgentHeader, Value: "Custom-Agent"},
+			{Key: acceptHeader, Value: "text/plain"},
 		},
 	}
 
 	ctx := context.Background()
-	fhttpReq, err := BuildRequest(ctx, req, preset)
+	fhttpReq, err := BuildRequest(ctx, req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -163,8 +149,6 @@ func TestBuildRequest_DoesNotOverrideExistingHeaders(t *testing.T) {
 }
 
 func TestBuildRequest_WithContext(t *testing.T) {
-	preset, _ := fingerprint.Get("chrome-133")
-
 	req := &protocol.Request{
 		ID:      "test-context",
 		Method:  "GET",
@@ -175,7 +159,7 @@ func TestBuildRequest_WithContext(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	fhttpReq, err := BuildRequest(ctx, req, preset)
+	fhttpReq, err := BuildRequest(ctx, req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -186,23 +170,18 @@ func TestBuildRequest_WithContext(t *testing.T) {
 }
 
 func TestApplyHeaderOrder(t *testing.T) {
-	preset, _ := fingerprint.Get("chrome-133")
-	if len(preset.HeaderOrder) == 0 {
-		t.Skip("preset has no header order")
-	}
-
 	req := &protocol.Request{
 		ID:     "test-header-order",
 		Method: "GET",
 		URL:    "https://example.com",
 		Headers: protocol.HeaderMap{
-			{Key: HeaderValueXCustom, Value: "value"},
+			{Key: "X-Custom", Value: "value"},
 			{Key: "Accept", Value: "text/html"},
 		},
 	}
 
 	ctx := context.Background()
-	fhttpReq, err := BuildRequest(ctx, req, preset)
+	fhttpReq, err := BuildRequest(ctx, req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -214,15 +193,15 @@ func TestApplyHeaderOrder(t *testing.T) {
 
 func TestHeadersToProtocol(t *testing.T) {
 	fhttpHeaders := make(map[string][]string)
-	fhttpHeaders[ContentTypeHeader] = []string{HeaderValueApplicationJSON}
-	fhttpHeaders[HeaderValueXCustom] = []string{HeaderValueValue1, "value2"}
+	fhttpHeaders["Content-Type"] = []string{"application/json"}
+	fhttpHeaders["X-Custom"] = []string{"value1", "value2"}
 
 	result := HeadersToProtocol(fhttpHeaders)
 
 	foundContentType := false
 	customCount := 0
 	for _, h := range result {
-		if h.Key == ContentTypeHeader && h.Value == HeaderValueApplicationJSON {
+		if h.Key == "Content-Type" && h.Value == "application/json" {
 			foundContentType = true
 		}
 		if h.Key == "X-Custom" {
