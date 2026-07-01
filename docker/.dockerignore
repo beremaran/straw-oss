@@ -1,0 +1,9 @@
+.git
+bin/
+coverage.out
+*.prof
+*.test
+.env
+.env.*
+.idea/
+.vscode/
