@@ -138,27 +138,14 @@ func applyHeaderOrder(req *fhttp.Request, order []string) {
 }
 
 func applyDefaultChromeHeaders(req *fhttp.Request) {
-	for _, h := range defaultChromeHeaders() {
-		setHeaderDefault(req, h.key, h.value)
-	}
-}
-
-type defaultHeader struct {
-	key   string
-	value string
-}
-
-func defaultChromeHeaders() []defaultHeader {
-	return []defaultHeader{
-		{key: userAgentHeader, value: chromeUserAgent},
-		{key: "Accept-Language", value: chromeAcceptLanguage},
-		{key: "Sec-CH-UA", value: chromeSecCHUA},
-		{key: "Sec-CH-UA-Mobile", value: chromeSecCHUAMobile},
-		{key: "Sec-CH-UA-Platform", value: chromeSecCHUAPlatform},
-		{key: acceptHeader, value: acceptAll},
-		{key: "Accept-Encoding", value: "gzip, deflate, br"},
-		{key: "Connection", value: "keep-alive"},
-	}
+	setHeaderDefault(req, userAgentHeader, chromeUserAgent)
+	setHeaderDefault(req, "Accept-Language", chromeAcceptLanguage)
+	setHeaderDefault(req, "Sec-CH-UA", chromeSecCHUA)
+	setHeaderDefault(req, "Sec-CH-UA-Mobile", chromeSecCHUAMobile)
+	setHeaderDefault(req, "Sec-CH-UA-Platform", chromeSecCHUAPlatform)
+	setHeaderDefault(req, acceptHeader, acceptAll)
+	setHeaderDefault(req, "Accept-Encoding", "gzip, deflate, br")
+	setHeaderDefault(req, "Connection", "keep-alive")
 }
 
 func setHeaderDefault(req *fhttp.Request, key, value string) {

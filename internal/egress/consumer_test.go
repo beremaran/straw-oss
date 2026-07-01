@@ -111,7 +111,6 @@ func TestConsumer_InvalidProtobuf(t *testing.T) {
 	httpClient := egresshttp.NewClient("")
 
 	c := NewConsumer(mb, httpClient, "test-egress", 0, nil)
-	c.ctx = context.Background()
 
 	err := c.processTask(context.Background(), []byte{0xff, 0xff, 0xff})
 	if err == nil {
@@ -188,7 +187,6 @@ func TestConsumer_ResultHandler(t *testing.T) {
 	}
 
 	c := NewConsumer(mb, httpClient, "test-egress", 0, handler)
-	c.ctx = context.Background()
 
 	req := &protocol.Request{
 		ID:     testRequestID,
@@ -217,4 +215,163 @@ func TestConsumer_ResultHandler(t *testing.T) {
 	if receivedResponse.EgressID != "test-egress" {
 		t.Errorf("expected egress ID 'test-egress', got %s", receivedResponse.EgressID)
 	}
+}
+
+func TestConsumer_Stop(t *testing.T) {
+	mb := &mockBroker{}
+	httpClient := egresshttp.NewClient("")
+
+	c := NewConsumer(mb, httpClient, "test-egress", 0, nil)
+
+	// Stop with no cancel set should not panic
+	c.Stop()
+
+	// Set cancel and stop
+	cancelCalled := false
+	c.cancel = func() {
+		cancelCalled = true
+	}
+	c.Stop()
+
+	if !cancelCalled {
+		t.Fatal("expected cancel to be called")
+	}
+}
+
+func TestConsumer_ConcurrencyLimitGetter(t *testing.T) {
+	mb := &mockBroker{}
+	httpClient := egresshttp.NewClient("")
+
+	c := NewConsumer(mb, httpClient, "test-egress", 10, nil)
+
+	if c.ConcurrencyLimit() != 10 {
+		t.Errorf("expected concurrencyLimit 10, got %d", c.ConcurrencyLimit())
+	}
+}
+
+func TestConsumer_HandleMessageContextDone(t *testing.T) {
+	mb := &mockBroker{}
+	httpClient := egresshttp.NewClient("")
+
+	c := NewConsumer(mb, httpClient, "test-egress", 1, nil)
+
+	// Create a cancelled context
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	// Fill the semaphore so handleMessage blocks on it
+	c.semaphore <- struct{}{}
+
+	// handleMessage should take the context done path since ctx is done
+	err := c.handleMessage(ctx, []byte("test"))
+	if err == nil {
+		t.Fatal("expected error for cancelled context")
+	}
+}
+
+func TestTaskError(t *testing.T) {
+	err := &TaskError{Code: "test-code", Message: "test message"}
+	expected := "test-code: test message"
+	if err.Error() != expected {
+		t.Errorf("expected %q, got %q", expected, err.Error())
+	}
+}
+
+func TestConsumer_ExecuteRequest(t *testing.T) {
+	mb := &mockBroker{}
+	executor := &dummyExecutor{}
+	httpClient := egresshttp.NewClient("")
+
+	c := NewConsumer(mb, httpClient, "test-egress", 0, nil)
+
+	req := &protocol.Request{
+		ID:     "test-req-2",
+		Method: "POST",
+		URL:    "https://httpbin.org/post",
+	}
+
+	// Replace httpClient with dummy
+	c.httpClient = executor
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	resp := c.executeRequest(ctx, req)
+	if resp == nil {
+		t.Fatal("expected response")
+	}
+	if resp.RequestID != "test-req-2" {
+		t.Errorf("request ID = %q, want test-req-2", resp.RequestID)
+	}
+}
+
+func TestConsumer_PublishResult(t *testing.T) {
+	mb := &mockBroker{}
+	httpClient := egresshttp.NewClient("")
+
+	var receivedReplyTo string
+	var resultHandlerCalled bool
+	handler := func(_ context.Context, _ *protocol.Response, replyTo string) error {
+		resultHandlerCalled = true
+		receivedReplyTo = replyTo
+
+		return nil
+	}
+
+	c := NewConsumer(mb, httpClient, "test-egress", 0, handler)
+
+	req := &protocol.Request{
+		ID:      "test-req-3",
+		Method:  "GET",
+		URL:     "https://httpbin.org/get",
+		ReplyTo: "results.test-req-3",
+	}
+	resp := &protocol.Response{
+		RequestID:  "test-req-3",
+		StatusCode: 200,
+		Body:       []byte("ok"),
+	}
+
+	err := c.publishResult(context.Background(), req, resp)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !resultHandlerCalled {
+		t.Fatal("expected result handler to be called")
+	}
+	if receivedReplyTo != "results.test-req-3" {
+		t.Errorf("replyTo = %q, want results.test-req-3", receivedReplyTo)
+	}
+}
+
+func TestConsumer_Resume(t *testing.T) {
+	mb := &mockBroker{}
+	httpClient := egresshttp.NewClient("")
+
+	c := NewConsumer(mb, httpClient, "test-egress", 0, nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	err := c.Resume(ctx)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Resume again should be a no-op
+	err = c.Resume(ctx)
+	if err != nil {
+		t.Fatalf("unexpected error on second resume: %v", err)
+	}
+}
+
+func TestConsumer_Drain(_ *testing.T) {
+	mb := &mockBroker{}
+	httpClient := egresshttp.NewClient("")
+
+	c := NewConsumer(mb, httpClient, "test-egress", 0, nil)
+
+	// Drain with no subscription should not panic
+	c.Drain()
 }

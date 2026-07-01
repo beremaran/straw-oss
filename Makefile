@@ -4,7 +4,7 @@ REPO ?= straw
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "latest")
 
-.PHONY: build control egress proto test format lint install-tools docker clean dev-up dev-down dev-shell
+.PHONY: build control egress proto test format lint install-tools docker clean dev-up dev-down dev-shell coverage
 
 control:
 	CGO_ENABLED=0 go build -ldflags "-w -s -X main.Version=$(VERSION)" -o bin/control ./cmd/control
@@ -18,7 +18,7 @@ proto:
 	go tool github.com/bufbuild/buf/cmd/buf generate
 
 test:
-	go test -race ./...
+	go test -race -tags=integration ./...
 
 format:
 	gofmt -w ./
@@ -46,3 +46,6 @@ dev-shell:
 
 clean:
 	rm -rf bin/
+
+coverage:
+	go test -race -tags=integration -coverprofile=coverage.out ./... && go tool cover -func=coverage.out | grep total
