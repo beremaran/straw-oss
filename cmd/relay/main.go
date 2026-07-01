@@ -9,9 +9,9 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/beremaran/straw/internal/broker"
 	"github.com/beremaran/straw/internal/config"
 	"github.com/beremaran/straw/internal/server"
-	"github.com/beremaran/straw/pkg/broker"
 )
 
 var (

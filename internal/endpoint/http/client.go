@@ -15,7 +15,7 @@ import (
 	"github.com/bogdanfinn/tls-client/profiles"
 
 	"github.com/beremaran/straw/internal/endpoint/fingerprint"
-	"github.com/beremaran/straw/pkg/protocol"
+	"github.com/beremaran/straw/internal/protocol"
 )
 
 // DefaultTimeout is the default timeout for HTTP requests.

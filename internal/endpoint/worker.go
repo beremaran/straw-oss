@@ -10,12 +10,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/beremaran/straw/internal/broker"
 	"github.com/beremaran/straw/internal/config"
 	"github.com/beremaran/straw/internal/endpoint/fingerprint"
 	endpointhttp "github.com/beremaran/straw/internal/endpoint/http"
 	endpointtls "github.com/beremaran/straw/internal/endpoint/tls"
 	endpointtransport "github.com/beremaran/straw/internal/endpoint/transport"
-	"github.com/beremaran/straw/pkg/broker"
 )
 
 // Version is the build version of the endpoint worker.

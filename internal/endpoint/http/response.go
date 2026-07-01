@@ -9,7 +9,7 @@ import (
 	"github.com/andybalholm/brotli"
 	fhttp "github.com/bogdanfinn/fhttp"
 
-	"github.com/beremaran/straw/pkg/protocol"
+	"github.com/beremaran/straw/internal/protocol"
 )
 
 // BuildResponse creates a protocol response from an fhttp response.

@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/beremaran/straw/pkg/broker"
-	"github.com/beremaran/straw/pkg/protocol"
+	"github.com/beremaran/straw/internal/broker"
+	"github.com/beremaran/straw/internal/protocol"
 )
 
 func TestRelayHandlerPublishesAndWritesEndpointResult(t *testing.T) {

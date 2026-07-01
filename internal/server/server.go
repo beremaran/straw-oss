@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/beremaran/straw/internal/broker"
 	"github.com/beremaran/straw/internal/config"
 	"github.com/beremaran/straw/internal/server/handlers"
 	mw "github.com/beremaran/straw/internal/server/middleware"
-	"github.com/beremaran/straw/pkg/broker"
 )
 
 // Server is the HTTP server for the Straw relay.

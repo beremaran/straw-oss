@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/beremaran/straw/pkg/protocol"
+	"github.com/beremaran/straw/internal/protocol"
 )
 
 // ToProtocolRequest converts a RelayRequest to a protocol.Request.
