@@ -3,20 +3,15 @@ package egress
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
-	"time"
 
 	"github.com/beremaran/straw/internal/broker"
 	"github.com/beremaran/straw/internal/protocol"
 )
 
 const (
-	// DefaultMaxTaskAge is the maximum age a task can have before it is considered stale.
-	DefaultMaxTaskAge = 60 * time.Second
 	// DefaultConcurrencyLimit is the default maximum number of concurrent tasks.
 	DefaultConcurrencyLimit = 25
 )
@@ -31,12 +26,10 @@ type RequestExecutor interface {
 type Consumer struct {
 	broker           broker.MessageBroker
 	httpClient       RequestExecutor
-	secret           []byte
 	egressID         string
 	taskSubject      string
 	concurrencyLimit int
 	semaphore        chan struct{}
-	maxTaskAge       time.Duration
 	ctx              context.Context
 	cancel           context.CancelFunc
 	wg               sync.WaitGroup
@@ -59,15 +52,6 @@ func WithConcurrencyLimit(n int) Option {
 	}
 }
 
-// WithMaxTaskAge sets the maximum age for tasks before they are considered stale.
-func WithMaxTaskAge(d time.Duration) Option {
-	return func(c *Consumer) {
-		if d > 0 {
-			c.maxTaskAge = d
-		}
-	}
-}
-
 // WithResultHandler sets a callback invoked when a task result is ready to be published.
 func WithResultHandler(h func(ctx context.Context, resp *protocol.Response, replyTo string) error) Option {
 	return func(c *Consumer) {
@@ -86,18 +70,15 @@ func WithLogger(logger *slog.Logger) Option {
 func NewConsumer(
 	b broker.MessageBroker,
 	httpClient RequestExecutor,
-	secret []byte,
 	egressID string,
 	opts ...Option,
 ) *Consumer {
 	c := &Consumer{
 		broker:           b,
 		httpClient:       httpClient,
-		secret:           secret,
 		egressID:         egressID,
 		taskSubject:      "tasks." + egressID + ".tasks",
 		concurrencyLimit: DefaultConcurrencyLimit,
-		maxTaskAge:       DefaultMaxTaskAge,
 		logger:           slog.Default(),
 	}
 
@@ -118,7 +99,6 @@ func (c *Consumer) Start(ctx context.Context) error {
 		"egress_id", c.egressID,
 		"subject", c.taskSubject,
 		"concurrency_limit", c.concurrencyLimit,
-		"max_task_age", c.maxTaskAge,
 	)
 
 	err := c.Resume(ctx)
@@ -242,38 +222,16 @@ func (c *Consumer) processTask(ctx context.Context, body []byte) error {
 }
 
 func (c *Consumer) parseTask(body []byte) (*protocol.Request, error) {
-	var signedTask protocol.SignedTask
-
-	err := json.Unmarshal(body, &signedTask)
+	req, err := protocol.UnmarshalRequest(body)
 	if err != nil {
-		c.logger.Warn("failed to unmarshal signed task",
+		c.logger.Warn("failed to unmarshal task",
 			"error", err,
 			"body_len", len(body),
 		)
 
 		return nil, &TaskError{
 			Code:    protocol.ErrCodeInternalError,
-			Message: "failed to unmarshal signed task: " + err.Error(),
-		}
-	}
-
-	req, err := protocol.ValidateSignedTask(&signedTask, c.secret, c.maxTaskAge)
-	if err != nil {
-		c.logger.Warn("task validation failed",
-			"error", err,
-		)
-
-		var valErr *protocol.ValidationError
-		if errors.As(err, &valErr) {
-			return nil, &TaskError{
-				Code:    valErr.Code,
-				Message: valErr.Message,
-			}
-		}
-
-		return nil, &TaskError{
-			Code:    protocol.ErrCodeInternalError,
-			Message: "task validation failed: " + err.Error(),
+			Message: "failed to unmarshal task: " + err.Error(),
 		}
 	}
 

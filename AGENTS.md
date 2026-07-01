@@ -39,4 +39,4 @@ Use Conventional Commits, matching the project history: `feat: add egress transp
 
 ## Security & Configuration Tips
 
-Use `config/.dev.env.example`, `config/.control.env.example`, and `config/.egress.env.example` as local templates. Keep `HMAC_SECRET`, NATS tokens, and private egress settings out of commits. `ALLOW_PRIVATE_IPS=true` is for local development only unless the deployment explicitly needs private targets.
+Use `config/.dev.env.example`, `config/.control.env.example`, and `config/.egress.env.example` as local templates. Keep NATS tokens and private egress settings out of commits. `ALLOW_PRIVATE_IPS=true` is for local development only unless the deployment explicitly needs private targets.

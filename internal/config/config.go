@@ -25,9 +25,8 @@ type NATSConfig struct {
 	Token string
 }
 
-// SecurityConfig holds shared signing and optional control TLS settings.
+// SecurityConfig holds optional control TLS settings.
 type SecurityConfig struct {
-	HMACSecret  string
 	TLSCertFile string
 	TLSKeyFile  string
 }
@@ -132,7 +131,6 @@ func LoadControlConfig() (*ControlConfig, error) {
 // LoadSecurityConfig loads shared security configuration from environment variables.
 func LoadSecurityConfig() SecurityConfig {
 	return SecurityConfig{
-		HMACSecret:  getEnv("HMAC_SECRET", ""),
 		TLSCertFile: getEnv("TLS_CERT_FILE", ""),
 		TLSKeyFile:  getEnv("TLS_KEY_FILE", ""),
 	}
@@ -177,10 +175,6 @@ func validateControlConfig(cfg *ControlConfig) error {
 		errs = append(errs, "NATS_URL is required")
 	}
 
-	if cfg.Security.HMACSecret == "" {
-		errs = append(errs, "HMAC_SECRET is required")
-	}
-
 	if cfg.MaxConcurrentRequests <= 0 {
 		errs = append(errs, "MAX_CONCURRENT_REQUESTS must be positive")
 	}
@@ -201,10 +195,6 @@ func validateEgressConfig(cfg *EgressConfig) error {
 
 	if cfg.NATS.URL == "" {
 		errs = append(errs, "NATS_URL is required")
-	}
-
-	if cfg.Security.HMACSecret == "" {
-		errs = append(errs, "HMAC_SECRET is required")
 	}
 
 	if cfg.ConcurrencyLimit <= 0 {

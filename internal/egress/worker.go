@@ -90,7 +90,6 @@ func (w *Worker) Start(ctx context.Context) error {
 	taskConsumer := NewConsumer(
 		mqBroker,
 		executor,
-		[]byte(w.cfg.Security.HMACSecret),
 		w.cfg.ID,
 		WithConcurrencyLimit(w.cfg.ConcurrencyLimit),
 		WithResultHandler(resultPublisher.Handler()),

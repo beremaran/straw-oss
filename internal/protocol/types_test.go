@@ -372,32 +372,6 @@ func TestRequest_UnmarshalJSON_LoadTestFormat(t *testing.T) {
 	}
 }
 
-func TestSignedTask_JSONRoundTrip(t *testing.T) {
-	task := &SignedTask{
-		Payload:   []byte("compressed-payload-data"),
-		Signature: "abc123signature",
-		Timestamp: time.Now().Unix(),
-	}
-
-	data, err := json.Marshal(task)
-	if err != nil {
-		t.Fatalf("marshal failed: %v", err)
-	}
-
-	var decoded SignedTask
-	err = json.Unmarshal(data, &decoded)
-	if err != nil {
-		t.Fatalf("unmarshal failed: %v", err)
-	}
-
-	if decoded.Signature != task.Signature {
-		t.Errorf("Signature mismatch")
-	}
-	if decoded.Timestamp != task.Timestamp {
-		t.Errorf("Timestamp mismatch")
-	}
-}
-
 func TestErrorInfo_JSONRoundTrip(t *testing.T) {
 	errInfo := &ErrorInfo{
 		Code:       ErrCodeEgressTimeout,

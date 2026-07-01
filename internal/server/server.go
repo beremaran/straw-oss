@@ -103,7 +103,6 @@ func (s *Server) registerRoutes() {
 	controlHandler := handlers.NewControlHandler(
 		s.broker,
 		s.conf.EgressID,
-		[]byte(s.conf.Security.HMACSecret),
 		s.conf.ResultTimeout,
 		handlers.WithAllowPrivateIPs(s.conf.AllowPrivateIPs),
 	)
