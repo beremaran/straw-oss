@@ -14,6 +14,7 @@ import (
 	"github.com/beremaran/straw/internal/broker"
 	"github.com/beremaran/straw/internal/config"
 	"github.com/beremaran/straw/internal/protocol"
+	"github.com/beremaran/straw/internal/protocol/wirepb"
 )
 
 func TestWorkerStart(t *testing.T) {
@@ -132,9 +133,9 @@ func TestWorkerRunWithConfig(t *testing.T) {
 
 type noopExecutor struct{}
 
-func (n *noopExecutor) Do(_ context.Context, req *protocol.Request) (*protocol.Response, error) {
-	return &protocol.Response{
-		RequestID:  req.ID,
+func (n *noopExecutor) Do(_ context.Context, req *wirepb.Request) (*wirepb.Response, error) {
+	return &wirepb.Response{
+		RequestId:  req.GetId(),
 		StatusCode: 200,
 		Body:       []byte("noop"),
 	}, nil
@@ -218,10 +219,10 @@ func TestConsumer_HandleMessageFullFlow(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Publish a task
-	taskBody, err := protocol.MarshalRequest(&protocol.Request{
-		ID:      "flow-req-1",
+	taskBody, err := protocol.MarshalRequest(&wirepb.Request{
+		Id:      "flow-req-1",
 		Method:  "GET",
-		URL:     "https://httpbin.org/get",
+		Url:     "https://httpbin.org/get",
 		ReplyTo: "test_flow_results.flow-req-1",
 	})
 	if err != nil {

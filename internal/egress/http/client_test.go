@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/beremaran/straw/internal/protocol"
+	"github.com/beremaran/straw/internal/protocol/wirepb"
 )
 
 const exampleURL = "https://example.com"
@@ -58,11 +59,10 @@ func TestClient_Do_MockServer(t *testing.T) {
 
 	client := NewClient("test-ep")
 
-	req := &protocol.Request{
-		ID:      testID,
-		Method:  getMethod,
-		URL:     server.URL,
-		Headers: protocol.HeaderMap{},
+	req := &wirepb.Request{
+		Id:     testID,
+		Method: getMethod,
+		Url:    server.URL,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -73,32 +73,35 @@ func TestClient_Do_MockServer(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if resp.RequestID != testID {
-		t.Errorf("expected request ID test-123, got %s", resp.RequestID)
+	if resp.GetRequestId() != testID {
+		t.Errorf("expected request ID test-123, got %s", resp.GetRequestId())
 	}
 
-	if resp.EgressID != "test-ep" {
-		t.Errorf("expected egress ID test-ep, got %s", resp.EgressID)
+	if resp.GetEgressId() != "test-ep" {
+		t.Errorf("expected egress ID test-ep, got %s", resp.GetEgressId())
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("expected status 200, got %d", resp.StatusCode)
+	if resp.GetStatusCode() != http.StatusOK {
+		t.Errorf("expected status 200, got %d", resp.GetStatusCode())
 	}
 
-	if string(resp.Body) != `{"status": "ok"}` {
-		t.Errorf("expected body %s, got %s", `{"status": "ok"}`, string(resp.Body))
+	if string(resp.GetBody()) != `{"status": "ok"}` {
+		t.Errorf("expected body %s, got %s", `{"status": "ok"}`, string(resp.GetBody()))
+	}
+
+	if resp.GetTiming().GetTotalNanos() <= 0 {
+		t.Fatalf("TotalNanos = %d, want > 0", resp.GetTiming().GetTotalNanos())
 	}
 }
 
 func TestClient_Do_Error(t *testing.T) {
 	client := NewClient("")
 
-	req := &protocol.Request{
-		ID:      "test-error",
-		Method:  getMethod,
-		URL:     "http://localhost:1",
-		Headers: protocol.HeaderMap{},
-		Timeout: 100 * time.Millisecond,
+	req := &wirepb.Request{
+		Id:           "test-error",
+		Method:       getMethod,
+		Url:          "http://localhost:1",
+		TimeoutNanos: int64(100 * time.Millisecond),
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
@@ -109,12 +112,16 @@ func TestClient_Do_Error(t *testing.T) {
 		t.Fatalf("expected response with error field, got error: %v", err)
 	}
 
-	if resp.Error == nil {
+	if resp.GetError() == nil {
 		t.Fatal("expected error in response")
 	}
 
-	if resp.Error.Code != protocol.ErrCodeUpstreamError {
-		t.Errorf("expected error code %s, got %s", protocol.ErrCodeUpstreamError, resp.Error.Code)
+	if resp.GetError().GetCode() != protocol.ErrCodeUpstreamError {
+		t.Errorf("expected error code %s, got %s", protocol.ErrCodeUpstreamError, resp.GetError().GetCode())
+	}
+
+	if resp.GetTiming().GetTotalNanos() <= 0 {
+		t.Fatalf("TotalNanos = %d, want > 0", resp.GetTiming().GetTotalNanos())
 	}
 }
 
@@ -127,11 +134,10 @@ func TestClient_Do_DefaultChromeProfile(t *testing.T) {
 
 	client := NewClient("")
 
-	req := &protocol.Request{
-		ID:      "test-default",
-		Method:  getMethod,
-		URL:     server.URL,
-		Headers: protocol.HeaderMap{},
+	req := &wirepb.Request{
+		Id:     "test-default",
+		Method: getMethod,
+		Url:    server.URL,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -142,8 +148,8 @@ func TestClient_Do_DefaultChromeProfile(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("expected status 200, got %d", resp.StatusCode)
+	if resp.GetStatusCode() != http.StatusOK {
+		t.Errorf("expected status 200, got %d", resp.GetStatusCode())
 	}
 }
 

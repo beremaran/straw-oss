@@ -9,7 +9,7 @@ import (
 
 	fhttp "github.com/bogdanfinn/fhttp"
 
-	"github.com/beremaran/straw/internal/protocol"
+	"github.com/beremaran/straw/internal/protocol/wirepb"
 )
 
 const (
@@ -37,32 +37,30 @@ func TestBuildResponse_Basic(t *testing.T) {
 		Body: nopCloser{bytes.NewReader(body)},
 	}
 
-	timing := protocol.TimingInfo{
-		Total: 100,
-	}
+	timing := &wirepb.TimingInfo{TotalNanos: 100}
 
 	protoResp, err := BuildResponse("req-123", resp, timing, DefaultMaxBodySize, "egress-1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if protoResp.RequestID != "req-123" {
-		t.Errorf("expected request ID req-123, got %s", protoResp.RequestID)
+	if protoResp.GetRequestId() != "req-123" {
+		t.Errorf("expected request ID req-123, got %s", protoResp.GetRequestId())
 	}
 
-	if protoResp.StatusCode != http.StatusOK {
-		t.Errorf("expected status 200, got %d", protoResp.StatusCode)
+	if protoResp.GetStatusCode() != http.StatusOK {
+		t.Errorf("expected status 200, got %d", protoResp.GetStatusCode())
 	}
 
-	if string(protoResp.Body) != "Hello, World!" {
-		t.Errorf("expected body 'Hello, World!', got %s", string(protoResp.Body))
+	if string(protoResp.GetBody()) != "Hello, World!" {
+		t.Errorf("expected body 'Hello, World!', got %s", string(protoResp.GetBody()))
 	}
 
-	if protoResp.EgressID != "egress-1" {
-		t.Errorf("expected egress ID egress-1, got %s", protoResp.EgressID)
+	if protoResp.GetEgressId() != "egress-1" {
+		t.Errorf("expected egress ID egress-1, got %s", protoResp.GetEgressId())
 	}
 
-	if protoResp.Timing == nil || protoResp.Timing.Total != 100 {
+	if protoResp.GetTiming() == nil || protoResp.GetTiming().GetTotalNanos() != 100 {
 		t.Error("expected timing info to be set")
 	}
 }
@@ -83,17 +81,17 @@ func TestBuildResponse_GzipBodyPreserved(t *testing.T) {
 		Body: nopCloser{bytes.NewReader(buf.Bytes())},
 	}
 
-	timing := protocol.TimingInfo{Total: 50}
+	timing := &wirepb.TimingInfo{TotalNanos: 50}
 	protoResp, err := BuildResponse("req-gzip", resp, timing, DefaultMaxBodySize, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if !bytes.Equal(protoResp.Body, rawBody) {
-		t.Errorf("expected raw gzip body %v, got %v", rawBody, protoResp.Body)
+	if !bytes.Equal(protoResp.GetBody(), rawBody) {
+		t.Errorf("expected raw gzip body %v, got %v", rawBody, protoResp.GetBody())
 	}
-	if protoResp.Headers.Get(contentEncodingHeader) != "gzip" {
-		t.Errorf("expected Content-Encoding gzip, got %q", protoResp.Headers.Get(contentEncodingHeader))
+	if headerValue(protoResp.GetHeaders(), contentEncodingHeader) != "gzip" {
+		t.Errorf("expected Content-Encoding gzip, got %q", headerValue(protoResp.GetHeaders(), contentEncodingHeader))
 	}
 }
 
@@ -109,14 +107,14 @@ func TestBuildResponse_BrotliBodyPreserved(t *testing.T) {
 		Body: nopCloser{bytes.NewReader(body)},
 	}
 
-	timing := protocol.TimingInfo{Total: 50}
+	timing := &wirepb.TimingInfo{TotalNanos: 50}
 	protoResp, err := BuildResponse("req-br", resp, timing, DefaultMaxBodySize, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if !bytes.Equal(protoResp.Body, body) {
-		t.Errorf("expected raw brotli body %v, got %v", body, protoResp.Body)
+	if !bytes.Equal(protoResp.GetBody(), body) {
+		t.Errorf("expected raw brotli body %v, got %v", body, protoResp.GetBody())
 	}
 }
 
@@ -130,14 +128,14 @@ func TestBuildResponse_NoCompression(t *testing.T) {
 		Body: nopCloser{bytes.NewReader(body)},
 	}
 
-	timing := protocol.TimingInfo{Total: 50}
+	timing := &wirepb.TimingInfo{TotalNanos: 50}
 	protoResp, err := BuildResponse("req-plain", resp, timing, DefaultMaxBodySize, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if string(protoResp.Body) != "Plain text content" {
-		t.Errorf("expected body 'Plain text content', got %s", string(protoResp.Body))
+	if string(protoResp.GetBody()) != "Plain text content" {
+		t.Errorf("expected body 'Plain text content', got %s", string(protoResp.GetBody()))
 	}
 }
 
@@ -152,14 +150,14 @@ func TestBuildResponse_IdentityEncoding(t *testing.T) {
 		Body: nopCloser{bytes.NewReader(body)},
 	}
 
-	timing := protocol.TimingInfo{Total: 50}
+	timing := &wirepb.TimingInfo{TotalNanos: 50}
 	protoResp, err := BuildResponse("req-identity", resp, timing, DefaultMaxBodySize, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if string(protoResp.Body) != "Identity encoded content" {
-		t.Errorf("expected body 'Identity encoded content', got %s", string(protoResp.Body))
+	if string(protoResp.GetBody()) != "Identity encoded content" {
+		t.Errorf("expected body 'Identity encoded content', got %s", string(protoResp.GetBody()))
 	}
 }
 
@@ -170,14 +168,14 @@ func TestBuildResponse_NilBody(t *testing.T) {
 		Body:       nil,
 	}
 
-	timing := protocol.TimingInfo{Total: 50}
+	timing := &wirepb.TimingInfo{TotalNanos: 50}
 	protoResp, err := BuildResponse("req-no-body", resp, timing, DefaultMaxBodySize, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(protoResp.Body) != 0 {
-		t.Errorf("expected empty body, got %d bytes", len(protoResp.Body))
+	if len(protoResp.GetBody()) != 0 {
+		t.Errorf("expected empty body, got %d bytes", len(protoResp.GetBody()))
 	}
 }
 
@@ -191,14 +189,14 @@ func TestBuildResponse_LargeBody(t *testing.T) {
 		Body:       nopCloser{bytes.NewReader(largeBody)},
 	}
 
-	timing := protocol.TimingInfo{Total: 50}
+	timing := &wirepb.TimingInfo{TotalNanos: 50}
 	protoResp, err := BuildResponse("req-large", resp, timing, maxSize, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if int64(len(protoResp.Body)) != maxSize {
-		t.Errorf("expected body to be truncated to %d bytes, got %d", maxSize, len(protoResp.Body))
+	if int64(len(protoResp.GetBody())) != maxSize {
+		t.Errorf("expected body to be truncated to %d bytes, got %d", maxSize, len(protoResp.GetBody()))
 	}
 }
 
@@ -214,21 +212,31 @@ func TestBuildResponse_HeadersPreserved(t *testing.T) {
 		Body: nopCloser{bytes.NewReader([]byte("{}"))},
 	}
 
-	timing := protocol.TimingInfo{Total: 50}
+	timing := &wirepb.TimingInfo{TotalNanos: 50}
 	protoResp, err := BuildResponse("req-headers", resp, timing, DefaultMaxBodySize, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if protoResp.Headers.Get(contentTypeHeader) != contentTypeJSON {
-		t.Errorf("expected Content-Type '%s', got %s", contentTypeJSON, protoResp.Headers.Get(contentTypeHeader))
+	if headerValue(protoResp.GetHeaders(), contentTypeHeader) != contentTypeJSON {
+		t.Errorf("expected Content-Type '%s', got %s", contentTypeJSON, headerValue(protoResp.GetHeaders(), contentTypeHeader))
 	}
 
-	if protoResp.Headers.Get(xCustomHeader) != xCustomValue {
-		t.Errorf("expected X-Custom '%s', got %s", xCustomValue, protoResp.Headers.Get(xCustomHeader))
+	if headerValue(protoResp.GetHeaders(), xCustomHeader) != xCustomValue {
+		t.Errorf("expected X-Custom '%s', got %s", xCustomValue, headerValue(protoResp.GetHeaders(), xCustomHeader))
 	}
 
-	if protoResp.Headers.Get("Cache-Control") != "no-cache" {
-		t.Errorf("expected Cache-Control 'no-cache', got %s", protoResp.Headers.Get("Cache-Control"))
+	if headerValue(protoResp.GetHeaders(), "Cache-Control") != "no-cache" {
+		t.Errorf("expected Cache-Control 'no-cache', got %s", headerValue(protoResp.GetHeaders(), "Cache-Control"))
 	}
+}
+
+func headerValue(headers []*wirepb.Header, key string) string {
+	for _, h := range headers {
+		if h.GetKey() == key {
+			return h.GetValue()
+		}
+	}
+
+	return ""
 }

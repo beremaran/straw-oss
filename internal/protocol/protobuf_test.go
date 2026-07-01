@@ -3,16 +3,18 @@ package protocol
 import (
 	"testing"
 	"time"
+
+	"github.com/beremaran/straw/internal/protocol/wirepb"
 )
 
 func TestMarshalRequestRoundTrip(t *testing.T) {
-	req := &Request{
-		ID:              "req-1",
+	req := &wirepb.Request{
+		Id:              "req-1",
 		Method:          "POST",
-		URL:             "https://example.com/upload",
-		Headers:         HeaderMap{{Key: "Content-Type", Value: "application/octet-stream"}},
+		Url:             "https://example.com/upload",
+		Headers:         []*wirepb.Header{{Key: "Content-Type", Value: "application/octet-stream"}},
 		Body:            []byte{0, 1, 2, 3},
-		Timeout:         1500 * time.Millisecond,
+		TimeoutNanos:    int64(1500 * time.Millisecond),
 		ReplyTo:         "results.req-1",
 		MaxResponseSize: 4096,
 	}
@@ -27,46 +29,46 @@ func TestMarshalRequestRoundTrip(t *testing.T) {
 		t.Fatalf("UnmarshalRequest() error = %v", err)
 	}
 
-	if decoded.ID != req.ID || decoded.Method != req.Method || decoded.URL != req.URL {
+	if decoded.GetId() != req.GetId() || decoded.GetMethod() != req.GetMethod() || decoded.GetUrl() != req.GetUrl() {
 		t.Fatalf("decoded request = %#v, want %#v", decoded, req)
 	}
-	if decoded.Headers.Get("Content-Type") != "application/octet-stream" {
-		t.Fatalf("decoded header = %q", decoded.Headers.Get("Content-Type"))
+	if decoded.GetHeaders()[0].GetValue() != "application/octet-stream" {
+		t.Fatalf("decoded header = %q", decoded.GetHeaders()[0].GetValue())
 	}
-	if string(decoded.Body) != string(req.Body) {
-		t.Fatalf("decoded body = %v, want %v", decoded.Body, req.Body)
+	if string(decoded.GetBody()) != string(req.GetBody()) {
+		t.Fatalf("decoded body = %v, want %v", decoded.GetBody(), req.GetBody())
 	}
-	if decoded.Timeout != req.Timeout {
-		t.Fatalf("decoded timeout = %v, want %v", decoded.Timeout, req.Timeout)
+	if decoded.GetTimeoutNanos() != req.GetTimeoutNanos() {
+		t.Fatalf("decoded timeout = %v, want %v", decoded.GetTimeoutNanos(), req.GetTimeoutNanos())
 	}
-	if decoded.ReplyTo != req.ReplyTo {
-		t.Fatalf("decoded reply_to = %q, want %q", decoded.ReplyTo, req.ReplyTo)
+	if decoded.GetReplyTo() != req.GetReplyTo() {
+		t.Fatalf("decoded reply_to = %q, want %q", decoded.GetReplyTo(), req.GetReplyTo())
 	}
-	if decoded.MaxResponseSize != req.MaxResponseSize {
-		t.Fatalf("decoded max_response_size = %d, want %d", decoded.MaxResponseSize, req.MaxResponseSize)
+	if decoded.GetMaxResponseSize() != req.GetMaxResponseSize() {
+		t.Fatalf("decoded max_response_size = %d, want %d", decoded.GetMaxResponseSize(), req.GetMaxResponseSize())
 	}
 }
 
 func TestMarshalResponseRoundTrip(t *testing.T) {
-	resp := &Response{
-		RequestID:  "req-1",
+	resp := &wirepb.Response{
+		RequestId:  "req-1",
 		StatusCode: 201,
-		Headers:    HeaderMap{{Key: "Content-Encoding", Value: "gzip"}},
+		Headers:    []*wirepb.Header{{Key: "Content-Encoding", Value: "gzip"}},
 		Body:       []byte{0x1f, 0x8b, 0x08},
-		Error: &ErrorInfo{
-			Code:       ErrCodeUpstreamError,
-			Message:    "upstream failed",
-			Retryable:  true,
-			RetryAfter: 2 * time.Second,
+		Error: &wirepb.ErrorInfo{
+			Code:            ErrCodeUpstreamError,
+			Message:         "upstream failed",
+			Retryable:       true,
+			RetryAfterNanos: int64(2 * time.Second),
 		},
-		Timing: &TimingInfo{
-			DNSLookup:    time.Millisecond,
-			TCPConnect:   2 * time.Millisecond,
-			TLSHandshake: 3 * time.Millisecond,
-			FirstByte:    4 * time.Millisecond,
-			Total:        10 * time.Millisecond,
+		Timing: &wirepb.TimingInfo{
+			DnsLookupNanos:    int64(time.Millisecond),
+			TcpConnectNanos:   int64(2 * time.Millisecond),
+			TlsHandshakeNanos: int64(3 * time.Millisecond),
+			FirstByteNanos:    int64(4 * time.Millisecond),
+			TotalNanos:        int64(10 * time.Millisecond),
 		},
-		EgressID: "egress-1",
+		EgressId: "egress-1",
 	}
 
 	data, err := MarshalResponse(resp)
@@ -79,20 +81,20 @@ func TestMarshalResponseRoundTrip(t *testing.T) {
 		t.Fatalf("UnmarshalResponse() error = %v", err)
 	}
 
-	if decoded.RequestID != resp.RequestID || decoded.StatusCode != resp.StatusCode || decoded.EgressID != resp.EgressID {
+	if decoded.GetRequestId() != resp.GetRequestId() || decoded.GetStatusCode() != resp.GetStatusCode() || decoded.GetEgressId() != resp.GetEgressId() {
 		t.Fatalf("decoded response = %#v, want %#v", decoded, resp)
 	}
-	if decoded.Headers.Get("Content-Encoding") != "gzip" {
-		t.Fatalf("decoded content encoding = %q", decoded.Headers.Get("Content-Encoding"))
+	if decoded.GetHeaders()[0].GetValue() != "gzip" {
+		t.Fatalf("decoded content encoding = %q", decoded.GetHeaders()[0].GetValue())
 	}
-	if string(decoded.Body) != string(resp.Body) {
-		t.Fatalf("decoded body = %v, want %v", decoded.Body, resp.Body)
+	if string(decoded.GetBody()) != string(resp.GetBody()) {
+		t.Fatalf("decoded body = %v, want %v", decoded.GetBody(), resp.GetBody())
 	}
-	if decoded.Error == nil || decoded.Error.Code != ErrCodeUpstreamError || decoded.Error.RetryAfter != 2*time.Second {
-		t.Fatalf("decoded error = %#v", decoded.Error)
+	if decoded.GetError() == nil || decoded.GetError().GetCode() != ErrCodeUpstreamError || decoded.GetError().GetRetryAfterNanos() != int64(2*time.Second) {
+		t.Fatalf("decoded error = %#v", decoded.GetError())
 	}
-	if decoded.Timing == nil || decoded.Timing.Total != 10*time.Millisecond {
-		t.Fatalf("decoded timing = %#v", decoded.Timing)
+	if decoded.GetTiming() == nil || decoded.GetTiming().GetTotalNanos() != int64(10*time.Millisecond) {
+		t.Fatalf("decoded timing = %#v", decoded.GetTiming())
 	}
 }
 

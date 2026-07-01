@@ -7,15 +7,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/beremaran/straw/internal/protocol"
+	"github.com/beremaran/straw/internal/protocol/wirepb"
 )
 
 func TestBuildRequest_Basic(t *testing.T) {
-	req := &protocol.Request{
-		ID:     "test-123",
+	req := &wirepb.Request{
+		Id:     "test-123",
 		Method: getMethod,
-		URL:    "https://example.com/path",
-		Headers: protocol.HeaderMap{
+		Url:    "https://example.com/path",
+		Headers: []*wirepb.Header{
 			{Key: "X-Custom-Header", Value: "custom-value"},
 		},
 	}
@@ -45,12 +45,11 @@ func TestBuildRequest_Basic(t *testing.T) {
 
 func TestBuildRequest_WithBody(t *testing.T) {
 	body := []byte(`{"key": "value"}`)
-	req := &protocol.Request{
-		ID:      "test-body",
-		Method:  "POST",
-		URL:     "https://example.com/api",
-		Headers: protocol.HeaderMap{},
-		Body:    body,
+	req := &wirepb.Request{
+		Id:     "test-body",
+		Method: "POST",
+		Url:    "https://example.com/api",
+		Body:   body,
 	}
 
 	ctx := context.Background()
@@ -69,11 +68,10 @@ func TestBuildRequest_WithBody(t *testing.T) {
 }
 
 func TestBuildRequest_InvalidURL(t *testing.T) {
-	req := &protocol.Request{
-		ID:      "test-invalid",
-		Method:  getMethod,
-		URL:     "://invalid-url",
-		Headers: protocol.HeaderMap{},
+	req := &wirepb.Request{
+		Id:     "test-invalid",
+		Method: getMethod,
+		Url:    "://invalid-url",
 	}
 
 	ctx := context.Background()
@@ -92,11 +90,10 @@ func TestBuildRequest_InvalidURL(t *testing.T) {
 }
 
 func TestBuildRequest_AppliesDefaultChromeHeaders(t *testing.T) {
-	req := &protocol.Request{
-		ID:      "test-fp-headers",
-		Method:  getMethod,
-		URL:     exampleURL,
-		Headers: protocol.HeaderMap{},
+	req := &wirepb.Request{
+		Id:     "test-fp-headers",
+		Method: getMethod,
+		Url:    exampleURL,
 	}
 
 	ctx := context.Background()
@@ -123,11 +120,11 @@ func TestBuildRequest_AppliesDefaultChromeHeaders(t *testing.T) {
 }
 
 func TestBuildRequest_DoesNotOverrideExistingHeaders(t *testing.T) {
-	req := &protocol.Request{
-		ID:     "test-no-override",
+	req := &wirepb.Request{
+		Id:     "test-no-override",
 		Method: getMethod,
-		URL:    exampleURL,
-		Headers: protocol.HeaderMap{
+		Url:    exampleURL,
+		Headers: []*wirepb.Header{
 			{Key: userAgentHeader, Value: "Custom-Agent"},
 			{Key: acceptHeader, Value: "text/plain"},
 		},
@@ -149,11 +146,10 @@ func TestBuildRequest_DoesNotOverrideExistingHeaders(t *testing.T) {
 }
 
 func TestBuildRequest_WithContext(t *testing.T) {
-	req := &protocol.Request{
-		ID:      "test-context",
-		Method:  "GET",
-		URL:     "https://example.com",
-		Headers: protocol.HeaderMap{},
+	req := &wirepb.Request{
+		Id:     "test-context",
+		Method: "GET",
+		Url:    "https://example.com",
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -170,11 +166,11 @@ func TestBuildRequest_WithContext(t *testing.T) {
 }
 
 func TestApplyHeaderOrder(t *testing.T) {
-	req := &protocol.Request{
-		ID:     "test-header-order",
+	req := &wirepb.Request{
+		Id:     "test-header-order",
 		Method: "GET",
-		URL:    "https://example.com",
-		Headers: protocol.HeaderMap{
+		Url:    "https://example.com",
+		Headers: []*wirepb.Header{
 			{Key: "X-Custom", Value: "value"},
 			{Key: "Accept", Value: "text/html"},
 		},
@@ -201,10 +197,10 @@ func TestHeadersToProtocol(t *testing.T) {
 	foundContentType := false
 	customCount := 0
 	for _, h := range result {
-		if h.Key == "Content-Type" && h.Value == "application/json" {
+		if h.GetKey() == "Content-Type" && h.GetValue() == "application/json" {
 			foundContentType = true
 		}
-		if h.Key == "X-Custom" {
+		if h.GetKey() == "X-Custom" {
 			customCount++
 		}
 	}

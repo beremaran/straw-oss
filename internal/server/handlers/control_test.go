@@ -11,6 +11,7 @@ import (
 
 	"github.com/beremaran/straw/internal/broker"
 	"github.com/beremaran/straw/internal/protocol"
+	"github.com/beremaran/straw/internal/protocol/wirepb"
 )
 
 const (
@@ -21,17 +22,17 @@ const (
 )
 
 func TestControlHandlerPublishesAndWritesEgressResult(t *testing.T) {
-	resultBody, err := protocol.MarshalResponse(&protocol.Response{
-		RequestID:  testReqID,
-		EgressID:   testEgressID,
+	resultBody, err := protocol.MarshalResponse(&wirepb.Response{
+		RequestId:  testReqID,
+		EgressId:   testEgressID,
 		StatusCode: http.StatusAccepted,
-		Headers: protocol.HeaderMap{
+		Headers: []*wirepb.Header{
 			{Key: "Content-Type", Value: testContentType},
 			{Key: "Content-Encoding", Value: "gzip"},
 		},
 		Body: []byte("ok"),
-		Timing: &protocol.TimingInfo{
-			Total: time.Second,
+		Timing: &wirepb.TimingInfo{
+			TotalNanos: int64(time.Second),
 		},
 	})
 	if err != nil {
@@ -73,8 +74,8 @@ func TestControlHandlerPublishesAndWritesEgressResult(t *testing.T) {
 	if err != nil {
 		t.Fatalf("published task is not protobuf: %v", err)
 	}
-	if publishedReq.ReplyTo != "results.req-1" {
-		t.Fatalf("reply_to = %q, want results.req-1", publishedReq.ReplyTo)
+	if publishedReq.GetReplyTo() != "results.req-1" {
+		t.Fatalf("reply_to = %q, want results.req-1", publishedReq.GetReplyTo())
 	}
 }
 
@@ -117,9 +118,9 @@ func TestControlHandlerRejectsMissingURL(t *testing.T) {
 }
 
 func TestControlHandlerDefaultsMethodToGet(t *testing.T) {
-	resultBody, _ := protocol.MarshalResponse(&protocol.Response{
-		RequestID:  testReqID,
-		EgressID:   testEgressID,
+	resultBody, _ := protocol.MarshalResponse(&wirepb.Response{
+		RequestId:  testReqID,
+		EgressId:   testEgressID,
 		StatusCode: http.StatusOK,
 		Body:       []byte("ok"),
 	})
@@ -141,15 +142,15 @@ func TestControlHandlerDefaultsMethodToGet(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if publishedReq.Method != http.MethodGet {
-		t.Fatalf("method = %q, want %q", publishedReq.Method, http.MethodGet)
+	if publishedReq.GetMethod() != http.MethodGet {
+		t.Fatalf("method = %q, want %q", publishedReq.GetMethod(), http.MethodGet)
 	}
 }
 
 func TestControlHandlerUsesRequestIDFromHeader(t *testing.T) {
-	resultBody, _ := protocol.MarshalResponse(&protocol.Response{
-		RequestID:  testReqID,
-		EgressID:   testEgressID,
+	resultBody, _ := protocol.MarshalResponse(&wirepb.Response{
+		RequestId:  testReqID,
+		EgressId:   testEgressID,
 		StatusCode: http.StatusOK,
 		Body:       []byte("ok"),
 	})
@@ -172,8 +173,8 @@ func TestControlHandlerUsesRequestIDFromHeader(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if publishedReq.ID != "custom-id-123" {
-		t.Fatalf("request ID = %q, want custom-id-123", publishedReq.ID)
+	if publishedReq.GetId() != "custom-id-123" {
+		t.Fatalf("request ID = %q, want custom-id-123", publishedReq.GetId())
 	}
 }
 
@@ -250,10 +251,10 @@ func TestControlHandlerInvalidEgressResponse(t *testing.T) {
 }
 
 func TestWriteControlResultWithEgressError(t *testing.T) {
-	resp := &protocol.Response{
+	resp := &wirepb.Response{
 		StatusCode: http.StatusOK,
 		Body:       []byte("ok"),
-		Error: &protocol.ErrorInfo{
+		Error: &wirepb.ErrorInfo{
 			Code:      protocol.ErrCodeEgressTimeout,
 			Message:   "timeout",
 			Retryable: true,
@@ -269,9 +270,9 @@ func TestWriteControlResultWithEgressError(t *testing.T) {
 }
 
 func TestWriteControlResultFilteredHeaders(t *testing.T) {
-	resp := &protocol.Response{
+	resp := &wirepb.Response{
 		StatusCode: http.StatusOK,
-		Headers: protocol.HeaderMap{
+		Headers: []*wirepb.Header{
 			{Key: "Content-Type", Value: testContentType},
 			{Key: "Connection", Value: "close"},
 			{Key: "Transfer-Encoding", Value: "chunked"},
@@ -363,7 +364,7 @@ func TestWriteTimeoutResponse(t *testing.T) {
 }
 
 func TestWriteEgressError(t *testing.T) {
-	errInfo := &protocol.ErrorInfo{
+	errInfo := &wirepb.ErrorInfo{
 		Code:      protocol.ErrCodeEgressTimeout,
 		Message:   "connection refused",
 		Retryable: false,

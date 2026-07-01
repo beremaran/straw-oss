@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/beremaran/straw/internal/config"
-	"github.com/beremaran/straw/internal/protocol"
+	"github.com/beremaran/straw/internal/protocol/wirepb"
 )
 
 func TestNewWorkerAppliesCustomExecutor(t *testing.T) {
@@ -21,9 +21,9 @@ func TestNewWorkerAppliesCustomExecutor(t *testing.T) {
 
 type dummyExecutor struct{}
 
-func (d *dummyExecutor) Do(_ context.Context, req *protocol.Request) (*protocol.Response, error) {
-	return &protocol.Response{
-		RequestID:  req.ID,
+func (d *dummyExecutor) Do(_ context.Context, req *wirepb.Request) (*wirepb.Response, error) {
+	return &wirepb.Response{
+		RequestId:  req.GetId(),
 		StatusCode: 200,
 	}, nil
 }

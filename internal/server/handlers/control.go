@@ -14,7 +14,7 @@ import (
 
 	"github.com/beremaran/straw/internal/broker"
 	"github.com/beremaran/straw/internal/protocol"
-	"github.com/beremaran/straw/internal/server/dto"
+	"github.com/beremaran/straw/internal/protocol/wirepb"
 	"github.com/beremaran/straw/internal/validator"
 )
 
@@ -31,6 +31,16 @@ type ControlHandler struct {
 	egressID        string
 	resultTimeout   time.Duration
 	allowPrivateIPs bool
+}
+
+type controlRequest struct {
+	ID              string            `json:"id,omitempty"`
+	Method          string            `json:"method,omitempty"`
+	URL             string            `json:"url"`
+	Headers         map[string]string `json:"headers,omitempty"`
+	Body            []byte            `json:"body,omitempty"`
+	Timeout         string            `json:"timeout,omitempty"`
+	MaxResponseSize int64             `json:"max_response_size,omitempty"`
 }
 
 // NewControlHandler creates a control handler.
@@ -67,11 +77,11 @@ func (h *ControlHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeControlResult(w, result)
-	slog.InfoContext(ctx, "request proxied", "request_id", req.ID, "egress_id", result.EgressID)
+	slog.InfoContext(ctx, "request proxied", "request_id", req.GetId(), "egress_id", result.GetEgressId())
 }
 
-func (h *ControlHandler) readControlRequest(w http.ResponseWriter, r *http.Request) (*protocol.Request, bool) {
-	var reqDTO dto.ControlRequest
+func (h *ControlHandler) readControlRequest(w http.ResponseWriter, r *http.Request) (*wirepb.Request, bool) {
+	var reqDTO controlRequest
 
 	err := readJSON(r, &reqDTO)
 	if err != nil {
@@ -87,7 +97,7 @@ func (h *ControlHandler) readControlRequest(w http.ResponseWriter, r *http.Reque
 		return nil, false
 	}
 
-	req, err := reqDTO.ToProtocolRequest()
+	req, err := reqDTO.toWire()
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 
@@ -97,26 +107,54 @@ func (h *ControlHandler) readControlRequest(w http.ResponseWriter, r *http.Reque
 	return req, true
 }
 
-func (h *ControlHandler) prepareControlRequest(w http.ResponseWriter, r *http.Request, req *protocol.Request) bool {
-	if req.URL == "" {
+func (r *controlRequest) toWire() (*wirepb.Request, error) {
+	var timeout time.Duration
+
+	if r.Timeout != "" {
+		var err error
+
+		timeout, err = time.ParseDuration(r.Timeout)
+		if err != nil {
+			return nil, fmt.Errorf("parse timeout: %w", err)
+		}
+	}
+
+	headers := make([]*wirepb.Header, 0, len(r.Headers))
+	for k, v := range r.Headers {
+		headers = append(headers, &wirepb.Header{Key: k, Value: v})
+	}
+
+	return &wirepb.Request{
+		Id:              r.ID,
+		Method:          r.Method,
+		Url:             r.URL,
+		Headers:         headers,
+		Body:            r.Body,
+		TimeoutNanos:    int64(timeout),
+		MaxResponseSize: r.MaxResponseSize,
+	}, nil
+}
+
+func (h *ControlHandler) prepareControlRequest(w http.ResponseWriter, r *http.Request, req *wirepb.Request) bool {
+	if req.GetUrl() == "" {
 		writeError(w, http.StatusBadRequest, "missing url")
 
 		return false
 	}
 
-	if req.Method == "" {
+	if req.GetMethod() == "" {
 		req.Method = http.MethodGet
 	}
 
-	if req.ID == "" {
-		req.ID = r.Header.Get("X-Request-ID")
+	if req.GetId() == "" {
+		req.Id = r.Header.Get("X-Request-ID")
 	}
 
-	if req.ID == "" {
-		req.ID = "req_" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	if req.GetId() == "" {
+		req.Id = "req_" + strconv.FormatInt(time.Now().UnixNano(), 10)
 	}
 
-	err := validator.ValidateTargetURL(r.Context(), req.URL, h.allowPrivateIPs)
+	err := validator.ValidateTargetURL(r.Context(), req.GetUrl(), h.allowPrivateIPs)
 	if err != nil {
 		writeError(w, http.StatusForbidden, fmt.Sprintf("invalid target url: %v", err))
 
@@ -126,8 +164,8 @@ func (h *ControlHandler) prepareControlRequest(w http.ResponseWriter, r *http.Re
 	return true
 }
 
-func (h *ControlHandler) sendAndWait(ctx context.Context, w http.ResponseWriter, req *protocol.Request) (*protocol.Response, bool) {
-	replyTo := "results." + req.ID
+func (h *ControlHandler) sendAndWait(ctx context.Context, w http.ResponseWriter, req *wirepb.Request) (*wirepb.Response, bool) {
+	replyTo := "results." + req.GetId()
 	req.ReplyTo = replyTo
 
 	body, err := protocol.MarshalRequest(req)
@@ -150,7 +188,7 @@ func (h *ControlHandler) sendAndWait(ctx context.Context, w http.ResponseWriter,
 	resultBody, err := h.broker.ConsumeOnce(ctx, replyTo, h.resultTimeout)
 	if err != nil {
 		if errors.Is(err, broker.ErrTimeout) {
-			writeTimeoutResponse(w, req.ID)
+			writeTimeoutResponse(w, req.GetId())
 		} else {
 			slog.Error("failed to consume result", "error", err, "subject", replyTo)
 			writeError(w, http.StatusBadGateway, "failed to receive response")
@@ -181,38 +219,38 @@ var filteredResponseHeaders = []string{
 	"Content-Length",
 }
 
-func writeControlResult(w http.ResponseWriter, result *protocol.Response) {
-	for _, h := range result.Headers {
-		if !isFilteredResponseHeader(h.Key) {
-			w.Header().Add(h.Key, h.Value)
+func writeControlResult(w http.ResponseWriter, result *wirepb.Response) {
+	for _, h := range result.GetHeaders() {
+		if !isFilteredResponseHeader(h.GetKey()) {
+			w.Header().Add(h.GetKey(), h.GetValue())
 		}
 	}
 
-	if result.EgressID != "" {
-		w.Header().Set("X-Control-Egress", result.EgressID)
+	if result.GetEgressId() != "" {
+		w.Header().Set("X-Control-Egress", result.GetEgressId())
 	}
 
-	if result.Timing != nil {
-		w.Header().Set("X-Control-Timing", result.Timing.Total.Round(time.Millisecond).String())
+	if result.GetTiming() != nil {
+		w.Header().Set("X-Control-Timing", time.Duration(result.GetTiming().GetTotalNanos()).Round(time.Millisecond).String())
 	}
 
-	status := result.StatusCode
+	status := int(result.GetStatusCode())
 	if status == 0 {
 		status = http.StatusOK
 	}
 
-	if result.Error != nil {
+	if result.GetError() != nil {
 		if status == http.StatusOK {
 			status = http.StatusBadGateway
 		}
 
-		writeEgressError(w, status, result.Error)
+		writeEgressError(w, status, result.GetError())
 
 		return
 	}
 
 	w.WriteHeader(status)
-	_, _ = w.Write(result.Body)
+	_, _ = w.Write(result.GetBody())
 }
 
 func isFilteredResponseHeader(key string) bool {
@@ -225,7 +263,7 @@ func isFilteredResponseHeader(key string) bool {
 	return false
 }
 
-func writeEgressError(w http.ResponseWriter, status int, errInfo *protocol.ErrorInfo) {
+func writeEgressError(w http.ResponseWriter, status int, errInfo *wirepb.ErrorInfo) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 
