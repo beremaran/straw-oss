@@ -12,6 +12,7 @@ const (
 	defaultHTTPPort              = 8080
 	defaultShutdownTimeout       = 30 * time.Second
 	defaultResultTimeout         = 30 * time.Second
+	defaultStreamTimeout         = 10 * time.Second
 	defaultConcurrencyLimit      = 25
 	defaultMaxConcurrentRequests = 50
 )
@@ -36,6 +37,7 @@ type ControlConfig struct {
 	EgressID              string
 	ShutdownTimeout       time.Duration
 	ResultTimeout         time.Duration
+	StreamTimeout         time.Duration
 	MaxBodySize           string
 	MaxConcurrentRequests int
 	AllowPrivateIPs       bool
@@ -109,6 +111,7 @@ func LoadControlConfig() (*ControlConfig, error) {
 		EgressID:              getEnv("CONTROL_EGRESS_ID", getEnv("EGRESS_ID", "")),
 		ShutdownTimeout:       getEnvDuration("SHUTDOWN_TIMEOUT", defaultShutdownTimeout),
 		ResultTimeout:         getEnvDuration("RESULT_TIMEOUT", defaultResultTimeout),
+		StreamTimeout:         getEnvDuration("NATS_STREAM_TIMEOUT", defaultStreamTimeout),
 		MaxBodySize:           getEnv("MAX_BODY_SIZE", "2M"),
 		MaxConcurrentRequests: getEnvInt("MAX_CONCURRENT_REQUESTS", defaultMaxConcurrentRequests),
 		AllowPrivateIPs:       getEnvBool("ALLOW_PRIVATE_IPS", false),

@@ -36,6 +36,9 @@ func TestLoadControlConfig_Defaults(t *testing.T) {
 	if cfg.ResultTimeout.String() != "30s" {
 		t.Errorf("ResultTimeout = %v, want 30s", cfg.ResultTimeout)
 	}
+	if cfg.StreamTimeout.String() != "10s" {
+		t.Errorf("StreamTimeout = %v, want 10s", cfg.StreamTimeout)
+	}
 }
 
 func TestLoadControlConfig_UsesEgressIDFallback(t *testing.T) {
@@ -51,6 +54,23 @@ func TestLoadControlConfig_UsesEgressIDFallback(t *testing.T) {
 
 	if cfg.EgressID != testEgressID {
 		t.Errorf("EgressID = %v, want %v", cfg.EgressID, testEgressID)
+	}
+}
+
+func TestLoadControlConfig_StreamTimeout(t *testing.T) {
+	setEnvVars(t, map[string]string{
+		envControlEgress:      testControlEgress,
+		envNatsURL:            natsLocalURL,
+		"NATS_STREAM_TIMEOUT": "5s",
+	})
+
+	cfg, err := LoadControlConfig()
+	if err != nil {
+		t.Fatalf("LoadControlConfig() error = %v", err)
+	}
+
+	if cfg.StreamTimeout.String() != "5s" {
+		t.Errorf("StreamTimeout = %v, want 5s", cfg.StreamTimeout)
 	}
 }
 
@@ -121,6 +141,7 @@ func setEnvVars(t *testing.T, vars map[string]string) {
 		envControlEgress,
 		"HTTP_PORT",
 		"RESULT_TIMEOUT",
+		"NATS_STREAM_TIMEOUT",
 		"MAX_CONCURRENT_REQUESTS",
 		"CONCURRENCY_LIMIT",
 	} {
