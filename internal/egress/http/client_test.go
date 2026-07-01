@@ -9,7 +9,7 @@ import (
 
 	fhttp "github.com/bogdanfinn/fhttp"
 
-	"github.com/beremaran/straw/internal/endpoint/fingerprint"
+	"github.com/beremaran/straw/internal/egress/fingerprint"
 	"github.com/beremaran/straw/internal/protocol"
 )
 
@@ -58,7 +58,7 @@ func TestNewClient_WithOptions(t *testing.T) {
 		provider,
 		WithDefaultTimeout(60*time.Second),
 		WithMaxBodySize(5*1024*1024),
-		WithEndpointID("test-endpoint"),
+		WithEgressID("test-egress"),
 	)
 
 	if client.defaultTimeout != 60*time.Second {
@@ -69,8 +69,8 @@ func TestNewClient_WithOptions(t *testing.T) {
 		t.Errorf("expected max body size 5MB, got %v", client.maxBodySize)
 	}
 
-	if client.endpointID != "test-endpoint" {
-		t.Errorf("expected endpoint ID 'test-endpoint', got %v", client.endpointID)
+	if client.egressID != "test-egress" {
+		t.Errorf("expected egress ID 'test-egress', got %v", client.egressID)
 	}
 }
 
@@ -125,7 +125,7 @@ func TestClient_Do_MockServer(t *testing.T) {
 	registry := fingerprint.DefaultRegistry()
 
 	provider := &mockTransportProvider{}
-	client := NewClient(registry, provider, WithEndpointID("test-ep"))
+	client := NewClient(registry, provider, WithEgressID("test-ep"))
 
 	req := &protocol.Request{
 		ID:      testID,
@@ -146,8 +146,8 @@ func TestClient_Do_MockServer(t *testing.T) {
 		t.Errorf("expected request ID test-123, got %s", resp.RequestID)
 	}
 
-	if resp.EndpointID != "test-ep" {
-		t.Errorf("expected endpoint ID test-ep, got %s", resp.EndpointID)
+	if resp.EgressID != "test-ep" {
+		t.Errorf("expected egress ID test-ep, got %s", resp.EgressID)
 	}
 
 	if resp.StatusCode != http.StatusOK {

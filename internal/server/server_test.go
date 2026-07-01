@@ -16,14 +16,14 @@ import (
 
 const (
 	defaultMaxBodySize = "10M"
-	testEndpointID     = "endpoint-1"
+	testEgressID       = "egress-1"
 )
 
 func TestNewServer(t *testing.T) {
-	cfg := config.ServerConfig{
+	cfg := config.ControlConfig{
 		HTTPPort:              0,
 		MaxBodySize:           defaultMaxBodySize,
-		EndpointID:            testEndpointID,
+		EgressID:              testEgressID,
 		MaxConcurrentRequests: 1,
 	}
 
@@ -33,10 +33,10 @@ func TestNewServer(t *testing.T) {
 }
 
 func TestServerUseMiddleware(t *testing.T) {
-	cfg := config.ServerConfig{
+	cfg := config.ControlConfig{
 		HTTPPort:              0,
 		MaxBodySize:           defaultMaxBodySize,
-		EndpointID:            testEndpointID,
+		EgressID:              testEgressID,
 		MaxConcurrentRequests: 1,
 	}
 	srv := New(cfg, noopBroker{})
@@ -44,10 +44,10 @@ func TestServerUseMiddleware(t *testing.T) {
 }
 
 func TestServerHealthRoutes(t *testing.T) {
-	cfg := config.ServerConfig{
+	cfg := config.ControlConfig{
 		HTTPPort:              0,
 		MaxBodySize:           defaultMaxBodySize,
-		EndpointID:            testEndpointID,
+		EgressID:              testEgressID,
 		MaxConcurrentRequests: 1,
 	}
 	srv := New(cfg, noopBroker{})

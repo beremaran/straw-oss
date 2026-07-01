@@ -13,17 +13,17 @@ import (
 	"github.com/beremaran/straw/internal/protocol"
 )
 
-func TestRelayHandlerPublishesAndWritesEndpointResult(t *testing.T) {
-	mb := &relayMockBroker{
+func TestControlHandlerPublishesAndWritesEgressResult(t *testing.T) {
+	mb := &controlMockBroker{
 		result: `{
 			"request_id":"req-1",
-			"endpoint_id":"endpoint-1",
+			"egress_id":"egress-1",
 			"status_code":202,
 			"headers":[{"key":"Content-Type","value":"text/plain"}],
 			"body":"b2s="
 		}`,
 	}
-	handler := NewRelayHandler(mb, "endpoint-1", []byte("secret"), time.Second)
+	handler := NewControlHandler(mb, "egress-1", []byte("secret"), time.Second)
 
 	req := httptest.NewRequestWithContext(
 		context.Background(),
@@ -41,7 +41,7 @@ func TestRelayHandlerPublishesAndWritesEndpointResult(t *testing.T) {
 	if rec.Body.String() != "ok" {
 		t.Fatalf("body = %q, want ok", rec.Body.String())
 	}
-	if mb.publishSubject != "tasks.endpoint-1.tasks" {
+	if mb.publishSubject != "tasks.egress-1.tasks" {
 		t.Fatalf("publish subject = %q", mb.publishSubject)
 	}
 	if mb.consumeSubject != "results.req-1" {
@@ -63,32 +63,32 @@ func TestRelayHandlerPublishesAndWritesEndpointResult(t *testing.T) {
 	}
 }
 
-type relayMockBroker struct {
+type controlMockBroker struct {
 	publishSubject string
 	publishBody    []byte
 	consumeSubject string
 	result         string
 }
 
-func (m *relayMockBroker) Publish(_ context.Context, subject string, body []byte) error {
+func (m *controlMockBroker) Publish(_ context.Context, subject string, body []byte) error {
 	m.publishSubject = subject
 	m.publishBody = append([]byte(nil), body...)
 
 	return nil
 }
 
-func (m *relayMockBroker) Subscribe(context.Context, string, broker.Handler, ...broker.SubscribeOption) error {
+func (m *controlMockBroker) Subscribe(context.Context, string, broker.Handler, ...broker.SubscribeOption) error {
 	return nil
 }
 
-func (m *relayMockBroker) ConsumeOnce(_ context.Context, subject string, _ time.Duration) ([]byte, error) {
+func (m *controlMockBroker) ConsumeOnce(_ context.Context, subject string, _ time.Duration) ([]byte, error) {
 	m.consumeSubject = subject
 
 	return []byte(m.result), nil
 }
 
-func (m *relayMockBroker) DeclareStream(context.Context, string, ...string) error { return nil }
+func (m *controlMockBroker) DeclareStream(context.Context, string, ...string) error { return nil }
 
-func (m *relayMockBroker) IsConnected() bool { return true }
+func (m *controlMockBroker) IsConnected() bool { return true }
 
-func (m *relayMockBroker) Close() error { return nil }
+func (m *controlMockBroker) Close() error { return nil }

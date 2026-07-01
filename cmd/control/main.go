@@ -1,4 +1,4 @@
-// Package main implements the Straw relay entrypoint.
+// Package main implements the Straw control entrypoint.
 package main
 
 import (
@@ -27,22 +27,22 @@ func main() {
 	natsBroker := connectNATSOrDie(ctx, cfg)
 	defer func() { _ = natsBroker.Close() }()
 
-	relayServer := server.New(*cfg, natsBroker)
+	controlServer := server.New(*cfg, natsBroker)
 	go func() {
-		err := relayServer.Start()
+		err := controlServer.Start()
 		if err != nil {
 			slog.Error("server stopped", "error", err)
 		}
 	}()
 
-	fmt.Printf("Straw relay %s started on %s, endpoint %s\n", Version, relayServer.Address(), cfg.EndpointID)
+	fmt.Printf("Straw control %s started on %s, egress %s\n", Version, controlServer.Address(), cfg.EgressID)
 
 	listenInterrupts()
-	shutdown(ctx, cfg, relayServer)
+	shutdown(ctx, cfg, controlServer)
 }
 
-func loadConfigOrDie() *config.ServerConfig {
-	cfg, err := config.LoadServerConfig()
+func loadConfigOrDie() *config.ControlConfig {
+	cfg, err := config.LoadControlConfig()
 	if err != nil {
 		slog.Error("failed to load config", "error", err)
 		os.Exit(1)
@@ -51,7 +51,7 @@ func loadConfigOrDie() *config.ServerConfig {
 	return cfg
 }
 
-func connectNATSOrDie(ctx context.Context, cfg *config.ServerConfig) *broker.NatsBroker {
+func connectNATSOrDie(ctx context.Context, cfg *config.ControlConfig) *broker.NatsBroker {
 	natsBroker := broker.NewNatsBroker(
 		broker.Addrs(cfg.NATS.URL),
 		broker.Token(cfg.NATS.Token),
@@ -83,7 +83,7 @@ func listenInterrupts() {
 	<-quit
 }
 
-func shutdown(ctx context.Context, cfg *config.ServerConfig, srv *server.Server) {
+func shutdown(ctx context.Context, cfg *config.ControlConfig, srv *server.Server) {
 	ctx, cancel := context.WithTimeout(ctx, cfg.ShutdownTimeout)
 	defer cancel()
 

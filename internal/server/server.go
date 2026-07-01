@@ -1,4 +1,4 @@
-// Package server provides the HTTP relay server.
+// Package server provides the HTTP control server.
 package server
 
 import (
@@ -16,16 +16,16 @@ import (
 	mw "github.com/beremaran/straw/internal/server/middleware"
 )
 
-// Server is the HTTP server for the Straw relay.
+// Server is the HTTP server for the Straw control.
 type Server struct {
 	mux    *http.ServeMux
 	server *http.Server
-	conf   config.ServerConfig
+	conf   config.ControlConfig
 	broker broker.MessageBroker
 }
 
-// New creates a relay server.
-func New(conf config.ServerConfig, b broker.MessageBroker) *Server {
+// New creates a control server.
+func New(conf config.ControlConfig, b broker.MessageBroker) *Server {
 	mux := http.NewServeMux()
 	s := &Server{
 		mux:    mux,
@@ -100,16 +100,16 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /healthz", healthCheck)
 	s.mux.HandleFunc("GET /readyz", healthCheck)
 
-	relayHandler := handlers.NewRelayHandler(
+	controlHandler := handlers.NewControlHandler(
 		s.broker,
-		s.conf.EndpointID,
+		s.conf.EgressID,
 		[]byte(s.conf.Security.HMACSecret),
 		s.conf.ResultTimeout,
 		handlers.WithAllowPrivateIPs(s.conf.AllowPrivateIPs),
 	)
 
 	v1Handler := applyMiddlewares(
-		http.HandlerFunc(relayHandler.Handle),
+		http.HandlerFunc(controlHandler.Handle),
 		mw.ConcurrencyLimiter(s.conf.MaxConcurrentRequests),
 	)
 	s.mux.Handle("POST /v1/request", v1Handler)

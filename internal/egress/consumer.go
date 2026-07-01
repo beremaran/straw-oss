@@ -1,5 +1,5 @@
-// Package endpoint provides endpoint task consumption and result publishing.
-package endpoint
+// Package egress provides egress task consumption and result publishing.
+package egress
 
 import (
 	"context"
@@ -32,7 +32,7 @@ type Consumer struct {
 	broker           broker.MessageBroker
 	httpClient       RequestExecutor
 	secret           []byte
-	endpointID       string
+	egressID         string
 	taskSubject      string
 	concurrencyLimit int
 	semaphore        chan struct{}
@@ -87,15 +87,15 @@ func NewConsumer(
 	b broker.MessageBroker,
 	httpClient RequestExecutor,
 	secret []byte,
-	endpointID string,
+	egressID string,
 	opts ...Option,
 ) *Consumer {
 	c := &Consumer{
 		broker:           b,
 		httpClient:       httpClient,
 		secret:           secret,
-		endpointID:       endpointID,
-		taskSubject:      "tasks." + endpointID + ".tasks",
+		egressID:         egressID,
+		taskSubject:      "tasks." + egressID + ".tasks",
 		concurrencyLimit: DefaultConcurrencyLimit,
 		maxTaskAge:       DefaultMaxTaskAge,
 		logger:           slog.Default(),
@@ -115,7 +115,7 @@ func (c *Consumer) Start(ctx context.Context) error {
 	c.ctx, c.cancel = context.WithCancel(ctx)
 
 	c.logger.Info("starting consumer",
-		"endpoint_id", c.endpointID,
+		"egress_id", c.egressID,
 		"subject", c.taskSubject,
 		"concurrency_limit", c.concurrencyLimit,
 		"max_task_age", c.maxTaskAge,
@@ -130,7 +130,7 @@ func (c *Consumer) Start(ctx context.Context) error {
 
 	c.Drain()
 
-	c.logger.Info("consumer stopped", "endpoint_id", c.endpointID)
+	c.logger.Info("consumer stopped", "egress_id", c.egressID)
 
 	return nil
 }
@@ -215,7 +215,7 @@ func (c *Consumer) handleMessage(ctx context.Context, body []byte) error {
 		if err != nil {
 			c.logger.Error("failed to process task",
 				"error", err,
-				"endpoint_id", c.endpointID,
+				"egress_id", c.egressID,
 			)
 		}
 	})
@@ -289,8 +289,8 @@ func (c *Consumer) executeRequest(ctx context.Context, req *protocol.Request) *p
 		)
 
 		resp = &protocol.Response{
-			RequestID:  req.ID,
-			EndpointID: c.endpointID,
+			RequestID: req.ID,
+			EgressID:  c.egressID,
 			Error: &protocol.ErrorInfo{
 				Code:      protocol.ErrCodeUpstreamError,
 				Message:   err.Error(),
@@ -299,7 +299,7 @@ func (c *Consumer) executeRequest(ctx context.Context, req *protocol.Request) *p
 		}
 	}
 
-	resp.EndpointID = c.endpointID
+	resp.EgressID = c.egressID
 
 	return resp
 }

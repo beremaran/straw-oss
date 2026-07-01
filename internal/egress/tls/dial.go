@@ -11,7 +11,7 @@ import (
 
 	utls "github.com/refraction-networking/utls"
 
-	"github.com/beremaran/straw/internal/endpoint/fingerprint"
+	"github.com/beremaran/straw/internal/egress/fingerprint"
 )
 
 // DialOptions configures the behavior of TLS dial operations.

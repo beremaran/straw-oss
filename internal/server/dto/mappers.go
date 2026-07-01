@@ -1,4 +1,4 @@
-// Package dto defines relay HTTP request and response DTOs.
+// Package dto defines control HTTP request and response DTOs.
 package dto
 
 import (
@@ -8,8 +8,8 @@ import (
 	"github.com/beremaran/straw/internal/protocol"
 )
 
-// ToProtocolRequest converts a RelayRequest to a protocol.Request.
-func (r *RelayRequest) ToProtocolRequest() (*protocol.Request, error) {
+// ToProtocolRequest converts a ControlRequest to a protocol.Request.
+func (r *ControlRequest) ToProtocolRequest() (*protocol.Request, error) {
 	var timeout time.Duration
 
 	if r.Timeout != "" {

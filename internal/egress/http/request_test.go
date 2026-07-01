@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/beremaran/straw/internal/endpoint/fingerprint"
+	"github.com/beremaran/straw/internal/egress/fingerprint"
 	"github.com/beremaran/straw/internal/protocol"
 )
 

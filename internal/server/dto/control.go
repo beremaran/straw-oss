@@ -1,7 +1,7 @@
 package dto
 
-// RelayRequest is the request body for proxying a request through the relay.
-type RelayRequest struct {
+// ControlRequest is the request body for proxying a request through the control.
+type ControlRequest struct {
 	ID              string            `json:"id,omitempty"`
 	Method          string            `json:"method,omitempty"`
 	URL             string            `json:"url"                         validate:"required,url"`
@@ -11,17 +11,17 @@ type RelayRequest struct {
 	MaxResponseSize int64             `json:"max_response_size,omitempty"`
 }
 
-// RelayResponse is the response body from relaying a request.
-type RelayResponse struct {
+// ControlResponse is the response body from controlling a request.
+type ControlResponse struct {
 	RequestID  string            `json:"request_id"`
 	StatusCode int               `json:"status_code"`
 	Headers    map[string]string `json:"headers,omitempty"`
 	Body       []byte            `json:"body,omitempty"`
 	Timing     *TimingDTO        `json:"timing,omitempty"`
-	Meta       *RelayMetaDTO     `json:"meta,omitempty"`
+	Meta       *ControlMetaDTO   `json:"meta,omitempty"`
 }
 
-// TimingDTO contains timing information for a relayed request.
+// TimingDTO contains timing information for a controlled request.
 type TimingDTO struct {
 	DNSLookup    string `json:"dns_lookup,omitempty"`
 	TCPConnect   string `json:"tcp_connect,omitempty"`
@@ -30,10 +30,10 @@ type TimingDTO struct {
 	Total        string `json:"total"`
 }
 
-// RelayMetaDTO contains metadata about a relayed request.
-type RelayMetaDTO struct {
-	Retries    int      `json:"retries,omitempty"`
-	Pool       string   `json:"pool,omitempty"`
-	EndpointID string   `json:"endpoint_id,omitempty"`
-	Errors     []string `json:"errors,omitempty"`
+// ControlMetaDTO contains metadata about a controlled request.
+type ControlMetaDTO struct {
+	Retries  int      `json:"retries,omitempty"`
+	Pool     string   `json:"pool,omitempty"`
+	EgressID string   `json:"egress_id,omitempty"`
+	Errors   []string `json:"errors,omitempty"`
 }

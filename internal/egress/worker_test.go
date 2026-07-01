@@ -1,4 +1,4 @@
-package endpoint
+package egress
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 
 func TestNewWorkerAppliesCustomExecutor(t *testing.T) {
 	executor := &dummyExecutor{}
-	cfg := &config.EndpointConfig{ID: "endpoint-1"}
+	cfg := &config.EgressConfig{ID: "egress-1"}
 
 	w := NewWorker(cfg, WithRequestExecutor(executor))
 

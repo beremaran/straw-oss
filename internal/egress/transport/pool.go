@@ -12,7 +12,7 @@ import (
 	"github.com/bogdanfinn/fhttp/http2"
 	tls "github.com/bogdanfinn/utls"
 
-	"github.com/beremaran/straw/internal/endpoint/fingerprint"
+	"github.com/beremaran/straw/internal/egress/fingerprint"
 )
 
 // DialTLSFunc is a function that establishes a TLS connection with client

@@ -49,8 +49,8 @@ func TestResponse_JSONRoundTrip(t *testing.T) {
 			{Key: testContentType, Value: testJSONContentType},
 			{Key: "X-Request-Id", Value: "abc123"},
 		},
-		Body:       []byte(`{"result":"success"}`),
-		EndpointID: "endpoint-us-1",
+		Body:     []byte(`{"result":"success"}`),
+		EgressID: "egress-us-1",
 		Timing: &TimingInfo{
 			DNSLookup:    10 * time.Millisecond,
 			TCPConnect:   20 * time.Millisecond,
@@ -400,8 +400,8 @@ func TestSignedTask_JSONRoundTrip(t *testing.T) {
 
 func TestErrorInfo_JSONRoundTrip(t *testing.T) {
 	errInfo := &ErrorInfo{
-		Code:       ErrCodeEndpointTimeout,
-		Message:    "endpoint did not respond in time",
+		Code:       ErrCodeEgressTimeout,
+		Message:    "egress did not respond in time",
 		Retryable:  true,
 		RetryAfter: 30 * time.Second,
 	}

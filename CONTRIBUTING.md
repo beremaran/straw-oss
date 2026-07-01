@@ -35,9 +35,9 @@ Thank you for your interest in contributing to the Straw Proxy project.
 
 Please follow the [Conventional Commits](https://www.conventionalcommits.org/) specification:
 
-* `feat: add endpoint transport option`
+* `feat: add egress transport option`
 * `fix: reject invalid target URLs`
-* `docs: update relay usage`
+* `docs: update control usage`
 * `chore: upgrade dependencies`
 
 ## Pull Request Process

@@ -14,7 +14,7 @@ import (
 	tls_client "github.com/bogdanfinn/tls-client"
 	"github.com/bogdanfinn/tls-client/profiles"
 
-	"github.com/beremaran/straw/internal/endpoint/fingerprint"
+	"github.com/beremaran/straw/internal/egress/fingerprint"
 	"github.com/beremaran/straw/internal/protocol"
 )
 
@@ -35,7 +35,7 @@ type Client struct {
 	transportProvider TransportProvider
 	defaultTimeout    time.Duration
 	maxBodySize       int64
-	endpointID        string
+	egressID          string
 	mu                sync.Mutex
 	tlsClients        map[string]tls_client.HttpClient
 }
@@ -57,10 +57,10 @@ func WithMaxBodySize(size int64) ClientOption {
 	}
 }
 
-// WithEndpointID sets the endpoint identifier.
-func WithEndpointID(id string) ClientOption {
+// WithEgressID sets the egress identifier.
+func WithEgressID(id string) ClientOption {
 	return func(c *Client) {
-		c.endpointID = id
+		c.egressID = id
 	}
 }
 
@@ -135,26 +135,26 @@ func (c *Client) Do(ctx context.Context, req *protocol.Request) (*protocol.Respo
 	if err != nil {
 		timing.Total = time.Since(startTime)
 
-		return upstreamErrorResponse(req, c.endpointID, timing, err), nil
+		return upstreamErrorResponse(req, c.egressID, timing, err), nil
 	}
 
 	defer func() { _ = resp.Body.Close() }()
 
 	timing.Total = time.Since(startTime)
 
-	return BuildResponseWithOptions(req.ID, resp, timing, responseOptions(c, req), c.endpointID)
+	return BuildResponseWithOptions(req.ID, resp, timing, responseOptions(c, req), c.egressID)
 }
 
 func upstreamErrorResponse(
 	req *protocol.Request,
-	endpointID string,
+	egressID string,
 	timing protocol.TimingInfo,
 	err error,
 ) *protocol.Response {
 	return &protocol.Response{
-		RequestID:  req.ID,
-		EndpointID: endpointID,
-		Timing:     &timing,
+		RequestID: req.ID,
+		EgressID:  egressID,
+		Timing:    &timing,
 		Error: &protocol.ErrorInfo{
 			Code:      protocol.ErrCodeUpstreamError,
 			Message:   err.Error(),

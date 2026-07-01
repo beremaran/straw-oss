@@ -1,4 +1,4 @@
-package endpoint
+package egress
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 	"github.com/beremaran/straw/internal/protocol"
 )
 
-const testEndpointID = "endpoint-001"
+const testEgressID = "egress-001"
 
 type mockPublisherBroker struct {
 	publishedMsgs []publishedMsg
@@ -81,7 +81,7 @@ func TestPublisher_Publish(t *testing.T) {
 
 	resp := &protocol.Response{
 		RequestID:  "test-request-123",
-		EndpointID: testEndpointID,
+		EgressID:   testEgressID,
 		StatusCode: 200,
 		Headers:    protocol.HeaderMap{{Key: "Content-Type", Value: "application/json"}},
 		Body:       []byte(`{"message": "hello world"}`),
@@ -117,8 +117,8 @@ func TestPublisher_Publish(t *testing.T) {
 		t.Errorf("expected request ID 'test-request-123', got %q", result.RequestID)
 	}
 
-	if result.EndpointID != testEndpointID {
-		t.Errorf("expected endpoint ID %q, got %q", testEndpointID, result.EndpointID)
+	if result.EgressID != testEgressID {
+		t.Errorf("expected egress ID %q, got %q", testEgressID, result.EgressID)
 	}
 
 	if result.StatusCode != http.StatusOK {
@@ -182,8 +182,8 @@ func TestPublisher_Publish_ErrorResponse(t *testing.T) {
 	p := NewPublisher(mb)
 
 	resp := &protocol.Response{
-		RequestID:  "test-request-789",
-		EndpointID: testEndpointID,
+		RequestID: "test-request-789",
+		EgressID:  testEgressID,
 		Error: &protocol.ErrorInfo{
 			Code:      protocol.ErrCodeUpstreamError,
 			Message:   "connection refused",
@@ -258,7 +258,7 @@ func TestPublisher_PublishError(t *testing.T) {
 		Retryable: true,
 	}
 
-	err := p.PublishError(context.Background(), "test-req", testEndpointID, errInfo, "results.test-req")
+	err := p.PublishError(context.Background(), "test-req", testEgressID, errInfo, "results.test-req")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -359,8 +359,8 @@ func TestNewHTTPError(t *testing.T) {
 func TestNewTimeoutError(t *testing.T) {
 	err := NewTimeoutError("request timed out after 30s")
 
-	if err.Code != protocol.ErrCodeEndpointTimeout {
-		t.Errorf("expected code %q, got %q", protocol.ErrCodeEndpointTimeout, err.Code)
+	if err.Code != protocol.ErrCodeEgressTimeout {
+		t.Errorf("expected code %q, got %q", protocol.ErrCodeEgressTimeout, err.Code)
 	}
 
 	if err.Message != "timeout: request timed out after 30s" {
