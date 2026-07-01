@@ -1,4 +1,4 @@
-// Package handlers provides HTTP handlers for the relay server.
+// Package handlers provides HTTP handlers for the control server.
 package handlers
 
 import (
@@ -19,36 +19,36 @@ import (
 	"github.com/beremaran/straw/internal/validator"
 )
 
-// RelayHandler sends an incoming HTTP request to one configured endpoint.
-type RelayHandler struct {
+// ControlHandler sends an incoming HTTP request to one configured egress.
+type ControlHandler struct {
 	broker          broker.MessageBroker
-	endpointID      string
+	egressID        string
 	hmacSecret      []byte
 	resultTimeout   time.Duration
 	allowPrivateIPs bool
 }
 
-// RelayHandlerOption configures a RelayHandler.
-type RelayHandlerOption func(*RelayHandler)
+// ControlHandlerOption configures a ControlHandler.
+type ControlHandlerOption func(*ControlHandler)
 
-// WithAllowPrivateIPs permits relay requests to target private IP addresses.
-func WithAllowPrivateIPs(allow bool) RelayHandlerOption {
-	return func(h *RelayHandler) {
+// WithAllowPrivateIPs permits control requests to target private IP addresses.
+func WithAllowPrivateIPs(allow bool) ControlHandlerOption {
+	return func(h *ControlHandler) {
 		h.allowPrivateIPs = allow
 	}
 }
 
-// NewRelayHandler creates a relay handler.
-func NewRelayHandler(
+// NewControlHandler creates a control handler.
+func NewControlHandler(
 	b broker.MessageBroker,
-	endpointID string,
+	egressID string,
 	hmacSecret []byte,
 	resultTimeout time.Duration,
-	opts ...RelayHandlerOption,
-) *RelayHandler {
-	h := &RelayHandler{
+	opts ...ControlHandlerOption,
+) *ControlHandler {
+	h := &ControlHandler{
 		broker:        b,
-		endpointID:    endpointID,
+		egressID:      egressID,
 		hmacSecret:    hmacSecret,
 		resultTimeout: resultTimeout,
 	}
@@ -59,16 +59,16 @@ func NewRelayHandler(
 	return h
 }
 
-// Handle proxies a request through the configured endpoint.
-func (h *RelayHandler) Handle(w http.ResponseWriter, r *http.Request) {
+// Handle proxies a request through the configured egress.
+func (h *ControlHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	req, ok := h.readRelayRequest(w, r)
+	req, ok := h.readControlRequest(w, r)
 	if !ok {
 		return
 	}
 
-	if !h.prepareRelayRequest(w, r, req) {
+	if !h.prepareControlRequest(w, r, req) {
 		return
 	}
 
@@ -77,16 +77,16 @@ func (h *RelayHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !decompressRelayResponse(w, result) {
+	if !decompressControlResponse(w, result) {
 		return
 	}
 
-	writeRelayResult(w, result)
-	slog.InfoContext(ctx, "request proxied", "request_id", req.ID, "endpoint_id", result.EndpointID)
+	writeControlResult(w, result)
+	slog.InfoContext(ctx, "request proxied", "request_id", req.ID, "egress_id", result.EgressID)
 }
 
-func (h *RelayHandler) readRelayRequest(w http.ResponseWriter, r *http.Request) (*protocol.Request, bool) {
-	var reqDTO dto.RelayRequest
+func (h *ControlHandler) readControlRequest(w http.ResponseWriter, r *http.Request) (*protocol.Request, bool) {
+	var reqDTO dto.ControlRequest
 
 	err := helper.ReadJSON(r, &reqDTO)
 	if err != nil {
@@ -112,7 +112,7 @@ func (h *RelayHandler) readRelayRequest(w http.ResponseWriter, r *http.Request) 
 	return req, true
 }
 
-func (h *RelayHandler) prepareRelayRequest(w http.ResponseWriter, r *http.Request, req *protocol.Request) bool {
+func (h *ControlHandler) prepareControlRequest(w http.ResponseWriter, r *http.Request, req *protocol.Request) bool {
 	if req.URL == "" {
 		helper.WriteError(w, http.StatusBadRequest, "missing url")
 
@@ -146,7 +146,7 @@ func (h *RelayHandler) prepareRelayRequest(w http.ResponseWriter, r *http.Reques
 	return true
 }
 
-func (h *RelayHandler) sendAndWait(ctx context.Context, w http.ResponseWriter, req *protocol.Request) (*resultMessage, bool) {
+func (h *ControlHandler) sendAndWait(ctx context.Context, w http.ResponseWriter, req *protocol.Request) (*resultMessage, bool) {
 	replyTo := "results." + req.ID
 	req.ReplyTo = replyTo
 
@@ -164,7 +164,7 @@ func (h *RelayHandler) sendAndWait(ctx context.Context, w http.ResponseWriter, r
 		return nil, false
 	}
 
-	subject := "tasks." + h.endpointID + ".tasks"
+	subject := "tasks." + h.egressID + ".tasks"
 
 	err = h.broker.Publish(ctx, subject, body)
 	if err != nil {
@@ -190,7 +190,7 @@ func (h *RelayHandler) sendAndWait(ctx context.Context, w http.ResponseWriter, r
 
 	err = json.Unmarshal(resultBody, &result)
 	if err != nil {
-		helper.WriteError(w, http.StatusBadGateway, "invalid endpoint response")
+		helper.WriteError(w, http.StatusBadGateway, "invalid egress response")
 
 		return nil, false
 	}
@@ -198,10 +198,10 @@ func (h *RelayHandler) sendAndWait(ctx context.Context, w http.ResponseWriter, r
 	return &result, true
 }
 
-// resultMessage carries the response from an endpoint back to the relay.
+// resultMessage carries the response from an egress back to the control.
 type resultMessage struct {
 	RequestID      string               `json:"request_id"`
-	EndpointID     string               `json:"endpoint_id,omitempty"`
+	EgressID       string               `json:"egress_id,omitempty"`
 	StatusCode     int                  `json:"status_code"`
 	Headers        protocol.HeaderMap   `json:"headers"`
 	CompressedBody []byte               `json:"body,omitempty"`
@@ -210,7 +210,7 @@ type resultMessage struct {
 	Timing         *protocol.TimingInfo `json:"timing,omitempty"`
 }
 
-func decompressRelayResponse(w http.ResponseWriter, res *resultMessage) bool {
+func decompressControlResponse(w http.ResponseWriter, res *resultMessage) bool {
 	if !res.BodyCompressed || len(res.CompressedBody) == 0 {
 		return true
 	}
@@ -241,19 +241,19 @@ var filteredResponseHeaders = []string{
 	"Content-Encoding",
 }
 
-func writeRelayResult(w http.ResponseWriter, result *resultMessage) {
+func writeControlResult(w http.ResponseWriter, result *resultMessage) {
 	for _, h := range result.Headers {
 		if !isFilteredResponseHeader(h.Key) {
 			w.Header().Add(h.Key, h.Value)
 		}
 	}
 
-	if result.EndpointID != "" {
-		w.Header().Set("X-Relay-Endpoint", result.EndpointID)
+	if result.EgressID != "" {
+		w.Header().Set("X-Control-Egress", result.EgressID)
 	}
 
 	if result.Timing != nil {
-		w.Header().Set("X-Relay-Timing", result.Timing.Total.Round(time.Millisecond).String())
+		w.Header().Set("X-Control-Timing", result.Timing.Total.Round(time.Millisecond).String())
 	}
 
 	status := result.StatusCode
@@ -266,7 +266,7 @@ func writeRelayResult(w http.ResponseWriter, result *resultMessage) {
 			status = http.StatusBadGateway
 		}
 
-		writeEndpointError(w, status, result.Error)
+		writeEgressError(w, status, result.Error)
 
 		return
 	}
@@ -285,7 +285,7 @@ func isFilteredResponseHeader(key string) bool {
 	return false
 }
 
-func writeEndpointError(w http.ResponseWriter, status int, errInfo *protocol.ErrorInfo) {
+func writeEgressError(w http.ResponseWriter, status int, errInfo *protocol.ErrorInfo) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 
@@ -297,7 +297,7 @@ func writeEndpointError(w http.ResponseWriter, status int, errInfo *protocol.Err
 		},
 	})
 	if err != nil {
-		slog.Error("failed to encode endpoint error", "error", err)
+		slog.Error("failed to encode egress error", "error", err)
 	}
 }
 
@@ -307,8 +307,8 @@ func writeTimeoutResponse(w http.ResponseWriter, requestID string) {
 
 	err := json.NewEncoder(w).Encode(errorResponse{
 		Error: errorBody{
-			"code":       protocol.ErrCodeEndpointTimeout,
-			"message":    "endpoint did not respond in time",
+			"code":       protocol.ErrCodeEgressTimeout,
+			"message":    "egress did not respond in time",
 			"retryable":  true,
 			"request_id": requestID,
 		},

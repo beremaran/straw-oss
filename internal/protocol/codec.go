@@ -1,5 +1,5 @@
 // Package protocol serialization helpers for zstd compression and JSON
-// marshaling used between relay and endpoint nodes.
+// marshaling used between control and egress nodes.
 package protocol
 
 import (

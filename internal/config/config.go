@@ -25,19 +25,19 @@ type NATSConfig struct {
 	Token string
 }
 
-// SecurityConfig holds shared signing and optional relay TLS settings.
+// SecurityConfig holds shared signing and optional control TLS settings.
 type SecurityConfig struct {
 	HMACSecret  string
 	TLSCertFile string
 	TLSKeyFile  string
 }
 
-// ServerConfig holds relay configuration.
-type ServerConfig struct {
+// ControlConfig holds control configuration.
+type ControlConfig struct {
 	NATS                  NATSConfig
 	Security              SecurityConfig
 	HTTPPort              int
-	EndpointID            string
+	EgressID              string
 	ShutdownTimeout       time.Duration
 	ResultTimeout         time.Duration
 	MaxBodySize           string
@@ -45,8 +45,8 @@ type ServerConfig struct {
 	AllowPrivateIPs       bool
 }
 
-// EndpointConfig holds endpoint worker configuration.
-type EndpointConfig struct {
+// EgressConfig holds egress worker configuration.
+type EgressConfig struct {
 	NATS             NATSConfig
 	Security         SecurityConfig
 	ID               string
@@ -107,13 +107,13 @@ func getEnvDuration(key string, defaultVal time.Duration) time.Duration {
 	return d
 }
 
-// LoadServerConfig loads relay configuration from environment variables.
-func LoadServerConfig() (*ServerConfig, error) {
-	cfg := &ServerConfig{
+// LoadControlConfig loads control configuration from environment variables.
+func LoadControlConfig() (*ControlConfig, error) {
+	cfg := &ControlConfig{
 		NATS:                  LoadNATSConfig(),
 		Security:              LoadSecurityConfig(),
 		HTTPPort:              getEnvInt("HTTP_PORT", defaultHTTPPort),
-		EndpointID:            getEnv("RELAY_ENDPOINT_ID", getEnv("ENDPOINT_ID", "")),
+		EgressID:              getEnv("CONTROL_EGRESS_ID", getEnv("EGRESS_ID", "")),
 		ShutdownTimeout:       getEnvDuration("SHUTDOWN_TIMEOUT", defaultShutdownTimeout),
 		ResultTimeout:         getEnvDuration("RESULT_TIMEOUT", defaultResultTimeout),
 		MaxBodySize:           getEnv("MAX_BODY_SIZE", "2M"),
@@ -121,7 +121,7 @@ func LoadServerConfig() (*ServerConfig, error) {
 		AllowPrivateIPs:       getEnvBool("ALLOW_PRIVATE_IPS", false),
 	}
 
-	err := validateServerConfig(cfg)
+	err := validateControlConfig(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -146,19 +146,19 @@ func LoadNATSConfig() NATSConfig {
 	}
 }
 
-// LoadEndpointConfig loads endpoint configuration from environment variables.
-func LoadEndpointConfig() (*EndpointConfig, error) {
-	cfg := &EndpointConfig{
+// LoadEgressConfig loads egress configuration from environment variables.
+func LoadEgressConfig() (*EgressConfig, error) {
+	cfg := &EgressConfig{
 		NATS:             LoadNATSConfig(),
 		Security:         LoadSecurityConfig(),
-		ID:               getEnv("ENDPOINT_ID", ""),
+		ID:               getEnv("EGRESS_ID", ""),
 		ConcurrencyLimit: getEnvInt("CONCURRENCY_LIMIT", defaultConcurrencyLimit),
 		MaxPoolHosts:     getEnvInt("MAX_POOL_HOSTS", defaultMaxPoolHosts),
 		IdleConnsPerHost: getEnvInt("IDLE_CONNS_PER_HOST", defaultIdleConnsPerHost),
 		IdleConnTimeout:  getEnvDuration("IDLE_CONN_TIMEOUT", defaultIdleConnTimeout),
 	}
 
-	err := validateEndpointConfig(cfg)
+	err := validateEgressConfig(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -166,11 +166,11 @@ func LoadEndpointConfig() (*EndpointConfig, error) {
 	return cfg, nil
 }
 
-func validateServerConfig(cfg *ServerConfig) error {
+func validateControlConfig(cfg *ControlConfig) error {
 	var errs []string
 
-	if cfg.EndpointID == "" {
-		errs = append(errs, "RELAY_ENDPOINT_ID or ENDPOINT_ID is required")
+	if cfg.EgressID == "" {
+		errs = append(errs, "CONTROL_EGRESS_ID or EGRESS_ID is required")
 	}
 
 	if cfg.NATS.URL == "" {
@@ -192,11 +192,11 @@ func validateServerConfig(cfg *ServerConfig) error {
 	return nil
 }
 
-func validateEndpointConfig(cfg *EndpointConfig) error {
+func validateEgressConfig(cfg *EgressConfig) error {
 	var errs []string
 
 	if cfg.ID == "" {
-		errs = append(errs, "ENDPOINT_ID is required")
+		errs = append(errs, "EGRESS_ID is required")
 	}
 
 	if cfg.NATS.URL == "" {

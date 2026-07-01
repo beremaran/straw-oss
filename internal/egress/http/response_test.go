@@ -33,7 +33,7 @@ func TestBuildResponse_Basic(t *testing.T) {
 		Total: 100,
 	}
 
-	protoResp, err := BuildResponse("req-123", resp, timing, DefaultMaxBodySize, "endpoint-1")
+	protoResp, err := BuildResponse("req-123", resp, timing, DefaultMaxBodySize, "egress-1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -50,8 +50,8 @@ func TestBuildResponse_Basic(t *testing.T) {
 		t.Errorf("expected body 'Hello, World!', got %s", string(protoResp.Body))
 	}
 
-	if protoResp.EndpointID != "endpoint-1" {
-		t.Errorf("expected endpoint ID endpoint-1, got %s", protoResp.EndpointID)
+	if protoResp.EgressID != "egress-1" {
+		t.Errorf("expected egress ID egress-1, got %s", protoResp.EgressID)
 	}
 
 	if protoResp.Timing == nil || protoResp.Timing.Total != 100 {

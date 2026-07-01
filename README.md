@@ -1,9 +1,9 @@
 # Straw
 
-Straw is a small HTTP relay that proxies requests through a configured endpoint worker over NATS.
+Straw is a small HTTP control service that proxies requests through a configured egress worker over NATS.
 
 ```text
-client -> relay /v1/request -> NATS tasks.<endpoint>.tasks -> endpoint -> NATS results.<request> -> client
+client -> control /v1/request -> NATS tasks.<egress>.tasks -> egress -> NATS results.<request> -> client
 ```
 
 ## Run Locally
@@ -14,23 +14,23 @@ Start NATS:
 docker compose -f docker/docker-compose.dev.yml up -d nats
 ```
 
-Run an endpoint:
+Run an egress:
 
 ```bash
-ENDPOINT_ID=dev-worker-01 \
+EGRESS_ID=dev-worker-01 \
 NATS_URL=nats://localhost:4222 \
 HMAC_SECRET=dev-secret-change-me \
-go run ./cmd/endpoint
+go run ./cmd/egress
 ```
 
-Run the relay:
+Run the control:
 
 ```bash
-RELAY_ENDPOINT_ID=dev-worker-01 \
+CONTROL_EGRESS_ID=dev-worker-01 \
 NATS_URL=nats://localhost:4222 \
 HMAC_SECRET=dev-secret-change-me \
 ALLOW_PRIVATE_IPS=true \
-go run ./cmd/relay
+go run ./cmd/control
 ```
 
 Proxy a request:
@@ -43,24 +43,24 @@ curl -X POST http://localhost:8080/v1/request \
 
 ## Configuration
 
-Relay:
+Control:
 
-- `RELAY_ENDPOINT_ID`: endpoint worker ID to target. Falls back to `ENDPOINT_ID`.
+- `CONTROL_EGRESS_ID`: egress worker ID to target. Falls back to `EGRESS_ID`.
 - `NATS_URL`, `NATS_TOKEN`: NATS connection.
-- `HMAC_SECRET`: shared signing secret. Must match the endpoint.
-- `HTTP_PORT`: relay listen port. Default `8080`.
-- `RESULT_TIMEOUT`: endpoint response timeout. Default `30s`.
-- `MAX_BODY_SIZE`: relay request body limit. Default `2M`.
-- `MAX_CONCURRENT_REQUESTS`: relay concurrency cap. Default `50`.
+- `HMAC_SECRET`: shared signing secret. Must match the egress.
+- `HTTP_PORT`: control listen port. Default `8080`.
+- `RESULT_TIMEOUT`: egress response timeout. Default `30s`.
+- `MAX_BODY_SIZE`: control request body limit. Default `2M`.
+- `MAX_CONCURRENT_REQUESTS`: control concurrency cap. Default `50`.
 - `ALLOW_PRIVATE_IPS`: allow private target URLs. Default `false`.
 
-Endpoint:
+Egress:
 
-- `ENDPOINT_ID`: worker ID. The relay targets this value.
+- `EGRESS_ID`: worker ID. The control targets this value.
 - `NATS_URL`, `NATS_TOKEN`: NATS connection.
-- `HMAC_SECRET`: shared signing secret. Must match the relay.
+- `HMAC_SECRET`: shared signing secret. Must match the control.
 - `CONCURRENCY_LIMIT`: worker task concurrency. Default `25`.
-- `MAX_POOL_HOSTS`, `IDLE_CONNS_PER_HOST`, `IDLE_CONN_TIMEOUT`: endpoint HTTP transport pool tuning.
+- `MAX_POOL_HOSTS`, `IDLE_CONNS_PER_HOST`, `IDLE_CONN_TIMEOUT`: egress HTTP transport pool tuning.
 
 ## Development
 

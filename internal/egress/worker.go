@@ -1,4 +1,4 @@
-package endpoint
+package egress
 
 import (
 	"context"
@@ -12,20 +12,20 @@ import (
 
 	"github.com/beremaran/straw/internal/broker"
 	"github.com/beremaran/straw/internal/config"
-	"github.com/beremaran/straw/internal/endpoint/fingerprint"
-	endpointhttp "github.com/beremaran/straw/internal/endpoint/http"
-	endpointtls "github.com/beremaran/straw/internal/endpoint/tls"
-	endpointtransport "github.com/beremaran/straw/internal/endpoint/transport"
+	"github.com/beremaran/straw/internal/egress/fingerprint"
+	egresshttp "github.com/beremaran/straw/internal/egress/http"
+	egresstls "github.com/beremaran/straw/internal/egress/tls"
+	egresstransport "github.com/beremaran/straw/internal/egress/transport"
 )
 
-// Version is the build version of the endpoint worker.
+// Version is the build version of the egress worker.
 var Version = "dev"
 
 const defaultTimeout = 30 * time.Second
 
-// Worker wraps the endpoint components.
+// Worker wraps the egress components.
 type Worker struct {
-	cfg      *config.EndpointConfig
+	cfg      *config.EgressConfig
 	executor RequestExecutor
 }
 
@@ -40,7 +40,7 @@ func WithRequestExecutor(executor RequestExecutor) WorkerOption {
 }
 
 // NewWorker initializes a worker.
-func NewWorker(cfg *config.EndpointConfig, opts ...WorkerOption) *Worker {
+func NewWorker(cfg *config.EgressConfig, opts ...WorkerOption) *Worker {
 	w := &Worker{cfg: cfg}
 	for _, opt := range opts {
 		opt(w)
@@ -51,7 +51,7 @@ func NewWorker(cfg *config.EndpointConfig, opts ...WorkerOption) *Worker {
 
 // Run loads configuration from the environment and starts a worker.
 func Run() error {
-	cfg, err := config.LoadEndpointConfig()
+	cfg, err := config.LoadEgressConfig()
 	if err != nil {
 		return fmt.Errorf("load configuration: %w", err)
 	}
@@ -60,7 +60,7 @@ func Run() error {
 }
 
 // RunWithConfig starts the worker with the provided configuration.
-func RunWithConfig(cfg *config.EndpointConfig) error {
+func RunWithConfig(cfg *config.EgressConfig) error {
 	w := NewWorker(cfg)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -71,13 +71,13 @@ func RunWithConfig(cfg *config.EndpointConfig) error {
 
 // Start consumes tasks until the context is canceled.
 func (w *Worker) Start(ctx context.Context) error {
-	slog.Info("starting endpoint worker",
-		"endpoint_id", w.cfg.ID,
+	slog.Info("starting egress worker",
+		"egress_id", w.cfg.ID,
 		"version", Version,
 		"concurrency_limit", w.cfg.ConcurrencyLimit,
 	)
 
-	executor, cleanupExecutor := setupEndpointExecutor(w.cfg, w.executor)
+	executor, cleanupExecutor := setupEgressExecutor(w.cfg, w.executor)
 	defer cleanupExecutor()
 
 	mqBroker, err := connectWorkerBroker(w.cfg)
@@ -99,7 +99,7 @@ func (w *Worker) Start(ctx context.Context) error {
 	return taskConsumer.Start(ctx)
 }
 
-func connectWorkerBroker(cfg *config.EndpointConfig) (broker.MessageBroker, error) {
+func connectWorkerBroker(cfg *config.EgressConfig) (broker.MessageBroker, error) {
 	mqBroker := broker.NewNatsBroker(
 		broker.Addrs(cfg.NATS.URL),
 		broker.Token(cfg.NATS.Token),
@@ -113,8 +113,8 @@ func connectWorkerBroker(cfg *config.EndpointConfig) (broker.MessageBroker, erro
 	return mqBroker, nil
 }
 
-func setupEndpointExecutor(
-	cfg *config.EndpointConfig,
+func setupEgressExecutor(
+	cfg *config.EgressConfig,
 	executor RequestExecutor,
 ) (RequestExecutor, func()) {
 	if executor != nil {
@@ -123,19 +123,19 @@ func setupEndpointExecutor(
 
 	registry := fingerprint.DefaultRegistry()
 
-	poolConfig := endpointtransport.DefaultPoolConfig().
+	poolConfig := egresstransport.DefaultPoolConfig().
 		WithMaxPoolHosts(cfg.MaxPoolHosts).
 		WithIdleConnsPerHost(cfg.IdleConnsPerHost).
 		WithIdleConnTimeout(cfg.IdleConnTimeout)
 
-	pooledTransport := endpointtransport.NewPooledTransport(poolConfig, func(ctx context.Context, network, addr, fp string) (net.Conn, error) {
-		return endpointtls.Dial(ctx, network, addr, fp)
+	pooledTransport := egresstransport.NewPooledTransport(poolConfig, func(ctx context.Context, network, addr, fp string) (net.Conn, error) {
+		return egresstls.Dial(ctx, network, addr, fp)
 	})
-	httpClient := endpointhttp.NewClient(
+	httpClient := egresshttp.NewClient(
 		registry,
 		pooledTransport,
-		endpointhttp.WithEndpointID(cfg.ID),
-		endpointhttp.WithDefaultTimeout(defaultTimeout),
+		egresshttp.WithEgressID(cfg.ID),
+		egresshttp.WithDefaultTimeout(defaultTimeout),
 	)
 
 	return httpClient, func() {

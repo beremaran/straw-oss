@@ -1,4 +1,4 @@
-package endpoint
+package egress
 
 import (
 	"context"
@@ -94,7 +94,7 @@ func (p *Publisher) Publish(ctx context.Context, resp *protocol.Response, replyT
 // ResultMessage is the JSON structure published for task results.
 type ResultMessage struct {
 	RequestID      string               `json:"request_id"`
-	EndpointID     string               `json:"endpoint_id,omitempty"`
+	EgressID       string               `json:"egress_id,omitempty"`
 	StatusCode     int                  `json:"status_code"`
 	Headers        protocol.HeaderMap   `json:"headers"`
 	CompressedBody []byte               `json:"body,omitempty"`
@@ -104,10 +104,10 @@ type ResultMessage struct {
 }
 
 // PublishError publishes a result containing an error.
-func (p *Publisher) PublishError(ctx context.Context, requestID, endpointID string, errInfo *protocol.ErrorInfo, replyTo string) error {
+func (p *Publisher) PublishError(ctx context.Context, requestID, egressID string, errInfo *protocol.ErrorInfo, replyTo string) error {
 	resp := &protocol.Response{
 		RequestID:  requestID,
-		EndpointID: endpointID,
+		EgressID:   egressID,
 		StatusCode: 0,
 		Error:      errInfo,
 	}
@@ -147,7 +147,7 @@ func NewHTTPError(statusCode int, message string) *protocol.ErrorInfo {
 // NewTimeoutError creates an ErrorInfo for a timeout failure.
 func NewTimeoutError(message string) *protocol.ErrorInfo {
 	return &protocol.ErrorInfo{
-		Code:      protocol.ErrCodeEndpointTimeout,
+		Code:      protocol.ErrCodeEgressTimeout,
 		Message:   "timeout: " + message,
 		Retryable: true,
 	}
@@ -161,7 +161,7 @@ func (p *Publisher) Handler() func(ctx context.Context, resp *protocol.Response,
 func (p *Publisher) buildMessage(resp *protocol.Response) ([]byte, error) {
 	msg := ResultMessage{
 		RequestID:  resp.RequestID,
-		EndpointID: resp.EndpointID,
+		EgressID:   resp.EgressID,
 		StatusCode: resp.StatusCode,
 		Headers:    resp.Headers,
 		Error:      resp.Error,

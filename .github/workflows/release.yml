@@ -37,33 +37,33 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
-      - name: Build relay
+      - name: Build control
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: 0
         run: |
-          go build -ldflags "-w -s" -o bin/relay-${{ matrix.goos }}-${{ matrix.goarch }} ./cmd/relay
+          go build -ldflags "-w -s" -o bin/control-${{ matrix.goos }}-${{ matrix.goarch }} ./cmd/control
 
-      - name: Build endpoint
+      - name: Build egress
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: 0
         run: |
-          go build -ldflags "-w -s" -o bin/endpoint-${{ matrix.goos }}-${{ matrix.goarch }} ./cmd/endpoint
+          go build -ldflags "-w -s" -o bin/egress-${{ matrix.goos }}-${{ matrix.goarch }} ./cmd/egress
 
-      - name: Upload relay binary
+      - name: Upload control binary
         uses: actions/upload-artifact@v4
         with:
-          name: relay-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: bin/relay-${{ matrix.goos }}-${{ matrix.goarch }}
+          name: control-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: bin/control-${{ matrix.goos }}-${{ matrix.goarch }}
 
-      - name: Upload endpoint binary
+      - name: Upload egress binary
         uses: actions/upload-artifact@v4
         with:
-          name: endpoint-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: bin/endpoint-${{ matrix.goos }}-${{ matrix.goarch }}
+          name: egress-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: bin/egress-${{ matrix.goos }}-${{ matrix.goarch }}
 
   release:
     name: Create Release
@@ -81,7 +81,7 @@ jobs:
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
           ASSETS=()
-          for dir in relay-* endpoint-*; do
+          for dir in control-* egress-*; do
             if [ -d "$dir" ]; then
               ASSETS+=("$dir/*")
             fi
@@ -138,7 +138,7 @@ jobs:
             COMMIT=${{ github.sha }}
             BUILD_TIME=${{ github.event.head_commit.timestamp }}
 
-      - name: Build and push relay image
+      - name: Build and push control image
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -146,15 +146,15 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/straw:relay
-            ghcr.io/${{ github.repository_owner }}/straw/relay:${{ github.ref_name }}
-            ghcr.io/${{ github.repository_owner }}/straw/relay:latest
+            ghcr.io/${{ github.repository_owner }}/straw:control
+            ghcr.io/${{ github.repository_owner }}/straw/control:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/straw/control:latest
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            BINARY_NAME=relay
+            BINARY_NAME=control
             BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/straw:base
 
-      - name: Build and push endpoint image
+      - name: Build and push egress image
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -162,10 +162,10 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/straw:endpoint
-            ghcr.io/${{ github.repository_owner }}/straw/endpoint:${{ github.ref_name }}
-            ghcr.io/${{ github.repository_owner }}/straw/endpoint:latest
+            ghcr.io/${{ github.repository_owner }}/straw:egress
+            ghcr.io/${{ github.repository_owner }}/straw/egress:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/straw/egress:latest
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            BINARY_NAME=endpoint
+            BINARY_NAME=egress
             BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/straw:base

@@ -3,7 +3,7 @@ FROM ${BASE_IMAGE} AS builder
 
 FROM alpine:latest
 
-ARG BINARY_NAME=relay
+ARG BINARY_NAME=control
 ENV BINARY_NAME=${BINARY_NAME}
 
 WORKDIR /app

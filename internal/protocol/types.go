@@ -1,5 +1,5 @@
 // Package protocol defines the request/response types, serialization, and
-// signature verification used between relay and endpoint nodes.
+// signature verification used between control and egress nodes.
 package protocol
 
 import (
@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// Request represents an outbound HTTP request to be proxied by an endpoint.
+// Request represents an outbound HTTP request to be proxied by an egress.
 type Request struct {
 	ID              string        `json:"id"`
 	Method          string        `json:"method"`
@@ -29,7 +29,7 @@ type Response struct {
 	Body       []byte      `json:"body,omitempty"`
 	Error      *ErrorInfo  `json:"error,omitempty"`
 	Timing     *TimingInfo `json:"timing,omitempty"`
-	EndpointID string      `json:"endpoint_id,omitempty"`
+	EgressID   string      `json:"egress_id,omitempty"`
 }
 
 // HeaderMap is an ordered list of HTTP headers that preserves insertion order
@@ -204,14 +204,14 @@ func equalFold(a, b string) bool {
 	return true
 }
 
-// SignedTask is a compressed, signed request payload sent to an endpoint.
+// SignedTask is a compressed, signed request payload sent to an egress.
 type SignedTask struct {
 	Payload   []byte `json:"payload"`
 	Signature string `json:"signature"`
 	Timestamp int64  `json:"ts"`
 }
 
-// ErrorInfo describes an error returned by an endpoint.
+// ErrorInfo describes an error returned by an egress.
 type ErrorInfo struct {
 	Code       string        `json:"code"`
 	Message    string        `json:"message"`
@@ -221,7 +221,7 @@ type ErrorInfo struct {
 
 // Error codes returned in ErrorInfo.
 const (
-	ErrCodeEndpointTimeout  = "ENDPOINT_TIMEOUT"
+	ErrCodeEgressTimeout    = "EGRESS_TIMEOUT"
 	ErrCodeUpstreamError    = "UPSTREAM_ERROR"
 	ErrCodeInternalError    = "INTERNAL_ERROR"
 	ErrCodeSignatureInvalid = "SIGNATURE_INVALID"

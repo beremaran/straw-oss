@@ -1,4 +1,4 @@
-// Package middleware provides HTTP middleware for the relay server.
+// Package middleware provides HTTP middleware for the control server.
 package middleware
 
 import (

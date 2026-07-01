@@ -1,4 +1,4 @@
-package endpoint
+package egress
 
 import (
 	"context"
@@ -12,8 +12,8 @@ import (
 	fhttp "github.com/bogdanfinn/fhttp"
 
 	"github.com/beremaran/straw/internal/broker"
-	"github.com/beremaran/straw/internal/endpoint/fingerprint"
-	endpointhttp "github.com/beremaran/straw/internal/endpoint/http"
+	"github.com/beremaran/straw/internal/egress/fingerprint"
+	egresshttp "github.com/beremaran/straw/internal/egress/http"
 	"github.com/beremaran/straw/internal/protocol"
 )
 
@@ -86,17 +86,17 @@ func TestConsumer_New(t *testing.T) {
 	mb := &mockBroker{}
 	registry := fingerprint.NewRegistry()
 	provider := &mockTransportProvider{}
-	httpClient := endpointhttp.NewClient(registry, provider)
+	httpClient := egresshttp.NewClient(registry, provider)
 	secret := []byte("test-secret")
 
-	c := NewConsumer(mb, httpClient, secret, "test-endpoint")
+	c := NewConsumer(mb, httpClient, secret, "test-egress")
 
-	if c.endpointID != "test-endpoint" {
-		t.Errorf("expected endpointID 'test-endpoint', got %s", c.endpointID)
+	if c.egressID != "test-egress" {
+		t.Errorf("expected egressID 'test-egress', got %s", c.egressID)
 	}
 
-	if c.taskSubject != "tasks.test-endpoint.tasks" {
-		t.Errorf("expected taskSubject 'tasks.test-endpoint.tasks', got %s", c.taskSubject)
+	if c.taskSubject != "tasks.test-egress.tasks" {
+		t.Errorf("expected taskSubject 'tasks.test-egress.tasks', got %s", c.taskSubject)
 	}
 
 	if c.concurrencyLimit != DefaultConcurrencyLimit {
@@ -112,10 +112,10 @@ func TestConsumer_WithOptions(t *testing.T) {
 	mb := &mockBroker{}
 	registry := fingerprint.NewRegistry()
 	provider := &mockTransportProvider{}
-	httpClient := endpointhttp.NewClient(registry, provider)
+	httpClient := egresshttp.NewClient(registry, provider)
 	secret := []byte("test-secret")
 
-	c := NewConsumer(mb, httpClient, secret, "test-endpoint",
+	c := NewConsumer(mb, httpClient, secret, "test-egress",
 		WithConcurrencyLimit(50),
 		WithMaxTaskAge(30*time.Second),
 	)
@@ -133,12 +133,12 @@ func TestConsumer_TaskSubject(t *testing.T) {
 	mb := &mockBroker{}
 	registry := fingerprint.NewRegistry()
 	provider := &mockTransportProvider{}
-	httpClient := endpointhttp.NewClient(registry, provider)
+	httpClient := egresshttp.NewClient(registry, provider)
 	secret := []byte("test-secret")
 
-	c := NewConsumer(mb, httpClient, secret, "my-endpoint")
+	c := NewConsumer(mb, httpClient, secret, "my-egress")
 
-	expected := "tasks.my-endpoint.tasks"
+	expected := "tasks.my-egress.tasks"
 	if c.TaskSubject() != expected {
 		t.Errorf("expected TaskSubject %q, got %q", expected, c.TaskSubject())
 	}
@@ -148,10 +148,10 @@ func TestConsumer_InvalidSignature(t *testing.T) {
 	mb := &mockBroker{}
 	registry := fingerprint.NewRegistry()
 	provider := &mockTransportProvider{}
-	httpClient := endpointhttp.NewClient(registry, provider)
+	httpClient := egresshttp.NewClient(registry, provider)
 	secret := []byte("test-secret")
 
-	c := NewConsumer(mb, httpClient, secret, "test-endpoint")
+	c := NewConsumer(mb, httpClient, secret, "test-egress")
 	c.ctx = context.Background()
 
 	req := &protocol.Request{
@@ -191,10 +191,10 @@ func TestConsumer_ReplayAttack(t *testing.T) {
 	mb := &mockBroker{}
 	registry := fingerprint.NewRegistry()
 	provider := &mockTransportProvider{}
-	httpClient := endpointhttp.NewClient(registry, provider)
+	httpClient := egresshttp.NewClient(registry, provider)
 	secret := []byte("test-secret")
 
-	c := NewConsumer(mb, httpClient, secret, "test-endpoint",
+	c := NewConsumer(mb, httpClient, secret, "test-egress",
 		WithMaxTaskAge(1*time.Millisecond),
 	)
 	c.ctx = context.Background()
@@ -237,10 +237,10 @@ func TestConsumer_ConcurrencyLimit(t *testing.T) {
 	mb := &mockBroker{}
 	registry := fingerprint.NewRegistry()
 	provider := &mockTransportProvider{}
-	httpClient := endpointhttp.NewClient(registry, provider)
+	httpClient := egresshttp.NewClient(registry, provider)
 	secret := []byte("test-secret")
 
-	c := NewConsumer(mb, httpClient, secret, "test-endpoint",
+	c := NewConsumer(mb, httpClient, secret, "test-egress",
 		WithConcurrencyLimit(2),
 	)
 
@@ -289,10 +289,10 @@ func TestConsumer_InvalidJSON(t *testing.T) {
 	mb := &mockBroker{}
 	registry := fingerprint.NewRegistry()
 	provider := &mockTransportProvider{}
-	httpClient := endpointhttp.NewClient(registry, provider)
+	httpClient := egresshttp.NewClient(registry, provider)
 	secret := []byte("test-secret")
 
-	c := NewConsumer(mb, httpClient, secret, "test-endpoint")
+	c := NewConsumer(mb, httpClient, secret, "test-egress")
 	c.ctx = context.Background()
 
 	err := c.processTask(context.Background(), []byte("not json"))
@@ -315,7 +315,7 @@ func TestConsumer_ResultHandler(t *testing.T) {
 	mb := &mockBroker{}
 	registry := fingerprint.NewRegistry()
 	provider := &mockTransportProvider{}
-	httpClient := endpointhttp.NewClient(registry, provider)
+	httpClient := egresshttp.NewClient(registry, provider)
 	secret := []byte("test-secret")
 
 	var receivedResponse *protocol.Response
@@ -325,7 +325,7 @@ func TestConsumer_ResultHandler(t *testing.T) {
 		return nil
 	}
 
-	c := NewConsumer(mb, httpClient, secret, "test-endpoint",
+	c := NewConsumer(mb, httpClient, secret, "test-egress",
 		WithResultHandler(handler),
 	)
 	c.ctx = context.Background()
@@ -359,7 +359,7 @@ func TestConsumer_ResultHandler(t *testing.T) {
 		t.Errorf("expected request ID %q, got %s", testRequestID, receivedResponse.RequestID)
 	}
 
-	if receivedResponse.EndpointID != "test-endpoint" {
-		t.Errorf("expected endpoint ID 'test-endpoint', got %s", receivedResponse.EndpointID)
+	if receivedResponse.EgressID != "test-egress" {
+		t.Errorf("expected egress ID 'test-egress', got %s", receivedResponse.EgressID)
 	}
 }

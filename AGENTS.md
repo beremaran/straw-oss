@@ -2,12 +2,12 @@
 
 ## Project Structure & Module Organization
 
-Straw is a Go module (`github.com/beremaran/straw`) for relaying HTTP requests through endpoint workers over NATS. Entrypoints are `cmd/relay` and `cmd/endpoint`. Core code lives under `internal/`: `server` for relay HTTP handlers and middleware, `endpoint` for workers and outbound HTTP/TLS transport, `broker` for NATS, `protocol` for message encoding/signing, `validator` for URL checks, and `config` for environment parsing. Tests sit beside code as `*_test.go`; Docker files are in `docker/`, scripts in `scripts/`, and env examples in `config/`.
+Straw is a Go module (`github.com/beremaran/straw`) for controlling HTTP requests through egress workers over NATS. Entrypoints are `cmd/control` and `cmd/egress`. Core code lives under `internal/`: `server` for control HTTP handlers and middleware, `egress` for workers and outbound HTTP/TLS transport, `broker` for NATS, `protocol` for message encoding/signing, `validator` for URL checks, and `config` for environment parsing. Tests sit beside code as `*_test.go`; Docker files are in `docker/`, scripts in `scripts/`, and env examples in `config/`.
 
 ## Build, Test, and Development Commands
 
-- `make build`: builds `bin/relay` and `bin/endpoint`.
-- `make server` / `make endpoint`: builds one binary.
+- `make build`: builds `bin/control` and `bin/egress`.
+- `make control` / `make egress`: builds one binary.
 - `make test`: runs `go test -race ./...`.
 - `go test -race -shuffle=on ./...`: runs randomized race-enabled tests.
 - `make lint`: runs `golangci-lint run --max-issues-per-linter 0 --max-same-issues 0 ./...`.
@@ -27,7 +27,7 @@ Add the smallest unit test that proves changed behavior. Keep tests beside the p
 
 ## Commit & Pull Request Guidelines
 
-Use Conventional Commits, matching the project history: `feat: add endpoint transport option`, `fix: reject invalid target URLs`, `docs: update relay usage`. Keep commits scoped and imperative. PRs should explain the change, link relevant issues or context, and list verification commands run.
+Use Conventional Commits, matching the project history: `feat: add egress transport option`, `fix: reject invalid target URLs`, `docs: update control usage`. Keep commits scoped and imperative. PRs should explain the change, link relevant issues or context, and list verification commands run.
 
 ## Strict Rules
 
@@ -39,4 +39,4 @@ Use Conventional Commits, matching the project history: `feat: add endpoint tran
 
 ## Security & Configuration Tips
 
-Use `config/.dev.env.example`, `config/.relay.env.example`, and `config/.endpoint.env.example` as local templates. Keep `HMAC_SECRET`, NATS tokens, and private endpoint settings out of commits. `ALLOW_PRIVATE_IPS=true` is for local development only unless the deployment explicitly needs private targets.
+Use `config/.dev.env.example`, `config/.control.env.example`, and `config/.egress.env.example` as local templates. Keep `HMAC_SECRET`, NATS tokens, and private egress settings out of commits. `ALLOW_PRIVATE_IPS=true` is for local development only unless the deployment explicitly needs private targets.

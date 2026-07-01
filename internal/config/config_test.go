@@ -10,100 +10,100 @@ import (
 const (
 	envNatsURL        = "NATS_URL"
 	envHmacSecret     = "HMAC_SECRET"
-	envEndpointID     = "ENDPOINT_ID"
-	envRelayEndpoint  = "RELAY_ENDPOINT_ID"
+	envEgressID       = "EGRESS_ID"
+	envControlEgress  = "CONTROL_EGRESS_ID"
 	natsLocalURL      = "nats://localhost:4222"
 	testSecret        = "test-secret"
-	testEndpointID    = "endpoint-001"
-	testRelayEndpoint = "endpoint-relay"
+	testEgressID      = "egress-001"
+	testControlEgress = "control-egress"
 )
 
-func TestLoadServerConfig_Defaults(t *testing.T) {
+func TestLoadControlConfig_Defaults(t *testing.T) {
 	setEnvVars(t, map[string]string{
-		envRelayEndpoint: testRelayEndpoint,
+		envControlEgress: testControlEgress,
 		envNatsURL:       natsLocalURL,
 		envHmacSecret:    testSecret,
 	})
 
-	cfg, err := LoadServerConfig()
+	cfg, err := LoadControlConfig()
 	if err != nil {
-		t.Fatalf("LoadServerConfig() error = %v", err)
+		t.Fatalf("LoadControlConfig() error = %v", err)
 	}
 
 	if cfg.HTTPPort != 8080 {
 		t.Errorf("HTTPPort = %v, want 8080", cfg.HTTPPort)
 	}
-	if cfg.EndpointID != testRelayEndpoint {
-		t.Errorf("EndpointID = %v, want %v", cfg.EndpointID, testRelayEndpoint)
+	if cfg.EgressID != testControlEgress {
+		t.Errorf("EgressID = %v, want %v", cfg.EgressID, testControlEgress)
 	}
 	if cfg.ResultTimeout.String() != "30s" {
 		t.Errorf("ResultTimeout = %v, want 30s", cfg.ResultTimeout)
 	}
 }
 
-func TestLoadServerConfig_UsesEndpointIDFallback(t *testing.T) {
+func TestLoadControlConfig_UsesEgressIDFallback(t *testing.T) {
 	setEnvVars(t, map[string]string{
-		envEndpointID: testEndpointID,
+		envEgressID:   testEgressID,
 		envNatsURL:    natsLocalURL,
 		envHmacSecret: testSecret,
 	})
 
-	cfg, err := LoadServerConfig()
+	cfg, err := LoadControlConfig()
 	if err != nil {
-		t.Fatalf("LoadServerConfig() error = %v", err)
+		t.Fatalf("LoadControlConfig() error = %v", err)
 	}
 
-	if cfg.EndpointID != testEndpointID {
-		t.Errorf("EndpointID = %v, want %v", cfg.EndpointID, testEndpointID)
+	if cfg.EgressID != testEgressID {
+		t.Errorf("EgressID = %v, want %v", cfg.EgressID, testEgressID)
 	}
 }
 
-func TestLoadServerConfig_MissingRequired(t *testing.T) {
+func TestLoadControlConfig_MissingRequired(t *testing.T) {
 	setEnvVars(t, map[string]string{
 		envNatsURL:    natsLocalURL,
 		envHmacSecret: testSecret,
 	})
 
-	_, err := LoadServerConfig()
+	_, err := LoadControlConfig()
 	if err == nil {
-		t.Fatal("LoadServerConfig() expected error, got nil")
+		t.Fatal("LoadControlConfig() expected error, got nil")
 	}
 
-	assertValidationError(t, err, "RELAY_ENDPOINT_ID or ENDPOINT_ID is required")
+	assertValidationError(t, err, "CONTROL_EGRESS_ID or EGRESS_ID is required")
 }
 
-func TestLoadEndpointConfig_Defaults(t *testing.T) {
+func TestLoadEgressConfig_Defaults(t *testing.T) {
 	setEnvVars(t, map[string]string{
-		envEndpointID: testEndpointID,
+		envEgressID:   testEgressID,
 		envNatsURL:    natsLocalURL,
 		envHmacSecret: testSecret,
 	})
 
-	cfg, err := LoadEndpointConfig()
+	cfg, err := LoadEgressConfig()
 	if err != nil {
-		t.Fatalf("LoadEndpointConfig() error = %v", err)
+		t.Fatalf("LoadEgressConfig() error = %v", err)
 	}
 
 	if cfg.ConcurrencyLimit != 25 {
 		t.Errorf("ConcurrencyLimit = %v, want 25", cfg.ConcurrencyLimit)
 	}
-	if cfg.ID != testEndpointID {
-		t.Errorf("ID = %v, want %v", cfg.ID, testEndpointID)
+	if cfg.ID != testEgressID {
+		t.Errorf("ID = %v, want %v", cfg.ID, testEgressID)
 	}
 }
 
-func TestLoadEndpointConfig_MissingRequired(t *testing.T) {
+func TestLoadEgressConfig_MissingRequired(t *testing.T) {
 	setEnvVars(t, map[string]string{
 		envNatsURL:    natsLocalURL,
 		envHmacSecret: testSecret,
 	})
 
-	_, err := LoadEndpointConfig()
+	_, err := LoadEgressConfig()
 	if err == nil {
-		t.Fatal("LoadEndpointConfig() expected error, got nil")
+		t.Fatal("LoadEgressConfig() expected error, got nil")
 	}
 
-	assertValidationError(t, err, "ENDPOINT_ID is required")
+	assertValidationError(t, err, "EGRESS_ID is required")
 }
 
 func assertValidationError(t *testing.T, err error, want string) {
@@ -125,8 +125,8 @@ func setEnvVars(t *testing.T, vars map[string]string) {
 	for _, key := range []string{
 		envNatsURL,
 		envHmacSecret,
-		envEndpointID,
-		envRelayEndpoint,
+		envEgressID,
+		envControlEgress,
 		"HTTP_PORT",
 		"RESULT_TIMEOUT",
 		"MAX_CONCURRENT_REQUESTS",

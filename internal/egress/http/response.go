@@ -18,7 +18,7 @@ func BuildResponse(
 	resp *fhttp.Response,
 	timing protocol.TimingInfo,
 	maxBodySize int64,
-	endpointID string,
+	egressID string,
 ) (*protocol.Response, error) {
 	body, err := readResponseBody(resp, maxBodySize)
 	if err != nil {
@@ -26,7 +26,7 @@ func BuildResponse(
 			RequestID:  requestID,
 			StatusCode: resp.StatusCode,
 			Headers:    HeadersToProtocol(resp.Header),
-			EndpointID: endpointID,
+			EgressID:   egressID,
 			Timing:     &timing,
 			Error: &protocol.ErrorInfo{
 				Code:      protocol.ErrCodeUpstreamError,
@@ -41,7 +41,7 @@ func BuildResponse(
 		StatusCode: resp.StatusCode,
 		Headers:    HeadersToProtocol(resp.Header),
 		Body:       body,
-		EndpointID: endpointID,
+		EgressID:   egressID,
 		Timing:     &timing,
 	}, nil
 }
@@ -57,14 +57,14 @@ func BuildResponseWithOptions(
 	resp *fhttp.Response,
 	timing protocol.TimingInfo,
 	opts ResponseOptions,
-	endpointID string,
+	egressID string,
 ) (*protocol.Response, error) {
 	maxSize := opts.MaxBodySize
 	if maxSize <= 0 {
 		maxSize = DefaultMaxBodySize
 	}
 
-	return BuildResponse(requestID, resp, timing, maxSize, endpointID)
+	return BuildResponse(requestID, resp, timing, maxSize, egressID)
 }
 
 func readResponseBody(resp *fhttp.Response, maxSize int64) ([]byte, error) {
