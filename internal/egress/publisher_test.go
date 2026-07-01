@@ -2,7 +2,6 @@ package egress
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"strconv"
 	"sync"
@@ -107,11 +106,7 @@ func TestPublisher_Publish(t *testing.T) {
 		t.Errorf("expected subject %q, got %q", expectedSubject, msg.Subject)
 	}
 
-	var result ResultMessage
-	err = json.Unmarshal(msg.Body, &result)
-	if err != nil {
-		t.Fatalf("failed to unmarshal result: %v", err)
-	}
+	result := decodePublishedResponse(t, msg.Body)
 
 	if result.RequestID != "test-request-123" {
 		t.Errorf("expected request ID 'test-request-123', got %q", result.RequestID)
@@ -125,17 +120,8 @@ func TestPublisher_Publish(t *testing.T) {
 		t.Errorf("expected status code 200, got %d", result.StatusCode)
 	}
 
-	if !result.BodyCompressed {
-		t.Error("expected body to be compressed")
-	}
-
-	decompressed, err := protocol.Decompress(result.CompressedBody)
-	if err != nil {
-		t.Fatalf("failed to decompress body: %v", err)
-	}
-
-	if string(decompressed) != `{"message": "hello world"}` {
-		t.Errorf("unexpected body: %s", string(decompressed))
+	if string(result.Body) != `{"message": "hello world"}` {
+		t.Errorf("unexpected body: %s", string(result.Body))
 	}
 
 	if result.Timing == nil {
@@ -162,18 +148,10 @@ func TestPublisher_Publish_EmptyBody(t *testing.T) {
 		t.Fatalf("expected 1 message, got %d", len(msgs))
 	}
 
-	var result ResultMessage
-	err = json.Unmarshal(msgs[0].Body, &result)
-	if err != nil {
-		t.Fatalf("failed to unmarshal result: %v", err)
-	}
+	result := decodePublishedResponse(t, msgs[0].Body)
 
-	if len(result.CompressedBody) != 0 {
-		t.Error("expected empty compressed body")
-	}
-
-	if result.BodyCompressed {
-		t.Error("expected body_compressed to be false for empty body")
+	if len(result.Body) != 0 {
+		t.Error("expected empty body")
 	}
 }
 
@@ -201,11 +179,7 @@ func TestPublisher_Publish_ErrorResponse(t *testing.T) {
 		t.Fatalf("expected 1 message, got %d", len(msgs))
 	}
 
-	var result ResultMessage
-	err = json.Unmarshal(msgs[0].Body, &result)
-	if err != nil {
-		t.Fatalf("failed to unmarshal result: %v", err)
-	}
+	result := decodePublishedResponse(t, msgs[0].Body)
 
 	if result.Error == nil {
 		t.Fatal("expected error to be set")
@@ -397,27 +371,23 @@ func TestPublisher_Publish_LargeBody(t *testing.T) {
 		t.Fatalf("expected 1 message, got %d", len(msgs))
 	}
 
-	var result ResultMessage
-	err = json.Unmarshal(msgs[0].Body, &result)
+	result := decodePublishedResponse(t, msgs[0].Body)
+	if len(result.Body) != len(largeBody) {
+		t.Errorf("body size mismatch: %d != %d", len(result.Body), len(largeBody))
+	}
+
+	if string(result.Body) != string(largeBody) {
+		t.Error("body bytes changed")
+	}
+}
+
+func decodePublishedResponse(t *testing.T, data []byte) *protocol.Response {
+	t.Helper()
+
+	result, err := protocol.UnmarshalResponse(data)
 	if err != nil {
 		t.Fatalf("failed to unmarshal result: %v", err)
 	}
 
-	if !result.BodyCompressed {
-		t.Error("expected body to be compressed")
-	}
-
-	if len(result.CompressedBody) >= len(largeBody) {
-		t.Errorf("expected compressed body to be smaller than original (%d >= %d)",
-			len(result.CompressedBody), len(largeBody))
-	}
-
-	decompressed, err := protocol.Decompress(result.CompressedBody)
-	if err != nil {
-		t.Fatalf("failed to decompress body: %v", err)
-	}
-
-	if len(decompressed) != len(largeBody) {
-		t.Errorf("decompressed size mismatch: %d != %d", len(decompressed), len(largeBody))
-	}
+	return result
 }

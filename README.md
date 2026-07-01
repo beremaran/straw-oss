@@ -19,7 +19,6 @@ Run an egress:
 ```bash
 EGRESS_ID=dev-worker-01 \
 NATS_URL=nats://localhost:4222 \
-HMAC_SECRET=dev-secret-change-me \
 go run ./cmd/egress
 ```
 
@@ -28,7 +27,6 @@ Run the control:
 ```bash
 CONTROL_EGRESS_ID=dev-worker-01 \
 NATS_URL=nats://localhost:4222 \
-HMAC_SECRET=dev-secret-change-me \
 ALLOW_PRIVATE_IPS=true \
 go run ./cmd/control
 ```
@@ -47,7 +45,6 @@ Control:
 
 - `CONTROL_EGRESS_ID`: egress worker ID to target. Falls back to `EGRESS_ID`.
 - `NATS_URL`, `NATS_TOKEN`: NATS connection.
-- `HMAC_SECRET`: shared signing secret. Must match the egress.
 - `HTTP_PORT`: control listen port. Default `8080`.
 - `RESULT_TIMEOUT`: egress response timeout. Default `30s`.
 - `MAX_BODY_SIZE`: control request body limit. Default `2M`.
@@ -58,7 +55,6 @@ Egress:
 
 - `EGRESS_ID`: worker ID. The control targets this value.
 - `NATS_URL`, `NATS_TOKEN`: NATS connection.
-- `HMAC_SECRET`: shared signing secret. Must match the control.
 - `CONCURRENCY_LIMIT`: worker task concurrency. Default `25`.
 - `MAX_POOL_HOSTS`, `IDLE_CONNS_PER_HOST`, `IDLE_CONN_TIMEOUT`: egress HTTP transport pool tuning.
 

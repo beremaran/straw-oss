@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -14,16 +13,27 @@ import (
 )
 
 func TestControlHandlerPublishesAndWritesEgressResult(t *testing.T) {
-	mb := &controlMockBroker{
-		result: `{
-			"request_id":"req-1",
-			"egress_id":"egress-1",
-			"status_code":202,
-			"headers":[{"key":"Content-Type","value":"text/plain"}],
-			"body":"b2s="
-		}`,
+	resultBody, err := protocol.MarshalResponse(&protocol.Response{
+		RequestID:  "req-1",
+		EgressID:   "egress-1",
+		StatusCode: http.StatusAccepted,
+		Headers: protocol.HeaderMap{
+			{Key: "Content-Type", Value: "text/plain"},
+			{Key: "Content-Encoding", Value: "gzip"},
+		},
+		Body: []byte("ok"),
+		Timing: &protocol.TimingInfo{
+			Total: time.Second,
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal result: %v", err)
 	}
-	handler := NewControlHandler(mb, "egress-1", []byte("secret"), time.Second)
+
+	mb := &controlMockBroker{
+		result: resultBody,
+	}
+	handler := NewControlHandler(mb, "egress-1", time.Second)
 
 	req := httptest.NewRequestWithContext(
 		context.Background(),
@@ -41,6 +51,9 @@ func TestControlHandlerPublishesAndWritesEgressResult(t *testing.T) {
 	if rec.Body.String() != "ok" {
 		t.Fatalf("body = %q, want ok", rec.Body.String())
 	}
+	if rec.Header().Get("Content-Encoding") != "gzip" {
+		t.Fatalf("content encoding = %q, want gzip", rec.Header().Get("Content-Encoding"))
+	}
 	if mb.publishSubject != "tasks.egress-1.tasks" {
 		t.Fatalf("publish subject = %q", mb.publishSubject)
 	}
@@ -48,18 +61,12 @@ func TestControlHandlerPublishesAndWritesEgressResult(t *testing.T) {
 		t.Fatalf("consume subject = %q", mb.consumeSubject)
 	}
 
-	var task protocol.SignedTask
-	err := json.Unmarshal(mb.publishBody, &task)
+	publishedReq, err := protocol.UnmarshalRequest(mb.publishBody)
 	if err != nil {
-		t.Fatalf("published task is not JSON: %v", err)
+		t.Fatalf("published task is not protobuf: %v", err)
 	}
-
-	signedReq, err := protocol.ValidateSignedTask(&task, []byte("secret"), time.Minute)
-	if err != nil {
-		t.Fatalf("published task signature invalid: %v", err)
-	}
-	if signedReq.ReplyTo != "results.req-1" {
-		t.Fatalf("reply_to = %q, want results.req-1", signedReq.ReplyTo)
+	if publishedReq.ReplyTo != "results.req-1" {
+		t.Fatalf("reply_to = %q, want results.req-1", publishedReq.ReplyTo)
 	}
 }
 
@@ -67,7 +74,7 @@ type controlMockBroker struct {
 	publishSubject string
 	publishBody    []byte
 	consumeSubject string
-	result         string
+	result         []byte
 }
 
 func (m *controlMockBroker) Publish(_ context.Context, subject string, body []byte) error {
@@ -84,7 +91,7 @@ func (m *controlMockBroker) Subscribe(context.Context, string, broker.Handler, .
 func (m *controlMockBroker) ConsumeOnce(_ context.Context, subject string, _ time.Duration) ([]byte, error) {
 	m.consumeSubject = subject
 
-	return []byte(m.result), nil
+	return m.result, nil
 }
 
 func (m *controlMockBroker) DeclareStream(context.Context, string, ...string) error { return nil }

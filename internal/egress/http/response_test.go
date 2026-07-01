@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/andybalholm/brotli"
 	fhttp "github.com/bogdanfinn/fhttp"
 
 	"github.com/beremaran/straw/internal/protocol"
@@ -59,11 +58,12 @@ func TestBuildResponse_Basic(t *testing.T) {
 	}
 }
 
-func TestBuildResponse_GzipDecompression(t *testing.T) {
+func TestBuildResponse_GzipBodyPreserved(t *testing.T) {
 	var buf bytes.Buffer
 	gzWriter := gzip.NewWriter(&buf)
 	_, _ = gzWriter.Write([]byte("Gzipped content"))
 	_ = gzWriter.Close()
+	rawBody := append([]byte(nil), buf.Bytes()...)
 
 	resp := &fhttp.Response{
 		StatusCode: 200,
@@ -80,16 +80,16 @@ func TestBuildResponse_GzipDecompression(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if string(protoResp.Body) != "Gzipped content" {
-		t.Errorf("expected decompressed body 'Gzipped content', got %s", string(protoResp.Body))
+	if !bytes.Equal(protoResp.Body, rawBody) {
+		t.Errorf("expected raw gzip body %v, got %v", rawBody, protoResp.Body)
+	}
+	if protoResp.Headers.Get(ContentEncoding) != "gzip" {
+		t.Errorf("expected Content-Encoding gzip, got %q", protoResp.Headers.Get(ContentEncoding))
 	}
 }
 
-func TestBuildResponse_BrotliDecompression(t *testing.T) {
-	var buf bytes.Buffer
-	brWriter := brotli.NewWriter(&buf)
-	_, _ = brWriter.Write([]byte("Brotli content"))
-	_ = brWriter.Close()
+func TestBuildResponse_BrotliBodyPreserved(t *testing.T) {
+	body := []byte{0xce, 0xb2, 0xcf, 0x81}
 
 	resp := &fhttp.Response{
 		StatusCode: 200,
@@ -97,7 +97,7 @@ func TestBuildResponse_BrotliDecompression(t *testing.T) {
 			ContentEncoding:   []string{"br"},
 			ContentTypeHeader: []string{HeaderValueTextPlain},
 		},
-		Body: nopCloser{bytes.NewReader(buf.Bytes())},
+		Body: nopCloser{bytes.NewReader(body)},
 	}
 
 	timing := protocol.TimingInfo{Total: 50}
@@ -106,8 +106,8 @@ func TestBuildResponse_BrotliDecompression(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if string(protoResp.Body) != "Brotli content" {
-		t.Errorf("expected decompressed body 'Brotli content', got %s", string(protoResp.Body))
+	if !bytes.Equal(protoResp.Body, body) {
+		t.Errorf("expected raw brotli body %v, got %v", body, protoResp.Body)
 	}
 }
 

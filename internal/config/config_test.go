@@ -9,11 +9,9 @@ import (
 
 const (
 	envNatsURL        = "NATS_URL"
-	envHmacSecret     = "HMAC_SECRET"
 	envEgressID       = "EGRESS_ID"
 	envControlEgress  = "CONTROL_EGRESS_ID"
 	natsLocalURL      = "nats://localhost:4222"
-	testSecret        = "test-secret"
 	testEgressID      = "egress-001"
 	testControlEgress = "control-egress"
 )
@@ -22,7 +20,6 @@ func TestLoadControlConfig_Defaults(t *testing.T) {
 	setEnvVars(t, map[string]string{
 		envControlEgress: testControlEgress,
 		envNatsURL:       natsLocalURL,
-		envHmacSecret:    testSecret,
 	})
 
 	cfg, err := LoadControlConfig()
@@ -43,9 +40,8 @@ func TestLoadControlConfig_Defaults(t *testing.T) {
 
 func TestLoadControlConfig_UsesEgressIDFallback(t *testing.T) {
 	setEnvVars(t, map[string]string{
-		envEgressID:   testEgressID,
-		envNatsURL:    natsLocalURL,
-		envHmacSecret: testSecret,
+		envEgressID: testEgressID,
+		envNatsURL:  natsLocalURL,
 	})
 
 	cfg, err := LoadControlConfig()
@@ -60,8 +56,7 @@ func TestLoadControlConfig_UsesEgressIDFallback(t *testing.T) {
 
 func TestLoadControlConfig_MissingRequired(t *testing.T) {
 	setEnvVars(t, map[string]string{
-		envNatsURL:    natsLocalURL,
-		envHmacSecret: testSecret,
+		envNatsURL: natsLocalURL,
 	})
 
 	_, err := LoadControlConfig()
@@ -74,9 +69,8 @@ func TestLoadControlConfig_MissingRequired(t *testing.T) {
 
 func TestLoadEgressConfig_Defaults(t *testing.T) {
 	setEnvVars(t, map[string]string{
-		envEgressID:   testEgressID,
-		envNatsURL:    natsLocalURL,
-		envHmacSecret: testSecret,
+		envEgressID: testEgressID,
+		envNatsURL:  natsLocalURL,
 	})
 
 	cfg, err := LoadEgressConfig()
@@ -94,8 +88,7 @@ func TestLoadEgressConfig_Defaults(t *testing.T) {
 
 func TestLoadEgressConfig_MissingRequired(t *testing.T) {
 	setEnvVars(t, map[string]string{
-		envNatsURL:    natsLocalURL,
-		envHmacSecret: testSecret,
+		envNatsURL: natsLocalURL,
 	})
 
 	_, err := LoadEgressConfig()
@@ -124,7 +117,6 @@ func setEnvVars(t *testing.T, vars map[string]string) {
 
 	for _, key := range []string{
 		envNatsURL,
-		envHmacSecret,
 		envEgressID,
 		envControlEgress,
 		"HTTP_PORT",

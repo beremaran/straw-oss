@@ -1,12 +1,8 @@
 package http
 
 import (
-	"bytes"
-	"compress/gzip"
 	"io"
-	"strings"
 
-	"github.com/andybalholm/brotli"
 	fhttp "github.com/bogdanfinn/fhttp"
 
 	"github.com/beremaran/straw/internal/protocol"
@@ -68,12 +64,7 @@ func BuildResponseWithOptions(
 }
 
 func readResponseBody(resp *fhttp.Response, maxSize int64) ([]byte, error) {
-	rawBody, err := readRawResponseBody(resp, maxSize)
-	if err != nil {
-		return nil, err
-	}
-
-	return decodeResponseBody(rawBody, resp.Header.Get("Content-Encoding")), nil
+	return readRawResponseBody(resp, maxSize)
 }
 
 func readRawResponseBody(resp *fhttp.Response, maxSize int64) ([]byte, error) {
@@ -96,45 +87,4 @@ func readRawResponseBody(resp *fhttp.Response, maxSize int64) ([]byte, error) {
 	}
 
 	return rawBody, nil
-}
-
-func decodeResponseBody(rawBody []byte, contentEncoding string) []byte {
-	switch strings.ToLower(contentEncoding) {
-	case "gzip":
-		return decodeGzipBody(rawBody)
-	case "br":
-		return decodeBrotliBody(rawBody)
-	default:
-		return rawBody
-	}
-}
-
-func decodeGzipBody(rawBody []byte) []byte {
-	if len(rawBody) < 2 || rawBody[0] != 0x1f || rawBody[1] != 0x8b {
-		return rawBody
-	}
-
-	gzReader, err := gzip.NewReader(bytes.NewReader(rawBody))
-	if err != nil {
-		return rawBody
-	}
-	defer func() { _ = gzReader.Close() }()
-
-	decompressed, err := io.ReadAll(gzReader)
-	if err != nil {
-		return rawBody
-	}
-
-	return decompressed
-}
-
-func decodeBrotliBody(rawBody []byte) []byte {
-	brReader := brotli.NewReader(bytes.NewReader(rawBody))
-
-	decompressed, err := io.ReadAll(brReader)
-	if err != nil {
-		return rawBody
-	}
-
-	return decompressed
 }

@@ -6,7 +6,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "lat
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_TIME ?= $(shell date -u +'%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date +'%Y-%m-%dT%H:%M:%SZ')
 
-.PHONY: build control egress test format lint install-tools docker clean dev-up dev-down dev-shell
+.PHONY: build control egress proto test format lint install-tools docker clean dev-up dev-down dev-shell
 
 control:
 	CGO_ENABLED=0 go build -ldflags "-w -s -X main.Version=$(VERSION) -X main.GitCommit=$(COMMIT) -X main.BuildTime=$(BUILD_TIME)" -o bin/control ./cmd/control
@@ -15,6 +15,9 @@ egress:
 	CGO_ENABLED=0 go build -ldflags "-w -s -X main.Version=$(VERSION)" -o bin/egress ./cmd/egress
 
 build: control egress
+
+proto:
+	go tool github.com/bufbuild/buf/cmd/buf generate
 
 test:
 	go test -race ./...

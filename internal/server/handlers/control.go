@@ -23,7 +23,6 @@ import (
 type ControlHandler struct {
 	broker          broker.MessageBroker
 	egressID        string
-	hmacSecret      []byte
 	resultTimeout   time.Duration
 	allowPrivateIPs bool
 }
@@ -42,14 +41,12 @@ func WithAllowPrivateIPs(allow bool) ControlHandlerOption {
 func NewControlHandler(
 	b broker.MessageBroker,
 	egressID string,
-	hmacSecret []byte,
 	resultTimeout time.Duration,
 	opts ...ControlHandlerOption,
 ) *ControlHandler {
 	h := &ControlHandler{
 		broker:        b,
 		egressID:      egressID,
-		hmacSecret:    hmacSecret,
 		resultTimeout: resultTimeout,
 	}
 	for _, opt := range opts {
@@ -74,10 +71,6 @@ func (h *ControlHandler) Handle(w http.ResponseWriter, r *http.Request) {
 
 	result, ok := h.sendAndWait(ctx, w, req)
 	if !ok {
-		return
-	}
-
-	if !decompressControlResponse(w, result) {
 		return
 	}
 
@@ -146,18 +139,11 @@ func (h *ControlHandler) prepareControlRequest(w http.ResponseWriter, r *http.Re
 	return true
 }
 
-func (h *ControlHandler) sendAndWait(ctx context.Context, w http.ResponseWriter, req *protocol.Request) (*resultMessage, bool) {
+func (h *ControlHandler) sendAndWait(ctx context.Context, w http.ResponseWriter, req *protocol.Request) (*protocol.Response, bool) {
 	replyTo := "results." + req.ID
 	req.ReplyTo = replyTo
 
-	task, err := protocol.NewSignedTask(req, h.hmacSecret)
-	if err != nil {
-		helper.WriteError(w, http.StatusInternalServerError, "failed to sign request")
-
-		return nil, false
-	}
-
-	body, err := json.Marshal(task)
+	body, err := protocol.MarshalRequest(req)
 	if err != nil {
 		helper.WriteError(w, http.StatusInternalServerError, "failed to encode request")
 
@@ -186,46 +172,14 @@ func (h *ControlHandler) sendAndWait(ctx context.Context, w http.ResponseWriter,
 		return nil, false
 	}
 
-	var result resultMessage
-
-	err = json.Unmarshal(resultBody, &result)
+	result, err := protocol.UnmarshalResponse(resultBody)
 	if err != nil {
 		helper.WriteError(w, http.StatusBadGateway, "invalid egress response")
 
 		return nil, false
 	}
 
-	return &result, true
-}
-
-// resultMessage carries the response from an egress back to the control.
-type resultMessage struct {
-	RequestID      string               `json:"request_id"`
-	EgressID       string               `json:"egress_id,omitempty"`
-	StatusCode     int                  `json:"status_code"`
-	Headers        protocol.HeaderMap   `json:"headers"`
-	CompressedBody []byte               `json:"body,omitempty"`
-	BodyCompressed bool                 `json:"body_compressed"`
-	Error          *protocol.ErrorInfo  `json:"error,omitempty"`
-	Timing         *protocol.TimingInfo `json:"timing,omitempty"`
-}
-
-func decompressControlResponse(w http.ResponseWriter, res *resultMessage) bool {
-	if !res.BodyCompressed || len(res.CompressedBody) == 0 {
-		return true
-	}
-
-	decompressed, err := protocol.Decompress(res.CompressedBody)
-	if err != nil {
-		helper.WriteError(w, http.StatusBadGateway, "failed to decompress response")
-
-		return false
-	}
-
-	res.CompressedBody = decompressed
-	res.BodyCompressed = false
-
-	return true
+	return result, true
 }
 
 var filteredResponseHeaders = []string{
@@ -238,10 +192,9 @@ var filteredResponseHeaders = []string{
 	"Transfer-Encoding",
 	"Upgrade",
 	"Content-Length",
-	"Content-Encoding",
 }
 
-func writeControlResult(w http.ResponseWriter, result *resultMessage) {
+func writeControlResult(w http.ResponseWriter, result *protocol.Response) {
 	for _, h := range result.Headers {
 		if !isFilteredResponseHeader(h.Key) {
 			w.Header().Add(h.Key, h.Value)
@@ -272,7 +225,7 @@ func writeControlResult(w http.ResponseWriter, result *resultMessage) {
 	}
 
 	w.WriteHeader(status)
-	_, _ = w.Write(result.CompressedBody)
+	_, _ = w.Write(result.Body)
 }
 
 func isFilteredResponseHeader(key string) bool {

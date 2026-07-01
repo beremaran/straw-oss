@@ -13,7 +13,6 @@ services:
       - CGO_ENABLED=0
       - GOFLAGS=-mod=mod
       - NATS_URL=nats://nats:4222
-      - HMAC_SECRET=dev-secret-change-me
       - EGRESS_ID=dev-worker-01
       - CONTROL_EGRESS_ID=dev-worker-01
       - ALLOW_PRIVATE_IPS=true

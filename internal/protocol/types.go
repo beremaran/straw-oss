@@ -204,13 +204,6 @@ func equalFold(a, b string) bool {
 	return true
 }
 
-// SignedTask is a compressed, signed request payload sent to an egress.
-type SignedTask struct {
-	Payload   []byte `json:"payload"`
-	Signature string `json:"signature"`
-	Timestamp int64  `json:"ts"`
-}
-
 // ErrorInfo describes an error returned by an egress.
 type ErrorInfo struct {
 	Code       string        `json:"code"`
@@ -221,11 +214,9 @@ type ErrorInfo struct {
 
 // Error codes returned in ErrorInfo.
 const (
-	ErrCodeEgressTimeout    = "EGRESS_TIMEOUT"
-	ErrCodeUpstreamError    = "UPSTREAM_ERROR"
-	ErrCodeInternalError    = "INTERNAL_ERROR"
-	ErrCodeSignatureInvalid = "SIGNATURE_INVALID"
-	ErrCodeReplayAttack     = "REPLAY_ATTACK"
+	ErrCodeEgressTimeout = "EGRESS_TIMEOUT"
+	ErrCodeUpstreamError = "UPSTREAM_ERROR"
+	ErrCodeInternalError = "INTERNAL_ERROR"
 )
 
 // TimingInfo captures per-stage latency measurements for a proxied request.
