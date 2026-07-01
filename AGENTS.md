@@ -1,37 +1,42 @@
 # Repository Guidelines
 
-## Project Structure
+## Project Structure & Module Organization
 
-Straw is a Go module (`github.com/beremaran/straw`). Entrypoints live in `cmd/relay` and `cmd/endpoint`. Relay HTTP code is under `internal/server`; endpoint HTTP/TLS transport code is under `internal/endpoint`; shared packages live in `pkg/` (`broker`, `endpoint`, `protocol`, `validator`).
+Straw is a Go module (`github.com/beremaran/straw`) for relaying HTTP requests through endpoint workers over NATS. Entrypoints are `cmd/relay` and `cmd/endpoint`. Core code lives under `internal/`: `server` for relay HTTP handlers and middleware, `endpoint` for workers and outbound HTTP/TLS transport, `broker` for NATS, `protocol` for message encoding/signing, `validator` for URL checks, and `config` for environment parsing. Tests sit beside code as `*_test.go`; Docker files are in `docker/`, scripts in `scripts/`, and env examples in `config/`.
 
 ## Build, Test, and Development Commands
 
 - `make build`: builds `bin/relay` and `bin/endpoint`.
+- `make server` / `make endpoint`: builds one binary.
 - `make test`: runs `go test -race ./...`.
-- `go test -race -shuffle=on ./...`: mirrors CI-style randomized tests.
+- `go test -race -shuffle=on ./...`: runs randomized race-enabled tests.
 - `make lint`: runs `golangci-lint run --max-issues-per-linter 0 --max-same-issues 0 ./...`.
 - `make format`: runs `gofmt -w ./`.
+- `make dev-up`, `make dev-down`, `make dev-shell`: manage the Docker dev environment.
 - `make install-tools`: installs `govulncheck` and `golangci-lint`.
 
-Use `config/.relay.env.example` and `config/.endpoint.env.example` as starting points for local service configuration.
+For local services, start NATS with `docker compose -f docker/docker-compose.dev.yml up -d nats`.
 
-## Coding Style
+## Coding Style & Naming Conventions
 
-Use standard Go formatting: tabs via `gofmt`, short lowercase package names, `CamelCase` for exported identifiers, and `camelCase` for unexported identifiers. Keep comments focused on why code exists. Prefer wrapping errors, naming sentinel errors with `Err...`, passing contexts into I/O calls, and avoiding needless interfaces or named returns.
-
-## Strict Rules
-
-- Strictly must not use `git commit --no-verify`; local checks are required.
-- Strictly must not add `//nolint:...` comments; fix the lint issue instead.
-- Strictly forbidden to modify `.golangci.yml`.
-- Strictly must fix every linter error; never dismiss failures as pre-existing.
-- Strictly forbidden to use `// #nosec` or any `#nosec` comments to disable security linters or checks.
-- If running the linter for a module or file, include `--max-issues-per-linter 0 --max-same-issues 0`.
+Use standard Go formatting and short lowercase package names. Exported identifiers use `CamelCase`; unexported identifiers use `camelCase`. Wrap errors with context, name sentinel errors `Err...`, pass `context.Context` into I/O boundaries, and keep comments focused on why code exists. Avoid needless interfaces, named returns, and speculative options.
 
 ## Testing Guidelines
 
-Place unit tests beside code as `*_test.go`. Add the smallest test that proves changed behavior.
+Add the smallest unit test that proves changed behavior. Keep tests beside the package they cover with names ending in `_test.go`. Run `make test` for normal verification and add `-shuffle=on` when checking for order-sensitive failures.
 
 ## Commit & Pull Request Guidelines
 
-Prefer Conventional Commits as documented in `CONTRIBUTING.md`, e.g. `feat: add endpoint timeout` or `fix: reject invalid target URLs`. Keep messages imperative and scoped to one change.
+Use Conventional Commits, matching the project history: `feat: add endpoint transport option`, `fix: reject invalid target URLs`, `docs: update relay usage`. Keep commits scoped and imperative. PRs should explain the change, link relevant issues or context, and list verification commands run.
+
+## Strict Rules
+
+- Do not use `git commit --no-verify`; local checks are required.
+- Do not add `//nolint:...` or `#nosec` comments; fix the issue instead.
+- Do not modify `.golangci.yml`.
+- Fix every linter error, including ones that appear pre-existing.
+- If running the linter manually, include `--max-issues-per-linter 0 --max-same-issues 0`.
+
+## Security & Configuration Tips
+
+Use `config/.dev.env.example`, `config/.relay.env.example`, and `config/.endpoint.env.example` as local templates. Keep `HMAC_SECRET`, NATS tokens, and private endpoint settings out of commits. `ALLOW_PRIVATE_IPS=true` is for local development only unless the deployment explicitly needs private targets.
