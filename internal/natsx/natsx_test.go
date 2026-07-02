@@ -53,12 +53,13 @@ func TestValidateMaxPayload(t *testing.T) {
 	t.Parallel()
 
 	maxPayload := uint64(1_120_000)
-	if err := ValidateMaxPayload(&maxPayload, 1_048_576, 1_000_000, 1_000_000); err != nil {
+	err := ValidateMaxPayload(&maxPayload, 1_048_576, 1_000_000, 1_000_000)
+	if err != nil {
 		t.Fatalf("ValidateMaxPayload() error = %v", err)
 	}
 
 	tooSmall := uint64(1_100_000)
-	err := ValidateMaxPayload(&tooSmall, 1_048_576, 1_000_000, 1_000_000)
+	err = ValidateMaxPayload(&tooSmall, 1_048_576, 1_000_000, 1_000_000)
 	if err == nil {
 		t.Fatal("ValidateMaxPayload() = nil, want error")
 	}
@@ -75,7 +76,7 @@ func TestValidateServers(t *testing.T) {
 		t.Fatalf("ValidateServers() error = %v", err)
 	}
 
-	err := ValidateServers(nil)
+	err = ValidateServers(nil)
 	if err == nil {
 		t.Fatal("ValidateServers(nil) = nil, want error")
 	}

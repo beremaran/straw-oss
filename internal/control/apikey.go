@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"strings"
 )
 
@@ -24,9 +25,14 @@ const keyPrefixRunes = 12
 // keyLiteralPrefix is prepended to every generated API key.
 const keyLiteralPrefix = "sk_live_"
 
-// ErrMalformedAPIKey is returned when a presented API key does not match
-// the expected shape (too short to contain a prefix).
-var ErrMalformedAPIKey = errors.New("malformed api key")
+var (
+	// ErrMalformedAPIKey is returned when a presented API key does not match
+	// the expected shape (too short to contain a prefix).
+	ErrMalformedAPIKey                 = errors.New("malformed api key")
+	errMissingAuthorizationHeader      = errors.New("missing authorization header")
+	errAuthorizationHeaderBearerScheme = errors.New("authorization header must use Bearer scheme")
+	errEmptyBearerToken                = errors.New("empty bearer token")
+)
 
 // GeneratedAPIKey holds the plaintext key material produced at creation
 // time. The plaintext Secret is shown to the caller exactly once; it is
@@ -42,8 +48,10 @@ type GeneratedAPIKey struct {
 // must be surfaced to the caller once and never logged or stored.
 func GenerateAPIKey() (GeneratedAPIKey, error) {
 	raw := make([]byte, keySecretBytes)
-	if _, err := rand.Read(raw); err != nil {
-		return GeneratedAPIKey{}, err
+
+	_, err := rand.Read(raw)
+	if err != nil {
+		return GeneratedAPIKey{}, fmt.Errorf("generate api key: %w", err)
 	}
 
 	body := base64.RawURLEncoding.EncodeToString(raw)
@@ -96,16 +104,16 @@ func BearerToken(authorizationHeader string) (string, error) {
 	const schemePrefix = "Bearer "
 
 	if authorizationHeader == "" {
-		return "", errors.New("missing authorization header")
+		return "", errMissingAuthorizationHeader
 	}
 
 	if !strings.HasPrefix(authorizationHeader, schemePrefix) {
-		return "", errors.New("authorization header must use Bearer scheme")
+		return "", errAuthorizationHeaderBearerScheme
 	}
 
 	token := strings.TrimPrefix(authorizationHeader, schemePrefix)
 	if token == "" {
-		return "", errors.New("empty bearer token")
+		return "", errEmptyBearerToken
 	}
 
 	return token, nil

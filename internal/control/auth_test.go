@@ -3,11 +3,27 @@ package control
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+)
+
+const (
+	authTestTenantA            = "ten_a"
+	authTestTenantB            = "ten_b"
+	authTestKeyA               = "key_a"
+	authTestKeyB               = "key_b"
+	authTestKey1               = "key_1"
+	authTestKeyViewer          = "key_viewer"
+	authTestInvalidRequest     = "invalid_request"
+	authTestUnsupportedIngress = "unsupported_ingress_mode"
+	authTestAuthFailure        = "auth_failure"
+	authTestInsufficientPerms  = "insufficient_permissions"
+	authTestExampleURL         = "https://example.com/path"
+	authTestExamplePayload     = `{"method":"GET","url":"https://example.com/path"}`
 )
 
 // ---- API key generation / hashing ----
@@ -92,11 +108,11 @@ func TestAuthenticatorHandlesPrefixCollisions(t *testing.T) {
 	secretB := sharedPrefix + "restOfSecretB2222222222"
 
 	mustCreate(t, store, APIKeyRecord{
-		ID: "key_a", ScopeType: ScopeTenant, TenantID: "ten_a", Role: RoleRequester,
+		ID: authTestKeyA, ScopeType: ScopeTenant, TenantID: authTestTenantA, Role: RoleRequester,
 		Prefix: sharedPrefix, SecretHash: HashAPIKeySecret(secretA, pepper), Status: APIKeyStatusActive, CreatedAt: time.Now(),
 	})
 	mustCreate(t, store, APIKeyRecord{
-		ID: "key_b", ScopeType: ScopeTenant, TenantID: "ten_b", Role: RoleViewer,
+		ID: authTestKeyB, ScopeType: ScopeTenant, TenantID: authTestTenantB, Role: RoleViewer,
 		Prefix: sharedPrefix, SecretHash: HashAPIKeySecret(secretB, pepper), Status: APIKeyStatusActive, CreatedAt: time.Now(),
 	})
 
@@ -148,20 +164,24 @@ func TestAuthenticateRejectsRevokedKey(t *testing.T) {
 	pepper := []byte("pepper")
 	gen, _ := GenerateAPIKey()
 	mustCreate(t, store, APIKeyRecord{
-		ID: "key_1", ScopeType: ScopeTenant, TenantID: "ten_a", Role: RoleRequester,
+		ID: authTestKey1, ScopeType: ScopeTenant, TenantID: authTestTenantA, Role: RoleRequester,
 		Prefix: gen.Prefix, SecretHash: HashAPIKeySecret(gen.Secret, pepper), Status: APIKeyStatusActive, CreatedAt: time.Now(),
 	})
 	auth := NewAuthenticator(store, pepper)
+	var err error
 
-	if _, err := auth.Authenticate(context.Background(), "Bearer "+gen.Secret); err != nil {
+	_, err = auth.Authenticate(context.Background(), "Bearer "+gen.Secret)
+	if err != nil {
 		t.Fatalf("Authenticate() before revoke error = %v", err)
 	}
 
-	if _, err := store.Revoke(context.Background(), "key_1", time.Now()); err != nil {
+	_, err = store.Revoke(context.Background(), "key_1", time.Now())
+	if err != nil {
 		t.Fatalf("Revoke() error = %v", err)
 	}
 
-	if _, err := auth.Authenticate(context.Background(), "Bearer "+gen.Secret); !errors.Is(err, ErrAuthFailure) {
+	_, err = auth.Authenticate(context.Background(), "Bearer "+gen.Secret)
+	if !errors.Is(err, ErrAuthFailure) {
 		t.Fatalf("Authenticate() after revoke error = %v, want ErrAuthFailure (revocation takes effect)", err)
 	}
 }
@@ -207,8 +227,8 @@ func TestPlatformKeyCannotExecuteDataPlaneRequest(t *testing.T) {
 	auth := NewAuthenticator(store, pepper)
 	h := NewRequestHandler(1_048_576, 1_048_576, 120_000, auth)
 
-	payload := `{"method":"GET","url":"https://example.com/path"}`
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	payload := authTestExamplePayload
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
 	req.Header.Set("Authorization", "Bearer "+gen.Secret)
 	w := httptest.NewRecorder()
 
@@ -222,8 +242,8 @@ func TestPlatformKeyCannotExecuteDataPlaneRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unmarshal error: %v", err)
 	}
-	if errResp.Code != "insufficient_permissions" {
-		t.Fatalf("code = %q, want %q", errResp.Code, "insufficient_permissions")
+	if errResp.Code != authTestInsufficientPerms {
+		t.Fatalf("code = %q, want %q", errResp.Code, authTestInsufficientPerms)
 	}
 }
 
@@ -233,8 +253,8 @@ func TestUnauthenticatedRequestRejected(t *testing.T) {
 	auth := NewAuthenticator(NewInMemoryAPIKeyStore(), nil)
 	h := NewRequestHandler(1_048_576, 1_048_576, 120_000, auth)
 
-	payload := `{"method":"GET","url":"https://example.com/path"}`
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	payload := authTestExamplePayload
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
 	w := httptest.NewRecorder()
 
 	h.ServeHTTP(w, req)
@@ -247,8 +267,8 @@ func TestUnauthenticatedRequestRejected(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unmarshal error: %v", err)
 	}
-	if errResp.Code != "auth_failure" {
-		t.Fatalf("code = %q, want %q", errResp.Code, "auth_failure")
+	if errResp.Code != authTestAuthFailure {
+		t.Fatalf("code = %q, want %q", errResp.Code, authTestAuthFailure)
 	}
 }
 
@@ -259,14 +279,14 @@ func TestViewerCannotExecuteDataPlaneRequest(t *testing.T) {
 	pepper := []byte("pepper")
 	gen, _ := GenerateAPIKey()
 	mustCreate(t, store, APIKeyRecord{
-		ID: "key_viewer", ScopeType: ScopeTenant, TenantID: "ten_a", Role: RoleViewer,
+		ID: authTestKeyViewer, ScopeType: ScopeTenant, TenantID: authTestTenantA, Role: RoleViewer,
 		Prefix: gen.Prefix, SecretHash: HashAPIKeySecret(gen.Secret, pepper), Status: APIKeyStatusActive, CreatedAt: time.Now(),
 	})
 	auth := NewAuthenticator(store, pepper)
 	h := NewRequestHandler(1_048_576, 1_048_576, 120_000, auth)
 
-	payload := `{"method":"GET","url":"https://example.com/path"}`
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	payload := authTestExamplePayload
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
 	req.Header.Set("Authorization", "Bearer "+gen.Secret)
 	w := httptest.NewRecorder()
 

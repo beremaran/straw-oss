@@ -2,101 +2,126 @@ package strawpb
 
 import (
 	"errors"
-	"fmt"
 )
 
+var (
+	errAssignRequestNil             = errors.New("assign request is nil")
+	errAssignRequestModeInvalid     = errors.New("invalid assign request mode")
+	errDestinationPolicyNil         = errors.New("destination policy is nil")
+	errSNIHostMismatchPolicyInvalid = errors.New("invalid sni host mismatch policy")
+	errRedirectPolicyInvalid        = errors.New("invalid redirect policy")
+	errDestinationResolutionInvalid = errors.New("invalid destination resolution mode")
+	errRequestStartNil              = errors.New("request start is nil")
+	errRequestModeInvalid           = errors.New("invalid request mode")
+	errErrorResponseNil             = errors.New("error response is nil")
+	errErrorCategoryInvalid         = errors.New("invalid error category")
+	errErrorCodeInvalid             = errors.New("invalid error code")
+	errTimeoutTypeInvalid           = errors.New("invalid timeout type")
+	errHeartbeatRequestNil          = errors.New("heartbeat request is nil")
+	errWorkerHealthInvalid          = errors.New("invalid worker health")
+	errAssignAckNil                 = errors.New("assign ack is nil")
+	errAssignAckCodeInvalid         = errors.New("invalid assign ack code")
+)
+
+// Validate checks AssignRequest fields for P0 constraints.
 func (m *AssignRequest) Validate() error {
 	if m == nil {
-		return errors.New("assign request is nil")
+		return errAssignRequestNil
 	}
 
 	if !m.Mode.Valid() {
-		return fmt.Errorf("invalid assign request mode: %d", m.Mode)
+		return errAssignRequestModeInvalid
 	}
 
 	return nil
 }
 
+// Validate checks DestinationPolicy fields for P0 constraints.
 func (m *DestinationPolicy) Validate() error {
 	if m == nil {
-		return errors.New("destination policy is nil")
+		return errDestinationPolicyNil
 	}
 
 	if !m.SniHostMismatchPolicy.Valid() {
-		return fmt.Errorf("invalid sni host mismatch policy: %d", m.SniHostMismatchPolicy)
+		return errSNIHostMismatchPolicyInvalid
 	}
 
 	if !m.RedirectPolicy.Valid() {
-		return fmt.Errorf("invalid redirect policy: %d", m.RedirectPolicy)
+		return errRedirectPolicyInvalid
 	}
 
 	if !m.ResolutionMode.Valid() {
-		return fmt.Errorf("invalid destination resolution mode: %d", m.ResolutionMode)
+		return errDestinationResolutionInvalid
 	}
 
 	return nil
 }
 
+// Validate checks RequestStart fields for P0 constraints.
 func (m *RequestStart) Validate() error {
 	if m == nil {
-		return errors.New("request start is nil")
+		return errRequestStartNil
 	}
 
 	if !m.Mode.Valid() {
-		return fmt.Errorf("invalid request mode: %d", m.Mode)
+		return errRequestModeInvalid
 	}
 
 	if !m.RedirectPolicy.Valid() {
-		return fmt.Errorf("invalid redirect policy: %d", m.RedirectPolicy)
+		return errRedirectPolicyInvalid
 	}
 
 	return m.DestinationPolicy.Validate()
 }
 
+// Validate checks ErrorResponse fields for P0 constraints.
 func (m *ErrorResponse) Validate() error {
 	if m == nil {
-		return errors.New("error response is nil")
+		return errErrorResponseNil
 	}
 
 	if !m.Category.Valid() {
-		return fmt.Errorf("invalid error category: %d", m.Category)
+		return errErrorCategoryInvalid
 	}
 
 	if !m.Code.Valid() {
-		return fmt.Errorf("invalid error code: %d", m.Code)
+		return errErrorCodeInvalid
 	}
 
 	if m.TimeoutType != nil && !m.TimeoutType.Valid() {
-		return fmt.Errorf("invalid timeout type: %d", *m.TimeoutType)
+		return errTimeoutTypeInvalid
 	}
 
 	return nil
 }
 
+// Validate checks HeartbeatRequest fields for P0 constraints.
 func (m *HeartbeatRequest) Validate() error {
 	if m == nil {
-		return errors.New("heartbeat request is nil")
+		return errHeartbeatRequestNil
 	}
 
 	if !m.Health.Valid() {
-		return fmt.Errorf("invalid worker health: %d", m.Health)
+		return errWorkerHealthInvalid
 	}
 
 	return nil
 }
 
+// Validate checks AssignAck fields for P0 constraints.
 func (m *AssignAck) Validate() error {
 	if m == nil {
-		return errors.New("assign ack is nil")
+		return errAssignAckNil
 	}
 
 	if !m.Code.Valid() {
-		return fmt.Errorf("invalid assign ack code: %d", m.Code)
+		return errAssignAckCodeInvalid
 	}
 
 	return nil
 }
 
+// Valid reports whether the error category is known.
 func (e ErrorCategory) Valid() bool {
 	switch e {
 	case ErrorCategory_ERROR_CATEGORY_UNSPECIFIED,
@@ -112,6 +137,7 @@ func (e ErrorCategory) Valid() bool {
 	}
 }
 
+// Valid reports whether the error code is known.
 func (e ErrorCode) Valid() bool {
 	switch e {
 	case ErrorCode_ERROR_CODE_UNSPECIFIED,
@@ -154,6 +180,7 @@ func (e ErrorCode) Valid() bool {
 	}
 }
 
+// Valid reports whether the timeout type is known.
 func (e TimeoutType) Valid() bool {
 	switch e {
 	case TimeoutType_TIMEOUT_TYPE_UNSPECIFIED,
@@ -170,6 +197,7 @@ func (e TimeoutType) Valid() bool {
 	}
 }
 
+// Valid reports whether the assign ack code is known.
 func (e AssignAckCode) Valid() bool {
 	switch e {
 	case AssignAckCode_ASSIGN_ACK_CODE_UNSPECIFIED,
@@ -185,6 +213,7 @@ func (e AssignAckCode) Valid() bool {
 	}
 }
 
+// Valid reports whether the request mode is known.
 func (e RequestMode) Valid() bool {
 	switch e {
 	case RequestMode_REQUEST_MODE_UNSPECIFIED,
@@ -196,6 +225,7 @@ func (e RequestMode) Valid() bool {
 	}
 }
 
+// Valid reports whether the worker health value is known.
 func (e WorkerHealth) Valid() bool {
 	switch e {
 	case WorkerHealth_WORKER_HEALTH_UNSPECIFIED,
@@ -208,6 +238,7 @@ func (e WorkerHealth) Valid() bool {
 	}
 }
 
+// Valid reports whether the SNI host mismatch policy is known.
 func (e SniHostMismatchPolicy) Valid() bool {
 	switch e {
 	case SniHostMismatchPolicy_SNI_HOST_MISMATCH_STRICT,
@@ -219,6 +250,7 @@ func (e SniHostMismatchPolicy) Valid() bool {
 	}
 }
 
+// Valid reports whether the redirect policy is known.
 func (e RedirectPolicy) Valid() bool {
 	switch e {
 	case RedirectPolicy_REDIRECT_POLICY_NO_FOLLOW,
@@ -229,6 +261,7 @@ func (e RedirectPolicy) Valid() bool {
 	}
 }
 
+// Valid reports whether the destination resolution mode is known.
 func (e DestinationResolutionMode) Valid() bool {
 	switch e {
 	case DestinationResolutionMode_DESTINATION_RESOLUTION_MODE_UNSPECIFIED,

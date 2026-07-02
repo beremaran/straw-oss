@@ -22,6 +22,7 @@ type QuotaConfig struct {
 	UpdatedAt          time.Time
 }
 
+// ErrQuotaVersionConflict is returned when optimistic concurrency fails.
 var ErrQuotaVersionConflict = errors.New("quota config version conflict")
 
 // QuotaStore persists per-tenant quota configuration with optimistic
@@ -38,10 +39,12 @@ type InMemoryQuotaStore struct {
 	byTid map[string]QuotaConfig
 }
 
+// NewInMemoryQuotaStore builds an empty quota store.
 func NewInMemoryQuotaStore() *InMemoryQuotaStore {
 	return &InMemoryQuotaStore{byTid: make(map[string]QuotaConfig)}
 }
 
+// Get fetches a tenant quota config.
 func (s *InMemoryQuotaStore) Get(_ context.Context, tenantID string) (QuotaConfig, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -56,6 +59,7 @@ func (s *InMemoryQuotaStore) Get(_ context.Context, tenantID string) (QuotaConfi
 	return q, nil
 }
 
+// Put updates a tenant quota config with optimistic concurrency.
 func (s *InMemoryQuotaStore) Put(_ context.Context, quota QuotaConfig, expectedVersion uint64) (QuotaConfig, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

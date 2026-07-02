@@ -3,11 +3,25 @@ package control
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+)
+
+const (
+	adminTestTenantA           = "ten_a"
+	adminTestTenantB           = "ten_b"
+	adminTestKeyTenantAdmin    = "key_tenant_admin"
+	adminTestKeyAAdmin         = "key_a_admin"
+	adminTestKeyBAdmin         = "key_b_admin"
+	adminTestInvalidRequest    = errorCodeInvalidRequest
+	adminTestInsufficientPerms = "insufficient_permissions"
+	adminTestEgress            = errorCategoryEgress
+	adminTestTenantX           = "tenant_x"
+	adminTestPoolX             = "pool_x"
 )
 
 // testAdmin bundles an AdminHandlers with its backing stores for direct
@@ -87,7 +101,7 @@ func (ta *testAdmin) seedTenantKey(t *testing.T, id, tenantID string, role Role)
 }
 
 func newAdminRequest(method, path, token, body string) *http.Request {
-	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req := httptest.NewRequestWithContext(context.Background(), method, path, strings.NewReader(body))
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
@@ -129,7 +143,7 @@ func TestPlatformAPIKeyLifecycle(t *testing.T) {
 		t.Fatalf("list status = %d, want %d", w.Code, http.StatusOK)
 	}
 	var listed []apiKeyReadResponse
-	err := json.Unmarshal(w.Body.Bytes(), &listed)
+	err = json.Unmarshal(w.Body.Bytes(), &listed)
 	if err != nil {
 		t.Fatalf("unmarshal list response: %v", err)
 	}
@@ -148,7 +162,8 @@ func TestPlatformAPIKeyLifecycle(t *testing.T) {
 
 	// Authenticate with the new key before revocation succeeds.
 	auth := NewAuthenticator(ta.apiKeys, ta.pepper)
-	if _, err := auth.Authenticate(context.Background(), "Bearer "+created.Secret); err != nil {
+	_, err = auth.Authenticate(context.Background(), "Bearer "+created.Secret)
+	if err != nil {
 		t.Fatalf("Authenticate() before revoke error = %v", err)
 	}
 
@@ -162,7 +177,8 @@ func TestPlatformAPIKeyLifecycle(t *testing.T) {
 	}
 
 	// Revocation takes effect immediately.
-	if _, err := auth.Authenticate(context.Background(), "Bearer "+created.Secret); !errors.Is(err, ErrAuthFailure) {
+	_, err = auth.Authenticate(context.Background(), "Bearer "+created.Secret)
+	if !errors.Is(err, ErrAuthFailure) {
 		t.Fatalf("Authenticate() after revoke error = %v, want ErrAuthFailure", err)
 	}
 }
@@ -171,7 +187,7 @@ func TestPlatformAPIKeyLifecycleRequiresSystemAdmin(t *testing.T) {
 	t.Parallel()
 
 	ta := newTestAdmin(t)
-	tenantToken := ta.seedTenantKey(t, "key_tenant_admin", "ten_a", RoleTenantAdmin)
+	tenantToken := ta.seedTenantKey(t, adminTestKeyTenantAdmin, adminTestTenantA, RoleTenantAdmin)
 
 	w := httptest.NewRecorder()
 	ta.h.CreatePlatformAPIKey(w, newAdminRequest(http.MethodPost, "/platform-api-keys", tenantToken, `{"role":"system_admin"}`))
@@ -186,7 +202,7 @@ func TestTenantKeyCannotCreateTenants(t *testing.T) {
 	t.Parallel()
 
 	ta := newTestAdmin(t)
-	tenantAdminToken := ta.seedTenantKey(t, "key_tenant_admin", "ten_a", RoleTenantAdmin)
+	tenantAdminToken := ta.seedTenantKey(t, adminTestKeyTenantAdmin, adminTestTenantA, RoleTenantAdmin)
 
 	w := httptest.NewRecorder()
 	ta.h.CreateTenant(w, newAdminRequest(http.MethodPost, "/tenants", tenantAdminToken, `{"name":"Sneaky Tenant"}`))
@@ -198,8 +214,8 @@ func TestTenantKeyCannotCreateTenants(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unmarshal error: %v", err)
 	}
-	if errResp.Code != "insufficient_permissions" {
-		t.Fatalf("code = %q, want %q", errResp.Code, "insufficient_permissions")
+	if errResp.Code != adminTestInsufficientPerms {
+		t.Fatalf("code = %q, want %q", errResp.Code, adminTestInsufficientPerms)
 	}
 }
 
@@ -251,8 +267,8 @@ func TestTenantIsolationBlocksCrossTenantKeyRevoke(t *testing.T) {
 	t.Parallel()
 
 	ta := newTestAdmin(t)
-	tenantAToken := ta.seedTenantKey(t, "key_a_admin", "ten_a", RoleTenantAdmin)
-	tenantBToken := ta.seedTenantKey(t, "key_b_admin", "ten_b", RoleTenantAdmin)
+	tenantAToken := ta.seedTenantKey(t, adminTestKeyAAdmin, adminTestTenantA, RoleTenantAdmin)
+	tenantBToken := ta.seedTenantKey(t, adminTestKeyBAdmin, adminTestTenantB, RoleTenantAdmin)
 
 	// Tenant A creates a key.
 	w := httptest.NewRecorder()
@@ -279,7 +295,7 @@ func TestTenantIsolationBlocksCrossTenantKeyRevoke(t *testing.T) {
 	w = httptest.NewRecorder()
 	ta.h.ListTenantAPIKeys(w, newAdminRequest(http.MethodGet, "/api-keys", tenantBToken, ""))
 	var listed []apiKeyReadResponse
-	err := json.Unmarshal(w.Body.Bytes(), &listed)
+	err = json.Unmarshal(w.Body.Bytes(), &listed)
 	if err != nil {
 		t.Fatalf("unmarshal list: %v", err)
 	}
@@ -294,16 +310,17 @@ func TestRevokeTenantAPIKeyInvalidatesConfigCache(t *testing.T) {
 	t.Parallel()
 
 	ta := newTestAdmin(t)
-	tenantAdminToken := ta.seedTenantKey(t, "key_a_admin", "ten_a", RoleTenantAdmin)
-
+	tenantAdminToken := ta.seedTenantKey(t, adminTestKeyAAdmin, adminTestTenantA, RoleTenantAdmin)
+	var err error
 	w := httptest.NewRecorder()
 	ta.h.CreateTenantAPIKey(w, newAdminRequest(http.MethodPost, "/api-keys", tenantAdminToken, `{"role":"requester"}`))
 	var created apiKeyCreateResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+	err = json.Unmarshal(w.Body.Bytes(), &created)
+	if err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 
-	before, err := ta.h.ConfigCache.Snapshot(context.Background(), "ten_a")
+	before, err := ta.h.ConfigCache.Snapshot(context.Background(), adminTestTenantA)
 	if err != nil {
 		t.Fatalf("Snapshot() before revoke error = %v", err)
 	}
@@ -316,7 +333,7 @@ func TestRevokeTenantAPIKeyInvalidatesConfigCache(t *testing.T) {
 		t.Fatalf("revoke status = %d, want %d, body=%s", w.Code, http.StatusOK, w.Body.String())
 	}
 
-	after, err := ta.h.ConfigCache.Snapshot(context.Background(), "ten_a")
+	after, err := ta.h.ConfigCache.Snapshot(context.Background(), adminTestTenantA)
 	if err != nil {
 		t.Fatalf("Snapshot() after revoke error = %v", err)
 	}
@@ -340,12 +357,12 @@ func TestQuotaWriteRequiresPlatformKey(t *testing.T) {
 	t.Parallel()
 
 	ta := newTestAdmin(t)
-	tenant := Tenant{ID: "ten_a", Name: "A", Status: TenantStatusActive, CreatedAt: time.Now().UTC()}
+	tenant := Tenant{ID: adminTestTenantA, Name: "A", Status: TenantStatusActive, CreatedAt: time.Now().UTC()}
 	err := ta.tenants.Create(context.Background(), tenant)
 	if err != nil {
 		t.Fatalf("seed tenant: %v", err)
 	}
-	tenantAdminToken := ta.seedTenantKey(t, "key_a_admin", "ten_a", RoleTenantAdmin)
+	tenantAdminToken := ta.seedTenantKey(t, adminTestKeyAAdmin, adminTestTenantA, RoleTenantAdmin)
 	adminToken := ta.seedPlatformKey(t, "key_admin", RoleSystemAdmin)
 
 	body := `{"expected_config_version":0,"period":"monthly","max_requests":1000,"max_bandwidth_bytes":100000,"request_count_policy":"count_on_admission","redis_fail_policy":"closed"}`
@@ -353,7 +370,7 @@ func TestQuotaWriteRequiresPlatformKey(t *testing.T) {
 	// Tenant key rejected.
 	w := httptest.NewRecorder()
 	req := newAdminRequest(http.MethodPut, "/tenants/ten_a/quotas", tenantAdminToken, body)
-	req.SetPathValue("id", "ten_a")
+	req.SetPathValue("id", adminTestTenantA)
 	ta.h.PutTenantQuotas(w, req)
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("tenant key quota write status = %d, want %d", w.Code, http.StatusForbidden)
@@ -362,7 +379,7 @@ func TestQuotaWriteRequiresPlatformKey(t *testing.T) {
 	// Platform key succeeds.
 	w = httptest.NewRecorder()
 	req = newAdminRequest(http.MethodPut, "/tenants/ten_a/quotas", adminToken, body)
-	req.SetPathValue("id", "ten_a")
+	req.SetPathValue("id", adminTestTenantA)
 	ta.h.PutTenantQuotas(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("platform key quota write status = %d, want %d, body=%s", w.Code, http.StatusOK, w.Body.String())
@@ -375,7 +392,7 @@ func TestQuotaWriteRequiresPlatformKey(t *testing.T) {
 		t.Fatalf("tenant quota read status = %d, want %d", w.Code, http.StatusOK)
 	}
 	var quota quotaResponse
-	err := json.Unmarshal(w.Body.Bytes(), &quota)
+	err = json.Unmarshal(w.Body.Bytes(), &quota)
 	if err != nil {
 		t.Fatalf("unmarshal quota: %v", err)
 	}
@@ -390,7 +407,7 @@ func TestWorkerCredentialCreateRejectsForeignTenantScope(t *testing.T) {
 	t.Parallel()
 
 	ta := newTestAdmin(t)
-	tenantAdminToken := ta.seedTenantKey(t, "key_a_admin", "ten_a", RoleTenantAdmin)
+	tenantAdminToken := ta.seedTenantKey(t, adminTestKeyAAdmin, adminTestTenantA, RoleTenantAdmin)
 
 	body := `{"executor_type":"egress","allowed_pools":[{"tenant_id":"ten_b","pool_id":"pool_x"}],"public_key_ed25519_base64":"YWJjZA=="}`
 	w := httptest.NewRecorder()
@@ -403,8 +420,8 @@ func TestWorkerCredentialCreateRejectsForeignTenantScope(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unmarshal error: %v", err)
 	}
-	if errResp.Code != "invalid_request" {
-		t.Fatalf("code = %q, want %q", errResp.Code, "invalid_request")
+	if errResp.Code != adminTestInvalidRequest {
+		t.Fatalf("code = %q, want %q", errResp.Code, adminTestInvalidRequest)
 	}
 }
 
@@ -412,7 +429,7 @@ func TestWorkerCredentialCreateForcesCallerTenantScope(t *testing.T) {
 	t.Parallel()
 
 	ta := newTestAdmin(t)
-	tenantAdminToken := ta.seedTenantKey(t, "key_a_admin", "ten_a", RoleTenantAdmin)
+	tenantAdminToken := ta.seedTenantKey(t, adminTestKeyAAdmin, adminTestTenantA, RoleTenantAdmin)
 
 	body := `{"executor_type":"egress","allowed_pools":[{"tenant_id":"ten_a","pool_id":"pool_x"}],"public_key_ed25519_base64":"YWJjZA=="}`
 	w := httptest.NewRecorder()
@@ -425,7 +442,7 @@ func TestWorkerCredentialCreateForcesCallerTenantScope(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if len(created.TenantScope) != 1 || created.TenantScope[0] != "ten_a" {
+	if len(created.TenantScope) != 1 || created.TenantScope[0] != adminTestTenantA {
 		t.Fatalf("tenant_scope = %v, want [ten_a]", created.TenantScope)
 	}
 }
@@ -434,8 +451,8 @@ func TestWorkerCredentialRevokeInvalidatesAcrossTenants(t *testing.T) {
 	t.Parallel()
 
 	ta := newTestAdmin(t)
-	tenantAToken := ta.seedTenantKey(t, "key_a_admin", "ten_a", RoleTenantAdmin)
-	tenantBToken := ta.seedTenantKey(t, "key_b_admin", "ten_b", RoleTenantAdmin)
+	tenantAToken := ta.seedTenantKey(t, adminTestKeyAAdmin, adminTestTenantA, RoleTenantAdmin)
+	tenantBToken := ta.seedTenantKey(t, adminTestKeyBAdmin, adminTestTenantB, RoleTenantAdmin)
 
 	body := `{"executor_type":"egress","allowed_pools":[],"public_key_ed25519_base64":"YWJjZA=="}`
 	w := httptest.NewRecorder()

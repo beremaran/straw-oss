@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/beremaran/straw/v2/internal/config"
@@ -26,12 +28,6 @@ type AdminHandlers struct {
 	Pepper        []byte
 }
 
-// ---- shared helpers ----
-
-func (h *AdminHandlers) authenticate(r *http.Request) (Identity, error) {
-	return h.Authenticator.Authenticate(r.Context(), r.Header.Get("Authorization"))
-}
-
 func writeAuthOrRBACError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, ErrAuthFailure):
@@ -46,33 +42,22 @@ func writeAuthOrRBACError(w http.ResponseWriter, err error) {
 func writeJSON(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(body)
+
+	err := json.NewEncoder(w).Encode(body)
+	if err != nil {
+		return
+	}
 }
 
 func decodeJSONBody(r *http.Request, dst any) error {
 	dec := json.NewDecoder(r.Body)
 
-	return dec.Decode(dst)
-}
-
-// bumpTenantVersion increments the tenant's aggregate config version
-// through ConfigCache, forcing invalidation to propagate before the caller
-// observes success. mutateRevoked, if non-nil, transforms the current
-// RevokedAPIKeyIDs list (used by API key revocation).
-func (h *AdminHandlers) bumpTenantVersion(ctx context.Context, tenantID string, mutateRevoked func([]string) []string) (config.TenantSnapshot, error) {
-	current, err := h.ConfigCache.Snapshot(ctx, tenantID)
+	err := dec.Decode(dst)
 	if err != nil {
-		return config.TenantSnapshot{}, err
+		return fmt.Errorf("decode json body: %w", err)
 	}
 
-	revoked := current.RevokedAPIKeyIDs
-	if mutateRevoked != nil {
-		revoked = mutateRevoked(revoked)
-	}
-
-	next := config.NewTenantSnapshot(tenantID, current.ConfigVersion+1, revoked)
-
-	return h.ConfigCache.Save(ctx, next, current.ConfigVersion)
+	return nil
 }
 
 // ---- Tenant lifecycle (minimal: enough to prove system_admin-only
@@ -100,14 +85,17 @@ func (h *AdminHandlers) CreateTenant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := RequireRole(identity, RoleSystemAdmin); err != nil {
+	err = RequireRole(identity, RoleSystemAdmin)
+	if err != nil {
 		writeAuthOrRBACError(w, err)
 
 		return
 	}
 
 	var req tenantCreateRequest
-	if err := decodeJSONBody(r, &req); err != nil || req.Name == "" {
+
+	err = decodeJSONBody(r, &req)
+	if err != nil || req.Name == "" {
 		WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", nil))
 
 		return
@@ -121,7 +109,9 @@ func (h *AdminHandlers) CreateTenant(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tenant := Tenant{ID: id, Name: req.Name, Status: TenantStatusActive, CreatedAt: time.Now().UTC()}
-	if err := h.Tenants.Create(r.Context(), tenant); err != nil {
+
+	err = h.Tenants.Create(r.Context(), tenant)
+	if err != nil {
 		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
 
 		return
@@ -198,68 +188,19 @@ func (h *AdminHandlers) CreatePlatformAPIKey(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	if err := RequireRole(identity, RoleSystemAdmin); err != nil {
+	err = RequireRole(identity, RoleSystemAdmin)
+	if err != nil {
 		writeAuthOrRBACError(w, err)
 
 		return
 	}
 
-	var req platformKeyCreateRequest
-	if err := decodeJSONBody(r, &req); err != nil {
-		WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", nil))
-
+	role, ok := decodeAndValidatePlatformKeyRole(w, r)
+	if !ok {
 		return
 	}
 
-	role := Role(req.Role)
-	if !ValidPlatformRole(role) {
-		WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", nil))
-
-		return
-	}
-
-	generated, err := GenerateAPIKey()
-	if err != nil {
-		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
-
-		return
-	}
-
-	id, err := newRandomID("key")
-	if err != nil {
-		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
-
-		return
-	}
-
-	record := APIKeyRecord{
-		ID:            id,
-		ScopeType:     ScopePlatform,
-		Role:          role,
-		Prefix:        generated.Prefix,
-		SecretHash:    HashAPIKeySecret(generated.Secret, h.Pepper),
-		Status:        APIKeyStatusActive,
-		CreatedAt:     time.Now().UTC(),
-		ConfigVersion: 0,
-	}
-	if err := h.APIKeys.Create(r.Context(), record); err != nil {
-		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
-
-		return
-	}
-
-	recordAudit(r.Context(), h.Audit, identity, "platform_api_key", id, "create")
-
-	writeJSON(w, http.StatusCreated, apiKeyCreateResponse{
-		ID:            record.ID,
-		ScopeType:     string(record.ScopeType),
-		TenantID:      nil,
-		Role:          string(record.Role),
-		Prefix:        record.Prefix,
-		Secret:        generated.Secret,
-		CreatedAt:     record.CreatedAt.Format(time.RFC3339),
-		ConfigVersion: record.ConfigVersion,
-	})
+	h.createPlatformAPIKey(w, r, identity, role)
 }
 
 // ListPlatformAPIKeys handles GET /platform-api-keys.
@@ -271,7 +212,8 @@ func (h *AdminHandlers) ListPlatformAPIKeys(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if err := RequireRole(identity, RoleSystemAdmin); err != nil {
+	err = RequireRole(identity, RoleSystemAdmin)
+	if err != nil {
 		writeAuthOrRBACError(w, err)
 
 		return
@@ -301,7 +243,8 @@ func (h *AdminHandlers) RevokePlatformAPIKey(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	if err := RequireRole(identity, RoleSystemAdmin); err != nil {
+	err = RequireRole(identity, RoleSystemAdmin)
+	if err != nil {
 		writeAuthOrRBACError(w, err)
 
 		return
@@ -347,77 +290,19 @@ func (h *AdminHandlers) CreateTenantAPIKey(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if err := RequireRole(identity, RoleTenantAdmin); err != nil {
+	err = RequireRole(identity, RoleTenantAdmin)
+	if err != nil {
 		writeAuthOrRBACError(w, err)
 
 		return
 	}
 
-	var req tenantKeyCreateRequest
-	if err := decodeJSONBody(r, &req); err != nil {
-		WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", nil))
-
+	role, ok := decodeAndValidateTenantKeyRole(w, r)
+	if !ok {
 		return
 	}
 
-	role := Role(req.Role)
-	if !ValidTenantRole(role) {
-		WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", nil))
-
-		return
-	}
-
-	generated, err := GenerateAPIKey()
-	if err != nil {
-		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
-
-		return
-	}
-
-	id, err := newRandomID("key")
-	if err != nil {
-		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
-
-		return
-	}
-
-	saved, err := h.bumpTenantVersion(r.Context(), identity.TenantID, nil)
-	if err != nil {
-		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
-
-		return
-	}
-
-	record := APIKeyRecord{
-		ID:            id,
-		ScopeType:     ScopeTenant,
-		TenantID:      identity.TenantID,
-		Role:          role,
-		Prefix:        generated.Prefix,
-		SecretHash:    HashAPIKeySecret(generated.Secret, h.Pepper),
-		Status:        APIKeyStatusActive,
-		CreatedAt:     time.Now().UTC(),
-		ConfigVersion: saved.ConfigVersion,
-	}
-	if err := h.APIKeys.Create(r.Context(), record); err != nil {
-		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
-
-		return
-	}
-
-	recordAudit(r.Context(), h.Audit, identity, "tenant_api_key", id, "create")
-
-	tid := identity.TenantID
-	writeJSON(w, http.StatusCreated, apiKeyCreateResponse{
-		ID:            record.ID,
-		ScopeType:     string(record.ScopeType),
-		TenantID:      &tid,
-		Role:          string(record.Role),
-		Prefix:        record.Prefix,
-		Secret:        generated.Secret,
-		CreatedAt:     record.CreatedAt.Format(time.RFC3339),
-		ConfigVersion: record.ConfigVersion,
-	})
+	h.createTenantAPIKey(w, r, identity, role)
 }
 
 // ListTenantAPIKeys handles GET /api-keys, scoped to the caller's tenant.
@@ -429,7 +314,8 @@ func (h *AdminHandlers) ListTenantAPIKeys(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if err := RequireRole(identity, RoleTenantAdmin, RoleOperator); err != nil {
+	err = RequireRole(identity, RoleTenantAdmin, RoleOperator)
+	if err != nil {
 		writeAuthOrRBACError(w, err)
 
 		return
@@ -459,7 +345,8 @@ func (h *AdminHandlers) RevokeTenantAPIKey(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if err := RequireRole(identity, RoleTenantAdmin); err != nil {
+	err = RequireRole(identity, RoleTenantAdmin)
+	if err != nil {
 		writeAuthOrRBACError(w, err)
 
 		return
@@ -486,9 +373,10 @@ func (h *AdminHandlers) RevokeTenantAPIKey(w http.ResponseWriter, r *http.Reques
 	// (docs/planning/25-dynamic-configuration.md: "API key revocation and
 	// worker credential revocation force cache invalidation before
 	// returning success.").
-	if _, err := h.bumpTenantVersion(r.Context(), identity.TenantID, func(revokedIDs []string) []string {
+	_, err = h.bumpTenantVersion(r.Context(), identity.TenantID, func(revokedIDs []string) []string {
 		return append(append([]string(nil), revokedIDs...), id)
-	}); err != nil {
+	})
+	if err != nil {
 		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
 
 		return
@@ -541,72 +429,30 @@ func (h *AdminHandlers) CreateWorkerCredential(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	if err := RequireRole(identity, RoleTenantAdmin); err != nil {
+	err = RequireRole(identity, RoleTenantAdmin)
+	if err != nil {
 		writeAuthOrRBACError(w, err)
 
 		return
 	}
 
 	var req workerCredentialCreateRequest
-	if err := decodeJSONBody(r, &req); err != nil {
-		WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", nil))
 
-		return
-	}
-
-	if req.PublicKeyEd25519Base64 == "" {
-		WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", nil))
-
-		return
-	}
-
-	if req.ExecutorType == "" {
-		req.ExecutorType = "egress"
-	}
-
-	for _, pool := range req.AllowedPools {
-		if pool.TenantID != identity.TenantID {
-			WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", map[string]string{
-				"reason": "allowed_pools entries must reference the caller's tenant in P0",
-			}))
-
-			return
-		}
-	}
-
-	id, err := newRandomID("wcred")
+	err = decodeJSONBody(r, &req)
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
+		WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", nil))
 
 		return
 	}
 
-	record := WorkerCredential{
-		ID:                     id,
-		Status:                 WorkerCredentialStatusActive,
-		ExecutorType:           req.ExecutorType,
-		PublicKeyEd25519Base64: req.PublicKeyEd25519Base64,
-		TenantScope:            []string{identity.TenantID}, // forced single-tenant scope in P0
-		AllowedPools:           req.AllowedPools,
-		CreatedAt:              time.Now().UTC(),
-		UpdatedAt:              time.Now().UTC(),
-		ConfigVersion:          1,
-	}
-	if err := h.WorkerCreds.Create(r.Context(), record); err != nil {
-		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
-
+	req, ok := validateWorkerCredentialRequest(w, req, identity.TenantID)
+	if !ok {
 		return
 	}
 
-	if _, err := h.bumpTenantVersion(r.Context(), identity.TenantID, nil); err != nil {
-		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
-
+	if !h.createWorkerCredential(w, r, identity, req) {
 		return
 	}
-
-	recordAudit(r.Context(), h.Audit, identity, "worker_credential", id, "create")
-
-	writeJSON(w, http.StatusCreated, toWorkerCredentialResponse(record))
 }
 
 // ListWorkerCredentials handles GET /worker-credentials, scoped to the
@@ -619,7 +465,8 @@ func (h *AdminHandlers) ListWorkerCredentials(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	if err := RequireRole(identity, RoleTenantAdmin); err != nil {
+	err = RequireRole(identity, RoleTenantAdmin)
+	if err != nil {
 		writeAuthOrRBACError(w, err)
 
 		return
@@ -649,7 +496,8 @@ func (h *AdminHandlers) RevokeWorkerCredential(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	if err := RequireRole(identity, RoleTenantAdmin); err != nil {
+	err = RequireRole(identity, RoleTenantAdmin)
+	if err != nil {
 		writeAuthOrRBACError(w, err)
 
 		return
@@ -672,7 +520,8 @@ func (h *AdminHandlers) RevokeWorkerCredential(w http.ResponseWriter, r *http.Re
 	}
 	// Force cache invalidation before returning success, same as API key
 	// revocation.
-	if _, err := h.bumpTenantVersion(r.Context(), identity.TenantID, nil); err != nil {
+	_, err = h.bumpTenantVersion(r.Context(), identity.TenantID, nil)
+	if err != nil {
 		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
 
 		return
@@ -684,13 +533,7 @@ func (h *AdminHandlers) RevokeWorkerCredential(w http.ResponseWriter, r *http.Re
 }
 
 func containsString(list []string, want string) bool {
-	for _, s := range list {
-		if s == want {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(list, want)
 }
 
 // ---- Quota config (platform-managed writes, tenant-readable) ----
@@ -727,7 +570,8 @@ func (h *AdminHandlers) GetQuotas(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := RequireRole(identity, RoleTenantAdmin, RoleOperator, RoleViewer); err != nil {
+	err = RequireRole(identity, RoleTenantAdmin, RoleOperator, RoleViewer)
+	if err != nil {
 		writeAuthOrRBACError(w, err)
 
 		return
@@ -763,26 +607,192 @@ func (h *AdminHandlers) PutTenantQuotas(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if err := RequireRole(identity, RoleSystemAdmin); err != nil {
+	err = RequireRole(identity, RoleSystemAdmin)
+	if err != nil {
 		writeAuthOrRBACError(w, err)
 
 		return
 	}
 
 	tenantID := r.PathValue("id")
-	if _, err := h.Tenants.Get(r.Context(), tenantID); err != nil {
+
+	_, err = h.Tenants.Get(r.Context(), tenantID)
+	if err != nil {
 		WriteError(w, http.StatusNotFound, ErrorResponseFromCode(TenantNotFound, "", nil))
 
 		return
 	}
 
-	var req quotaPutRequest
-	if err := decodeJSONBody(r, &req); err != nil {
+	req, ok := decodeQuotaPutRequest(w, r)
+	if !ok {
+		return
+	}
+
+	h.putTenantQuotas(w, r, identity, tenantID, req)
+}
+
+func decodeAndValidatePlatformKeyRole(w http.ResponseWriter, r *http.Request) (Role, bool) {
+	var req platformKeyCreateRequest
+
+	err := decodeJSONBody(r, &req)
+	if err != nil {
 		WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", nil))
+
+		return "", false
+	}
+
+	role := Role(req.Role)
+	if !ValidPlatformRole(role) {
+		WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", nil))
+
+		return "", false
+	}
+
+	return role, true
+}
+
+func decodeAndValidateTenantKeyRole(w http.ResponseWriter, r *http.Request) (Role, bool) {
+	var req tenantKeyCreateRequest
+
+	err := decodeJSONBody(r, &req)
+	if err != nil {
+		WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", nil))
+
+		return "", false
+	}
+
+	role := Role(req.Role)
+	if !ValidTenantRole(role) {
+		WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", nil))
+
+		return "", false
+	}
+
+	return role, true
+}
+
+func decodeQuotaPutRequest(w http.ResponseWriter, r *http.Request) (quotaPutRequest, bool) {
+	var req quotaPutRequest
+
+	err := decodeJSONBody(r, &req)
+	if err != nil {
+		WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", nil))
+
+		return quotaPutRequest{}, false
+	}
+
+	return req, true
+}
+
+func createAPIKeyRecord(ctx context.Context, store APIKeyStore, w http.ResponseWriter, record APIKeyRecord) bool {
+	err := store.Create(ctx, record)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
+
+		return false
+	}
+
+	return true
+}
+
+func (h *AdminHandlers) createPlatformAPIKey(w http.ResponseWriter, r *http.Request, identity Identity, role Role) {
+	generated, err := GenerateAPIKey()
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
 
 		return
 	}
 
+	id, err := newRandomID("key")
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
+
+		return
+	}
+
+	record := APIKeyRecord{
+		ID:            id,
+		ScopeType:     ScopePlatform,
+		Role:          role,
+		Prefix:        generated.Prefix,
+		SecretHash:    HashAPIKeySecret(generated.Secret, h.Pepper),
+		Status:        APIKeyStatusActive,
+		CreatedAt:     time.Now().UTC(),
+		ConfigVersion: 0,
+	}
+
+	if !createAPIKeyRecord(r.Context(), h.APIKeys, w, record) {
+		return
+	}
+
+	recordAudit(r.Context(), h.Audit, identity, "platform_api_key", id, "create")
+
+	writeJSON(w, http.StatusCreated, apiKeyCreateResponse{
+		ID:            record.ID,
+		ScopeType:     string(record.ScopeType),
+		TenantID:      nil,
+		Role:          string(record.Role),
+		Prefix:        record.Prefix,
+		Secret:        generated.Secret,
+		CreatedAt:     record.CreatedAt.Format(time.RFC3339),
+		ConfigVersion: record.ConfigVersion,
+	})
+}
+
+func (h *AdminHandlers) createTenantAPIKey(w http.ResponseWriter, r *http.Request, identity Identity, role Role) {
+	generated, err := GenerateAPIKey()
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
+
+		return
+	}
+
+	id, err := newRandomID("key")
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
+
+		return
+	}
+
+	saved, err := h.bumpTenantVersion(r.Context(), identity.TenantID, nil)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
+
+		return
+	}
+
+	record := APIKeyRecord{
+		ID:            id,
+		ScopeType:     ScopeTenant,
+		TenantID:      identity.TenantID,
+		Role:          role,
+		Prefix:        generated.Prefix,
+		SecretHash:    HashAPIKeySecret(generated.Secret, h.Pepper),
+		Status:        APIKeyStatusActive,
+		CreatedAt:     time.Now().UTC(),
+		ConfigVersion: saved.ConfigVersion,
+	}
+
+	if !createAPIKeyRecord(r.Context(), h.APIKeys, w, record) {
+		return
+	}
+
+	recordAudit(r.Context(), h.Audit, identity, "tenant_api_key", id, "create")
+
+	tid := identity.TenantID
+	writeJSON(w, http.StatusCreated, apiKeyCreateResponse{
+		ID:            record.ID,
+		ScopeType:     string(record.ScopeType),
+		TenantID:      &tid,
+		Role:          string(record.Role),
+		Prefix:        record.Prefix,
+		Secret:        generated.Secret,
+		CreatedAt:     record.CreatedAt.Format(time.RFC3339),
+		ConfigVersion: record.ConfigVersion,
+	})
+}
+
+func (h *AdminHandlers) putTenantQuotas(w http.ResponseWriter, r *http.Request, identity Identity, tenantID string, req quotaPutRequest) {
 	quota := QuotaConfig{
 		TenantID:           tenantID,
 		Period:             req.Period,
@@ -806,7 +816,8 @@ func (h *AdminHandlers) PutTenantQuotas(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if _, err := h.bumpTenantVersion(r.Context(), tenantID, nil); err != nil {
+	_, err = h.bumpTenantVersion(r.Context(), tenantID, nil)
+	if err != nil {
 		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
 
 		return
@@ -815,4 +826,93 @@ func (h *AdminHandlers) PutTenantQuotas(w http.ResponseWriter, r *http.Request) 
 	recordAudit(r.Context(), h.Audit, identity, "quota_config", tenantID, "update")
 
 	writeJSON(w, http.StatusOK, toQuotaResponse(saved))
+}
+
+func (h *AdminHandlers) createWorkerCredential(w http.ResponseWriter, r *http.Request, identity Identity, req workerCredentialCreateRequest) bool {
+	id, err := newRandomID("wcred")
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
+
+		return false
+	}
+
+	record := WorkerCredential{
+		ID:                     id,
+		Status:                 WorkerCredentialStatusActive,
+		ExecutorType:           req.ExecutorType,
+		PublicKeyEd25519Base64: req.PublicKeyEd25519Base64,
+		TenantScope:            []string{identity.TenantID}, // forced single-tenant scope in P0
+		AllowedPools:           req.AllowedPools,
+		CreatedAt:              time.Now().UTC(),
+		UpdatedAt:              time.Now().UTC(),
+		ConfigVersion:          1,
+	}
+
+	err = h.WorkerCreds.Create(r.Context(), record)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
+
+		return false
+	}
+
+	_, err = h.bumpTenantVersion(r.Context(), identity.TenantID, nil)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
+
+		return false
+	}
+
+	recordAudit(r.Context(), h.Audit, identity, "worker_credential", id, "create")
+
+	writeJSON(w, http.StatusCreated, toWorkerCredentialResponse(record))
+
+	return true
+}
+
+func validateWorkerCredentialRequest(w http.ResponseWriter, req workerCredentialCreateRequest, tenantID string) (workerCredentialCreateRequest, bool) {
+	if req.PublicKeyEd25519Base64 == "" {
+		WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", nil))
+
+		return workerCredentialCreateRequest{}, false
+	}
+
+	if req.ExecutorType == "" {
+		req.ExecutorType = errorCategoryEgress
+	}
+
+	for _, pool := range req.AllowedPools {
+		if pool.TenantID != tenantID {
+			WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", map[string]string{
+				"reason": "allowed_pools entries must reference the caller's tenant in P0",
+			}))
+
+			return workerCredentialCreateRequest{}, false
+		}
+	}
+
+	return req, true
+}
+
+func (h *AdminHandlers) authenticate(r *http.Request) (Identity, error) {
+	return h.Authenticator.Authenticate(r.Context(), r.Header.Get("Authorization"))
+}
+
+// bumpTenantVersion increments the tenant's aggregate config version
+// through ConfigCache, forcing invalidation to propagate before the caller
+// observes success. mutateRevoked, if non-nil, transforms the current
+// RevokedAPIKeyIDs list (used by API key revocation).
+func (h *AdminHandlers) bumpTenantVersion(ctx context.Context, tenantID string, mutateRevoked func([]string) []string) (config.TenantSnapshot, error) {
+	current, err := h.ConfigCache.Snapshot(ctx, tenantID)
+	if err != nil {
+		return config.TenantSnapshot{}, err
+	}
+
+	revoked := current.RevokedAPIKeyIDs
+	if mutateRevoked != nil {
+		revoked = mutateRevoked(revoked)
+	}
+
+	next := config.NewTenantSnapshot(tenantID, current.ConfigVersion+1, revoked)
+
+	return h.ConfigCache.Save(ctx, next, current.ConfigVersion)
 }

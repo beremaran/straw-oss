@@ -136,6 +136,16 @@ func (v *StreamValidator) Accept(f *strawpb.StreamFrame) FrameOutcome {
 	return FrameAccepted
 }
 
+// IdleExpired reports whether the frame idle timeout has elapsed since the
+// last accepted frame. It is never true once the stream is terminated.
+func (v *StreamValidator) IdleExpired() bool {
+	if v.idleTimeout <= 0 || v.terminal {
+		return false
+	}
+
+	return v.now().Sub(v.lastActivity) > v.idleTimeout
+}
+
 func (v *StreamValidator) acceptData(data *strawpb.DataFrame) FrameOutcome {
 	if data == nil {
 		return FrameAccepted
@@ -154,16 +164,6 @@ func (v *StreamValidator) acceptData(data *strawpb.DataFrame) FrameOutcome {
 	v.offset += n
 
 	return FrameAccepted
-}
-
-// IdleExpired reports whether the frame idle timeout has elapsed since the
-// last accepted frame. It is never true once the stream is terminated.
-func (v *StreamValidator) IdleExpired() bool {
-	if v.idleTimeout <= 0 || v.terminal {
-		return false
-	}
-
-	return v.now().Sub(v.lastActivity) > v.idleTimeout
 }
 
 // isTerminalFrame reports whether f carries a terminal payload (EndFrame,

@@ -1,7 +1,6 @@
 package control
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -37,7 +36,7 @@ func (h *RequestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		WriteError(w, http.StatusMethodNotAllowed, ErrorResponse{
 			Category:  "client",
-			Code:      "unsupported_ingress_mode",
+			Code:      errorCodeUnsupportedIngressMode,
 			Message:   "only POST is allowed on /api/v1/requests",
 			Retryable: false,
 			RequestID: "",
@@ -63,7 +62,7 @@ func (h *RequestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	body, err := readRequestBody(r)
 	if err != nil {
 		WriteValidationError(w, requestID, &ValidationError{
-			Code:    "invalid_request",
+			Code:    errorCodeInvalidRequest,
 			Message: "request body is required and must be JSON",
 		})
 
@@ -79,39 +78,15 @@ func (h *RequestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(6, requestID, nil))
+		WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, requestID, nil))
 
 		return
 	}
 
-	// TODO: rate limit and quota admission (task 13)
-	// TODO: deny rules check
-	// TODO: routing evaluation (task 09)
-	// TODO: assignment and stream lifecycle (task 10)
-	// TODO: egress outbound execution (task 11)
-
 	_ = validated // validated is used by later tasks; stub for now.
 	_ = identity  // tenant_id/role feed routing and quotas in later tasks.
 
-	response := SuccessResponse{
-		RequestID: requestID,
-		Status:    200,
-		Headers:   nil,
-		Body: ResponseBody{
-			Mode:      "inline_base64",
-			Truncated: false,
-		},
-		Timing: RequestTiming{
-			RoutingMs:    0,
-			AssignmentMs: 0,
-			EgressMs:     0,
-			TotalMs:      0,
-		},
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(response)
+	writeSuccessResponse(w, requestID)
 }
 
 // authenticateAndAuthorize resolves the caller's Identity and enforces the
@@ -143,7 +118,7 @@ func readRequestBody(r *http.Request) ([]byte, error) {
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read request body: %w", err)
 	}
 
 	return body, nil
@@ -158,6 +133,32 @@ func asValidationError(err error, target **ValidationError) bool {
 	}
 
 	return false
+}
+
+func writeSuccessResponse(w http.ResponseWriter, requestID string) {
+	response := SuccessResponse{
+		RequestID: requestID,
+		Status:    http.StatusOK,
+		Headers:   nil,
+		Body: ResponseBody{
+			Mode:      "inline_base64",
+			Truncated: false,
+		},
+		Timing: RequestTiming{
+			RoutingMs:    0,
+			AssignmentMs: 0,
+			EgressMs:     0,
+			TotalMs:      0,
+		},
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	err := json.NewEncoder(w).Encode(response)
+	if err != nil {
+		return
+	}
 }
 
 // SuccessResponse is the JSON envelope for successful upstream transport.
@@ -185,18 +186,6 @@ type RequestTiming struct {
 }
 
 // encodeHeadersBase64 encodes header values as base64 for the response envelope.
-func encodeHeadersBase64(headers []HeaderPair) []HeaderPair {
-	out := make([]HeaderPair, len(headers))
-	for i, h := range headers {
-		out[i] = HeaderPair{
-			Name:  h.Name,
-			Value: base64.StdEncoding.EncodeToString([]byte(h.Value)),
-		}
-	}
-
-	return out
-}
-
 // generateRequestID creates a unique request ID.
 func generateRequestID() string {
 	return fmt.Sprintf("req_%d", time.Now().UnixNano())

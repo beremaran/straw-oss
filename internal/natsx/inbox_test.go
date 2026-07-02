@@ -22,7 +22,8 @@ func TestWorkerInboxPrefix(t *testing.T) {
 
 func TestWorkerInboxPrefixRejectsUnsafeToken(t *testing.T) {
 	t.Parallel()
-	if _, err := WorkerInboxPrefix("bad.worker"); err == nil {
+	_, err := WorkerInboxPrefix("bad.worker")
+	if err == nil {
 		t.Fatal("WorkerInboxPrefix accepted a dot-bearing worker_id, want error")
 	}
 }

@@ -1,6 +1,7 @@
 package control
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -48,15 +49,15 @@ func TestAssignmentFallbackBoundaryAndAdminCancel(t *testing.T) {
 		t.Fatalf("Cancel() before RequestStart = send=%v ok=%v, want false/true", send, ok)
 	}
 
-	err := AuthorizeAdminCancel(Identity{ScopeType: ScopeTenant, TenantID: "ten_a", Role: RoleTenantAdmin}, "ten_a")
+	err := AuthorizeAdminCancel(Identity{ScopeType: ScopeTenant, TenantID: adminTestTenantA, Role: RoleTenantAdmin}, adminTestTenantA)
 	if err != nil {
 		t.Fatalf("tenant admin cancel own tenant error = %v", err)
 	}
-	err := AuthorizeAdminCancel(Identity{ScopeType: ScopeTenant, TenantID: "ten_a", Role: RoleTenantAdmin}, "ten_b")
+	err = AuthorizeAdminCancel(Identity{ScopeType: ScopeTenant, TenantID: adminTestTenantA, Role: RoleTenantAdmin}, adminTestTenantB)
 	if !errors.Is(err, ErrInsufficientPermissions) {
 		t.Fatalf("cross-tenant cancel error = %v, want ErrInsufficientPermissions", err)
 	}
-	err := AuthorizeAdminCancel(Identity{ScopeType: ScopePlatform, Role: RoleSystemAdmin}, "ten_b")
+	err = AuthorizeAdminCancel(Identity{ScopeType: ScopePlatform, Role: RoleSystemAdmin}, "ten_b")
 	if err != nil {
 		t.Fatalf("system admin cancel error = %v", err)
 	}

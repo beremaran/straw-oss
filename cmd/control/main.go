@@ -1,3 +1,4 @@
+// Package main runs the Straw control service.
 package main
 
 import (
@@ -7,51 +8,82 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/beremaran/straw/v2/internal/config"
 	"github.com/beremaran/straw/v2/internal/control"
 	"github.com/beremaran/straw/v2/internal/natsx"
 )
 
+const (
+	exitUsage         = 2
+	readHeaderTimeout = 5 * time.Second
+)
+
 func main() {
-	configPath := flag.String("config", "", "path to the control config file")
-
-	flag.Parse()
-
-	if *configPath == "" {
-		fmt.Fprintln(os.Stderr, "missing required -config flag")
-		os.Exit(2)
-	}
-
-	controlConfig, err := config.LoadControl(*configPath)
+	err := run()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		log.Fatalf("control: %v", err)
+	}
+}
+
+func run() error {
+	controlConfig, err := loadControlConfig()
+	if err != nil {
+		return fmt.Errorf("load control config: %w", err)
 	}
 
-	if err := natsx.ValidateServers(controlConfig.NATS.Servers); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+	err = natsx.ValidateServers(controlConfig.NATS.Servers)
+	if err != nil {
+		return fmt.Errorf("validate nats servers: %w", err)
 	}
 
-	if err := natsx.ValidateMaxPayload(controlConfig.NATS.MaxPayloadBytes, controlConfig.Transport.MaxFrameDataBytes, controlConfig.Request.MaxInlineRequestBodyBytes, controlConfig.Request.MaxInlineResponseBodyBytes); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+	err = natsx.ValidateMaxPayload(controlConfig.NATS.MaxPayloadBytes, controlConfig.Transport.MaxFrameDataBytes, controlConfig.Request.MaxInlineRequestBodyBytes, controlConfig.Request.MaxInlineResponseBodyBytes)
+	if err != nil {
+		return fmt.Errorf("validate payload limits: %w", err)
 	}
 
-	// P0 stores are process-local; a Postgres-backed implementation is
-	// future work once a database driver dependency is introduced for
-	// Control (see docs/agents/handoffs/07-auth-rbac-api-keys.md).
+	return runControl(controlConfig)
+}
+
+func runControl(controlConfig config.ControlConfig) error {
 	apiKeyStore := control.NewInMemoryAPIKeyStore()
 	pepper := []byte(os.Getenv("STRAW_API_KEY_PEPPER"))
 
-	if _, created, err := control.BootstrapFromEnv(context.Background(), apiKeyStore, os.Getenv(control.BootstrapSystemAdminEnvVar), pepper); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	} else if created {
+	created, err := bootstrapAPIKey(apiKeyStore, pepper)
+	if err != nil {
+		return err
+	}
+
+	if created {
 		log.Printf("control: bootstrapped first platform system_admin API key from %s", control.BootstrapSystemAdminEnvVar)
 	}
 
+	mux := buildControlMux(controlConfig, apiKeyStore, pepper)
+
+	addr := fmt.Sprintf("%s:%d", controlConfig.Server.Host, controlConfig.Server.APIPort)
+	log.Printf("control: listening on %s", addr)
+
+	server := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: readHeaderTimeout}
+
+	err = server.ListenAndServe()
+	if err != nil {
+		return fmt.Errorf("listen and serve control http server: %w", err)
+	}
+
+	return nil
+}
+
+func bootstrapAPIKey(store control.APIKeyStore, pepper []byte) (bool, error) {
+	_, created, err := control.BootstrapFromEnv(context.Background(), store, os.Getenv(control.BootstrapSystemAdminEnvVar), pepper)
+	if err != nil {
+		return false, fmt.Errorf("bootstrap api key: %w", err)
+	}
+
+	return created, nil
+}
+
+func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.APIKeyStore, pepper []byte) *http.ServeMux {
 	authenticator := control.NewAuthenticator(apiKeyStore, pepper)
 	snapshotStore := control.NewInMemorySnapshotStore()
 	configCache := control.NewConfigCache(snapshotStore, nil)
@@ -101,10 +133,26 @@ func main() {
 	mux.HandleFunc("POST /api/v1/admin/workers/{worker_id}/tenant-drain", adminHandlers.TenantDrainWorker)
 	mux.HandleFunc("POST /api/v1/admin/workers/{worker_id}/tenant-undrain", adminHandlers.TenantUndrainWorker)
 
-	addr := fmt.Sprintf("%s:%d", controlConfig.Server.Host, controlConfig.Server.APIPort)
-	log.Printf("control: listening on %s", addr)
+	return mux
+}
 
-	if err := http.ListenAndServe(addr, mux); err != nil {
-		log.Fatalf("control: %v", err)
+func loadControlConfig() (config.ControlConfig, error) {
+	configPath := flag.String("config", "", "path to the control config file")
+
+	flag.Parse()
+
+	if *configPath == "" {
+		fmt.Fprintln(os.Stderr, "missing required -config flag")
+
+		os.Exit(exitUsage)
 	}
+
+	controlConfig, err := config.LoadControl(*configPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+
+		return config.ControlConfig{}, fmt.Errorf("load control config: %w", err)
+	}
+
+	return controlConfig, nil
 }

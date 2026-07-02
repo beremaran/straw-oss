@@ -11,6 +11,17 @@ import (
 	strawpb "github.com/beremaran/straw/v2/api/proto/straw/v1"
 )
 
+const (
+	workerRegTestWcred1  = "wcred_1"
+	workerRegTestEgress  = "egress"
+	workerRegTestTenantA = "ten_a"
+	workerRegTestTenantB = "ten_b"
+	workerRegTestTenantC = "ten_c"
+	workerRegTestPool1   = "pool_1"
+	workerRegTestWorker1 = "worker-1"
+	workerRegTestWorker2 = "worker-2"
+)
+
 // fakeClock is a controllable clock for deterministic state-timing tests.
 type fakeClock struct {
 	mu sync.Mutex
@@ -51,7 +62,8 @@ func newRegHarness(t *testing.T, cred WorkerCredential) *regHarness {
 		cred.Status = WorkerCredentialStatusActive
 	}
 	store := NewInMemoryWorkerCredentialStore()
-	if err := store.Create(context.Background(), cred); err != nil {
+	err = store.Create(context.Background(), cred)
+	if err != nil {
 		t.Fatalf("create credential: %v", err)
 	}
 	clock := &fakeClock{t: time.Unix(1_700_000_000, 0)}
@@ -68,11 +80,11 @@ func newRegHarness(t *testing.T, cred WorkerCredential) *regHarness {
 // defaultCred returns a permissive credential for tenant ten_a.
 func defaultCred() WorkerCredential {
 	return WorkerCredential{
-		ID:           "wcred_1",
+		ID:           workerRegTestWcred1,
 		Status:       WorkerCredentialStatusActive,
-		ExecutorType: "egress",
-		TenantScope:  []string{"ten_a"},
-		AllowedPools: []AllowedPool{{TenantID: "ten_a", PoolID: "pool_1"}},
+		ExecutorType: workerRegTestEgress,
+		TenantScope:  []string{workerRegTestTenantA},
+		AllowedPools: []AllowedPool{{TenantID: workerRegTestTenantA, PoolID: workerRegTestPool1}},
 	}
 }
 
@@ -83,7 +95,7 @@ func (h *regHarness) signedRegister(workerID string, mut ...func(*strawpb.Regist
 		ExecutorType:  h.cred.ExecutorType,
 		CredentialId:  h.cred.ID,
 		ProtocolMajor: ProtocolMajor,
-		AllowedPools:  []*strawpb.RegisterRequest_PoolRef{{TenantId: "ten_a", PoolId: "pool_1"}},
+		AllowedPools:  []*strawpb.RegisterRequest_PoolRef{{TenantId: workerRegTestTenantA, PoolId: workerRegTestPool1}},
 	}
 	req.SignedToken = strawpb.SignRegistration(h.priv, req)
 	for _, m := range mut {
@@ -109,14 +121,14 @@ func (h *regHarness) mustRegister(t *testing.T, req *strawpb.RegisterRequest) st
 func TestRegisterValid(t *testing.T) {
 	t.Parallel()
 	h := newRegHarness(t, defaultCred())
-	out, err := h.reg.Register(context.Background(), h.signedRegister("worker-1"))
+	out, err := h.reg.Register(context.Background(), h.signedRegister(workerRegTestWorker1))
 	if err != nil {
 		t.Fatalf("Register error: %v", err)
 	}
 	if !out.OK || out.SessionID == "" {
 		t.Fatalf("Register outcome = %+v, want OK with session id", out)
 	}
-	if got := h.reg.RuntimeState("worker-1"); got != RuntimeRegistered {
+	if got := h.reg.RuntimeState(workerRegTestWorker1); got != RuntimeRegistered {
 		t.Fatalf("runtime state before heartbeat = %s, want registered", got)
 	}
 }
@@ -194,7 +206,7 @@ func TestRegisterRevokedCredential(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Register error: %v", err)
 	}
-	if out.OK || out.Reason != RejectCredentialRevoked {
+	if out.OK || out.Reason != RejectRevokedCredential {
 		t.Fatalf("outcome = %+v, want reject credential_revoked", out)
 	}
 }
@@ -283,7 +295,11 @@ func TestHeartbeatUnavailableThenDead(t *testing.T) {
 	t.Parallel()
 	h := newRegHarness(t, defaultCred())
 	sess := h.mustRegister(t, h.signedRegister("worker-1"))
-	h.reg.Heartbeat(readyHeartbeat("worker-1", sess))
+	var err error
+	_, err = h.reg.Heartbeat(readyHeartbeat("worker-1", sess))
+	if err != nil {
+		t.Fatalf("heartbeat: %v", err)
+	}
 	if got := h.reg.RuntimeState("worker-1"); got != RuntimeReady {
 		t.Fatalf("state = %s, want ready", got)
 	}
@@ -318,7 +334,11 @@ func TestCooldownExcludesThenRecovers(t *testing.T) {
 	t.Parallel()
 	h := newRegHarness(t, defaultCred())
 	sess := h.mustRegister(t, h.signedRegister("worker-1"))
-	h.reg.Heartbeat(readyHeartbeat("worker-1", sess))
+	var err error
+	_, err = h.reg.Heartbeat(readyHeartbeat("worker-1", sess))
+	if err != nil {
+		t.Fatalf("heartbeat: %v", err)
+	}
 
 	for range 3 {
 		h.reg.RecordFailure("worker-1")
@@ -332,7 +352,10 @@ func TestCooldownExcludesThenRecovers(t *testing.T) {
 
 	// Fresh heartbeat keeps liveness; cooldown expires after its duration.
 	h.clock.Advance(31 * time.Second)
-	h.reg.Heartbeat(readyHeartbeat("worker-1", sess))
+	_, err = h.reg.Heartbeat(readyHeartbeat("worker-1", sess))
+	if err != nil {
+		t.Fatalf("heartbeat: %v", err)
+	}
 	if got := h.reg.RuntimeState("worker-1"); got != RuntimeReady {
 		t.Fatalf("state after cooldown = %s, want ready", got)
 	}
@@ -342,14 +365,21 @@ func TestCooldownWindowExpiry(t *testing.T) {
 	t.Parallel()
 	h := newRegHarness(t, defaultCred())
 	sess := h.mustRegister(t, h.signedRegister("worker-1"))
-	h.reg.Heartbeat(readyHeartbeat("worker-1", sess))
+	var err error
+	_, err = h.reg.Heartbeat(readyHeartbeat("worker-1", sess))
+	if err != nil {
+		t.Fatalf("heartbeat: %v", err)
+	}
 
 	// Two failures, then wait past the window, then one more: should not trip
 	// cooldown because the first two aged out.
 	h.reg.RecordFailure("worker-1")
 	h.reg.RecordFailure("worker-1")
 	h.clock.Advance(61 * time.Second)
-	h.reg.Heartbeat(readyHeartbeat("worker-1", sess))
+	_, err = h.reg.Heartbeat(readyHeartbeat("worker-1", sess))
+	if err != nil {
+		t.Fatalf("heartbeat: %v", err)
+	}
 	h.reg.RecordFailure("worker-1")
 	if got := h.reg.RuntimeState("worker-1"); got != RuntimeReady {
 		t.Fatalf("state = %s, want ready (failures aged out of window)", got)
@@ -361,11 +391,15 @@ func TestCooldownWindowExpiry(t *testing.T) {
 func multiTenantHarness(t *testing.T) *regHarness {
 	t.Helper()
 	cred := defaultCred()
-	cred.TenantScope = []string{"ten_a", "ten_b"}
-	cred.AllowedPools = []AllowedPool{{TenantID: "ten_a", PoolID: "pool_1"}, {TenantID: "ten_b", PoolID: "pool_1"}}
+	cred.TenantScope = []string{adminTestTenantA, adminTestTenantB}
+	cred.AllowedPools = []AllowedPool{{TenantID: adminTestTenantA, PoolID: routingTestPool1}, {TenantID: adminTestTenantB, PoolID: routingTestPool1}}
 	h := newRegHarness(t, cred)
 	sess := h.mustRegister(t, h.signedRegister("worker-1"))
-	h.reg.Heartbeat(readyHeartbeat("worker-1", sess))
+	var err error
+	_, err = h.reg.Heartbeat(readyHeartbeat("worker-1", sess))
+	if err != nil {
+		t.Fatalf("heartbeat: %v", err)
+	}
 
 	return h
 }
@@ -415,8 +449,8 @@ func TestListWorkersForTenantScoping(t *testing.T) {
 	// A second worker credentialed for a different tenant only.
 	otherCred := defaultCred()
 	otherCred.ID = "wcred_other"
-	otherCred.TenantScope = []string{"ten_c"}
-	otherCred.AllowedPools = []AllowedPool{{TenantID: "ten_c", PoolID: "pool_1"}}
+	otherCred.TenantScope = []string{workerRegTestTenantC}
+	otherCred.AllowedPools = []AllowedPool{{TenantID: workerRegTestTenantC, PoolID: routingTestPool1}}
 	pub := base64.StdEncoding.EncodeToString(h.priv.Public().(ed25519.PublicKey))
 	otherCred.PublicKeyEd25519Base64 = pub
 	err := h.creds.Create(context.Background(), otherCred)
@@ -426,13 +460,13 @@ func TestListWorkersForTenantScoping(t *testing.T) {
 	otherReq := &strawpb.RegisterRequest{
 		WorkerId: "worker-2", ExecutorType: "egress", CredentialId: "wcred_other",
 		ProtocolMajor: ProtocolMajor,
-		AllowedPools:  []*strawpb.RegisterRequest_PoolRef{{TenantId: "ten_c", PoolId: "pool_1"}},
+		AllowedPools:  []*strawpb.RegisterRequest_PoolRef{{TenantId: workerRegTestTenantC, PoolId: routingTestPool1}},
 	}
 	otherReq.SignedToken = strawpb.SignRegistration(h.priv, otherReq)
 	h.mustRegister(t, otherReq)
 
 	// Tenant ten_a sees worker-1 but not worker-2, and no session id.
-	views := h.reg.ListWorkersForTenant("ten_a")
+	views := h.reg.ListWorkersForTenant(adminTestTenantA)
 	if len(views) != 1 || views[0].WorkerID != "worker-1" {
 		t.Fatalf("ten_a listing = %+v, want only worker-1", views)
 	}
@@ -464,7 +498,7 @@ func TestRegisterInvalidCredentialKey(t *testing.T) {
 		t.Fatalf("overwrite cred: %v", err)
 	}
 	out, _ := h.reg.Register(context.Background(), h.signedRegister("worker-1"))
-	if out.OK || out.Reason != RejectInvalidCredKey {
+	if out.OK || out.Reason != RejectInvalidKeyMaterial {
 		t.Fatalf("outcome = %+v, want reject invalid_credential_key", out)
 	}
 }

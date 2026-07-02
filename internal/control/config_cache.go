@@ -9,18 +9,23 @@ import (
 	"github.com/beremaran/straw/v2/internal/config"
 )
 
+// ErrVersionConflict is returned when a snapshot write races a newer version.
 var ErrVersionConflict = errors.New("config version conflict")
 
+// SnapshotStore reads and writes tenant snapshots and versions.
 type SnapshotStore interface {
 	CurrentTenantConfigVersion(ctx context.Context, tenantID string) (uint64, error)
 	LoadTenantSnapshot(ctx context.Context, tenantID string, version uint64) (config.TenantSnapshot, error)
 	SaveTenantSnapshot(ctx context.Context, snapshot config.TenantSnapshot, expectedVersion uint64) (config.TenantSnapshot, error)
 }
 
+// InvalidationPublisher broadcasts tenant snapshot invalidations.
 type InvalidationPublisher interface {
 	PublishTenantInvalidation(ctx context.Context, tenantID string, version uint64) error
 }
 
+// ConfigCache caches tenant snapshots in memory and keeps them in sync
+// with the backing store.
 type ConfigCache struct {
 	store         SnapshotStore
 	publisher     InvalidationPublisher
@@ -29,6 +34,7 @@ type ConfigCache struct {
 	latestVersion map[string]uint64
 }
 
+// NewConfigCache builds an empty config cache.
 func NewConfigCache(store SnapshotStore, publisher InvalidationPublisher) *ConfigCache {
 	return &ConfigCache{
 		store:         store,
@@ -38,6 +44,11 @@ func NewConfigCache(store SnapshotStore, publisher InvalidationPublisher) *Confi
 	}
 }
 
+func wrapSnapshotStoreErr(tenantID string, version uint64, op string, err error) error {
+	return fmt.Errorf("%s tenant %s version %d: %w", op, tenantID, version, err)
+}
+
+// Snapshot returns the cached snapshot for a tenant, loading it on demand.
 func (c *ConfigCache) Snapshot(ctx context.Context, tenantID string) (config.TenantSnapshot, error) {
 	if snapshot, ok := c.cachedSnapshot(tenantID); ok {
 		return snapshot.Clone(), nil
@@ -49,12 +60,13 @@ func (c *ConfigCache) Snapshot(ctx context.Context, tenantID string) (config.Ten
 			return snapshot.Clone(), nil
 		}
 
-		return config.TenantSnapshot{}, err
+		return config.TenantSnapshot{}, wrapSnapshotStoreErr(tenantID, 0, "load config version for", err)
 	}
 
 	return c.loadAndStore(ctx, tenantID, version)
 }
 
+// SyncTenantVersion refreshes the cached snapshot when the store version advances.
 func (c *ConfigCache) SyncTenantVersion(ctx context.Context, tenantID string) (bool, error) {
 	version, err := c.store.CurrentTenantConfigVersion(ctx, tenantID)
 	if err != nil {
@@ -62,7 +74,7 @@ func (c *ConfigCache) SyncTenantVersion(ctx context.Context, tenantID string) (b
 			return false, nil
 		}
 
-		return false, err
+		return false, wrapSnapshotStoreErr(tenantID, 0, "sync config version for", err)
 	}
 
 	c.mu.RLock()
@@ -73,7 +85,8 @@ func (c *ConfigCache) SyncTenantVersion(ctx context.Context, tenantID string) (b
 		return false, nil
 	}
 
-	if _, err := c.loadAndStore(ctx, tenantID, version); err != nil {
+	_, err = c.loadAndStore(ctx, tenantID, version)
+	if err != nil {
 		if _, ok := c.cachedSnapshot(tenantID); ok {
 			return false, nil
 		}
@@ -84,10 +97,11 @@ func (c *ConfigCache) SyncTenantVersion(ctx context.Context, tenantID string) (b
 	return true, nil
 }
 
+// Save persists a snapshot and updates the cache on success.
 func (c *ConfigCache) Save(ctx context.Context, snapshot config.TenantSnapshot, expectedVersion uint64) (config.TenantSnapshot, error) {
 	saved, err := c.store.SaveTenantSnapshot(ctx, snapshot.Clone(), expectedVersion)
 	if err != nil {
-		return config.TenantSnapshot{}, err
+		return config.TenantSnapshot{}, wrapSnapshotStoreErr(snapshot.TenantID, expectedVersion, "save tenant snapshot for", err)
 	}
 
 	c.storeSnapshot(saved)
@@ -99,6 +113,7 @@ func (c *ConfigCache) Save(ctx context.Context, snapshot config.TenantSnapshot, 
 	return saved.Clone(), nil
 }
 
+// ApplyInvalidation clears stale cached state for a tenant version.
 func (c *ConfigCache) ApplyInvalidation(tenantID string, version uint64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

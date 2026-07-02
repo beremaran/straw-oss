@@ -7,6 +7,8 @@ import (
 	"testing"
 )
 
+const configTestUnknownField = "unknown field"
+
 func TestLoadControl(t *testing.T) {
 	t.Parallel()
 
@@ -56,7 +58,7 @@ func TestLoadControl(t *testing.T) {
 			wantErr: "server.api_port must be between 1 and 65535",
 		},
 		{
-			name: "unknown field",
+			name: configTestUnknownField,
 			config: `{
 				"config_version": "v1",
 				"control": {
@@ -68,7 +70,7 @@ func TestLoadControl(t *testing.T) {
 					}
 				}
 			}`,
-			wantErr: "unknown field",
+			wantErr: configTestUnknownField,
 		},
 	}
 
@@ -125,7 +127,7 @@ func TestLoadEgress(t *testing.T) {
 			wantErr: "worker_id is required",
 		},
 		{
-			name: "unknown field",
+			name: configTestUnknownField,
 			config: `{
 				"config_version": "v1",
 				"egress": {
@@ -133,7 +135,7 @@ func TestLoadEgress(t *testing.T) {
 					"extra": true
 				}
 			}`,
-			wantErr: "unknown field",
+			wantErr: configTestUnknownField,
 		},
 	}
 
