@@ -577,13 +577,226 @@ upstream failures keep their more specific typed error codes.
 
 Schemas shared by Control and Egress.
 
-- Request Message: method, URL, headers, body, routing metadata.
-- Response Message: status, headers, body, timing.
-- Error Message: typed failures and retryability.
-- Worker Registration Message: worker identity and capabilities.
-- Worker Heartbeat Message: health and load.
-- Routing Metadata: tags, geo, IP type, session ID.
-- Versioning Strategy: backward-compatible schema changes.
+Phase 1 uses one shared protobuf package for Control, Egress Workers, and
+Provider Adapters:
+
+- Protobuf package: `straw.v1`.
+- Go package name: `strawpb`.
+- Source file: `proto/straw/v1/straw.proto`.
+- Tooling files: `buf.yaml` and `buf.gen.yaml`.
+- Optional helper script: `scripts/proto-generate`.
+
+All NATS payloads are one binary protobuf `Envelope`. The envelope contains the
+common transport fields and a `oneof payload` so every participant has one
+decode path:
+
+- `request_id`, `tenant_id`, `trace_id`.
+- `deadline_unix_ms` for the absolute request deadline.
+- `protocol_major` and `protocol_minor`.
+- `attempt`, starting at `1` and incrementing for fallback attempts.
+- `oneof payload`: `RegisterRequest`, `RegisterAck`, `HeartbeatRequest`,
+  `HeartbeatAck`, `AssignRequest`, `AssignAck`, and `StreamFrame`.
+
+IDs are plain strings, not binary UUIDs. This keeps REST, logs, NATS subjects,
+and generated clients simple across languages. Validation rules are documented
+in the schema comments: IDs must be non-empty where business logic requires
+them; IDs used in NATS subjects, such as `request_id`, `worker_id`, and
+`session_id`, must be dot-free safe tokens. `tenant_id` stays in protobuf
+fields and is never included in NATS subjects. Workers include tenant IDs for
+correlation only; authorization still comes from validated worker credentials
+and registration scope.
+
+Time values use simple integers instead of protobuf timestamp wrapper types:
+
+- Absolute times use `int64 *_unix_ms`.
+- Durations and timeouts use `uint32 *_ms`.
+
+The schema uses proto3 and no `required` fields. Receivers validate mandatory
+business fields after decoding and return typed `validation_error` failures for
+missing, zero, oversized, or inconsistent values. Unknown fields are ignored for
+rolling deploy compatibility. Unknown enum values and unsupported `oneof`
+payloads are rejected as unsupported or incompatible protocol input.
+
+Fixed-value fields are protobuf enums with explicit `*_UNSPECIFIED = 0`
+values. Enums include `IpType`, `IngressType`, `ExecutorType`, worker health,
+assignment mode, payload capture decision, registration status, heartbeat ack
+status, assignment ack status, fingerprint preset, and shared error codes.
+Custom implementations must treat unknown enum values as unsupported rather
+than silently defaulting.
+
+HTTP headers use ordered repeated pairs, not maps:
+
+- `Header { string name; bytes value; }`.
+- Ordering and duplicates are preserved, including repeated `Set-Cookie`
+  headers.
+
+Routing metadata mirrors the routing model. Request metadata carries tags,
+country, region, IP type, sticky session ID, ingress type, and target host.
+Control-selected fields, such as route ID, pool ID, executor ID, and stable
+egress identity, are optional presence-sensitive scalar fields.
+
+`RegisterRequest` advertises static identity and capabilities:
+
+- `worker_id`, `executor_type`, credential identifier, and opaque
+  `signed_token`.
+- Supported protocol major/minor and software version.
+- Pool names, tags, countries, regions, IP types, supported ingress modes, and
+  stable egress identity when known.
+- Max concurrency and initial draining state.
+
+`RegisterAck` uses a status enum with `OK`, `REJECTED_AUTH`,
+`REJECTED_SCOPE`, `REJECTED_VERSION`, and `REJECTED_VALIDATION`. It includes
+`session_id` only when status is `OK`; rejected responses include a shared
+`Error` and operator-facing message.
+
+`HeartbeatRequest` carries dynamic runtime state only:
+
+- `worker_id`, `session_id`, health, reason, active request count, max
+  concurrency, available capacity, optional queue depth, draining state, and
+  optional `worker_unix_ms` for diagnostics.
+
+`HeartbeatAck` uses `OK`, `STALE_SESSION`, `RE_REGISTER`, `DISABLED`, and
+`DRAIN`.
+
+Assignment reserves capacity before request details are streamed. `AssignRequest`
+does not carry the full HTTP request. It carries only reservation data:
+
+- Mode: decoded HTTP or raw tunnel.
+- Deadline.
+- Expected upload size when known.
+- Selected route, pool, executor, and stable egress metadata.
+
+`AssignAck` uses enum values for `ACCEPTED`, `REJECTED_CAPACITY`,
+`REJECTED_DRAINING`, `REJECTED_UNSUPPORTED`, and `REJECTED_ERROR`. Rejections
+include messages; `REJECTED_ERROR` includes the shared `Error`.
+
+After an accepted assignment, request-scoped traffic uses one `StreamFrame`
+message with a `oneof` payload:
+
+- `request_start`
+- `response_start`
+- `data`
+- `credit`
+- `cancel`
+- `error`
+- `trailers`
+- `end`
+- `cancelled`
+
+Frame direction is implied by the NATS subject: `c2e` carries client-to-executor
+upload or tunnel bytes, and `e2c` carries executor-to-Control response or
+tunnel bytes. Sequence numbers apply only to data-bearing `DataFrame` messages.
+Receivers fail the request on data sequence gaps, duplicates, or out-of-order
+frames. Control frames such as credit, cancel, error, trailers, end, and
+cancelled are not part of the data sequence.
+
+`CreditFrame` uses byte credit only. Combined with the per-frame data limit,
+this bounds memory without frame-count bookkeeping.
+
+Request and response bodies use the same body model:
+
+- Normal bodies stream as repeated `DataFrame { uint64 sequence; bytes data; }`
+  messages.
+- Large bodies use `BodyRef`.
+- `BodyRef` supports S3-compatible object storage references and generic direct
+  streaming references from day one.
+- Direct stream references are transport-neutral:
+  `DirectStreamRef { string stream_id; map<string,string> params; }`.
+
+`RequestStart` carries the executor-ready request:
+
+- Mode: decoded HTTP or raw tunnel.
+- HTTP method and full absolute URL as one string.
+- Stripped outbound headers only; Straw routing/control headers are never sent
+  to executors.
+- Routing metadata and selected route/executor metadata.
+- Computed deadline and `replayable_body`.
+- Payload capture decision and size limits.
+- Executor-ready resolved fingerprint and header/cookie injection instructions.
+
+Executors never query config and never interpret raw admin policy objects.
+Control sends the resolved instructions needed for this request plus
+policy/version IDs for audit correlation. Header and cookie injection
+instructions are ordered operations, such as add, set, or remove header and
+add or set cookie, so execution order is deterministic.
+
+Fingerprint instructions are a fixed protobuf message, not an opaque JSON blob.
+The official worker uses `tls-client`; the protobuf enum mirrors the
+`tls-client` preset set in the current Straw contract. When `tls-client` adds
+presets, Straw adds enum values in a contract update. Executors reject unknown
+or unsupported presets with `unsupported_fingerprint`.
+
+Payload capture is not a boolean. It is an enum decision with size limits:
+`NONE`, `METADATA_ONLY`, `HEADERS`, `BODY_TRUNCATED`, and `BODY_FULL`.
+
+`ResponseStart` is upstream-only. It carries the upstream status, ordered
+upstream headers, and optional timing fields such as DNS, connect, TLS, and
+TTFB durations when available. Straw-generated JSON error envelopes are not
+represented as `ResponseStart`; they are Control's client-facing behavior only
+when a decoded request fails before upstream response headers are visible.
+
+Trailers are represented by a separate `TrailersFrame` before `EndFrame`.
+`EndFrame` marks successful completion and carries final byte counts and timing
+summary when known. `CancelFrame` includes a shared error code and reason so
+client disconnects, deadlines, admin cancels, and superseded fallback attempts
+are distinguishable. `CancelledFrame` acknowledges cancellation and carries
+final byte counts and timing when known.
+
+`Error` is shared across registration, assignment, and streams. It includes:
+
+- Shared typed error code.
+- Retryability.
+- Operator-facing message.
+- HTTP status for decoded client-facing failures.
+- Details map.
+- Optional upstream status.
+
+The shared error code enum covers auth, validation, routing, transport
+unavailable, timeout, capacity, worker loss, unsupported fingerprint, upstream
+failure, protocol error, cancellation, and unknown internal error. An `Error`
+frame after `ResponseStart` means the stream failed after upstream headers or
+body began; Control closes the client stream and records the typed failure
+instead of trying to switch to a JSON error envelope.
+
+Validation and protocol failures close the active stream. Peers reject invalid
+frames, sequence gaps, duplicate or out-of-order data frames, oversized fields,
+unsupported enum values, unsupported payload types, and missing mandatory
+business fields.
+
+Default limits are explicit in schema comments and config defaults:
+
+- `DataFrame.data`: `1 MiB`.
+- Total headers per message: `128 KiB`.
+- Metadata/details map entries: `64`.
+- Error message length: `4 KiB`.
+
+Optional presence-sensitive scalar values use proto3 `optional`, including
+`upstream_status`, `queue_depth`, `worker_unix_ms`, expected upload size, and
+selected route/executor fields.
+
+Compatibility is enforced with Buf from day one:
+
+- `buf lint` runs in CI.
+- `buf breaking` compares against the last released protobuf contract.
+- Removed fields reserve both field numbers and names.
+- Changes must not alter field meaning, field type, enum numeric values,
+  requiredness expectations, or `oneof` membership incompatibly.
+- Minor evolution uses additive optional fields and new enum values.
+- Major protocol breaks require a new major protocol version and NATS subject
+  prefix.
+
+Generated code targets Go, TypeScript, JavaScript, Python, C#, Java, Kotlin,
+and Rust. Generated output is not committed. The repo keeps generation config
+and scripts for every target, and CI verifies generation succeeds. Releases
+publish language-native generated packages: Go module, npm package, PyPI
+package, NuGet package, Maven/Gradle artifacts for Java and Kotlin, and Cargo
+crate. The protobuf contract version is canonical; generated packages use that
+same version and do not have independent language-specific patch versions.
+
+Phase 1 relies on NATS subject credentials for dispatch authorization and does
+not include dispatch signature fields. Deterministic protobuf serialization for
+signing or hashing is a Phase 2 concern only; Phase 1 does not depend on
+byte-stable serialization.
 
 ## 12. HTTP Semantics
 
