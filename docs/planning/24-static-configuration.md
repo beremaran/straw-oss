@@ -11,7 +11,7 @@ these full paths.
 |---------------------------------------------------------|------------|------------------------------------|
 | `control.server.host`                                   | `0.0.0.0`  | 24                                 |
 | `control.server.api_port`                               | `8080`     | 24                                 |
-| `control.server.metrics_port`                           | `9090`     | 24                                 |
+| `control.server.metrics_port`                           | `9090`     | 7, 24 (metrics, healthz, readyz)   |
 | `control.server.read_timeout_ms`                        | `30000`    | 24                                 |
 | `control.server.write_timeout_ms`                       | `30000`    | 24                                 |
 | `control.request.default_timeout_ms`                    | `60000`    | 24                                 |
@@ -59,9 +59,11 @@ these full paths.
 | `control.observability.logging.output`                  | `["stdout"]`| 24                                |
 | `control.observability.metrics.enabled`                 | `true`     | 24                                 |
 | `control.observability.metrics.path`                    | `/metrics` | 24                                 |
-| `control.observability.metrics.host`                    | `0.0.0.0`  | 24                                 |
-| `control.observability.metrics.port`                    | `9090`     | 24                                 |
 | `control.observability.tracing.enabled`                 | `false`    | 24                                 |
+| `control.observability.tracing.exporter`                | `jaeger`   | 24                                 |
+| `control.observability.tracing.endpoint`                | —          | 24                                 |
+| `control.observability.tracing.sampling_rate`           | `0.1`      | 24                                 |
+| `control.observability.tracing.propagate_trace_context` | `true`     | 24                                 |
 | `egress.worker_id`                                      | —          | 24                                 |
 | `egress.nats.servers`                                   | —          | 24                                 |
 | `egress.nats.user_credentials_file`                     | —          | 24                                 |
@@ -71,6 +73,12 @@ these full paths.
 | `egress.nats.max_ping_failures`                         | `3`        | 24                                 |
 | `egress.credential.credential_id_env`                   | —          | 24                                 |
 | `egress.credential.private_key_env`                     | —          | 24                                 |
+| `egress.capabilities.pool_ids`                          | —          | 24                                 |
+| `egress.capabilities.tags`                              | `[]`       | 24                                 |
+| `egress.capabilities.countries`                         | `[]`       | 24                                 |
+| `egress.capabilities.regions`                           | `[]`       | 24                                 |
+| `egress.capabilities.ip_types`                          | `[]`       | 24                                 |
+| `egress.capabilities.supported_ingress_modes`           | `["rest"]` | 24                                 |
 | `egress.capabilities.max_concurrency`                   | —          | 24                                 |
 | `egress.heartbeat.interval_ms`                          | `5000`     | 11                                 |
 | `egress.outbound_tls.strict_verify`                     | `true`     | 24                                 |
@@ -87,6 +95,12 @@ these full paths.
 | `egress.response_header_timeout_ms`                      | `30000`    | 16, 24                             |
 | `egress.upload_idle_timeout_ms`                          | `30000`    | 16, 24                             |
 | `egress.download_idle_timeout_ms`                        | `30000`    | 16, 24                             |
+| `egress.observability.logging.level`                     | `info`     | 24                                 |
+| `egress.observability.logging.format`                    | `json`     | 24                                 |
+| `egress.observability.logging.output`                    | `["stdout"]`| 24                                |
+| `egress.observability.health.enabled`                    | `true`     | 24                                 |
+| `egress.observability.health.host`                       | `0.0.0.0`  | 24                                 |
+| `egress.observability.health.port`                       | `9090`     | 24                                 |
 
 ### Control Config Example
 
@@ -161,8 +175,6 @@ control:
     metrics:
       enabled: true
       path: "/metrics"
-      host: "0.0.0.0"
-      port: 9090
     tracing:
       enabled: false
       exporter: "jaeger"

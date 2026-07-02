@@ -11,6 +11,7 @@ Implement worker registration, heartbeat processing, worker state, duplicate-ses
 - `docs/planning/05-component-boundaries.md`
 - `docs/planning/11-worker-discovery-and-health.md`
 - `docs/planning/12-nats-protocol.md`
+- `docs/planning/26-config-management-api-surface.md` (runtime admin endpoints, including `GET /workers`)
 - `docs/planning/29-operational-behavior.md`
 - `docs/planning/30-testing-matrix.md`
 
@@ -37,10 +38,12 @@ Implement worker registration, heartbeat processing, worker state, duplicate-ses
 
 - [ ] Read all required planning docs.
 - [ ] Implement registration validation for credentials, pool scope, version compatibility, and duplicate session replacement.
+- [ ] Use the scoped reply-inbox prefixes from the NATS ACL table (`_INBOX.ctl.>` for Control, `_INBOX.wrk.<worker_id>.>` for workers) when configuring request/reply clients.
 - [ ] Implement heartbeat states: ready, degraded, unhealthy, unavailable after 15s, dead after 30s.
 - [ ] Store runtime state in Redis or in-process as specified, with TTL for Redis keys.
 - [ ] Implement global disable, tenant disable, draining exclusion, and cooldown.
-- [ ] Add tests for valid and invalid registration, duplicate sessions, stale sessions, health transitions, disable precedence, tenant isolation, draining, and cooldown.
+- [ ] Implement `GET /api/v1/admin/workers`: platform-scoped keys see all workers with runtime/admin state; tenant-scoped keys see only workers eligible for that tenant, never `session_id` or NATS subjects.
+- [ ] Add tests for valid and invalid registration, duplicate sessions, stale sessions, health transitions, disable precedence, tenant isolation, draining, cooldown, and tenant-scoped worker list omitting other tenants' workers and session IDs.
 - [ ] Run focused worker state tests.
 - [ ] Run `make check`.
 - [ ] Write a handoff note.

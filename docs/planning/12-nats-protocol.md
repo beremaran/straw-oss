@@ -154,9 +154,6 @@ Credit rules:
 Credit applies to raw bytes carried in `DataFrame.data`. If bytes are compressed by the client/upstream, credit counts
 compressed bytes.
 
-When credit reaches zero, senders stop reading from their upstream source where possible. Control must stop or slow
-client reads to avoid unbounded buffering.
-
 ### NATS Max Payload Validation
 
 `control.transport.max_frame_data_bytes` must be less than the effective NATS maximum payload minus protobuf Envelope
@@ -171,15 +168,26 @@ control.transport.max_frame_data_bytes <= nats.max_payload_bytes - 65536
 
 The 64 KiB overhead budget is intentionally conservative and may be replaced by measured encoded-size validation.
 
+Deployments must provision the NATS server `max_payload` accordingly. The stock NATS server default (1 MiB) is
+insufficient for the default `control.transport.max_frame_data_bytes` of 1 MiB; the local docker-compose environment
+sets `max_payload: 2MB` (`deploy/docker/nats-server.conf`). Startup validation exists precisely to catch deployments
+that miss this.
+
 ### NATS Subject ACLs
 
 NATS credentials are service-level but must still be scoped.
 
-| Principal           | Publish allowed                                                                               | Subscribe allowed                                                                   |
-|---------------------|-----------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------|
-| Control             | `straw.v1.executor.*.*.assign`, `straw.v1.req.*.*.*.c2e`                                      | `straw.v1.control.register`, `straw.v1.control.heartbeat`, `straw.v1.req.*.*.*.e2c` |
-| Worker `worker_id`  | `straw.v1.control.register`, `straw.v1.control.heartbeat`, `straw.v1.req.*.<worker_id>.*.e2c` | `straw.v1.executor.<worker_id>.*.assign`, `straw.v1.req.*.<worker_id>.*.c2e`        |
-| Adapter `worker_id` | same as worker                                                                                | same as worker                                                                      |
+Request/reply requires reply-inbox permissions in addition to the service subjects. Principals use custom inbox
+prefixes so inbox permissions can be scoped: Control uses `_INBOX.ctl.>`; each worker uses
+`_INBOX.wrk.<worker_id>.>`. Responders need publish rights on the requester's inbox prefix.
 
-Tenant authorization remains in Control and worker credential validation. NATS subject credentials prevent broad
-cross-subject misuse but are not the tenant authorization source of truth.
+| Principal           | Publish allowed                                                                                                  | Subscribe allowed                                                                                                |
+|---------------------|-------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------|
+| Control             | `straw.v1.executor.*.*.assign`, `straw.v1.req.*.*.*.c2e`, `_INBOX.wrk.>` (register/heartbeat replies)             | `straw.v1.control.register`, `straw.v1.control.heartbeat`, `straw.v1.req.*.*.*.e2c`, `_INBOX.ctl.>` (assign replies) |
+| Worker `worker_id`  | `straw.v1.control.register`, `straw.v1.control.heartbeat`, `straw.v1.req.*.<worker_id>.*.e2c`, `_INBOX.ctl.>` (assign replies) | `straw.v1.executor.<worker_id>.*.assign`, `straw.v1.req.*.<worker_id>.*.c2e`, `_INBOX.wrk.<worker_id>.>`         |
+| Adapter `worker_id` | same as worker                                                                                                   | same as worker                                                                                                   |
+
+Workers can publish to Control's inbox prefix (`_INBOX.ctl.>`); this is accepted because inbox subjects are
+unguessable per request and Control validates every reply payload. Tenant authorization remains in Control and worker
+credential validation. NATS subject credentials prevent broad cross-subject misuse but are not the tenant
+authorization source of truth.

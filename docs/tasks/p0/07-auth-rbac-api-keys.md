@@ -27,6 +27,8 @@ Implement API-key authentication, tenant resolution, RBAC, API key lifecycle, an
 - Do not let tenant keys create tenants.
 - Do not log API key secrets.
 - Do not implement billing or marketplace workflows.
+- Do not allow multi-tenant worker credentials: P0 creation forces `tenant_scope` to the caller's tenant and rejects
+  `allowed_pools` entries referencing any other tenant (multi-tenant credentials are a P1 platform-scoped operation).
 
 ## Expected Files
 
@@ -40,10 +42,11 @@ Implement API-key authentication, tenant resolution, RBAC, API key lifecycle, an
 - [ ] Implement API key hash verification.
 - [ ] Resolve platform-scoped and tenant-scoped identities.
 - [ ] Enforce platform and tenant role permissions.
-- [ ] Add platform key lifecycle after bootstrap.
-- [ ] Add tenant API key and worker credential lifecycle.
+- [ ] Add platform key lifecycle after bootstrap (`config_version` is 0 for platform keys — no tenant version applies).
+- [ ] Add tenant API key and worker credential lifecycle; enforce the single-tenant worker-credential restriction.
+- [ ] Enforce platform-managed quota writes: `PUT /tenants/{id}/quotas` requires `system_admin`; tenant keys retain read-only `/quotas` access.
 - [ ] Invalidate cached auth/config state on revocation.
-- [ ] Add tests for platform key lifecycle, platform key cannot execute requests, tenant key cannot create tenants, revocation, actor audit source, and tenant isolation.
+- [ ] Add tests for platform key lifecycle, platform key cannot execute requests, tenant key cannot create tenants, revocation, actor audit source, tenant isolation, quota write requires platform key, and worker-credential create rejects foreign tenant scope.
 - [ ] Run focused auth tests.
 - [ ] Run `make check`.
 - [ ] Write a handoff note.

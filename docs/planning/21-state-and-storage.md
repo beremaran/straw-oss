@@ -38,7 +38,7 @@ Required P0 tables:
 | `tenant_worker_admin_state` | Durable tenant worker routing override                              | unique `(tenant_id, worker_id)`; tenant disable only                |
 | `routing_rules`          | Route priority and match conditions                                     | unique `(tenant_id, id)`; indexed `(tenant_id, priority)`          |
 | `deny_rules`             | Host/CIDR/CNAME deny and allow overrides                                | normalized host/cidr columns where possible                        |
-| `fingerprint_profiles`   | Allowed profile names and worker compatibility                          | unique `(tenant_id, name)` plus built-in global profiles           |
+| `fingerprint_profiles`   | Allowed profile names and worker compatibility                          | unique `(tenant_id, name)` plus built-in global profiles; P0 rows are seeded built-ins only — no P0 write API |
 | `injection_policies`     | Ordered header operations                                               | unique `(tenant_id, id)`; bounded operation count                  |
 | `rate_limit_configs`     | Rate-limit dimensions and limits                                        | unique `(tenant_id, dimension, key)`                               |
 | `quota_configs`          | Monthly request/bandwidth limits and fail policy                        | unique `(tenant_id, quota_period)`                                 |

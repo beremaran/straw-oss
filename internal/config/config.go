@@ -33,6 +33,7 @@ type ControlServerConfig struct {
 type ControlRequestConfig struct {
 	MaxInlineRequestBodyBytes  uint64 `json:"max_inline_request_body_bytes"`
 	MaxInlineResponseBodyBytes uint64 `json:"max_inline_response_body_bytes"`
+	MaxTimeoutMs               uint64 `json:"max_timeout_ms"`
 }
 
 type ControlTransportConfig struct {
@@ -140,6 +141,9 @@ func (c *ControlConfig) applyDefaults() {
 	}
 	if c.Transport.MaxFrameDataBytes == 0 {
 		c.Transport.MaxFrameDataBytes = 1_048_576
+	}
+	if c.Request.MaxTimeoutMs == 0 {
+		c.Request.MaxTimeoutMs = 120_000
 	}
 	c.NATS.applyDefaults()
 }

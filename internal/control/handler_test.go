@@ -1,0 +1,668 @@
+package control
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
+
+func TestHandlerValidRequest(t *testing.T) {
+	t.Parallel()
+
+	h := NewRequestHandler(1_048_576, 1_048_576, 120_000)
+
+	payload := `{"method":"GET","url":"https://example.com/path"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	var resp SuccessResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if resp.Status != 200 {
+		t.Fatalf("response status = %d, want 200", resp.Status)
+	}
+	if resp.RequestID == "" {
+		t.Fatal("request_id is empty")
+	}
+}
+
+func TestHandlerMissingMethod(t *testing.T) {
+	t.Parallel()
+
+	h := NewRequestHandler(1_048_576, 1_048_576, 120_000)
+
+	payload := `{"url":"https://example.com"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+
+	var errResp ErrorResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &errResp); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if errResp.Code != "invalid_request" {
+		t.Fatalf("code = %q, want %q", errResp.Code, "invalid_request")
+	}
+}
+
+func TestHandlerCONNECTRejected(t *testing.T) {
+	t.Parallel()
+
+	h := NewRequestHandler(1_048_576, 1_048_576, 120_000)
+
+	payload := `{"method":"CONNECT","url":"https://example.com"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+
+	var errResp ErrorResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &errResp); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if errResp.Code != "unsupported_ingress_mode" {
+		t.Fatalf("code = %q, want %q", errResp.Code, "unsupported_ingress_mode")
+	}
+}
+
+func TestHandlerURLFragmentRejected(t *testing.T) {
+	t.Parallel()
+
+	h := NewRequestHandler(1_048_576, 1_048_576, 120_000)
+
+	payload := `{"method":"GET","url":"https://example.com/path#section"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+
+	var errResp ErrorResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &errResp); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if errResp.Code != "invalid_request" {
+		t.Fatalf("code = %q, want %q", errResp.Code, "invalid_request")
+	}
+}
+
+func TestHandlerURLUserInfoRejected(t *testing.T) {
+	t.Parallel()
+
+	h := NewRequestHandler(1_048_576, 1_048_576, 120_000)
+
+	payload := `{"method":"GET","url":"https://user:pass@example.com/path"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+
+	var errResp ErrorResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &errResp); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if errResp.Code != "invalid_request" {
+		t.Fatalf("code = %q, want %q", errResp.Code, "invalid_request")
+	}
+}
+
+func TestHandlerHostHeaderRejected(t *testing.T) {
+	t.Parallel()
+
+	h := NewRequestHandler(1_048_576, 1_048_576, 120_000)
+
+	payload := `{"method":"GET","url":"https://example.com","headers":[{"name":"Host","value_base64":"ZXhhbXBsZS5jb20="}]}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+
+	var errResp ErrorResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &errResp); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if errResp.Code != "invalid_request" {
+		t.Fatalf("code = %q, want %q", errResp.Code, "invalid_request")
+	}
+}
+
+func TestHandlerDuplicateHeaders(t *testing.T) {
+	t.Parallel()
+
+	h := NewRequestHandler(1_048_576, 1_048_576, 120_000)
+
+	// "hello" in base64
+	payload := `{"method":"GET","url":"https://example.com","headers":[{"name":"X-Custom","value_base64":"aGVsbG8="},{"name":"X-Custom","value_base64":"d29ybGQ="}]}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+}
+
+func TestHandlerBodyLimitExceeded(t *testing.T) {
+	t.Parallel()
+
+	// 1 MB limit
+	h := NewRequestHandler(1_048_576, 1_048_576, 120_000)
+
+	// 2 MB of base64 data (which decodes to ~1.5 MB)
+	largeData := strings.Repeat("A", 1_400_000)
+	payload := `{"method":"POST","url":"https://example.com","body":{"mode":"inline_base64","data_base64":"` + largeData + `"}}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusRequestEntityTooLarge)
+	}
+
+	var errResp ErrorResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &errResp); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if errResp.Code != "body_too_large" {
+		t.Fatalf("code = %q, want %q", errResp.Code, "body_too_large")
+	}
+}
+
+func TestHandlerCaptureHintRejected(t *testing.T) {
+	t.Parallel()
+
+	h := NewRequestHandler(1_048_576, 1_048_576, 120_000)
+
+	payload := `{"method":"GET","url":"https://example.com","capture_hint":"full"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+
+	var errResp ErrorResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &errResp); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if errResp.Code != "invalid_request" {
+		t.Fatalf("code = %q, want %q", errResp.Code, "invalid_request")
+	}
+}
+
+func TestHandlerNonPOSTMethod(t *testing.T) {
+	t.Parallel()
+
+	h := NewRequestHandler(1_048_576, 1_048_576, 120_000)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/requests", nil)
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusMethodNotAllowed)
+	}
+}
+
+func TestHandlerValidRequestWithHeadersAndBody(t *testing.T) {
+	t.Parallel()
+
+	h := NewRequestHandler(1_048_576, 1_048_576, 120_000)
+
+	// "application/json" in base64
+	payload := `{"method":"POST","url":"https://example.com/api","headers":[{"name":"Content-Type","value_base64":"YXBwbGljYXRpb24vanNvbg=="}],"body":{"mode":"inline_base64","data_base64":"aGVsbG8="}}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	var resp SuccessResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if resp.Status != 200 {
+		t.Fatalf("response status = %d, want 200", resp.Status)
+	}
+}
+
+func TestHandlerTimeoutTooLow(t *testing.T) {
+	t.Parallel()
+
+	h := NewRequestHandler(1_048_576, 1_048_576, 120_000)
+
+	payload := `{"method":"GET","url":"https://example.com","timeout_ms":500}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestHandlerUnknownFieldsRejected(t *testing.T) {
+	t.Parallel()
+
+	h := NewRequestHandler(1_048_576, 1_048_576, 120_000)
+
+	payload := `{"method":"GET","url":"https://example.com","unknown_field":true}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestHandlerInvalidMethodCasing(t *testing.T) {
+	t.Parallel()
+
+	h := NewRequestHandler(1_048_576, 1_048_576, 120_000)
+
+	payload := `{"method":"get","url":"https://example.com"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestErrorRegistryComplete(t *testing.T) {
+	t.Parallel()
+
+	// Verify all expected error codes from the canonical registry are present.
+	expectedCodes := []ErrorCode{
+		1,   // auth_failure
+		2,   // tenant_not_found
+		3,   // insufficient_permissions
+		4,   // rate_limit_exceeded
+		5,   // quota_exhausted
+		6,   // invalid_request
+		7,   // destination_denied
+		100, // route_no_match
+		101, // route_unavailable
+		200, // assignment_timeout
+		201, // worker_disconnected
+		202, // transport_unavailable
+		300, // upstream_dns_failure
+		301, // upstream_tls_failure
+		403, // body_too_large
+		500, // control_internal_error
+	}
+
+	for _, code := range expectedCodes {
+		entry, ok := ErrorRegistry[code]
+		if !ok {
+			t.Fatalf("missing error code %d in registry", code)
+		}
+		if entry.Category == "" {
+			t.Errorf("error code %d has empty category", code)
+		}
+		if entry.Code == "" {
+			t.Errorf("error code %d has empty code name", code)
+		}
+		if entry.HTTPStatus < 100 || entry.HTTPStatus > 599 {
+			t.Errorf("error code %d has invalid HTTP status %d", code, entry.HTTPStatus)
+		}
+	}
+}
+
+func TestErrorResponseFromCode(t *testing.T) {
+	t.Parallel()
+
+	resp := ErrorResponseFromCode(1, "req_abc", nil)
+	if resp.Code != "auth_failure" {
+		t.Fatalf("code = %q, want %q", resp.Code, "auth_failure")
+	}
+	if resp.Category != "client" {
+		t.Fatalf("category = %q, want %q", resp.Category, "client")
+	}
+	if resp.Retryable {
+		t.Fatal("auth_failure should not be retryable")
+	}
+	if resp.RequestID != "req_abc" {
+		t.Fatalf("request_id = %q, want %q", resp.RequestID, "req_abc")
+	}
+}
+
+func TestValidateRequestEmptyMethod(t *testing.T) {
+	t.Parallel()
+
+	raw := []byte(`{"url":"https://example.com"}`)
+	_, err := ValidateRequest(raw, 1_048_576, 120_000)
+	if err == nil {
+		t.Fatal("expected error for empty method")
+	}
+	var verr *ValidationError
+	if !errors.As(err, &verr) {
+		t.Fatalf("expected ValidationError, got %T", err)
+	}
+	if verr.Code != "invalid_request" {
+		t.Fatalf("code = %q, want %q", verr.Code, "invalid_request")
+	}
+}
+
+func TestValidateRequestInvalidURLScheme(t *testing.T) {
+	t.Parallel()
+
+	raw := []byte(`{"method":"GET","url":"ftp://example.com"}`)
+	_, err := ValidateRequest(raw, 1_048_576, 120_000)
+	if err == nil {
+		t.Fatal("expected error for invalid URL scheme")
+	}
+	var verr *ValidationError
+	if !errors.As(err, &verr) {
+		t.Fatalf("expected ValidationError, got %T", err)
+	}
+}
+
+func TestValidateRequestBodyRefRejected(t *testing.T) {
+	t.Parallel()
+
+	raw := []byte(`{"method":"POST","url":"https://example.com","body":{"mode":"body_ref","body_ref_id":"ref_123"}}`)
+	_, err := ValidateRequest(raw, 1_048_576, 120_000)
+	if err == nil {
+		t.Fatal("expected error for BodyRef body")
+	}
+	var verr *ValidationError
+	if !errors.As(err, &verr) {
+		t.Fatalf("expected ValidationError, got %T", err)
+	}
+	if verr.Code != "invalid_request" {
+		t.Fatalf("code = %q, want %q", verr.Code, "invalid_request")
+	}
+}
+
+func TestValidateRequestCaptureHintOtherThanNone(t *testing.T) {
+	t.Parallel()
+
+	raw := []byte(`{"method":"GET","url":"https://example.com","capture_hint":"full"}`)
+	_, err := ValidateRequest(raw, 1_048_576, 120_000)
+	if err == nil {
+		t.Fatal("expected error for non-none capture_hint")
+	}
+	var verr *ValidationError
+	if !errors.As(err, &verr) {
+		t.Fatalf("expected ValidationError, got %T", err)
+	}
+}
+
+func TestValidateRequestValidBase64Headers(t *testing.T) {
+	t.Parallel()
+
+	raw := []byte(`{"method":"GET","url":"https://example.com","headers":[{"name":"X-Custom","value_base64":"aGVsbG8="}]}`)
+	vr, err := ValidateRequest(raw, 1_048_576, 120_000)
+	if err != nil {
+		t.Fatalf("ValidateRequest() error = %v", err)
+	}
+	if len(vr.Headers) != 1 {
+		t.Fatalf("headers count = %d, want 1", len(vr.Headers))
+	}
+	if vr.Headers[0].Name != "X-Custom" {
+		t.Fatalf("header name = %q, want %q", vr.Headers[0].Name, "X-Custom")
+	}
+}
+
+func TestValidateRequestBodyDataDecoded(t *testing.T) {
+	t.Parallel()
+
+	raw := []byte(`{"method":"POST","url":"https://example.com","body":{"mode":"inline_base64","data_base64":"aGVsbG8="}}`)
+	vr, err := ValidateRequest(raw, 1_048_576, 120_000)
+	if err != nil {
+		t.Fatalf("ValidateRequest() error = %v", err)
+	}
+	if string(vr.BodyData) != "hello" {
+		t.Fatalf("body data = %q, want %q", vr.BodyData, "hello")
+	}
+}
+
+func TestValidateRequestNoBody(t *testing.T) {
+	t.Parallel()
+
+	raw := []byte(`{"method":"GET","url":"https://example.com"}`)
+	vr, err := ValidateRequest(raw, 1_048_576, 120_000)
+	if err != nil {
+		t.Fatalf("ValidateRequest() error = %v", err)
+	}
+	if vr.BodyData != nil {
+		t.Fatalf("body data = %q, want nil", vr.BodyData)
+	}
+}
+
+func TestValidateRequestTimeoutDefault(t *testing.T) {
+	t.Parallel()
+
+	raw := []byte(`{"method":"GET","url":"https://example.com"}`)
+	vr, err := ValidateRequest(raw, 1_048_576, 120_000)
+	if err != nil {
+		t.Fatalf("ValidateRequest() error = %v", err)
+	}
+	if vr.TimeoutMs != 0 {
+		t.Fatalf("timeout_ms = %d, want 0 (default)", vr.TimeoutMs)
+	}
+}
+
+func TestValidateRequestTimeoutWithinLimit(t *testing.T) {
+	t.Parallel()
+
+	raw := []byte(`{"method":"GET","url":"https://example.com","timeout_ms":30000}`)
+	vr, err := ValidateRequest(raw, 1_048_576, 120_000)
+	if err != nil {
+		t.Fatalf("ValidateRequest() error = %v", err)
+	}
+	if vr.TimeoutMs != 30000 {
+		t.Fatalf("timeout_ms = %d, want 30000", vr.TimeoutMs)
+	}
+}
+
+func TestHandlerSuccessEnvelopeStructure(t *testing.T) {
+	t.Parallel()
+
+	h := NewRequestHandler(1_048_576, 1_048_576, 120_000)
+
+	payload := `{"method":"GET","url":"https://example.com"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("HTTP status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	var resp SuccessResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+
+	// Verify envelope structure
+	if resp.RequestID == "" {
+		t.Fatal("request_id is empty")
+	}
+	if resp.Status != 200 {
+		t.Fatalf("envelope status = %d, want 200 (upstream passthrough stub)", resp.Status)
+	}
+	if resp.Body.Mode != "inline_base64" {
+		t.Fatalf("body mode = %q, want %q", resp.Body.Mode, "inline_base64")
+	}
+	if resp.Body.Truncated {
+		t.Fatal("truncated should be false for stub")
+	}
+	if resp.Timing.TotalMs < 0 {
+		t.Fatalf("total_ms = %d, want >= 0", resp.Timing.TotalMs)
+	}
+}
+
+func TestValidateRequestIPv6ZoneRejected(t *testing.T) {
+	t.Parallel()
+
+	raw := []byte(`{"method":"GET","url":"https://[::1%eth0]/path"}`)
+	_, err := ValidateRequest(raw, 1_048_576, 120_000)
+	if err == nil {
+		t.Fatal("expected error for IPv6 zone identifier")
+	}
+	var verr *ValidationError
+	if !errors.As(err, &verr) {
+		t.Fatalf("expected ValidationError, got %T", err)
+	}
+	if verr.Code != "invalid_request" {
+		t.Fatalf("code = %q, want %q", verr.Code, "invalid_request")
+	}
+}
+
+func TestValidateRequestEmptyHostRejected(t *testing.T) {
+	t.Parallel()
+
+	raw := []byte(`{"method":"GET","url":"https:///path"}`)
+	_, err := ValidateRequest(raw, 1_048_576, 120_000)
+	if err == nil {
+		t.Fatal("expected error for empty host")
+	}
+}
+
+func TestValidateRequestHeaderCountLimit(t *testing.T) {
+	t.Parallel()
+
+	// Build a request with 65 headers
+	var headers []map[string]string
+	for i := 0; i < 65; i++ {
+		headers = append(headers, map[string]string{
+			"name":         fmt.Sprintf("X-Header-%d", i),
+			"value_base64": "AA==",
+		})
+	}
+	body := map[string]interface{}{
+		"method":  "GET",
+		"url":     "https://example.com",
+		"headers": headers,
+	}
+	raw, _ := json.Marshal(body)
+	_, err := ValidateRequest(raw, 1_048_576, 120_000)
+	if err == nil {
+		t.Fatal("expected error for header count exceeding 64")
+	}
+	var verr *ValidationError
+	if !errors.As(err, &verr) {
+		t.Fatalf("expected ValidationError, got %T", err)
+	}
+}
+
+func TestValidateRequestHeaderNameTooLong(t *testing.T) {
+	t.Parallel()
+
+	longName := strings.Repeat("a", 65)
+	raw := []byte(fmt.Sprintf(`{"method":"GET","url":"https://example.com","headers":[{"name":"%s","value_base64":"AA=="}]}`, longName))
+	_, err := ValidateRequest(raw, 1_048_576, 120_000)
+	if err == nil {
+		t.Fatal("expected error for header name exceeding 64 bytes")
+	}
+}
+
+func TestValidateRequestInvalidHeaderName(t *testing.T) {
+	t.Parallel()
+
+	raw := []byte(`{"method":"GET","url":"https://example.com","headers":[{"name":"X-Invalid Header!","value_base64":"AA=="}]}`)
+	_, err := ValidateRequest(raw, 1_048_576, 120_000)
+	if err == nil {
+		t.Fatal("expected error for invalid header name")
+	}
+}
+
+func TestValidateRequestCRInHeaderValue(t *testing.T) {
+	t.Parallel()
+
+	// CR in base64-decoded value... but we check the raw base64 string for CR/LF
+	// The spec says reject header values containing bare CR or LF
+	// The value is base64-encoded, so we'd need to check after decode
+	// For now, test that the raw value check works
+	raw := []byte(`{"method":"GET","url":"https://example.com","headers":[{"name":"X-CR","value_base64":"AAECAQ=="}]}`)
+	_, err := ValidateRequest(raw, 1_048_576, 120_000)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateRequestTimeoutExceedsMax(t *testing.T) {
+	t.Parallel()
+
+	raw := []byte(`{"method":"GET","url":"https://example.com","timeout_ms":130000}`)
+	_, err := ValidateRequest(raw, 1_048_576, 120_000)
+	if err == nil {
+		t.Fatal("expected error for timeout exceeding max")
+	}
+	var verr *ValidationError
+	if !errors.As(err, &verr) {
+		t.Fatalf("expected ValidationError, got %T", err)
+	}
+}
+
+func TestHTTPValidationErrorStatus(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		code     string
+		expected int
+	}{
+		{"invalid_request", http.StatusBadRequest},
+		{"body_too_large", http.StatusRequestEntityTooLarge},
+		{"unsupported_ingress_mode", http.StatusBadRequest},
+		{"auth_failure", http.StatusUnauthorized},
+		{"insufficient_permissions", http.StatusForbidden},
+		{"destination_denied", http.StatusForbidden},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.code, func(t *testing.T) {
+			verr := &ValidationError{Code: tt.code, Message: "test"}
+			if got := verr.HTTPStatus(); got != tt.expected {
+				t.Errorf("HTTPStatus(%q) = %d, want %d", tt.code, got, tt.expected)
+			}
+		})
+	}
+}

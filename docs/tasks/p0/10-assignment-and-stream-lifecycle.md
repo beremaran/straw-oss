@@ -39,8 +39,9 @@ Implement Control-to-Egress assignment and stream frame lifecycle with sequence,
 - [ ] Implement assignment accept and reject handling.
 - [ ] Enforce ack timeout.
 - [ ] Validate stream frame sequence, duplicates, out-of-order frames, offset mismatch, credits, and idle timeout.
+- [ ] Validate `ErrorFrame` codes against the executor-emittable set (Section 13); out-of-set codes map to `executor_internal_error` and count toward worker cooldown.
 - [ ] Implement terminal handling, including duplicate terminal ignored/counted and late frames ignored.
-- [ ] Implement cancellation for client disconnect, deadline, and admin cancel.
+- [ ] Implement cancellation for client disconnect, deadline, and admin cancel; admin cancel with a tenant-scoped key requires the request to belong to the caller's tenant (`insufficient_permissions` otherwise, without confirming existence), while `system_admin` may cancel any request.
 - [ ] Implement fallback only before `RequestStart`; do not silently replay after `RequestStart`.
 - [ ] Add tests for every assignment, streaming, terminal, cancellation, fallback, NATS ordering, and timeout row in the testing matrix.
 - [ ] Run focused lifecycle tests.

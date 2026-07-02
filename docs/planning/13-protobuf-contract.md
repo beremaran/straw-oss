@@ -16,7 +16,11 @@ Source: proto/straw/v1/straw.proto
 - unknown fields tolerated,
 - unknown enum values rejected for control-plane decisions,
 - removed fields reserve numbers and names,
-- Buf lint and breaking checks required in CI.
+- Buf lint (STANDARD, except `ENUM_VALUE_PREFIX` and `ENUM_ZERO_VALUE_SUFFIX`) and breaking checks required in CI.
+
+The lint exceptions are deliberate: `SniHostMismatchPolicy` and `RedirectPolicy` use the safest behavior as their zero
+value (`SNI_HOST_MISMATCH_STRICT`, `REDIRECT_POLICY_NO_FOLLOW`) so an absent or unknown field decodes to the strictest
+policy rather than an `UNSPECIFIED` sentinel.
 
 ### Core Messages
 
@@ -253,7 +257,7 @@ Maps are not used for headers because order and duplicates matter.
 - absolute URL,
 - outbound headers after Straw header stripping,
 - routing metadata,
-- selected route/pool/executor metadata,
+- selected route/pool metadata,
 - deadline,
 - replayable flag,
 - payload capture decision,
@@ -416,20 +420,23 @@ message ResponseStart {
 }
 ```
 
-### Error Facts and ErrorResponse
+### Executor Error Reporting and ErrorResponse
 
-Internal protobuf `Error` is not identical to public REST `ErrorResponse`.
+Executors report failures through `ErrorFrame`, which carries the canonical `ErrorCode` directly. There is no separate
+internal error message. The low-level failure fact (for example `dns_no_records` or `tls_handshake_failed`) is carried
+in `ErrorFrame.details["fact"]` for diagnostics and cooldown accounting; Section 16 lists the fact-to-code mapping the
+executor applies before emitting the frame.
 
-Executors emit constrained failure facts. Control maps them to public error codes.
+Control validates every `ErrorFrame` before mapping it to a public response:
 
-`Error` fields:
-
-- internal failure fact,
-- retryable hint,
-- operator message,
-- details map,
-- optional upstream status,
-- optional timeout type.
+- Executors may emit only codes from the executor-emittable set: `destination_denied` (7), `timeout_exceeded` (204,
+  with `timeout_type` set, for executor-enforced deadline/phase timeouts), `unsupported_fingerprint` (205), the EGRESS
+  range (300–305), `stream_upload_aborted` (400), `stream_download_aborted` (401), `body_too_large` (403), and
+  `executor_internal_error` (501).
+- Any other code in an `ErrorFrame` is a protocol violation: Control maps the request outcome to
+  `executor_internal_error`, records the violation, and counts it toward worker cooldown.
+- Control owns the final public mapping (HTTP status, category, retryability) from the canonical error registry; it
+  never forwards executor-supplied `message` or `details` to clients without sanitization.
 
 Public `ErrorResponse` fields:
 

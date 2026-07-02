@@ -135,26 +135,10 @@ These are never forwarded unless explicitly documented otherwise:
 
 ### Header Injection Safety Rules
 
-P0 injection operations are validated before being sent to Egress:
-
-| Header              | Injection Rule                                                   |
-|---------------------|------------------------------------------------------------------|
-| `Host`              | Deny, unless a later design explicitly supports Host override    |
-| `Content-Length`    | Deny (computed by Egress)                                        |
-| `Transfer-Encoding` | Deny                                                             |
-| `Connection`        | Deny                                                             |
-| `Proxy-Authorization` | Deny                                                           |
-| `X-Straw-*`         | Deny                                                             |
-| `Authorization`     | Allow only if tenant_admin-created policy; audit-redacted         |
-| `Cookie`            | Allow only if tenant_admin-created policy; audit-redacted         |
-
-All header name matching is case-insensitive. Duplicate `set` operations for the same header are rejected. `append` may
-repeat a header name. Maximum injected header bytes is bounded by
-`control.transport.max_frame_data_bytes`. Injected header values must not contain bare CR
-or LF characters.
-
-Operators may create or update only non-sensitive injection policies. Any operation that sets or appends
-`Authorization` or `Cookie` requires `tenant_admin`.
+P0 injection operations are validated before being sent to Egress. The canonical injection safety table (denied
+headers, `tenant_admin`-only sensitive headers, case-insensitivity, duplicate-`set` rejection, size bounds, CR/LF
+rules, and operator restrictions) lives in Section 15 — HTTP Semantics. This section does not restate it to avoid
+drift.
 
 ### NATS Subject Tokens
 
