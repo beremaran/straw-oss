@@ -1141,7 +1141,34 @@ Egress workers carry zero writable persistent local disk state.
 
 ## 17. Rate Limits and Quotas
 
-How abuse and overload are controlled.
+Straw enforces strict abuse, overload, billing, and compliance controls at the Control ingress layer before dispatching
+requests to Egress workers.
+
+**Rate Limits (Short-Term Throughput)**
+
+* **Dimensions:** Evaluated per request across four axes: global `tenant_id`, `tenant_id` + `api_key`, `tenant_id` +
+  `target_host`, and `tenant_id` + `ip_type`.
+* **Algorithm:** Redis Sliding Window Log using Sorted Sets (`ZSET`). Logs exact request timestamps for strict accuracy.
+* **Enforcement:** Immediate drop. Breaches return a typed `rate_limit_exceeded` error and HTTP `429 Too Many Requests`.
+  No request queueing or connection throttling is performed.
+
+**Quotas (Long-Term Volume)**
+
+* **Metrics:** Tracks total request count and total bandwidth (bytes).
+* **Cadence:** Fixed monthly resets.
+* **Storage:** Evaluated using Redis Fixed Window Counters (`INCRBY`) with a 30-day TTL. Redis state is periodically
+  flushed to Postgres to ensure durable billing records survive ephemeral cache evictions.
+* **Enforcement:** Evaluated at request start and end. If a bandwidth quota is breached during an active request, the
+  in-flight request finishes. Subsequent requests are strictly blocked with a typed `quota_exhausted` error until the
+  reset.
+
+**Destination Deny Rules and Redaction**
+
+* **Deny Rules:** Configured both globally by administrators and locally per tenant. Blocks outbound transport to
+  restricted IPs, domains, or network ranges.
+* **Redaction:** Evaluated continuously at the Control layer. When a redaction rule triggers, Control dynamically strips
+  the offending headers or payload bytes from the stream and forwards the remaining request. Redaction does not drop the
+  entire request.
 
 ## 18. Error Handling
 
