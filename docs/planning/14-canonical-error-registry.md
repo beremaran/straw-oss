@@ -70,7 +70,7 @@ There is no separate `response_body_too_large` code. Use `body_too_large` with p
 
 - `ASSIGNMENT_TIMEOUT`,
 - `CONNECT_TIMEOUT`,
-- `REQUEST_HEADER_TIMEOUT`,
+- `RESPONSE_HEADER_TIMEOUT`,
 - `IDLE_TIMEOUT`,
 - `UPLOAD_TIMEOUT`,
 - `DOWNLOAD_TIMEOUT`,

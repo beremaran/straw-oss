@@ -81,7 +81,8 @@ CREATE TABLE straw.config_audit_events
 (
     timestamp      DateTime64(3, 'UTC'),
     tenant_id      LowCardinality(String),
-    actor_user_id  String,
+    actor_type     LowCardinality(String),
+    actor_id       String,
     config_type    LowCardinality(String),
     resource_id    String,
     action         LowCardinality(String),

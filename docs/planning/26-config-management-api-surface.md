@@ -34,54 +34,64 @@ Selected resources (routing rules, executor pools) allow client-supplied stable 
 
 ### Config Endpoints
 
-| Method | Path                              | Role                                 | Purpose                   |
-|--------|-----------------------------------|--------------------------------------|---------------------------|
-| POST   | `/tenants`                        | `system_admin`                       | Create tenant             |
-| GET    | `/tenants`                        | `system_admin`                       | List tenants              |
-| GET    | `/tenants/{id}`                   | `system_admin`, tenant roles         | Get visible tenant        |
-| PUT    | `/tenants/{id}`                   | `system_admin`                       | Update tenant             |
-| DELETE | `/tenants/{id}`                   | `system_admin`                       | Soft-delete tenant        |
-| POST   | `/api-keys`                       | `tenant_admin`                       | Create API key            |
-| GET    | `/api-keys`                       | `tenant_admin`, `operator`           | List API keys             |
-| POST   | `/api-keys/{id}/revoke`           | `tenant_admin`                       | Revoke API key            |
-| POST   | `/worker-credentials`             | `tenant_admin`                       | Create worker credential  |
-| GET    | `/worker-credentials`             | `tenant_admin`                       | List worker credentials   |
-| POST   | `/worker-credentials/{id}/revoke` | `tenant_admin`                       | Revoke worker credential  |
-| POST   | `/executor-pools`                 | `tenant_admin`, `operator`           | Create pool               |
-| GET    | `/executor-pools`                 | `tenant_admin`, `operator`, `viewer` | List pools                |
-| PUT    | `/executor-pools/{id}`            | `tenant_admin`, `operator`           | Update pool               |
-| DELETE | `/executor-pools/{id}`            | `tenant_admin`                       | Delete/disable pool       |
-| POST   | `/routing-rules`                  | `tenant_admin`, `operator`           | Create route              |
-| GET    | `/routing-rules`                  | `tenant_admin`, `operator`, `viewer` | List routes               |
-| PUT    | `/routing-rules/{id}`             | `tenant_admin`, `operator`           | Update route              |
-| DELETE | `/routing-rules/{id}`             | `tenant_admin`, `operator`           | Delete route              |
-| GET    | `/fingerprint-profiles`           | `tenant_admin`, `operator`, `viewer` | List profiles             |
-| POST   | `/injection-policies`             | `tenant_admin`, `operator`           | Create injection policy   |
-| GET    | `/injection-policies`             | `tenant_admin`, `operator`, `viewer` | List injection policies   |
-| PUT    | `/injection-policies/{id}`        | `tenant_admin`, `operator`           | Update injection policy   |
-| DELETE | `/injection-policies/{id}`        | `tenant_admin`, `operator`           | Delete injection policy   |
-| GET    | `/quotas`                         | `tenant_admin`, `operator`, `viewer` | Get quota config/usage    |
-| PUT    | `/quotas`                         | `tenant_admin`                       | Update quotas             |
-| GET    | `/rate-limits`                  | `tenant_admin`, `operator`, `viewer` | Get rate-limit config     |
-| PUT    | `/rate-limits`                  | `tenant_admin`                       | Update rate limits        |
-| POST   | `/deny-rules`                     | `tenant_admin`                       | Create deny rule          |
-| GET    | `/deny-rules`                     | `tenant_admin`, `operator`, `viewer` | List deny rules           |
-| PUT    | `/deny-rules/{id}`                | `tenant_admin`                       | Update deny rule          |
-| DELETE | `/deny-rules/{id}`                | `tenant_admin`                       | Delete deny rule          |
-| GET    | `/payload-capture`                | `tenant_admin`, `operator`, `viewer` | Get P2 capture policy     |
-| PUT    | `/payload-capture`                | `tenant_admin`                       | Update P2 capture policy  |
-| GET    | `/changes`                        | `tenant_admin`, `operator`, `viewer` | List config audit history |
-| POST   | `/rollback`                       | `tenant_admin`                       | Roll back config          |
+| Phase | Method | Path                              | Role                                 | Purpose                   |
+|-------|--------|-----------------------------------|--------------------------------------|---------------------------|
+| P0    | POST   | `/tenants`                        | `system_admin`                       | Create tenant             |
+| P0    | GET    | `/tenants`                        | `system_admin`                       | List tenants              |
+| P0    | GET    | `/tenants/{id}`                   | `system_admin`, tenant roles         | Get visible tenant        |
+| P0    | PUT    | `/tenants/{id}`                   | `system_admin`                       | Update tenant             |
+| P0    | DELETE | `/tenants/{id}`                   | `system_admin`                       | Soft-delete tenant        |
+| P0    | POST   | `/platform-api-keys`              | `system_admin`                       | Create platform API key   |
+| P0    | GET    | `/platform-api-keys`              | `system_admin`                       | List platform API keys    |
+| P0    | POST   | `/platform-api-keys/{id}/revoke`  | `system_admin`                       | Revoke platform API key   |
+| P0    | POST   | `/api-keys`                       | `tenant_admin`                       | Create tenant API key     |
+| P0    | GET    | `/api-keys`                       | `tenant_admin`, `operator`           | List tenant API keys      |
+| P0    | POST   | `/api-keys/{id}/revoke`           | `tenant_admin`                       | Revoke tenant API key     |
+| P0    | POST   | `/worker-credentials`             | `tenant_admin`                       | Create worker credential  |
+| P0    | GET    | `/worker-credentials`             | `tenant_admin`                       | List worker credentials   |
+| P0    | POST   | `/worker-credentials/{id}/revoke` | `tenant_admin`                       | Revoke worker credential  |
+| P0    | POST   | `/executor-pools`                 | `tenant_admin`                       | Create pool               |
+| P0    | GET    | `/executor-pools`                 | `tenant_admin`, `operator`, `viewer` | List pools                |
+| P0    | PUT    | `/executor-pools/{id}`            | `tenant_admin`                       | Update pool               |
+| P0    | DELETE | `/executor-pools/{id}`            | `tenant_admin`                       | Delete/disable pool       |
+| P0    | POST   | `/routing-rules`                  | `tenant_admin`, `operator`           | Create route              |
+| P0    | GET    | `/routing-rules`                  | `tenant_admin`, `operator`, `viewer` | List routes               |
+| P0    | PUT    | `/routing-rules/{id}`             | `tenant_admin`, `operator`           | Update route              |
+| P0    | DELETE | `/routing-rules/{id}`             | `tenant_admin`, `operator`           | Delete route              |
+| P0    | GET    | `/fingerprint-profiles`           | `tenant_admin`, `operator`, `viewer` | List profiles             |
+| P0    | POST   | `/injection-policies`             | `tenant_admin`, `operator`           | Create injection policy   |
+| P0    | GET    | `/injection-policies`             | `tenant_admin`, `operator`, `viewer` | List injection policies   |
+| P0    | PUT    | `/injection-policies/{id}`        | `tenant_admin`, `operator`           | Update injection policy   |
+| P0    | DELETE | `/injection-policies/{id}`        | `tenant_admin`, `operator`           | Delete injection policy   |
+| P0    | GET    | `/quotas`                         | `tenant_admin`, `operator`, `viewer` | Get quota config/usage    |
+| P0    | PUT    | `/quotas`                         | `tenant_admin`                       | Update quotas             |
+| P0    | GET    | `/rate-limits`                    | `tenant_admin`, `operator`, `viewer` | Get rate-limit config     |
+| P0    | PUT    | `/rate-limits`                    | `tenant_admin`                       | Update rate limits        |
+| P0    | POST   | `/deny-rules`                     | `tenant_admin`                       | Create deny rule          |
+| P0    | GET    | `/deny-rules`                     | `tenant_admin`, `operator`, `viewer` | List deny rules           |
+| P0    | PUT    | `/deny-rules/{id}`                | `tenant_admin`                       | Update deny rule          |
+| P0    | DELETE | `/deny-rules/{id}`                | `tenant_admin`                       | Delete deny rule          |
+| P0    | GET    | `/changes`                        | `tenant_admin`, `operator`, `viewer` | List config audit history |
+| P1    | POST   | `/rollback`                       | `tenant_admin`                       | Roll back config          |
+| P2    | GET    | `/payload-capture`                | `tenant_admin`, `operator`, `viewer` | Get capture policy        |
+| P2    | PUT    | `/payload-capture`                | `tenant_admin`                       | Update capture policy     |
 
 ### Runtime Admin Endpoints
 
-| Method | Path                            | Role                       | Purpose        |
-|--------|---------------------------------|----------------------------|----------------|
-| POST   | `/workers/{worker_id}/disable`  | `tenant_admin`             | Disable worker |
-| POST   | `/workers/{worker_id}/enable`   | `tenant_admin`             | Enable worker  |
-| POST   | `/workers/{worker_id}/drain`    | `tenant_admin`, `operator` | Drain worker   |
-| POST   | `/workers/{worker_id}/undrain`  | `tenant_admin`, `operator` | Stop drain     |
-| POST   | `/requests/{request_id}/cancel` | `tenant_admin`, `operator` | Cancel request |
+| Phase | Method | Path                                   | Role                       | Purpose                         |
+|-------|--------|----------------------------------------|----------------------------|---------------------------------|
+| P0    | POST   | `/workers/{worker_id}/disable`         | `system_admin`             | Globally disable worker         |
+| P0    | POST   | `/workers/{worker_id}/enable`          | `system_admin`             | Globally enable worker          |
+| P0    | POST   | `/workers/{worker_id}/drain`           | `system_admin`             | Globally drain worker           |
+| P0    | POST   | `/workers/{worker_id}/undrain`         | `system_admin`             | Stop global drain               |
+| P0    | POST   | `/workers/{worker_id}/tenant-disable`  | `tenant_admin`             | Disable worker for tenant       |
+| P0    | POST   | `/workers/{worker_id}/tenant-enable`   | `tenant_admin`             | Enable worker for tenant        |
+| P0    | POST   | `/workers/{worker_id}/tenant-drain`    | `tenant_admin`, `operator` | Drain worker for tenant         |
+| P0    | POST   | `/workers/{worker_id}/tenant-undrain`  | `tenant_admin`, `operator` | Stop tenant drain               |
+| P0    | POST   | `/requests/{request_id}/cancel`        | `tenant_admin`, `operator` | Cancel request                  |
+
+Global worker actions require a platform-scoped key. Tenant worker actions derive tenant identity from the tenant-scoped
+API key and affect only that tenant's routing eligibility. A global disable always wins over tenant enable.
 
 ### P0 Config Resource Schemas
 
@@ -103,7 +113,33 @@ these fields without a versioned API change.
 }
 ```
 
-#### API Key Create Request
+#### Platform API Key Create Request
+
+```json
+{
+  "role": "system_admin"
+}
+```
+
+#### Platform API Key Create Response
+
+```json
+{
+  "id": "key_...",
+  "scope_type": "platform",
+  "tenant_id": null,
+  "role": "system_admin",
+  "prefix": "sk_live_abcd",
+  "secret": "sk_live_abcd...",
+  "created_at": "2026-07-02T00:00:00Z",
+  "config_version": 1
+}
+```
+
+The first platform key is bootstrapped through seed data, migration fixture, or environment bootstrap. All later platform
+keys are managed through `/platform-api-keys` by `system_admin`.
+
+#### Tenant API Key Create Request
 
 ```json
 {
@@ -111,7 +147,7 @@ these fields without a versioned API change.
 }
 ```
 
-#### API Key Create Response
+#### Tenant API Key Create Response
 
 ```json
 {
@@ -207,6 +243,7 @@ arbitrary JA3/JA4/TLS parameter authoring through the public config API.
     "datacenter",
     "local"
   ],
+  "allow_degraded_workers": false,
   "config_version": 3
 }
 ```
@@ -280,6 +317,10 @@ arbitrary JA3/JA4/TLS parameter authoring through the public config API.
 }
 ```
 
+Operators may create or update injection policies only when all operations are non-sensitive. Operations that set or
+append `Authorization` or `Cookie` require `tenant_admin`. `Host`, `Content-Length`, `Transfer-Encoding`, `Connection`,
+`Proxy-Authorization`, and `X-Straw-*` remain denied unless another section explicitly allows them.
+
 #### Rate Limit Config
 
 ```json
@@ -314,3 +355,44 @@ arbitrary JA3/JA4/TLS parameter authoring through the public config API.
 ```
 
 All update requests include `expected_config_version`. Version mismatch returns `conflict`.
+
+#### Config Audit Change
+
+```json
+{
+  "id": "chg_...",
+  "tenant_id": "ten_...",
+  "actor_type": "api_key",
+  "actor_id": "key_...",
+  "config_type": "routing_rule",
+  "resource_id": "route_default_us",
+  "action": "create | update | delete | revoke",
+  "config_version": 7,
+  "field_path": "match_conditions.target_host",
+  "old_value_json": "\"*.old.example\"",
+  "new_value_json": "\"*.example.com\"",
+  "created_at": "2026-07-02T00:00:00Z"
+}
+```
+
+`actor_id` is the API key ID in P0. Secret fields are redacted before writing audit source records or ClickHouse events.
+
+### P1 Config Resource Schemas
+
+#### Rollback Request
+
+```json
+{
+  "expected_config_version": 7,
+  "target_config_version": 5,
+  "reason": "restore previous route policy"
+}
+```
+
+Rollback creates a new tenant config version; it does not reuse the target version number. Rollback restores only values
+present in audit source records. Fields redacted as secrets cannot be restored by rollback and must be supplied again by
+a tenant admin through the normal resource endpoint.
+
+### P2 Config Resource Schemas
+
+P2 adds `/payload-capture` schemas when payload capture implementation starts.

@@ -5,20 +5,23 @@ protocol shape is common.
 
 ### Worker State Model
 
-Worker state is modeled as two independent fields:
+Worker state is modeled as three independent fields:
 
 - `runtime_state`: derived from registration, heartbeat, duplicate-session handling, and cooldown.
-- `admin_state`: durable admin override (`enabled` or `disabled`).
+- `global_admin_state`: durable platform override (`enabled` or `disabled`).
+- `tenant_admin_state`: durable tenant routing override (`enabled` or `disabled`) for that tenant only.
 
 ```text
-runtime_state: unregistered | registering | registered | ready | degraded | unavailable | dead | draining | cooldown | duplicate_replaced
-admin_state: enabled | disabled
+runtime_state: unregistered | registering | registered | ready | degraded | unhealthy | unavailable | dead | draining | cooldown | duplicate_replaced
+global_admin_state: enabled | disabled
+tenant_admin_state: enabled | disabled
 ```
 
-Eligibility uses both fields:
+Eligibility uses all three fields:
 
 ```text
-if admin_state == disabled: exclude (regardless of runtime_state)
+if global_admin_state == disabled: exclude for all tenants
+else if tenant_admin_state == disabled: exclude for that tenant
 else evaluate runtime_state
 ```
 
@@ -30,18 +33,19 @@ unregistered
   -> registered
   -> ready
   -> degraded
+  -> unhealthy
   -> unavailable
   -> dead
 
 ready/degraded
   -> draining
-  -> stopped | dead
+  -> dead
 
-ready/degraded/unavailable
+ready/degraded/unhealthy/unavailable
   -> cooldown
-  -> ready | degraded | unavailable
+  -> ready | degraded | unhealthy | unavailable
 
-ready/degraded/unavailable/draining
+ready/degraded/unhealthy/unavailable/draining
   -> duplicate_replaced
   -> dead
 ```
@@ -55,14 +59,16 @@ State meanings:
 | `registered`         | No       | Registered but not yet heartbeat-ready                         |
 | `ready`              | Yes      | Healthy and eligible if capacity/capabilities match            |
 | `degraded`           | Optional | Eligible only if tenant/deployment policy permits degraded use |
+| `unhealthy`          | No       | Alive but self-reported unhealthy                              |
 | `unavailable`        | No       | Heartbeat stale beyond availability timeout                    |
 | `dead`               | No       | Removed after dead timeout                                     |
 | `draining`           | No new   | Finishes in-flight requests only                               |
 | `cooldown`           | No       | Temporary exclusion after repeated failures                    |
 | `duplicate_replaced` | No       | Superseded by a newer valid session                            |
 
-Eligibility exclusion precedence is defined in Section 10. Disable is durable admin state and overrides all runtime
-health. Draining excludes new assignments even when the worker is otherwise healthy.
+Eligibility exclusion precedence is defined in Section 10. Global disable overrides tenant state and runtime health.
+Tenant disable overrides runtime health only for that tenant. Draining excludes new assignments even when the worker is
+otherwise healthy.
 
 ### Registration
 
@@ -117,7 +123,7 @@ Heartbeats include:
 
 - `worker_id`,
 - `session_id`,
-- health,
+- health (`ready`, `degraded`, or `unhealthy`),
 - reason,
 - active request count,
 - max concurrency,
@@ -154,7 +160,9 @@ request deadline unless the worker disconnects.
 
 Draining is runtime state. It excludes new assignments but allows in-flight work until deadline.
 
-Disable is durable admin state. It survives restart and excludes the worker from routing while still allowing
-registration/heartbeat for observability.
+Global disable is durable platform admin state. It survives restart and excludes the worker from routing for every tenant
+while still allowing registration/heartbeat for observability.
 
-Multi-tenant worker disable is **global**: it excludes the worker from routing for all tenants in its scope.
+Tenant disable is durable tenant admin state. It survives restart and excludes the worker from routing only for that
+tenant. Tenant drain is runtime/ephemeral and excludes new assignments only for that tenant until cleared or until the
+worker session ends.

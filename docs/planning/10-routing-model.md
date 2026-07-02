@@ -47,7 +47,7 @@ An executor is eligible only if:
 - tenant scope matches,
 - pool scope matches,
 - version is compatible,
-- health is `ready` or eligible `degraded`,
+- health is `ready` or `degraded` with pool policy `allow_degraded_workers=true`,
 - it is not administratively disabled,
 - it is not draining,
 - it has available capacity,
@@ -58,7 +58,7 @@ An executor is eligible only if:
 Eligibility precedence is:
 
 ```text
-disabled > dead > duplicate_replaced > draining > cooldown > heartbeat_stale > health > capacity > capability
+global_disabled > tenant_disabled > dead > duplicate_replaced > draining > tenant_draining > cooldown > heartbeat_stale > health > capacity > capability
 ```
 
 A higher-precedence exclusion reason should be reported in internal diagnostics. Public errors remain canonical public

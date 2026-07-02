@@ -5,7 +5,6 @@
 Postgres stores durable control-plane state:
 
 - tenants,
-- platform users and tenant users,
 - API keys (generalized with scope_type: platform | tenant),
 - worker credentials,
 - executor pools,
@@ -16,9 +15,12 @@ Postgres stores durable control-plane state:
 - deny rules,
 - payload-capture policy,
 - worker admin disable state,
+- tenant worker admin overrides,
 - config versions.
 
 Postgres is the source of truth. Control is the only service that reads/writes it.
+
+P0 authentication and audit actor identity are API-key based. User/password identity is outside P0.
 
 ### Canonical P0 Postgres Model
 
@@ -29,19 +31,18 @@ Required P0 tables:
 | Table                    | Purpose                                                                 | Required constraints / notes                                       |
 |--------------------------|-------------------------------------------------------------------------|--------------------------------------------------------------------|
 | `tenants`                | Tenant boundary and status                                              | unique `id`; `status`; soft delete timestamp                       |
-| `platform_users`         | Platform administrators                                                 | unique `id`; role includes `system_admin`                          |
-| `tenant_users`           | Tenant-local users                                                      | unique `(tenant_id, user_id)`                                      |
 | `api_keys`               | Generalized credentials (platform and tenant)                           | scope_type; hashed secret; visible prefix; role; revoked timestamp |
 | `worker_credentials`     | Worker credential public keys and scopes                                | credential status; Ed25519 public key; scope JSON or child tables  |
 | `executor_pools`         | Tenant-visible pools                                                    | unique `(tenant_id, id)`; executor type                            |
-| `worker_admin_state`     | Durable worker disable state                                            | unique `(worker_id)` — global scope                                |
+| `worker_admin_state`     | Durable global worker disable state                                     | unique `(worker_id)` — global scope                                |
+| `tenant_worker_admin_state` | Durable tenant worker routing override                              | unique `(tenant_id, worker_id)`; tenant disable only                |
 | `routing_rules`          | Route priority and match conditions                                     | unique `(tenant_id, id)`; indexed `(tenant_id, priority)`          |
 | `deny_rules`             | Host/CIDR/CNAME deny and allow overrides                                | normalized host/cidr columns where possible                        |
 | `fingerprint_profiles`   | Allowed profile names and worker compatibility                          | unique `(tenant_id, name)` plus built-in global profiles           |
 | `injection_policies`     | Ordered header operations                                               | unique `(tenant_id, id)`; bounded operation count                  |
 | `rate_limit_configs`     | Rate-limit dimensions and limits                                        | unique `(tenant_id, dimension, key)`                               |
 | `quota_configs`          | Monthly request/bandwidth limits and fail policy                        | unique `(tenant_id, quota_period)`                                 |
-| `config_audit_source`    | Durable source record for config changes before ClickHouse async export | append-only; not a compliance-grade immutable audit log by itself  |
+| `config_audit_source`    | Durable source record for config changes before ClickHouse async export | actor_type + actor_id; append-only; not compliance-grade by itself |
 | `tenant_config_versions` | Monotonic version per tenant snapshot                                   | unique `tenant_id`; incremented transactionally with config writes |
 
 All mutable tenant-scoped config resources include:

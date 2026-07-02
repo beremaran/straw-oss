@@ -75,7 +75,7 @@ enum TimeoutType {
   TIMEOUT_TYPE_UNSPECIFIED = 0;
   TIMEOUT_TYPE_ASSIGNMENT_TIMEOUT = 1;
   TIMEOUT_TYPE_CONNECT_TIMEOUT = 2;
-  TIMEOUT_TYPE_REQUEST_HEADER_TIMEOUT = 3;
+  TIMEOUT_TYPE_RESPONSE_HEADER_TIMEOUT = 3;
   TIMEOUT_TYPE_IDLE_TIMEOUT = 4;
   TIMEOUT_TYPE_UPLOAD_TIMEOUT = 5;
   TIMEOUT_TYPE_DOWNLOAD_TIMEOUT = 6;
@@ -96,6 +96,13 @@ enum RequestMode {
   REQUEST_MODE_UNSPECIFIED = 0;
   REQUEST_MODE_DECODED_HTTP = 1;
   REQUEST_MODE_RAW_TUNNEL = 2;
+}
+
+enum WorkerHealth {
+  WORKER_HEALTH_UNSPECIFIED = 0;
+  WORKER_HEALTH_READY = 1;
+  WORKER_HEALTH_DEGRADED = 2;
+  WORKER_HEALTH_UNHEALTHY = 3;
 }
 
 enum SniHostMismatchPolicy {
@@ -162,7 +169,7 @@ message RegisterAck {
 message HeartbeatRequest {
   string worker_id = 1;
   string session_id = 2;
-  string health = 3;
+  WorkerHealth health = 3;
   string reason = 4;
   uint32 active_requests = 5;
   uint32 max_concurrency = 6;
@@ -188,6 +195,10 @@ message AssignRequest {
   bool replayable = 8;
   uint32 attempt = 9;
   string policy_version = 10;
+  uint64 initial_upload_credit_bytes = 11;
+  uint64 initial_download_credit_bytes = 12;
+  uint64 max_inflight_upload_bytes = 13;
+  uint64 max_inflight_download_bytes = 14;
 }
 
 message AssignAck {
@@ -307,7 +318,33 @@ Control does not use worker timestamps for deadlines or liveness.
 
 ### BodyRef
 
-P2 adds BodyRef variants:
+The wire contract defines BodyRef in P0 so generated protobuf code is complete. P0 rejects any `BodyRefFrame` during
+REST validation and stream validation. P2 enables the variants after the related transport decision is made.
+
+```protobuf
+message BodyRefFrame {
+  oneof ref {
+    S3BodyRef s3 = 1;
+    DirectStreamRef direct_stream = 2;
+  }
+  uint64 expected_size_bytes = 10;
+  string sha256_hex = 11;
+}
+
+message S3BodyRef {
+  string object_key = 1;
+  string signed_url = 2;
+  int64 expires_unix_ms = 3;
+}
+
+message DirectStreamRef {
+  string endpoint = 1;
+  string stream_id = 2;
+  int64 expires_unix_ms = 3;
+}
+```
+
+P2 BodyRef variants:
 
 - `S3BodyRef`,
 - `DirectStreamRef`.
