@@ -1067,7 +1067,6 @@ Egress workers carry zero writable persistent local disk state.
 * **Scope:** Completely stateless binaries.
 * **Provisioning:** Configured entirely via CLI parameters, static files, and environment variables. Upstream proxies and specific network bindings are injected locally at startup, and workers fetch everything else from Control via NATS.
 
-
 ## 16. Authentication and Authorization
 
 Who can access what.
