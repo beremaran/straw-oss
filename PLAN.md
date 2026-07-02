@@ -2,67 +2,108 @@
 
 ## 1. Purpose
 
-Straw is a distributed HTTP/HTTPS proxy system for high-scale web scraping. It centralizes proxy usage behind a single entrypoint while letting operators combine their own egress endpoints with third-party proxy providers.
+Straw is a distributed HTTP/HTTPS proxy system for high-scale web scraping. It centralizes proxy usage behind a single
+entrypoint while letting operators combine their own egress endpoints with third-party proxy providers.
 
-Straw solves the operational problem of setting up endpoints, choosing where requests should egress, and managing routing rules across many proxy sources. It provides browser fingerprint simulation, configurable routing, vendor aggregation, and both plain CONNECT tunneling and MITM-based HTTPS handling.
+Straw solves the operational problem of setting up endpoints, choosing where requests should egress, and managing
+routing rules across many proxy sources. It provides browser fingerprint simulation, configurable routing, vendor
+aggregation, and both plain CONNECT tunneling and MITM-based HTTPS handling.
 
-MITM interception is part of the core purpose, but not for surveillance or general man-in-the-middle use. Straw uses it to decode HTTPS requests into a simpler internal request/response message flow between Control and Egress, improving reliability while still allowing raw CONNECT tunnels when needed.
+MITM interception is part of the core purpose, but not for surveillance or general man-in-the-middle use. Straw uses it
+to decode HTTPS requests into a simpler internal request/response message flow between Control and Egress, improving
+reliability while still allowing raw CONNECT tunnels when needed.
 
-Straw is not an anonymity tool and not a browser automation platform. Its job is to pass requests through the configured route to the desired egress endpoint.
+Straw is not an anonymity tool and not a browser automation platform. Its job is to pass requests through the configured
+route to the desired egress endpoint.
 
 ## 2. Goals
 
 Concrete capabilities the system must provide:
 
 - Provide four client entrypoints through Control:
-  - REST API for explicit request/response transport operations.
-  - HTTP forward proxy for plain HTTP requests.
-  - CONNECT tunnel proxy for raw HTTPS TCP tunnels.
-  - MITM HTTPS proxy for decoded request/response handling.
+    - REST API for explicit request/response transport operations.
+    - HTTP forward proxy for plain HTTP requests.
+    - CONNECT tunnel proxy for raw HTTPS TCP tunnels.
+    - MITM HTTPS proxy for decoded request/response handling.
 - Route traffic through operator-owned Egress workers and operator-configured upstream proxies or vendors.
-- Select routes by tags, country, region, IP type, sticky session affinity, fallback rules, and upstream proxy or worker availability.
+- Select routes by tags, country, region, IP type, sticky session affinity, fallback rules, and upstream proxy or worker
+  availability.
 - Support browser fingerprint simulation for outbound Egress requests, selectable by profile.
 - Support configured HTTP header/cookie injection based on tags and target domain.
-- Authenticate clients with API keys, authenticate workers, restrict management actions to admins, and preserve tenant isolation.
-- Preserve HTTP behavior needed for scraping workloads, including streaming uploads/downloads, client-disconnect cancellation, stable error codes, and clear timeout mapping.
+- Authenticate clients with API keys, authenticate workers, restrict management actions to admins, and preserve tenant
+  isolation.
+- Preserve HTTP behavior needed for scraping workloads, including streaming uploads/downloads, client-disconnect
+  cancellation, stable error codes, and clear timeout mapping.
 - Allow optional payload capture globally or by tags when explicitly enabled by the operator.
-- Store durable configuration and state in Postgres, and use Redis only for ephemeral state such as sessions, rate limits, queues, or short-lived routing data.
+- Store durable configuration and state in Postgres, and use Redis only for ephemeral state such as sessions, rate
+  limits, queues, or short-lived routing data.
 - Expose structured logs, metrics, tracing, propagated request IDs, health checks, and readiness checks.
 - Include Phase 1 client SDKs, CLI, and UI for operating and using Straw.
 - Ship one official Egress implementation written in Go.
-- Run locally with docker-compose and support production operation with horizontally scaled Control instances, regional Egress pools, graceful worker draining, and graceful shutdown.
-- Enforce abuse and overload controls, including rate limits, quotas, destination deny rules, and payload/header redaction.
-- Use stable versioned Control/Egress contracts with protobuf messages, typed errors, request correlation, transport-level retry semantics, timeouts, and backward-compatible rolling deploys, so custom Egress implementations can be built from day one.
-- Avoid fixed architectural limits on request concurrency or request rate; practical limits should come from configured capacity, worker pools, queues, quotas, and infrastructure.
+- Run locally with docker-compose and support production operation with horizontally scaled Control instances, regional
+  Egress pools, graceful worker draining, and graceful shutdown.
+- Enforce abuse and overload controls, including rate limits, quotas, destination deny rules, and payload/header
+  redaction.
+- Use stable versioned Control/Egress contracts with protobuf messages, typed errors, request correlation,
+  transport-level retry semantics, timeouts, and backward-compatible rolling deploys, so custom Egress implementations
+  can be built from day one.
+- Avoid fixed architectural limits on request concurrency or request rate; practical limits should come from configured
+  capacity, worker pools, queues, quotas, and infrastructure.
 - Support unlimited request and response body sizes by design, with configurable deployment limits.
 - Make request timeouts configurable, with expected defaults in the 30-60 second range.
-- Keep Control-side routing and coordination overhead under 500 ms, excluding actual outbound request execution time on Egress workers.
-- Include runnable checks for routing, config, parsing, protobuf compatibility, NATS request/reply, worker registration, REST/proxy/CONNECT/MITM flows, worker loss, NATS outage, timeout paths, backpressure, and load behavior.
+- Keep Control-side routing and coordination overhead under 500 ms, excluding actual outbound request execution time on
+  Egress workers.
+- Include runnable checks for routing, config, parsing, protobuf compatibility, NATS request/reply, worker registration,
+  REST/proxy/CONNECT/MITM flows, worker loss, NATS outage, timeout paths, backpressure, and load behavior.
 
 ## 3. Non-Goals
 
 Things intentionally outside scope so future decisions do not drift.
 
-- Straw is not a scraping orchestrator. It does not provide crawler scheduling, browser orchestration, CAPTCHA solving, content extraction/parsing, scraping retry policies, batch execution, persistent request queues, replay workflows, or "run this later" job APIs. Requests come in, are transported, and finish.
-- Phase 1 is limited to HTTP and HTTPS transport. WebSockets, SOCKS5, generic TCP, UDP/QUIC, and non-web protocols are future work.
-- Straw does not guarantee anonymity, identity hiding, attribution protection, residential IP procurement, or any privacy-network behavior.
-- Phase 1 is not a managed SaaS product. Billing, payments, self-serve signup, customer dashboards, public marketplaces, and hosted multi-customer business workflows are reserved for later monetization work.
-- Phase 1 does not include marketplace/vendor integrations, automatic third-party proxy account provisioning, provider billing reconciliation, or marketplace routing economics. It may still chain to operator-configured upstream proxies or vendors.
-- Straw does not provide compliance or legal enforcement features such as jurisdiction policy engines, consent management, legal review workflows, or automated `robots.txt` enforcement. Operators are responsible for lawful use.
-- Straw does not make content-aware scraping decisions. It does not perform semantic page understanding, response classification, automatic login/session workflows, or smart behavior based on response bodies. Content is processed only as needed to stream, buffer, and transport it.
-- Traffic payload capture and storage are not the default behavior. Operators may explicitly enable payload capture globally or by tags for debugging or auditing, subject to their own policy and responsibility.
-- Browser fingerprint simulation is best effort. Straw does not guarantee undetectability, CAPTCHA avoidance, WAF bypass, anti-bot bypass, or successful access to any target site.
-- Straw is not intended to run as an unauthenticated public open proxy. Clients, workers, and management actions must be authenticated.
-- Straw does not provide general traffic tampering, script injection, credential harvesting, surveillance, or content-filtering features. The only planned mutation is configured HTTP header/cookie injection based on tags and target domain.
-- Straw exposes health and readiness endpoints, but does not provide built-in global failover, managed disaster recovery, zero-downtime guarantees, or exactly-once request execution. Availability beyond documented deployment patterns is the operator's responsibility.
-- Phase 1 includes client SDKs, CLI, and UI, but only one official Egress implementation is planned: the Go worker. Other platforms and languages can implement the Control/Egress protocol, but are not promised as first-party workers.
-- Phase 1 does not include a plugin system, embedded scripting, worker marketplace, or runtime module loader inside the official Egress worker.
+- Straw is not a scraping orchestrator. It does not provide crawler scheduling, browser orchestration, CAPTCHA solving,
+  content extraction/parsing, scraping retry policies, batch execution, persistent request queues, replay workflows,
+  or "run this later" job APIs. Requests come in, are transported, and finish.
+- Phase 1 is limited to HTTP and HTTPS transport. WebSockets, SOCKS5, generic TCP, UDP/QUIC, and non-web protocols are
+  future work.
+- Straw does not guarantee anonymity, identity hiding, attribution protection, residential IP procurement, or any
+  privacy-network behavior.
+- Phase 1 is not a managed SaaS product. Billing, payments, self-serve signup, customer dashboards, public marketplaces,
+  and hosted multi-customer business workflows are reserved for later monetization work.
+- Phase 1 does not include marketplace/vendor integrations, automatic third-party proxy account provisioning, provider
+  billing reconciliation, or marketplace routing economics. It may still chain to operator-configured upstream proxies
+  or vendors.
+- Straw does not provide compliance or legal enforcement features such as jurisdiction policy engines, consent
+  management, legal review workflows, or automated `robots.txt` enforcement. Operators are responsible for lawful use.
+- Straw does not make content-aware scraping decisions. It does not perform semantic page understanding, response
+  classification, automatic login/session workflows, or smart behavior based on response bodies. Content is processed
+  only as needed to stream, buffer, and transport it.
+- Traffic payload capture and storage are not the default behavior. Operators may explicitly enable payload capture
+  globally or by tags for debugging or auditing, subject to their own policy and responsibility.
+- Browser fingerprint simulation is best effort. Straw does not guarantee undetectability, CAPTCHA avoidance, WAF
+  bypass, anti-bot bypass, or successful access to any target site.
+- Straw is not intended to run as an unauthenticated public open proxy. Clients, workers, and management actions must be
+  authenticated.
+- Straw does not provide general traffic tampering, script injection, credential harvesting, surveillance, or
+  content-filtering features. The only planned mutation is configured HTTP header/cookie injection based on tags and
+  target domain.
+- Straw exposes health and readiness endpoints, but does not provide built-in global failover, managed disaster
+  recovery, zero-downtime guarantees, or exactly-once request execution. Availability beyond documented deployment
+  patterns is the operator's responsibility.
+- Phase 1 includes client SDKs, CLI, and UI, but only one official Egress implementation is planned: the Go worker.
+  Other platforms and languages can implement the Control/Egress protocol, but are not promised as first-party workers.
+- Phase 1 does not include a plugin system, embedded scripting, worker marketplace, or runtime module loader inside the
+  official Egress worker.
 
 ## 4. System Overview
 
-Straw is control-centered. SDKs, CLI, UI, REST clients, HTTP proxy clients, CONNECT clients, and MITM proxy clients all enter through Control. Control is the only public-facing runtime service: it owns client ingress, admin/config APIs, authentication, authorization, tenant isolation, routing policy, and coordination.
+Straw is control-centered. SDKs, CLI, UI, REST clients, HTTP proxy clients, CONNECT clients, and MITM proxy clients all
+enter through Control. Control is the only public-facing runtime service: it owns client ingress, admin/config APIs,
+authentication, authorization, tenant isolation, routing policy, and coordination.
 
-Control is horizontally scalable and mostly stateless. Durable tenant configuration and audit state live in Postgres. Ephemeral state such as sticky sessions, rate limits, queues, worker/adapter availability, and load snapshots lives in Redis. Only Control connects to Postgres and Redis; Egress workers and Provider Adapters communicate through NATS, plus configured large-body transport when needed.
+Control is horizontally scalable and mostly stateless. Durable tenant configuration and audit state live in Postgres.
+Ephemeral state such as sticky sessions, rate limits, queues, worker/adapter availability, and load snapshots lives in
+Redis. Only Control connects to Postgres and Redis; Egress workers and Provider Adapters communicate through NATS, plus
+configured large-body transport when needed.
 
 ```mermaid
 flowchart LR
@@ -104,31 +145,67 @@ flowchart LR
   Adapter --> Targets
 ```
 
-The control/config plane runs through Control. Admins and automation use the UI, CLI, SDKs, or REST APIs to manage tenants, API keys, routing rules, upstream/vendor configuration, fingerprint profiles, injection policies, worker credentials, quotas, and payload capture policy. Control persists durable configuration in Postgres and uses Redis for shared ephemeral coordination.
+The control/config plane runs through Control. Admins and automation use the UI, CLI, SDKs, or REST APIs to manage
+tenants, API keys, routing rules, upstream/vendor configuration, fingerprint profiles, injection policies, worker
+credentials, quotas, and payload capture policy. Control persists durable configuration in Postgres and uses Redis for
+shared ephemeral coordination.
 
-The request/data plane also starts at Control. REST, plain HTTP proxy, and MITM HTTPS requests are decoded into a shared internal HTTP request/response model. MITM is the default HTTPS proxy behavior. Raw CONNECT remains an explicit separate tunnel path because it forwards bytes rather than decoded HTTP messages. MITM clients must either trust Straw's CA or explicitly disable certificate verification.
+The request/data plane also starts at Control. REST, plain HTTP proxy, and MITM HTTPS requests are decoded into a shared
+internal HTTP request/response model. MITM is the default HTTPS proxy behavior. Raw CONNECT remains an explicit separate
+tunnel path because it forwards bytes rather than decoded HTTP messages. MITM clients must either trust Straw's CA or
+explicitly disable certificate verification.
 
-Routing uses one unified route model. A route can target an Egress worker pool or a Provider Adapter pool. Egress workers are long-lived registered workers that execute traffic from operator-controlled network locations. Provider Adapters are first-class but optional runtime components used when a route should hit a vendor or upstream provider directly instead of wasting bandwidth through an Egress worker. Control chooses the adapter pool/class; the adapter chooses the exact vendor endpoint, account, or upstream target using its provider-specific logic.
+Routing uses one unified route model. A route can target an Egress worker pool or a Provider Adapter pool. Egress
+workers are long-lived registered workers that execute traffic from operator-controlled network locations. Provider
+Adapters are first-class but optional runtime components used when a route should hit a vendor or upstream provider
+directly instead of wasting bandwidth through an Egress worker. Control chooses the adapter pool/class; the adapter
+chooses the exact vendor endpoint, account, or upstream target using its provider-specific logic.
 
-Control dispatches work over NATS using versioned protobuf contracts, request/reply correlation, typed errors, timeouts, registration, heartbeat, and load reporting. Egress workers and Provider Adapters are worker-like NATS participants: they register capabilities, report health/load, receive assigned work, and return responses or typed failures. Downstream executors should verify signed or otherwise authorized dispatch messages when that can be done with minimal overhead; otherwise they trust Control as the authorization boundary for Phase 1.
+Control dispatches work over NATS using versioned protobuf contracts, request/reply correlation, typed errors, timeouts,
+registration, heartbeat, and load reporting. Egress workers and Provider Adapters are worker-like NATS participants:
+they register capabilities, report health/load, receive assigned work, and return responses or typed failures.
+Downstream executors should verify signed or otherwise authorized dispatch messages when that can be done with minimal
+overhead; otherwise they trust Control as the authorization boundary for Phase 1.
 
-NATS is the default body path. For bodies that exceed configured message limits or deployment policy, Straw supports configurable large-body handling through object storage references or a direct streaming channel. Egress workers and Provider Adapters may connect to that configured body transport, but they must not connect to Postgres or Redis.
+NATS is the default body path. For bodies that exceed configured message limits or deployment policy, Straw supports
+configurable large-body handling through object storage references or a direct streaming channel. Egress workers and
+Provider Adapters may connect to that configured body transport, but they must not connect to Postgres or Redis.
 
-Outbound request mutation is split by responsibility. Control resolves tenant policy, routing metadata, fingerprint profile selection, and header/cookie injection rules. The executing component, either Egress or Provider Adapter, applies transport-level browser fingerprint behavior and final outbound header/cookie changes because it owns the actual outbound connection.
+Outbound request mutation is split by responsibility. Control resolves tenant policy, routing metadata, fingerprint
+profile selection, and header/cookie injection rules. The executing component, either Egress or Provider Adapter,
+applies transport-level browser fingerprint behavior and final outbound header/cookie changes because it owns the actual
+outbound connection.
 
 ## 5. Components
 
 Responsibilities of each major service.
 
-- Control Server: the single public-facing deployable service. It owns REST, admin/config APIs, HTTP forward proxy, CONNECT tunnel proxy, MITM proxy, client authentication, admin authorization, tenant isolation, routing decisions, request cancellation, and NATS dispatch to executors. Control is the only component that reads and writes Postgres and Redis.
-- Egress Worker: the official Go executor for operator-owned egress locations. It registers with Control over NATS, reports capabilities, health, and load, executes assigned outbound HTTP/HTTPS requests, applies browser fingerprint behavior and final header/cookie injection, supports proxy chaining when configured, and streams request/response bodies through NATS or the configured large-body transport.
-- Provider Adapter: a Phase 1 executor for routes that should go directly through an upstream proxy or vendor instead of an Egress worker. It participates in NATS like a worker, reports capabilities, health, and load, receives assigned work from Control, and owns provider-specific endpoint, account, and upstream selection.
-- NATS: internal message transport between Control, Egress Workers, and Provider Adapters. It owns request/reply correlation, registration, heartbeats, queue groups, transport-level timeouts, typed failures, backpressure signaling, and queue-related behavior. NATS is also the default body path when bodies fit configured message limits.
-- Large-Body Transport: configured data path for request or response bodies that should not travel inside NATS messages. Phase 1 supports S3-compatible object storage references and direct streaming channels. Control, Egress Workers, and Provider Adapters may use it; it does not own routing, auth, or durable metadata.
-- Redis: shared ephemeral runtime state. It owns sticky session affinity, rate limiting counters, worker and adapter availability snapshots, backpressure/load state, and in-flight request state with TTLs. It does not own durable configuration or queue semantics.
-- Postgres: durable system and tenant state. It owns tenants, users, API keys, worker credentials, routing rules, upstream/vendor configuration, fingerprint profiles, header/cookie injection policies, quotas, payload capture policy, audit logs, and request metadata.
+- Control Server: the single public-facing deployable service. It owns REST, admin/config APIs, HTTP forward proxy,
+  CONNECT tunnel proxy, MITM proxy, client authentication, admin authorization, tenant isolation, routing decisions,
+  request cancellation, and NATS dispatch to executors. Control is the only component that reads and writes Postgres and
+  Redis.
+- Egress Worker: the official Go executor for operator-owned egress locations. It registers with Control over NATS,
+  reports capabilities, health, and load, executes assigned outbound HTTP/HTTPS requests, applies browser fingerprint
+  behavior and final header/cookie injection, supports proxy chaining when configured, and streams request/response
+  bodies through NATS or the configured large-body transport.
+- Provider Adapter: a Phase 1 executor for routes that should go directly through an upstream proxy or vendor instead of
+  an Egress worker. It participates in NATS like a worker, reports capabilities, health, and load, receives assigned
+  work from Control, and owns provider-specific endpoint, account, and upstream selection.
+- NATS: internal message transport between Control, Egress Workers, and Provider Adapters. It owns request/reply
+  correlation, registration, heartbeats, queue groups, transport-level timeouts, typed failures, backpressure signaling,
+  and queue-related behavior. NATS is also the default body path when bodies fit configured message limits.
+- Large-Body Transport: configured data path for request or response bodies that should not travel inside NATS messages.
+  Phase 1 supports S3-compatible object storage references and direct streaming channels. Control, Egress Workers, and
+  Provider Adapters may use it; it does not own routing, auth, or durable metadata.
+- Redis: shared ephemeral runtime state. It owns sticky session affinity, rate limiting counters, worker and adapter
+  availability snapshots, backpressure/load state, and in-flight request state with TTLs. It does not own durable
+  configuration or queue semantics.
+- Postgres: durable system and tenant state. It owns tenants, users, API keys, worker credentials, routing rules,
+  upstream/vendor configuration, fingerprint profiles, header/cookie injection policies, quotas, payload capture policy,
+  audit logs, and request metadata.
 
-Observability is not a separate deployable component. Each service emits its own structured logs, metrics, traces, propagated request IDs, health checks, and readiness checks.
+Observability is not a separate deployable component. Each service emits its own structured logs, metrics, traces,
+propagated request IDs, health checks, and readiness checks.
 
 ## 6. Client Interfaces
 
@@ -800,44 +877,105 @@ byte-stable serialization.
 
 ## 12. HTTP Semantics
 
-* **Methods:** All standard HTTP methods are supported. Control parses ingress requests and normalizes the method into the `RequestStart` protobuf message. Egress workers execute the method exactly as provided without restriction.
+* **Methods:** All standard HTTP methods are supported. Control parses ingress requests and normalizes the method into
+  the `RequestStart` protobuf message. Egress workers execute the method exactly as provided without restriction.
 
 
-* **Headers:** Control evaluates ingress headers and strictly strips internal routing hints (e.g., `X-Straw-*`) and standard proxy-revealing headers. All remaining client headers are encoded into the `Header { string name; bytes value; }` protobuf array, preserving exact ordering and duplicate keys for the Egress worker. Final outbound headers are applied at Egress based on the resolved fingerprint and injection policy.
+* **Headers:** Control evaluates ingress headers and strictly strips internal routing hints (e.g., `X-Straw-*`) and
+  standard proxy-revealing headers. All remaining client headers are encoded into the
+  `Header { string name; bytes value; }` protobuf array, preserving exact ordering and duplicate keys for the Egress
+  worker. Final outbound headers are applied at Egress based on the resolved fingerprint and injection policy.
 
 
-* **Cookies:** Straw is strictly a transport layer. Cookies pass through opaquely within the standard header arrays. Neither Control, Redis, nor Egress maintains cookie jars, session stores, or header rewrite rules outside of explicit injection policies.
+* **Cookies:** Straw is strictly a transport layer. Cookies pass through opaquely within the standard header arrays.
+  Neither Control, Redis, nor Egress maintains cookie jars, session stores, or header rewrite rules outside of explicit
+  injection policies.
 
 
-* **Redirects:** Egress workers do not follow upstream redirects by default. `3xx` responses stream back through NATS to the client via standard `ResponseStart` and `DataFrame` messages. If operator configuration permits, a request flag can instruct the Egress worker to handle redirect following internally, which alters upstream request counts and routing costs.
+* **Redirects:** Egress workers do not follow upstream redirects by default. `3xx` responses stream back through NATS to
+  the client via standard `ResponseStart` and `DataFrame` messages. If operator configuration permits, a request flag
+  can instruct the Egress worker to handle redirect following internally, which alters upstream request counts and
+  routing costs.
 
 
-* **Compression:** Upstream `Content-Encoding` (e.g., gzip, brotli) is preserved. Egress workers do not decode or recompress upstream responses. Encoded bytes stream directly to the client as raw `DataFrame` payloads. Payload capture, if enabled, stores the raw compressed bytes without inspection. Decoding and recompression features are deferred to Phase 2.
+* **Compression:** Upstream `Content-Encoding` (e.g., gzip, brotli) is preserved. Egress workers do not decode or
+  recompress upstream responses. Encoded bytes stream directly to the client as raw `DataFrame` payloads. Payload
+  capture, if enabled, stores the raw compressed bytes without inspection. Decoding and recompression features are
+  deferred to Phase 2.
 
 
-* **Trailers:** HTTP trailers are fully supported. Egress workers parse upstream trailers and dispatch them using the explicit `TrailersFrame` over the request-scoped NATS stream before the `EndFrame`. Control streams these trailers to the client when the specific ingress protocol supports them.
+* **Trailers:** HTTP trailers are fully supported. Egress workers parse upstream trailers and dispatch them using the
+  explicit `TrailersFrame` over the request-scoped NATS stream before the `EndFrame`. Control streams these trailers to
+  the client when the specific ingress protocol supports them.
 
 
-* **Connection Reuse:** Phase 1 implements 1:1 request execution. Egress workers open a fresh transport connection for every assigned request. Upstream connection pooling and keep-alive state are explicitly deferred to Phase 2.
-* **WebSockets:** Phase 1 explicitly rejects all `Upgrade: websocket` requests. Control intercepts these at the ingress layer and returns an immediate typed error without attempting route selection or Egress assignment.
+* **Connection Reuse:** Phase 1 implements 1:1 request execution. Egress workers open a fresh transport connection for
+  every assigned request. Upstream connection pooling and keep-alive state are explicitly deferred to Phase 2.
+* **WebSockets:** Phase 1 explicitly rejects all `Upgrade: websocket` requests. Control intercepts these at the ingress
+  layer and returns an immediate typed error without attempting route selection or Egress assignment.
 
 
-* **HTTP/2:** HTTP/2 is supported at both ingress (Client to Control) and egress (Egress to Upstream) boundaries. Control multiplexes concurrent inbound streams natively, while Egress delegates to `tls-client` to negotiate HTTP/2 ALPN matching the requested fingerprint preset.
+* **HTTP/2:** HTTP/2 is supported at both ingress (Client to Control) and egress (Egress to Upstream) boundaries.
+  Control multiplexes concurrent inbound streams natively, while Egress delegates to `tls-client` to negotiate HTTP/2
+  ALPN matching the requested fingerprint preset.
 
 
-* **TLS Behavior:** Egress outbound TLS execution is owned by `tls-client`, which dynamically handles SNI and ALPN to match the fingerprint profile provided by Control. Upstream certificate verification is strict by default, but clients can supply a flag to explicitly disable validation. Client certificates (mTLS) are supported; Control passes the necessary certificate references to Egress, which binds them into the execution context.
+* **TLS Behavior:** Egress outbound TLS execution is owned by `tls-client`, which dynamically handles SNI and ALPN to
+  match the fingerprint profile provided by Control. Upstream certificate verification is strict by default, but clients
+  can supply a flag to explicitly disable validation. Client certificates (mTLS) are supported; Control passes the
+  necessary certificate references to Egress, which binds them into the execution context.
 
 ## 13. MITM Design
 
-HTTPS interception details.
+Straw uses MITM interception to decode incoming HTTPS client traffic into the shared internal request/response model
+used by REST and plain HTTP flows. This ensures features like header injection, routing metadata extraction, and payload
+capture work seamlessly across secure tunnels, without Control making outbound upstream connections itself.
 
-- CA Generation: how root/intermediate CA is created.
-- Certificate Storage: where generated certs live.
-- Per-Host Certificates: cache and generation rules.
-- Client Trust Setup: how clients trust the CA.
-- TLS Termination: inbound TLS handling.
-- Upstream TLS: outbound TLS handling.
-- Security Boundaries: what data is exposed and to whom.
+**CA and Client Trust**
+Straw does not automatically generate root or intermediate Certificate Authorities (CAs) at runtime. Operators must
+supply pre-generated CA certificates and private keys via configuration. To facilitate deployment, the repository
+provides offline convenience scripts for generating these assets.
+
+For clients to route traffic through the MITM proxy without TLS errors, they must trust this configured CA. Control
+exposes a dedicated, unauthenticated HTTP endpoint to distribute the public CA certificate, allowing automated
+provisioning for scrapers and local environments. Alternatively, clients can explicitly disable certificate verification
+on their end.
+
+**Inbound TLS Termination**
+Inbound client TLS connections terminate entirely at the Control service. To maximize compatibility with diverse
+scraping clients and to bypass restrictive ingress TLS fingerprinting (such as JA3/JA4 mismatches), Control utilizes the
+`tls-client` stack for inbound termination rather than the standard Go `crypto/tls` library. This ensures the proxy
+ingress cleanly mimics flexible browser and client behaviors.
+
+**Dynamic Certificate Generation and Caching**
+When a client initiates an HTTPS proxy connection (e.g., via `CONNECT` prior to MITM interception or direct SNI
+routing), Control dynamically generates a leaf certificate for the requested target domain, signed by the configured
+Straw CA.
+
+To prevent generating a new certificate for every handshake, Control utilizes a multi-tiered storage and caching
+strategy:
+
+* **Durable Storage:** Generated per-host certificates are written to disk by default. For horizontally scaled or
+  stateless Control deployments, this storage backend is configurable to use S3-compatible object storage.
+* **Ephemeral Caching:** Control caches active certificates in Redis. Redis manages the TTL for this cache, ensuring
+  fast-path TLS handshakes for high-frequency target domains without incurring disk or network storage latency on every
+  request.
+
+**Upstream TLS Delegation**
+Control handles strictly inbound TLS. It never initiates the upstream TLS handshake to the target site. Once Control
+terminates the client connection and decodes the HTTP request, the request is dispatched over NATS to the selected
+Egress worker. The Egress worker exclusively handles the outbound TLS connection, applying the resolved browser
+fingerprint profile, SNI, and ALPN negotiations directly against the target infrastructure.
+
+**Security and Isolation Boundaries**
+Because MITM terminates the secure tunnel, Control processes raw, unencrypted HTTP plaintext in memory. In Phase 1,
+Straw does not enforce advanced multitenant cryptographic isolation or encrypted-in-memory buffers for this in-flight
+data.
+
+Straw is architected for high-scale web scraping, not as a zero-trust privacy network. Decrypted data is treated as
+transient operational plaintext, streaming through bounded buffers before being transmitted over NATS or the large-body
+transport. Operators are responsible for environment-level security and access controls if their scraping workloads
+handle sensitive or regulated data.
 
 ## 14. Egress Execution
 
