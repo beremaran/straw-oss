@@ -18,7 +18,10 @@ type File struct {
 }
 
 type ControlConfig struct {
-	Server ControlServerConfig `json:"server"`
+	Server    ControlServerConfig    `json:"server"`
+	Request   ControlRequestConfig   `json:"request"`
+	Transport ControlTransportConfig `json:"transport"`
+	NATS      NATSConfig             `json:"nats"`
 }
 
 type ControlServerConfig struct {
@@ -27,8 +30,28 @@ type ControlServerConfig struct {
 	MetricsPort int    `json:"metrics_port"`
 }
 
+type ControlRequestConfig struct {
+	MaxInlineRequestBodyBytes  uint64 `json:"max_inline_request_body_bytes"`
+	MaxInlineResponseBodyBytes uint64 `json:"max_inline_response_body_bytes"`
+}
+
+type ControlTransportConfig struct {
+	MaxFrameDataBytes uint64 `json:"max_frame_data_bytes"`
+}
+
+type NATSConfig struct {
+	Servers             []string `json:"servers"`
+	UserCredentialsFile string   `json:"user_credentials_file"`
+	ReconnectAttempts   int      `json:"reconnect_attempts"`
+	ReconnectWaitMS     int      `json:"reconnect_wait_ms"`
+	PingIntervalMS      int      `json:"ping_interval_ms"`
+	MaxPingFailures     int      `json:"max_ping_failures"`
+	MaxPayloadBytes     *uint64  `json:"max_payload_bytes"`
+}
+
 type EgressConfig struct {
-	WorkerID string `json:"worker_id"`
+	WorkerID string     `json:"worker_id"`
+	NATS     NATSConfig `json:"nats"`
 }
 
 func LoadControl(path string) (ControlConfig, error) {
@@ -100,11 +123,40 @@ func (f File) validateVersion() error {
 	return nil
 }
 
-func (c ControlConfig) validate() error {
+func (c *ControlConfig) validate() error {
 	if err := c.Server.validate(); err != nil {
 		return err
 	}
+	c.applyDefaults()
 	return nil
+}
+
+func (c *ControlConfig) applyDefaults() {
+	if c.Request.MaxInlineRequestBodyBytes == 0 {
+		c.Request.MaxInlineRequestBodyBytes = 1_048_576
+	}
+	if c.Request.MaxInlineResponseBodyBytes == 0 {
+		c.Request.MaxInlineResponseBodyBytes = 1_048_576
+	}
+	if c.Transport.MaxFrameDataBytes == 0 {
+		c.Transport.MaxFrameDataBytes = 1_048_576
+	}
+	c.NATS.applyDefaults()
+}
+
+func (n *NATSConfig) applyDefaults() {
+	if n.ReconnectAttempts == 0 {
+		n.ReconnectAttempts = 10
+	}
+	if n.ReconnectWaitMS == 0 {
+		n.ReconnectWaitMS = 2000
+	}
+	if n.PingIntervalMS == 0 {
+		n.PingIntervalMS = 30000
+	}
+	if n.MaxPingFailures == 0 {
+		n.MaxPingFailures = 3
+	}
 }
 
 func (s ControlServerConfig) validate() error {
@@ -120,9 +172,10 @@ func (s ControlServerConfig) validate() error {
 	return nil
 }
 
-func (e EgressConfig) validate() error {
+func (e *EgressConfig) validate() error {
 	if e.WorkerID == "" {
 		return errors.New("worker_id is required")
 	}
+	e.NATS.applyDefaults()
 	return nil
 }

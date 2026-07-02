@@ -1,6 +1,6 @@
 # 03 - NATS Connection and Subjects
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -33,15 +33,15 @@ Add the P0 NATS connection layer, startup max-payload validation, and exact-sess
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Define subject-building helpers for registration, heartbeat, assignment, stream frames, and terminal frames.
-- [ ] Add validation for safe subject tokens.
-- [ ] Add startup validation for NATS max payload against configured frame/body limits.
-- [ ] Add tests for exact assignment subject, no pool queue dispatch, unsafe token rejection, and max payload validation.
-- [ ] Wire connection setup into Control and Egress without starting full request flow.
-- [ ] Run `go test ./internal/natsx`.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Read all required planning docs.
+- [x] Define subject-building helpers for registration, heartbeat, assignment, stream frames, and terminal frames.
+- [x] Add validation for safe subject tokens.
+- [x] Add startup validation for NATS max payload against configured frame/body limits.
+- [x] Add tests for exact assignment subject, no pool queue dispatch, unsafe token rejection, and max payload validation.
+- [x] Wire connection setup into Control and Egress without starting full request flow.
+- [x] Run `go test ./internal/natsx`.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 
