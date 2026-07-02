@@ -101,7 +101,8 @@ enter through Control. Control is the only public-facing runtime service: it own
 authentication, authorization, tenant isolation, routing policy, and coordination.
 
 Control is horizontally scalable and mostly stateless. Durable tenant configuration lives in Postgres, while operational
-telemetry lives in ClickHouse. Ephemeral state such as sticky sessions, rate limits, queues, worker/adapter availability,
+telemetry lives in ClickHouse. Ephemeral state such as sticky sessions, rate limits, queues, worker/adapter
+availability,
 and load snapshots lives in Redis. Only Control connects to Postgres, ClickHouse, and Redis; Egress workers and Provider
 Adapters communicate through NATS, plus configured large-body transport when needed.
 
@@ -172,7 +173,8 @@ overhead; otherwise they trust Control as the authorization boundary for Phase 1
 
 NATS is the default body path. For bodies that exceed configured message limits or deployment policy, Straw supports
 configurable large-body handling through object storage references or a direct streaming channel. Egress workers and
-Provider Adapters may connect to that configured body transport, but they must not connect to Postgres, ClickHouse, or Redis.
+Provider Adapters may connect to that configured body transport, but they must not connect to Postgres, ClickHouse, or
+Redis.
 
 Outbound request mutation is split by responsibility. Control resolves tenant policy, routing metadata, fingerprint
 profile selection, and header/cookie injection rules. The executing component, either Egress or Provider Adapter,
@@ -535,8 +537,10 @@ whichever comes first.
 
 Postgres stores durable worker identity, credential, and admin disable metadata. Redis stores ephemeral current
 registration, `session_id`, heartbeat, load, availability, draining, cooldown, and routing snapshots. ClickHouse stores
-worker audit metadata. Registration and admin state changes are durable audit events written to ClickHouse; high-frequency
-heartbeat and health transitions stay in Redis, logs, metrics, and traces. Local worker liveness/readiness HTTP endpoints
+worker audit metadata. Registration and admin state changes are durable audit events written to ClickHouse;
+high-frequency
+heartbeat and health transitions stay in Redis, logs, metrics, and traces. Local worker liveness/readiness HTTP
+endpoints
 may exist for deployment probes, but Control discovery and routing health depend on NATS registration and heartbeats.
 
 ## 10. NATS Protocol
@@ -1032,44 +1036,108 @@ and actionable internal operator audits.
 
 ## 15. State and Storage
 
-Straw enforces strict boundaries between durable configuration, ephemeral runtime state, high-volume operational telemetry, and stateless execution.
+Straw enforces strict boundaries between durable configuration, ephemeral runtime state, high-volume operational
+telemetry, and stateless execution.
 
 ### Postgres (Durable Configuration)
+
 Postgres acts as the absolute source of truth for low-volume, high-value Control plane data.
-* **Scope:** Tenants, API keys, worker credentials, routing rules, fingerprint profiles, upstream/vendor configurations, and injection policies.
+
+* **Scope:** Tenants, API keys, worker credentials, routing rules, fingerprint profiles, upstream/vendor configurations,
+  and injection policies.
 * **Access:** Exclusively read/written by Control.
-* **Integration:** Synced to ClickHouse via Change Data Capture (CDC) or ClickHouse Dictionaries to allow cross-system analytical queries (e.g., joining tenant config with request logs) without degrading OLTP performance.
+* **Integration:** Synced to ClickHouse via Change Data Capture (CDC) or ClickHouse Dictionaries to allow cross-system
+  analytical queries (e.g., joining tenant config with request logs) without degrading OLTP performance.
 
 ### ClickHouse (Operational Data & Analytics)
-ClickHouse handles all high-volume, append-heavy operational data, entirely isolating analytical workloads from the Control plane database.
+
+ClickHouse handles all high-volume, append-heavy operational data, entirely isolating analytical workloads from the
+Control plane database.
+
 * **Scope:** Request metadata, audit logs, timing metrics, and payload capture metadata.
 * **Lifecycle:** Data retention relies on ClickHouse native TTLs, dropping rows automatically without custom cron jobs.
 
 ### Redis (Ephemeral Runtime State)
+
 Redis operates as a shared, highly volatile coordination layer. It is not a source of truth.
-* **Scope:** Sticky session affinity, rate limit counters, backpressure state, worker availability snapshots, and the dynamic MITM certificate cache.
+
+* **Scope:** Sticky session affinity, rate limit counters, backpressure state, worker availability snapshots, and the
+  dynamic MITM certificate cache.
 * **Eviction Policy:** Configured strictly to `volatile-lru`. Every key must have an explicit TTL.
-* **Memory Boundary:** Enforces a hard `maxmemory` cap. If a tenant floods the MITM cert cache, Redis evicts the oldest keys to survive. Cache misses trigger regenerating the cert, fetching it from S3, or establishing a new routing session.
+* **Memory Boundary:** Enforces a hard `maxmemory` cap. If a tenant floods the MITM cert cache, Redis evicts the oldest
+  keys to survive. Cache misses trigger regenerating the cert, fetching it from S3, or establishing a new routing
+  session.
 
 ### S3-Compatible Storage (Blobs & Large Payloads)
+
 S3 handles all unbounded or oversized binary data that must bypass NATS or survive beyond the Redis cache.
-* **Scope:** Request/response bodies exceeding the configured NATS message limits (e.g., > 1 MiB) and durable, dynamically generated per-host MITM certificates.
-* **Lifecycle:** A strict 3-day retention window enforced entirely via native bucket lifecycle rules. Control and Egress write the data; the storage backend handles garbage collection automatically.
+
+* **Scope:** Request/response bodies exceeding the configured NATS message limits (e.g., > 1 MiB) and durable,
+  dynamically generated per-host MITM certificates.
+* **Lifecycle:** A strict 3-day retention window enforced entirely via native bucket lifecycle rules. Control and Egress
+  write the data; the storage backend handles garbage collection automatically.
 
 ### Control Instances (In-Memory State)
-Control instances remain mostly stateless but heavily cache durable state to guarantee sub-millisecond routing decisions.
+
+Control instances remain mostly stateless but heavily cache durable state to guarantee sub-millisecond routing
+decisions.
+
 * **Scope:** Evaluates traffic against a cached tenant route snapshot.
 * **Updates:** Configuration writes to Postgres trigger a Redis invalidation, prompting Control to reload the snapshot.
-* **Outage Behavior:** If Postgres and Redis experience a total outage, Control instances prioritize availability and continue routing traffic using their stale local memory snapshots.
+* **Outage Behavior:** If Postgres and Redis experience a total outage, Control instances prioritize availability and
+  continue routing traffic using their stale local memory snapshots.
 
 ### Egress Workers (Stateless Execution)
+
 Egress workers carry zero writable persistent local disk state.
+
 * **Scope:** Completely stateless binaries.
-* **Provisioning:** Configured entirely via CLI parameters, static files, and environment variables. Upstream proxies and specific network bindings are injected locally at startup, and workers fetch everything else from Control via NATS.
+* **Provisioning:** Configured entirely via CLI parameters, static files, and environment variables. Upstream proxies
+  and specific network bindings are injected locally at startup, and workers fetch everything else from Control via
+  NATS.
 
 ## 16. Authentication and Authorization
 
-Who can access what.
+### 16.1 Client Authentication
+
+* **Credential Type:** Static API keys managed as secure hashes within Postgres. Straw rejects dynamic token
+  lifecycles (JWT/OIDC) to minimize client-side operational overhead for automated headless scrapers.
+* **Ingress Mapping:** REST clients must authenticate via the `Authorization: Bearer <key>` header. Proxy clients (HTTP,
+  MITM, and raw CONNECT) must use the standard `Proxy-Authorization` header.
+* **Tenant Isolation:** Every API key is strictly bound to a concrete `(user_id, tenant_id)` pair at creation time.
+  Users spanning multiple tenants must utilize distinct API keys for each tenant context. Control resolves tenant
+  context implicitly from the validated token string; headers forcing external tenant declarations are prohibited.
+* **Caching and Revocation:** To maintain sub-millisecond Control-side routing paths, active key metadata is cached
+  in-memory across distributed Control nodes. Key revocations or user role changes trigger immediate Postgres writes, a
+  configuration version bump, and an event-driven invalidation broadcast via Redis pub/sub. Control nodes intercepting
+  the invalidation signal evict the cached credential immediately.
+
+### 16.2 Internal Executor Authentication
+
+* **Mechanism:** Long-lived Egress workers and Provider Adapters authenticate via pre-provisioned, cryptographically
+  signed tokens generated by the Admin API.
+* **Token Verification:** During the NATS handshake, the worker submits this token inside the
+  `RegisterRequest.signed_token` field. Control performs stateless, in-memory cryptographic verification of the
+  signature before querying Redis or Postgres. This boundary insulates the persistent metadata tier from connection
+  exhaustion during worker crash loops.
+* **Scope Validation:** Validated tokens must explicitly map to a recognized `tenant_id` and an existing `pool_scope`
+  defined in the Postgres configuration. If valid, Control registers the capability matrix and assigns a transient
+  runtime `session_id`.
+
+### 16.3 Role-Based Access Control (RBAC)
+
+* **Binding Profile:** Roles are attached directly to the `User` entity within a specific tenant context. Generated API
+  keys inherit the exact RBAC capabilities of the parent user.
+* **Predefined Baseline Roles:** Access controls are governed strictly by three immutable system roles. Custom or
+  granular per-key permission flags are deferred.
+* **Admin:** Retains complete control over the tenant perimeter. Authorized to manage tenants, user configurations, API
+  keys, worker credentials, resource quotas, and toggle global payload-capture policies.
+* **Operator:** Grants permission to modify operational routing logic. Authorized to configure routing rules,
+  upstream/vendor endpoints, browser fingerprint profiles, and HTTP header/cookie injection rules. Operators cannot
+  manage identities, alter credentials, or touch payload-capture configurations.
+* **Viewer:** Read-only access to operational telemetry. Authorized to audit active routing configurations, inspect
+  executor health matrices, and query ClickHouse operational datasets. Viewers are blocked from mutating system state or
+  executing request transport operations.
 
 ## 17. Rate Limits and Quotas
 
@@ -1083,8 +1151,10 @@ Canonical failure behavior.
 
 ClickHouse acts as the centralized engine for structured logs, metrics, tracing, and request metadata.
 
-Operational data is ingested continuously by Control into ClickHouse. To enable rich analytical queries and observability
-dashboards (e.g., filtering request metrics by tenant tier or routing rule), tenant configuration is synced from Postgres
+Operational data is ingested continuously by Control into ClickHouse. To enable rich analytical queries and
+observability
+dashboards (e.g., filtering request metrics by tenant tier or routing rule), tenant configuration is synced from
+Postgres
 to ClickHouse via CDC (Change Data Capture) or ClickHouse Dictionaries. This isolates heavy analytical reads from the
 transactional configuration database.
 
