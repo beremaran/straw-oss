@@ -790,7 +790,8 @@ Request and response bodies use the same body model:
 - Stripped outbound headers only; Straw routing/control headers are never sent
   to executors.
 - Routing metadata and selected route/executor metadata.
-- Computed deadline and `replayable_body`.
+- Computed deadline and `replayable_body`. Set to `true` strictly if the HTTP method is safe/idempotent (`GET`, `HEAD`,
+  `OPTIONS`, `PUT`, `DELETE`) or if the payload uses seekable S3 object storage.
 - Payload capture decision and size limits.
 - Executor-ready resolved fingerprint and header/cookie injection instructions.
 
@@ -940,7 +941,8 @@ supply pre-generated CA certificates and private keys via configuration. To faci
 provides offline convenience scripts for generating these assets.
 
 For clients to route traffic through the MITM proxy without TLS errors, they must trust this configured CA. Control
-exposes a dedicated, unauthenticated HTTP endpoint to distribute the public CA certificate, allowing automated
+Control exposes a dedicated HTTP endpoint to distribute the public CA certificate. This endpoint is strictly protected
+by standard API key authentication (`Authorization: Bearer <key>`) and requires Admin RBAC.
 provisioning for scrapers and local environments. Alternatively, clients can explicitly disable certificate verification
 on their end.
 
@@ -963,6 +965,10 @@ strategy:
 * **Ephemeral Caching:** Control caches active certificates in Redis. Redis manages the TTL for this cache, ensuring
   fast-path TLS handshakes for high-frequency target domains without incurring disk or network storage latency on every
   request.
+
+* **Request Coalescing:** To prevent cache miss thundering herds, Control uses a local `singleflight` group paired with
+  a Redis distributed lock. Concurrent requests for a missing SNI certificate block and wait for a single leader to
+  generate and populate the cache.
 
 **Upstream TLS Delegation**
 Control handles strictly inbound TLS. It never initiates the upstream TLS handshake to the target site. Once Control
@@ -1068,14 +1074,13 @@ Redis operates as a shared, highly volatile coordination layer. It is not a sour
   keys to survive. Cache misses trigger regenerating the cert, fetching it from S3, or establishing a new routing
   session.
 
-### S3-Compatible Storage (Blobs & Large Payloads)
+### Large-Body Transport (S3 & Direct Streaming)
 
-S3 handles all unbounded or oversized binary data that must bypass NATS or survive beyond the Redis cache.
+Handles all unbounded or oversized binary data that must bypass NATS.
 
-* **Scope:** Request/response bodies exceeding the configured NATS message limits (e.g., > 1 MiB) and durable,
-  dynamically generated per-host MITM certificates.
-* **Lifecycle:** A strict 3-day retention window enforced entirely via native bucket lifecycle rules. Control and Egress
-  write the data; the storage backend handles garbage collection automatically.
+* **Scope:** Request/response bodies exceeding configured message limits, configured to use either S3-compatible object
+  storage or direct streaming.
+* **Lifecycle:** S3 data uses a strict 3-day retention window enforced via bucket lifecycle rules.
 
 ### Control Instances (In-Memory State)
 
@@ -3210,9 +3215,9 @@ remain functional.
   sudden spike in concurrent TLS handshakes will heavily tax Control CPU.
 * **In-Memory Buffer Bloat:** Processing unencrypted HTTPS plaintext in memory means large payloads will spike RAM
   consumption. If buffer limits fail, Control instances risk Out-Of-Memory (OOM) crashes.
-* **Dynamic Certificate Thundering Herd:** The Redis MITM certificate cache uses `volatile-lru`. If the cache
-  evicts heavily during a traffic spike, Control will waste massive CPU cycles generating identical intermediate
-  certificates.
+* **Dynamic Certificate Thundering Herd:** The Redis MITM certificate cache uses `volatile-lru`. This is mitigated via
+  Request Coalescing (`singleflight` + Redis locks) to prevent concurrent cache misses from saturating Control CPU with
+  redundant generation tasks.
 
 ## 28. Future Work
 
