@@ -13,7 +13,7 @@ P0 includes:
 - one Control service,
 - one official Go Egress Worker,
 - externally synchronous REST request transport only,
-- API-key authentication,
+- generalized API-key authentication (platform-scoped and tenant-scoped via `scope_type`),
 - tenant-scoped API keys and worker credentials,
 - tenant-scoped routing rules,
 - exact-session Core NATS assignment,
@@ -22,7 +22,7 @@ P0 includes:
 - Control-buffered JSON response envelopes for REST,
 - basic worker registration, heartbeat, health, capacity, draining, disable state, duplicate-session handling, and
   cooldown,
-- basic rate limits,
+- basic rate limits with memory guardrails,
 - operational/admission-control quotas with explicit non-billing-grade accuracy limits,
 - destination deny rules with Control-side URL/host validation and Egress-side resolved-IP validation,
 - Control-resolved destination policy bundles sent to Egress per request,

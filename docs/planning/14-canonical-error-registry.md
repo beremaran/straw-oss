@@ -76,4 +76,67 @@ There is no separate `response_body_too_large` code. Use `body_too_large` with p
 - `DOWNLOAD_TIMEOUT`,
 - `TOTAL_DEADLINE_TIMEOUT`.
 
-Timeouts are request-scoped and capped by tenant/deployment configuration.
+Timeouts are request-scoped and capped by tenant/deployment configuration. See Section 9 for the timeout hierarchy.
+
+### ErrorResponse JSON Format
+
+Public ErrorResponse is returned as JSON with these rules:
+
+- `category`, `code`, and `timeout_type` are **strings** using lower-snake-case (e.g., `"client"`, `"auth_failure"`, `"total_deadline_timeout"`).
+- `retry_after_ms` is **omitted** when zero or not computable.
+- `details` values are always **strings**.
+- `request_id` is always present, even for malformed requests.
+- `upstream_status` is omitted when not applicable.
+- `worker_id` and `session_id` are never exposed.
+
+Example — auth failure:
+
+```json
+{
+  "category": "client",
+  "code": "auth_failure",
+  "message": "Invalid API key",
+  "retryable": false,
+  "request_id": "req_abc123"
+}
+```
+
+Example — timeout:
+
+```json
+{
+  "category": "transport",
+  "code": "timeout_exceeded",
+  "message": "Request deadline exceeded",
+  "retryable": true,
+  "request_id": "req_abc123",
+  "timeout_type": "total_deadline_timeout"
+}
+```
+
+Example — upstream DNS failure:
+
+```json
+{
+  "category": "egress",
+  "code": "upstream_dns_failure",
+  "message": "DNS resolution failed for target host",
+  "retryable": true,
+  "request_id": "req_abc123",
+  "details": {
+    "target_host": "example.invalid"
+  }
+}
+```
+
+Example — control internal error:
+
+```json
+{
+  "category": "control",
+  "code": "control_internal_error",
+  "message": "Unexpected internal failure",
+  "retryable": false,
+  "request_id": "req_abc123"
+}
+```

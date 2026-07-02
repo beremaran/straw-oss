@@ -2,6 +2,92 @@
 
 All config files include top-level `config_version`.
 
+### Canonical Config Key Paths
+
+The following paths are the canonical config keys used throughout the system. All references in other sections must use
+these full paths.
+
+| Config Key                                              | Default    | Section(s) Referenced              |
+|---------------------------------------------------------|------------|------------------------------------|
+| `control.server.host`                                   | `0.0.0.0`  | 24                                 |
+| `control.server.api_port`                               | `8080`     | 24                                 |
+| `control.server.metrics_port`                           | `9090`     | 24                                 |
+| `control.server.read_timeout_ms`                        | `30000`    | 24                                 |
+| `control.server.write_timeout_ms`                       | `30000`    | 24                                 |
+| `control.request.default_timeout_ms`                    | `60000`    | 24                                 |
+| `control.request.max_timeout_ms`                        | `300000`   | 24                                 |
+| `control.request.max_inline_request_body_bytes`         | `1048576`  | 24                                 |
+| `control.request.max_inline_response_body_bytes`        | `1048576`  | 24                                 |
+| `control.worker.availability_timeout_ms`                | `15000`    | 11                                 |
+| `control.worker.dead_timeout_ms`                        | `30000`    | 11                                 |
+| `control.worker.duplicate_session_grace_ms`             | `10000`    | 11                                 |
+| `control.worker.assignment_ack_timeout_ms`              | `2000`     | 11                                 |
+| `control.worker.cooldown_failure_count`                 | `3`        | 11                                 |
+| `control.worker.cooldown_window_ms`                     | `60000`    | 11                                 |
+| `control.worker.cooldown_duration_ms`                   | `30000`    | 11                                 |
+| `control.transport.max_frame_data_bytes`                | `1048576`  | 12                                 |
+| `control.transport.initial_upload_credit_bytes`         | `8388608`  | 12                                 |
+| `control.transport.initial_download_credit_bytes`       | `8388608`  | 12                                 |
+| `control.transport.max_inflight_upload_bytes`           | `16777216` | 12                                 |
+| `control.transport.max_inflight_download_bytes`         | `16777216` | 12                                 |
+| `control.transport.frame_idle_timeout_ms`               | `15000`    | 12                                 |
+| `control.nats.servers`                                  | —          | 24                                 |
+| `control.nats.user_credentials_file`                    | —          | 24                                 |
+| `control.nats.reconnect_attempts`                       | `10`       | 24                                 |
+| `control.nats.reconnect_wait_ms`                        | `2000`     | 24                                 |
+| `control.nats.ping_interval_ms`                         | `30000`    | 24                                 |
+| `control.nats.max_ping_failures`                        | `3`        | 24                                 |
+| `control.nats.max_payload_bytes`                        | `null`     | 24 (discovered from server if null)|
+| `control.database.postgres.dsn_env`                     | —          | 24                                 |
+| `control.database.postgres.max_open_conns`              | `20`       | 24                                 |
+| `control.database.postgres.max_idle_conns`              | `5`        | 24                                 |
+| `control.database.postgres.conn_max_lifetime_minutes`   | `30`       | 24                                 |
+| `control.database.redis.url_env`                        | —          | 24                                 |
+| `control.database.redis.max_open_conns`                 | `10`       | 24                                 |
+| `control.database.redis.conn_max_lifetime_minutes`      | `10`       | 24                                 |
+| `control.database.clickhouse.url`                       | —          | 24                                 |
+| `control.database.clickhouse.database`                  | `straw`    | 24                                 |
+| `control.database.clickhouse.username`                  | `straw`    | 24                                 |
+| `control.database.clickhouse.password_env`              | —          | 24                                 |
+| `control.database.clickhouse.max_conns`                 | `10`       | 24                                 |
+| `control.database.clickhouse.async_write`               | `true`     | 24                                 |
+| `control.database.clickhouse.write_batch_size`          | `1000`     | 24                                 |
+| `control.database.clickhouse.write_flush_interval_ms`   | `1000`     | 24                                 |
+| `control.database.clickhouse.write_queue_max_entries`   | `100000`   | 24                                 |
+| `control.observability.logging.level`                   | `info`     | 24                                 |
+| `control.observability.logging.format`                  | `json`     | 24                                 |
+| `control.observability.logging.output`                  | `["stdout"]`| 24                                |
+| `control.observability.metrics.enabled`                 | `true`     | 24                                 |
+| `control.observability.metrics.path`                    | `/metrics` | 24                                 |
+| `control.observability.metrics.host`                    | `0.0.0.0`  | 24                                 |
+| `control.observability.metrics.port`                    | `9090`     | 24                                 |
+| `control.observability.tracing.enabled`                 | `false`    | 24                                 |
+| `egress.worker_id`                                      | —          | 24                                 |
+| `egress.nats.servers`                                   | —          | 24                                 |
+| `egress.nats.user_credentials_file`                     | —          | 24                                 |
+| `egress.nats.reconnect_attempts`                        | `10`       | 24                                 |
+| `egress.nats.reconnect_wait_ms`                         | `2000`     | 24                                 |
+| `egress.nats.ping_interval_ms`                          | `30000`    | 24                                 |
+| `egress.nats.max_ping_failures`                         | `3`        | 24                                 |
+| `egress.credential.credential_id_env`                   | —          | 24                                 |
+| `egress.credential.private_key_env`                     | —          | 24                                 |
+| `egress.capabilities.max_concurrency`                   | —          | 24                                 |
+| `egress.heartbeat.interval_ms`                          | `5000`     | 11                                 |
+| `egress.outbound_tls.strict_verify`                     | `true`     | 24                                 |
+| `egress.outbound_tls.ca_bundle_path`                    | —          | 24                                 |
+| `egress.outbound_proxy.enabled`                         | `false`    | 24                                 |
+| `egress.outbound_proxy.type`                            | `http`     | 24                                 |
+| `egress.outbound_proxy.host`                            | —          | 24                                 |
+| `egress.outbound_proxy.port`                            | —          | 24                                 |
+| `egress.outbound_proxy.username_env`                    | —          | 24                                 |
+| `egress.outbound_proxy.password_env`                    | —          | 24                                 |
+| `egress.dns.mode`                                      | `system`   | 24                                 |
+| `egress.dns.custom_servers`                             | `[]`       | 24                                 |
+| `egress.connect_timeout_ms`                              | `10000`    | 16, 24                             |
+| `egress.response_header_timeout_ms`                      | `30000`    | 16, 24                             |
+| `egress.upload_idle_timeout_ms`                          | `30000`    | 16, 24                             |
+| `egress.download_idle_timeout_ms`                        | `30000`    | 16, 24                             |
+
 ### Control Config Example
 
 ```yaml
@@ -44,6 +130,7 @@ control:
     reconnect_wait_ms: 2000
     ping_interval_ms: 30000
     max_ping_failures: 3
+    max_payload_bytes: null
 
   database:
     postgres:
@@ -66,21 +153,6 @@ control:
       write_flush_interval_ms: 1000
       write_queue_max_entries: 100000
 
-  body_transport:
-    large_body_threshold_bytes: 1048576
-    object_storage:
-      enabled: false
-      endpoint: "https://s3.amazonaws.com"
-      bucket: "straw-bodies"
-      region: "us-east-1"
-      access_key_env: "STRAW_S3_ACCESS_KEY"
-      secret_key_env: "STRAW_S3_SECRET_KEY"
-      body_retention_days: 1
-    direct_stream:
-      enabled: false
-      endpoint: "http://body-stream:9090"
-      stream_timeout_ms: 300000
-
   observability:
     logging:
       level: "info"
@@ -97,6 +169,22 @@ control:
       endpoint: "http://jaeger:14268/api/traces"
       sampling_rate: 0.1
       propagate_trace_context: true
+
+# P2-only body_transport. Ignored or rejected in P0 unless feature flag enabled.
+# body_transport:
+#   large_body_threshold_bytes: 1048576
+#   object_storage:
+#     enabled: false
+#     endpoint: "https://s3.amazonaws.com"
+#     bucket: "straw-bodies"
+#     region: "us-east-1"
+#     access_key_env: "STRAW_S3_ACCESS_KEY"
+#     secret_key_env: "STRAW_S3_SECRET_KEY"
+#     body_retention_days: 1
+#   direct_stream:
+#     enabled: false
+#     endpoint: "http://body-stream:9090"
+#     stream_timeout_ms: 300000
 ```
 
 ### Egress Config Example
@@ -134,7 +222,7 @@ egress:
     strict_verify: true
     ca_bundle_path: "/etc/straw/tls/ca-bundle.crt"
 
-  upstream_proxy:
+  outbound_proxy:
     enabled: false
     type: "http"
     host: "proxy.example.com"
@@ -145,6 +233,11 @@ egress:
   dns:
     mode: "system"
     custom_servers: [ ]
+
+  connect_timeout_ms: 10000
+  response_header_timeout_ms: 30000
+  upload_idle_timeout_ms: 30000
+  download_idle_timeout_ms: 30000
 
   observability:
     logging:

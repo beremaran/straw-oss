@@ -12,19 +12,21 @@
 8. Control applies destination deny rules at the URL/host level.
 9. Control captures an immutable tenant route/config snapshot.
 10. Control selects a route and exact executor session.
-11. Control sends `AssignRequest` to the exact executor assignment subject.
-12. Executor replies with `AssignAck`.
-13. After accept, Control and Executor subscribe to request-scoped `c2e` and `e2c` subjects.
-14. Control sends `RequestStart` over the request-scoped `c2e` subject.
-15. Control streams request body frames or sends `BodyRef` according to transport mode. P0 supports only NATS
+11. Control subscribes to the request-scoped `e2c` subject and flushes the subscription.
+12. Control sends `AssignRequest` to the exact executor assignment subject.
+13. Executor validates and reserves capacity.
+14. Executor subscribes to the request-scoped `c2e` subject and flushes the subscription.
+15. Executor replies with `AssignAck`.
+16. After `AssignAck ACCEPTED`, Control sends `RequestStart` over the request-scoped `c2e` subject.
+17. Control streams request body frames or sends `BodyRef` according to transport mode. P0 supports only NATS
     `DataFrame` bodies derived from inline REST bodies.
-16. Executor validates destination policy after DNS resolution and immediately before connect.
-17. Executor sends `OutboundStartFrame` before DNS/connect or before delegating to an upstream proxy.
-18. Executor performs outbound request.
-19. Executor sends `ResponseStart`, response `DataFrame`s, optional `TrailersFrame`, and `EndFrame`, or sends
+18. Executor validates destination policy after DNS resolution and immediately before connect.
+19. Executor sends `OutboundStartFrame` before DNS/connect or before delegating to an upstream proxy.
+20. Executor performs outbound request.
+21. Executor sends `ResponseStart`, response `DataFrame`s, optional `TrailersFrame`, and `EndFrame`, or sends
     `ErrorFrame`.
-20. Control maps executor facts/errors into a public response or public ErrorResponse.
-21. Control writes final metadata asynchronously to ClickHouse using P0 metadata redaction rules.
+22. Control maps executor facts/errors into a public response or public ErrorResponse.
+23. Control writes final metadata asynchronously to ClickHouse using P0 metadata redaction rules.
 
 ### Cancellation
 
@@ -48,8 +50,7 @@ frame:
 - `CancelledFrame`.
 
 If the worker process dies, Control loses the request-scoped NATS path, NATS becomes unavailable, or the deadline
-expires
-before a terminal frame arrives, Control synthesizes the terminal request outcome as one of:
+expires before a terminal frame arrives, Control synthesizes the terminal request outcome as one of:
 
 - `worker_disconnected`,
 - `transport_unavailable`,
@@ -75,3 +76,25 @@ pre-connect fallback after `RequestStart`, but P0 does not depend on that optimi
 
 If `replayable=true`, fallback after `RequestStart` is still forbidden once Control has sent a client-visible successful
 response envelope or begun a streaming response in a future ingress mode.
+
+### Timeout Hierarchy
+
+Timeouts are evaluated in this priority order. When multiple clocks expire simultaneously, the listed priority wins:
+
+1. **Total request deadline** is authoritative. All other timeouts are bounded by remaining total deadline.
+2. **Assignment ack timeout** (`control.worker.assignment_ack_timeout_ms`) bounded by remaining total deadline.
+3. **Connect timeout** (`egress.connect_timeout_ms`) bounded by remaining total deadline.
+4. **Response header timeout** (`egress.response_header_timeout_ms`) bounded by remaining total deadline.
+5. **Upload idle timeout** (`egress.upload_idle_timeout_ms`) bounded by remaining total deadline.
+6. **Download idle timeout** (`egress.download_idle_timeout_ms`) bounded by remaining total deadline.
+7. **Frame idle timeout** (`control.transport.frame_idle_timeout_ms`) bounded by remaining total deadline.
+
+If the total deadline and a phase timeout expire simultaneously, the total deadline wins.
+
+### Quota Accounting: Request vs Attempt Semantics
+
+- **Request-count quota** counts one admitted external client request, not each internal fallback attempt.
+- **Bandwidth quota** counts bytes actually transferred per attempt. If a fallback causes two partial upstream attempts,
+  both attempts' transferred bytes count toward the bandwidth quota.
+- Internal fallback attempts are tracked separately in ClickHouse (`attempt`, `selected_executor`, `error_code`) but do
+  not increment the external request-count quota.

@@ -100,3 +100,8 @@ ErrorCode remains `route_no_match` in both cases.
 If a rule matches but no eligible executor exists after permitted fallback, return `route_unavailable` with HTTP 503.
 
 If all otherwise-eligible executors reject for capacity, return `executor_capacity_exhausted` with HTTP 503.
+
+### Quota Accounting Reference
+
+Request-count quota does not increment per-fallback attempt. See Section 9 (Canonical Request Lifecycle) for the timeout
+hierarchy and Section 20 (Rate Limits and Quotas) for quota accounting semantics.

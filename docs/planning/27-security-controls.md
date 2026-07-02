@@ -1,13 +1,20 @@
 ## 27. Security Controls
 
-### API Key Storage
+### API Key Storage and Generation
 
 API keys are stored as secure hashes, not plaintext. A visible key prefix may be stored for identification. Revocation
 updates Postgres, increments tenant config version, and publishes invalidation.
 
-Use an appropriate password/key hashing strategy for API tokens. Plain SHA-256 is acceptable only if keys are
-high-entropy random tokens and never user-chosen. Prefer HMAC-SHA-256 with a server-side pepper or Argon2id if keys are
-shorter or user-derived.
+API key generation requirements:
+
+- API keys must contain at least 128 bits of entropy; 192 or 256 bits preferred.
+- Lookup uses visible prefix to find candidates, then constant-time hash comparison.
+- Prefix collisions must be handled by checking all candidates with the same prefix.
+- Server-side pepper is supported and loaded from secret manager or environment variable.
+- Key material is shown only once at creation time.
+
+Use HMAC-SHA-256 with a server-side pepper or Argon2id for key hashing. Plain SHA-256 is acceptable only if keys are
+high-entropy random tokens and never user-chosen.
 
 ### Worker Credential Signing
 
@@ -25,7 +32,12 @@ The worker signs a registration token containing:
 
 Control verifies signature using stored public key and rejects stale timestamps/nonces according to policy.
 
-### Destination Deny Normalization
+**Registration nonce replay protection**: Nonces are stored in Redis with TTL, scoped by `credential_id`. If Redis is
+unavailable, registration fails closed unless deployment explicitly allows fail-open worker registration. Fail-open
+worker registration is not a recommended default. Clock skew tolerance is configurable; default is 60 seconds. Nonces
+expire after their TTL and are never reused.
+
+### Destination Deny Normalization and CIDR Defaults
 
 Deny-rule evaluation must normalize:
 
@@ -40,8 +52,65 @@ Deny-rule evaluation must normalize:
 - SNI vs Host mismatches,
 - CONNECT target host/port.
 
+**Default denied CIDR set (IPv4)**:
+
+- `0.0.0.0/8` (current network)
+- `10.0.0.0/8` (RFC1918 private)
+- `100.64.0.0/10` (CGNAT)
+- `127.0.0.0/8` (loopback)
+- `169.254.0.0/16` (link-local)
+- `172.16.0.0/12` (RFC1918 private)
+- `192.0.0.0/24` (IETF protocol)
+- `192.0.2.0/24` (documentation TEST-NET-1)
+- `192.88.99.0/24` (6to4 relay)
+- `192.168.0.0/16` (RFC1918 private)
+- `198.18.0.0/15` (benchmarking)
+- `198.51.100.0/24` (documentation TEST-NET-2)
+- `203.0.113.0/24` (documentation TEST-NET-3)
+- `224.0.0.0/4` (multicast)
+- `240.0.0.0/4` (reserved)
+- `255.255.255.255/32` (broadcast)
+
+**Default denied CIDR set (IPv6)**:
+
+- `::1/128` (loopback)
+- `::/128` (unspecified)
+- `::ffff:0:0/96` (IPv4-mapped)
+- `64:ff9b::/96` (IANA IPv4-IPv6 translation prefix)
+- `100::/64` (IANA discard-only prefix)
+- `fc00::/7` (ULA)
+- `fe80::/10` (link-local)
+- `ff00::/8` (multicast)
+
+**Cloud metadata IPs** (denied by default):
+
+- `169.254.169.254` (AWS)
+- `169.254.169.253` (AWS secondary)
+- `169.254.170.2` (AWS credential endpoint)
+- `100.100.100.200` (Alibaba Cloud)
+- `100.100.100.201` (Alibaba Cloud metadata)
+
 Private/link-local/metadata IP blocks are denied by default unless a tenant admin explicitly allows them for a tenant or
 deployment.
+
+### SSRF Enforcement by Resolution Mode
+
+Egress enforces destination policy based on the `DestinationResolutionMode` from `RequestStart`:
+
+**Direct local resolution** (`DESTINATION_RESOLUTION_DIRECT_LOCAL`):
+- Egress resolves the hostname, validates all resolved IPs against the deny list.
+- Egress connects to the exact validated IP. The resolver, validator, and dialer are one unit.
+- No second resolution is allowed by the HTTP/TLS library.
+
+**Upstream proxy remote resolution** (`DESTINATION_RESOLUTION_UPSTREAM_PROXY_REMOTE`):
+- Egress validates the proxy address against deny rules.
+- Egress cannot prove the proxy's resolved-IP policy.
+- Allowed only if the deployment trusts the proxy for equivalent SSRF enforcement.
+- If not trusted, the request is rejected at Control before dispatch.
+
+**Provider adapter resolution** (`DESTINATION_RESOLUTION_PROVIDER_ADAPTER`):
+- The adapter must enforce equivalent destination policy.
+- The adapter reports constrained facts back to Control.
 
 ### Metadata and Log Redaction
 
@@ -53,6 +122,7 @@ P0 metadata redaction is mandatory even though payload capture is not in P0.
 - Worker IDs and session IDs are internal-only and must not appear in public ErrorResponse objects.
 - NATS subjects, credentials, signed URLs, private keys, and upstream proxy credentials are never written to logs except
   as redacted placeholders.
+- API key secrets never appear in logs, audit events, ClickHouse records, or ErrorResponse details.
 
 ### Header Stripping
 
@@ -62,6 +132,25 @@ These are never forwarded unless explicitly documented otherwise:
 - `X-Straw-*`,
 - hop-by-hop headers invalid for the outbound protocol,
 - internal trace headers unless injection policy allows propagation.
+
+### Header Injection Safety Rules
+
+P0 injection operations are validated before being sent to Egress:
+
+| Header              | Injection Rule                                                   |
+|---------------------|------------------------------------------------------------------|
+| `Host`              | Deny, unless explicitly supported by deployment config           |
+| `Content-Length`    | Deny (computed by Egress)                                        |
+| `Transfer-Encoding` | Deny                                                             |
+| `Connection`        | Deny                                                             |
+| `Proxy-Authorization` | Deny                                                           |
+| `X-Straw-*`         | Deny                                                             |
+| `Authorization`     | Allow only if tenant_admin-created policy; audit-redacted         |
+| `Cookie`            | Allow only if tenant_admin-created policy; audit-redacted         |
+
+All header name matching is case-insensitive. Duplicate `set` operations for the same header are rejected. `append` may repeat a header name. Maximum
+injected header bytes is bounded by `control.transport.max_frame_data_bytes`. Injected header values must not contain bare CR
+or LF characters.
 
 ### NATS Subject Tokens
 

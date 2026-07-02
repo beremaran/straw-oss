@@ -21,18 +21,40 @@ must not rely on cross-request upstream connection reuse for correctness or perf
 If the outbound TLS stack uses CGO/FFI, the worker isolates it from the NATS message loop using bounded worker pools and
 deadline-aware execution. The NATS receiver must remain responsive under high outbound TLS load.
 
-### DNS and Deny Enforcement
+### DNS Validation and Dial Target Invariant
 
 Egress validates destination policy immediately before connect using the resolved IP set and the `DestinationPolicy`
 bundle included in `RequestStart`.
 
+**Dial target invariant (direct execution)**: The resolver, destination-policy validator, and dialer are one unit.
+Egress must connect **only** to an IP address that passed policy validation for the current request. Egress must not
+validate one DNS result and then allow the HTTP/TLS library to perform an independent second resolution.
+
+For HTTPS, the dial target can be the validated IP, while SNI and certificate verification remain bound to the original
+hostname. The original `Host` header, SNI host, and certificate verification must all use the original request hostname.
+
+**Upstream proxy mode**: When an upstream proxy is configured, Egress cannot prove the resolved-IP policy because the
+proxy performs DNS resolution and connection establishment. In this mode:
+
+- The destination policy mode is `upstream_proxy_remote_resolution`.
+- Egress validates the proxy address itself against destination deny rules.
+- The proxy is trusted to enforce equivalent destination policy per deployment configuration.
+- If the deployment does not trust the proxy for SSRF enforcement, requests using this mode are rejected with
+  `destination_denied`.
+
+**Provider adapter mode**: The adapter must enforce equivalent destination policy and report constrained facts back to
+Control.
+
 Egress must block unless explicitly allowed by policy:
 
 - private RFC1918 ranges,
-- loopback,
-- link-local,
-- multicast,
-- metadata service IPs such as cloud instance metadata addresses,
+- loopback (`127.0.0.0/8`, `::1/128`),
+- link-local (`169.254.0.0/16`, `fe80::/10`),
+- multicast (`224.0.0.0/4`, `ff00::/8`),
+- metadata service IPs (`169.254.169.254`, `169.254.169.253`, `100.100.100.200`, and cloud provider
+  metadata ranges),
+- documentation ranges (`0.0.0.0/8`, `192.0.2.0/24`, `198.51.100.0/24`, `203.0.113.0/24`, `198.18.0.0/15`),
+- reserved IPv6 (`fc00::/7`, `fe80::/10`, `ff00::/8`, `::ffff:0:0/96` for IPv4-mapped),
 - denied CIDRs,
 - denied resolved CNAME targets,
 - redirect destinations that violate policy,
