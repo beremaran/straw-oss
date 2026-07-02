@@ -1,4 +1,0 @@
-interface:
-  display_name: "Straw Task Runner"
-  short_description: "Complete one Straw P0 task safely"
-  default_prompt: "Use $straw-task-runner to complete the next unblocked Straw P0 task."
