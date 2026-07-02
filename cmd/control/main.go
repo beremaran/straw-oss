@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -36,14 +37,55 @@ func main() {
 		os.Exit(1)
 	}
 
-	handler := control.NewRequestHandler(
+	// P0 stores are process-local; a Postgres-backed implementation is
+	// future work once a database driver dependency is introduced for
+	// Control (see docs/agents/handoffs/07-auth-rbac-api-keys.md).
+	apiKeyStore := control.NewInMemoryAPIKeyStore()
+	pepper := []byte(os.Getenv("STRAW_API_KEY_PEPPER"))
+
+	if _, created, err := control.BootstrapFromEnv(context.Background(), apiKeyStore, os.Getenv(control.BootstrapSystemAdminEnvVar), pepper); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	} else if created {
+		log.Printf("control: bootstrapped first platform system_admin API key from %s", control.BootstrapSystemAdminEnvVar)
+	}
+
+	authenticator := control.NewAuthenticator(apiKeyStore, pepper)
+	snapshotStore := control.NewInMemorySnapshotStore()
+	configCache := control.NewConfigCache(snapshotStore, nil)
+
+	adminHandlers := &control.AdminHandlers{
+		Authenticator: authenticator,
+		APIKeys:       apiKeyStore,
+		WorkerCreds:   control.NewInMemoryWorkerCredentialStore(),
+		Tenants:       control.NewInMemoryTenantStore(),
+		Quotas:        control.NewInMemoryQuotaStore(),
+		Audit:         control.NewInMemoryAuditStore(),
+		ConfigCache:   configCache,
+		Pepper:        pepper,
+	}
+
+	requestHandler := control.NewRequestHandler(
 		controlConfig.Request.MaxInlineRequestBodyBytes,
 		controlConfig.Request.MaxInlineResponseBodyBytes,
 		controlConfig.Request.MaxTimeoutMs,
+		authenticator,
 	)
 
 	mux := http.NewServeMux()
-	mux.Handle("POST /api/v1/requests", handler)
+	mux.Handle("POST /api/v1/requests", requestHandler)
+	mux.HandleFunc("POST /tenants", adminHandlers.CreateTenant)
+	mux.HandleFunc("POST /platform-api-keys", adminHandlers.CreatePlatformAPIKey)
+	mux.HandleFunc("GET /platform-api-keys", adminHandlers.ListPlatformAPIKeys)
+	mux.HandleFunc("POST /platform-api-keys/{id}/revoke", adminHandlers.RevokePlatformAPIKey)
+	mux.HandleFunc("POST /api-keys", adminHandlers.CreateTenantAPIKey)
+	mux.HandleFunc("GET /api-keys", adminHandlers.ListTenantAPIKeys)
+	mux.HandleFunc("POST /api-keys/{id}/revoke", adminHandlers.RevokeTenantAPIKey)
+	mux.HandleFunc("POST /worker-credentials", adminHandlers.CreateWorkerCredential)
+	mux.HandleFunc("GET /worker-credentials", adminHandlers.ListWorkerCredentials)
+	mux.HandleFunc("POST /worker-credentials/{id}/revoke", adminHandlers.RevokeWorkerCredential)
+	mux.HandleFunc("GET /quotas", adminHandlers.GetQuotas)
+	mux.HandleFunc("PUT /tenants/{id}/quotas", adminHandlers.PutTenantQuotas)
 
 	addr := fmt.Sprintf("%s:%d", controlConfig.Server.Host, controlConfig.Server.APIPort)
 	log.Printf("control: listening on %s", addr)

@@ -15,14 +15,20 @@ type RequestHandler struct {
 	maxRequestBodyBytes  uint64
 	maxResponseBodyBytes uint64
 	maxTimeoutMs         uint64
+	authenticator        *Authenticator
 }
 
-// NewRequestHandler creates a handler with the given config limits.
-func NewRequestHandler(maxRequestBodyBytes, maxResponseBodyBytes, maxTimeoutMs uint64) *RequestHandler {
+// NewRequestHandler creates a handler with the given config limits. auth
+// authenticates every request; a nil authenticator is rejected by
+// MustNewRequestHandler-style callers should not happen in production, but
+// ServeHTTP treats a nil authenticator as "always deny" rather than
+// "always allow" to fail closed.
+func NewRequestHandler(maxRequestBodyBytes, maxResponseBodyBytes, maxTimeoutMs uint64, auth *Authenticator) *RequestHandler {
 	return &RequestHandler{
 		maxRequestBodyBytes:  maxRequestBodyBytes,
 		maxResponseBodyBytes: maxResponseBodyBytes,
 		maxTimeoutMs:         maxTimeoutMs,
+		authenticator:        auth,
 	}
 }
 
@@ -40,6 +46,17 @@ func (h *RequestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	requestID := generateRequestID()
+
+	identity, err := h.authenticateAndAuthorize(r)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrInsufficientPermissions):
+			WriteError(w, http.StatusForbidden, ErrorResponseFromCode(InsufficientPermissions, requestID, nil))
+		default:
+			WriteError(w, http.StatusUnauthorized, ErrorResponseFromCode(AuthFailure, requestID, nil))
+		}
+		return
+	}
 
 	body, err := readRequestBody(r)
 	if err != nil {
@@ -61,8 +78,6 @@ func (h *RequestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: authenticate API key, derive tenant_id (task 07)
-	// TODO: authorize data-plane execution
 	// TODO: rate limit and quota admission (task 13)
 	// TODO: deny rules check
 	// TODO: routing evaluation (task 09)
@@ -70,6 +85,7 @@ func (h *RequestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// TODO: egress outbound execution (task 11)
 
 	_ = validated // validated is used by later tasks; stub for now.
+	_ = identity  // tenant_id/role feed routing and quotas in later tasks.
 
 	response := SuccessResponse{
 		RequestID: requestID,
@@ -90,6 +106,25 @@ func (h *RequestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(response)
+}
+
+// authenticateAndAuthorize resolves the caller's Identity and enforces the
+// data-plane execution rule from docs/planning/06 and
+// docs/planning/07-public-api-surface.md: platform-scoped keys can never
+// execute POST /api/v1/requests, and only requester/tenant_admin
+// tenant-scoped roles may (see rbac.go for the P0 operator default).
+func (h *RequestHandler) authenticateAndAuthorize(r *http.Request) (Identity, error) {
+	if h.authenticator == nil {
+		return Identity{}, ErrAuthFailure
+	}
+	identity, err := h.authenticator.Authenticate(r.Context(), r.Header.Get("Authorization"))
+	if err != nil {
+		return Identity{}, err
+	}
+	if !CanExecuteDataPlane(identity) {
+		return Identity{}, ErrInsufficientPermissions
+	}
+	return identity, nil
 }
 
 func readRequestBody(r *http.Request) ([]byte, error) {
