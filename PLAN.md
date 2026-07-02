@@ -15,6 +15,7 @@ reliability while still allowing raw CONNECT tunnels when needed.
 
 Straw is not an anonymity tool and not a browser automation platform. Its job is to pass requests through the configured
 route to the desired egress endpoint.
+
 ## 2. Goals
 
 Concrete capabilities the system must provide:
@@ -1175,18 +1176,19 @@ Canonical failure behavior, error taxonomy, and response semantics.
 
 ### 18.1 Error Envelope
 
-All error responses — across REST API, HTTP forward proxy, CONNECT tunnel, and MITM proxy — use a single unified `ErrorResponse` message defined in the protobuf contract.
+All error responses — across REST API, HTTP forward proxy, CONNECT tunnel, and MITM proxy — use a single unified
+`ErrorResponse` message defined in the protobuf contract.
 
 ```protobuf
 message ErrorResponse {
-  ErrorCategory category    = 1;   // Which category the error belongs to
-  ErrorCode code            = 2;   // Specific error code within the category
-  string message            = 3;   // Human-readable description
-  bool retryable            = 4;   // Whether the SDK/client should retry
-  uint64 retry_after_ms     = 5;   // Suggested wait before retry (0 if N/A)
-  string request_id         = 6;   // Correlation ID for tracing
-  uint32 upstream_status    = 7;   // Origin HTTP status (only if egress_involved)
-  TimeoutType timeout_type  = 8;   // Which layer timed out (only if timeout error)
+  ErrorCategory category = 1;   // Which category the error belongs to
+  ErrorCode code = 2;   // Specific error code within the category
+  string message = 3;   // Human-readable description
+  bool retryable = 4;   // Whether the SDK/client should retry
+  uint64 retry_after_ms = 5;   // Suggested wait before retry (0 if N/A)
+  string request_id = 6;   // Correlation ID for tracing
+  uint32 upstream_status = 7;   // Origin HTTP status (only if egress_involved)
+  TimeoutType timeout_type = 8;   // Which layer timed out (only if timeout error)
 }
 ```
 
@@ -1198,15 +1200,16 @@ message ErrorResponse {
 
 Errors are grouped into five categories, each with its own protobuf `ErrorCategory` enum value:
 
-| Category | Scope | Description |
-|---|---|---|
-| `CLIENT` | `control_local` | Errors originating in Control before any worker involvement: auth, permissions, rate limits, quotas, request validation, deny rules. |
-| `ROUTING` | `control_local` | Errors where Control cannot find a valid path: no workers, no matching route, sticky session failure. |
-| `TRANSPORT` | `egress_involved` | Errors from the Control↔Egress transport layer: worker timeout, worker disconnect, NATS failure. |
-| `EGRESS` | `egress_involved` | Errors from the outbound leg: origin HTTP errors, TLS failure, connection refused, DNS failure, body too large. |
-| `STREAMING` | `egress_involved` | Errors that occur mid-stream during large upload or download. |
+| Category    | Scope             | Description                                                                                                                          |
+|-------------|-------------------|--------------------------------------------------------------------------------------------------------------------------------------|
+| `CLIENT`    | `control_local`   | Errors originating in Control before any worker involvement: auth, permissions, rate limits, quotas, request validation, deny rules. |
+| `ROUTING`   | `control_local`   | Errors where Control cannot find a valid path: no workers, no matching route, sticky session failure.                                |
+| `TRANSPORT` | `egress_involved` | Errors from the Control↔Egress transport layer: worker timeout, worker disconnect, NATS failure.                                     |
+| `EGRESS`    | `egress_involved` | Errors from the outbound leg: origin HTTP errors, TLS failure, connection refused, DNS failure, body too large.                      |
+| `STREAMING` | `egress_involved` | Errors that occur mid-stream during large upload or download.                                                                        |
 
-Each `ErrorCode` references its parent `ErrorCategory`. The `control_local` vs `egress_involved` scope is implicit in the category but may be surfaced in internal logs for debugging.
+Each `ErrorCode` references its parent `ErrorCategory`. The `control_local` vs `egress_involved` scope is implicit in
+the category but may be surfaced in internal logs for debugging.
 
 ### 18.3 Error Code Registry
 
@@ -1214,55 +1217,56 @@ Error codes are numbered in category ranges for structural clarity.
 
 **Client errors (1–99)** — `control_local`, never retryable:
 
-| Code | Name | Description | HTTP |
-|---|---|---|---|
-| 1 | `auth_failure` | Invalid or expired API key or worker token | 401 |
-| 2 | `tenant_not_found` | API key references a deleted tenant | 401 |
-| 3 | `insufficient_permissions` | API key lacks required RBAC role | 403 |
-| 4 | `rate_limit_exceeded` | Request rate exceeded the sliding window | 429 |
-| 5 | `quota_exhausted` | Monthly bandwidth or request count exceeded | 429 |
-| 6 | `invalid_request` | Malformed request body, missing required fields | 400 |
-| 7 | `destination_denied` | Target IP/domain blocked by deny rules | 403 |
-| 8 | `header_injection_failed` | Configured header/cookie injection could not be applied | 400 |
+| Code | Name                       | Description                                             | HTTP |
+|------|----------------------------|---------------------------------------------------------|------|
+| 1    | `auth_failure`             | Invalid or expired API key or worker token              | 401  |
+| 2    | `tenant_not_found`         | API key references a deleted tenant                     | 401  |
+| 3    | `insufficient_permissions` | API key lacks required RBAC role                        | 403  |
+| 4    | `rate_limit_exceeded`      | Request rate exceeded the sliding window                | 429  |
+| 5    | `quota_exhausted`          | Monthly bandwidth or request count exceeded             | 429  |
+| 6    | `invalid_request`          | Malformed request body, missing required fields         | 400  |
+| 7    | `destination_denied`       | Target IP/domain blocked by deny rules                  | 403  |
+| 8    | `header_injection_failed`  | Configured header/cookie injection could not be applied | 400  |
 
 **Routing errors (100–199)** — `control_local`, typically not retryable:
 
-| Code | Name | Description | HTTP |
-|---|---|---|---|
-| 100 | `no_workers_available` | No registered workers for the target pool | 503 |
-| 101 | `no_matching_route` | No routing rule matches the request | 404 |
-| 102 | `all_upstreams_failed` | All upstream proxies/vendors returned errors | 502 |
-| 103 | `sticky_session_failed` | Sticky session worker is unavailable | 503 |
+| Code | Name                    | Description                                  | HTTP |
+|------|-------------------------|----------------------------------------------|------|
+| 100  | `no_workers_available`  | No registered workers for the target pool    | 503  |
+| 101  | `no_matching_route`     | No routing rule matches the request          | 404  |
+| 102  | `all_upstreams_failed`  | All upstream proxies/vendors returned errors | 502  |
+| 103  | `sticky_session_failed` | Sticky session worker is unavailable         | 503  |
 
 **Transport errors (200–299)** — `egress_involved`, some retryable:
 
-| Code | Name | Description | HTTP | Retryable |
-|---|---|---|---|---|
-| 200 | `worker_timeout` | Worker did not reply within NATS request/reply window | 504 | Yes |
-| 201 | `worker_disconnected` | Worker lost connection mid-request | 502 | Yes |
-| 202 | `nats_cluster_unavailable` | NATS transport failure (mapped to `worker_timeout` or `control_internal_error` externally) | 504 | Yes |
-| 203 | `control_internal_error` | Unexpected failure within Control | 500 | No |
+| Code | Name                       | Description                                                                                | HTTP | Retryable |
+|------|----------------------------|--------------------------------------------------------------------------------------------|------|-----------|
+| 200  | `worker_timeout`           | Worker did not reply within NATS request/reply window                                      | 504  | Yes       |
+| 201  | `worker_disconnected`      | Worker lost connection mid-request                                                         | 502  | Yes       |
+| 202  | `nats_cluster_unavailable` | NATS transport failure (mapped to `worker_timeout` or `control_internal_error` externally) | 504  | Yes       |
+| 203  | `control_internal_error`   | Unexpected failure within Control                                                          | 500  | No        |
 
 **Egress errors (300–399)** — `egress_involved`, retryable depending on code:
 
-| Code | Name | Description | HTTP | Retryable |
-|---|---|---|---|---|
-| 300 | `upstream_http_error` | Origin returned a 4xx or 5xx | Passthrough | No |
-| 301 | `upstream_tls_failure` | TLS handshake with origin failed | 502 | Yes |
-| 302 | `upstream_connection_refused` | Origin refused the connection | 502 | Yes |
-| 303 | `upstream_dns_failure` | DNS resolution failed on the worker | 502 | Yes |
-| 304 | `upstream_body_too_large` | Origin rejected body size | 413 | No |
+| Code | Name                          | Description                         | HTTP        | Retryable |
+|------|-------------------------------|-------------------------------------|-------------|-----------|
+| 300  | `upstream_http_error`         | Origin returned a 4xx or 5xx        | Passthrough | No        |
+| 301  | `upstream_tls_failure`        | TLS handshake with origin failed    | 502         | Yes       |
+| 302  | `upstream_connection_refused` | Origin refused the connection       | 502         | Yes       |
+| 303  | `upstream_dns_failure`        | DNS resolution failed on the worker | 502         | Yes       |
+| 304  | `upstream_body_too_large`     | Origin rejected body size           | 413         | No        |
 
 **Streaming errors (400–499)** — `egress_involved`:
 
-| Code | Name | Description | HTTP | Retryable |
-|---|---|---|---|---|
-| 400 | `stream_upload_aborted` | Client upload stream was interrupted | 502 | Yes |
-| 401 | `stream_download_aborted` | Worker download stream was interrupted | 502 | Yes |
+| Code | Name                      | Description                            | HTTP | Retryable |
+|------|---------------------------|----------------------------------------|------|-----------|
+| 400  | `stream_upload_aborted`   | Client upload stream was interrupted   | 502  | Yes       |
+| 401  | `stream_download_aborted` | Worker download stream was interrupted | 502  | Yes       |
 
 ### 18.4 Error-to-Transport Mapping
 
 **REST API** — Returns a JSON body with the full `ErrorResponse` envelope:
+
 ```json
 {
   "category": "CLIENT",
@@ -1276,73 +1280,91 @@ Error codes are numbered in category ranges for structural clarity.
 }
 ```
 
-**HTTP forward proxy, CONNECT tunnel, MITM proxy** — Returns an HTTP response with the status code from the mapping below. The response body includes a compact JSON error envelope for client parsing. MITM proxy mirrors the HTTP forward proxy behavior exactly.
+**HTTP forward proxy, CONNECT tunnel, MITM proxy** — Returns an HTTP response with the status code from the mapping
+below. The response body includes a compact JSON error envelope for client parsing. MITM proxy mirrors the HTTP forward
+proxy behavior exactly.
 
-| ErrorCode | REST API JSON | HTTP/CONNECT/MITM |
-|---|---|---|
-| `auth_failure`, `tenant_not_found` | 401 Unauthorized | 401 Unauthorized |
-| `insufficient_permissions` | 403 Forbidden | 403 Forbidden |
-| `rate_limit_exceeded`, `quota_exhausted` | 429 Too Many Requests | 429 Too Many Requests |
-| `invalid_request`, `header_injection_failed` | 400 Bad Request | 400 Bad Request |
-| `destination_denied` | 403 Forbidden | 403 Forbidden |
-| `no_workers_available`, `sticky_session_failed` | 503 Service Unavailable | 503 Service Unavailable |
-| `no_matching_route` | 404 Not Found | 404 Not Found |
-| `all_upstreams_failed`, `upstream_tls_failure`, `upstream_dns_failure` | 502 Bad Gateway | 502 Bad Gateway |
-| `worker_timeout`, `nats_cluster_unavailable` | 504 Gateway Timeout | 504 Gateway Timeout |
-| `control_internal_error` | 500 Internal Server Error | 500 Internal Server Error |
-| `upstream_http_error` | 200 + `upstream_status` field | `upstream_status` (passthrough) |
-| `upstream_connection_refused` | 502 Bad Gateway | 502 Bad Gateway |
-| `upstream_body_too_large` | 413 Payload Too Large | 413 Payload Too Large |
-| `stream_upload_aborted`, `stream_download_aborted` | 502 Bad Gateway | 502 Bad Gateway |
+| ErrorCode                                                              | REST API JSON                 | HTTP/CONNECT/MITM               |
+|------------------------------------------------------------------------|-------------------------------|---------------------------------|
+| `auth_failure`, `tenant_not_found`                                     | 401 Unauthorized              | 401 Unauthorized                |
+| `insufficient_permissions`                                             | 403 Forbidden                 | 403 Forbidden                   |
+| `rate_limit_exceeded`, `quota_exhausted`                               | 429 Too Many Requests         | 429 Too Many Requests           |
+| `invalid_request`, `header_injection_failed`                           | 400 Bad Request               | 400 Bad Request                 |
+| `destination_denied`                                                   | 403 Forbidden                 | 403 Forbidden                   |
+| `no_workers_available`, `sticky_session_failed`                        | 503 Service Unavailable       | 503 Service Unavailable         |
+| `no_matching_route`                                                    | 404 Not Found                 | 404 Not Found                   |
+| `all_upstreams_failed`, `upstream_tls_failure`, `upstream_dns_failure` | 502 Bad Gateway               | 502 Bad Gateway                 |
+| `worker_timeout`, `nats_cluster_unavailable`                           | 504 Gateway Timeout           | 504 Gateway Timeout             |
+| `control_internal_error`                                               | 500 Internal Server Error     | 500 Internal Server Error       |
+| `upstream_http_error`                                                  | 200 + `upstream_status` field | `upstream_status` (passthrough) |
+| `upstream_connection_refused`                                          | 502 Bad Gateway               | 502 Bad Gateway                 |
+| `upstream_body_too_large`                                              | 413 Payload Too Large         | 413 Payload Too Large           |
+| `stream_upload_aborted`, `stream_download_aborted`                     | 502 Bad Gateway               | 502 Bad Gateway                 |
 
 ### 18.5 Timeout Semantics
 
-A single `timeout_exceeded` error code is used for all timeout scenarios, with a `TimeoutType` enum distinguishing the layer:
+A single `timeout_exceeded` error code is used for all timeout scenarios, with a `TimeoutType` enum distinguishing the
+layer:
 
-| TimeoutType | Description |
-|---|---|
-| `CONNECT_TIMEOUT` | Worker could not establish outbound connection to origin |
-| `REQUEST_TIMEOUT` | Origin did not send first response byte within timeout |
-| `IDLE_TIMEOUT` | No data received from origin for a configurable idle period |
-| `WORKER_TIMEOUT` | Worker did not reply to Control's NATS request within timeout |
-| `UPLOAD_TIMEOUT` | Client did not finish uploading within timeout |
-| `DOWNLOAD_TIMEOUT` | Worker did not finish downloading within timeout |
+| TimeoutType        | Description                                                   |
+|--------------------|---------------------------------------------------------------|
+| `CONNECT_TIMEOUT`  | Worker could not establish outbound connection to origin      |
+| `REQUEST_TIMEOUT`  | Origin did not send first response byte within timeout        |
+| `IDLE_TIMEOUT`     | No data received from origin for a configurable idle period   |
+| `WORKER_TIMEOUT`   | Worker did not reply to Control's NATS request within timeout |
+| `UPLOAD_TIMEOUT`   | Client did not finish uploading within timeout                |
+| `DOWNLOAD_TIMEOUT` | Worker did not finish downloading within timeout              |
 
 Timeout durations are configurable per-request or per-tenant, with an expected default in the 30–60 second range.
 
 ### 18.6 Egress-to-Control Error Reporting
 
-Egress workers forward raw HTTP responses (status code, headers, body summary) back to Control via the NATS reply channel. Control is the sole authority for mapping raw responses to error codes. This keeps Egress implementations simple and portable — a custom Go or Rust Egress worker does not need to encode Straw's error semantics.
+Egress workers forward raw HTTP responses (status code, headers, body summary) back to Control via the NATS reply
+channel. Control is the sole authority for mapping raw responses to error codes. This keeps Egress implementations
+simple and portable — a custom Go or Rust Egress worker does not need to encode Straw's error semantics.
 
 When Egress reports an error, the flow is:
+
 1. Worker detects the failure (e.g., upstream TLS handshake failure).
-2. Worker sends a `WorkerReport` message to Control containing the raw HTTP status, headers, body summary, and connection error message.
+2. Worker sends a `WorkerReport` message to Control containing the raw HTTP status, headers, body summary, and
+   connection error message.
 3. Control maps the raw data to the appropriate `ErrorCode` based on its error taxonomy.
 4. Control populates the `ErrorResponse` envelope and returns it to the client.
 
-If Control detects the error itself (e.g., no workers available, auth failure, NATS timeout), it generates the `ErrorResponse` directly without involving Egress.
+If Control detects the error itself (e.g., no workers available, auth failure, NATS timeout), it generates the
+`ErrorResponse` directly without involving Egress.
 
 ### 18.7 Retry Semantics
 
-Each error code has a `retryable` flag defined in the protobuf. Control does **not** auto-retry on behalf of the client — the SDK is responsible for retry logic. The `retryable` flag tells the SDK whether a retry is expected to succeed.
+Each error code has a `retryable` flag defined in the protobuf. Control does **not** auto-retry on behalf of the
+client — the SDK is responsible for retry logic. The `retryable` flag tells the SDK whether a retry is expected to
+succeed.
 
-- **Retryable:** `worker_timeout`, `worker_disconnected`, `upstream_tls_failure`, `upstream_connection_refused`, `upstream_dns_failure`, `stream_upload_aborted`, `stream_download_aborted`. SDKs should implement exponential backoff with jitter.
-- **Not retryable:** `auth_failure`, `tenant_not_found`, `insufficient_permissions`, `rate_limit_exceeded` (use `retry_after_ms`), `quota_exhausted`, `invalid_request`, `destination_denied`, `upstream_http_error`, `upstream_body_too_large`, `control_internal_error`.
+- **Retryable:** `worker_timeout`, `worker_disconnected`, `upstream_tls_failure`, `upstream_connection_refused`,
+  `upstream_dns_failure`, `stream_upload_aborted`, `stream_download_aborted`. SDKs should implement exponential backoff
+  with jitter.
+- **Not retryable:** `auth_failure`, `tenant_not_found`, `insufficient_permissions`, `rate_limit_exceeded` (use
+  `retry_after_ms`), `quota_exhausted`, `invalid_request`, `destination_denied`, `upstream_http_error`,
+  `upstream_body_too_large`, `control_internal_error`.
 
-For rate-limit errors, `retry_after_ms` provides a concrete wait duration. For other retryable errors, the SDK determines the backoff strategy.
+For rate-limit errors, `retry_after_ms` provides a concrete wait duration. For other retryable errors, the SDK
+determines the backoff strategy.
 
 ### 18.8 Logging and Audit
 
 Errors are logged at different levels based on category:
 
-| Level | Categories | Purpose |
-|---|---|---|
-| `ERROR` | Transport, Egress, System | Operational incidents requiring investigation |
-| `WARN` | Client (except auth), Routing | Expected operational noise (rate limits, no workers) |
+| Level   | Categories                    | Purpose                                              |
+|---------|-------------------------------|------------------------------------------------------|
+| `ERROR` | Transport, Egress, System     | Operational incidents requiring investigation        |
+| `WARN`  | Client (except auth), Routing | Expected operational noise (rate limits, no workers) |
 
 ## 19. Observability
 
-Straw's observability stack follows a layered architecture: ClickHouse serves as the primary data lake for request-level records, structured logs, traces, and metrics rollups; Prometheus provides real-time metrics for alerting and SLO tracking; Loki aggregates structured logs for log-level querying; Jaeger/Tempo handles distributed tracing; and Grafana unifies all data sources into dashboards and alerting rules.
+Straw's observability stack follows a layered architecture: ClickHouse serves as the primary data lake for request-level
+records, structured logs, traces, and metrics rollups; Prometheus provides real-time metrics for alerting and SLO
+tracking; Loki aggregates structured logs for log-level querying; Jaeger/Tempo handles distributed tracing; and Grafana
+unifies all data sources into dashboards and alerting rules.
 
 ### 19.1 Data Flow
 
@@ -1357,9 +1379,14 @@ Loki → Grafana (log-level querying)
 Jaeger/Tempo → Grafana (distributed tracing)
 ```
 
-Egress workers emit only to NATS. Control is the sole observability aggregator — it centralizes all telemetry, enriches it with routing context, and pushes it to the appropriate backend. This keeps Egress implementations simple and portable.
+Egress workers emit only to NATS. Control is the sole observability aggregator — it centralizes all telemetry, enriches
+it with routing context, and pushes it to the appropriate backend. This keeps Egress implementations simple and
+portable.
 
-Control pushes telemetry through a lightweight sidecar (Fluent Bit or Vector) that buffers and batches writes to ClickHouse, providing backpressure handling and retry semantics. Prometheus scrapes Control's `/metrics` endpoint directly. Loki receives structured logs via HTTP push from Control. Jaeger/Tempo receives trace spans via gRPC/HTTP from Control.
+Control pushes telemetry through a lightweight sidecar (Fluent Bit or Vector) that buffers and batches writes to
+ClickHouse, providing backpressure handling and retry semantics. Prometheus scrapes Control's `/metrics` endpoint
+directly. Loki receives structured logs via HTTP push from Control. Jaeger/Tempo receives trace spans via gRPC/HTTP from
+Control.
 
 ### 19.2 ClickHouse Schema
 
@@ -1367,154 +1394,159 @@ ClickHouse stores four tables with materialized views for pre-aggregated metrics
 
 **Table: `requests`** — every request as a row (the main data lake, TTL: ~90 days)
 
-| Column | Type | Description |
-|---|---|---|
-| `request_id` | String | Propagated from client through Control to Egress |
-| `trace_id` | String | Distributed trace identifier |
-| `tenant_id` | String | Tenant identifier |
-| `api_key_id` | String | API key used for authentication |
-| `timestamp_ingest` | DateTime64 | When Control ingested the request |
-| `timestamp_request` | DateTime64 | When the client sent the request |
-| `timestamp_response` | DateTime64 | When the response was received |
-| `timestamp_total_ms` | Float64 | Total request latency |
-| `method` | String | HTTP method |
-| `url` | String | Request URL |
-| `user_agent` | String | Client user agent |
-| `fingerprint_profile` | String | Browser fingerprint profile used |
-| `routing_rule` | String | Matching routing rule name |
-| `selected_worker` | String | Egress worker selected for egress |
-| `upstream_proxy` | String | Upstream proxy used (if any) |
-| `country` | String | Target country code |
-| `region` | String | Target region code |
-| `ip_type` | String | Residential, datacenter, mobile |
-| `sticky_session_id` | String | Sticky session identifier |
-| `session_id` | String | Session identifier |
-| `tags` | Array(String) | Tags used for routing match |
-| `injected_header_count` | UInt32 | Number of injected headers |
-| `error_code` | String | Straw error code |
-| `error_category` | String | transport, egress, client, routing, system |
-| `upstream_status` | UInt16 | Raw upstream HTTP status code |
-| `client_status` | UInt16 | HTTP status returned to client |
-| `timeout_type` | String | CONNECT_TIMEOUT, REQUEST_TIMEOUT, IDLE_TIMEOUT, WORKER_TIMEOUT, UPLOAD_TIMEOUT, DOWNLOAD_TIMEOUT |
-| `worker_status` | String | alive, draining, disconnected |
-| `retry_count` | UInt32 | Number of retries attempted |
-| `is_retry` | UInt8 | Whether this is a retried request |
-| `request_body_size` | UInt64 | Size of request body in bytes |
-| `response_body_size` | UInt64 | Size of response body in bytes |
-| `body_captured` | UInt8 | Whether payload capture was enabled |
-| `latency_connect_ms` | Float64 | Time to establish outbound connection |
-| `latency_upload_ms` | Float64 | Time to upload request body |
-| `latency_download_ms` | Float64 | Time to download response body |
-| `latency_routing_ms` | Float64 | Time spent on Control-side routing decision |
+| Column                  | Type          | Description                                                                                      |
+|-------------------------|---------------|--------------------------------------------------------------------------------------------------|
+| `request_id`            | String        | Propagated from client through Control to Egress                                                 |
+| `trace_id`              | String        | Distributed trace identifier                                                                     |
+| `tenant_id`             | String        | Tenant identifier                                                                                |
+| `api_key_id`            | String        | API key used for authentication                                                                  |
+| `timestamp_ingest`      | DateTime64    | When Control ingested the request                                                                |
+| `timestamp_request`     | DateTime64    | When the client sent the request                                                                 |
+| `timestamp_response`    | DateTime64    | When the response was received                                                                   |
+| `timestamp_total_ms`    | Float64       | Total request latency                                                                            |
+| `method`                | String        | HTTP method                                                                                      |
+| `url`                   | String        | Request URL                                                                                      |
+| `user_agent`            | String        | Client user agent                                                                                |
+| `fingerprint_profile`   | String        | Browser fingerprint profile used                                                                 |
+| `routing_rule`          | String        | Matching routing rule name                                                                       |
+| `selected_worker`       | String        | Egress worker selected for egress                                                                |
+| `upstream_proxy`        | String        | Upstream proxy used (if any)                                                                     |
+| `country`               | String        | Target country code                                                                              |
+| `region`                | String        | Target region code                                                                               |
+| `ip_type`               | String        | Residential, datacenter, mobile                                                                  |
+| `sticky_session_id`     | String        | Sticky session identifier                                                                        |
+| `session_id`            | String        | Session identifier                                                                               |
+| `tags`                  | Array(String) | Tags used for routing match                                                                      |
+| `injected_header_count` | UInt32        | Number of injected headers                                                                       |
+| `error_code`            | String        | Straw error code                                                                                 |
+| `error_category`        | String        | transport, egress, client, routing, system                                                       |
+| `upstream_status`       | UInt16        | Raw upstream HTTP status code                                                                    |
+| `client_status`         | UInt16        | HTTP status returned to client                                                                   |
+| `timeout_type`          | String        | CONNECT_TIMEOUT, REQUEST_TIMEOUT, IDLE_TIMEOUT, WORKER_TIMEOUT, UPLOAD_TIMEOUT, DOWNLOAD_TIMEOUT |
+| `worker_status`         | String        | alive, draining, disconnected                                                                    |
+| `retry_count`           | UInt32        | Number of retries attempted                                                                      |
+| `is_retry`              | UInt8         | Whether this is a retried request                                                                |
+| `request_body_size`     | UInt64        | Size of request body in bytes                                                                    |
+| `response_body_size`    | UInt64        | Size of response body in bytes                                                                   |
+| `body_captured`         | UInt8         | Whether payload capture was enabled                                                              |
+| `latency_connect_ms`    | Float64       | Time to establish outbound connection                                                            |
+| `latency_upload_ms`     | Float64       | Time to upload request body                                                                      |
+| `latency_download_ms`   | Float64       | Time to download response body                                                                   |
+| `latency_routing_ms`    | Float64       | Time spent on Control-side routing decision                                                      |
 
 **Table: `logs`** — structured log events (TTL: ~30 days)
 
-| Column | Type | Description |
-|---|---|---|
-| `timestamp` | DateTime64 | Log event timestamp |
-| `service` | String | control, egress |
-| `level` | String | DEBUG, INFO, WARN, ERROR, FATAL |
-| `message` | String | Log message |
-| `request_id` | String | Correlated request ID (nullable) |
-| `tenant_id` | String | Correlated tenant ID (nullable) |
-| `trace_id` | String | Correlated trace ID (nullable) |
-| `worker_id` | String | Worker identifier (nullable) |
-| `error_code` | String | Straw error code (nullable) |
-| `extra` | Map(String, String) | Additional structured fields |
+| Column       | Type                | Description                      |
+|--------------|---------------------|----------------------------------|
+| `timestamp`  | DateTime64          | Log event timestamp              |
+| `service`    | String              | control, egress                  |
+| `level`      | String              | DEBUG, INFO, WARN, ERROR, FATAL  |
+| `message`    | String              | Log message                      |
+| `request_id` | String              | Correlated request ID (nullable) |
+| `tenant_id`  | String              | Correlated tenant ID (nullable)  |
+| `trace_id`   | String              | Correlated trace ID (nullable)   |
+| `worker_id`  | String              | Worker identifier (nullable)     |
+| `error_code` | String              | Straw error code (nullable)      |
+| `extra`      | Map(String, String) | Additional structured fields     |
 
 **Table: `traces`** — distributed trace spans (TTL: ~7 days)
 
-| Column | Type | Description |
-|---|---|---|
-| `trace_id` | String | Distributed trace identifier |
-| `span_id` | String | Span identifier |
-| `parent_span_id` | String | Parent span identifier (nullable) |
-| `service` | String | control, egress |
-| `operation` | String | Span operation name |
-| `start_time` | DateTime64 | Span start time |
-| `duration_ms` | Float64 | Span duration |
-| `status` | String | OK, ERROR, UNSET |
-| `tags` | Map(String, String) | Key-value metadata (request_id, tenant_id, error_code, etc.) |
+| Column           | Type                | Description                                                  |
+|------------------|---------------------|--------------------------------------------------------------|
+| `trace_id`       | String              | Distributed trace identifier                                 |
+| `span_id`        | String              | Span identifier                                              |
+| `parent_span_id` | String              | Parent span identifier (nullable)                            |
+| `service`        | String              | control, egress                                              |
+| `operation`      | String              | Span operation name                                          |
+| `start_time`     | DateTime64          | Span start time                                              |
+| `duration_ms`    | Float64             | Span duration                                                |
+| `status`         | String              | OK, ERROR, UNSET                                             |
+| `tags`           | Map(String, String) | Key-value metadata (request_id, tenant_id, error_code, etc.) |
 
 **Table: `events`** — operational events (TTL: ~90 days)
 
-| Column | Type | Description |
-|---|---|---|
-| `timestamp` | DateTime64 | Event timestamp |
-| `event_type` | String | worker_registered, worker_deregistered, worker_draining, config_updated, admin_action, worker_disconnected, nats_outage, rate_limit_triggered |
-| `tenant_id` | String | Affected tenant (nullable) |
-| `worker_id` | String | Affected worker (nullable) |
-| `admin_user` | String | Admin user who triggered the event (nullable) |
-| `details` | String | Human-readable event description |
-| `extra` | Map(String, String) | Additional structured fields |
+| Column       | Type                | Description                                                                                                                                   |
+|--------------|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------|
+| `timestamp`  | DateTime64          | Event timestamp                                                                                                                               |
+| `event_type` | String              | worker_registered, worker_deregistered, worker_draining, config_updated, admin_action, worker_disconnected, nats_outage, rate_limit_triggered |
+| `tenant_id`  | String              | Affected tenant (nullable)                                                                                                                    |
+| `worker_id`  | String              | Affected worker (nullable)                                                                                                                    |
+| `admin_user` | String              | Admin user who triggered the event (nullable)                                                                                                 |
+| `details`    | String              | Human-readable event description                                                                                                              |
+| `extra`      | Map(String, String) | Additional structured fields                                                                                                                  |
 
 **Materialized View: `metrics_rollups`** — pre-aggregated metrics (TTL: ~180 days)
 
-Hourly and daily rollups of request rate, error rate, and latency percentiles, partitioned by tenant_id, routing_rule, selected_worker, error_code, and country. These are computed via ClickHouse materialized views triggered by inserts into the `requests` table.
+Hourly and daily rollups of request rate, error rate, and latency percentiles, partitioned by tenant_id, routing_rule,
+selected_worker, error_code, and country. These are computed via ClickHouse materialized views triggered by inserts into
+the `requests` table.
 
 ### 19.3 Prometheus Metrics
 
-Prometheus collects real-time metrics via a `/metrics` endpoint on Control. Services expose counters, histograms, and gauges for alerting and SLO tracking.
+Prometheus collects real-time metrics via a `/metrics` endpoint on Control. Services expose counters, histograms, and
+gauges for alerting and SLO tracking.
 
 **Counters** (monotonically increasing):
 
-| Metric | Labels | Description |
-|---|---|---|
-| `straw_requests_total` | `method`, `url`, `tenant_id`, `error_code`, `error_category`, `routing_rule`, `selected_worker`, `upstream_proxy`, `country`, `region`, `ip_type`, `fingerprint_profile` | Total requests processed |
-| `straw_requests_retried_total` | `method`, `tenant_id`, `error_code` | Total retried requests |
-| `straw_worker_registered_total` | `worker_id` | Worker registration events |
-| `straw_worker_deregistered_total` | `worker_id` | Worker deregistration events |
-| `straw_worker_drain_started_total` | `worker_id` | Worker drain events |
-| `straw_worker_disconnected_total` | `worker_id` | Worker disconnection events |
-| `straw_upstream_proxy_connected_total` | `proxy_name` | Upstream proxy connection events |
-| `straw_upstream_proxy_disconnected_total` | `proxy_name` | Upstream proxy disconnection events |
-| `straw_payload_captured_total` | `tenant_id` | Payload capture events (opt-in) |
-| `straw_nats_messages_sent_total` | `message_type` | NATS messages sent by Control |
-| `straw_nats_messages_received_total` | `message_type` | NATS messages received by Control |
-| `straw_nats_errors_total` | `error_type` | NATS transport errors |
+| Metric                                    | Labels                                                                                                                                                                   | Description                         |
+|-------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------|
+| `straw_requests_total`                    | `method`, `url`, `tenant_id`, `error_code`, `error_category`, `routing_rule`, `selected_worker`, `upstream_proxy`, `country`, `region`, `ip_type`, `fingerprint_profile` | Total requests processed            |
+| `straw_requests_retried_total`            | `method`, `tenant_id`, `error_code`                                                                                                                                      | Total retried requests              |
+| `straw_worker_registered_total`           | `worker_id`                                                                                                                                                              | Worker registration events          |
+| `straw_worker_deregistered_total`         | `worker_id`                                                                                                                                                              | Worker deregistration events        |
+| `straw_worker_drain_started_total`        | `worker_id`                                                                                                                                                              | Worker drain events                 |
+| `straw_worker_disconnected_total`         | `worker_id`                                                                                                                                                              | Worker disconnection events         |
+| `straw_upstream_proxy_connected_total`    | `proxy_name`                                                                                                                                                             | Upstream proxy connection events    |
+| `straw_upstream_proxy_disconnected_total` | `proxy_name`                                                                                                                                                             | Upstream proxy disconnection events |
+| `straw_payload_captured_total`            | `tenant_id`                                                                                                                                                              | Payload capture events (opt-in)     |
+| `straw_nats_messages_sent_total`          | `message_type`                                                                                                                                                           | NATS messages sent by Control       |
+| `straw_nats_messages_received_total`      | `message_type`                                                                                                                                                           | NATS messages received by Control   |
+| `straw_nats_errors_total`                 | `error_type`                                                                                                                                                             | NATS transport errors               |
 
 **Histograms** (latency distributions):
 
-| Metric | Labels | Description |
-|---|---|---|
-| `straw_request_duration_seconds` | `method`, `tenant_id`, `error_code`, `routing_rule` | Total request latency |
-| `straw_routing_duration_seconds` | `method`, `tenant_id` | Control-side routing decision latency |
-| `straw_connect_duration_seconds` | `method`, `tenant_id` | Outbound connection establishment latency |
-| `straw_upload_duration_seconds` | `method`, `tenant_id` | Request body upload latency |
-| `straw_download_duration_seconds` | `method`, `tenant_id` | Response body download latency |
-| `straw_nats_request_duration_seconds` | `message_type` | NATS request/reply latency |
-| `straw_request_body_size_bytes` | `method`, `tenant_id` | Request body size distribution |
-| `straw_response_body_size_bytes` | `method`, `tenant_id`, `error_code` | Response body size distribution |
+| Metric                                | Labels                                              | Description                               |
+|---------------------------------------|-----------------------------------------------------|-------------------------------------------|
+| `straw_request_duration_seconds`      | `method`, `tenant_id`, `error_code`, `routing_rule` | Total request latency                     |
+| `straw_routing_duration_seconds`      | `method`, `tenant_id`                               | Control-side routing decision latency     |
+| `straw_connect_duration_seconds`      | `method`, `tenant_id`                               | Outbound connection establishment latency |
+| `straw_upload_duration_seconds`       | `method`, `tenant_id`                               | Request body upload latency               |
+| `straw_download_duration_seconds`     | `method`, `tenant_id`                               | Response body download latency            |
+| `straw_nats_request_duration_seconds` | `message_type`                                      | NATS request/reply latency                |
+| `straw_request_body_size_bytes`       | `method`, `tenant_id`                               | Request body size distribution            |
+| `straw_response_body_size_bytes`      | `method`, `tenant_id`, `error_code`                 | Response body size distribution           |
 
 **Gauges** (current state):
 
-| Metric | Labels | Description |
-|---|---|---|
-| `straw_active_connections` | `tenant_id`, `protocol` (http, connect, mitm) | Active client connections |
-| `straw_active_requests` | `tenant_id`, `method` | Currently in-flight requests |
-| `straw_workers_available` | `worker_id`, `country`, `region`, `ip_type` | Workers available for routing |
-| `straw_workers_draining` | `worker_id` | Workers in drain state |
-| `straw_nats_subscriptions` | `subscription_type` | Active NATS subscriptions |
-| `straw_nats_connection_status` | `cluster_node` | NATS connection health (1=connected, 0=disconnected) |
-| `straw_clickhouse_write_queue_depth` | | Pending writes to ClickHouse |
-| `straw_clickhouse_write_errors_total` | | Failed ClickHouse writes |
-| `straw_rate_limit_remaining` | `tenant_id` | Remaining rate limit quota |
-| `straw_quota_remaining` | `tenant_id` | Remaining quota |
+| Metric                                | Labels                                        | Description                                          |
+|---------------------------------------|-----------------------------------------------|------------------------------------------------------|
+| `straw_active_connections`            | `tenant_id`, `protocol` (http, connect, mitm) | Active client connections                            |
+| `straw_active_requests`               | `tenant_id`, `method`                         | Currently in-flight requests                         |
+| `straw_workers_available`             | `worker_id`, `country`, `region`, `ip_type`   | Workers available for routing                        |
+| `straw_workers_draining`              | `worker_id`                                   | Workers in drain state                               |
+| `straw_nats_subscriptions`            | `subscription_type`                           | Active NATS subscriptions                            |
+| `straw_nats_connection_status`        | `cluster_node`                                | NATS connection health (1=connected, 0=disconnected) |
+| `straw_clickhouse_write_queue_depth`  |                                               | Pending writes to ClickHouse                         |
+| `straw_clickhouse_write_errors_total` |                                               | Failed ClickHouse writes                             |
+| `straw_rate_limit_remaining`          | `tenant_id`                                   | Remaining rate limit quota                           |
+| `straw_quota_remaining`               | `tenant_id`                                   | Remaining quota                                      |
 
 ### 19.4 Structured Logs
 
-All services emit JSON-structured logs. Control enriches logs with `request_id`, `tenant_id`, and `trace_id` where available.
+All services emit JSON-structured logs. Control enriches logs with `request_id`, `tenant_id`, and `trace_id` where
+available.
 
 **Log levels and categories:**
 
-| Level | Categories | Purpose |
-|---|---|---|
+| Level   | Categories                                                                                | Purpose                                       |
+|---------|-------------------------------------------------------------------------------------------|-----------------------------------------------|
 | `ERROR` | Transport failures, Egress worker crashes, NATS disconnections, ClickHouse write failures | Operational incidents requiring investigation |
-| `WARN` | Rate limits, no workers available, timeout warnings, retry attempts | Expected operational noise |
-| `INFO` | Request processing, worker registration/deregistration, config updates, routing decisions | Operational visibility |
-| `DEBUG` | Routing rule matching details, NATS message payloads, header injection details | Debugging and troubleshooting |
+| `WARN`  | Rate limits, no workers available, timeout warnings, retry attempts                       | Expected operational noise                    |
+| `INFO`  | Request processing, worker registration/deregistration, config updates, routing decisions | Operational visibility                        |
+| `DEBUG` | Routing rule matching details, NATS message payloads, header injection details            | Debugging and troubleshooting                 |
 
-**Log enrichment:** Every log entry includes `service`, `request_id` (where applicable), `tenant_id` (where applicable), `trace_id` (where applicable), and a structured `extra` field for domain-specific context.
+**Log enrichment:** Every log entry includes `service`, `request_id` (where applicable), `tenant_id` (where applicable),
+`trace_id` (where applicable), and a structured `extra` field for domain-specific context.
 
 ### 19.5 Distributed Tracing
 
@@ -1527,50 +1559,51 @@ Tracing follows OpenTelemetry conventions. Control generates trace spans for eac
 5. **NATS reply** — response received from Egress via NATS
 6. **Response send** — response returned to client
 
-Each span includes tags for `request_id`, `tenant_id`, `error_code` (if applicable), `selected_worker`, and `routing_rule`. Spans are exported to Jaeger/Tempo for trace correlation and latency visualization.
+Each span includes tags for `request_id`, `tenant_id`, `error_code` (if applicable), `selected_worker`, and
+`routing_rule`. Spans are exported to Jaeger/Tempo for trace correlation and latency visualization.
 
 Request IDs are propagated through all NATS messages, enabling log-to-trace correlation even when spans are incomplete.
 
 ### 19.6 SLOs and Targets
 
-| SLO | Target | Measurement |
-|---|---|---|
-| **Availability** | 99.99% of requests succeed (excluding upstream failures) | `straw_requests_total` where `error_code` is not an internal error, divided by total requests |
-| **Latency — p50** | < 100 ms for Control-side routing overhead | `straw_routing_duration_seconds` p50 |
-| **Latency — p99** | < 500 ms for Control-side routing overhead | `straw_routing_duration_seconds` p99 |
-| **Error rate** | < 1% of requests hit `control_internal_error` or `worker_timeout` | `straw_requests_total` where `error_code` in (`control_internal_error`, `worker_timeout`), divided by total requests |
-| **Worker health** | > 95% of registered workers responding within timeout | Gauge of responsive workers vs. registered workers |
+| SLO               | Target                                                            | Measurement                                                                                                          |
+|-------------------|-------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------|
+| **Availability**  | 99.99% of requests succeed (excluding upstream failures)          | `straw_requests_total` where `error_code` is not an internal error, divided by total requests                        |
+| **Latency — p50** | < 100 ms for Control-side routing overhead                        | `straw_routing_duration_seconds` p50                                                                                 |
+| **Latency — p99** | < 500 ms for Control-side routing overhead                        | `straw_routing_duration_seconds` p99                                                                                 |
+| **Error rate**    | < 1% of requests hit `control_internal_error` or `worker_timeout` | `straw_requests_total` where `error_code` in (`control_internal_error`, `worker_timeout`), divided by total requests |
+| **Worker health** | > 95% of registered workers responding within timeout             | Gauge of responsive workers vs. registered workers                                                                   |
 
 ### 19.7 Alerting Tiers
 
 **Critical (P1)** — Immediate response required:
 
-| Alert | Condition | Duration |
-|---|---|---|
-| Control cluster down | No health check from any Control instance | 1 minute |
-| Error rate critical | `error_code` in (`control_internal_error`, `worker_timeout`) > 5% of requests | 5 minutes |
-| Worker pool critical | Available workers < 20% of registered workers | 5 minutes |
-| NATS cluster unavailable | `straw_nats_connection_status` = 0 for any cluster node | 1 minute |
-| ClickHouse write failure | Write queue depth > 10,000 or write error rate > 10% | 5 minutes |
+| Alert                    | Condition                                                                     | Duration  |
+|--------------------------|-------------------------------------------------------------------------------|-----------|
+| Control cluster down     | No health check from any Control instance                                     | 1 minute  |
+| Error rate critical      | `error_code` in (`control_internal_error`, `worker_timeout`) > 5% of requests | 5 minutes |
+| Worker pool critical     | Available workers < 20% of registered workers                                 | 5 minutes |
+| NATS cluster unavailable | `straw_nats_connection_status` = 0 for any cluster node                       | 1 minute  |
+| ClickHouse write failure | Write queue depth > 10,000 or write error rate > 10%                          | 5 minutes |
 
 **Warning (P2)** — Response within hours:
 
-| Alert | Condition | Duration |
-|---|---|---|
-| Error rate elevated | `error_code` in (`control_internal_error`, `worker_timeout`) > 1% of requests | 10 minutes |
-| Latency SLO breach | p99 routing latency exceeds 500 ms | 15 minutes |
-| Worker pool degraded | Available workers < 50% of registered workers | 10 minutes |
-| Worker disconnected | Individual worker disconnected from NATS | Immediate |
-| Rate limit triggered | Tenant rate limit exceeded | Immediate |
+| Alert                | Condition                                                                     | Duration   |
+|----------------------|-------------------------------------------------------------------------------|------------|
+| Error rate elevated  | `error_code` in (`control_internal_error`, `worker_timeout`) > 1% of requests | 10 minutes |
+| Latency SLO breach   | p99 routing latency exceeds 500 ms                                            | 15 minutes |
+| Worker pool degraded | Available workers < 50% of registered workers                                 | 10 minutes |
+| Worker disconnected  | Individual worker disconnected from NATS                                      | Immediate  |
+| Rate limit triggered | Tenant rate limit exceeded                                                    | Immediate  |
 
 **Info (P3)** — Capacity trends, no immediate action:
 
-| Alert | Condition | Duration |
-|---|---|---|
-| Worker pool trending low | Available workers < 80% of registered workers | 30 minutes |
-| Latency trending upward | p95 routing latency increasing > 20% over 1 hour | 1 hour |
-| Storage approaching capacity | ClickHouse/table storage > 80% of allocated capacity | Daily |
-| Quota exhaustion warning | Tenant quota remaining < 10% | Immediate |
+| Alert                        | Condition                                            | Duration   |
+|------------------------------|------------------------------------------------------|------------|
+| Worker pool trending low     | Available workers < 80% of registered workers        | 30 minutes |
+| Latency trending upward      | p95 routing latency increasing > 20% over 1 hour     | 1 hour     |
+| Storage approaching capacity | ClickHouse/table storage > 80% of allocated capacity | Daily      |
+| Quota exhaustion warning     | Tenant quota remaining < 10%                         | Immediate  |
 
 ### 19.8 Grafana Dashboards
 
@@ -1625,7 +1658,6 @@ Request IDs are propagated through all NATS messages, enabling log-to-trace corr
 
 ## 20. Configuration
 
-
 ### 20.1 Static vs Dynamic Configuration
 
 Straw configuration is divided into two categories with distinct lifecycles, storage, and reload semantics.
@@ -1636,7 +1668,8 @@ Loaded once at process startup from config files and environment variables. Chan
 
 - Stored in YAML config files with JSON schema validation and `STRAW_*` environment variable overrides.
 - Shared across all instances of a component within a deployment.
-- Topics: NATS connection, database URLs, TLS certificates, log level, metrics endpoint, body transport thresholds, ClickHouse connection.
+- Topics: NATS connection, database URLs, TLS certificates, log level, metrics endpoint, body transport thresholds,
+  ClickHouse connection.
 
 **Dynamic (Runtime) Configuration**
 
@@ -1644,42 +1677,56 @@ Persisted in Postgres and managed through the Admin/Operator REST APIs. Hot-relo
 
 - Loaded from Postgres on demand and cached in memory by Control instances.
 - May be scoped to tenants, tags, pools, or the global system.
-- Topics: routing rules, API keys, tenant settings, worker credentials, quotas, fingerprint profiles, injection policies, payload capture policy, deny rules, worker disable/drain state.
+- Topics: routing rules, API keys, tenant settings, worker credentials, quotas, fingerprint profiles, injection
+  policies, payload capture policy, deny rules, worker disable/drain state.
 
 **Reload Categories**
 
 Dynamic config changes fall into three reload categories:
 
-| Category | Propagation | Examples |
-|---|---|---|
-| **Immediate** | Takes effect on the next request processed by Control. In-flight requests are unaffected. | Routing rules, injection policies, quotas, deny rules, rate limits, payload capture toggle |
-| **Next Heartbeat** | Takes effect when the worker next reports health or Control detects the change on the next heartbeat cycle. | Worker credential rotation, capability overrides, worker disable/drain state |
-| **Requires Restart** | Only applied at process startup. Control and Egress must be restarted for changes to take effect. | TLS certificate paths, NATS connection strings, MITM CA config, log level, metrics endpoint, body transport thresholds |
+| Category             | Propagation                                                                                                 | Examples                                                                                                               |
+|----------------------|-------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------|
+| **Immediate**        | Takes effect on the next request processed by Control. In-flight requests are unaffected.                   | Routing rules, injection policies, quotas, deny rules, rate limits, payload capture toggle                             |
+| **Next Heartbeat**   | Takes effect when the worker next reports health or Control detects the change on the next heartbeat cycle. | Worker credential rotation, capability overrides, worker disable/drain state                                           |
+| **Requires Restart** | Only applied at process startup. Control and Egress must be restarted for changes to take effect.           | TLS certificate paths, NATS connection strings, MITM CA config, log level, metrics endpoint, body transport thresholds |
 
 **Hot-Reload Mechanism**
 
-When dynamic config changes, Control publishes an invalidation event to Redis pub/sub on channel `straw:config:invalidate:{tenant_id}`. All Control instances subscribe to this channel and reload the affected tenant's full config snapshot from Postgres.
+When dynamic config changes, Control publishes an invalidation event to Redis pub/sub on channel
+`straw:config:invalidate:{tenant_id}`. All Control instances subscribe to this channel and reload the affected tenant's
+full config snapshot from Postgres.
 
-- **Snapshot reload**: Control reloads the entire tenant config snapshot atomically from Postgres, not individual field patches.
-- **In-flight consistency**: In-flight requests use the snapshot captured at request start. Only new requests see the updated config.
-- **Grace period**: After invalidation, Control reloads immediately (no artificial delay). Thundering herd is prevented by the atomic snapshot reload and the fact that invalidation is per-tenant, not global.
-- **Failure fallback**: If a Control instance fails to reload config after invalidation, it falls back to the previous in-memory snapshot and logs a warning. The instance continues serving requests with the old config while retrying the reload. A P2 alert fires if reload failure persists for more than 30 seconds.
+- **Snapshot reload**: Control reloads the entire tenant config snapshot atomically from Postgres, not individual field
+  patches.
+- **In-flight consistency**: In-flight requests use the snapshot captured at request start. Only new requests see the
+  updated config.
+- **Grace period**: After invalidation, Control reloads immediately (no artificial delay). Thundering herd is prevented
+  by the atomic snapshot reload and the fact that invalidation is per-tenant, not global.
+- **Failure fallback**: If a Control instance fails to reload config after invalidation, it falls back to the previous
+  in-memory snapshot and logs a warning. The instance continues serving requests with the old config while retrying the
+  reload. A P2 alert fires if reload failure persists for more than 30 seconds.
 
 ### 20.2 Config File Format and Conventions
 
-All components use YAML config files with `STRAW_*` environment variable overrides. JSON schema files are provided for editor auto-complete and static validation.
+All components use YAML config files with `STRAW_*` environment variable overrides. JSON schema files are provided for
+editor auto-complete and static validation.
 
 **Naming Convention**
 
-- Environment variables use the `STRAW_` prefix followed by the component name and configuration key, in uppercase with underscores.
+- Environment variables use the `STRAW_` prefix followed by the component name and configuration key, in uppercase with
+  underscores.
 - YAML config keys use kebab-case, nested under component names.
-- Environment variables override YAML values at load time. If both are present, the environment variable takes precedence.
+- Environment variables override YAML values at load time. If both are present, the environment variable takes
+  precedence.
 
 **Schema Validation**
 
-- **Compile-time**: JSON Schema files (`schema/control.config.json`, `schema/egress.config.json`) are shipped with the project. Editors with JSON Schema support provide auto-complete and inline validation.
-- **Startup-time**: Control and Egress validate their config files against the JSON schema on startup. Invalid configs cause an immediate exit with a clear error message listing each validation failure.
-- **Runtime**: Dynamic config changes submitted via the REST API are validated against the protobuf schema before acceptance. Invalid changes are rejected with a reason. Partial updates are not applied — the entire change is atomic.
+- **Compile-time**: JSON Schema files (`schema/control.config.json`, `schema/egress.config.json`) are shipped with the
+  project. Editors with JSON Schema support provide auto-complete and inline validation.
+- **Startup-time**: Control and Egress validate their config files against the JSON schema on startup. Invalid configs
+  cause an immediate exit with a clear error message listing each validation failure.
+- **Runtime**: Dynamic config changes submitted via the REST API are validated against the protobuf schema before
+  acceptance. Invalid changes are rejected with a reason. Partial updates are not applied — the entire change is atomic.
 
 **Config File Layout**
 
@@ -1689,7 +1736,8 @@ Each component has its own config file:
 - Egress Worker: `egress.yaml`
 - Provider Adapter: `adapter.yaml` (if used)
 
-Config files support YAML anchors and references for reusable fragments. Environment variable substitution uses `${STRAW_*}` syntax for values that must come from the environment (e.g., secrets).
+Config files support YAML anchors and references for reusable fragments. Environment variable substitution uses
+`${STRAW_*}` syntax for values that must come from the environment (e.g., secrets).
 
 ### 20.3 Static Configuration Reference
 
@@ -1734,14 +1782,14 @@ control:
     ca_key_password_env: "STRAW_MITM_CA_KEY_PASSWORD"
     cert_validity_days: 365
     strict_verify_outbound: true
-    supported_tls_versions: ["1.2", "1.3"]
+    supported_tls_versions: [ "1.2", "1.3" ]
 
   # Inbound TLS termination (tls-client stack)
   tls:
     cert_path: "/etc/straw/tls/server.crt"
     key_path: "/etc/straw/tls/server.key"
-    supported_versions: ["1.2", "1.3"]
-    cipher_suites: []  # empty = tls-client defaults
+    supported_versions: [ "1.2", "1.3" ]
+    cipher_suites: [ ]  # empty = tls-client defaults
 
   # NATS connection (all static)
   nats:
@@ -1802,7 +1850,7 @@ control:
     logging:
       level: "info"
       format: "json"
-      output: ["stdout"]
+      output: [ "stdout" ]
       structured_fields:
         - "request_id"
         - "tenant_id"
@@ -1853,12 +1901,12 @@ egress:
 
   # Worker capabilities (advertised on registration)
   capabilities:
-    pool_names: ["default"]
-    tags: ["datacenter", "us-west"]
-    countries: ["US"]
-    regions: ["us-west-1"]
-    ip_types: ["datacenter"]
-    supported_ingress_modes: ["rest", "http_proxy", "connect", "mitm"]
+    pool_names: [ "default" ]
+    tags: [ "datacenter", "us-west" ]
+    countries: [ "US" ]
+    regions: [ "us-west-1" ]
+    ip_types: [ "datacenter" ]
+    supported_ingress_modes: [ "rest", "http_proxy", "connect", "mitm" ]
 
   # Browser fingerprint (tls-client preset)
   fingerprint:
@@ -1871,7 +1919,7 @@ egress:
   outbound_tls:
     strict_verify: true
     ca_bundle_path: "/etc/straw/tls/ca-bundle.crt"
-    supported_versions: ["1.2", "1.3"]
+    supported_versions: [ "1.2", "1.3" ]
 
   # Upstream proxy chaining (optional)
   upstream_proxy:
@@ -1912,7 +1960,7 @@ egress:
     logging:
       level: "info"
       format: "json"
-      output: ["stdout"]
+      output: [ "stdout" ]
 ```
 
 #### 20.3.3 Provider Adapter Static Configuration
@@ -1941,10 +1989,10 @@ adapter:
         - id: "account-2"
           session_limit: 100
           max_concurrency: 50
-      pool_names: ["bright-data-pool"]
-      tags: ["residential"]
-      countries: []  # empty = all
-      ip_types: ["residential"]
+      pool_names: [ "bright-data-pool" ]
+      tags: [ "residential" ]
+      countries: [ ]  # empty = all
+      ip_types: [ "residential" ]
 
     - name: "custom_upstream"
       type: "upstream_proxy"
@@ -1954,10 +2002,10 @@ adapter:
         port: 443
         username_env: "STRAW_UPSTREAM_USERNAME"
         password_env: "STRAW_UPSTREAM_PASSWORD"
-      pool_names: ["upstream-pool"]
-      tags: ["upstream"]
-      countries: []
-      ip_types: ["datacenter"]
+      pool_names: [ "upstream-pool" ]
+      tags: [ "upstream" ]
+      countries: [ ]
+      ip_types: [ "datacenter" ]
 
   # Per-account load balancing
   load_balancing:
@@ -1974,46 +2022,47 @@ adapter:
     logging:
       level: "info"
       format: "json"
-      output: ["stdout"]
+      output: [ "stdout" ]
 ```
 
 ### 20.4 NATS Configuration Reference
 
-NATS configuration is first-class and entirely static. All NATS settings are documented here, including the subject topology.
+NATS configuration is first-class and entirely static. All NATS settings are documented here, including the subject
+topology.
 
 #### 20.4.1 Connection Parameters
 
-| Parameter | YAML Key | Env Var | Default | Description |
-|---|---|---|---|---|
-| Servers | `nats.servers` | `STRAW_NATS_URLS` (comma-separated) | `nats://localhost:4222` | NATS server connection URLs |
-| Credentials File | `nats.user_credentials_file` | `STRAW_NATS_CREDS_FILE` | — | Path to NATS NKey/JWT credentials file |
-| TLS Cert | `nats.tls_cert_path` | `STRAW_NATS_TLS_CERT` | — | Client TLS certificate path |
-| TLS Key | `nats.tls_key_path` | `STRAW_NATS_TLS_KEY` | — | Client TLS private key path |
-| TLS CA | `nats.tls_ca_path` | `STRAW_NATS_TLS_CA` | — | CA certificate for server verification |
-| Reconnect Attempts | `nats.reconnect_attempts` | `STRAW_NATS_RECONNECT_ATTEMPTS` | `10` | Max reconnect attempts before giving up |
-| Reconnect Wait | `nats.reconnect_wait_ms` | `STRAW_NATS_RECONNECT_WAIT_MS` | `2000` | Wait between reconnect attempts (ms) |
-| Ping Interval | `nats.ping_interval_ms` | `STRAW_NATS_PING_INTERVAL_MS` | `30000` | NATS server ping interval (ms) |
-| Max Ping Failures | `nats.max_ping_failures` | `STRAW_NATS_MAX_PING_FAILURES` | `3` | Consecutive ping failures before disconnect |
-| Flush Interval | `nats.flush_interval_ms` | `STRAW_NATS_FLUSH_INTERVAL_MS` | `100` | Max time between NATS flushes (ms) |
-| Buffer Size | `nats.buffer_size_mb` | `STRAW_NATS_BUFFER_SIZE_MB` | `32` | NATS client send buffer size (MB) |
-| Max Reconnect Buffer | `nats.max_reconnect_buffer_mb` | `STRAW_NATS_MAX_RECONNECT_BUFFER_MB` | `256` | Max buffer size during reconnect (MB) |
+| Parameter            | YAML Key                       | Env Var                              | Default                 | Description                                 |
+|----------------------|--------------------------------|--------------------------------------|-------------------------|---------------------------------------------|
+| Servers              | `nats.servers`                 | `STRAW_NATS_URLS` (comma-separated)  | `nats://localhost:4222` | NATS server connection URLs                 |
+| Credentials File     | `nats.user_credentials_file`   | `STRAW_NATS_CREDS_FILE`              | —                       | Path to NATS NKey/JWT credentials file      |
+| TLS Cert             | `nats.tls_cert_path`           | `STRAW_NATS_TLS_CERT`                | —                       | Client TLS certificate path                 |
+| TLS Key              | `nats.tls_key_path`            | `STRAW_NATS_TLS_KEY`                 | —                       | Client TLS private key path                 |
+| TLS CA               | `nats.tls_ca_path`             | `STRAW_NATS_TLS_CA`                  | —                       | CA certificate for server verification      |
+| Reconnect Attempts   | `nats.reconnect_attempts`      | `STRAW_NATS_RECONNECT_ATTEMPTS`      | `10`                    | Max reconnect attempts before giving up     |
+| Reconnect Wait       | `nats.reconnect_wait_ms`       | `STRAW_NATS_RECONNECT_WAIT_MS`       | `2000`                  | Wait between reconnect attempts (ms)        |
+| Ping Interval        | `nats.ping_interval_ms`        | `STRAW_NATS_PING_INTERVAL_MS`        | `30000`                 | NATS server ping interval (ms)              |
+| Max Ping Failures    | `nats.max_ping_failures`       | `STRAW_NATS_MAX_PING_FAILURES`       | `3`                     | Consecutive ping failures before disconnect |
+| Flush Interval       | `nats.flush_interval_ms`       | `STRAW_NATS_FLUSH_INTERVAL_MS`       | `100`                   | Max time between NATS flushes (ms)          |
+| Buffer Size          | `nats.buffer_size_mb`          | `STRAW_NATS_BUFFER_SIZE_MB`          | `32`                    | NATS client send buffer size (MB)           |
+| Max Reconnect Buffer | `nats.max_reconnect_buffer_mb` | `STRAW_NATS_MAX_RECONNECT_BUFFER_MB` | `256`                   | Max buffer size during reconnect (MB)       |
 
 #### 20.4.2 Subject Topology
 
 All NATS subjects follow the pattern `straw.v1.{topic}.{scope}.{action}`.
 
-| Subject | Direction | Payload | Purpose |
-|---|---|---|---|
-| `straw.v1.register.>` | Worker → Control | `RegisterRequest` | Worker registration |
-| `straw.v1.register.reply.{worker_id}` | Control → Worker | `RegisterAck` | Registration acknowledgement |
-| `straw.v1.heartbeat.{worker_id}` | Worker → Control | `HeartbeatRequest` | Worker health report |
-| `straw.v1.heartbeat.reply.{worker_id}` | Control → Worker | `HeartbeatAck` | Heartbeat acknowledgement |
-| `straw.v1.dispatch.{pool_name}` | Control → Workers (queue group) | `AssignRequest` | Work assignment (queue group per pool) |
-| `straw.v1.dispatch.reply.{request_id}` | Worker → Control | `AssignAck` | Assignment acknowledgement |
-| `straw.v1.stream.c2e.{request_id}` | Worker → Control (stream) | `StreamFrame` | Client-to-executor upload / tunnel bytes |
-| `straw.v1.stream.e2c.{request_id}` | Control → Worker (stream) | `StreamFrame` | Executor-to-Control response / tunnel bytes |
-| `straw.v1.cancel.{request_id}` | Worker → Control | `StreamFrame` (cancel) | Request cancellation |
-| `straw.v1.config.invalidate.{tenant_id}` | Control → Control (Redis) | — | Config invalidation broadcast |
+| Subject                                  | Direction                       | Payload                | Purpose                                     |
+|------------------------------------------|---------------------------------|------------------------|---------------------------------------------|
+| `straw.v1.register.>`                    | Worker → Control                | `RegisterRequest`      | Worker registration                         |
+| `straw.v1.register.reply.{worker_id}`    | Control → Worker                | `RegisterAck`          | Registration acknowledgement                |
+| `straw.v1.heartbeat.{worker_id}`         | Worker → Control                | `HeartbeatRequest`     | Worker health report                        |
+| `straw.v1.heartbeat.reply.{worker_id}`   | Control → Worker                | `HeartbeatAck`         | Heartbeat acknowledgement                   |
+| `straw.v1.dispatch.{pool_name}`          | Control → Workers (queue group) | `AssignRequest`        | Work assignment (queue group per pool)      |
+| `straw.v1.dispatch.reply.{request_id}`   | Worker → Control                | `AssignAck`            | Assignment acknowledgement                  |
+| `straw.v1.stream.c2e.{request_id}`       | Worker → Control (stream)       | `StreamFrame`          | Client-to-executor upload / tunnel bytes    |
+| `straw.v1.stream.e2c.{request_id}`       | Control → Worker (stream)       | `StreamFrame`          | Executor-to-Control response / tunnel bytes |
+| `straw.v1.cancel.{request_id}`           | Worker → Control                | `StreamFrame` (cancel) | Request cancellation                        |
+| `straw.v1.config.invalidate.{tenant_id}` | Control → Control (Redis)       | —                      | Config invalidation broadcast               |
 
 #### 20.4.3 Queue Groups
 
@@ -2021,7 +2070,8 @@ Pool-based load balancing uses NATS queue groups:
 
 - Each executor pool maps to a NATS queue group: `straw.dispatch.pool.{pool_name}`
 - Workers join the queue group by subscribing to the dispatch subject with the pool name as the queue group
-- When Control publishes to `straw.v1.dispatch.{pool_name}`, NATS delivers the message to exactly one worker in the queue group
+- When Control publishes to `straw.v1.dispatch.{pool_name}`, NATS delivers the message to exactly one worker in the
+  queue group
 - New workers automatically join the queue group on registration
 - Worker removal (heartbeat timeout, disable) causes NATS to redeliver pending messages to other queue members
 
@@ -2037,74 +2087,81 @@ Pool-based load balancing uses NATS queue groups:
 
 Each tenant is a top-level config entity with the following fields:
 
-| Field | Type | Description |
-|---|---|---|
-| `id` | string | Unique tenant identifier (set at creation) |
-| `name` | string | Human-readable tenant name |
-| `status` | enum | `active`, `suspended`, `deleted` |
-| `created_at` | unix_ms | Tenant creation timestamp |
-| `updated_at` | unix_ms | Last config update timestamp |
-| `config_version` | uint64 | Monotonically increasing config version number |
-| `rate_limits` | object | Tenant-level rate limit dimensions (see §20.8) |
-| `quotas` | object | Tenant-level quota limits (see §20.8) |
-| `deny_rules` | array | Tenant-level destination deny rules (see §20.8) |
-| `payload_capture_enabled` | bool | Global payload capture toggle for this tenant |
-| `default_fingerprint_profile` | string | Default fingerprint preset name |
+| Field                         | Type    | Description                                     |
+|-------------------------------|---------|-------------------------------------------------|
+| `id`                          | string  | Unique tenant identifier (set at creation)      |
+| `name`                        | string  | Human-readable tenant name                      |
+| `status`                      | enum    | `active`, `suspended`, `deleted`                |
+| `created_at`                  | unix_ms | Tenant creation timestamp                       |
+| `updated_at`                  | unix_ms | Last config update timestamp                    |
+| `config_version`              | uint64  | Monotonically increasing config version number  |
+| `rate_limits`                 | object  | Tenant-level rate limit dimensions (see §20.8)  |
+| `quotas`                      | object  | Tenant-level quota limits (see §20.8)           |
+| `deny_rules`                  | array   | Tenant-level destination deny rules (see §20.8) |
+| `payload_capture_enabled`     | bool    | Global payload capture toggle for this tenant   |
+| `default_fingerprint_profile` | string  | Default fingerprint preset name                 |
 
 **Config Versioning**
 
 Every dynamic config change increments the `config_version` field atomically in Postgres. The version is used for:
 
-- **Optimistic concurrency**: Updates include the expected `config_version`. If the current version differs, the update is rejected with a `conflict` error, and the client must reload and retry.
-- **Rollback**: Each config change is stored as an immutable audit record with its `config_version`. Admins can rollback to any previous version, creating a new version that reverts the changes.
-- **Audit trail**: All config changes are logged to ClickHouse with `config_version`, `changed_by` (user_id), `action` (create/update/rollback), `field_path`, `old_value`, `new_value`, and `timestamp`.
+- **Optimistic concurrency**: Updates include the expected `config_version`. If the current version differs, the update
+  is rejected with a `conflict` error, and the client must reload and retry.
+- **Rollback**: Each config change is stored as an immutable audit record with its `config_version`. Admins can rollback
+  to any previous version, creating a new version that reverts the changes.
+- **Audit trail**: All config changes are logged to ClickHouse with `config_version`, `changed_by` (user_id), `action` (
+  create/update/rollback), `field_path`, `old_value`, `new_value`, and `timestamp`.
 
 #### 20.5.2 API Key Configuration
 
 Each API key is a child resource under a tenant:
 
-| Field | Type | Description |
-|---|---|---|
-| `id` | string | Unique API key identifier |
-| `tenant_id` | string | Parent tenant |
-| `key_hash` | string | SHA-256 hash of the API key (never stored in plaintext) |
-| `key_prefix` | string | First 8 characters of the key (for identification; shown only at creation) |
-| `user_id` | string | Owning user |
-| `role` | enum | `admin`, `operator`, `viewer` |
-| `status` | enum | `active`, `revoked` |
-| `created_at` | unix_ms | Key creation timestamp |
-| `revoked_at` | unix_ms | Key revocation timestamp (null if active) |
-| `last_used_at` | unix_ms | Last successful authentication timestamp |
+| Field          | Type    | Description                                                                |
+|----------------|---------|----------------------------------------------------------------------------|
+| `id`           | string  | Unique API key identifier                                                  |
+| `tenant_id`    | string  | Parent tenant                                                              |
+| `key_hash`     | string  | SHA-256 hash of the API key (never stored in plaintext)                    |
+| `key_prefix`   | string  | First 8 characters of the key (for identification; shown only at creation) |
+| `user_id`      | string  | Owning user                                                                |
+| `role`         | enum    | `admin`, `operator`, `viewer`                                              |
+| `status`       | enum    | `active`, `revoked`                                                        |
+| `created_at`   | unix_ms | Key creation timestamp                                                     |
+| `revoked_at`   | unix_ms | Key revocation timestamp (null if active)                                  |
+| `last_used_at` | unix_ms | Last successful authentication timestamp                                   |
 
 **Key Rotation**
 
 - Multiple active keys are supported simultaneously. During rotation, both old and new keys remain valid.
-- Revocation is immediate: the key hash is marked `revoked` in Postgres, the config version is bumped, and a Redis pub/sub invalidation is published. Control evicts the key from its in-memory cache immediately.
-- In-flight requests authenticated with a revoked key complete normally. New requests using the revoked key are rejected with `invalid_api_key`.
+- Revocation is immediate: the key hash is marked `revoked` in Postgres, the config version is bumped, and a Redis
+  pub/sub invalidation is published. Control evicts the key from its in-memory cache immediately.
+- In-flight requests authenticated with a revoked key complete normally. New requests using the revoked key are rejected
+  with `invalid_api_key`.
 - Keys are never deleted; they are soft-revoked and retained for audit purposes.
 
 #### 20.5.3 Routing Rules Configuration
 
 Each routing rule is a tenant-scoped config entity:
 
-| Field | Type | Description |
-|---|---|---|
-| `id` | string | Unique rule identifier |
-| `tenant_id` | string | Parent tenant |
-| `priority` | int32 | Evaluation priority (lower number = higher priority). Rules evaluated in ascending priority order. |
-| `enabled` | bool | Whether the rule is active. Disabled rules are skipped during evaluation. |
-| `match_conditions` | object | Match criteria (all required fields must match) |
-| `target_pool_id` | string | Target executor pool (Egress or Provider Adapter) |
-| `fallback_pool_ids` | array | Ordered list of fallback pool IDs. Applied in order if the primary pool has no eligible executors. |
-| `sticky_session_ttl_seconds` | int32 | Sticky session TTL for this rule. 0 = no sticky sessions. |
-| `allow_sticky_fallback` | bool | If true, allow falling back to a different executor when the sticky session target is unavailable. |
-| `config_version` | uint64 | Config version at time of this rule's creation |
+| Field                        | Type   | Description                                                                                        |
+|------------------------------|--------|----------------------------------------------------------------------------------------------------|
+| `id`                         | string | Unique rule identifier                                                                             |
+| `tenant_id`                  | string | Parent tenant                                                                                      |
+| `priority`                   | int32  | Evaluation priority (lower number = higher priority). Rules evaluated in ascending priority order. |
+| `enabled`                    | bool   | Whether the rule is active. Disabled rules are skipped during evaluation.                          |
+| `match_conditions`           | object | Match criteria (all required fields must match)                                                    |
+| `target_pool_id`             | string | Target executor pool (Egress or Provider Adapter)                                                  |
+| `fallback_pool_ids`          | array  | Ordered list of fallback pool IDs. Applied in order if the primary pool has no eligible executors. |
+| `sticky_session_ttl_seconds` | int32  | Sticky session TTL for this rule. 0 = no sticky sessions.                                          |
+| `allow_sticky_fallback`      | bool   | If true, allow falling back to a different executor when the sticky session target is unavailable. |
+| `config_version`             | uint64 | Config version at time of this rule's creation                                                     |
 
 **Match Conditions Schema**
 
 ```json
 {
-  "tags": ["string"],
+  "tags": [
+    "string"
+  ],
   "country": "ISO-3166-alpha-2",
   "region": "string",
   "ip_type": "datacenter | residential | mobile | isp | unknown",
@@ -2132,32 +2189,33 @@ Each routing rule is a tenant-scoped config entity:
 
 **Rule Matching and Client Hints**
 
-Any hint the client provides is a hard constraint. Missing hints mean no preference. Fallback may relax admin preferences but never client hints.
+Any hint the client provides is a hard constraint. Missing hints mean no preference. Fallback may relax admin
+preferences but never client hints.
 
 #### 20.5.4 Fingerprint Profiles Configuration
 
 Fingerprint profiles are fixed `tls-client` built-in presets. Operators select by preset name.
 
-| Field | Type | Description |
-|---|---|---|
-| `preset_name` | string | `tls-client` preset identifier (e.g., `chrome_120`, `firefox_121`, `safari_17`) |
-| `display_name` | string | Human-readable name (e.g., "Chrome 120 on Windows") |
+| Field          | Type   | Description                                                                     |
+|----------------|--------|---------------------------------------------------------------------------------|
+| `preset_name`  | string | `tls-client` preset identifier (e.g., `chrome_120`, `firefox_121`, `safari_17`) |
+| `display_name` | string | Human-readable name (e.g., "Chrome 120 on Windows")                             |
 
 **Built-in Presets**
 
 The following `tls-client` presets are available (subject to the `tls-client` version in use):
 
-| Preset Name | Display Name | Browser | Version | Platform |
-|---|---|---|---|---|
-| `chrome_120` | Chrome 120 | Chrome | 120.0.0.0 | Windows 10 |
-| `chrome_121` | Chrome 121 | Chrome | 121.0.0.0 | Windows 10 |
-| `chrome_123` | Chrome 123 | Chrome | 123.0.0.0 | macOS 14 |
-| `chrome_131` | Chrome 131 | Chrome | 131.0.0.0 | Android 14 |
-| `firefox_120` | Firefox 120 | Firefox | 120.0 | Windows 10 |
-| `firefox_121` | Firefox 121 | Firefox | 121.0 | Windows 10 |
-| `firefox_125` | Firefox 125 | Firefox | 125.0 | macOS 14 |
-| `safari_16` | Safari 16 | Safari | 16.0 | macOS 13 |
-| `safari_17` | Safari 17 | Safari | 17.0 | iOS 17 |
+| Preset Name   | Display Name | Browser | Version   | Platform   |
+|---------------|--------------|---------|-----------|------------|
+| `chrome_120`  | Chrome 120   | Chrome  | 120.0.0.0 | Windows 10 |
+| `chrome_121`  | Chrome 121   | Chrome  | 121.0.0.0 | Windows 10 |
+| `chrome_123`  | Chrome 123   | Chrome  | 123.0.0.0 | macOS 14   |
+| `chrome_131`  | Chrome 131   | Chrome  | 131.0.0.0 | Android 14 |
+| `firefox_120` | Firefox 120  | Firefox | 120.0     | Windows 10 |
+| `firefox_121` | Firefox 121  | Firefox | 121.0     | Windows 10 |
+| `firefox_125` | Firefox 125  | Firefox | 125.0     | macOS 14   |
+| `safari_16`   | Safari 16    | Safari  | 16.0      | macOS 13   |
+| `safari_17`   | Safari 17    | Safari  | 17.0      | iOS 17     |
 
 **Selection Flow**
 
@@ -2165,32 +2223,36 @@ The following `tls-client` presets are available (subject to the `tls-client` ve
 2. If not specified, the tenant's `default_fingerprint_profile` is used.
 3. Control validates the preset name against the known preset list.
 4. Control sends the preset name to Egress via the `fingerprint_preset` protobuf enum.
-5. Egress maps the enum to the corresponding `tls-client` preset and applies it immediately before making the outbound request.
+5. Egress maps the enum to the corresponding `tls-client` preset and applies it immediately before making the outbound
+   request.
 6. If the preset is unsupported or the enum value is unknown, Egress returns an `unsupported_fingerprint` error.
 
 **Fingerprint Mutability**
 
-Preset definitions are immutable — they come from `tls-client` and cannot be modified. Operators can change the `default_fingerprint_profile` per tenant, which takes effect on the next request (immediate category).
+Preset definitions are immutable — they come from `tls-client` and cannot be modified. Operators can change the
+`default_fingerprint_profile` per tenant, which takes effect on the next request (immediate category).
 
 #### 20.5.5 Header and Cookie Injection Policies
 
 Each injection policy is a tenant-scoped config entity:
 
-| Field | Type | Description |
-|---|---|---|
-| `id` | string | Unique policy identifier |
-| `tenant_id` | string | Parent tenant |
-| `name` | string | Human-readable policy name |
-| `enabled` | bool | Whether the policy is active |
-| `match_conditions` | object | Conditions for applying this policy |
-| `operations` | array | Ordered list of header/cookie operations |
-| `config_version` | uint64 | Config version at time of creation |
+| Field              | Type   | Description                              |
+|--------------------|--------|------------------------------------------|
+| `id`               | string | Unique policy identifier                 |
+| `tenant_id`        | string | Parent tenant                            |
+| `name`             | string | Human-readable policy name               |
+| `enabled`          | bool   | Whether the policy is active             |
+| `match_conditions` | object | Conditions for applying this policy      |
+| `operations`       | array  | Ordered list of header/cookie operations |
+| `config_version`   | uint64 | Config version at time of creation       |
 
 **Match Conditions**
 
 ```json
 {
-  "tags": ["string"],
+  "tags": [
+    "string"
+  ],
   "target_host": "string"
 }
 ```
@@ -2220,14 +2282,14 @@ Operations are executed in array order for deterministic behavior:
 
 The following headers are stripped by Straw before reaching the target and are never injected or forwarded:
 
-| Header | Reason |
-|---|---|
-| `X-Straw-Request-Id` | Internal request correlation |
-| `X-Straw-Tenant-Id` | Internal tenant identification |
-| `X-Straw-Trace-Id` | Internal trace correlation |
-| `X-Straw-Worker-Id` | Internal worker identification (never exposed to clients) |
-| `X-Straw-Routing-Rule` | Internal routing metadata |
-| `X-Straw-Fingerprint` | Internal fingerprint instruction |
+| Header                              | Reason                                                         |
+|-------------------------------------|----------------------------------------------------------------|
+| `X-Straw-Request-Id`                | Internal request correlation                                   |
+| `X-Straw-Tenant-Id`                 | Internal tenant identification                                 |
+| `X-Straw-Trace-Id`                  | Internal trace correlation                                     |
+| `X-Straw-Worker-Id`                 | Internal worker identification (never exposed to clients)      |
+| `X-Straw-Routing-Rule`              | Internal routing metadata                                      |
+| `X-Straw-Fingerprint`               | Internal fingerprint instruction                               |
 | `Proxy-Authorization` (on outbound) | Straw manages its own auth; client proxy auth is not forwarded |
 
 #### 20.5.6 Worker Credential Configuration
@@ -2236,47 +2298,55 @@ Worker credentials are generated by the Admin API and distributed to Egress work
 
 **Credential Structure**
 
-| Field | Type | Description |
-|---|---|---|
-| `credential_id` | string | Unique public identifier (used in NATS handshake) |
-| `tenant_id` | string | Tenant scope |
-| `pool_scope` | array | Pool names this credential can register to |
-| `signing_algorithm` | string | `Ed25519` (recommended) |
-| `public_key` | string | Base64-encoded public key (shown at creation) |
-| `private_key` | string | Base64-encoded private key (shown **once** at creation, never stored again) |
-| `status` | enum | `active`, `revoked` |
-| `created_at` | unix_ms | Credential creation timestamp |
-| `revoked_at` | unix_ms | Revocation timestamp (null if active) |
+| Field               | Type    | Description                                                                 |
+|---------------------|---------|-----------------------------------------------------------------------------|
+| `credential_id`     | string  | Unique public identifier (used in NATS handshake)                           |
+| `tenant_id`         | string  | Tenant scope                                                                |
+| `pool_scope`        | array   | Pool names this credential can register to                                  |
+| `signing_algorithm` | string  | `Ed25519` (recommended)                                                     |
+| `public_key`        | string  | Base64-encoded public key (shown at creation)                               |
+| `private_key`       | string  | Base64-encoded private key (shown **once** at creation, never stored again) |
+| `status`            | enum    | `active`, `revoked`                                                         |
+| `created_at`        | unix_ms | Credential creation timestamp                                               |
+| `revoked_at`        | unix_ms | Revocation timestamp (null if active)                                       |
 
 **Signing Algorithm**
 
-Credentials use Ed25519 for cryptographic signing. The private key signs a token containing `credential_id`, `tenant_id`, `pool_scope`, and a timestamp. Control verifies the signature statelessly using the stored public key before querying Postgres or Redis.
+Credentials use Ed25519 for cryptographic signing. The private key signs a token containing `credential_id`,`tenant_id`,
+`pool_scope`, and a timestamp. Control verifies the signature statelessly using the stored public key before querying
+Postgres or Redis.
 
 **Credential Lifecycle**
 
-1. **Create**: Admin calls `POST /api/v1/config/worker-credentials`. Control generates an Ed25519 key pair, stores the public key and metadata in Postgres, and returns the full credential (including the private key) to the admin.
-2. **Distribute**: The admin copies the private key to the Egress worker's config file or sets it via `STRAW_WORKER_PRIVATE_KEY`. The private key is never transmitted over the network in plaintext after this point.
-3. **Register**: On startup, the Egress worker signs a registration token with its private key and sends it to Control via the NATS `RegisterRequest`.
-4. **Verify**: Control verifies the signature statelessly using the stored public key. If valid, the worker is registered and a `session_id` is assigned.
+1. **Create**: Admin calls `POST /api/v1/config/worker-credentials`. Control generates an Ed25519 key pair, stores the
+   public key and metadata in Postgres, and returns the full credential (including the private key) to the admin.
+2. **Distribute**: The admin copies the private key to the Egress worker's config file or sets it via
+   `STRAW_WORKER_PRIVATE_KEY`. The private key is never transmitted over the network in plaintext after this point.
+3. **Register**: On startup, the Egress worker signs a registration token with its private key and sends it to Control
+   via the NATS `RegisterRequest`.
+4. **Verify**: Control verifies the signature statelessly using the stored public key. If valid, the worker is
+   registered and a `session_id` is assigned.
 5. **Rotate**: If a credential is compromised or rotated:
     - Admin calls `POST /api/v1/config/worker-credentials/{id}/revoke`. The credential is marked `revoked` in Postgres.
     - Admin calls `POST /api/v1/config/worker-credentials` to generate a new credential.
     - The new private key is distributed to the Egress worker (config update or env var change).
     - The worker restarts and re-registers with the new credential.
-    - Old requests authenticated with the revoked credential complete normally. New registrations are rejected with `REJECTED_AUTH`.
-6. **Revoke**: Immediate revocation. The credential is marked `revoked`, the config version is bumped, and a Redis invalidation is published. Control rejects new registrations with the revoked credential.
+    - Old requests authenticated with the revoked credential complete normally. New registrations are rejected with
+      `REJECTED_AUTH`.
+6. **Revoke**: Immediate revocation. The credential is marked `revoked`, the config version is bumped, and a Redis
+   invalidation is published. Control rejects new registrations with the revoked credential.
 
 #### 20.5.7 Payload Capture Configuration
 
-| Field | Type | Description |
-|---|---|---|
-| `enabled` | bool | Whether payload capture is active (tenant-level or global) |
-| `capture_request_headers` | bool | Capture inbound request headers |
-| `capture_request_body` | bool | Capture inbound request body |
-| `capture_response_headers` | bool | Capture outbound response headers |
-| `capture_response_body` | bool | Capture outbound response body |
-| `redaction_rules` | array | Automatic redaction rules for sensitive data |
-| `by_tag` | object | Per-tag capture overrides: `{ "tag_name": { "enabled": bool, ... } }` |
+| Field                      | Type   | Description                                                           |
+|----------------------------|--------|-----------------------------------------------------------------------|
+| `enabled`                  | bool   | Whether payload capture is active (tenant-level or global)            |
+| `capture_request_headers`  | bool   | Capture inbound request headers                                       |
+| `capture_request_body`     | bool   | Capture inbound request body                                          |
+| `capture_response_headers` | bool   | Capture outbound response headers                                     |
+| `capture_response_body`    | bool   | Capture outbound response body                                        |
+| `redaction_rules`          | array  | Automatic redaction rules for sensitive data                          |
+| `by_tag`                   | object | Per-tag capture overrides: `{ "tag_name": { "enabled": bool, ... } }` |
 
 **Capture Scope**
 
@@ -2288,19 +2358,21 @@ Credentials use Ed25519 for cryptographic signing. The private key signs a token
 
 Automatic redaction is applied before storage. Redaction rules match on header names or body content patterns:
 
-| Rule Type | Match | Action |
-|---|---|---|
-| Header name | Exact header name (e.g., `Authorization`, `Cookie`) | Redact value to `[REDACTED]` |
-| Body pattern | Regex pattern (e.g., `\d{3}-\d{2}-\d{4}` for SSN) | Redact matched content |
-| Field path | JSON path (e.g., `$.password`, `$.credit_card`) | Redact field value |
+| Rule Type    | Match                                               | Action                       |
+|--------------|-----------------------------------------------------|------------------------------|
+| Header name  | Exact header name (e.g., `Authorization`, `Cookie`) | Redact value to `[REDACTED]` |
+| Body pattern | Regex pattern (e.g., `\d{3}-\d{2}-\d{4}` for SSN)   | Redact matched content       |
+| Field path   | JSON path (e.g., `$.password`, `$.credit_card`)     | Redact field value           |
 
 **Storage**
 
-Captured payloads are stored in ClickHouse in the `payloads` table (see §20.10). Retention is controlled by the ClickHouse retention policy.
+Captured payloads are stored in ClickHouse in the `payloads` table (see §20.10). Retention is controlled by the
+ClickHouse retention policy.
 
 **Audit**
 
-All payload capture enable/disable actions are logged to ClickHouse with `changed_by`, `scope` (global/tenant/tag), `old_value`, `new_value`, and `timestamp`.
+All payload capture enable/disable actions are logged to ClickHouse with `changed_by`, `scope` (global/tenant/tag),
+`old_value`, `new_value`, and `timestamp`.
 
 **Role Restriction**
 
@@ -2312,12 +2384,12 @@ Only the `admin` role can toggle payload capture. The `operator` and `viewer` ro
 
 Rate limits are configured per tenant with four dimensions. Each dimension has a configurable limit:
 
-| Dimension | Config Key | Example |
-|---|---|---|
-| Global tenant | `rate_limits.global.requests_per_minute` | `100` |
-| Tenant + API key | `rate_limits.key.requests_per_minute` | `50` |
-| Tenant + target host | `rate_limits.host.requests_per_minute` | `200` |
-| Tenant + IP type | `rate_limits.ip_type.requests_per_minute` | `150` |
+| Dimension            | Config Key                                | Example |
+|----------------------|-------------------------------------------|---------|
+| Global tenant        | `rate_limits.global.requests_per_minute`  | `100`   |
+| Tenant + API key     | `rate_limits.key.requests_per_minute`     | `50`    |
+| Tenant + target host | `rate_limits.host.requests_per_minute`    | `200`   |
+| Tenant + IP type     | `rate_limits.ip_type.requests_per_minute` | `150`   |
 
 - **Algorithm**: Redis Sliding Window Log using Sorted Sets (`ZSET`).
 - **Burst allowance**: None. Strict hard-cap with no burst.
@@ -2327,28 +2399,30 @@ Rate limits are configured per tenant with four dimensions. Each dimension has a
 
 Quotas are configured per tenant with monthly resets:
 
-| Config Key | Example | Description |
-|---|---|---|
-| `quotas.monthly_requests` | `100000` | Max requests per month |
+| Config Key                       | Example       | Description                     |
+|----------------------------------|---------------|---------------------------------|
+| `quotas.monthly_requests`        | `100000`      | Max requests per month          |
 | `quotas.monthly_bandwidth_bytes` | `53687091200` | Max bandwidth per month (50 GB) |
 
 - **Reset cadence**: Fixed monthly resets on the 1st of each month.
-- **Enforcement**: Evaluated at request start and end. If breached during an active request, the request finishes. Subsequent requests are blocked with `quota_exhausted` error until reset.
+- **Enforcement**: Evaluated at request start and end. If breached during an active request, the request finishes.
+  Subsequent requests are blocked with `quota_exhausted` error until reset.
 
 **Destination Deny Rules**
 
 Deny rules block outbound transport to restricted IPs, domains, or network ranges:
 
-| Field | Type | Description |
-|---|---|---|
-| `id` | string | Unique rule identifier |
-| `tenant_id` | string | Parent tenant (empty = global admin rule) |
-| `type` | enum | `ip_cidr`, `domain`, `full_url` |
-| `value` | string | CIDR block, domain pattern, or full URL |
-| `enabled` | bool | Whether the rule is active |
-| `config_version` | uint64 | Config version at creation |
+| Field            | Type   | Description                               |
+|------------------|--------|-------------------------------------------|
+| `id`             | string | Unique rule identifier                    |
+| `tenant_id`      | string | Parent tenant (empty = global admin rule) |
+| `type`           | enum   | `ip_cidr`, `domain`, `full_url`           |
+| `value`          | string | CIDR block, domain pattern, or full URL   |
+| `enabled`        | bool   | Whether the rule is active                |
+| `config_version` | uint64 | Config version at creation                |
 
-- Deny rules are evaluated before routing. If a match is found, the request is rejected immediately with `destination_denied`.
+- Deny rules are evaluated before routing. If a match is found, the request is rejected immediately with
+  `destination_denied`.
 - Global deny rules (empty `tenant_id`) apply to all tenants. Per-tenant deny rules apply only to that tenant.
 
 ### 20.6 TLS and MITM Configuration
@@ -2357,40 +2431,43 @@ Deny rules block outbound transport to restricted IPs, domains, or network range
 
 The MITM CA is used to intercept and decrypt HTTPS traffic for decoded request/response handling.
 
-| Config Key | Env Var | Description |
-|---|---|---|
-| `control.mitm.ca_key_path` | — | Path to the MITM CA private key file |
-| `control.mitm.ca_cert_path` | — | Path to the MITM CA public certificate file |
-| `control.mitm.ca_key_password_env` | `STRAW_MITM_CA_KEY_PASSWORD` | Env var containing the CA key password (if encrypted) |
-| `control.mitm.cert_validity_days` | `STROW_MITM_CERT_VALIDITY_DAYS` | Default validity period for dynamically generated intermediate certificates |
+| Config Key                         | Env Var                         | Description                                                                 |
+|------------------------------------|---------------------------------|-----------------------------------------------------------------------------|
+| `control.mitm.ca_key_path`         | —                               | Path to the MITM CA private key file                                        |
+| `control.mitm.ca_cert_path`        | —                               | Path to the MITM CA public certificate file                                 |
+| `control.mitm.ca_key_password_env` | `STRAW_MITM_CA_KEY_PASSWORD`    | Env var containing the CA key password (if encrypted)                       |
+| `control.mitm.cert_validity_days`  | `STROW_MITM_CERT_VALIDITY_DAYS` | Default validity period for dynamically generated intermediate certificates |
 
 - The CA key and certificate are loaded at startup. Changes require a Control restart.
-- Intermediate certificates are generated on-demand for each SNI encountered. They are signed by the MITM CA and inherit the `cert_validity_days` TTL.
+- Intermediate certificates are generated on-demand for each SNI encountered. They are signed by the MITM CA and inherit
+  the `cert_validity_days` TTL.
 - Intermediate certificates are cached in memory. Expired certificates are regenerated on the next request.
 
 #### 20.6.2 Inbound TLS (Control)
 
-Control uses the `tls-client` stack for inbound TLS termination to handle HTTP/2 ALPN and SNI negotiation that matches client expectations.
+Control uses the `tls-client` stack for inbound TLS termination to handle HTTP/2 ALPN and SNI negotiation that matches
+client expectations.
 
-| Config Key | Env Var | Description |
-|---|---|---|
-| `control.tls.cert_path` | `STRAW_TLS_CERT` | Server TLS certificate path |
-| `control.tls.key_path` | `STRAW_TLS_KEY` | Server TLS private key path |
+| Config Key                       | Env Var              | Description                                     |
+|----------------------------------|----------------------|-------------------------------------------------|
+| `control.tls.cert_path`          | `STRAW_TLS_CERT`     | Server TLS certificate path                     |
+| `control.tls.key_path`           | `STRAW_TLS_KEY`      | Server TLS private key path                     |
 | `control.tls.supported_versions` | `STRAW_TLS_VERSIONS` | Supported TLS versions (e.g., `["1.2", "1.3"]`) |
-| `control.tls.cipher_suites` | — | Cipher suites (empty = `tls-client` defaults) |
+| `control.tls.cipher_suites`      | —                    | Cipher suites (empty = `tls-client` defaults)   |
 
 - Certificate paths are static (restart required).
-- `tls-client` handles JA3/JA4 fingerprint matching for inbound connections, ensuring proxy clients' TLS fingerprints are not flagged as non-browser.
+- `tls-client` handles JA3/JA4 fingerprint matching for inbound connections, ensuring proxy clients' TLS fingerprints
+  are not flagged as non-browser.
 
 #### 20.6.3 Outbound TLS (Egress)
 
 Egress workers control outbound TLS via `tls-client`.
 
-| Config Key | Env Var | Description |
-|---|---|---|
-| `egress.outbound_tls.strict_verify` | `STRAW_OUTBOUND_TLS_STRICT_VERIFY` | Enforce strict certificate verification (default: true) |
-| `egress.outbound_tls.ca_bundle_path` | `STRAW_OUTBOUND_TLS_CA_BUNDLE` | Path to custom CA bundle for private/internal certificates |
-| `egress.outbound_tls.supported_versions` | `STRAW_OUTBOUND_TLS_VERSIONS` | Supported outbound TLS versions |
+| Config Key                               | Env Var                            | Description                                                |
+|------------------------------------------|------------------------------------|------------------------------------------------------------|
+| `egress.outbound_tls.strict_verify`      | `STRAW_OUTBOUND_TLS_STRICT_VERIFY` | Enforce strict certificate verification (default: true)    |
+| `egress.outbound_tls.ca_bundle_path`     | `STRAW_OUTBOUND_TLS_CA_BUNDLE`     | Path to custom CA bundle for private/internal certificates |
+| `egress.outbound_tls.supported_versions` | `STRAW_OUTBOUND_TLS_VERSIONS`      | Supported outbound TLS versions                            |
 
 - `strict_verify` is true by default. Setting it to false is not recommended for production.
 - The CA bundle allows Egress to verify certificates from private/internal CAs.
@@ -2403,39 +2480,41 @@ Operators must distribute the MITM CA certificate to their scraping clients so c
 - Distribution methods:
     - **Docker**: Mount the CA cert into the client container and set `SSL_CERT_FILE` or `NODE_EXTRA_CA_CERTS`.
     - **Headless browsers**: Import the CA into the system trust store or browser profile.
-    - **HTTP clients**: Configure the client to trust the CA (e.g., `curl --cacert /path/to/ca.pem`, `requests.verify=/path/to/ca.pem`).
+    - **HTTP clients**: Configure the client to trust the CA (e.g., `curl --cacert /path/to/ca.pem`,
+      `requests.verify=/path/to/ca.pem`).
 - Straw does not automate CA distribution. This is an operator responsibility.
 
 ### 20.7 Large-Body Transport Configuration
 
 #### 20.7.1 Transport Selection Flow
 
-| Body Size | Transport | Config Key |
-|---|---|---|
-| ≤ `large_body_threshold_bytes` | NATS `StreamFrame` messages | `control.body_transport.large_body_threshold_bytes` |
+| Body Size                      | Transport                          | Config Key                                                                 |
+|--------------------------------|------------------------------------|----------------------------------------------------------------------------|
+| ≤ `large_body_threshold_bytes` | NATS `StreamFrame` messages        | `control.body_transport.large_body_threshold_bytes`                        |
 | > `large_body_threshold_bytes` | Object storage or direct streaming | `control.body_transport.object_storage.enabled` or `direct_stream.enabled` |
 
-If both object storage and direct streaming are enabled, object storage is preferred. Direct streaming is used as a fallback if object storage is unavailable.
+If both object storage and direct streaming are enabled, object storage is preferred. Direct streaming is used as a
+fallback if object storage is unavailable.
 
 #### 20.7.2 Object Storage Configuration
 
-| Config Key | Env Var | Default | Description |
-|---|---|---|---|
-| `body_transport.object_storage.enabled` | `STROW_BODY_OBJECT_STORAGE_ENABLED` | `false` | Enable object storage for large bodies |
-| `body_transport.object_storage.endpoint` | `STRAW_BODY_S3_ENDPOINT` | — | S3-compatible API endpoint |
-| `body_transport.object_storage.bucket` | `STRAW_BODY_S3_BUCKET` | — | Bucket name |
-| `body_transport.object_storage.region` | `STRAW_BODY_S3_REGION` | — | Region |
-| `body_transport.object_storage.access_key_env` | `STRAW_S3_ACCESS_KEY` | — | Env var for access key |
-| `body_transport.object_storage.secret_key_env` | `STRAW_S3_SECRET_KEY` | — | Env var for secret key |
-| `body_transport.object_storage.body_retention_days` | `STRAW_BODY_RETENTION_DAYS` | `1` | Days to retain stored bodies |
+| Config Key                                          | Env Var                             | Default | Description                            |
+|-----------------------------------------------------|-------------------------------------|---------|----------------------------------------|
+| `body_transport.object_storage.enabled`             | `STROW_BODY_OBJECT_STORAGE_ENABLED` | `false` | Enable object storage for large bodies |
+| `body_transport.object_storage.endpoint`            | `STRAW_BODY_S3_ENDPOINT`            | —       | S3-compatible API endpoint             |
+| `body_transport.object_storage.bucket`              | `STRAW_BODY_S3_BUCKET`              | —       | Bucket name                            |
+| `body_transport.object_storage.region`              | `STRAW_BODY_S3_REGION`              | —       | Region                                 |
+| `body_transport.object_storage.access_key_env`      | `STRAW_S3_ACCESS_KEY`               | —       | Env var for access key                 |
+| `body_transport.object_storage.secret_key_env`      | `STRAW_S3_SECRET_KEY`               | —       | Env var for secret key                 |
+| `body_transport.object_storage.body_retention_days` | `STRAW_BODY_RETENTION_DAYS`         | `1`     | Days to retain stored bodies           |
 
 #### 20.7.3 Direct Streaming Configuration
 
-| Config Key | Env Var | Default | Description |
-|---|---|---|---|
-| `body_transport.direct_stream.enabled` | `STRAW_BODY_DIRECT_STREAM_ENABLED` | `false` | Enable direct streaming for large bodies |
-| `body_transport.direct_stream.endpoint` | `STRAW_BODY_STREAM_ENDPOINT` | — | Streaming server endpoint URL |
-| `body_transport.direct_stream.stream_timeout_ms` | `STRAW_BODY_STREAM_TIMEOUT_MS` | `300000` | Max time for a stream to complete (ms) |
+| Config Key                                       | Env Var                            | Default  | Description                              |
+|--------------------------------------------------|------------------------------------|----------|------------------------------------------|
+| `body_transport.direct_stream.enabled`           | `STRAW_BODY_DIRECT_STREAM_ENABLED` | `false`  | Enable direct streaming for large bodies |
+| `body_transport.direct_stream.endpoint`          | `STRAW_BODY_STREAM_ENDPOINT`       | —        | Streaming server endpoint URL            |
+| `body_transport.direct_stream.stream_timeout_ms` | `STRAW_BODY_STREAM_TIMEOUT_MS`     | `300000` | Max time for a stream to complete (ms)   |
 
 ### 20.8 Observability Configuration
 
@@ -2443,33 +2522,33 @@ All observability settings are static (restart required).
 
 #### 20.8.1 Logging
 
-| Config Key | Env Var | Default | Description |
-|---|---|---|---|
-| `observability.logging.level` | `STRAW_LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` |
-| `observability.logging.format` | `STRAW_LOG_FORMAT` | `json` | Log format: `json`, `text` |
-| `observability.logging.output` | `STRAW_LOG_OUTPUT` | `["stdout"]` | Output destinations: `stdout`, `stderr`, `file:/path/to/log` |
-| `observability.logging.structured_fields` | — | (see §20.3.1) | Required structured fields in every log entry |
+| Config Key                                | Env Var            | Default       | Description                                                  |
+|-------------------------------------------|--------------------|---------------|--------------------------------------------------------------|
+| `observability.logging.level`             | `STRAW_LOG_LEVEL`  | `info`        | Log level: `debug`, `info`, `warn`, `error`                  |
+| `observability.logging.format`            | `STRAW_LOG_FORMAT` | `json`        | Log format: `json`, `text`                                   |
+| `observability.logging.output`            | `STRAW_LOG_OUTPUT` | `["stdout"]`  | Output destinations: `stdout`, `stderr`, `file:/path/to/log` |
+| `observability.logging.structured_fields` | —                  | (see §20.3.1) | Required structured fields in every log entry                |
 
 #### 20.8.2 Metrics
 
-| Config Key | Env Var | Default | Description |
-|---|---|---|---|
-| `observability.metrics.enabled` | `STRAW_METRICS_ENABLED` | `true` | Enable Prometheus metrics |
-| `observability.metrics.path` | `STRAW_METRICS_PATH` | `/metrics` | HTTP path for metrics endpoint |
-| `observability.metrics.host` | `STRAW_METRICS_HOST` | `0.0.0.0` | Bind address |
-| `observability.metrics.port` | `STRAW_METRICS_PORT` | `9090` | Bind port |
-| `observability.metrics.custom_prefix` | `STRAW_METRICS_PREFIX` | `straw_` | Metric name prefix |
+| Config Key                            | Env Var                 | Default    | Description                    |
+|---------------------------------------|-------------------------|------------|--------------------------------|
+| `observability.metrics.enabled`       | `STRAW_METRICS_ENABLED` | `true`     | Enable Prometheus metrics      |
+| `observability.metrics.path`          | `STRAW_METRICS_PATH`    | `/metrics` | HTTP path for metrics endpoint |
+| `observability.metrics.host`          | `STRAW_METRICS_HOST`    | `0.0.0.0`  | Bind address                   |
+| `observability.metrics.port`          | `STRAW_METRICS_PORT`    | `9090`     | Bind port                      |
+| `observability.metrics.custom_prefix` | `STRAW_METRICS_PREFIX`  | `straw_`   | Metric name prefix             |
 
 #### 20.8.3 Tracing
 
-| Config Key | Env Var | Default | Description |
-|---|---|---|---|
-| `observability.tracing.enabled` | `STRAW_TRACING_ENABLED` | `false` | Enable distributed tracing |
-| `observability.tracing.exporter` | `STRAW_TRACING_EXPORTER` | `jaeger` | Trace exporter: `jaeger`, `tempo` |
-| `observability.tracing.endpoint` | `STRAW_TRACING_ENDPOINT` | — | Trace collector endpoint URL |
-| `observability.tracing.sampling_rate` | `STRAW_TRACING_SAMPLING_RATE` | `0.1` | Sampling rate (0.0 to 1.0) |
-| `observability.tracing.propagate_trace_context` | `STRAW_TRACING_PROPAGATE` | `true` | Propagate trace context headers |
-| `observability.tracing.headers` | — | (see §20.3.1) | Trace context headers to propagate |
+| Config Key                                      | Env Var                       | Default       | Description                        |
+|-------------------------------------------------|-------------------------------|---------------|------------------------------------|
+| `observability.tracing.enabled`                 | `STRAW_TRACING_ENABLED`       | `false`       | Enable distributed tracing         |
+| `observability.tracing.exporter`                | `STRAW_TRACING_EXPORTER`      | `jaeger`      | Trace exporter: `jaeger`, `tempo`  |
+| `observability.tracing.endpoint`                | `STRAW_TRACING_ENDPOINT`      | —             | Trace collector endpoint URL       |
+| `observability.tracing.sampling_rate`           | `STRAW_TRACING_SAMPLING_RATE` | `0.1`         | Sampling rate (0.0 to 1.0)         |
+| `observability.tracing.propagate_trace_context` | `STRAW_TRACING_PROPAGATE`     | `true`        | Propagate trace context headers    |
+| `observability.tracing.headers`                 | —                             | (see §20.3.1) | Trace context headers to propagate |
 
 ### 20.9 ClickHouse Schema
 
@@ -2477,13 +2556,13 @@ ClickHouse stores operational analytics, audit logs, and payload captures.
 
 #### 20.9.1 Database Layout
 
-| Database | Purpose |
-|---|---|
-| `audit` | Configuration change audit trail |
-| `requests` | Request-level operational logs |
-| `workers` | Worker health and lifecycle events |
+| Database   | Purpose                            |
+|------------|------------------------------------|
+| `audit`    | Configuration change audit trail   |
+| `requests` | Request-level operational logs     |
+| `workers`  | Worker health and lifecycle events |
 | `payloads` | Captured request/response payloads |
-| `metrics` | Aggregated metrics for dashboards |
+| `metrics`  | Aggregated metrics for dashboards  |
 
 #### 20.9.2 Table Schemas
 
@@ -2492,18 +2571,17 @@ ClickHouse stores operational analytics, audit logs, and payload captures.
 ```sql
 CREATE TABLE audit.config_changes
 (
-    id           UInt64,           -- Auto-incrementing unique ID
-    tenant_id    LowCardinality(String),
-    config_type  LowCardinality(String),  -- tenant | api_key | routing_rule | injection_policy | worker_credential | quota | deny_rule | payload_capture
-    action       LowCardinality(String),  -- create | update | rollback | delete
+    id             UInt64,                 -- Auto-incrementing unique ID
+    tenant_id      LowCardinality(String),
+    config_type    LowCardinality(String), -- tenant | api_key | routing_rule | injection_policy | worker_credential | quota | deny_rule | payload_capture
+    action         LowCardinality(String), -- create | update | rollback | delete
     config_version UInt64,
-    changed_by   String,           -- user_id of the admin/operator
-    field_path   String,           -- Dot-notation path of changed field (e.g., "routing_rules[0].priority")
-    old_value    String,           -- JSON-encoded previous value
-    new_value    String,           -- JSON-encoded new value
-    timestamp    DateTime64(3, 'UTC')
-)
-ENGINE = MergeTree
+    changed_by     String,                 -- user_id of the admin/operator
+    field_path     String,                 -- Dot-notation path of changed field (e.g., "routing_rules[0].priority")
+    old_value      String,                 -- JSON-encoded previous value
+    new_value      String,                 -- JSON-encoded new value
+    timestamp      DateTime64(3, 'UTC')
+) ENGINE = MergeTree
 PARTITION BY toYYYYMM(timestamp)
 ORDER BY (tenant_id, config_type, timestamp, id)
 TTL timestamp + INTERVAL 90 DAY;
@@ -2514,32 +2592,31 @@ TTL timestamp + INTERVAL 90 DAY;
 ```sql
 CREATE TABLE requests.requests
 (
-    request_id       String,
-    tenant_id        LowCardinality(String),
-    trace_id         String,
-    ingress_type     LowCardinality(String),
-    method           LowCardinality(String),
-    target_host      String,
-    target_url       String,
+    request_id          String,
+    tenant_id           LowCardinality(String),
+    trace_id            String,
+    ingress_type        LowCardinality(String),
+    method              LowCardinality(String),
+    target_host         String,
+    target_url          String,
     fingerprint_profile String,
-    selected_worker  String,
-    selected_pool    String,
-    routing_rule     String,
-    country          LowCardinality(String),
-    region           LowCardinality(String),
-    ip_type          LowCardinality(String),
-    error_code       LowCardinality(String),
-    error_category   LowCardinality(String),
-    upstream_status  UInt16,
-    request_size_bytes    UInt64,
-    response_size_bytes   UInt64,
-    total_duration_ms     UInt32,
-    routing_duration_ms   UInt32,
-    egress_duration_ms    UInt32,
-    attempt               UInt8,
-    timestamp             DateTime64(3, 'UTC')
-)
-ENGINE = MergeTree
+    selected_worker     String,
+    selected_pool       String,
+    routing_rule        String,
+    country             LowCardinality(String),
+    region              LowCardinality(String),
+    ip_type             LowCardinality(String),
+    error_code          LowCardinality(String),
+    error_category      LowCardinality(String),
+    upstream_status     UInt16,
+    request_size_bytes  UInt64,
+    response_size_bytes UInt64,
+    total_duration_ms   UInt32,
+    routing_duration_ms UInt32,
+    egress_duration_ms  UInt32,
+    attempt             UInt8,
+    timestamp           DateTime64(3, 'UTC')
+) ENGINE = MergeTree
 PARTITION BY toYYYYMM(timestamp)
 ORDER BY (tenant_id, timestamp, request_id)
 TTL timestamp + INTERVAL 30 DAY;
@@ -2550,18 +2627,17 @@ TTL timestamp + INTERVAL 30 DAY;
 ```sql
 CREATE TABLE workers.worker_events
 (
-    worker_id      String,
-    event_type     LowCardinality(String),  -- register | heartbeat | drain | disable | dead | unregister
-    health         LowCardinality(String),  -- ready | degraded | unhealthy
-    session_id     String,
+    worker_id          String,
+    event_type         LowCardinality(String), -- register | heartbeat | drain | disable | dead | unregister
+    health             LowCardinality(String), -- ready | degraded | unhealthy
+    session_id         String,
     active_requests    UInt32,
     max_concurrency    UInt32,
     available_capacity UInt32,
-    draining          UInt8,
-    reason           String,
-    timestamp         DateTime64(3, 'UTC')
-)
-ENGINE = MergeTree
+    draining           UInt8,
+    reason             String,
+    timestamp          DateTime64(3, 'UTC')
+) ENGINE = MergeTree
 PARTITION BY toYYYYMM(timestamp)
 ORDER BY (worker_id, timestamp, event_type)
 TTL timestamp + INTERVAL 90 DAY;
@@ -2574,15 +2650,14 @@ CREATE TABLE payloads.captured
 (
     request_id       String,
     tenant_id        LowCardinality(String),
-    capture_scope    LowCardinality(String),  -- global | tenant | tag
-    request_headers  String,           -- JSON-encoded request headers
-    request_body     String,           -- JSON or raw body (redacted if applicable)
-    response_headers String,           -- JSON-encoded response headers
-    response_body    String,           -- JSON or raw body (redacted if applicable)
-    redacted_fields  Array(String),    -- List of fields that were redacted
+    capture_scope    LowCardinality(String), -- global | tenant | tag
+    request_headers  String,                 -- JSON-encoded request headers
+    request_body     String,                 -- JSON or raw body (redacted if applicable)
+    response_headers String,                 -- JSON-encoded response headers
+    response_body    String,                 -- JSON or raw body (redacted if applicable)
+    redacted_fields  Array(String),          -- List of fields that were redacted
     captured_at      DateTime64(3, 'UTC')
-)
-ENGINE = MergeTree
+) ENGINE = MergeTree
 PARTITION BY toYYYYMM(captured_at)
 ORDER BY (tenant_id, captured_at, request_id)
 TTL captured_at + INTERVAL 7 DAY;
@@ -2593,13 +2668,12 @@ TTL captured_at + INTERVAL 7 DAY;
 ```sql
 CREATE TABLE metrics.aggregated
 (
-    metric_name      String,
-    tenant_id        LowCardinality(String),
-    dimensions       Map(String, String),
-    value            Float64,
-    timestamp        DateTime64(3, 'UTC')
-)
-ENGINE = AggregatingMergeTree()
+    metric_name String,
+    tenant_id   LowCardinality(String),
+    dimensions  Map(String, String),
+    value       Float64,
+    timestamp   DateTime64(3, 'UTC')
+) ENGINE = AggregatingMergeTree()
 PARTITION BY toYYYYMM(timestamp)
 ORDER BY (metric_name, tenant_id, dimensions, toStartOfHour(timestamp))
 TTL timestamp + INTERVAL 30 DAY;
@@ -2609,8 +2683,10 @@ TTL timestamp + INTERVAL 30 DAY;
 
 Control writes to ClickHouse asynchronously via a buffered write queue:
 
-- Writes are batched up to `write_batch_size` (default: 1000) or flushed every `write_flush_interval_ms` (default: 1000ms).
-- If ClickHouse is unavailable, writes are queued in memory up to a configurable limit. If the queue is full, the oldest entries are dropped and a P1 alert fires.
+- Writes are batched up to `write_batch_size` (default: 1000) or flushed every `write_flush_interval_ms` (default:
+  1000ms).
+- If ClickHouse is unavailable, writes are queued in memory up to a configurable limit. If the queue is full, the oldest
+  entries are dropped and a P1 alert fires.
 - Control never blocks on ClickHouse writes. Write failures are logged and counted as metrics.
 
 ### 20.10 Config Migration and Upgrade
@@ -2623,13 +2699,15 @@ Each config file declares a `config_version` field at the top level:
 config_version: "v1"
 ```
 
-- Control and Egress reject config files with incompatible `config_version` at startup, exiting with a clear error message: `unsupported config_version: v2, supported: v1`.
+- Control and Egress reject config files with incompatible `config_version` at startup, exiting with a clear error
+  message: `unsupported config_version: v2, supported: v1`.
 - The error message includes a migration guide link or inline instructions for upgrading.
 - Older config formats are accepted with deprecation warnings for up to 2 minor versions before removal.
 
 #### 20.10.2 Backward Compatibility
 
-- Config files with older `config_version` values are accepted. A warning is logged at startup: `deprecated config_version: v1, expected v2`.
+- Config files with older `config_version` values are accepted. A warning is logged at startup:
+  `deprecated config_version: v1, expected v2`.
 - Removed config keys are silently ignored (treated as absent) for up to 2 minor versions.
 - New config keys with defaults are accepted without error.
 
@@ -2637,18 +2715,23 @@ config_version: "v1"
 
 - Rolling deploys are supported: old and new Control instances coexist during upgrade.
 - New Control instances load their config on startup and join the NATS cluster.
-- Dynamic config changes are backward-compatible: Control instances with different versions can coexist as long as they share the same config schema version.
-- If a config schema change is incompatible, the deployment must be coordinated: all instances are updated before the new config version is activated.
+- Dynamic config changes are backward-compatible: Control instances with different versions can coexist as long as they
+  share the same config schema version.
+- If a config schema change is incompatible, the deployment must be coordinated: all instances are updated before the
+  new config version is activated.
 
 #### 20.10.4 Config Drift Detection
 
 When `config.drift_detection` is enabled (default: true), Control runs a periodic drift check:
 
 - **Interval**: Configurable via `config.drift_check_interval_seconds` (default: 60 seconds).
-- **Mechanism**: Each Control instance computes a hash of its loaded static config and compares it against the hashes from other Control instances.
+- **Mechanism**: Each Control instance computes a hash of its loaded static config and compares it against the hashes
+  from other Control instances.
 - **Detection**: If hashes differ, drift is detected. The differing keys are reported in the logs and a P2 alert fires.
-- **Resolution**: Drift is resolved by ensuring all Control instances use the same config file. Operators should use a shared config volume or centralized config management (e.g., ConfigMap in Kubernetes).
-- **Scope**: Drift detection only compares static config. Dynamic config is always sourced from Postgres, so it cannot drift between Control instances.
+- **Resolution**: Drift is resolved by ensuring all Control instances use the same config file. Operators should use a
+  shared config volume or centralized config management (e.g., ConfigMap in Kubernetes).
+- **Scope**: Drift detection only compares static config. Dynamic config is always sourced from Postgres, so it cannot
+  drift between Control instances.
 
 #### 20.10.5 Migration Scripts
 
@@ -2811,94 +2894,94 @@ All config management endpoints are versioned under `/api/v1/config/`.
 
 #### 20.12.1 Tenant Endpoints
 
-| Method | Path | Role | Description |
-|---|---|---|---|
-| `POST` | `/api/v1/config/tenants` | Admin | Create a new tenant |
-| `GET` | `/api/v1/config/tenants` | Admin, Operator, Viewer | List all tenants |
-| `GET` | `/api/v1/config/tenants/{id}` | Admin, Operator, Viewer | Get tenant config |
-| `PUT` | `/api/v1/config/tenants/{id}` | Admin | Update tenant config |
-| `DELETE` | `/api/v1/config/tenants/{id}` | Admin | Soft-delete a tenant |
+| Method   | Path                          | Role                    | Description          |
+|----------|-------------------------------|-------------------------|----------------------|
+| `POST`   | `/api/v1/config/tenants`      | Admin                   | Create a new tenant  |
+| `GET`    | `/api/v1/config/tenants`      | Admin, Operator, Viewer | List all tenants     |
+| `GET`    | `/api/v1/config/tenants/{id}` | Admin, Operator, Viewer | Get tenant config    |
+| `PUT`    | `/api/v1/config/tenants/{id}` | Admin                   | Update tenant config |
+| `DELETE` | `/api/v1/config/tenants/{id}` | Admin                   | Soft-delete a tenant |
 
 #### 20.12.2 API Key Endpoints
 
-| Method | Path | Role | Description |
-|---|---|---|---|
-| `POST` | `/api/v1/config/api-keys` | Admin | Create an API key |
-| `GET` | `/api/v1/config/api-keys` | Admin, Operator | List API keys for a tenant |
-| `GET` | `/api/v1/config/api-keys/{id}` | Admin, Operator | Get API key details |
-| `POST` | `/api/v1/config/api-keys/{id}/revoke` | Admin | Revoke an API key |
+| Method | Path                                  | Role            | Description                |
+|--------|---------------------------------------|-----------------|----------------------------|
+| `POST` | `/api/v1/config/api-keys`             | Admin           | Create an API key          |
+| `GET`  | `/api/v1/config/api-keys`             | Admin, Operator | List API keys for a tenant |
+| `GET`  | `/api/v1/config/api-keys/{id}`        | Admin, Operator | Get API key details        |
+| `POST` | `/api/v1/config/api-keys/{id}/revoke` | Admin           | Revoke an API key          |
 
 #### 20.12.3 Routing Rule Endpoints
 
-| Method | Path | Role | Description |
-|---|---|---|---|
-| `POST` | `/api/v1/config/routing-rules` | Admin, Operator | Create a routing rule |
-| `GET` | `/api/v1/config/routing-rules` | Admin, Operator, Viewer | List routing rules for a tenant |
-| `GET` | `/api/v1/config/routing-rules/{id}` | Admin, Operator, Viewer | Get a routing rule |
-| `PUT` | `/api/v1/config/routing-rules/{id}` | Admin, Operator | Update a routing rule |
-| `DELETE` | `/api/v1/config/routing-rules/{id}` | Admin, Operator | Delete a routing rule |
+| Method   | Path                                | Role                    | Description                     |
+|----------|-------------------------------------|-------------------------|---------------------------------|
+| `POST`   | `/api/v1/config/routing-rules`      | Admin, Operator         | Create a routing rule           |
+| `GET`    | `/api/v1/config/routing-rules`      | Admin, Operator, Viewer | List routing rules for a tenant |
+| `GET`    | `/api/v1/config/routing-rules/{id}` | Admin, Operator, Viewer | Get a routing rule              |
+| `PUT`    | `/api/v1/config/routing-rules/{id}` | Admin, Operator         | Update a routing rule           |
+| `DELETE` | `/api/v1/config/routing-rules/{id}` | Admin, Operator         | Delete a routing rule           |
 
 #### 20.12.4 Fingerprint Profile Endpoints
 
-| Method | Path | Role | Description |
-|---|---|---|---|
-| `GET` | `/api/v1/config/fingerprint-profiles` | Admin, Operator, Viewer | List available fingerprint presets |
-| `GET` | `/api/v1/config/fingerprint-profiles/{preset_name}` | Admin, Operator, Viewer | Get a fingerprint preset details |
+| Method | Path                                                | Role                    | Description                        |
+|--------|-----------------------------------------------------|-------------------------|------------------------------------|
+| `GET`  | `/api/v1/config/fingerprint-profiles`               | Admin, Operator, Viewer | List available fingerprint presets |
+| `GET`  | `/api/v1/config/fingerprint-profiles/{preset_name}` | Admin, Operator, Viewer | Get a fingerprint preset details   |
 
 #### 20.12.5 Injection Policy Endpoints
 
-| Method | Path | Role | Description |
-|---|---|---|---|
-| `POST` | `/api/v1/config/injection-policies` | Admin, Operator | Create an injection policy |
-| `GET` | `/api/v1/config/injection-policies` | Admin, Operator, Viewer | List injection policies for a tenant |
-| `GET` | `/api/v1/config/injection-policies/{id}` | Admin, Operator, Viewer | Get an injection policy |
-| `PUT` | `/api/v1/config/injection-policies/{id}` | Admin, Operator | Update an injection policy |
-| `DELETE` | `/api/v1/config/injection-policies/{id}` | Admin, Operator | Delete an injection policy |
+| Method   | Path                                     | Role                    | Description                          |
+|----------|------------------------------------------|-------------------------|--------------------------------------|
+| `POST`   | `/api/v1/config/injection-policies`      | Admin, Operator         | Create an injection policy           |
+| `GET`    | `/api/v1/config/injection-policies`      | Admin, Operator, Viewer | List injection policies for a tenant |
+| `GET`    | `/api/v1/config/injection-policies/{id}` | Admin, Operator, Viewer | Get an injection policy              |
+| `PUT`    | `/api/v1/config/injection-policies/{id}` | Admin, Operator         | Update an injection policy           |
+| `DELETE` | `/api/v1/config/injection-policies/{id}` | Admin, Operator         | Delete an injection policy           |
 
 #### 20.12.6 Worker Credential Endpoints
 
-| Method | Path | Role | Description |
-|---|---|---|---|
-| `POST` | `/api/v1/config/worker-credentials` | Admin | Generate a new worker credential |
-| `GET` | `/api/v1/config/worker-credentials` | Admin | List worker credentials for a tenant |
-| `POST` | `/api/v1/config/worker-credentials/{id}/revoke` | Admin | Revoke a worker credential |
-| `POST` | `/api/v1/config/worker/disable` | Admin | Disable a worker |
-| `POST` | `/api/v1/config/worker/enable` | Admin | Re-enable a disabled worker |
-| `POST` | `/api/v1/config/worker/drain` | Admin | Start draining a worker |
-| `POST` | `/api/v1/config/worker/undrain` | Admin | Stop draining a worker |
+| Method | Path                                            | Role  | Description                          |
+|--------|-------------------------------------------------|-------|--------------------------------------|
+| `POST` | `/api/v1/config/worker-credentials`             | Admin | Generate a new worker credential     |
+| `GET`  | `/api/v1/config/worker-credentials`             | Admin | List worker credentials for a tenant |
+| `POST` | `/api/v1/config/worker-credentials/{id}/revoke` | Admin | Revoke a worker credential           |
+| `POST` | `/api/v1/config/worker/disable`                 | Admin | Disable a worker                     |
+| `POST` | `/api/v1/config/worker/enable`                  | Admin | Re-enable a disabled worker          |
+| `POST` | `/api/v1/config/worker/drain`                   | Admin | Start draining a worker              |
+| `POST` | `/api/v1/config/worker/undrain`                 | Admin | Stop draining a worker               |
 
 #### 20.12.7 Quota and Rate Limit Endpoints
 
-| Method | Path | Role | Description |
-|---|---|---|---|
-| `GET` | `/api/v1/config/quotas` | Admin, Operator, Viewer | Get quota usage for a tenant |
-| `PUT` | `/api/v1/config/quotas` | Admin | Update quota limits for a tenant |
-| `GET` | `/api/v1/config/rate-limits` | Admin, Operator, Viewer | Get rate limit config for a tenant |
-| `PUT` | `/api/v1/config/rate-limits` | Admin | Update rate limit config for a tenant |
+| Method | Path                         | Role                    | Description                           |
+|--------|------------------------------|-------------------------|---------------------------------------|
+| `GET`  | `/api/v1/config/quotas`      | Admin, Operator, Viewer | Get quota usage for a tenant          |
+| `PUT`  | `/api/v1/config/quotas`      | Admin                   | Update quota limits for a tenant      |
+| `GET`  | `/api/v1/config/rate-limits` | Admin, Operator, Viewer | Get rate limit config for a tenant    |
+| `PUT`  | `/api/v1/config/rate-limits` | Admin                   | Update rate limit config for a tenant |
 
 #### 20.12.8 Deny Rule Endpoints
 
-| Method | Path | Role | Description |
-|---|---|---|---|
-| `POST` | `/api/v1/config/deny-rules` | Admin | Create a deny rule |
-| `GET` | `/api/v1/config/deny-rules` | Admin, Operator, Viewer | List deny rules (global + tenant) |
-| `PUT` | `/api/v1/config/deny-rules/{id}` | Admin | Update a deny rule |
-| `DELETE` | `/api/v1/config/deny-rules/{id}` | Admin | Delete a deny rule |
+| Method   | Path                             | Role                    | Description                       |
+|----------|----------------------------------|-------------------------|-----------------------------------|
+| `POST`   | `/api/v1/config/deny-rules`      | Admin                   | Create a deny rule                |
+| `GET`    | `/api/v1/config/deny-rules`      | Admin, Operator, Viewer | List deny rules (global + tenant) |
+| `PUT`    | `/api/v1/config/deny-rules/{id}` | Admin                   | Update a deny rule                |
+| `DELETE` | `/api/v1/config/deny-rules/{id}` | Admin                   | Delete a deny rule                |
 
 #### 20.12.9 Payload Capture Endpoints
 
-| Method | Path | Role | Description |
-|---|---|---|---|
-| `GET` | `/api/v1/config/payload-capture` | Admin, Operator, Viewer | Get payload capture status |
-| `PUT` | `/api/v1/config/payload-capture` | Admin | Update payload capture settings |
+| Method | Path                             | Role                    | Description                     |
+|--------|----------------------------------|-------------------------|---------------------------------|
+| `GET`  | `/api/v1/config/payload-capture` | Admin, Operator, Viewer | Get payload capture status      |
+| `PUT`  | `/api/v1/config/payload-capture` | Admin                   | Update payload capture settings |
 
 #### 20.12.10 Config Versioning Endpoints
 
-| Method | Path | Role | Description |
-|---|---|---|---|
-| `GET` | `/api/v1/config/changes` | Admin, Operator, Viewer | List config change history |
-| `GET` | `/api/v1/config/changes/{version_id}` | Admin, Operator, Viewer | Get details of a specific config version |
-| `POST` | `/api/v1/config/rollback` | Admin | Rollback to a previous config version |
+| Method | Path                                  | Role                    | Description                              |
+|--------|---------------------------------------|-------------------------|------------------------------------------|
+| `GET`  | `/api/v1/config/changes`              | Admin, Operator, Viewer | List config change history               |
+| `GET`  | `/api/v1/config/changes/{version_id}` | Admin, Operator, Viewer | Get details of a specific config version |
+| `POST` | `/api/v1/config/rollback`             | Admin                   | Rollback to a previous config version    |
 
 ### 20.13 Environment Variable Reference
 
@@ -2906,124 +2989,240 @@ Comprehensive reference of all `STRAW_*` environment variables.
 
 #### 20.13.1 Control Server
 
-| Variable | Description | Default | YAML Key |
-|---|---|---|---|
-| `STRAW_POSTGRES_DSN` | Postgres connection string | — | `database.postgres.dsn` |
-| `STRAW_REDIS_URL` | Redis connection URL | — | `database.redis.url` |
-| `STRAW_CLICKHOUSE_PASSWORD` | ClickHouse password | — | `database.clickhouse.password` |
-| `STRAW_NATS_URLS` | Comma-separated NATS server URLs | `nats://localhost:4222` | `nats.servers` |
-| `STRAW_NATS_CREDS_FILE` | NATS credentials file path | — | `nats.user_credentials_file` |
-| `STRAW_NATS_TLS_CERT` | NATS client TLS cert path | — | `nats.tls_cert_path` |
-| `STRAW_NATS_TLS_KEY` | NATS client TLS key path | — | `nats.tls_key_path` |
-| `STRAW_NATS_TLS_CA` | NATS CA cert path | — | `nats.tls_ca_path` |
-| `STRAW_NATS_RECONNECT_ATTEMPTS` | Max NATS reconnect attempts | `10` | `nats.reconnect_attempts` |
-| `STRAW_NATS_RECONNECT_WAIT_MS` | NATS reconnect wait interval (ms) | `2000` | `nats.reconnect_wait_ms` |
-| `STRAW_NATS_PING_INTERVAL_MS` | NATS ping interval (ms) | `30000` | `nats.ping_interval_ms` |
-| `STRAW_NATS_MAX_PING_FAILURES` | Max consecutive NATS ping failures | `3` | `nats.max_ping_failures` |
-| `STRAW_MITM_CA_KEY_PASSWORD` | MITM CA key password | — | `mitm.ca_key_password_env` |
-| `STROW_MITM_CERT_VALIDITY_DAYS` | MITM cert validity in days | `365` | `mitm.cert_validity_days` |
-| `STRAW_TLS_CERT` | Server TLS certificate path | — | `tls.cert_path` |
-| `STRAW_TLS_KEY` | Server TLS private key path | — | `tls.key_path` |
-| `STRAW_TLS_VERSIONS` | Comma-separated TLS versions | `1.2,1.3` | `tls.supported_versions` |
-| `STRAW_LOG_LEVEL` | Log level | `info` | `observability.logging.level` |
-| `STRAW_LOG_FORMAT` | Log format | `json` | `observability.logging.format` |
-| `STRAW_LOG_OUTPUT` | Comma-separated log outputs | `stdout` | `observability.logging.output` |
-| `STRAW_METRICS_ENABLED` | Enable metrics | `true` | `observability.metrics.enabled` |
-| `STRAW_METRICS_PATH` | Metrics HTTP path | `/metrics` | `observability.metrics.path` |
-| `STRAW_METRICS_HOST` | Metrics bind address | `0.0.0.0` | `observability.metrics.host` |
-| `STRAW_METRICS_PORT` | Metrics bind port | `9090` | `observability.metrics.port` |
-| `STRAW_METRICS_PREFIX` | Metric name prefix | `straw_` | `observability.metrics.custom_prefix` |
-| `STRAW_TRACING_ENABLED` | Enable distributed tracing | `false` | `observability.tracing.enabled` |
-| `STRAW_TRACING_EXPORTER` | Trace exporter | `jaeger` | `observability.tracing.exporter` |
-| `STRAW_TRACING_ENDPOINT` | Trace collector endpoint | — | `observability.tracing.endpoint` |
-| `STRAW_TRACING_SAMPLING_RATE` | Tracing sampling rate | `0.1` | `observability.tracing.sampling_rate` |
-| `STRAW_BODY_S3_ENDPOINT` | S3-compatible endpoint | — | `body_transport.object_storage.endpoint` |
-| `STRAW_BODY_S3_BUCKET` | S3 bucket name | — | `body_transport.object_storage.bucket` |
-| `STRAW_BODY_S3_REGION` | S3 region | — | `body_transport.object_storage.region` |
-| `STRAW_S3_ACCESS_KEY` | S3 access key | — | `body_transport.object_storage.access_key_env` |
-| `STRAW_S3_SECRET_KEY` | S3 secret key | — | `body_transport.object_storage.secret_key_env` |
-| `STRAW_BODY_RETENTION_DAYS` | Body retention in days | `1` | `body_transport.object_storage.body_retention_days` |
-| `STRAW_BODY_OBJECT_STORAGE_ENABLED` | Enable object storage | `false` | `body_transport.object_storage.enabled` |
-| `STRAW_BODY_DIRECT_STREAM_ENABLED` | Enable direct streaming | `false` | `body_transport.direct_stream.enabled` |
-| `STRAW_BODY_STREAM_ENDPOINT` | Direct stream endpoint URL | — | `body_transport.direct_stream.endpoint` |
-| `STRAW_BODY_STREAM_TIMEOUT_MS` | Direct stream timeout (ms) | `300000` | `body_transport.direct_stream.stream_timeout_ms` |
-| `STRAW_BODY_LARGE_BODY_THRESHOLD_BYTES` | Large body size threshold | `1048576` | `body_transport.large_body_threshold_bytes` |
+| Variable                                | Description                        | Default                 | YAML Key                                            |
+|-----------------------------------------|------------------------------------|-------------------------|-----------------------------------------------------|
+| `STRAW_POSTGRES_DSN`                    | Postgres connection string         | —                       | `database.postgres.dsn`                             |
+| `STRAW_REDIS_URL`                       | Redis connection URL               | —                       | `database.redis.url`                                |
+| `STRAW_CLICKHOUSE_PASSWORD`             | ClickHouse password                | —                       | `database.clickhouse.password`                      |
+| `STRAW_NATS_URLS`                       | Comma-separated NATS server URLs   | `nats://localhost:4222` | `nats.servers`                                      |
+| `STRAW_NATS_CREDS_FILE`                 | NATS credentials file path         | —                       | `nats.user_credentials_file`                        |
+| `STRAW_NATS_TLS_CERT`                   | NATS client TLS cert path          | —                       | `nats.tls_cert_path`                                |
+| `STRAW_NATS_TLS_KEY`                    | NATS client TLS key path           | —                       | `nats.tls_key_path`                                 |
+| `STRAW_NATS_TLS_CA`                     | NATS CA cert path                  | —                       | `nats.tls_ca_path`                                  |
+| `STRAW_NATS_RECONNECT_ATTEMPTS`         | Max NATS reconnect attempts        | `10`                    | `nats.reconnect_attempts`                           |
+| `STRAW_NATS_RECONNECT_WAIT_MS`          | NATS reconnect wait interval (ms)  | `2000`                  | `nats.reconnect_wait_ms`                            |
+| `STRAW_NATS_PING_INTERVAL_MS`           | NATS ping interval (ms)            | `30000`                 | `nats.ping_interval_ms`                             |
+| `STRAW_NATS_MAX_PING_FAILURES`          | Max consecutive NATS ping failures | `3`                     | `nats.max_ping_failures`                            |
+| `STRAW_MITM_CA_KEY_PASSWORD`            | MITM CA key password               | —                       | `mitm.ca_key_password_env`                          |
+| `STROW_MITM_CERT_VALIDITY_DAYS`         | MITM cert validity in days         | `365`                   | `mitm.cert_validity_days`                           |
+| `STRAW_TLS_CERT`                        | Server TLS certificate path        | —                       | `tls.cert_path`                                     |
+| `STRAW_TLS_KEY`                         | Server TLS private key path        | —                       | `tls.key_path`                                      |
+| `STRAW_TLS_VERSIONS`                    | Comma-separated TLS versions       | `1.2,1.3`               | `tls.supported_versions`                            |
+| `STRAW_LOG_LEVEL`                       | Log level                          | `info`                  | `observability.logging.level`                       |
+| `STRAW_LOG_FORMAT`                      | Log format                         | `json`                  | `observability.logging.format`                      |
+| `STRAW_LOG_OUTPUT`                      | Comma-separated log outputs        | `stdout`                | `observability.logging.output`                      |
+| `STRAW_METRICS_ENABLED`                 | Enable metrics                     | `true`                  | `observability.metrics.enabled`                     |
+| `STRAW_METRICS_PATH`                    | Metrics HTTP path                  | `/metrics`              | `observability.metrics.path`                        |
+| `STRAW_METRICS_HOST`                    | Metrics bind address               | `0.0.0.0`               | `observability.metrics.host`                        |
+| `STRAW_METRICS_PORT`                    | Metrics bind port                  | `9090`                  | `observability.metrics.port`                        |
+| `STRAW_METRICS_PREFIX`                  | Metric name prefix                 | `straw_`                | `observability.metrics.custom_prefix`               |
+| `STRAW_TRACING_ENABLED`                 | Enable distributed tracing         | `false`                 | `observability.tracing.enabled`                     |
+| `STRAW_TRACING_EXPORTER`                | Trace exporter                     | `jaeger`                | `observability.tracing.exporter`                    |
+| `STRAW_TRACING_ENDPOINT`                | Trace collector endpoint           | —                       | `observability.tracing.endpoint`                    |
+| `STRAW_TRACING_SAMPLING_RATE`           | Tracing sampling rate              | `0.1`                   | `observability.tracing.sampling_rate`               |
+| `STRAW_BODY_S3_ENDPOINT`                | S3-compatible endpoint             | —                       | `body_transport.object_storage.endpoint`            |
+| `STRAW_BODY_S3_BUCKET`                  | S3 bucket name                     | —                       | `body_transport.object_storage.bucket`              |
+| `STRAW_BODY_S3_REGION`                  | S3 region                          | —                       | `body_transport.object_storage.region`              |
+| `STRAW_S3_ACCESS_KEY`                   | S3 access key                      | —                       | `body_transport.object_storage.access_key_env`      |
+| `STRAW_S3_SECRET_KEY`                   | S3 secret key                      | —                       | `body_transport.object_storage.secret_key_env`      |
+| `STRAW_BODY_RETENTION_DAYS`             | Body retention in days             | `1`                     | `body_transport.object_storage.body_retention_days` |
+| `STRAW_BODY_OBJECT_STORAGE_ENABLED`     | Enable object storage              | `false`                 | `body_transport.object_storage.enabled`             |
+| `STRAW_BODY_DIRECT_STREAM_ENABLED`      | Enable direct streaming            | `false`                 | `body_transport.direct_stream.enabled`              |
+| `STRAW_BODY_STREAM_ENDPOINT`            | Direct stream endpoint URL         | —                       | `body_transport.direct_stream.endpoint`             |
+| `STRAW_BODY_STREAM_TIMEOUT_MS`          | Direct stream timeout (ms)         | `300000`                | `body_transport.direct_stream.stream_timeout_ms`    |
+| `STRAW_BODY_LARGE_BODY_THRESHOLD_BYTES` | Large body size threshold          | `1048576`               | `body_transport.large_body_threshold_bytes`         |
 
 #### 20.13.2 Egress Worker
 
-| Variable | Description | Default | YAML Key |
-|---|---|---|---|
-| `STRAW_WORKER_ID` | Unique worker identifier | — | `worker_id` |
-| `STRAW_WORKER_PRIVATE_KEY` | Ed25519 private key for credential signing | — | (credential private key) |
-| `STRAW_NATS_URLS` | Comma-separated NATS server URLs | `nats://localhost:4222` | `nats.servers` |
-| `STRAW_NATS_CREDS_FILE` | NATS credentials file path | — | `nats.user_credentials_file` |
-| `STRAW_NATS_TLS_CERT` | NATS client TLS cert path | — | `nats.tls_cert_path` |
-| `STRAW_NATS_TLS_KEY` | NATS client TLS key path | — | `nats.tls_key_path` |
-| `STRAW_NATS_TLS_CA` | NATS CA cert path | — | `nats.tls_ca_path` |
-| `STRAW_NATS_RECONNECT_ATTEMPTS` | Max NATS reconnect attempts | `10` | `nats.reconnect_attempts` |
-| `STRAW_NATS_RECONNECT_WAIT_MS` | NATS reconnect wait interval (ms) | `2000` | `nats.reconnect_wait_ms` |
-| `STRAW_NATS_PING_INTERVAL_MS` | NATS ping interval (ms) | `30000` | `nats.ping_interval_ms` |
-| `STRAW_NATS_MAX_PING_FAILURES` | Max consecutive NATS ping failures | `3` | `nats.max_ping_failures` |
-| `STRAW_OUTBOUND_TLS_STRICT_VERIFY` | Enforce outbound TLS verification | `true` | `outbound_tls.strict_verify` |
-| `STRAW_OUTBOUND_TLS_CA_BUNDLE` | Custom CA bundle path | — | `outbound_tls.ca_bundle_path` |
-| `STRAW_OUTBOUND_TLS_VERSIONS` | Comma-separated TLS versions | `1.2,1.3` | `outbound_tls.supported_versions` |
-| `STRAW_UPSTREAM_PROXY_USERNAME` | Upstream proxy username | — | `upstream_proxy.username` |
-| `STRAW_UPSTREAM_PROXY_PASSWORD` | Upstream proxy password | — | `upstream_proxy.password` |
-| `STRAW_LOG_LEVEL` | Log level | `info` | `observability.logging.level` |
-| `STRAW_LOG_FORMAT` | Log format | `json` | `observability.logging.format` |
-| `STRAW_LOG_OUTPUT` | Comma-separated log outputs | `stdout` | `observability.logging.output` |
+| Variable                           | Description                                | Default                 | YAML Key                          |
+|------------------------------------|--------------------------------------------|-------------------------|-----------------------------------|
+| `STRAW_WORKER_ID`                  | Unique worker identifier                   | —                       | `worker_id`                       |
+| `STRAW_WORKER_PRIVATE_KEY`         | Ed25519 private key for credential signing | —                       | (credential private key)          |
+| `STRAW_NATS_URLS`                  | Comma-separated NATS server URLs           | `nats://localhost:4222` | `nats.servers`                    |
+| `STRAW_NATS_CREDS_FILE`            | NATS credentials file path                 | —                       | `nats.user_credentials_file`      |
+| `STRAW_NATS_TLS_CERT`              | NATS client TLS cert path                  | —                       | `nats.tls_cert_path`              |
+| `STRAW_NATS_TLS_KEY`               | NATS client TLS key path                   | —                       | `nats.tls_key_path`               |
+| `STRAW_NATS_TLS_CA`                | NATS CA cert path                          | —                       | `nats.tls_ca_path`                |
+| `STRAW_NATS_RECONNECT_ATTEMPTS`    | Max NATS reconnect attempts                | `10`                    | `nats.reconnect_attempts`         |
+| `STRAW_NATS_RECONNECT_WAIT_MS`     | NATS reconnect wait interval (ms)          | `2000`                  | `nats.reconnect_wait_ms`          |
+| `STRAW_NATS_PING_INTERVAL_MS`      | NATS ping interval (ms)                    | `30000`                 | `nats.ping_interval_ms`           |
+| `STRAW_NATS_MAX_PING_FAILURES`     | Max consecutive NATS ping failures         | `3`                     | `nats.max_ping_failures`          |
+| `STRAW_OUTBOUND_TLS_STRICT_VERIFY` | Enforce outbound TLS verification          | `true`                  | `outbound_tls.strict_verify`      |
+| `STRAW_OUTBOUND_TLS_CA_BUNDLE`     | Custom CA bundle path                      | —                       | `outbound_tls.ca_bundle_path`     |
+| `STRAW_OUTBOUND_TLS_VERSIONS`      | Comma-separated TLS versions               | `1.2,1.3`               | `outbound_tls.supported_versions` |
+| `STRAW_UPSTREAM_PROXY_USERNAME`    | Upstream proxy username                    | —                       | `upstream_proxy.username`         |
+| `STRAW_UPSTREAM_PROXY_PASSWORD`    | Upstream proxy password                    | —                       | `upstream_proxy.password`         |
+| `STRAW_LOG_LEVEL`                  | Log level                                  | `info`                  | `observability.logging.level`     |
+| `STRAW_LOG_FORMAT`                 | Log format                                 | `json`                  | `observability.logging.format`    |
+| `STRAW_LOG_OUTPUT`                 | Comma-separated log outputs                | `stdout`                | `observability.logging.output`    |
 
 #### 20.13.3 Provider Adapter
 
-| Variable | Description | Default | YAML Key |
-|---|---|---|---|
-| `STRAW_WORKER_ID` | Unique adapter identifier | — | `worker_id` |
-| `STRAW_BRIGHT_DATA_KEY` | Bright Data API key | — | `providers[0].api_key_env` |
-| `STRAW_UPSTREAM_USERNAME` | Upstream proxy username | — | `providers[*].upstream_proxy.username` |
-| `STRAW_UPSTREAM_PROXY_PASSWORD` | Upstream proxy password | — | `providers[*].upstream_proxy.password` |
-| `STRAW_NATS_URLS` | Comma-separated NATS server URLs | `nats://localhost:4222` | `nats.servers` |
-| `STRAW_NATS_CREDS_FILE` | NATS credentials file path | — | `nats.user_credentials_file` |
-| `STRAW_LOG_LEVEL` | Log level | `info` | `observability.logging.level` |
-| `STRAW_LOG_FORMAT` | Log format | `json` | `observability.logging.format` |
+| Variable                        | Description                      | Default                 | YAML Key                               |
+|---------------------------------|----------------------------------|-------------------------|----------------------------------------|
+| `STRAW_WORKER_ID`               | Unique adapter identifier        | —                       | `worker_id`                            |
+| `STRAW_BRIGHT_DATA_KEY`         | Bright Data API key              | —                       | `providers[0].api_key_env`             |
+| `STRAW_UPSTREAM_USERNAME`       | Upstream proxy username          | —                       | `providers[*].upstream_proxy.username` |
+| `STRAW_UPSTREAM_PROXY_PASSWORD` | Upstream proxy password          | —                       | `providers[*].upstream_proxy.password` |
+| `STRAW_NATS_URLS`               | Comma-separated NATS server URLs | `nats://localhost:4222` | `nats.servers`                         |
+| `STRAW_NATS_CREDS_FILE`         | NATS credentials file path       | —                       | `nats.user_credentials_file`           |
+| `STRAW_LOG_LEVEL`               | Log level                        | `info`                  | `observability.logging.level`          |
+| `STRAW_LOG_FORMAT`              | Log format                       | `json`                  | `observability.logging.format`         |
 
 #### 20.13.4 Shared Variables
 
-| Variable | Description | Default | Used By |
-|---|---|---|---|
-| `STRAW_POSTGRES_PASSWORD` | Postgres password | — | Control |
-| `STRAW_CLICKHOUSE_PASSWORD` | ClickHouse password | — | Control |
-| `STRAW_MITM_CA_KEY_PASSWORD` | MITM CA key password | — | Control |
-| `STRAW_S3_ACCESS_KEY` | S3 access key | — | Control, Egress |
-| `STRAW_S3_SECRET_KEY` | S3 secret key | — | Control, Egress |
+| Variable                     | Description          | Default | Used By         |
+|------------------------------|----------------------|---------|-----------------|
+| `STRAW_POSTGRES_PASSWORD`    | Postgres password    | —       | Control         |
+| `STRAW_CLICKHOUSE_PASSWORD`  | ClickHouse password  | —       | Control         |
+| `STRAW_MITM_CA_KEY_PASSWORD` | MITM CA key password | —       | Control         |
+| `STRAW_S3_ACCESS_KEY`        | S3 access key        | —       | Control, Egress |
+| `STRAW_S3_SECRET_KEY`        | S3 secret key        | —       | Control, Egress |
 
 ## 21. Deployment
 
-How it runs outside code.
+**Primary Strategy: Docker Swarm / Compose**
+Straw uses Docker Compose for local development and scales via Docker Swarm for initial production rollouts.
+
+* **Control Plane:** Deployed as horizontally scaled stateless replicas behind a Swarm ingress network or standard
+  reverse proxy (e.g., Traefik, HAProxy) terminating client traffic.
+* **Data Tier:** Postgres, ClickHouse, Redis, and NATS run either as external managed services or are pinned to specific
+  Swarm nodes with attached persistent volumes.
+* **Egress Workers:** Deployed across distributed worker nodes. These scale horizontally but must be topology-aware to
+  ensure traffic routes through the correct physical egress interfaces and IPs.
+
+**Secondary Strategy: Kubernetes**
+Kubernetes support is maintained for enterprise deployments using standard manifests and Helm charts.
+
+* **Config Management:** Configuration is injected via ConfigMaps and Secrets, native to Straw's hot-reload design.
+* **Worker Placement:** Egress workers use node affinity and tolerations to bind to specific cloud regions, edge nodes,
+  or explicit egress IP ranges.
+* **Ingress:** Standard K8s Ingress controllers route REST and HTTP proxy traffic. Raw CONNECT and MITM endpoints
+  require raw TCP `LoadBalancer` services.
 
 ## 22. Security
 
-Threat model and protections.
+### 22.1 Tenant Isolation & Abuse Prevention (Priority 1)
+
+* **Implicit Tenant Resolution**: Control handles all authentication and strictly derives the tenant identity from the
+  secure API key. Clients cannot pass headers to override or declare their own tenant context.
+* **Cryptographic Key Storage**: API keys are never stored in plaintext; they exist only as secure hashes within
+  Postgres. Revocation triggers an event-driven invalidation broadcast via Redis pub/sub.
+* **Hard Ingress Gating**: Quotas and rate limits are enforced at the Control ingress layer before dispatching requests
+  to Egress workers. The Redis Sliding Window Log logs exact request timestamps to instantly drop abusive
+  traffic with an HTTP 429.
+* **Egress Destination Restrictions**: Administrative and tenant-scoped deny rules block outbound transport to
+  restricted IPs, domains, or network ranges.
+
+### 22.2 Egress Worker Protection & Containment (Priority 2)
+
+* **Strict Network Segregation**: Egress workers must not connect to Postgres, ClickHouse, or Redis. All
+  internal interaction is mediated exclusively via NATS.
+* **Stateless Token Verification**: Workers authenticate using cryptographically signed tokens during the NATS
+  handshake. Control performs stateless, in-memory cryptographic verification of the signature before querying
+  Redis or Postgres to prevent connection exhaustion during worker crash loops.
+* **Scope & Capability Gating**: Validated tokens must explicitly map to a recognized tenant and an existing pool scope
+  defined in the Postgres configuration. A compromised worker cannot register capabilities outside that
+  scope.
+
+### 22.3 Malicious Targets & Harmful Payloads (Priority 3)
+
+* **CGO & Thread Isolation**: Outbound TLS execution happens within a dedicated pool of goroutines or persistent OS
+  threads via `tls-client`. This isolation prevents blocking overhead from stalling the primary NATS message
+  loop.
+* **Hard Resource Capping**: The Egress worker wraps the entire outbound lifecycle in a single Go context bound to
+  Control's computed `deadline_unix_ms`. This enforces a hard, unified stop across all execution
+  phases.
+* **Zero-Interpretation Transport**: Straw treats request and response bodies as unparsed data and explicitly refuses to
+  perform semantic page understanding or execute content-aware logic.
+* **Bounded Payload Truncation**: When payload capture is enabled, capture truncation or size policy limits are strictly
+  followed before storage.
 
 ## 23. Testing
 
-Checks needed to trust the system.
+**End-to-End & Chaos Integration (Primary Focus)**
+Testing prioritizes real-world failure states and distributed system chaos over isolated happy paths.
+
+* **Worker Dropouts:** Simulating hard crashes of Egress workers mid-request to verify Control handles request
+  cancellation, NATS timeouts, and streams the correct typed error.
+* **Malicious Upstreams:** Simulating slow HTTP responses, broken TLS handshakes, infinite chunked payloads, and
+  premature TCP closes to ensure Egress workers strictly enforce deadlines and drop connections.
+* **Network Partitions:** Severing connections between Control and Redis/Postgres to validate in-memory routing fallback
+  and stale snapshot resilience.
+* **NATS Outages:** Forcing NATS cluster partitions to test assignment queue recovery and ensure Control instances do
+  not deadlock waiting for acknowledgments.
+
+**Unit & Contract Verification (Secondary Focus)**
+Baseline correctness is enforced locally before E2E execution.
+
+* **Protobuf Boundaries:** The `buf breaking` and `buf lint` commands enforce strict schema compatibility across Control
+  and Egress.
+* **Routing Logic:** Table-driven tests validate routing rule matching, priority fallback, and quota evaluations without
+  network overhead.
+* **Error Mapping:** Unit tests ensure raw network errors translate exactly to Straw's canonical protobuf error
+  codes.
 
 ## 24. Operational Behavior
 
-Expected behavior during incidents.
+Straw strictly prioritizes availability over state consistency. During infrastructure outages, the data plane must
+remain functional.
+
+* **Postgres Outage:** If Postgres and Redis experience a total outage, Control instances prioritize availability and
+  continue routing traffic using their stale local memory snapshots.
+* **Redis Outage:** Rate limits and quotas fail open to ensure legitimate traffic is not dropped. Sticky sessions
+  gracefully degrade to standard fallback routing. MITM certificate caching falls back to durable S3-compatible storage
+  or establishing a new routing session.
+* **ClickHouse Outage:** Operational logs and metrics buffer in memory at the Control layer. If the outage outlasts the
+  bounded memory limit, the oldest logs drop to protect the Control process. Request transport remains unaffected.
+* **Alerting:** Any failure to reach Postgres, Redis, or ClickHouse immediately bypasses standard warnings and triggers
+  a P0 page to operators.
 
 ## 25. Open Decisions
 
-Unresolved choices that block implementation or affect architecture.
+* **Monetization & Billing:** Phase 1 intentionally defers all billing mechanics. The critical open decision for Phase 2
+  is how to inject usage-based metering (bandwidth, request volume, residential IP costs) into the Control plane without
+  degrading sub-millisecond routing performance.
+* **Marketplace Automation:** Whether Provider Adapters will eventually handle automated third-party proxy account
+  provisioning on the fly, or strictly require pre-configured operator credentials.
 
 ## 26. Implementation Order
 
-Build sequence and dependencies between parts.
+1. **Protobuf Contract & NATS Topology:** Define the exact schemas, message envelopes, and subject names. This
+   establishes the immutable boundary between Control and Egress.
+2. **Control Server:** Build the public ingress, authentication, state integrations, and NATS dispatch logic.
+3. **Egress Worker:** Implement the NATS listener, `tls-client` integration, upstream connection handling, and browser
+   fingerprinting.
 
 ## 27. Risks
 
-Known technical, security, operational, and legal risks.
+**Target Site Defenses (Traffic Blocking)**
+
+* **Anti-Bot Evolution:** If the `tls-client` browser profiles fall behind modern anti-bot fingerprinting, entire proxy
+  pools will burn quickly.
+* **IP Reputation Exhaustion:** Datacenter proxies get flagged quickly by stricter sites. A healthy hybrid pool with
+  residential proxies is required for well-defended targets.
+* **CAPTCHA Walls:** Sites frequently deploy CAPTCHAs to block automated traffic. Since Straw explicitly avoids
+  content-aware CAPTCHA solving, clients must handle this externally.
+
+**Technical Bottlenecks (Resource Utilization)**
+
+* **Control-Tier CPU Saturation:** Terminating MITM TLS at the Control layer creates high computational demands. A
+  sudden spike in concurrent TLS handshakes will heavily tax Control CPU.
+* **In-Memory Buffer Bloat:** Processing unencrypted HTTPS plaintext in memory means large payloads will spike RAM
+  consumption. If buffer limits fail, Control instances risk Out-Of-Memory (OOM) crashes.
+* **Dynamic Certificate Thundering Herd:** The Redis MITM certificate cache uses `volatile-lru`. If the cache
+  evicts heavily during a traffic spike, Control will waste massive CPU cycles generating identical intermediate
+  certificates.
 
 ## 28. Future Work
 
-Useful ideas that are not required for the current planned scope.
+* **Expanded Protocols:** Phase 1 is limited to HTTP and HTTPS transport. WebSockets, SOCKS5, generic TCP,
+  UDP/QUIC, and non-web protocols are future work.
+* **Performance Optimization:** Upstream connection pooling, keep-alive state, decoding, and recompression features are
+  deferred to Phase 2.
+* **Monetization & SaaS Workflows:** Billing, payments, self-serve signup, customer dashboards, public marketplaces, and
+  hosted multi-customer business workflows are reserved for later monetization work.
+* **Marketplace Automation:** Marketplace integrations, automatic third-party proxy account provisioning, provider
+  billing reconciliation, and marketplace routing economics are deferred.
+* **Security & Verification:** Active egress verification of advertised country, region, or IP type before routing is
+  future work. Deterministic protobuf serialization for signing or hashing is a Phase 2 concern.
