@@ -1,6 +1,6 @@
 # 04 - Postgres Schema
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -36,16 +36,16 @@ Create the P0 Postgres schema for tenants, keys, workers, pools, routes, deny ru
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Write migrations for durable P0 config tables.
-- [ ] Add constraints for tenant isolation, unique worker identity, route ordering, and config versioning.
-- [ ] Add columns for audit source records without storing sensitive secret values.
-- [ ] Add migration tests or a reproducible local migration command.
-- [ ] Verify migrations apply to a clean local database.
-- [ ] Verify migration re-run behavior is documented or guarded.
-- [ ] Run focused migration checks.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Read all required planning docs.
+- [x] Write migrations for durable P0 config tables.
+- [x] Add constraints for tenant isolation, unique worker identity, route ordering, and config versioning.
+- [x] Add columns for audit source records without storing sensitive secret values.
+- [x] Add migration tests or a reproducible local migration command.
+- [x] Verify migrations apply to a clean local database.
+- [x] Verify migration re-run behavior is documented or guarded.
+- [x] Run focused migration checks.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 
