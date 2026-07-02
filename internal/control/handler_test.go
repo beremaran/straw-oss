@@ -1,6 +1,7 @@
 package control
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,15 +9,17 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestHandlerValidRequest(t *testing.T) {
 	t.Parallel()
 
-	h := NewRequestHandler(1_048_576, 1_048_576, 120_000)
+	h, token := newTestHandler(t)
 
 	payload := `{"method":"GET","url":"https://example.com/path"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 
 	h.ServeHTTP(w, req)
@@ -40,10 +43,11 @@ func TestHandlerValidRequest(t *testing.T) {
 func TestHandlerMissingMethod(t *testing.T) {
 	t.Parallel()
 
-	h := NewRequestHandler(1_048_576, 1_048_576, 120_000)
+	h, token := newTestHandler(t)
 
 	payload := `{"url":"https://example.com"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 
 	h.ServeHTTP(w, req)
@@ -64,10 +68,11 @@ func TestHandlerMissingMethod(t *testing.T) {
 func TestHandlerCONNECTRejected(t *testing.T) {
 	t.Parallel()
 
-	h := NewRequestHandler(1_048_576, 1_048_576, 120_000)
+	h, token := newTestHandler(t)
 
 	payload := `{"method":"CONNECT","url":"https://example.com"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 
 	h.ServeHTTP(w, req)
@@ -88,10 +93,11 @@ func TestHandlerCONNECTRejected(t *testing.T) {
 func TestHandlerURLFragmentRejected(t *testing.T) {
 	t.Parallel()
 
-	h := NewRequestHandler(1_048_576, 1_048_576, 120_000)
+	h, token := newTestHandler(t)
 
 	payload := `{"method":"GET","url":"https://example.com/path#section"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 
 	h.ServeHTTP(w, req)
@@ -112,10 +118,11 @@ func TestHandlerURLFragmentRejected(t *testing.T) {
 func TestHandlerURLUserInfoRejected(t *testing.T) {
 	t.Parallel()
 
-	h := NewRequestHandler(1_048_576, 1_048_576, 120_000)
+	h, token := newTestHandler(t)
 
 	payload := `{"method":"GET","url":"https://user:pass@example.com/path"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 
 	h.ServeHTTP(w, req)
@@ -136,10 +143,11 @@ func TestHandlerURLUserInfoRejected(t *testing.T) {
 func TestHandlerHostHeaderRejected(t *testing.T) {
 	t.Parallel()
 
-	h := NewRequestHandler(1_048_576, 1_048_576, 120_000)
+	h, token := newTestHandler(t)
 
 	payload := `{"method":"GET","url":"https://example.com","headers":[{"name":"Host","value_base64":"ZXhhbXBsZS5jb20="}]}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 
 	h.ServeHTTP(w, req)
@@ -160,11 +168,12 @@ func TestHandlerHostHeaderRejected(t *testing.T) {
 func TestHandlerDuplicateHeaders(t *testing.T) {
 	t.Parallel()
 
-	h := NewRequestHandler(1_048_576, 1_048_576, 120_000)
+	h, token := newTestHandler(t)
 
 	// "hello" in base64
 	payload := `{"method":"GET","url":"https://example.com","headers":[{"name":"X-Custom","value_base64":"aGVsbG8="},{"name":"X-Custom","value_base64":"d29ybGQ="}]}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 
 	h.ServeHTTP(w, req)
@@ -178,12 +187,13 @@ func TestHandlerBodyLimitExceeded(t *testing.T) {
 	t.Parallel()
 
 	// 1 MB limit
-	h := NewRequestHandler(1_048_576, 1_048_576, 120_000)
+	h, token := newTestHandler(t)
 
 	// 2 MB of base64 data (which decodes to ~1.5 MB)
 	largeData := strings.Repeat("A", 1_400_000)
 	payload := `{"method":"POST","url":"https://example.com","body":{"mode":"inline_base64","data_base64":"` + largeData + `"}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 
 	h.ServeHTTP(w, req)
@@ -204,10 +214,11 @@ func TestHandlerBodyLimitExceeded(t *testing.T) {
 func TestHandlerCaptureHintRejected(t *testing.T) {
 	t.Parallel()
 
-	h := NewRequestHandler(1_048_576, 1_048_576, 120_000)
+	h, token := newTestHandler(t)
 
 	payload := `{"method":"GET","url":"https://example.com","capture_hint":"full"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 
 	h.ServeHTTP(w, req)
@@ -228,7 +239,7 @@ func TestHandlerCaptureHintRejected(t *testing.T) {
 func TestHandlerNonPOSTMethod(t *testing.T) {
 	t.Parallel()
 
-	h := NewRequestHandler(1_048_576, 1_048_576, 120_000)
+	h, _ := newTestHandler(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/requests", nil)
 	w := httptest.NewRecorder()
@@ -243,11 +254,12 @@ func TestHandlerNonPOSTMethod(t *testing.T) {
 func TestHandlerValidRequestWithHeadersAndBody(t *testing.T) {
 	t.Parallel()
 
-	h := NewRequestHandler(1_048_576, 1_048_576, 120_000)
+	h, token := newTestHandler(t)
 
 	// "application/json" in base64
 	payload := `{"method":"POST","url":"https://example.com/api","headers":[{"name":"Content-Type","value_base64":"YXBwbGljYXRpb24vanNvbg=="}],"body":{"mode":"inline_base64","data_base64":"aGVsbG8="}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 
 	h.ServeHTTP(w, req)
@@ -268,10 +280,11 @@ func TestHandlerValidRequestWithHeadersAndBody(t *testing.T) {
 func TestHandlerTimeoutTooLow(t *testing.T) {
 	t.Parallel()
 
-	h := NewRequestHandler(1_048_576, 1_048_576, 120_000)
+	h, token := newTestHandler(t)
 
 	payload := `{"method":"GET","url":"https://example.com","timeout_ms":500}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 
 	h.ServeHTTP(w, req)
@@ -284,10 +297,11 @@ func TestHandlerTimeoutTooLow(t *testing.T) {
 func TestHandlerUnknownFieldsRejected(t *testing.T) {
 	t.Parallel()
 
-	h := NewRequestHandler(1_048_576, 1_048_576, 120_000)
+	h, token := newTestHandler(t)
 
 	payload := `{"method":"GET","url":"https://example.com","unknown_field":true}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 
 	h.ServeHTTP(w, req)
@@ -300,10 +314,11 @@ func TestHandlerUnknownFieldsRejected(t *testing.T) {
 func TestHandlerInvalidMethodCasing(t *testing.T) {
 	t.Parallel()
 
-	h := NewRequestHandler(1_048_576, 1_048_576, 120_000)
+	h, token := newTestHandler(t)
 
 	payload := `{"method":"get","url":"https://example.com"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 
 	h.ServeHTTP(w, req)
@@ -504,10 +519,11 @@ func TestValidateRequestTimeoutWithinLimit(t *testing.T) {
 func TestHandlerSuccessEnvelopeStructure(t *testing.T) {
 	t.Parallel()
 
-	h := NewRequestHandler(1_048_576, 1_048_576, 120_000)
+	h, token := newTestHandler(t)
 
 	payload := `{"method":"GET","url":"https://example.com"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 
 	h.ServeHTTP(w, req)
@@ -665,4 +681,39 @@ func TestHTTPValidationErrorStatus(t *testing.T) {
 			}
 		})
 	}
+}
+
+// newTestHandler builds a RequestHandler wired to an Authenticator seeded
+// with one active tenant-scoped "requester" key, and returns the plaintext
+// bearer token for that key. Handler tests that only exercise request
+// validation (not auth/RBAC itself, which is covered in auth_test.go and
+// admin_handlers_test.go) use this helper to authenticate as a caller who
+// is always allowed to execute data-plane requests.
+func newTestHandler(t *testing.T) (*RequestHandler, string) {
+	t.Helper()
+
+	store := NewInMemoryAPIKeyStore()
+	pepper := []byte("test-pepper")
+
+	generated, err := GenerateAPIKey()
+	if err != nil {
+		t.Fatalf("GenerateAPIKey() error = %v", err)
+	}
+	record := APIKeyRecord{
+		ID:         "key_test_requester",
+		ScopeType:  ScopeTenant,
+		TenantID:   "ten_test",
+		Role:       RoleRequester,
+		Prefix:     generated.Prefix,
+		SecretHash: HashAPIKeySecret(generated.Secret, pepper),
+		Status:     APIKeyStatusActive,
+		CreatedAt:  time.Now().UTC(),
+	}
+	if err := store.Create(context.Background(), record); err != nil {
+		t.Fatalf("store.Create() error = %v", err)
+	}
+
+	authenticator := NewAuthenticator(store, pepper)
+	h := NewRequestHandler(1_048_576, 1_048_576, 120_000, authenticator)
+	return h, generated.Secret
 }

@@ -1,6 +1,6 @@
 # 07 - Auth, RBAC, and API Keys
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -38,18 +38,18 @@ Implement API-key authentication, tenant resolution, RBAC, API key lifecycle, an
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Implement API key hash verification.
-- [ ] Resolve platform-scoped and tenant-scoped identities.
-- [ ] Enforce platform and tenant role permissions.
-- [ ] Add platform key lifecycle after bootstrap (`config_version` is 0 for platform keys — no tenant version applies).
-- [ ] Add tenant API key and worker credential lifecycle; enforce the single-tenant worker-credential restriction.
-- [ ] Enforce platform-managed quota writes: `PUT /tenants/{id}/quotas` requires `system_admin`; tenant keys retain read-only `/quotas` access.
-- [ ] Invalidate cached auth/config state on revocation.
-- [ ] Add tests for platform key lifecycle, platform key cannot execute requests, tenant key cannot create tenants, revocation, actor audit source, tenant isolation, quota write requires platform key, and worker-credential create rejects foreign tenant scope.
-- [ ] Run focused auth tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Read all required planning docs.
+- [x] Implement API key hash verification.
+- [x] Resolve platform-scoped and tenant-scoped identities.
+- [x] Enforce platform and tenant role permissions.
+- [x] Add platform key lifecycle after bootstrap (`config_version` is 0 for platform keys — no tenant version applies).
+- [x] Add tenant API key and worker credential lifecycle; enforce the single-tenant worker-credential restriction.
+- [x] Enforce platform-managed quota writes: `PUT /tenants/{id}/quotas` requires `system_admin`; tenant keys retain read-only `/quotas` access.
+- [x] Invalidate cached auth/config state on revocation.
+- [x] Add tests for platform key lifecycle, platform key cannot execute requests, tenant key cannot create tenants, revocation, actor audit source, tenant isolation, quota write requires platform key, and worker-credential create rejects foreign tenant scope.
+- [x] Run focused auth tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

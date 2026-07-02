@@ -20,8 +20,16 @@ type ErrorResponse struct {
 type ErrorCode int
 
 const (
-	AuthFailure ErrorCode = 1
-	// ... tenant_not_found, insufficient_permissions, etc.
+	AuthFailure             ErrorCode = 1
+	TenantNotFound          ErrorCode = 2
+	InsufficientPermissions ErrorCode = 3
+	RateLimitExceeded       ErrorCode = 4
+	QuotaExhausted          ErrorCode = 5
+	InvalidRequest          ErrorCode = 6
+	DestinationDenied       ErrorCode = 7
+	Conflict                ErrorCode = 9
+	UnsupportedIngressMode  ErrorCode = 10
+	ControlInternalError    ErrorCode = 500
 )
 
 // ErrorRegistry maps ErrorCode to ErrorResponse fields.
