@@ -1,6 +1,6 @@
 # 05 - Config Cache and Invalidation
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -33,16 +33,16 @@ Implement Control's config snapshot cache with Postgres versioning and Redis inv
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Define the immutable config snapshot shape consumed by routing and admission.
-- [ ] Load snapshots from Postgres using version checks.
-- [ ] Cache snapshots in-process in Control.
-- [ ] Listen for Redis pub/sub invalidation.
-- [ ] Correct missed invalidations with version checks.
-- [ ] Add tests for cache hit, version conflict, invalidation, missed pub/sub recovery, and API key revocation invalidation.
-- [ ] Run focused config cache tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Read all required planning docs.
+- [x] Define the immutable config snapshot shape consumed by routing and admission.
+- [x] Load snapshots from Postgres using version checks.
+- [x] Cache snapshots in-process in Control.
+- [x] Listen for Redis pub/sub invalidation.
+- [x] Correct missed invalidations with version checks.
+- [x] Add tests for cache hit, version conflict, invalidation, missed pub/sub recovery, and API key revocation invalidation.
+- [x] Run focused config cache tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 
