@@ -1,6 +1,6 @@
 # 11 - Egress Outbound Execution
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -33,17 +33,17 @@ Implement the official Go Egress outbound HTTP execution path with P0 transport 
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Implement outbound HTTP/HTTPS execution from Control-resolved instructions.
-- [ ] Apply Control-resolved header and cookie injection operations.
-- [ ] Enforce total request deadline.
-- [ ] Enforce DestinationPolicy against resolved IPs without querying Control databases.
-- [ ] Disable redirects, CONNECT, outbound HTTP/2, and upstream keep-alives for P0.
-- [ ] Report failures per the Section 16 boundary: map the low-level fact to a canonical executor-emittable `ErrorCode`, emit it in `ErrorFrame` with the fact string in `details["fact"]`.
-- [ ] Add tests for deadline enforcement, resolved-IP deny, DNS rebinding guard, header validation, private IP denial, metadata IP denial, HTTP behavior defaults, and redaction boundaries.
-- [ ] Run focused Egress tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Read all required planning docs.
+- [x] Implement outbound HTTP/HTTPS execution from Control-resolved instructions.
+- [x] Apply Control-resolved header and cookie injection operations.
+- [x] Enforce total request deadline.
+- [x] Enforce DestinationPolicy against resolved IPs without querying Control databases.
+- [x] Disable redirects, CONNECT, outbound HTTP/2, and upstream keep-alives for P0.
+- [x] Report failures per the Section 16 boundary: map the low-level fact to a canonical executor-emittable `ErrorCode`, emit it in `ErrorFrame` with the fact string in `details["fact"]`.
+- [x] Add tests for deadline enforcement, resolved-IP deny, DNS rebinding guard, header validation, private IP denial, metadata IP denial, HTTP behavior defaults, and redaction boundaries.
+- [x] Run focused Egress tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 
