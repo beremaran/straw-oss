@@ -8,6 +8,9 @@ logged as outcome metadata but are not converted into Straw errors.
 For P0 REST, Straw API HTTP status is `200` for successful transport. Upstream status is carried in the JSON response
 envelope as `status`.
 
+**Client note**: Clients must inspect the JSON envelope's `status` field to determine the upstream HTTP result. The
+outer HTTP status only describes Straw API transport success or failure.
+
 ### Methods
 
 P0 REST decoded transport accepts standard HTTP methods except `CONNECT`. Raw CONNECT is only accepted by the P1 CONNECT
@@ -27,8 +30,7 @@ Cookies pass through as headers. Straw does not maintain cookie jars.
 ### Header Injection
 
 P0 supports only explicit Control-resolved header operations from configured injection policy. The operation list sent
-to
-Egress is ordered and bounded.
+to Egress is ordered and bounded.
 
 Allowed P0 operations:
 
@@ -37,6 +39,23 @@ Allowed P0 operations:
 - remove header.
 
 P0 does not support live body mutation, JavaScript mutation, cookie-jar persistence, or content-aware rewriting.
+
+**Injection safety rules**:
+
+| Header              | Injection Rule                                                   |
+|---------------------|------------------------------------------------------------------|
+| `Host`              | Deny, unless explicitly supported by deployment config           |
+| `Content-Length`    | Deny (computed by Egress)                                        |
+| `Transfer-Encoding` | Deny                                                             |
+| `Connection`        | Deny                                                             |
+| `Proxy-Authorization` | Deny                                                           |
+| `X-Straw-*`         | Deny                                                             |
+| `Authorization`     | Allow only if tenant_admin-created policy; audit-redacted         |
+| `Cookie`            | Allow only if tenant_admin-created policy; audit-redacted         |
+
+All header name matching is case-insensitive. Duplicate `set` operations for the same header are rejected. `append` may repeat a header name. Maximum
+injected header bytes is bounded by `control.transport.max_frame_data_bytes`. Injected header values must not contain
+bare CR or LF characters.
 
 ### Redirects
 

@@ -95,8 +95,10 @@ ORDER BY (tenant_id, timestamp, config_type, resource_id)
 TTL timestamp + INTERVAL 180 DAY;
 ```
 
-These are operational audit logs, not immutable compliance audit logs. If compliance-grade audit is required, export to
-immutable object storage or another dedicated audit system.
+**Secret redaction**: Before writing `old_value_json` and `new_value_json`, Control classifies each field per the
+secret classification rules in Section 21. Fields classified as `secret` are replaced with `[redacted]`. Fields
+classified as `sensitive` are stored as a hash or bounded metadata only. This redaction applies to both Postgres
+`config_audit_source` records and ClickHouse `config_audit_events`.
 
 ### `log_events`
 
@@ -140,3 +142,9 @@ PARTITION BY toYYYYMM(captured_at)
 ORDER BY (tenant_id, captured_at, request_id)
 TTL captured_at + INTERVAL 7 DAY;
 ```
+
+### Telemetry Exposure
+
+Internal telemetry tables may store `worker_id`, `session_id`, and `selected_executor`. Tenant-facing telemetry APIs
+must either omit these fields or return stable public aliases that do not reveal internal topology. See Section 21 for
+full telemetry exposure rules.

@@ -13,6 +13,18 @@ Dimensions:
 
 Algorithm: Redis sliding-window log using sorted sets.
 
+**Memory bounds**: Each rate-limit key stores one sorted-set entry per request within the window. To prevent unbounded
+memory growth:
+
+- Maximum entries per key: configurable, default 10,000. When exceeded, oldest entries are compacted into a fixed-window
+  fallback counter.
+- Maximum rate-limit keys per tenant: configurable, default 1,000. Beyond this, excess dimensions fall back to the
+  tenant-level rate limit.
+- Eviction behavior: when total Redis memory for rate-limit keys exceeds a configurable guardrail, the oldest keys are
+  evicted and requests fall back to the tenant-level limit.
+- When a key exceeds memory guardrails, the rate limiter switches to a conservative deny policy for that key until the
+  window expires or memory is reclaimed.
+
 Breaches return `rate_limit_exceeded` with HTTP 429 and `retry_after_ms` when computable.
 
 ### Quotas
@@ -34,6 +46,14 @@ P0 quota behavior is operational admission control, not billing-grade accounting
 P0 must not claim exact durable billing accuracy. If Redis quota counters are lost, behavior follows the configured
 quota fail policy. Reconciliation from ClickHouse events into Redis/Postgres aggregates is P2 unless explicitly added to
 P0 as a tested implementation item.
+
+### Quota Accounting: Request vs Attempt Semantics
+
+- **Request-count quota** counts one admitted external client request, not each internal fallback attempt.
+- **Bandwidth quota** counts bytes actually transferred per attempt. If a fallback causes two partial upstream attempts,
+  both attempts' transferred bytes count toward the bandwidth quota.
+- Internal fallback attempts are tracked separately in ClickHouse (`attempt`, `selected_executor`, `error_code`) but do
+  not increment the external request-count quota.
 
 ### Bandwidth Accounting
 

@@ -23,6 +23,30 @@ Envelope fields:
 
 JSON is not used inside NATS.
 
+### Envelope Validation by Payload Type
+
+Different payload types have different mandatory field requirements:
+
+```text
+RegisterRequest:
+  request_id: empty or generated control-message id
+  tenant_id: empty unless credential is single-tenant
+  deadline_unix_ms: registration deadline (epoch ms)
+  attempt: 0
+
+HeartbeatRequest:
+  request_id: empty or generated control-message id
+  tenant_id: empty unless credential is single-tenant
+  deadline_unix_ms: empty
+  attempt: 0
+
+AssignRequest / StreamFrame:
+  request_id: required
+  tenant_id: required
+  deadline_unix_ms: required
+  attempt: >= 1
+```
+
 ### Canonical Subjects
 
 | Subject                                                  | Direction                | Payload            | Queue group | Purpose                                                         |
@@ -57,14 +81,20 @@ IDs are never placed in NATS subjects.
 - `CancelledFrame`,
 - credit for Control-to-executor upload bytes.
 
-### Assignment Flow
+### Assignment Flow (Subscription Ordering)
 
-1. Control sends `AssignRequest` to exact assignment subject.
-2. Executor immediately reserves capacity or rejects.
-3. Executor replies with `AssignAck`.
-4. If accepted, both sides subscribe to request-scoped subjects.
-5. Control sends `RequestStart`.
-6. Streams proceed under sequence validation and credit-based flow control.
+To prevent lost messages in Core NATS (which does not retain messages for later subscribers), the assignment flow
+enforces strict subscription ordering:
+
+1. Control subscribes to the request-scoped `e2c` subject and **flushes** the subscription.
+2. Control sends `AssignRequest` to the exact assignment subject.
+3. Executor validates the assignment and reserves capacity.
+4. Executor subscribes to request-scoped `c2e` and **flushes** the subscription.
+5. Executor replies with `AssignAck`.
+6. If `AssignAck` is `ACCEPTED`, Control sends `RequestStart` over the request-scoped `c2e` subject.
+
+Any NATS client subscription used for the request-scoped stream must be flushed or otherwise confirmed before the peer
+is allowed to publish to it.
 
 There are no generic NATS retries for assignment. Duplicate assignment is worse than a clean failed attempt.
 
@@ -91,23 +121,34 @@ Rules:
 - sequence numbers are not reused across attempts.
 
 `DataFrame` additionally carries `offset` for diagnostics and optional integrity checks. `offset` must match the
-cumulative
-number of data bytes previously accepted in that direction for the same logical byte stream.
+cumulative number of data bytes previously accepted in that direction for the same logical byte stream.
 
-### Backpressure
+### Backpressure and Credit Semantics
 
 P0 uses byte-credit flow control.
 
 Defaults:
 
-| Setting                      | Default | Config key                                |
-|------------------------------|--------:|-------------------------------------------|
-| Max frame data bytes         |   1 MiB | `transport.max_frame_data_bytes`          |
-| Initial upload credit        |   8 MiB | `transport.initial_upload_credit_bytes`   |
-| Initial download credit      |   8 MiB | `transport.initial_download_credit_bytes` |
-| Max in-flight upload bytes   |  16 MiB | `transport.max_inflight_upload_bytes`     |
-| Max in-flight download bytes |  16 MiB | `transport.max_inflight_download_bytes`   |
-| Frame idle timeout           |     15s | `transport.frame_idle_timeout_ms`         |
+| Setting                      | Default | Config key                                     |
+|------------------------------|--------:|------------------------------------------------|
+| Max frame data bytes         |   1 MiB | `control.transport.max_frame_data_bytes`       |
+| Initial upload credit        |   8 MiB | `control.transport.initial_upload_credit_bytes`|
+| Initial download credit      |   8 MiB | `control.transport.initial_download_credit_bytes`|
+| Max in-flight upload bytes   |  16 MiB | `control.transport.max_inflight_upload_bytes`  |
+| Max in-flight download bytes |  16 MiB | `control.transport.max_inflight_download_bytes`|
+| Frame idle timeout           |     15s | `control.transport.frame_idle_timeout_ms`      |
+
+Credit rules:
+
+- Initial upload/download credit is implicit from config and included in `AssignRequest` or `RequestStart`.
+- `CreditFrame` is sequenced like other stream frames.
+- `CreditFrame` grants additional byte credit for `DataFrame` payload bytes only.
+- Control frames (`RequestStart`, `CancelFrame`, `ErrorFrame`, `EndFrame`, `TrailersFrame`, `CancelledFrame`) and
+  terminal frames **do not consume** byte credit.
+- `DataFrame` bytes consume credit after acceptance.
+- A receiver should replenish credit after it has processed or released buffered bytes.
+- When credit reaches zero, senders stop reading from their upstream source where possible. Control must stop or slow
+  client reads to avoid unbounded buffering.
 
 Credit applies to raw bytes carried in `DataFrame.data`. If bytes are compressed by the client/upstream, credit counts
 compressed bytes.
@@ -117,15 +158,14 @@ client reads to avoid unbounded buffering.
 
 ### NATS Max Payload Validation
 
-`transport.max_frame_data_bytes` must be less than the effective NATS maximum payload minus protobuf Envelope overhead.
-Startup validation must fail if the configured maximum frame data size can produce an Envelope larger than the
-configured
-or discovered NATS max payload.
+`control.transport.max_frame_data_bytes` must be less than the effective NATS maximum payload minus protobuf Envelope
+overhead. Startup validation must fail if the configured maximum frame data size can produce an Envelope larger than the
+configured or discovered NATS max payload.
 
 P0 recommended rule:
 
 ```text
-transport.max_frame_data_bytes <= nats.max_payload_bytes - 65536
+control.transport.max_frame_data_bytes <= nats.max_payload_bytes - 65536
 ```
 
 The 64 KiB overhead budget is intentionally conservative and may be replaced by measured encoded-size validation.

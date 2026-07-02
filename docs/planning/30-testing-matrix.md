@@ -20,7 +20,7 @@ P0 must include contract-mapped tests.
 | REST outcome  | upstream 404/500 returns API HTTP 200 with upstream status in envelope; Straw errors return ErrorResponse      |
 | Body limits   | request body over cap returns `body_too_large`; response body over cap returns `body_too_large` with direction |
 | P0 exclusions | capture_hint other than `none` rejected; redirect-following flag rejected/unsupported; BodyRef rejected        |
-| Rate limits   | dimensions, 429, retry_after, Redis fail policy                                                                |
+| Rate limits   | dimensions, 429, retry_after, Redis fail policy, memory guardrail fallback                                     |
 | Quotas        | request count, bandwidth accounting, admission policy, Redis loss behavior, no billing-grade claim             |
 | Deny rules    | domain, CIDR, private IP, metadata IP, DNS rebinding, redirect target future test, IDNA normalization          |
 | Egress policy | RequestStart carries DestinationPolicy; Egress enforces resolved-IP deny without querying Control DBs          |
@@ -30,6 +30,13 @@ P0 must include contract-mapped tests.
 | Invalidation  | Redis pub/sub invalidation, missed pub/sub corrected by version check, API key revocation invalidates cache    |
 | ClickHouse    | async write success, outage, bounded queue drop, sanitized target_url                                          |
 | Load          | routing p50/p99, assignment latency, active request limit, worker capacity behavior                            |
+| Auth          | platform key cannot execute data-plane requests; tenant key cannot create tenants; revoked key invalidation    |
+| Audit         | injection policy secret values redacted in Postgres audit source and ClickHouse; API key secret never logged  |
+| Identifiers   | duplicate worker_id across tenants rejected; multi-tenant pool scope validated                                |
+| HTTP validation| invalid header names rejected; CR/LF header injection rejected; URL fragment rejected; IDNA normalization    |
+| NATS ordering | subscriber flush proves RequestStart not lost; stream subject publish before subscribe fails in test harness   |
+| SSRF          | local DNS validation connects only to validated IP; DNS rebinding between validation and dial is blocked       |
+| Timeout       | total deadline wins over phase timeout when simultaneous; phase timeouts bounded by remaining deadline         |
 
 P1/P2 add proxy, CONNECT, MITM, BodyRef, payload capture, Provider Adapter, telemetry read APIs, connection pooling,
 and HTTP/2 test rows before those features ship.

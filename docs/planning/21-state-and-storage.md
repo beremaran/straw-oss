@@ -6,7 +6,7 @@ Postgres stores durable control-plane state:
 
 - tenants,
 - platform users and tenant users,
-- API keys,
+- API keys (generalized with scope_type: platform | tenant),
 - worker credentials,
 - executor pools,
 - routing rules,
@@ -31,10 +31,10 @@ Required P0 tables:
 | `tenants`                | Tenant boundary and status                                              | unique `id`; `status`; soft delete timestamp                       |
 | `platform_users`         | Platform administrators                                                 | unique `id`; role includes `system_admin`                          |
 | `tenant_users`           | Tenant-local users                                                      | unique `(tenant_id, user_id)`                                      |
-| `api_keys`               | Tenant-scoped API keys                                                  | hashed secret; visible prefix; role; revoked timestamp             |
+| `api_keys`               | Generalized credentials (platform and tenant)                           | scope_type; hashed secret; visible prefix; role; revoked timestamp |
 | `worker_credentials`     | Worker credential public keys and scopes                                | credential status; Ed25519 public key; scope JSON or child tables  |
 | `executor_pools`         | Tenant-visible pools                                                    | unique `(tenant_id, id)`; executor type                            |
-| `worker_admin_state`     | Durable worker disable state                                            | unique `(tenant_id, worker_id)` or global worker scope             |
+| `worker_admin_state`     | Durable worker disable state                                            | unique `(worker_id)` — global scope                                |
 | `routing_rules`          | Route priority and match conditions                                     | unique `(tenant_id, id)`; indexed `(tenant_id, priority)`          |
 | `deny_rules`             | Host/CIDR/CNAME deny and allow overrides                                | normalized host/cidr columns where possible                        |
 | `fingerprint_profiles`   | Allowed profile names and worker compatibility                          | unique `(tenant_id, name)` plus built-in global profiles           |
@@ -71,7 +71,8 @@ Redis stores:
 - worker session/heartbeat/load state,
 - cooldown state,
 - short-lived in-flight request state,
-- P2 MITM cert cache/locks.
+- P2 MITM cert cache/locks,
+- worker registration nonce cache (scoped by credential_id, TTL-based).
 
 Redis data loss must not corrupt durable config. Redis loss may degrade availability decisions, sticky sessions, rate
 limits, quotas, or certificate caches depending on explicit fail policy.
@@ -99,10 +100,41 @@ rules before writing logs or ClickHouse records:
 - Public ErrorResponse details must not include secrets, worker IDs, session IDs, NATS subjects, credentials, or full
   unsanitized URLs.
 
+**Path metadata storage**: Tenant policy controls path storage:
+
+```json
+"metadata_path_storage": "store | hash | drop"
+```
+
+- `store`: full path stored as-is (may contain secrets such as tokens or signed IDs).
+- `hash`: stable hash of the path stored for correlation.
+- `drop`: path not stored; only scheme, host, and port are retained.
+
+Default: `hash` (operators may choose `store` for local dev only; `drop` for maximum safety).
+
 Payload capture in P2 may store redacted headers/bodies according to explicit capture policy, but that is separate from
 P0 metadata.
+
+### Config Secret Classification
+
+Config audit redaction classifies fields before writing `old_value_json` and `new_value_json` to both Postgres
+`config_audit_source` and ClickHouse `config_audit_events`.
+
+| Classification | Storage Rule                                   | Examples                                              |
+|----------------|------------------------------------------------|-------------------------------------------------------|
+| `secret`       | Never stored in audit; replaced with `[redacted]` | `api_keys.secret`, `injection_policies.operations.value_base64`, `worker private keys`, `upstream proxy passwords`, `signed URLs` |
+| `sensitive`    | Stored only as hash or bounded metadata        | `api_keys.secret_hash`, `worker_credentials.public_key_ed25519_base64` |
+| `public`       | Stored directly                                | `tenant names`, `routing rule priorities`, `pool tags` |
+
+Default: `injection_policies.operations.value_base64` is classified as `secret` and redacted in audit events.
 
 ### Backup and DR
 
 Postgres requires backup/restore outside Straw. Operators must configure managed backups or documented self-managed
 backups. Straw does not provide built-in disaster recovery in Phase 1.
+
+### Telemetry Exposure Rules
+
+Internal telemetry tables (ClickHouse) may store `worker_id`, `session_id`, and `selected_executor`. Tenant-facing
+telemetry APIs must either omit these fields or return stable public aliases that do not reveal internal topology.
+This rule applies to P1 telemetry APIs and must be enforced at the API layer, not just in storage.

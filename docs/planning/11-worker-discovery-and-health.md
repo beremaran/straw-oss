@@ -3,10 +3,26 @@
 Egress Workers and Provider Adapters use the same registration and heartbeat protocol. Provider Adapters are P2, but the
 protocol shape is common.
 
-### Worker Session State Machine
+### Worker State Model
 
-Runtime worker session state is derived from registration, heartbeat, admin state, duplicate-session handling, and
-cooldown. P0 uses this state machine:
+Worker state is modeled as two independent fields:
+
+- `runtime_state`: derived from registration, heartbeat, duplicate-session handling, and cooldown.
+- `admin_state`: durable admin override (`enabled` or `disabled`).
+
+```text
+runtime_state: unregistered | registering | registered | ready | degraded | unavailable | dead | draining | cooldown | duplicate_replaced
+admin_state: enabled | disabled
+```
+
+Eligibility uses both fields:
+
+```text
+if admin_state == disabled: exclude (regardless of runtime_state)
+else evaluate runtime_state
+```
+
+### Worker Runtime State Machine
 
 ```text
 unregistered
@@ -42,7 +58,6 @@ State meanings:
 | `unavailable`        | No       | Heartbeat stale beyond availability timeout                    |
 | `dead`               | No       | Removed after dead timeout                                     |
 | `draining`           | No new   | Finishes in-flight requests only                               |
-| `disabled`           | No       | Durable admin exclusion                                        |
 | `cooldown`           | No       | Temporary exclusion after repeated failures                    |
 | `duplicate_replaced` | No       | Superseded by a newer valid session                            |
 
@@ -112,22 +127,21 @@ Heartbeats include:
 - optional worker timestamp for diagnostics.
 
 Control uses receive time, not worker time, for liveness. Heartbeats from stale `session_id`s are ignored for routing
-but
-may be recorded for diagnostics.
+but may be recorded for diagnostics.
 
 ### Health Thresholds
 
 Defaults:
 
-| Setting                 |          Default | Meaning                              | Config key                                                                   |
-|-------------------------|-----------------:|--------------------------------------|------------------------------------------------------------------------------|
-| Heartbeat interval      |               5s | Worker send cadence                  | `worker.heartbeat_interval_ms`                                               |
-| Availability timeout    |              15s | Excluded from new assignments        | `control.worker_availability_timeout_ms`                                     |
-| Dead timeout            |              30s | Runtime session removed              | `control.worker_dead_timeout_ms`                                             |
-| Duplicate-session grace |              10s | Old session drains after replacement | `control.worker_duplicate_session_grace_ms`                                  |
-| Assignment ack timeout  |               2s | Wait for `AssignAck`                 | `control.assignment_ack_timeout_ms`                                          |
-| Cooldown trigger        | 3 failures / 60s | Worker excluded from new work        | `control.worker_cooldown_failure_count`, `control.worker_cooldown_window_ms` |
-| Cooldown duration       |              30s | Exclusion period                     | `control.worker_cooldown_duration_ms`                                        |
+| Setting                 |          Default | Meaning                              | Config key                                                          |
+|-------------------------|-----------------:|--------------------------------------|---------------------------------------------------------------------|
+| Heartbeat interval      |               5s | Worker send cadence                  | `egress.heartbeat.interval_ms`                                      |
+| Availability timeout    |              15s | Excluded from new assignments        | `control.worker.availability_timeout_ms`                            |
+| Dead timeout            |              30s | Runtime session removed              | `control.worker.dead_timeout_ms`                                    |
+| Duplicate-session grace |              10s | Old session drains after replacement | `control.worker.duplicate_session_grace_ms`                         |
+| Assignment ack timeout  |               2s | Wait for `AssignAck`                 | `control.worker.assignment_ack_timeout_ms`                          |
+| Cooldown trigger        | 3 failures / 60s | Worker excluded from new work        | `control.worker.cooldown_failure_count`, `control.worker.cooldown_window_ms` |
+| Cooldown duration       |              30s | Exclusion period                     | `control.worker.cooldown_duration_ms`                               |
 
 ### Duplicate Sessions
 
@@ -142,3 +156,5 @@ Draining is runtime state. It excludes new assignments but allows in-flight work
 
 Disable is durable admin state. It survives restart and excludes the worker from routing while still allowing
 registration/heartbeat for observability.
+
+Multi-tenant worker disable is **global**: it excludes the worker from routing for all tenants in its scope.

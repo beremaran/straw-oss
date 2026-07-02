@@ -4,6 +4,33 @@ Canonical durable config base path: `/api/v1/config`.
 
 Canonical runtime admin base path: `/api/v1/admin`.
 
+### Shared Config API Contract
+
+All config list endpoints support:
+
+- `limit` (default 50, max 200): page size.
+- `offset` (default 0): zero-based offset for pagination.
+- Sorting is always by `created_at` descending, then `id` ascending.
+
+All config update/create endpoints use `expected_config_version` in the request body:
+
+```json
+{
+  "expected_config_version": 7,
+  "field": "value"
+}
+```
+
+Version mismatch returns HTTP 409 `conflict` with `details.current_config_version` containing the current version.
+
+Create endpoints are not inherently idempotent. Duplicate creates without an idempotency key
+return `conflict`.
+
+Delete endpoints are **soft-delete** for all resources: the resource status changes to `deleted` and `deleted_at` is
+set. The resource remains queryable for audit purposes but is excluded from routing evaluation.
+
+Selected resources (routing rules, executor pools) allow client-supplied stable IDs for idempotent creates. All other resources use server-generated UUIDs.
+
 ### Config Endpoints
 
 | Method | Path                              | Role                                 | Purpose                   |
@@ -20,11 +47,11 @@ Canonical runtime admin base path: `/api/v1/admin`.
 | GET    | `/worker-credentials`             | `tenant_admin`                       | List worker credentials   |
 | POST   | `/worker-credentials/{id}/revoke` | `tenant_admin`                       | Revoke worker credential  |
 | POST   | `/executor-pools`                 | `tenant_admin`, `operator`           | Create pool               |
-| GET    | `/executor-pools`                 | `tenant_admin`, `operator`, `viewer` | List pools                |
+| GET    | `/executor-pools`                 | `tenant_admin`, `operator`, `viewer` | List pools              |
 | PUT    | `/executor-pools/{id}`            | `tenant_admin`, `operator`           | Update pool               |
 | DELETE | `/executor-pools/{id}`            | `tenant_admin`                       | Delete/disable pool       |
 | POST   | `/routing-rules`                  | `tenant_admin`, `operator`           | Create route              |
-| GET    | `/routing-rules`                  | `tenant_admin`, `operator`, `viewer` | List routes               |
+| GET    | `/routing-rules`                  | `tenant_admin`, `operator`, `viewer` | List routes              |
 | PUT    | `/routing-rules/{id}`             | `tenant_admin`, `operator`           | Update route              |
 | DELETE | `/routing-rules/{id}`             | `tenant_admin`, `operator`           | Delete route              |
 | GET    | `/fingerprint-profiles`           | `tenant_admin`, `operator`, `viewer` | List profiles             |
@@ -34,8 +61,8 @@ Canonical runtime admin base path: `/api/v1/admin`.
 | DELETE | `/injection-policies/{id}`        | `tenant_admin`, `operator`           | Delete injection policy   |
 | GET    | `/quotas`                         | `tenant_admin`, `operator`, `viewer` | Get quota config/usage    |
 | PUT    | `/quotas`                         | `tenant_admin`                       | Update quotas             |
-| GET    | `/rate-limits`                    | `tenant_admin`, `operator`, `viewer` | Get rate-limit config     |
-| PUT    | `/rate-limits`                    | `tenant_admin`                       | Update rate limits        |
+| GET    | `/rate-limits`                  | `tenant_admin`, `operator`, `viewer` | Get rate-limit config     |
+| PUT    | `/rate-limits`                  | `tenant_admin`                       | Update rate limits        |
 | POST   | `/deny-rules`                     | `tenant_admin`                       | Create deny rule          |
 | GET    | `/deny-rules`                     | `tenant_admin`, `operator`, `viewer` | List deny rules           |
 | PUT    | `/deny-rules/{id}`                | `tenant_admin`                       | Update deny rule          |
@@ -70,7 +97,16 @@ these fields without a versioned API change.
   "default_timeout_ms": 60000,
   "max_timeout_ms": 300000,
   "metadata_query_storage": "drop | hash | store",
+  "metadata_path_storage": "store | hash | drop",
   "config_version": 1
+}
+```
+
+#### API Key Create Request
+
+```json
+{
+  "role": "requester | viewer | operator | tenant_admin"
 }
 ```
 
@@ -79,6 +115,7 @@ these fields without a versioned API change.
 ```json
 {
   "id": "key_...",
+  "scope_type": "tenant",
   "tenant_id": "ten_...",
   "role": "requester | viewer | operator | tenant_admin",
   "prefix": "sk_live_abcd",
@@ -95,6 +132,7 @@ The `secret` is returned only at creation time. Stored records contain only a se
 ```json
 {
   "id": "key_...",
+  "scope_type": "tenant",
   "tenant_id": "ten_...",
   "role": "requester",
   "prefix": "sk_live_abcd",
@@ -120,8 +158,7 @@ The `secret` is returned only at creation time. Stored records contain only a se
 ```
 
 P0 fingerprint profiles are named presets. Control sends the resolved preset name to Egress. P0 does not expose
-arbitrary
-JA3/JA4/TLS parameter authoring through the public config API.
+arbitrary JA3/JA4/TLS parameter authoring through the public config API.
 
 #### Routing Rule
 
@@ -182,8 +219,8 @@ JA3/JA4/TLS parameter authoring through the public config API.
     "ten_..."
   ],
   "executor_type": "egress_worker",
-  "allowed_pool_ids": [
-    "pool_us_west"
+  "allowed_pools": [
+    { "tenant_id": "ten_...", "pool_id": "pool_us_west" }
   ],
   "allowed_capabilities": {
     "tags": [

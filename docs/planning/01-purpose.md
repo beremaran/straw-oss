@@ -1,8 +1,8 @@
 ## 1. Purpose
 
-Straw is a distributed HTTP/HTTPS proxy system for high-scale scraping and controlled outbound HTTP transport. It
-centralizes ingress, authentication, authorization, tenant isolation, routing policy, and observability in a Control
-service, while outbound execution happens through registered executors.
+Straw is a distributed HTTP/HTTPS proxy system designed to evolve into a high-scale scraping and controlled outbound
+HTTP transport platform. P0 validates the architecture through a vertical slice but does not claim mature high-scale
+throughput.
 
 Straw lets operators combine:
 
