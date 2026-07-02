@@ -15,7 +15,6 @@ reliability while still allowing raw CONNECT tunnels when needed.
 
 Straw is not an anonymity tool and not a browser automation platform. Its job is to pass requests through the configured
 route to the desired egress endpoint.
-
 ## 2. Goals
 
 Concrete capabilities the system must provide:
@@ -1172,8 +1171,174 @@ requests to Egress workers.
 
 ## 18. Error Handling
 
-Canonical failure behavior.
+Canonical failure behavior, error taxonomy, and response semantics.
 
+### 18.1 Error Envelope
+
+All error responses — across REST API, HTTP forward proxy, CONNECT tunnel, and MITM proxy — use a single unified `ErrorResponse` message defined in the protobuf contract.
+
+```protobuf
+message ErrorResponse {
+  ErrorCategory category    = 1;   // Which category the error belongs to
+  ErrorCode code            = 2;   // Specific error code within the category
+  string message            = 3;   // Human-readable description
+  bool retryable            = 4;   // Whether the SDK/client should retry
+  uint64 retry_after_ms     = 5;   // Suggested wait before retry (0 if N/A)
+  string request_id         = 6;   // Correlation ID for tracing
+  uint32 upstream_status    = 7;   // Origin HTTP status (only if egress_involved)
+  TimeoutType timeout_type  = 8;   // Which layer timed out (only if timeout error)
+}
+```
+
+- `worker_id` is **never** exposed to clients. Worker identifiers belong in internal logs and audit trails only.
+- Fields 7–8 are populated only when relevant; they are zero/empty otherwise.
+- `retry_after_ms` is non-zero only for rate-limit and quota errors.
+
+### 18.2 Error Categories
+
+Errors are grouped into five categories, each with its own protobuf `ErrorCategory` enum value:
+
+| Category | Scope | Description |
+|---|---|---|
+| `CLIENT` | `control_local` | Errors originating in Control before any worker involvement: auth, permissions, rate limits, quotas, request validation, deny rules. |
+| `ROUTING` | `control_local` | Errors where Control cannot find a valid path: no workers, no matching route, sticky session failure. |
+| `TRANSPORT` | `egress_involved` | Errors from the Control↔Egress transport layer: worker timeout, worker disconnect, NATS failure. |
+| `EGRESS` | `egress_involved` | Errors from the outbound leg: origin HTTP errors, TLS failure, connection refused, DNS failure, body too large. |
+| `STREAMING` | `egress_involved` | Errors that occur mid-stream during large upload or download. |
+
+Each `ErrorCode` references its parent `ErrorCategory`. The `control_local` vs `egress_involved` scope is implicit in the category but may be surfaced in internal logs for debugging.
+
+### 18.3 Error Code Registry
+
+Error codes are numbered in category ranges for structural clarity.
+
+**Client errors (1–99)** — `control_local`, never retryable:
+
+| Code | Name | Description | HTTP |
+|---|---|---|---|
+| 1 | `auth_failure` | Invalid or expired API key or worker token | 401 |
+| 2 | `tenant_not_found` | API key references a deleted tenant | 401 |
+| 3 | `insufficient_permissions` | API key lacks required RBAC role | 403 |
+| 4 | `rate_limit_exceeded` | Request rate exceeded the sliding window | 429 |
+| 5 | `quota_exhausted` | Monthly bandwidth or request count exceeded | 429 |
+| 6 | `invalid_request` | Malformed request body, missing required fields | 400 |
+| 7 | `destination_denied` | Target IP/domain blocked by deny rules | 403 |
+| 8 | `header_injection_failed` | Configured header/cookie injection could not be applied | 400 |
+
+**Routing errors (100–199)** — `control_local`, typically not retryable:
+
+| Code | Name | Description | HTTP |
+|---|---|---|---|
+| 100 | `no_workers_available` | No registered workers for the target pool | 503 |
+| 101 | `no_matching_route` | No routing rule matches the request | 404 |
+| 102 | `all_upstreams_failed` | All upstream proxies/vendors returned errors | 502 |
+| 103 | `sticky_session_failed` | Sticky session worker is unavailable | 503 |
+
+**Transport errors (200–299)** — `egress_involved`, some retryable:
+
+| Code | Name | Description | HTTP | Retryable |
+|---|---|---|---|---|
+| 200 | `worker_timeout` | Worker did not reply within NATS request/reply window | 504 | Yes |
+| 201 | `worker_disconnected` | Worker lost connection mid-request | 502 | Yes |
+| 202 | `nats_cluster_unavailable` | NATS transport failure (mapped to `worker_timeout` or `control_internal_error` externally) | 504 | Yes |
+| 203 | `control_internal_error` | Unexpected failure within Control | 500 | No |
+
+**Egress errors (300–399)** — `egress_involved`, retryable depending on code:
+
+| Code | Name | Description | HTTP | Retryable |
+|---|---|---|---|---|
+| 300 | `upstream_http_error` | Origin returned a 4xx or 5xx | Passthrough | No |
+| 301 | `upstream_tls_failure` | TLS handshake with origin failed | 502 | Yes |
+| 302 | `upstream_connection_refused` | Origin refused the connection | 502 | Yes |
+| 303 | `upstream_dns_failure` | DNS resolution failed on the worker | 502 | Yes |
+| 304 | `upstream_body_too_large` | Origin rejected body size | 413 | No |
+
+**Streaming errors (400–499)** — `egress_involved`:
+
+| Code | Name | Description | HTTP | Retryable |
+|---|---|---|---|---|
+| 400 | `stream_upload_aborted` | Client upload stream was interrupted | 502 | Yes |
+| 401 | `stream_download_aborted` | Worker download stream was interrupted | 502 | Yes |
+
+### 18.4 Error-to-Transport Mapping
+
+**REST API** — Returns a JSON body with the full `ErrorResponse` envelope:
+```json
+{
+  "category": "CLIENT",
+  "code": "rate_limit_exceeded",
+  "message": "Request rate limit exceeded for tenant abc123",
+  "retryable": true,
+  "retry_after_ms": 5000,
+  "request_id": "req-abc123",
+  "upstream_status": 0,
+  "timeout_type": "TIMEOUT_TYPE_UNSPECIFIED"
+}
+```
+
+**HTTP forward proxy, CONNECT tunnel, MITM proxy** — Returns an HTTP response with the status code from the mapping below. The response body includes a compact JSON error envelope for client parsing. MITM proxy mirrors the HTTP forward proxy behavior exactly.
+
+| ErrorCode | REST API JSON | HTTP/CONNECT/MITM |
+|---|---|---|
+| `auth_failure`, `tenant_not_found` | 401 Unauthorized | 401 Unauthorized |
+| `insufficient_permissions` | 403 Forbidden | 403 Forbidden |
+| `rate_limit_exceeded`, `quota_exhausted` | 429 Too Many Requests | 429 Too Many Requests |
+| `invalid_request`, `header_injection_failed` | 400 Bad Request | 400 Bad Request |
+| `destination_denied` | 403 Forbidden | 403 Forbidden |
+| `no_workers_available`, `sticky_session_failed` | 503 Service Unavailable | 503 Service Unavailable |
+| `no_matching_route` | 404 Not Found | 404 Not Found |
+| `all_upstreams_failed`, `upstream_tls_failure`, `upstream_dns_failure` | 502 Bad Gateway | 502 Bad Gateway |
+| `worker_timeout`, `nats_cluster_unavailable` | 504 Gateway Timeout | 504 Gateway Timeout |
+| `control_internal_error` | 500 Internal Server Error | 500 Internal Server Error |
+| `upstream_http_error` | 200 + `upstream_status` field | `upstream_status` (passthrough) |
+| `upstream_connection_refused` | 502 Bad Gateway | 502 Bad Gateway |
+| `upstream_body_too_large` | 413 Payload Too Large | 413 Payload Too Large |
+| `stream_upload_aborted`, `stream_download_aborted` | 502 Bad Gateway | 502 Bad Gateway |
+
+### 18.5 Timeout Semantics
+
+A single `timeout_exceeded` error code is used for all timeout scenarios, with a `TimeoutType` enum distinguishing the layer:
+
+| TimeoutType | Description |
+|---|---|
+| `CONNECT_TIMEOUT` | Worker could not establish outbound connection to origin |
+| `REQUEST_TIMEOUT` | Origin did not send first response byte within timeout |
+| `IDLE_TIMEOUT` | No data received from origin for a configurable idle period |
+| `WORKER_TIMEOUT` | Worker did not reply to Control's NATS request within timeout |
+| `UPLOAD_TIMEOUT` | Client did not finish uploading within timeout |
+| `DOWNLOAD_TIMEOUT` | Worker did not finish downloading within timeout |
+
+Timeout durations are configurable per-request or per-tenant, with an expected default in the 30–60 second range.
+
+### 18.6 Egress-to-Control Error Reporting
+
+Egress workers forward raw HTTP responses (status code, headers, body summary) back to Control via the NATS reply channel. Control is the sole authority for mapping raw responses to error codes. This keeps Egress implementations simple and portable — a custom Go or Rust Egress worker does not need to encode Straw's error semantics.
+
+When Egress reports an error, the flow is:
+1. Worker detects the failure (e.g., upstream TLS handshake failure).
+2. Worker sends a `WorkerReport` message to Control containing the raw HTTP status, headers, body summary, and connection error message.
+3. Control maps the raw data to the appropriate `ErrorCode` based on its error taxonomy.
+4. Control populates the `ErrorResponse` envelope and returns it to the client.
+
+If Control detects the error itself (e.g., no workers available, auth failure, NATS timeout), it generates the `ErrorResponse` directly without involving Egress.
+
+### 18.7 Retry Semantics
+
+Each error code has a `retryable` flag defined in the protobuf. Control does **not** auto-retry on behalf of the client — the SDK is responsible for retry logic. The `retryable` flag tells the SDK whether a retry is expected to succeed.
+
+- **Retryable:** `worker_timeout`, `worker_disconnected`, `upstream_tls_failure`, `upstream_connection_refused`, `upstream_dns_failure`, `stream_upload_aborted`, `stream_download_aborted`. SDKs should implement exponential backoff with jitter.
+- **Not retryable:** `auth_failure`, `tenant_not_found`, `insufficient_permissions`, `rate_limit_exceeded` (use `retry_after_ms`), `quota_exhausted`, `invalid_request`, `destination_denied`, `upstream_http_error`, `upstream_body_too_large`, `control_internal_error`.
+
+For rate-limit errors, `retry_after_ms` provides a concrete wait duration. For other retryable errors, the SDK determines the backoff strategy.
+
+### 18.8 Logging and Audit
+
+Errors are logged at different levels based on category:
+
+| Level | Categories | Purpose |
+|---|---|---|
+| `ERROR` | Transport, Egress, System | Operational incidents requiring investigation |
+| `WARN` | Client (except auth), Routing | Expected operational noise (rate limits, no workers) |
 ## 19. Observability
 
 ClickHouse acts as the centralized engine for structured logs, metrics, tracing, and request metadata.
