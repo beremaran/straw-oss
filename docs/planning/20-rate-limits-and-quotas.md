@@ -29,7 +29,9 @@ Breaches return `rate_limit_exceeded` with HTTP 429 and `retry_after_ms` when co
 
 ### Quotas
 
-Quotas are long-term volume controls.
+Quotas are long-term volume controls. They are platform-managed: only `system_admin` writes quota configs (via
+`PUT /api/v1/config/tenants/{id}/quotas`); tenants have read access. Rate limits, by contrast, are tenant-managed
+self-protection controls bounded by an optional `system_admin`-set per-tenant ceiling (see Section 26).
 
 Metrics:
 

@@ -64,7 +64,7 @@ Selected resources (routing rules, executor pools) allow client-supplied stable 
 | P0    | PUT    | `/injection-policies/{id}`        | `tenant_admin`, `operator`           | Update injection policy   |
 | P0    | DELETE | `/injection-policies/{id}`        | `tenant_admin`, `operator`           | Delete injection policy   |
 | P0    | GET    | `/quotas`                         | `tenant_admin`, `operator`, `viewer` | Get quota config/usage    |
-| P0    | PUT    | `/quotas`                         | `tenant_admin`                       | Update quotas             |
+| P0    | PUT    | `/tenants/{id}/quotas`            | `system_admin`                       | Update tenant quotas      |
 | P0    | GET    | `/rate-limits`                    | `tenant_admin`, `operator`, `viewer` | Get rate-limit config     |
 | P0    | PUT    | `/rate-limits`                    | `tenant_admin`                       | Update rate limits        |
 | P0    | POST   | `/deny-rules`                     | `tenant_admin`                       | Create deny rule          |
@@ -72,6 +72,18 @@ Selected resources (routing rules, executor pools) allow client-supplied stable 
 | P0    | PUT    | `/deny-rules/{id}`                | `tenant_admin`                       | Update deny rule          |
 | P0    | DELETE | `/deny-rules/{id}`                | `tenant_admin`                       | Delete deny rule          |
 | P0    | GET    | `/changes`                        | `tenant_admin`, `operator`, `viewer` | List config audit history |
+
+Quota configs are platform-managed: only `system_admin` writes them, via the tenant-explicit
+`/tenants/{id}/quotas` path (platform keys carry no tenant identity). Tenants retain read access through `/quotas`.
+Rate limits remain tenant self-protection controls managed by `tenant_admin`, bounded by the optional
+`rate_limit_ceiling` on the tenant record; the platform-binding volume protection is the quota.
+
+`POST /worker-credentials` in P0 forces `tenant_scope` to the caller's tenant and rejects `allowed_pools` entries
+referencing any other tenant. Multi-tenant worker credentials are a platform-scoped (`system_admin`) operation
+deferred to P1.
+
+P0 fingerprint profiles are built-in and seeded; there is no P0 write API for `fingerprint_profiles`. Tenant-authored
+profiles, if added, are a P1 config surface.
 | P1    | POST   | `/rollback`                       | `tenant_admin`                       | Roll back config          |
 | P2    | GET    | `/payload-capture`                | `tenant_admin`, `operator`, `viewer` | Get capture policy        |
 | P2    | PUT    | `/payload-capture`                | `tenant_admin`                       | Update capture policy     |
@@ -88,10 +100,20 @@ Selected resources (routing rules, executor pools) allow client-supplied stable 
 | P0    | POST   | `/workers/{worker_id}/tenant-enable`   | `tenant_admin`             | Enable worker for tenant        |
 | P0    | POST   | `/workers/{worker_id}/tenant-drain`    | `tenant_admin`, `operator` | Drain worker for tenant         |
 | P0    | POST   | `/workers/{worker_id}/tenant-undrain`  | `tenant_admin`, `operator` | Stop tenant drain               |
-| P0    | POST   | `/requests/{request_id}/cancel`        | `tenant_admin`, `operator` | Cancel request                  |
+| P0    | GET    | `/workers`                             | `system_admin`, `tenant_admin`, `operator` | List workers and state |
+| P0    | POST   | `/requests/{request_id}/cancel`        | `system_admin`, `tenant_admin`, `operator` | Cancel request        |
 
 Global worker actions require a platform-scoped key. Tenant worker actions derive tenant identity from the tenant-scoped
 API key and affect only that tenant's routing eligibility. A global disable always wins over tenant enable.
+
+`GET /workers` with a platform-scoped key returns all registered workers with runtime, global admin, and per-tenant
+admin state. With a tenant-scoped key it returns only workers eligible for that tenant (worker IDs are visible to
+tenant admins by necessity, since tenant worker admin actions take a `worker_id`); `session_id` and NATS subjects are
+never returned to tenant-scoped keys.
+
+`POST /requests/{request_id}/cancel` with a tenant-scoped key requires that the in-flight request belong to the
+caller's tenant; otherwise Control returns `insufficient_permissions` without confirming the request exists.
+`system_admin` may cancel any request.
 
 ### P0 Config Resource Schemas
 
@@ -109,9 +131,16 @@ these fields without a versioned API change.
   "max_timeout_ms": 300000,
   "metadata_query_storage": "drop | hash | store",
   "metadata_path_storage": "store | hash | drop",
+  "rate_limit_ceiling": {
+    "window_seconds": 60,
+    "max_requests": 6000
+  },
   "config_version": 1
 }
 ```
+
+`rate_limit_ceiling` is optional (`null` means no ceiling) and settable only by `system_admin` through
+`PUT /tenants/{id}`. Tenant-managed rate-limit values that exceed the ceiling are rejected with `invalid_request`.
 
 #### Platform API Key Create Request
 
@@ -339,6 +368,8 @@ append `Authorization` or `Cookie` require `tenant_admin`. `Host`, `Content-Leng
 }
 ```
 
+Rate-limit values are validated against the tenant's `rate_limit_ceiling` (see Tenant schema) when one is set.
+
 #### Quota Config
 
 ```json
@@ -353,6 +384,8 @@ append `Authorization` or `Cookie` require `tenant_admin`. `Host`, `Content-Leng
   "config_version": 6
 }
 ```
+
+Quota configs are written only by `system_admin` through `PUT /tenants/{id}/quotas`.
 
 All update requests include `expected_config_version`. Version mismatch returns `conflict`.
 

@@ -8,6 +8,7 @@ Implement the canonical ErrorResponse registry and HTTP/retry/category mapping.
 
 ## Required Planning Docs
 
+- `docs/planning/13-protobuf-contract.md` (executor-emittable ErrorCode set)
 - `docs/planning/14-canonical-error-registry.md`
 - `docs/planning/15-http-semantics.md`
 - `docs/planning/30-testing-matrix.md`
@@ -36,6 +37,7 @@ Implement the canonical ErrorResponse registry and HTTP/retry/category mapping.
 - [ ] Read all required planning docs.
 - [ ] Define every canonical P0 ErrorCode in one registry.
 - [ ] Map each ErrorCode to HTTP status, retryability, category, and public-safe detail behavior.
+- [ ] Define the executor-emittable code set from Section 13 in the registry and expose it for `ErrorFrame` validation (out-of-set codes map to `executor_internal_error`).
 - [ ] Wire Control REST errors through the registry.
 - [ ] Preserve upstream origin 4xx/5xx as successful API envelopes with upstream status.
 - [ ] Add tests that every ErrorCode maps exactly once and origin errors are not ErrorResponse.

@@ -67,7 +67,20 @@ codes.
 ### Sticky Sessions
 
 Sticky sessions pin to a stable egress identity when available. If no stable identity exists, they may pin to executor
-session. Sticky state is stored in Redis with tenant/rule TTL.
+session.
+
+Sticky state is stored in Redis:
+
+```text
+key:   straw:sticky:<tenant_id>:<sticky_session_id>
+value: stable egress identity, or (worker_id, session_id) when no stable identity exists
+TTL:   sticky_session_ttl_seconds from the matched routing rule, refreshed on each use
+```
+
+`sticky_session_id` is tenant-scoped, not rule-scoped: the same ID used under a different matching rule reuses the
+same affinity entry. If a later request with the same ID matches a rule whose pool cannot contain the pinned target,
+the sticky target is treated as unavailable and the rule's fallback policy applies; on permitted fallback the entry is
+re-pinned to the newly selected target.
 
 If the sticky target is unavailable:
 

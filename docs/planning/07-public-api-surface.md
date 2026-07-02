@@ -7,7 +7,11 @@ P0 exposes:
 - `POST /api/v1/requests` for synchronous REST request transport,
 - `/api/v1/config/*` for durable configuration resources,
 - `/api/v1/admin/*` for runtime operational actions,
-- `/metrics` for Prometheus metrics.
+- `/metrics` for Prometheus metrics,
+- `/healthz` (liveness) and `/readyz` (readiness) on the metrics port, unauthenticated.
+
+`/readyz` returns non-2xx as soon as shutdown begins (Section 29) so load balancers and compose healthchecks stop
+sending new requests during drain.
 
 P1 may add telemetry read APIs and proxy ingress endpoints. P2 may add MITM CA distribution and BodyRef-related APIs.
 

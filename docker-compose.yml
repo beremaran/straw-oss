@@ -9,11 +9,13 @@ services:
 
   nats:
     image: nats:latest
+    command: ["--config", "/etc/nats/nats-server.conf"]
     ports:
       - "4222:4222"
       - "8222:8222"
     volumes:
       - nats_data:/data
+      - ./deploy/docker/nats-server.conf:/etc/nats/nats-server.conf:ro
     restart: unless-stopped
 
   postgres:

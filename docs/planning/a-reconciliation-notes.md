@@ -30,3 +30,34 @@ This rewrite intentionally makes these replacements and hardening changes:
 - Resolves HTTP/2 as P2 unless explicitly moved later.
 - Resolves object-storage body retention default as 1 day, configurable up to 3 days for debugging.
 - Defines P0 quotas as operational admission controls rather than billing-grade accounting.
+
+## Audit Reconciliation — 2026-07-03
+
+A pre-implementation audit applied these corrections and decisions:
+
+- Requires NATS server `max_payload` ≥ `max_frame_data_bytes + 65536`; local compose ships
+  `deploy/docker/nats-server.conf` with `max_payload: 2MB` because the stock 1 MiB default fails startup validation
+  against the 1 MiB default frame size.
+- Removes the undefined internal protobuf `Error` message: executors emit canonical `ErrorCode` in `ErrorFrame` with
+  the low-level fact in `details["fact"]`; Control validates codes against an executor-emittable set and treats
+  out-of-set codes as protocol violations.
+- Restricts P0 worker-credential creation to the caller's tenant; multi-tenant credentials become a platform-scoped
+  P1 operation.
+- Makes quota configs platform-managed (`system_admin` via `PUT /tenants/{id}/quotas`); rate limits stay
+  tenant-managed under an optional `system_admin`-set per-tenant `rate_limit_ceiling`.
+- Declares P0 fingerprint profiles seeded built-ins with no write API and removes the operator fingerprint-mutation
+  grant; tenant-authored profiles are P1.
+- Adds reply-inbox prefixes (`_INBOX.ctl.>`, `_INBOX.wrk.<worker_id>.>`) to the NATS ACL table so request/reply works
+  under scoped permissions.
+- Adds `GET /api/v1/admin/workers` (platform: all workers; tenant-scoped: eligible workers only, no session IDs) and
+  a tenant-ownership check plus `system_admin` access on request cancellation.
+- Adds Control `/healthz` and `/readyz` on the metrics port.
+- Defines the sticky-session Redis key as `straw:sticky:<tenant_id>:<sticky_session_id>` (tenant-scoped, TTL from the
+  matched rule, re-pinned on permitted fallback).
+- Sets `api_keys.config_version` to 0 for platform keys.
+- Keeps `control.server.metrics_port` and removes `control.observability.metrics.host/port`; completes the canonical
+  config-key table with the egress capability/observability and control tracing keys.
+- Records the Buf lint exceptions (`ENUM_VALUE_PREFIX`, `ENUM_ZERO_VALUE_SUFFIX`) as deliberate: `SniHostMismatchPolicy`
+  and `RedirectPolicy` use the safest behavior as their zero value.
+- Deduplicates the credit-exhaustion paragraph in Section 12 and makes Section 15 the single canonical home of the
+  header-injection safety table (Section 27 now references it).

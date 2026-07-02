@@ -9,6 +9,7 @@ Implement the official Go Egress outbound HTTP execution path with P0 transport 
 ## Required Planning Docs
 
 - `docs/planning/05-component-boundaries.md`
+- `docs/planning/13-protobuf-contract.md` (executor-emittable ErrorCode set and ErrorFrame rules)
 - `docs/planning/15-http-semantics.md`
 - `docs/planning/16-egress-execution.md`
 - `docs/planning/27-security-controls.md`
@@ -38,7 +39,7 @@ Implement the official Go Egress outbound HTTP execution path with P0 transport 
 - [ ] Enforce total request deadline.
 - [ ] Enforce DestinationPolicy against resolved IPs without querying Control databases.
 - [ ] Disable redirects, CONNECT, outbound HTTP/2, and upstream keep-alives for P0.
-- [ ] Return constrained execution facts and canonical errors to Control.
+- [ ] Report failures per the Section 16 boundary: map the low-level fact to a canonical executor-emittable `ErrorCode`, emit it in `ErrorFrame` with the fact string in `details["fact"]`.
 - [ ] Add tests for deadline enforcement, resolved-IP deny, DNS rebinding guard, header validation, private IP denial, metadata IP denial, HTTP behavior defaults, and redaction boundaries.
 - [ ] Run focused Egress tests.
 - [ ] Run `make check`.
@@ -60,7 +61,7 @@ Implement the official Go Egress outbound HTTP execution path with P0 transport 
 ## Handoff Notes
 
 - Document transport defaults.
-- State exactly which error facts Egress reports.
+- State exactly which error facts and canonical codes Egress emits (must stay within the Section 13 executor-emittable set).
 
 ## Stop Conditions
 

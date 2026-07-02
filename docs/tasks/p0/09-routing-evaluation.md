@@ -37,7 +37,7 @@ Implement tenant-isolated routing snapshot evaluation and worker eligibility for
 - [ ] Apply hard client hints according to the routing model.
 - [ ] Filter workers by tenant, pool, health, draining, disable state, cooldown, and destination policy eligibility.
 - [ ] Implement degraded-worker policy and no-match behavior.
-- [ ] Implement sticky session success and failure behavior if required by the P0 plan.
+- [ ] Implement sticky session success and failure behavior using the canonical Redis key structure in Section 10 (`straw:sticky:<tenant_id>:<sticky_session_id>`, tenant-scoped, TTL from the matched rule, re-pinned on permitted fallback).
 - [ ] Add tests for priority order, tenant isolation, client hints, degraded policy, no match, sticky success, and sticky failure.
 - [ ] Run focused routing tests.
 - [ ] Run `make check`.
@@ -63,4 +63,4 @@ Implement tenant-isolated routing snapshot evaluation and worker eligibility for
 ## Stop Conditions
 
 - Stop before adding automatic fallback execution.
-- Stop if sticky behavior is ambiguous in planning docs.
+- Stop if sticky behavior beyond the Section 10 key structure is ambiguous in planning docs.

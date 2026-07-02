@@ -11,6 +11,11 @@ Docker Compose includes:
 - Redis,
 - ClickHouse.
 
+The NATS service must set `max_payload` to at least `control.transport.max_frame_data_bytes + 65536` (the stock NATS
+default of 1 MiB is insufficient for the default 1 MiB frame size). The local compose environment mounts
+`deploy/docker/nats-server.conf` with `max_payload: 2MB`. Control's startup validation (Section 12) rejects
+deployments that miss this.
+
 Control exposes:
 
 | Port | Purpose               |

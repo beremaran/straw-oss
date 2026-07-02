@@ -35,7 +35,8 @@ Close the P0 test matrix and provide a local docker-compose environment for the 
 - [ ] Read all required planning docs.
 - [ ] Audit `docs/planning/30-testing-matrix.md` row by row against implemented tests.
 - [ ] Add missing P0 tests with the smallest useful scope.
-- [ ] Configure docker-compose for local Control, Egress, NATS, Postgres, Redis, and ClickHouse.
+- [ ] Configure docker-compose for local Control, Egress, NATS, Postgres, Redis, and ClickHouse. Preserve the NATS `max_payload` config (`deploy/docker/nats-server.conf`, mounted by compose) — the stock NATS 1 MiB default fails Control startup validation against the default frame size.
+- [ ] Wire Control `/healthz` and `/readyz` on the metrics port (planning Section 7) if not already implemented, and use them for compose healthchecks; `/readyz` must go non-2xx when shutdown drain begins.
 - [ ] Add a full P0 E2E test for REST request through Control to Egress and back.
 - [ ] Add outage tests for NATS, Redis, and ClickHouse behaviors required by P0.
 - [ ] Document local compose startup and teardown commands.

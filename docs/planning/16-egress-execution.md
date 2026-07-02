@@ -73,11 +73,14 @@ P0 does not follow redirects. Future redirect following must validate every redi
 
 ### Error Reporting Boundary
 
-Egress reports constrained low-level failure facts. Control maps facts to public ErrorCode and HTTP status.
+Egress maps low-level failure facts to canonical `ErrorCode` values before emitting `ErrorFrame`. The frame carries
+the code directly plus the originating fact in `details["fact"]` for diagnostics. Control validates the code against
+the executor-emittable set (Section 13), owns the final HTTP status/category/retryability mapping from the canonical
+error registry, and sanitizes all executor-supplied text before anything reaches a client.
 
-Examples:
+Fact-to-code mapping applied by Egress:
 
-| Egress fact                       | Control public code                    |
+| Egress fact (`details["fact"]`)   | Emitted `ErrorCode`                    |
 |-----------------------------------|----------------------------------------|
 | `dns_no_records`                  | `upstream_dns_failure`                 |
 | `dns_denied_ip`                   | `destination_denied`                   |

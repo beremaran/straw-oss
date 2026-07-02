@@ -23,6 +23,11 @@ Multi-tenant worker credentials reference pools using scoped objects:
 ]
 ```
 
+P0 creates single-tenant worker credentials only: `POST /worker-credentials` forces `tenant_scope` to the caller's
+tenant and rejects `allowed_pools` entries referencing any other tenant. Multi-tenant credentials are a
+platform-scoped (`system_admin`) operation deferred to P1; the schema above defines the shape so the wire contract and
+registration validation are stable across phases.
+
 Global worker disable is platform-scoped and excludes the worker from routing for all tenants in its scope. Tenant worker
 disable is tenant-scoped and excludes the worker only from routing for that tenant. P0 supports both through separate
 admin endpoints.
@@ -49,7 +54,8 @@ api_keys
 - status: active | revoked
 - created_at: timestamptz
 - revoked_at: timestamptz, nullable
-- config_version: bigint (reflects tenant config version at creation for tenant keys)
+- config_version: bigint (reflects tenant config version at creation for tenant keys; 0 for platform keys, where no
+  tenant version applies)
 ```
 
 Rules:
@@ -88,7 +94,7 @@ Tenant roles apply only inside one tenant.
 |----------------|--------------------------:|-------------------------------------:|----------------------:|--------------------------:|------------------------:|
 | `requester`    |                       Yes |                                   No |                    No | Own request metadata only |                      No |
 | `viewer`       |                        No |                                   No |                    No |                       Yes |                      No |
-| `operator`     | Optional by tenant policy | Routing/fingerprint/non-sensitive injection config |                    No |                       Yes |                      No |
+| `operator`     | Optional by tenant policy | Routing/non-sensitive injection config |                    No |                       Yes |                      No |
 | `tenant_admin` |                       Yes |                                  Yes |                   Yes |                       Yes |                     Yes |
 
 Tenant admins may manage tenant-scoped worker overrides for workers eligible for their tenant. Only `system_admin` may
