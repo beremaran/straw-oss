@@ -8,6 +8,7 @@ Task: `docs/tasks/p0/01-repository-scaffold-config-protobuf.md`
 - Added schema validation for `config_version`, `control.server.host`, `control.server.api_port`, `control.server.metrics_port`, and `egress.worker_id`.
 - Wired `cmd/control` and `cmd/egress` to require `-config` and fail fast on invalid config.
 - Added table-driven tests for valid config, missing required sections/fields, invalid limits, and unknown fields.
+- Reconciled the task board so task `01` is marked done.
 
 ## Verification
 
