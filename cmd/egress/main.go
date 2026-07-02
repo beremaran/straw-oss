@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/beremaran/straw/v2/internal/config"
+	"github.com/beremaran/straw/v2/internal/egress"
 	"github.com/beremaran/straw/v2/internal/natsx"
 )
 
@@ -33,4 +34,6 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+
+	_ = egress.NewExecutor(egress.ExecutorOptions{})
 }
