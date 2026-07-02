@@ -1339,6 +1339,7 @@ Errors are logged at different levels based on category:
 |---|---|---|
 | `ERROR` | Transport, Egress, System | Operational incidents requiring investigation |
 | `WARN` | Client (except auth), Routing | Expected operational noise (rate limits, no workers) |
+
 ## 19. Observability
 
 ClickHouse acts as the centralized engine for structured logs, metrics, tracing, and request metadata.
