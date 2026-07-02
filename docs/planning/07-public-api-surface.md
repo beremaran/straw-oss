@@ -91,10 +91,11 @@ All incoming REST requests are validated against these rules before any routing 
   header). Reject IPv6 zone identifiers. Default port normalization: `http://host:80` and `http://host` are equivalent
   for policy; `https://host:443` and `https://host` are equivalent.
 - **Method**: Uppercase token only. Reject unknown methods.
-- **Headers**: Reject header names that are not valid HTTP tokens (RFC 7230 section 3.2.6). Reject header values
+- **Headers**: Reject header names that are not valid HTTP tokens (RFC 7230 section 3.2.6). Reject client-supplied
+  `Host`; Egress derives outbound Host from the URL. Reject header values
   containing bare CR (`\r`) or LF (`\n`). Enforce maximum header count: 64. Enforce maximum header name length: 64 bytes.
-  Enforce maximum aggregate header bytes: 16384. Reject duplicate `Host` headers. Strip client-supplied `Content-Length`,
-  `Transfer-Encoding`, and hop-by-hop headers named in the `Connection` header.
+  Enforce maximum aggregate header bytes: 16384. Strip client-supplied `Content-Length`, `Transfer-Encoding`, and
+  hop-by-hop headers named in the `Connection` header.
 - **Body**: Reject if decoded size exceeds `control.request.max_inline_request_body_bytes`.
 - **Timeout**: Reject if exceeds `control.request.max_timeout_ms`. Reject if below `1000` ms.
 - **Unknown fields**: Reject with `invalid_request` (strict mode).

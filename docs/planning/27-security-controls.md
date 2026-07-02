@@ -139,7 +139,7 @@ P0 injection operations are validated before being sent to Egress:
 
 | Header              | Injection Rule                                                   |
 |---------------------|------------------------------------------------------------------|
-| `Host`              | Deny, unless explicitly supported by deployment config           |
+| `Host`              | Deny, unless a later design explicitly supports Host override    |
 | `Content-Length`    | Deny (computed by Egress)                                        |
 | `Transfer-Encoding` | Deny                                                             |
 | `Connection`        | Deny                                                             |
@@ -152,6 +152,9 @@ All header name matching is case-insensitive. Duplicate `set` operations for the
 repeat a header name. Maximum injected header bytes is bounded by
 `control.transport.max_frame_data_bytes`. Injected header values must not contain bare CR
 or LF characters.
+
+Operators may create or update only non-sensitive injection policies. Any operation that sets or appends
+`Authorization` or `Cookie` requires `tenant_admin`.
 
 ### NATS Subject Tokens
 

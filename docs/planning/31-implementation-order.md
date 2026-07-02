@@ -9,9 +9,11 @@
    injection policies, rate limits, quotas, config versions, and audit source records.
 5. Config snapshot cache with Postgres versioning and Redis invalidation.
 6. Control REST `/api/v1/requests` minimal non-streaming transport endpoint.
-7. API-key authentication, tenant resolution, RBAC, and cache invalidation for revocation.
-8. Worker registration, heartbeat, state machine, duplicate-session handling, draining, disable, and cooldown.
-9. Routing snapshot evaluation, tenant isolation, worker eligibility, sticky sessions.
+7. API-key authentication, platform/tenant API key lifecycle, tenant resolution, RBAC, and cache invalidation for
+   revocation.
+8. Worker registration, heartbeat, state machine, duplicate-session handling, global and tenant worker admin state,
+   draining, disable, and cooldown.
+9. Routing snapshot evaluation, tenant isolation, worker eligibility, degraded-worker policy, sticky sessions.
 10. Assignment and stream frame lifecycle with sequence/offset/credit validation.
 11. Official Go Egress outbound request execution with P0 transport defaults, deadline enforcement, and
     DestinationPolicy

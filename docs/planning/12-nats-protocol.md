@@ -118,7 +118,8 @@ Rules:
 - gaps or sequence higher than expected are protocol errors,
 - frames after terminal are ignored and counted,
 - repeated duplicates, late frames, or invalid sequence behavior contribute to worker cooldown,
-- sequence numbers are not reused across attempts.
+- `stream_seq` starts at 1 for each `(attempt, direction)`. Numeric sequence values may repeat across attempts because
+  `attempt` is part of stream identity.
 
 `DataFrame` additionally carries `offset` for diagnostics and optional integrity checks. `offset` must match the
 cumulative number of data bytes previously accepted in that direction for the same logical byte stream.
@@ -140,7 +141,7 @@ Defaults:
 
 Credit rules:
 
-- Initial upload/download credit is implicit from config and included in `AssignRequest` or `RequestStart`.
+- Initial upload/download credit and max in-flight byte limits are included in `AssignRequest`.
 - `CreditFrame` is sequenced like other stream frames.
 - `CreditFrame` grants additional byte credit for `DataFrame` payload bytes only.
 - Control frames (`RequestStart`, `CancelFrame`, `ErrorFrame`, `EndFrame`, `TrailersFrame`, `CancelledFrame`) and

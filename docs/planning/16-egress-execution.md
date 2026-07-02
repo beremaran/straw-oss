@@ -36,7 +36,7 @@ hostname. The original `Host` header, SNI host, and certificate verification mus
 **Upstream proxy mode**: When an upstream proxy is configured, Egress cannot prove the resolved-IP policy because the
 proxy performs DNS resolution and connection establishment. In this mode:
 
-- The destination policy mode is `upstream_proxy_remote_resolution`.
+- The destination policy mode is `DESTINATION_RESOLUTION_UPSTREAM_PROXY_REMOTE`.
 - Egress validates the proxy address itself against destination deny rules.
 - The proxy is trusted to enforce equivalent destination policy per deployment configuration.
 - If the deployment does not trust the proxy for SSRF enforcement, requests using this mode are rejected with

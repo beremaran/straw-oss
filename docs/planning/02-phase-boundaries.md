@@ -14,6 +14,7 @@ P0 includes:
 - one official Go Egress Worker,
 - externally synchronous REST request transport only,
 - generalized API-key authentication (platform-scoped and tenant-scoped via `scope_type`),
+- platform API-key lifecycle after bootstrap,
 - tenant-scoped API keys and worker credentials,
 - tenant-scoped routing rules,
 - exact-session Core NATS assignment,
@@ -22,6 +23,7 @@ P0 includes:
 - Control-buffered JSON response envelopes for REST,
 - basic worker registration, heartbeat, health, capacity, draining, disable state, duplicate-session handling, and
   cooldown,
+- global and tenant-scoped worker admin actions,
 - basic rate limits with memory guardrails,
 - operational/admission-control quotas with explicit non-billing-grade accuracy limits,
 - destination deny rules with Control-side URL/host validation and Egress-side resolved-IP validation,
@@ -76,8 +78,7 @@ P2 adds:
 
 - MITM HTTPS decoded mode,
 - generated leaf certificate cache/storage,
-- object-storage BodyRef transport,
-- direct streaming BodyRef transport,
+- BodyRef transport after choosing the P2 response-body mode,
 - payload capture with storage-only redaction,
 - Provider Adapter protocol and at least one static adapter implementation,
 - HTTP/2 support where explicitly specified and tested,

@@ -23,8 +23,9 @@ Multi-tenant worker credentials reference pools using scoped objects:
 ]
 ```
 
-Disabling a multi-tenant worker is **global**: it excludes the worker from routing for all tenants in its scope.
-Per-tenant disable is not supported in P0.
+Global worker disable is platform-scoped and excludes the worker from routing for all tenants in its scope. Tenant worker
+disable is tenant-scoped and excludes the worker only from routing for that tenant. P0 supports both through separate
+admin endpoints.
 
 ### Tenant Resolution
 
@@ -60,6 +61,8 @@ Rules:
 - API keys must contain at least 128 bits of entropy; 192 or 256 bits preferred.
 - Key material is shown only once at creation time.
 - Server-side pepper is supported and loaded from secret manager or environment.
+- The first platform-scoped `system_admin` key is bootstrapped through seed data, migration fixture, or an environment
+  bootstrap flow. After bootstrap, platform API keys are created, listed, and revoked only by `system_admin`.
 
 ### Role Scopes
 
@@ -75,7 +78,7 @@ administrator and default tenant through seed data or migration fixtures.
 
 | Role           | Scope    | Purpose                                                              |
 |----------------|----------|----------------------------------------------------------------------|
-| `system_admin` | Platform | Create, soft-delete, and administer tenants; bootstrap tenant admins |
+| `system_admin` | Platform | Create, soft-delete, and administer tenants; manage platform API keys and global worker admin state |
 
 ### Tenant Roles
 
@@ -85,8 +88,11 @@ Tenant roles apply only inside one tenant.
 |----------------|--------------------------:|-------------------------------------:|----------------------:|--------------------------:|------------------------:|
 | `requester`    |                       Yes |                                   No |                    No | Own request metadata only |                      No |
 | `viewer`       |                        No |                                   No |                    No |                       Yes |                      No |
-| `operator`     | Optional by tenant policy | Routing/fingerprint/injection config |                    No |                       Yes |                      No |
+| `operator`     | Optional by tenant policy | Routing/fingerprint/non-sensitive injection config |                    No |                       Yes |                      No |
 | `tenant_admin` |                       Yes |                                  Yes |                   Yes |                       Yes |                     Yes |
+
+Tenant admins may manage tenant-scoped worker overrides for workers eligible for their tenant. Only `system_admin` may
+change global worker admin state.
 
 Where earlier text says `admin` for tenant-local actions, it means `tenant_admin`. Where tenant creation or deletion is
 required, the role is `system_admin`.
@@ -119,6 +125,7 @@ Tenant isolation applies to:
 - worker credentials,
 - worker pool membership,
 - sticky sessions,
+- tenant worker admin overrides,
 - rate-limit counters,
 - quota counters,
 - ClickHouse records,

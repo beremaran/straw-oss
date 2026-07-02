@@ -21,7 +21,8 @@ Automatic Control fallback after `RequestStart` is disabled unless `replayable=t
 ### Headers
 
 Control strips internal Straw routing/control headers before dispatch. `Proxy-Authorization` is never forwarded
-outbound. Header order and duplicates are preserved.
+outbound. P0 decoded REST rejects client-supplied `Host`; Egress derives Host from the URL. Header order and duplicates
+are preserved for all other forwarded headers.
 
 ### Cookies
 
@@ -44,7 +45,7 @@ P0 does not support live body mutation, JavaScript mutation, cookie-jar persiste
 
 | Header              | Injection Rule                                                   |
 |---------------------|------------------------------------------------------------------|
-| `Host`              | Deny, unless explicitly supported by deployment config           |
+| `Host`              | Deny, unless a later design explicitly supports Host override    |
 | `Content-Length`    | Deny (computed by Egress)                                        |
 | `Transfer-Encoding` | Deny                                                             |
 | `Connection`        | Deny                                                             |
@@ -56,6 +57,9 @@ P0 does not support live body mutation, JavaScript mutation, cookie-jar persiste
 All header name matching is case-insensitive. Duplicate `set` operations for the same header are rejected. `append` may
 repeat a header name. Maximum injected header bytes is bounded by
 `control.transport.max_frame_data_bytes`. Injected header values must not contain bare CR or LF characters.
+
+Operators may create or update only non-sensitive injection policies. Any operation that sets or appends
+`Authorization` or `Cookie` requires `tenant_admin`.
 
 ### Redirects
 
