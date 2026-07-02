@@ -800,18 +800,32 @@ byte-stable serialization.
 
 ## 12. HTTP Semantics
 
-Which HTTP behavior is preserved.
+* **Methods:** All standard HTTP methods are supported. Control parses ingress requests and normalizes the method into the `RequestStart` protobuf message. Egress workers execute the method exactly as provided without restriction.
 
-- Methods: supported methods.
-- Headers: pass-through, stripped, rewritten, generated.
-- Cookies: pass-through and session behavior.
-- Redirects: follow or return upstream redirects.
-- Compression: preserve, decode, or recompress.
-- Trailers: support or explicitly reject.
-- Connection Reuse: pooling and keep-alive behavior.
-- WebSockets: supported modes or not.
-- HTTP/2: inbound and outbound support.
-- TLS Behavior: SNI, ALPN, verification, client certs.
+
+* **Headers:** Control evaluates ingress headers and strictly strips internal routing hints (e.g., `X-Straw-*`) and standard proxy-revealing headers. All remaining client headers are encoded into the `Header { string name; bytes value; }` protobuf array, preserving exact ordering and duplicate keys for the Egress worker. Final outbound headers are applied at Egress based on the resolved fingerprint and injection policy.
+
+
+* **Cookies:** Straw is strictly a transport layer. Cookies pass through opaquely within the standard header arrays. Neither Control, Redis, nor Egress maintains cookie jars, session stores, or header rewrite rules outside of explicit injection policies.
+
+
+* **Redirects:** Egress workers do not follow upstream redirects by default. `3xx` responses stream back through NATS to the client via standard `ResponseStart` and `DataFrame` messages. If operator configuration permits, a request flag can instruct the Egress worker to handle redirect following internally, which alters upstream request counts and routing costs.
+
+
+* **Compression:** Upstream `Content-Encoding` (e.g., gzip, brotli) is preserved. Egress workers do not decode or recompress upstream responses. Encoded bytes stream directly to the client as raw `DataFrame` payloads. Payload capture, if enabled, stores the raw compressed bytes without inspection. Decoding and recompression features are deferred to Phase 2.
+
+
+* **Trailers:** HTTP trailers are fully supported. Egress workers parse upstream trailers and dispatch them using the explicit `TrailersFrame` over the request-scoped NATS stream before the `EndFrame`. Control streams these trailers to the client when the specific ingress protocol supports them.
+
+
+* **Connection Reuse:** Phase 1 implements 1:1 request execution. Egress workers open a fresh transport connection for every assigned request. Upstream connection pooling and keep-alive state are explicitly deferred to Phase 2.
+* **WebSockets:** Phase 1 explicitly rejects all `Upgrade: websocket` requests. Control intercepts these at the ingress layer and returns an immediate typed error without attempting route selection or Egress assignment.
+
+
+* **HTTP/2:** HTTP/2 is supported at both ingress (Client to Control) and egress (Egress to Upstream) boundaries. Control multiplexes concurrent inbound streams natively, while Egress delegates to `tls-client` to negotiate HTTP/2 ALPN matching the requested fingerprint preset.
+
+
+* **TLS Behavior:** Egress outbound TLS execution is owned by `tls-client`, which dynamically handles SNI and ALPN to match the fingerprint profile provided by Control. Upstream certificate verification is strict by default, but clients can supply a flag to explicitly disable validation. Client certificates (mTLS) are supported; Control passes the necessary certificate references to Egress, which binds them into the execution context.
 
 ## 13. MITM Design
 
