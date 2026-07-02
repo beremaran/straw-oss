@@ -1,9 +1,4 @@
-# Straw Proxy Plan — Rewrite Pass v1
-
-Status: implementation-planning draft.
-
-This rewrite consolidates the original plan into one coherent implementation contract. It deliberately removes competing
-designs and separates the minimal vertical slice from later platform features.
+# Straw Proxy Plan
 
 ## 1. Purpose
 
@@ -26,7 +21,9 @@ over that transport.
 
 ## 2. Phase Boundaries
 
-The original plan mixed MVP, Phase 1, Phase 2, and mature platform features. This rewrite separates them.
+The original plan mixed MVP, Phase 1, Phase 2, and mature platform features. This rewrite separates them. A feature is
+not considered in-scope for a phase unless it is listed in that phase and has a corresponding contract, schema, or test
+row.
 
 ### P0 — Vertical Slice
 
@@ -36,17 +33,24 @@ P0 includes:
 
 - one Control service,
 - one official Go Egress Worker,
-- REST request transport only,
+- externally synchronous REST request transport only,
 - API-key authentication,
+- tenant-scoped API keys and worker credentials,
 - tenant-scoped routing rules,
 - exact-session Core NATS assignment,
-- protobuf envelope and stream frames,
-- NATS body streaming up to configured frame/body limits,
-- basic worker registration, heartbeat, health, capacity, draining, and disable state,
-- basic rate limits and quotas,
-- destination deny rules with Control-side host validation and Egress-side resolved-IP validation,
+- protobuf Envelope and StreamFrame contracts,
+- internal NATS body/response streaming up to configured frame/body limits,
+- Control-buffered JSON response envelopes for REST,
+- basic worker registration, heartbeat, health, capacity, draining, disable state, duplicate-session handling, and
+  cooldown,
+- basic rate limits,
+- operational/admission-control quotas with explicit non-billing-grade accuracy limits,
+- destination deny rules with Control-side URL/host validation and Egress-side resolved-IP validation,
+- Control-resolved destination policy bundles sent to Egress per request,
+- explicit header injection operations resolved by Control; no arbitrary live traffic mutation,
+- fingerprint profile selection with P0 profiles limited to the worker-supported set,
 - canonical ErrorResponse envelope,
-- request metadata written asynchronously to ClickHouse,
+- request metadata written asynchronously to ClickHouse with P0 metadata redaction rules,
 - local docker-compose environment,
 - table-driven unit tests and E2E tests for the P0 flow.
 
@@ -58,12 +62,18 @@ P0 excludes:
 - Provider Adapters,
 - object-storage large-body transport,
 - direct streaming large-body transport,
+- external REST response streaming,
 - payload capture,
+- capture hints other than `none`,
+- redirect following,
 - SDKs beyond a minimal generated/prototype client,
 - CLI/UI beyond basic admin smoke tooling,
 - Kubernetes/Swarm production manifests,
-- HTTP/2 hardening,
-- upstream connection pooling.
+- HTTP/2 semantics,
+- upstream keep-alive pooling and advanced/shared upstream connection-pool management.
+
+P0 Egress disables upstream HTTP keep-alives and outbound HTTP/2 by default. Those may be re-enabled only behind an
+explicit tested feature flag in a later phase.
 
 ### P1 — Proxy Transport and Operational Hardening
 
@@ -71,9 +81,12 @@ P1 adds:
 
 - HTTP forward proxy,
 - raw CONNECT tunnel mode,
-- worker-loss and NATS-outage hardening,
+- worker-loss and NATS-outage hardening beyond the P0 baseline,
 - richer config-management APIs,
 - SDK, CLI, and minimal UI surfaces,
+- telemetry read APIs and dashboards,
+- optional direct worker Prometheus scraping if explicitly chosen,
+- optional upstream connection pooling if explicitly specified and tested,
 - improved observability dashboards,
 - load and backpressure testing,
 - operational deployment templates.
@@ -88,8 +101,8 @@ P2 adds:
 - direct streaming BodyRef transport,
 - payload capture with storage-only redaction,
 - Provider Adapter protocol and at least one static adapter implementation,
-- HTTP/2 support where explicitly tested,
-- advanced quota reconciliation.
+- HTTP/2 support where explicitly specified and tested,
+- quota reconciliation suitable for billing-grade or near-billing-grade reporting if required.
 
 ### Future Work
 
@@ -126,7 +139,7 @@ Straw does not provide:
 - exactly-once request execution.
 
 Payload capture, MITM, and live traffic mutation are not P0 features. If later enabled, payload capture is explicit,
-tenant/admin controlled, and off by default.
+tenant-admin-controlled, and off by default.
 
 ## 4. Canonical Architecture
 
@@ -265,21 +278,41 @@ ClickHouse write failure must not fail request transport.
 ### Tenant Resolution
 
 Control derives `tenant_id` exclusively from the validated API key or worker credential. Clients and workers cannot
-provide or override tenant identity through headers, request metadata, or NATS subject tokens.
+provide or override tenant identity through headers, request metadata, request body fields, or NATS subject tokens.
 
-### Roles
+### Role Scopes
 
-Roles are tenant-scoped.
+Straw has two role scopes:
 
-| Role        |      Data-plane execution |                      Config mutation | Credential management |            Telemetry read | Payload capture control |
-|-------------|--------------------------:|-------------------------------------:|----------------------:|--------------------------:|------------------------:|
-| `requester` |                       Yes |                                   No |                    No | Own request metadata only |                      No |
-| `viewer`    |                        No |                                   No |                    No |                       Yes |                      No |
-| `operator`  | Optional by tenant policy | Routing/fingerprint/injection config |                    No |                       Yes |                      No |
-| `admin`     |                       Yes |                                  Yes |                   Yes |                       Yes |                     Yes |
+- platform scope, for operations that create or delete tenant boundaries;
+- tenant scope, for operations inside a tenant boundary.
+
+P0 must not rely on a tenant-scoped role to create that same tenant. Local development may bootstrap a default platform
+administrator and default tenant through seed data or migration fixtures.
+
+### Platform Role
+
+| Role           | Scope    | Purpose                                                              |
+|----------------|----------|----------------------------------------------------------------------|
+| `system_admin` | Platform | Create, soft-delete, and administer tenants; bootstrap tenant admins |
+
+### Tenant Roles
+
+Tenant roles apply only inside one tenant.
+
+| Role           |      Data-plane execution |                      Config mutation | Credential management |            Telemetry read | Payload capture control |
+|----------------|--------------------------:|-------------------------------------:|----------------------:|--------------------------:|------------------------:|
+| `requester`    |                       Yes |                                   No |                    No | Own request metadata only |                      No |
+| `viewer`       |                        No |                                   No |                    No |                       Yes |                      No |
+| `operator`     | Optional by tenant policy | Routing/fingerprint/injection config |                    No |                       Yes |                      No |
+| `tenant_admin` |                       Yes |                                  Yes |                   Yes |                       Yes |                     Yes |
+
+Where earlier text says `admin` for tenant-local actions, it means `tenant_admin`. Where tenant creation or deletion is
+required, the role is `system_admin`.
 
 API keys inherit the role and tenant of the user/key record. P0 supports tenant-scoped API keys. Cross-tenant users use
-separate keys per tenant.
+separate keys per tenant. Platform administration uses a separate platform-scoped credential and is not accepted for
+data-plane request execution unless it also maps to a tenant role.
 
 ### Worker Credential Scope
 
@@ -292,7 +325,8 @@ Worker credentials bind to:
 - signing public key,
 - status.
 
-A worker cannot register pools, countries, regions, tags, ingress modes, or IP types outside its credential scope.
+A worker cannot register pools, countries, regions, tags, ingress modes, IP types, or other capabilities outside its
+credential scope.
 
 ### Tenant Isolation Rules
 
@@ -310,15 +344,26 @@ Tenant isolation applies to:
 - object-storage BodyRefs,
 - request IDs and trace correlation.
 
-A request for tenant A must never route to an executor credentialed only for tenant B.
+A request for tenant A must never route to an executor credentialed only for tenant B. A multi-tenant worker may execute
+for multiple tenants only when its credential explicitly grants that scope and the selected pool is eligible for the
+requesting tenant.
 
 ## 7. Public API Surface
 
 The canonical public base path is `/api/v1`.
 
-### REST Request Transport
+P0 exposes:
 
-P0 implements synchronous REST transport:
+- `POST /api/v1/requests` for synchronous REST request transport,
+- `/api/v1/config/*` for durable configuration resources,
+- `/api/v1/admin/*` for runtime operational actions,
+- `/metrics` for Prometheus metrics.
+
+P1 may add telemetry read APIs and proxy ingress endpoints. P2 may add MITM CA distribution and BodyRef-related APIs.
+
+### REST Request Transport — P0
+
+P0 implements externally synchronous REST transport:
 
 ```http
 POST /api/v1/requests
@@ -326,7 +371,17 @@ Authorization: Bearer <api_key>
 Content-Type: application/json
 ```
 
-Small request bodies may be inline. P2 adds BodyRef and streaming modes.
+The external P0 REST contract is non-streaming:
+
+1. The client sends a JSON request envelope.
+2. The request body, if present, uses `inline_base64` and must not exceed `request.max_inline_request_body_bytes`.
+3. Control may internally split the body into NATS `DataFrame`s.
+4. Egress may internally stream response frames back to Control.
+5. Control buffers the upstream response until complete or until `request.max_inline_response_body_bytes` is exceeded.
+6. Control returns either a JSON success envelope or a public ErrorResponse.
+
+P0 does not expose HTTP chunked response streaming, BodyRef downloads, CONNECT, MITM, or raw upstream response
+passthrough.
 
 #### Request Schema
 
@@ -363,14 +418,19 @@ Small request bodies may be inline. P2 adds BodyRef and streaming modes.
 Field rules:
 
 - `method` is required.
+- `method` must not be `CONNECT` in P0 REST transport.
 - `url` is required and must be absolute HTTP or HTTPS.
+- URL userinfo is rejected.
 - `headers` preserves order and duplicates.
 - Header values are bytes and use Base64 in JSON.
+- `body.mode` must be `inline_base64` or omitted in P0.
 - `routing` fields are hints and hard constraints when supplied.
 - `fingerprint_profile` is optional; tenant default applies when absent.
 - `timeout_ms` is capped by tenant and deployment limits.
-- `replayable` defaults to `false` except SDKs may default `GET`, `HEAD`, and `OPTIONS` to `true`.
-- `capture_hint` cannot enable capture unless tenant/admin policy already allows capture.
+- `replayable` defaults to `false` except prototype/generated clients may default `GET`, `HEAD`, and `OPTIONS` to
+  `true` before submission.
+- `capture_hint` must be absent or `none` in P0. Any other value returns `invalid_request`.
+- Redirect following is not available in P0. Redirect responses pass through as upstream responses.
 
 #### Successful Response Schema
 
@@ -394,16 +454,24 @@ JSON. HTTP proxy/MITM decoded modes later stream raw upstream responses directly
   },
   "timing": {
     "routing_ms": 3,
+    "assignment_ms": 4,
     "egress_ms": 123,
     "total_ms": 140
   }
 }
 ```
 
-P0 may cap inline REST response bodies with `max_response_body_bytes`. If the cap is exceeded before P2 large-body
-transport exists, Control returns `response_body_too_large` unless the endpoint is using a streaming REST variant.
+If Straw successfully transports the request and receives upstream status/headers, `POST /api/v1/requests` returns HTTP
+`200` from the Straw API even when the upstream status is `301`, `404`, `429`, or `500`. The upstream status is carried
+in the JSON envelope as `status`.
 
-### REST Streaming Variant
+If Straw fails to authenticate, authorize, validate, route, assign, stream, execute, or complete the transport, Control
+returns the public ErrorResponse with the HTTP status from the canonical error registry.
+
+If the upstream response body exceeds `request.max_inline_response_body_bytes` before P2 large-body transport or a P1
+streaming endpoint exists, Control returns `body_too_large` with `details.direction = "response"`.
+
+### REST Streaming Variant — P1
 
 P1 may add:
 
@@ -414,18 +482,40 @@ POST /api/v1/requests:stream
 This endpoint streams response bytes and metadata using HTTP chunking or server-selected framing. The exact framing must
 be specified before implementation.
 
-### Config/Admin APIs
+### Config and Admin APIs
 
-Config and admin endpoints live under:
+Durable configuration endpoints live under:
 
 ```text
 /api/v1/config/*
+```
+
+Runtime operational actions live under:
+
+```text
 /api/v1/admin/*
 ```
 
-Management endpoints require `operator` or `admin` according to the endpoint-specific table in Section 28.
+Config and admin endpoints require `operator`, `tenant_admin`, or `system_admin` according to the endpoint-specific
+table in Section 26.
 
-### MITM CA Distribution Endpoint
+### Telemetry Read APIs — P1
+
+The role model reserves telemetry read permissions, but P0 does not implement a general telemetry query API. P0 may
+return the current request's metadata in the request response envelope and may expose local health/metrics endpoints.
+
+P1 adds explicit APIs such as:
+
+```text
+GET /api/v1/telemetry/requests
+GET /api/v1/telemetry/requests/{request_id}
+GET /api/v1/telemetry/workers
+GET /api/v1/telemetry/audit
+```
+
+These are placeholders until P1 schemas and ClickHouse query limits are specified.
+
+### MITM CA Distribution Endpoint — P2
 
 P2 adds:
 
@@ -434,8 +524,8 @@ GET /api/v1/mitm/ca.pem
 Authorization: Bearer <api_key>
 ```
 
-Any authenticated key whose tenant is allowed to use MITM may download the public CA certificate. Admin rights are
-required to rotate or configure the CA, but not to download the public certificate needed by clients.
+Any authenticated key whose tenant is allowed to use MITM may download the public CA certificate. Tenant admin rights
+are required to rotate or configure the CA, but not to download the public certificate needed by clients.
 
 ## 8. Request ID and Trace Lifecycle
 
@@ -469,21 +559,25 @@ Trace behavior:
 2. Control generates `request_id`.
 3. Control authenticates the API key and derives `tenant_id`.
 4. Control authorizes data-plane execution.
-5. Control validates method, URL, headers, body mode, routing hints, timeout, and replayability.
-6. Control applies rate-limit and quota admission checks.
-7. Control applies destination deny rules at the URL/host level.
-8. Control captures a tenant route snapshot.
-9. Control selects a route and exact executor session.
-10. Control sends `AssignRequest` to the exact executor assignment subject.
-11. Executor replies with `AssignAck`.
-12. After accept, Control sends `RequestStart` over the request-scoped `c2e` subject.
-13. Control streams body frames or sends `BodyRef` according to transport mode.
-14. Executor enforces Egress-side destination checks after DNS resolution and before connect.
-15. Executor performs outbound request.
-16. Executor sends `ResponseStart`, response `DataFrame`s, optional `TrailersFrame`, and `EndFrame`, or sends
+5. Control validates method, URL, headers, body mode, routing hints, timeout, replayability, and P0 feature flags.
+6. Control rejects URL userinfo and applies metadata/logging redaction decisions.
+7. Control applies rate-limit and quota admission checks according to configured Redis fail policy.
+8. Control applies destination deny rules at the URL/host level.
+9. Control captures an immutable tenant route/config snapshot.
+10. Control selects a route and exact executor session.
+11. Control sends `AssignRequest` to the exact executor assignment subject.
+12. Executor replies with `AssignAck`.
+13. After accept, Control and Executor subscribe to request-scoped `c2e` and `e2c` subjects.
+14. Control sends `RequestStart` over the request-scoped `c2e` subject.
+15. Control streams request body frames or sends `BodyRef` according to transport mode. P0 supports only NATS
+    `DataFrame` bodies derived from inline REST bodies.
+16. Executor validates destination policy after DNS resolution and immediately before connect.
+17. Executor sends `OutboundStartFrame` before DNS/connect or before delegating to an upstream proxy.
+18. Executor performs outbound request.
+19. Executor sends `ResponseStart`, response `DataFrame`s, optional `TrailersFrame`, and `EndFrame`, or sends
     `ErrorFrame`.
-17. Control maps executor facts/errors into public response or public ErrorResponse.
-18. Control writes final metadata asynchronously to ClickHouse.
+20. Control maps executor facts/errors into a public response or public ErrorResponse.
+21. Control writes final metadata asynchronously to ClickHouse using P0 metadata redaction rules.
 
 ### Cancellation
 
@@ -493,20 +587,47 @@ Control sends `CancelFrame` when:
 - request deadline expires,
 - admin cancellation occurs,
 - Control shutdown abandons the request,
-- fallback makes an accepted attempt obsolete before outbound execution starts.
+- fallback makes an accepted attempt obsolete before the attempt reaches its no-replay boundary.
 
 Cancellation is best effort. The deadline is authoritative even if cancel is missed.
 
 ### Terminal Rule
 
-Every accepted assignment ends with exactly one terminal frame:
+Every protocol-compliant accepted assignment that remains connected until completion must end with exactly one terminal
+frame:
 
 - `EndFrame`,
 - `ErrorFrame`, or
 - `CancelledFrame`.
 
-After a terminal frame or deadline, both sides close request-scoped subscriptions and ignore late frames. Repeated
-late/protocol-invalid frames contribute to worker cooldown.
+If the worker process dies, Control loses the request-scoped NATS path, NATS becomes unavailable, or the deadline
+expires
+before a terminal frame arrives, Control synthesizes the terminal request outcome as one of:
+
+- `worker_disconnected`,
+- `transport_unavailable`,
+- `assignment_timeout`,
+- `timeout_exceeded`,
+- `stream_upload_aborted`,
+- `stream_download_aborted`.
+
+After a terminal frame, synthesized terminal outcome, or deadline, both sides close request-scoped subscriptions and
+ignore late frames. Repeated late/protocol-invalid frames contribute to worker cooldown.
+
+### Replay and Fallback Boundary
+
+For P0, Control uses the conservative replay boundary:
+
+- fallback is allowed after assignment reject before `RequestStart`,
+- fallback is allowed after assignment timeout before `RequestStart`,
+- fallback is allowed after executor loss before `RequestStart`,
+- after `RequestStart`, fallback is forbidden unless `replayable=true`.
+
+Egress sends `OutboundStartFrame` before DNS/connect. In P1/P2, Control may use that finer-grained signal to allow some
+pre-connect fallback after `RequestStart`, but P0 does not depend on that optimization.
+
+If `replayable=true`, fallback after `RequestStart` is still forbidden once Control has sent a client-visible successful
+response envelope or begun a streaming response in a future ingress mode.
 
 ## 10. Routing Model
 
@@ -526,7 +647,8 @@ Each rule has:
 - `allow_sticky_fallback`,
 - `config_version`.
 
-P0 does not support nested `fallback_pool_ids`. Fallback is modeled by lower-priority rules.
+P0 does not support nested `fallback_pool_ids`. Fallback is modeled by lower-priority rules and by Control selecting
+another eligible executor only when replay/fallback rules allow it.
 
 ### Match Conditions
 
@@ -564,6 +686,15 @@ An executor is eligible only if:
 - it is not in cooldown,
 - capabilities satisfy all request constraints.
 
+Eligibility precedence is:
+
+```text
+disabled > dead > duplicate_replaced > draining > cooldown > heartbeat_stale > health > capacity > capability
+```
+
+A higher-precedence exclusion reason should be reported in internal diagnostics. Public errors remain canonical public
+codes.
+
 ### Sticky Sessions
 
 Sticky sessions pin to a stable egress identity when available. If no stable identity exists, they may pin to executor
@@ -574,31 +705,83 @@ If the sticky target is unavailable:
 - default: fail with `sticky_session_unavailable`,
 - if `allow_sticky_fallback=true`: choose another eligible executor and update affinity.
 
+Sticky fallback follows the same replay/fallback boundary as non-sticky fallback.
+
 ### Fallback and Replay
 
 Control fallback is internal recovery before a final client-visible result. It is not SDK/client retry.
 
-Fallback is allowed:
+P0 fallback is allowed:
 
 - after assignment reject before `RequestStart`,
-- after assignment timeout before request body or outbound bytes are sent,
-- after executor loss before outbound execution starts,
-- after outbound execution starts only if the client explicitly set `replayable=true` and Control knows no
-  client-visible response has started.
+- after assignment timeout before `RequestStart`,
+- after executor loss before `RequestStart`,
+- after `RequestStart` only if `replayable=true` and Control has not sent any client-visible success response.
 
 Automatic replay defaults:
 
-- `GET`, `HEAD`, `OPTIONS`: SDKs may default `replayable=true`.
+- `GET`, `HEAD`, `OPTIONS`: SDKs may default `replayable=true` before sending the request.
 - `PUT`, `DELETE`, `POST`, `PATCH`: default `replayable=false`.
 
-If no rule matches, return `route_no_match` with HTTP 421 for decoded proxy modes and HTTP 404 for REST transport if the
-REST contract chooses conventional REST status. The ErrorCode remains `route_no_match` in both cases.
+Control never silently changes `replayable=false` to `true`.
+
+If no rule matches, return `route_no_match` with HTTP 421 for decoded proxy modes and HTTP 404 for REST transport. The
+ErrorCode remains `route_no_match` in both cases.
 
 If a rule matches but no eligible executor exists after permitted fallback, return `route_unavailable` with HTTP 503.
 
+If all otherwise-eligible executors reject for capacity, return `executor_capacity_exhausted` with HTTP 503.
+
 ## 11. Worker Discovery and Health
 
-Egress Workers and Provider Adapters use the same registration and heartbeat protocol.
+Egress Workers and Provider Adapters use the same registration and heartbeat protocol. Provider Adapters are P2, but the
+protocol shape is common.
+
+### Worker Session State Machine
+
+Runtime worker session state is derived from registration, heartbeat, admin state, duplicate-session handling, and
+cooldown. P0 uses this state machine:
+
+```text
+unregistered
+  -> registering
+  -> registered
+  -> ready
+  -> degraded
+  -> unavailable
+  -> dead
+
+ready/degraded
+  -> draining
+  -> stopped | dead
+
+ready/degraded/unavailable
+  -> cooldown
+  -> ready | degraded | unavailable
+
+ready/degraded/unavailable/draining
+  -> duplicate_replaced
+  -> dead
+```
+
+State meanings:
+
+| State                | Routable | Meaning                                                        |
+|----------------------|----------|----------------------------------------------------------------|
+| `unregistered`       | No       | No active runtime session                                      |
+| `registering`        | No       | Registration being validated                                   |
+| `registered`         | No       | Registered but not yet heartbeat-ready                         |
+| `ready`              | Yes      | Healthy and eligible if capacity/capabilities match            |
+| `degraded`           | Optional | Eligible only if tenant/deployment policy permits degraded use |
+| `unavailable`        | No       | Heartbeat stale beyond availability timeout                    |
+| `dead`               | No       | Removed after dead timeout                                     |
+| `draining`           | No new   | Finishes in-flight requests only                               |
+| `disabled`           | No       | Durable admin exclusion                                        |
+| `cooldown`           | No       | Temporary exclusion after repeated failures                    |
+| `duplicate_replaced` | No       | Superseded by a newer valid session                            |
+
+Eligibility exclusion precedence is defined in Section 10. Disable is durable admin state and overrides all runtime
+health. Draining excludes new assignments even when the worker is otherwise healthy.
 
 ### Registration
 
@@ -662,7 +845,9 @@ Heartbeats include:
 - draining flag,
 - optional worker timestamp for diagnostics.
 
-Control uses receive time, not worker time, for liveness.
+Control uses receive time, not worker time, for liveness. Heartbeats from stale `session_id`s are ignored for routing
+but
+may be recorded for diagnostics.
 
 ### Health Thresholds
 
@@ -681,7 +866,9 @@ Defaults:
 ### Duplicate Sessions
 
 Only one active session per `worker_id` is routable. New valid registration creates a new `session_id` and replaces the
-old session after grace. The old session receives no new assignments during grace.
+old session after grace. The old session receives no new assignments during grace. In-flight requests on the old session
+may finish until their request deadline or duplicate-session grace deadline, whichever policy chooses; P0 uses the
+request deadline unless the worker disconnects.
 
 ### Draining and Disable
 
@@ -740,6 +927,7 @@ IDs are never placed in NATS subjects.
 
 `e2c` carries:
 
+- `OutboundStartFrame`,
 - `ResponseStart`,
 - response/tunnel `DataFrame`,
 - `TrailersFrame`,
@@ -755,9 +943,35 @@ IDs are never placed in NATS subjects.
 3. Executor replies with `AssignAck`.
 4. If accepted, both sides subscribe to request-scoped subjects.
 5. Control sends `RequestStart`.
-6. Streams proceed under credit-based flow control.
+6. Streams proceed under sequence validation and credit-based flow control.
 
 There are no generic NATS retries for assignment. Duplicate assignment is worse than a clean failed attempt.
+
+### Stream Ordering and Sequencing
+
+Each request has two independent ordered stream directions:
+
+- `c2e` for Control-to-executor frames,
+- `e2c` for executor-to-Control frames.
+
+Every `StreamFrame` carries:
+
+- `stream_seq`: monotonically increasing unsigned integer, starting at 1 per direction and attempt,
+- `attempt`: copied from the Envelope and validated against the active attempt,
+- `terminal`: implicit from terminal payload type.
+
+Rules:
+
+- receiver accepts exactly the next expected `stream_seq`,
+- duplicate frames with sequence lower than expected are ignored and counted,
+- gaps or sequence higher than expected are protocol errors,
+- frames after terminal are ignored and counted,
+- repeated duplicates, late frames, or invalid sequence behavior contribute to worker cooldown,
+- sequence numbers are not reused across attempts.
+
+`DataFrame` additionally carries `offset` for diagnostics and optional integrity checks. `offset` must match the
+cumulative
+number of data bytes previously accepted in that direction for the same logical byte stream.
 
 ### Backpressure
 
@@ -779,6 +993,21 @@ compressed bytes.
 
 When credit reaches zero, senders stop reading from their upstream source where possible. Control must stop or slow
 client reads to avoid unbounded buffering.
+
+### NATS Max Payload Validation
+
+`transport.max_frame_data_bytes` must be less than the effective NATS maximum payload minus protobuf Envelope overhead.
+Startup validation must fail if the configured maximum frame data size can produce an Envelope larger than the
+configured
+or discovered NATS max payload.
+
+P0 recommended rule:
+
+```text
+transport.max_frame_data_bytes <= nats.max_payload_bytes - 65536
+```
+
+The 64 KiB overhead budget is intentionally conservative and may be replaced by measured encoded-size validation.
 
 ### NATS Subject ACLs
 
@@ -865,18 +1094,40 @@ Fields:
 
 ### StreamFrame Payloads
 
-`StreamFrame` has a `oneof`:
+`StreamFrame` has common sequencing fields and a payload `oneof`:
 
-- `RequestStart`,
-- `ResponseStart`,
-- `DataFrame`,
-- `CreditFrame`,
-- `BodyRefFrame`,
-- `CancelFrame`,
-- `ErrorFrame`,
-- `TrailersFrame`,
-- `EndFrame`,
-- `CancelledFrame`.
+```protobuf
+message StreamFrame {
+  uint64 stream_seq = 1;
+  uint64 attempt = 2;
+
+  oneof payload {
+    RequestStart request_start = 10;
+    OutboundStartFrame outbound_start = 11;
+    ResponseStart response_start = 12;
+    DataFrame data = 13;
+    CreditFrame credit = 14;
+    BodyRefFrame body_ref = 15;
+    CancelFrame cancel = 16;
+    ErrorFrame error = 17;
+    TrailersFrame trailers = 18;
+    EndFrame end = 19;
+    CancelledFrame cancelled = 20;
+  }
+}
+```
+
+### DataFrame
+
+```protobuf
+message DataFrame {
+  uint64 offset = 1;
+  bytes data = 2;
+}
+```
+
+`stream_seq` orders frames. `offset` orders byte payloads within a logical byte stream and must equal the cumulative
+accepted byte count for that direction and attempt.
 
 ### Headers
 
@@ -906,10 +1157,48 @@ Maps are not used for headers because order and duplicates matter.
 - payload capture decision,
 - resolved fingerprint instruction,
 - ordered injection operations,
-- redirect-following policy.
+- redirect-following policy,
+- resolved destination policy bundle,
+- policy/version IDs for audit correlation.
 
 Executors never query config and never receive raw admin policy objects. Control sends only resolved request
 instructions plus policy/version IDs for audit correlation.
+
+### DestinationPolicy
+
+`DestinationPolicy` is included in `RequestStart` and contains the minimum policy required for Egress-side enforcement:
+
+```protobuf
+message DestinationPolicy {
+  bool allow_private_ranges = 1;
+  bool allow_loopback = 2;
+  bool allow_link_local = 3;
+  bool allow_metadata_ips = 4;
+  repeated string denied_cidrs = 5;
+  repeated string allowed_cidrs = 6;
+  repeated string denied_host_suffixes = 7;
+  repeated string denied_cname_suffixes = 8;
+  SniHostMismatchPolicy sni_host_mismatch_policy = 9;
+  RedirectPolicy redirect_policy = 10;
+  string policy_version = 11;
+}
+```
+
+P0 default policy denies private, loopback, link-local, multicast, and cloud metadata ranges unless a tenant admin
+explicitly
+allows them for the tenant or deployment.
+
+### OutboundStartFrame
+
+`OutboundStartFrame` is emitted by Egress before DNS/connect or before delegating to an upstream proxy. It carries:
+
+- target host,
+- target port,
+- selected upstream proxy ID if any,
+- attempt,
+- timestamp from worker for diagnostics only.
+
+Control does not use worker timestamps for deadlines or liveness.
 
 ### BodyRef
 
@@ -918,7 +1207,7 @@ P2 adds BodyRef variants:
 - `S3BodyRef`,
 - `DirectStreamRef`.
 
-P0 supports only inline NATS `DataFrame` bodies.
+P0 supports only inline NATS `DataFrame` bodies derived from REST `inline_base64` input.
 
 ### Error Facts and ErrorResponse
 
@@ -947,15 +1236,17 @@ message ErrorResponse {
   string request_id = 6;
   optional uint32 upstream_status = 7;
   optional TimeoutType timeout_type = 8;
+  map<string, string> details = 9;
 }
 ```
 
-`worker_id` and `session_id` are never exposed to clients.
+`worker_id` and `session_id` are never exposed to clients. `details` may contain bounded public-safe diagnostics such as
+`direction=request|response`, `limit_bytes`, or `retry_policy`, but never internal topology identifiers or secrets.
 
 ## 14. Canonical Error Registry
 
 Origin HTTP statuses are not Straw errors. If the origin returns 404, 403, 429, or 500 and Straw successfully
-transported the request, Straw returns/report that as an upstream response, not an ErrorResponse.
+transported the request, Straw returns/reports that as an upstream response, not an ErrorResponse.
 
 Straw errors mean the Straw system failed to authenticate, authorize, validate, route, assign, transport, stream,
 execute, or complete the request.
@@ -985,7 +1276,7 @@ execute, or complete the request.
 |    8 | `header_injection_failed`     | CLIENT    |     400 |        No | Resolved injection invalid                           |
 |    9 | `conflict`                    | CLIENT    |     409 |        No | Config version conflict                              |
 |   10 | `unsupported_ingress_mode`    | CLIENT    |     400 |        No | Unsupported mode for endpoint/route                  |
-|  100 | `route_no_match`              | ROUTING   | 421/404 |        No | No rule matched; REST may use 404, proxy uses 421    |
+|  100 | `route_no_match`              | ROUTING   | 421/404 |        No | No rule matched; REST uses 404, proxy uses 421       |
 |  101 | `route_unavailable`           | ROUTING   |     503 |       Yes | Rule matched but no eligible executor                |
 |  102 | `sticky_session_unavailable`  | ROUTING   |     503 |        No | Sticky target unavailable and fallback not allowed   |
 |  103 | `executor_capacity_exhausted` | ROUTING   |     503 |       Yes | All eligible executors at capacity                   |
@@ -1004,10 +1295,19 @@ execute, or complete the request.
 |  400 | `stream_upload_aborted`       | STREAMING |     502 |     Maybe | Client/control upload interrupted                    |
 |  401 | `stream_download_aborted`     | STREAMING |     502 |     Maybe | Executor/upstream download interrupted               |
 |  402 | `body_ref_unavailable`        | STREAMING |     502 |       Yes | P2 BodyRef object/stream unavailable                 |
-|  403 | `body_too_large`              | STREAMING |     413 |        No | Exceeds configured deployment limit                  |
+|  403 | `body_too_large`              | STREAMING |     413 |        No | Request or response exceeds configured limit         |
 |  500 | `control_internal_error`      | CONTROL   |     500 |        No | Unexpected Control failure                           |
 |  501 | `executor_internal_error`     | EGRESS    |     502 |     Maybe | Unexpected executor failure                          |
 |  502 | `cancelled`                   | CLIENT    | 499/400 |        No | Client/admin cancellation; status depends on ingress |
+
+There is no separate `response_body_too_large` code. Use `body_too_large` with public-safe ErrorResponse details:
+
+```json
+{
+  "direction": "request | response",
+  "limit_bytes": "1048576"
+}
+```
 
 ### TimeoutType
 
@@ -1030,10 +1330,15 @@ Timeouts are request-scoped and capped by tenant/deployment configuration.
 Origin 3xx, 4xx, and 5xx responses are normal upstream responses if Straw received upstream status/headers. They are
 logged as outcome metadata but are not converted into Straw errors.
 
+For P0 REST, Straw API HTTP status is `200` for successful transport. Upstream status is carried in the JSON response
+envelope as `status`.
+
 ### Methods
 
-All standard HTTP methods are accepted. Automatic Control fallback after outbound execution starts is disabled unless
-`replayable=true`.
+P0 REST decoded transport accepts standard HTTP methods except `CONNECT`. Raw CONNECT is only accepted by the P1 CONNECT
+ingress.
+
+Automatic Control fallback after `RequestStart` is disabled unless `replayable=true`.
 
 ### Headers
 
@@ -1044,10 +1349,26 @@ outbound. Header order and duplicates are preserved.
 
 Cookies pass through as headers. Straw does not maintain cookie jars.
 
+### Header Injection
+
+P0 supports only explicit Control-resolved header operations from configured injection policy. The operation list sent
+to
+Egress is ordered and bounded.
+
+Allowed P0 operations:
+
+- set header,
+- append header,
+- remove header.
+
+P0 does not support live body mutation, JavaScript mutation, cookie-jar persistence, or content-aware rewriting.
+
 ### Redirects
 
-Egress does not follow redirects by default. Redirect responses pass through as upstream responses. Redirect following
-requires explicit request flag and tenant policy because it changes request count, destination, and cost.
+Egress does not follow redirects in P0. Redirect responses pass through as upstream responses. Redirect following
+requires explicit request flag and tenant policy in a later phase because it changes request count, destination, and
+cost. Any future redirect-following implementation must re-run Control-equivalent host policy and Egress resolved-IP
+policy on every redirect target.
 
 ### Compression
 
@@ -1062,7 +1383,9 @@ according to that ingress contract.
 
 ### HTTP/2
 
-P0 does not promise full HTTP/2 semantics. P1/P2 may add HTTP/2 after defining:
+P0 does not support HTTP/2 semantics. P0 Egress disables outbound HTTP/2 by default.
+
+P2 may add HTTP/2 after defining:
 
 - one `request_id` per HTTP/2 stream,
 - stream cancellation mapping,
@@ -1083,6 +1406,14 @@ fingerprints. This is outbound-client behavior only.
 Control never asks Egress to guess a fingerprint. Control sends a supported enum/profile. If unsupported, Egress rejects
 or fails with `unsupported_fingerprint`.
 
+### P0 Transport Defaults
+
+P0 Egress disables outbound HTTP/2 and upstream keep-alives by default to avoid promising HTTP/2 or connection-pool
+semantics before they are specified and tested.
+
+P0 may still reuse local process objects such as DNS resolvers, TLS profile definitions, and bounded worker pools. It
+must not rely on cross-request upstream connection reuse for correctness or performance claims.
+
 ### CGO Isolation
 
 If the outbound TLS stack uses CGO/FFI, the worker isolates it from the NATS message loop using bounded worker pools and
@@ -1090,11 +1421,12 @@ deadline-aware execution. The NATS receiver must remain responsive under high ou
 
 ### DNS and Deny Enforcement
 
-Egress validates destination policy immediately before connect using the resolved IP set.
+Egress validates destination policy immediately before connect using the resolved IP set and the `DestinationPolicy`
+bundle included in `RequestStart`.
 
-Egress must block:
+Egress must block unless explicitly allowed by policy:
 
-- private RFC1918 ranges unless explicitly allowed,
+- private RFC1918 ranges,
 - loopback,
 - link-local,
 - multicast,
@@ -1105,7 +1437,15 @@ Egress must block:
 - SNI/Host mismatch when policy forbids it.
 
 Control performs pre-routing URL/host validation. Egress performs final resolved-IP validation because DNS resolution
-occurs closest to the outbound connection.
+occurs closest to the outbound connection. Workers do not query Postgres, Redis, or ClickHouse to obtain destination
+policy.
+
+### Redirect Handling
+
+P0 does not follow redirects. Future redirect following must validate every redirect target at both boundaries:
+
+- Control-equivalent URL/host policy before the next request,
+- Egress resolved-IP policy immediately before connect.
 
 ### Error Reporting Boundary
 
@@ -1147,7 +1487,8 @@ make an inbound client appear like a different browser client.
 Operators provide CA material through static config. Straw may provide offline helper scripts to generate dev/test CA
 material.
 
-Control exposes the public CA certificate at `/api/v1/mitm/ca.pem` to authenticated users allowed to use MITM. Admins
+Control exposes the public CA certificate at `/api/v1/mitm/ca.pem` to authenticated users allowed to use MITM. Tenant
+admins
 configure and rotate the CA.
 
 ### Leaf Certificate Storage
@@ -1233,7 +1574,7 @@ explicit payload-capture/audit policy.
 
 ## 19. Payload Capture — P2
 
-Payload capture is off by default and explicitly enabled by tenant/admin policy.
+Payload capture is off by default and explicitly enabled by tenant admin policy.
 
 ### Capture Boundary
 
@@ -1299,15 +1640,31 @@ Metrics:
 - monthly request count,
 - monthly bandwidth bytes.
 
-P0 uses Redis fixed-window counters for fast admission plus durable usage events written asynchronously. The plan must
-not claim Redis counters alone are durable billing records.
+P0 quota behavior is operational admission control, not billing-grade accounting. P0 uses:
 
-Recommended durable model:
+- Redis fixed-window counters for fast admission,
+- ClickHouse request/usage events for durable operational analytics,
+- Postgres quota configuration,
+- optional Postgres aggregate checkpoints if implemented during P0.
 
-- Redis counters for hot admission,
-- ClickHouse usage events for high-volume durable analytics,
-- Postgres quota config and optional aggregate checkpoints,
-- reconciliation job to correct Redis counters from durable usage records.
+P0 must not claim exact durable billing accuracy. If Redis quota counters are lost, behavior follows the configured
+quota fail policy. Reconciliation from ClickHouse events into Redis/Postgres aggregates is P2 unless explicitly added to
+P0 as a tested implementation item.
+
+### Bandwidth Accounting
+
+P0 counts:
+
+- accepted inline request bytes after Base64 decode,
+- upstream response body bytes received by Control,
+- protocol overhead excluded from tenant quota unless a deployment explicitly chooses transport-byte accounting.
+
+If a request fails before outbound execution, request-count quota accounting is configurable:
+
+- `count_on_admission=true`: count admitted attempts even if transport fails,
+- `count_on_success=true`: count only successful upstream transport.
+
+P0 default: `count_on_admission=true` for request count; bandwidth counted only for bytes actually transferred.
 
 ### Redis Failure Policy
 
@@ -1320,14 +1677,28 @@ Fail policy is explicit and configurable per tenant/system.
 | Sticky sessions     | degrade according to route policy                                          | May fail sticky requests               |
 | Worker availability | use local snapshot for short TTL, then fail safe                           | Avoid routing to stale workers forever |
 
+### Reconciliation Position
+
+P0 tests must verify quota behavior under Redis failure according to configured policy. P0 does not need to repair lost
+Redis counters unless a reconciliation job is explicitly implemented.
+
+A billing-grade or near-billing-grade quota system requires a later reconciliation design defining:
+
+- durable usage-event source,
+- aggregation cadence,
+- idempotency key,
+- late-arriving event handling,
+- correction policy for Redis hot counters,
+- user-visible quota display semantics.
+
 ## 21. State and Storage
 
 ### Postgres
 
-Postgres stores:
+Postgres stores durable control-plane state:
 
 - tenants,
-- users,
+- platform users and tenant users,
 - API keys,
 - worker credentials,
 - executor pools,
@@ -1342,11 +1713,51 @@ Postgres stores:
 
 Postgres is the source of truth. Control is the only service that reads/writes it.
 
+### Canonical P0 Postgres Model
+
+P0 does not need every production index optimized, but it does need canonical tables, uniqueness rules, and versioning.
+
+Required P0 tables:
+
+| Table                    | Purpose                                                                 | Required constraints / notes                                       |
+|--------------------------|-------------------------------------------------------------------------|--------------------------------------------------------------------|
+| `tenants`                | Tenant boundary and status                                              | unique `id`; `status`; soft delete timestamp                       |
+| `platform_users`         | Platform administrators                                                 | unique `id`; role includes `system_admin`                          |
+| `tenant_users`           | Tenant-local users                                                      | unique `(tenant_id, user_id)`                                      |
+| `api_keys`               | Tenant-scoped API keys                                                  | hashed secret; visible prefix; role; revoked timestamp             |
+| `worker_credentials`     | Worker credential public keys and scopes                                | credential status; Ed25519 public key; scope JSON or child tables  |
+| `executor_pools`         | Tenant-visible pools                                                    | unique `(tenant_id, id)`; executor type                            |
+| `worker_admin_state`     | Durable worker disable state                                            | unique `(tenant_id, worker_id)` or global worker scope             |
+| `routing_rules`          | Route priority and match conditions                                     | unique `(tenant_id, id)`; indexed `(tenant_id, priority)`          |
+| `deny_rules`             | Host/CIDR/CNAME deny and allow overrides                                | normalized host/cidr columns where possible                        |
+| `fingerprint_profiles`   | Allowed profile names and worker compatibility                          | unique `(tenant_id, name)` plus built-in global profiles           |
+| `injection_policies`     | Ordered header operations                                               | unique `(tenant_id, id)`; bounded operation count                  |
+| `rate_limit_configs`     | Rate-limit dimensions and limits                                        | unique `(tenant_id, dimension, key)`                               |
+| `quota_configs`          | Monthly request/bandwidth limits and fail policy                        | unique `(tenant_id, quota_period)`                                 |
+| `config_audit_source`    | Durable source record for config changes before ClickHouse async export | append-only; not a compliance-grade immutable audit log by itself  |
+| `tenant_config_versions` | Monotonic version per tenant snapshot                                   | unique `tenant_id`; incremented transactionally with config writes |
+
+All mutable tenant-scoped config resources include:
+
+- `tenant_id`,
+- `id`,
+- `created_at`,
+- `updated_at`,
+- `config_version`,
+- `enabled` or `status` where applicable.
+
+Config writes are transactional. A successful write increments the affected tenant's snapshot version and writes an
+audit source record in the same transaction.
+
 ### Redis
+
+Redis stores ephemeral runtime state only. Every Redis key must have a TTL unless it is a short-lived pub/sub/version
+coordination key whose lifecycle is otherwise documented.
 
 Redis stores:
 
 - route snapshot invalidation signals,
+- latest tenant config-version hints,
 - sticky session state,
 - rate-limit counters,
 - quota hot counters,
@@ -1355,6 +1766,9 @@ Redis stores:
 - short-lived in-flight request state,
 - P2 MITM cert cache/locks.
 
+Redis data loss must not corrupt durable config. Redis loss may degrade availability decisions, sticky sessions, rate
+limits, quotas, or certificate caches depending on explicit fail policy.
+
 Redis eviction policy should not place all runtime state in one undifferentiated `volatile-lru` pool. Use logical DBs or
 key prefixes with memory policies where deployment supports it. At minimum, quota/rate counters and worker availability
 must not be evicted before best-effort cache data such as MITM cert cache.
@@ -1362,6 +1776,24 @@ must not be evicted before best-effort cache data such as MITM cert cache.
 ### ClickHouse
 
 ClickHouse stores append-heavy operational data. It is not the source of truth for config.
+
+### Metadata Redaction Boundary
+
+P0 writes request metadata, not payload capture. Metadata can still contain secrets. P0 therefore applies these storage
+rules before writing logs or ClickHouse records:
+
+- `target_host` is stored.
+- URL userinfo is rejected before dispatch and never stored.
+- `target_url` storage is sanitized by default: scheme, host, port, and path may be stored; query string is dropped
+  unless tenant policy explicitly allows query storage.
+- If query storage is disabled, Control may store a stable hash of the query string for correlation.
+- `Authorization`, `Cookie`, `Proxy-Authorization`, and `Set-Cookie` are never stored in P0 logs or ClickHouse.
+- Header names may be stored only in bounded diagnostic contexts; header values are not stored in P0 metadata.
+- Public ErrorResponse details must not include secrets, worker IDs, session IDs, NATS subjects, credentials, or full
+  unsanitized URLs.
+
+Payload capture in P2 may store redacted headers/bodies according to explicit capture policy, but that is separate from
+P0 metadata.
 
 ### Backup and DR
 
@@ -1754,63 +2186,334 @@ Dynamic config is stored in Postgres and managed through APIs. Every dynamic res
 
 Config writes are atomic. Updates include expected `config_version`; mismatch returns `conflict`.
 
-Config invalidation uses Redis pub/sub:
+### Snapshot Versioning
+
+Each tenant has a monotonic `tenant_config_version`. Any successful tenant-scoped config write increments that version
+in the same Postgres transaction as the resource change.
+
+Control caches full tenant snapshots keyed by:
+
+```text
+(tenant_id, tenant_config_version)
+```
+
+In-flight requests continue using their captured snapshot even if config changes during execution.
+
+### Invalidation
+
+Config invalidation uses Redis pub/sub as an acceleration mechanism:
 
 ```text
 straw:config:invalidate:<tenant_id>
 ```
 
-Control reloads the full tenant snapshot atomically. In-flight requests continue using their captured snapshot.
+The message includes the new `tenant_config_version`.
+
+Redis pub/sub is not durable and may be missed. Therefore Control must also use at least one durable/sticky
+version-check
+mechanism:
+
+- read-through version check on cache miss,
+- periodic Postgres version poll,
+- Redis version key with TTL refreshed on writes,
+- forced Postgres version check for sensitive operations such as API key revocation and deny-rule changes.
+
+P0 minimum:
+
+- every config write updates Postgres version,
+- Control publishes Redis invalidation after commit,
+- Control stores the latest seen version per tenant,
+- Control periodically checks Postgres for tenant versions,
+- API key revocation and worker credential revocation force cache invalidation before returning success.
+
+Stale snapshots are acceptable only for already-admitted in-flight requests, not for new requests after Control has
+observed a newer tenant config version.
 
 ## 26. Config Management API Surface
 
-Canonical base path: `/api/v1/config`.
+Canonical durable config base path: `/api/v1/config`.
 
-| Method | Path                              | Role                  | Purpose                   |
-|--------|-----------------------------------|-----------------------|---------------------------|
-| POST   | `/tenants`                        | admin                 | Create tenant             |
-| GET    | `/tenants`                        | admin/operator/viewer | List visible tenants      |
-| GET    | `/tenants/{id}`                   | admin/operator/viewer | Get tenant                |
-| PUT    | `/tenants/{id}`                   | admin                 | Update tenant             |
-| DELETE | `/tenants/{id}`                   | admin                 | Soft-delete tenant        |
-| POST   | `/api-keys`                       | admin                 | Create API key            |
-| GET    | `/api-keys`                       | admin/operator        | List API keys             |
-| POST   | `/api-keys/{id}/revoke`           | admin                 | Revoke API key            |
-| POST   | `/worker-credentials`             | admin                 | Create worker credential  |
-| GET    | `/worker-credentials`             | admin                 | List worker credentials   |
-| POST   | `/worker-credentials/{id}/revoke` | admin                 | Revoke worker credential  |
-| POST   | `/workers/{worker_id}/disable`    | admin                 | Disable worker            |
-| POST   | `/workers/{worker_id}/enable`     | admin                 | Enable worker             |
-| POST   | `/workers/{worker_id}/drain`      | admin/operator        | Drain worker              |
-| POST   | `/workers/{worker_id}/undrain`    | admin/operator        | Stop drain                |
-| POST   | `/routing-rules`                  | admin/operator        | Create route              |
-| GET    | `/routing-rules`                  | admin/operator/viewer | List routes               |
-| PUT    | `/routing-rules/{id}`             | admin/operator        | Update route              |
-| DELETE | `/routing-rules/{id}`             | admin/operator        | Delete route              |
-| GET    | `/fingerprint-profiles`           | admin/operator/viewer | List profiles             |
-| POST   | `/injection-policies`             | admin/operator        | Create injection policy   |
-| GET    | `/injection-policies`             | admin/operator/viewer | List injection policies   |
-| PUT    | `/injection-policies/{id}`        | admin/operator        | Update injection policy   |
-| DELETE | `/injection-policies/{id}`        | admin/operator        | Delete injection policy   |
-| GET    | `/quotas`                         | admin/operator/viewer | Get quota config/usage    |
-| PUT    | `/quotas`                         | admin                 | Update quotas             |
-| GET    | `/rate-limits`                    | admin/operator/viewer | Get rate-limit config     |
-| PUT    | `/rate-limits`                    | admin                 | Update rate limits        |
-| POST   | `/deny-rules`                     | admin                 | Create deny rule          |
-| GET    | `/deny-rules`                     | admin/operator/viewer | List deny rules           |
-| PUT    | `/deny-rules/{id}`                | admin                 | Update deny rule          |
-| DELETE | `/deny-rules/{id}`                | admin                 | Delete deny rule          |
-| GET    | `/payload-capture`                | admin/operator/viewer | Get P2 capture policy     |
-| PUT    | `/payload-capture`                | admin                 | Update P2 capture policy  |
-| GET    | `/changes`                        | admin/operator/viewer | List config audit history |
-| POST   | `/rollback`                       | admin                 | Roll back config          |
+Canonical runtime admin base path: `/api/v1/admin`.
+
+### Config Endpoints
+
+| Method | Path                              | Role                                 | Purpose                   |
+|--------|-----------------------------------|--------------------------------------|---------------------------|
+| POST   | `/tenants`                        | `system_admin`                       | Create tenant             |
+| GET    | `/tenants`                        | `system_admin`                       | List tenants              |
+| GET    | `/tenants/{id}`                   | `system_admin`, tenant roles         | Get visible tenant        |
+| PUT    | `/tenants/{id}`                   | `system_admin`                       | Update tenant             |
+| DELETE | `/tenants/{id}`                   | `system_admin`                       | Soft-delete tenant        |
+| POST   | `/api-keys`                       | `tenant_admin`                       | Create API key            |
+| GET    | `/api-keys`                       | `tenant_admin`, `operator`           | List API keys             |
+| POST   | `/api-keys/{id}/revoke`           | `tenant_admin`                       | Revoke API key            |
+| POST   | `/worker-credentials`             | `tenant_admin`                       | Create worker credential  |
+| GET    | `/worker-credentials`             | `tenant_admin`                       | List worker credentials   |
+| POST   | `/worker-credentials/{id}/revoke` | `tenant_admin`                       | Revoke worker credential  |
+| POST   | `/executor-pools`                 | `tenant_admin`, `operator`           | Create pool               |
+| GET    | `/executor-pools`                 | `tenant_admin`, `operator`, `viewer` | List pools                |
+| PUT    | `/executor-pools/{id}`            | `tenant_admin`, `operator`           | Update pool               |
+| DELETE | `/executor-pools/{id}`            | `tenant_admin`                       | Delete/disable pool       |
+| POST   | `/routing-rules`                  | `tenant_admin`, `operator`           | Create route              |
+| GET    | `/routing-rules`                  | `tenant_admin`, `operator`, `viewer` | List routes               |
+| PUT    | `/routing-rules/{id}`             | `tenant_admin`, `operator`           | Update route              |
+| DELETE | `/routing-rules/{id}`             | `tenant_admin`, `operator`           | Delete route              |
+| GET    | `/fingerprint-profiles`           | `tenant_admin`, `operator`, `viewer` | List profiles             |
+| POST   | `/injection-policies`             | `tenant_admin`, `operator`           | Create injection policy   |
+| GET    | `/injection-policies`             | `tenant_admin`, `operator`, `viewer` | List injection policies   |
+| PUT    | `/injection-policies/{id}`        | `tenant_admin`, `operator`           | Update injection policy   |
+| DELETE | `/injection-policies/{id}`        | `tenant_admin`, `operator`           | Delete injection policy   |
+| GET    | `/quotas`                         | `tenant_admin`, `operator`, `viewer` | Get quota config/usage    |
+| PUT    | `/quotas`                         | `tenant_admin`                       | Update quotas             |
+| GET    | `/rate-limits`                    | `tenant_admin`, `operator`, `viewer` | Get rate-limit config     |
+| PUT    | `/rate-limits`                    | `tenant_admin`                       | Update rate limits        |
+| POST   | `/deny-rules`                     | `tenant_admin`                       | Create deny rule          |
+| GET    | `/deny-rules`                     | `tenant_admin`, `operator`, `viewer` | List deny rules           |
+| PUT    | `/deny-rules/{id}`                | `tenant_admin`                       | Update deny rule          |
+| DELETE | `/deny-rules/{id}`                | `tenant_admin`                       | Delete deny rule          |
+| GET    | `/payload-capture`                | `tenant_admin`, `operator`, `viewer` | Get P2 capture policy     |
+| PUT    | `/payload-capture`                | `tenant_admin`                       | Update P2 capture policy  |
+| GET    | `/changes`                        | `tenant_admin`, `operator`, `viewer` | List config audit history |
+| POST   | `/rollback`                       | `tenant_admin`                       | Roll back config          |
+
+### Runtime Admin Endpoints
+
+| Method | Path                            | Role                       | Purpose        |
+|--------|---------------------------------|----------------------------|----------------|
+| POST   | `/workers/{worker_id}/disable`  | `tenant_admin`             | Disable worker |
+| POST   | `/workers/{worker_id}/enable`   | `tenant_admin`             | Enable worker  |
+| POST   | `/workers/{worker_id}/drain`    | `tenant_admin`, `operator` | Drain worker   |
+| POST   | `/workers/{worker_id}/undrain`  | `tenant_admin`, `operator` | Stop drain     |
+| POST   | `/requests/{request_id}/cancel` | `tenant_admin`, `operator` | Cancel request |
+
+### P0 Config Resource Schemas
+
+The following are minimal canonical P0 shapes. Implementations may add read-only computed fields but must not remove
+these fields without a versioned API change.
+
+#### Tenant
+
+```json
+{
+  "id": "ten_...",
+  "name": "Example Tenant",
+  "status": "active | suspended | deleted",
+  "default_timeout_ms": 60000,
+  "max_timeout_ms": 300000,
+  "metadata_query_storage": "drop | hash | store",
+  "config_version": 1
+}
+```
+
+#### API Key Create Response
+
+```json
+{
+  "id": "key_...",
+  "tenant_id": "ten_...",
+  "role": "requester | viewer | operator | tenant_admin",
+  "prefix": "sk_live_abcd",
+  "secret": "sk_live_abcd...",
+  "created_at": "2026-07-02T00:00:00Z",
+  "config_version": 1
+}
+```
+
+The `secret` is returned only at creation time. Stored records contain only a secure hash and visible prefix.
+
+#### API Key Read Response
+
+```json
+{
+  "id": "key_...",
+  "tenant_id": "ten_...",
+  "role": "requester",
+  "prefix": "sk_live_abcd",
+  "status": "active | revoked",
+  "created_at": "2026-07-02T00:00:00Z",
+  "revoked_at": null,
+  "config_version": 1
+}
+```
+
+#### Fingerprint Profile
+
+```json
+{
+  "name": "chrome_120",
+  "tenant_id": "ten_... or null for built-in",
+  "enabled": true,
+  "executor_type": "egress_worker",
+  "profile_ref": "builtin:chrome_120",
+  "min_worker_protocol_minor": 0,
+  "config_version": 1
+}
+```
+
+P0 fingerprint profiles are named presets. Control sends the resolved preset name to Egress. P0 does not expose
+arbitrary
+JA3/JA4/TLS parameter authoring through the public config API.
+
+#### Routing Rule
+
+```json
+{
+  "id": "route_default_us",
+  "tenant_id": "ten_...",
+  "priority": 100,
+  "enabled": true,
+  "match_conditions": {
+    "tags": [
+      "datacenter"
+    ],
+    "country": "US",
+    "region": "us-west-1",
+    "ip_type": "datacenter",
+    "ingress_type": "rest",
+    "target_host": "*.example.com"
+  },
+  "target_pool_id": "pool_us_west",
+  "sticky_session_ttl_seconds": 3600,
+  "allow_sticky_fallback": false,
+  "config_version": 7
+}
+```
+
+#### Executor Pool
+
+```json
+{
+  "id": "pool_us_west",
+  "tenant_id": "ten_...",
+  "executor_type": "egress_worker",
+  "enabled": true,
+  "allowed_ip_types": [
+    "datacenter"
+  ],
+  "allowed_countries": [
+    "US"
+  ],
+  "allowed_regions": [
+    "us-west-1"
+  ],
+  "tags": [
+    "datacenter",
+    "local"
+  ],
+  "config_version": 3
+}
+```
+
+#### Worker Credential
+
+```json
+{
+  "id": "wcred_...",
+  "tenant_scope": [
+    "ten_..."
+  ],
+  "executor_type": "egress_worker",
+  "allowed_pool_ids": [
+    "pool_us_west"
+  ],
+  "allowed_capabilities": {
+    "tags": [
+      "datacenter"
+    ],
+    "countries": [
+      "US"
+    ],
+    "regions": [
+      "us-west-1"
+    ],
+    "ip_types": [
+      "datacenter"
+    ],
+    "supported_ingress_modes": [
+      "rest"
+    ]
+  },
+  "public_key_ed25519_base64": "...",
+  "status": "active",
+  "config_version": 1
+}
+```
+
+#### Deny Rule
+
+```json
+{
+  "id": "deny_private_defaults",
+  "tenant_id": "ten_...",
+  "enabled": true,
+  "type": "cidr | host | host_suffix | cname_suffix | metadata_ip | private_range",
+  "value": "169.254.169.254/32",
+  "action": "deny | allow_override",
+  "reason": "metadata service blocked by default",
+  "config_version": 2
+}
+```
+
+#### Injection Policy
+
+```json
+{
+  "id": "inject_default_headers",
+  "tenant_id": "ten_...",
+  "enabled": true,
+  "operations": [
+    {
+      "op": "set | append | remove",
+      "header_name": "User-Agent",
+      "value_base64": "..."
+    }
+  ],
+  "max_operations": 32,
+  "config_version": 4
+}
+```
+
+#### Rate Limit Config
+
+```json
+{
+  "tenant_id": "ten_...",
+  "limits": [
+    {
+      "dimension": "tenant | api_key | target_host | ip_type",
+      "key": "*",
+      "window_seconds": 60,
+      "max_requests": 600,
+      "fail_policy": "open | closed"
+    }
+  ],
+  "config_version": 5
+}
+```
+
+#### Quota Config
+
+```json
+{
+  "tenant_id": "ten_...",
+  "period": "monthly",
+  "max_requests": 1000000,
+  "max_bandwidth_bytes": 1099511627776,
+  "request_count_policy": "count_on_admission | count_on_success",
+  "redis_fail_policy": "open | closed",
+  "accuracy_level": "operational_admission_control",
+  "config_version": 6
+}
+```
+
+All update requests include `expected_config_version`. Version mismatch returns `conflict`.
 
 ## 27. Security Controls
 
 ### API Key Storage
 
 API keys are stored as secure hashes, not plaintext. A visible key prefix may be stored for identification. Revocation
-updates Postgres and publishes invalidation.
+updates Postgres, increments tenant config version, and publishes invalidation.
 
 Use an appropriate password/key hashing strategy for API tokens. Plain SHA-256 is acceptable only if keys are
 high-entropy random tokens and never user-chosen. Prefer HMAC-SHA-256 with a server-side pepper or Argon2id if keys are
@@ -1840,15 +2543,26 @@ Deny-rule evaluation must normalize:
 - IDNA/punycode,
 - trailing dots,
 - default ports,
-- redirects,
+- redirects in phases where redirects are followed,
 - CNAME chains,
 - IPv4 and IPv6 literals,
 - IPv4-mapped IPv6,
 - SNI vs Host mismatches,
 - CONNECT target host/port.
 
-Private/link-local/metadata IP blocks are denied by default unless an admin explicitly allows them for a tenant or
+Private/link-local/metadata IP blocks are denied by default unless a tenant admin explicitly allows them for a tenant or
 deployment.
+
+### Metadata and Log Redaction
+
+P0 metadata redaction is mandatory even though payload capture is not in P0.
+
+- URL userinfo is rejected.
+- Query strings are dropped from `target_url` by default.
+- Authorization-like headers and cookie headers are never logged or written to ClickHouse in P0.
+- Worker IDs and session IDs are internal-only and must not appear in public ErrorResponse objects.
+- NATS subjects, credentials, signed URLs, private keys, and upstream proxy credentials are never written to logs except
+  as redacted placeholders.
 
 ### Header Stripping
 
@@ -1858,6 +2572,20 @@ These are never forwarded unless explicitly documented otherwise:
 - `X-Straw-*`,
 - hop-by-hop headers invalid for the outbound protocol,
 - internal trace headers unless injection policy allows propagation.
+
+### NATS Subject Tokens
+
+`request_id`, `worker_id`, and `session_id` must be safe subject tokens:
+
+- non-empty,
+- bounded length,
+- ASCII alphanumeric plus `_` and `-`,
+- no dots,
+- no wildcards,
+- no path separators,
+- no whitespace.
+
+Invalid subject tokens are rejected before any NATS subscription or publish uses them.
 
 ## 28. Deployment
 
@@ -1952,53 +2680,71 @@ Do not claim availability over consistency globally. Use explicit per-subsystem 
 
 P0 must include contract-mapped tests.
 
-| Area          | Required tests                                                                                     |
-|---------------|----------------------------------------------------------------------------------------------------|
-| Protobuf      | `buf lint`, `buf breaking`, unknown field tolerance, unknown enum rejection                        |
-| NATS subjects | exact assignment subject, no pool queue dispatch, safe token validation                            |
-| Registration  | valid registration, invalid signature, out-of-scope pool, incompatible version, duplicate session  |
-| Heartbeat     | ready/degraded/unhealthy, unavailable after 15s, dead after 30s, stale session ignored             |
-| Routing       | priority order, hard client hints, tenant isolation, no match, unavailable, sticky success/failure |
-| Assignment    | accept, reject capacity, reject draining, ack timeout, no duplicate retry                          |
-| Streaming     | sequence gaps, duplicates, out-of-order frames, credit exhaustion, idle timeout                    |
-| Cancellation  | client disconnect, deadline, admin cancel, late frame ignored                                      |
-| Error mapping | every ErrorCode maps to HTTP/retry/category; origin 4xx/5xx passthrough is not ErrorResponse       |
-| Rate limits   | dimensions, 429, retry_after, Redis fail policy                                                    |
-| Quotas        | request count, bandwidth accounting, end-of-request update, Redis loss reconciliation behavior     |
-| Deny rules    | domain, CIDR, private IP, DNS rebinding, redirect to denied target, IDNA normalization             |
-| REST schema   | valid request, invalid fields, header duplicate preservation, inline body limit                    |
-| ClickHouse    | async write success, outage, bounded queue drop                                                    |
-| Load          | routing p50/p99, assignment latency, active request limit, worker capacity behavior                |
+| Area          | Required tests                                                                                                 |
+|---------------|----------------------------------------------------------------------------------------------------------------|
+| Protobuf      | `buf lint`, `buf breaking`, unknown field tolerance, unknown enum rejection                                    |
+| NATS subjects | exact assignment subject, no pool queue dispatch, safe token validation, max payload validation                |
+| Registration  | valid registration, invalid signature, out-of-scope pool, incompatible version, duplicate session              |
+| Heartbeat     | ready/degraded/unhealthy, unavailable after 15s, dead after 30s, stale session ignored                         |
+| Worker state  | disabled precedence, draining exclusion, cooldown entry/exit, duplicate replacement, stale heartbeat ignored   |
+| Routing       | priority order, hard client hints, tenant isolation, no match, unavailable, sticky success/failure             |
+| Assignment    | accept, reject capacity, reject draining, ack timeout, no duplicate retry                                      |
+| Streaming     | sequence gaps, duplicates, out-of-order frames, offset mismatch, credit exhaustion, idle timeout               |
+| Terminal      | duplicate terminal ignored/counted, late frame ignored, worker death synthesizes terminal outcome              |
+| Cancellation  | client disconnect, deadline, admin cancel, late frame ignored                                                  |
+| Fallback      | fallback before `RequestStart`, no fallback after `RequestStart` unless replayable, no silent replay           |
+| Error mapping | every ErrorCode maps to HTTP/retry/category; origin 4xx/5xx passthrough is not ErrorResponse                   |
+| REST schema   | valid request, invalid fields, header duplicate preservation, inline body limit, CONNECT rejected              |
+| REST outcome  | upstream 404/500 returns API HTTP 200 with upstream status in envelope; Straw errors return ErrorResponse      |
+| Body limits   | request body over cap returns `body_too_large`; response body over cap returns `body_too_large` with direction |
+| P0 exclusions | capture_hint other than `none` rejected; redirect-following flag rejected/unsupported; BodyRef rejected        |
+| Rate limits   | dimensions, 429, retry_after, Redis fail policy                                                                |
+| Quotas        | request count, bandwidth accounting, admission policy, Redis loss behavior, no billing-grade claim             |
+| Deny rules    | domain, CIDR, private IP, metadata IP, DNS rebinding, redirect target future test, IDNA normalization          |
+| Egress policy | RequestStart carries DestinationPolicy; Egress enforces resolved-IP deny without querying Control DBs          |
+| HTTP behavior | P0 disables CONNECT, outbound HTTP/2, and upstream keep-alives unless explicit tested feature flag is enabled  |
+| Redaction     | URL userinfo rejected; query dropped by default; auth/cookie headers absent from logs/ClickHouse               |
+| Config API    | expected version conflict, tenant version increment, path separation for config/admin                          |
+| Invalidation  | Redis pub/sub invalidation, missed pub/sub corrected by version check, API key revocation invalidates cache    |
+| ClickHouse    | async write success, outage, bounded queue drop, sanitized target_url                                          |
+| Load          | routing p50/p99, assignment latency, active request limit, worker capacity behavior                            |
 
-P1/P2 add proxy, CONNECT, MITM, BodyRef, payload capture, Provider Adapter, and HTTP/2 test rows before those features
-ship.
+P1/P2 add proxy, CONNECT, MITM, BodyRef, payload capture, Provider Adapter, telemetry read APIs, connection pooling,
+and HTTP/2 test rows before those features ship.
 
 ## 31. Implementation Order
 
 ### P0
 
 1. Repository scaffolding, config loader, schema validation, generated protobuf.
-2. Canonical `straw.v1` protobuf and Buf CI.
-3. NATS connection and exact-session subject protocol.
-4. Postgres schema for tenants, API keys, worker credentials, pools, routes.
-5. Control REST `/api/v1/requests` minimal transport endpoint.
-6. Worker registration and heartbeat.
-7. Routing snapshot cache and tenant isolation.
-8. Assignment and stream frame lifecycle.
-9. Official Go Egress outbound request execution.
-10. Canonical error registry and ErrorResponse mapping.
-11. Redis rate limits, quotas, worker state, sticky sessions.
-12. ClickHouse request metadata write path.
-13. P0 test matrix and docker-compose.
+2. Canonical `straw.v1` protobuf, StreamFrame sequencing, DestinationPolicy, ErrorResponse details, and Buf CI.
+3. NATS connection, max-payload startup validation, and exact-session subject protocol.
+4. Postgres schema for tenants, platform/tenant roles, API keys, worker credentials, pools, routes, deny rules,
+   injection policies, rate limits, quotas, config versions, and audit source records.
+5. Config snapshot cache with Postgres versioning and Redis invalidation.
+6. Control REST `/api/v1/requests` minimal non-streaming transport endpoint.
+7. API-key authentication, tenant resolution, RBAC, and cache invalidation for revocation.
+8. Worker registration, heartbeat, state machine, duplicate-session handling, draining, disable, and cooldown.
+9. Routing snapshot evaluation, tenant isolation, worker eligibility, sticky sessions.
+10. Assignment and stream frame lifecycle with sequence/offset/credit validation.
+11. Official Go Egress outbound request execution with P0 transport defaults, deadline enforcement, and
+    DestinationPolicy
+    resolved-IP enforcement.
+12. Canonical error registry and ErrorResponse mapping.
+13. Redis rate limits, quota hot counters, worker state, sticky sessions, and explicit Redis failure policies.
+14. ClickHouse request metadata write path with redaction/sanitization.
+15. P0 test matrix and docker-compose.
 
 ### P1
 
 1. HTTP forward proxy.
 2. Raw CONNECT tunnel.
 3. SDK/CLI minimal surfaces.
-4. UI minimal admin/observability surface.
-5. Load/backpressure hardening.
-6. Production deployment templates.
+4. Telemetry read APIs and UI minimal admin/observability surface.
+5. Optional direct worker Prometheus scraping if chosen.
+6. Optional upstream connection pooling if explicitly designed.
+7. Load/backpressure hardening.
+8. Production deployment templates.
 
 ### P2
 
@@ -2007,27 +2753,39 @@ ship.
 3. Payload capture.
 4. Provider Adapter protocol and static adapter.
 5. HTTP/2 support if fully specified and tested.
+6. Billing-grade or near-billing-grade quota reconciliation if required.
 
 ## 32. Open Decisions
 
 These must be decided before related implementation starts:
 
-1. REST successful response streaming format for large responses.
-2. Whether Egress exposes Prometheus metrics directly or only reports to Control.
-3. Exact quota durability/reconciliation mechanism.
-4. P2 MITM private-key storage policy.
-5. P2 BodyRef response-body mode.
-6. Whether object storage retention default is 1 day or 3 days; this rewrite recommends 1 day default, configurable to 3
-   days.
-7. Whether HTTP/2 is P1 or P2.
-8. Whether Provider Adapter ships with a real Bright Data adapter or only protocol scaffolding.
+1. REST successful response streaming format for P1 `/api/v1/requests:stream`.
+2. Whether P1 Egress exposes Prometheus metrics directly or only reports to Control.
+3. P2 MITM private-key storage policy.
+4. P2 BodyRef response-body mode.
+5. Whether Provider Adapter ships with a real Bright Data adapter or only protocol scaffolding.
+6. Whether P2 quota reconciliation must be billing-grade or only operationally accurate.
+
+Resolved by this rewrite:
+
+- P0 REST is externally non-streaming and internally may use NATS DataFrames.
+- P0 uses `body_too_large` for request and response body limit failures.
+- P0 rejects `CONNECT` in REST transport.
+- P0 rejects `capture_hint` values other than `none`.
+- P0 disables redirect following.
+- P0 disables outbound HTTP/2 and upstream keep-alives by default.
+- HTTP/2 is P2 unless moved by an explicit future decision.
+- Object-storage body retention default is 1 day, configurable up to 3 days for debugging.
+- P0 quotas are operational admission controls, not billing-grade durable accounting.
+- Worker runtime actions live under `/api/v1/admin/*`, not `/api/v1/config/*`.
+- Tenant creation requires `system_admin`; tenant-local administration uses `tenant_admin`.
 
 ## 33. Risks
 
 ### Contract Drift
 
-The largest implementation risk is reintroducing competing contracts. NATS/protobuf, error codes, routing semantics, and
-ClickHouse schema must each have one canonical section.
+The largest implementation risk is reintroducing competing contracts. NATS/protobuf, error codes, routing semantics,
+Postgres config schemas, and ClickHouse schema must each have one canonical section.
 
 ### Control CPU Saturation
 
@@ -2041,23 +2799,37 @@ Outbound TLS fingerprint libraries may block or leak resources. Egress must isol
 
 ### Quota Accuracy
 
-Redis-only quota counters are not durable. P0 must label quota usage as operational admission control unless
-reconciliation from durable events is implemented.
+Redis-only quota counters are not durable. P0 quotas are operational admission controls. Billing-grade accounting
+requires a later reconciliation design or an explicitly implemented P0 reconciliation job.
+
+### Config Staleness
+
+Redis pub/sub invalidation can be missed. Postgres tenant config versions are the durable source of truth, and Control
+must periodically or synchronously detect newer versions for new requests.
 
 ### SSRF/Destination Abuse
 
-Deny rules must run both before routing and after DNS resolution. Egress-side resolved-IP enforcement is mandatory.
+Deny rules must run both before routing and after DNS resolution. Egress-side resolved-IP enforcement is mandatory and
+must use the per-request DestinationPolicy bundle sent by Control.
+
+### Metadata Leakage
+
+Even without payload capture, full URLs, headers, and error details can leak secrets. P0 metadata redaction is mandatory
+for logs and ClickHouse writes.
+
+### NATS Payload Limits
+
+Frame sizes that fit the Straw config may still exceed the NATS server max payload after protobuf envelope overhead.
+Startup validation must fail unsafe configurations.
 
 ### Payload Capture Liability
 
 Payload capture can store sensitive data. It must be explicit, bounded, redacted only for stored copies, and off by
 default.
 
----
-
 # Appendix A — Reconciliation Notes
 
-This rewrite intentionally makes these replacements:
+This rewrite intentionally makes these replacements and hardening changes:
 
 - Replaces pool queue-group NATS dispatch with exact-session dispatch.
 - Replaces duplicate ClickHouse schemas with one canonical `straw.*` table set.
@@ -2072,3 +2844,18 @@ This rewrite intentionally makes these replacements:
 - Defines `requester` as the data-plane execution role.
 - Treats inbound TLS termination as server-side TLS, not outbound `tls-client` behavior.
 - Defines generated per-SNI certificates as leaf certificates, not intermediates.
+- Adds platform-scoped `system_admin` and tenant-scoped `tenant_admin` to remove tenant-creation RBAC ambiguity.
+- Defines P0 REST as externally non-streaming while allowing internal NATS DataFrame streaming.
+- Uses `body_too_large` with `details.direction` instead of an undefined `response_body_too_large` code.
+- Moves worker runtime operations from `/api/v1/config/*` to `/api/v1/admin/*`.
+- Adds StreamFrame sequencing, DataFrame offsets, and `OutboundStartFrame`.
+- Qualifies the terminal-frame invariant for worker/NATS loss and synthetic terminal outcomes.
+- Defines P0 fallback as conservative after `RequestStart` unless `replayable=true`.
+- Adds per-request `DestinationPolicy` so Egress can enforce resolved-IP policy without querying Control stores.
+- Adds canonical P0 Postgres model and config resource schemas.
+- Adds durable tenant config-version checks so Redis pub/sub is not the only invalidation path.
+- Adds P0 metadata redaction rules for URLs, auth headers, cookies, logs, and ClickHouse.
+- Adds NATS max-payload startup validation.
+- Resolves HTTP/2 as P2 unless explicitly moved later.
+- Resolves object-storage body retention default as 1 day, configurable up to 3 days for debugging.
+- Defines P0 quotas as operational admission controls rather than billing-grade accounting.
