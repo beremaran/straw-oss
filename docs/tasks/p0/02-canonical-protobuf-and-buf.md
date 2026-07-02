@@ -1,6 +1,6 @@
 # 02 - Canonical Protobuf and Buf
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -35,17 +35,17 @@ Define the canonical `straw.v1` protobuf contract and Buf checks for P0 transpor
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Define Envelope, StreamFrame, AssignRequest, DestinationPolicy, and ErrorResponse messages for P0.
-- [ ] Include credit fields and sequence/offset fields required by the NATS protocol.
-- [ ] Define enums with unknown-value rejection behavior covered by tests.
-- [ ] Configure `buf lint` and `buf breaking` for the repository.
-- [ ] Generate Go code.
-- [ ] Add contract tests proving BodyRefFrame compiles, AssignRequest credit fields exist, and unknown enums are rejected at validation boundaries.
-- [ ] Run `buf lint`.
-- [ ] Run `buf breaking` against the configured baseline if available.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Read all required planning docs.
+- [x] Define Envelope, StreamFrame, AssignRequest, DestinationPolicy, and ErrorResponse messages for P0.
+- [x] Include credit fields and sequence/offset fields required by the NATS protocol.
+- [x] Define enums with unknown-value rejection behavior covered by tests.
+- [x] Configure `buf lint` and `buf breaking` for the repository.
+- [x] Generate Go code.
+- [x] Add contract tests proving BodyRefFrame compiles, AssignRequest credit fields exist, and unknown enums are rejected at validation boundaries.
+- [x] Run `buf lint`.
+- [x] Run `buf breaking` against the configured baseline if available.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 
