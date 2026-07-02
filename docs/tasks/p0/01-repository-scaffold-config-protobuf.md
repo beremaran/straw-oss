@@ -1,6 +1,6 @@
 # 01 - Repository Scaffold, Config Loader, Schema Validation, Generated Protobuf
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -39,16 +39,16 @@ Create the first buildable Go scaffold for P0, including static config loading, 
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Define the smallest static config shape needed to start Control and Egress locally.
-- [ ] Add table-driven tests for valid config, missing required fields, invalid limits, and unknown fields.
-- [ ] Implement the config loader with standard library parsing where possible; add no new dependency unless the file format requires it.
-- [ ] Add schema validation in `internal/config`.
-- [ ] Wire `cmd/control` and `cmd/egress` to load config and exit clearly on invalid config.
-- [ ] Add protobuf generation config only if the contract files are introduced here.
-- [ ] Run focused config tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Read all required planning docs.
+- [x] Define the smallest static config shape needed to start Control and Egress locally.
+- [x] Add table-driven tests for valid config, missing required fields, invalid limits, and unknown fields.
+- [x] Implement the config loader with standard library parsing where possible; add no new dependency unless the file format requires it.
+- [x] Add schema validation in `internal/config`.
+- [x] Wire `cmd/control` and `cmd/egress` to load config and exit clearly on invalid config.
+- [x] Add protobuf generation config only if the contract files are introduced here.
+- [x] Run focused config tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 
