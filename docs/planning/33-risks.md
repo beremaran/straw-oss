@@ -54,7 +54,3 @@ with explicit flush calls.
 Payload capture can store sensitive data. It must be explicit, bounded, redacted only for stored copies, and off by
 default.
 
-# Appendix A — Historical Reconciliation Notes
-
-This file intentionally does not include reconciliation notes. See [a-reconciliation-notes.md](./a-reconciliation-notes.md)
-for the historical rewrite reconciliation list.
