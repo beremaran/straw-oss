@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/beremaran/straw/v2/internal/config"
+	"github.com/beremaran/straw/v2/internal/natsx"
 )
 
 func main() {
@@ -17,7 +18,13 @@ func main() {
 		os.Exit(2)
 	}
 
-	if _, err := config.LoadEgress(*configPath); err != nil {
+	egressConfig, err := config.LoadEgress(*configPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+
+	if err := natsx.ValidateServers(egressConfig.NATS.Servers); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

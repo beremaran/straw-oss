@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/beremaran/straw/v2/internal/config"
+	"github.com/beremaran/straw/v2/internal/natsx"
 )
 
 func main() {
@@ -17,7 +18,17 @@ func main() {
 		os.Exit(2)
 	}
 
-	if _, err := config.LoadControl(*configPath); err != nil {
+	controlConfig, err := config.LoadControl(*configPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+
+	if err := natsx.ValidateServers(controlConfig.NATS.Servers); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	if err := natsx.ValidateMaxPayload(controlConfig.NATS.MaxPayloadBytes, controlConfig.Transport.MaxFrameDataBytes, controlConfig.Request.MaxInlineRequestBodyBytes, controlConfig.Request.MaxInlineResponseBodyBytes); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
