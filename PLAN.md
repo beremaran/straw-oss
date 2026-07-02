@@ -1625,7 +1625,1376 @@ Request IDs are propagated through all NATS messages, enabling log-to-trace corr
 
 ## 20. Configuration
 
-Runtime configuration surface.
+
+### 20.1 Static vs Dynamic Configuration
+
+Straw configuration is divided into two categories with distinct lifecycles, storage, and reload semantics.
+
+**Static (Deploy-Time) Configuration**
+
+Loaded once at process startup from config files and environment variables. Changes require a process restart.
+
+- Stored in YAML config files with JSON schema validation and `STRAW_*` environment variable overrides.
+- Shared across all instances of a component within a deployment.
+- Topics: NATS connection, database URLs, TLS certificates, log level, metrics endpoint, body transport thresholds, ClickHouse connection.
+
+**Dynamic (Runtime) Configuration**
+
+Persisted in Postgres and managed through the Admin/Operator REST APIs. Hot-reloadable without restart.
+
+- Loaded from Postgres on demand and cached in memory by Control instances.
+- May be scoped to tenants, tags, pools, or the global system.
+- Topics: routing rules, API keys, tenant settings, worker credentials, quotas, fingerprint profiles, injection policies, payload capture policy, deny rules, worker disable/drain state.
+
+**Reload Categories**
+
+Dynamic config changes fall into three reload categories:
+
+| Category | Propagation | Examples |
+|---|---|---|
+| **Immediate** | Takes effect on the next request processed by Control. In-flight requests are unaffected. | Routing rules, injection policies, quotas, deny rules, rate limits, payload capture toggle |
+| **Next Heartbeat** | Takes effect when the worker next reports health or Control detects the change on the next heartbeat cycle. | Worker credential rotation, capability overrides, worker disable/drain state |
+| **Requires Restart** | Only applied at process startup. Control and Egress must be restarted for changes to take effect. | TLS certificate paths, NATS connection strings, MITM CA config, log level, metrics endpoint, body transport thresholds |
+
+**Hot-Reload Mechanism**
+
+When dynamic config changes, Control publishes an invalidation event to Redis pub/sub on channel `straw:config:invalidate:{tenant_id}`. All Control instances subscribe to this channel and reload the affected tenant's full config snapshot from Postgres.
+
+- **Snapshot reload**: Control reloads the entire tenant config snapshot atomically from Postgres, not individual field patches.
+- **In-flight consistency**: In-flight requests use the snapshot captured at request start. Only new requests see the updated config.
+- **Grace period**: After invalidation, Control reloads immediately (no artificial delay). Thundering herd is prevented by the atomic snapshot reload and the fact that invalidation is per-tenant, not global.
+- **Failure fallback**: If a Control instance fails to reload config after invalidation, it falls back to the previous in-memory snapshot and logs a warning. The instance continues serving requests with the old config while retrying the reload. A P2 alert fires if reload failure persists for more than 30 seconds.
+
+### 20.2 Config File Format and Conventions
+
+All components use YAML config files with `STRAW_*` environment variable overrides. JSON schema files are provided for editor auto-complete and static validation.
+
+**Naming Convention**
+
+- Environment variables use the `STRAW_` prefix followed by the component name and configuration key, in uppercase with underscores.
+- YAML config keys use kebab-case, nested under component names.
+- Environment variables override YAML values at load time. If both are present, the environment variable takes precedence.
+
+**Schema Validation**
+
+- **Compile-time**: JSON Schema files (`schema/control.config.json`, `schema/egress.config.json`) are shipped with the project. Editors with JSON Schema support provide auto-complete and inline validation.
+- **Startup-time**: Control and Egress validate their config files against the JSON schema on startup. Invalid configs cause an immediate exit with a clear error message listing each validation failure.
+- **Runtime**: Dynamic config changes submitted via the REST API are validated against the protobuf schema before acceptance. Invalid changes are rejected with a reason. Partial updates are not applied — the entire change is atomic.
+
+**Config File Layout**
+
+Each component has its own config file:
+
+- Control: `control.yaml`
+- Egress Worker: `egress.yaml`
+- Provider Adapter: `adapter.yaml` (if used)
+
+Config files support YAML anchors and references for reusable fragments. Environment variable substitution uses `${STRAW_*}` syntax for values that must come from the environment (e.g., secrets).
+
+### 20.3 Static Configuration Reference
+
+#### 20.3.1 Control Server Static Configuration
+
+```yaml
+# control.yaml
+control:
+  server:
+    host: "0.0.0.0"
+    port: 8080
+    read_timeout_ms: 30000
+    write_timeout_ms: 30000
+
+  # REST API entrypoint
+  api:
+    host: "0.0.0.0"
+    port: 8081
+    max_request_body_bytes: 0  # 0 = unlimited
+    request_timeout_ms: 60000
+
+  # HTTP forward proxy entrypoint
+  http_proxy:
+    enabled: true
+    host: "0.0.0.0"
+    port: 8082
+
+  # CONNECT tunnel proxy entrypoint
+  connect_proxy:
+    enabled: true
+    host: "0.0.0.0"
+    port: 8083
+    handshake_timeout_ms: 10000
+
+  # MITM proxy entrypoint
+  mitm:
+    enabled: true
+    host: "0.0.0.0"
+    port: 8084
+    ca_key_path: "/etc/straw/mitm/ca.key"
+    ca_cert_path: "/etc/straw/mitm/ca.pem"
+    ca_key_password_env: "STRAW_MITM_CA_KEY_PASSWORD"
+    cert_validity_days: 365
+    strict_verify_outbound: true
+    supported_tls_versions: ["1.2", "1.3"]
+
+  # Inbound TLS termination (tls-client stack)
+  tls:
+    cert_path: "/etc/straw/tls/server.crt"
+    key_path: "/etc/straw/tls/server.key"
+    supported_versions: ["1.2", "1.3"]
+    cipher_suites: []  # empty = tls-client defaults
+
+  # NATS connection (all static)
+  nats:
+    servers:
+      - "nats://nats:4222"
+    user_credentials_file: "/etc/straw/nats/creds.creds"
+    tls_cert_path: "/etc/straw/nats/client.crt"
+    tls_key_path: "/etc/straw/nats/client.key"
+    tls_ca_path: "/etc/straw/nats/ca.crt"
+    reconnect_attempts: 10
+    reconnect_wait_ms: 2000
+    ping_interval_ms: 30000
+    max_ping_failures: 3
+    flush_interval_ms: 100
+    buffer_size_mb: 32
+    max_reconnect_buffer_mb: 256
+
+  # Database connections
+  database:
+    postgres:
+      dsn_env: "STRAW_POSTGRES_DSN"
+      max_open_conns: 20
+      max_idle_conns: 5
+      conn_max_lifetime_minutes: 30
+    redis:
+      url_env: "STRAW_REDIS_URL"
+      max_open_conns: 10
+      conn_max_lifetime_minutes: 10
+    clickhouse:
+      url: "http://clickhouse:8123"
+      database: "straw"
+      username: "straw"
+      password_env: "STRAW_CLICKHOUSE_PASSWORD"
+      max_conns: 10
+      conn_max_lifetime_minutes: 30
+      async_write: true
+      write_batch_size: 1000
+      write_flush_interval_ms: 1000
+
+  # Body transport
+  body_transport:
+    large_body_threshold_bytes: 1048576  # 1MB
+    object_storage:
+      enabled: false
+      endpoint: "https://s3.amazonaws.com"
+      bucket: "straw-bodies"
+      region: "us-east-1"
+      access_key_env: "STRAW_S3_ACCESS_KEY"
+      secret_key_env: "STRAW_S3_SECRET_KEY"
+      body_retention_days: 1
+    direct_stream:
+      enabled: false
+      endpoint: "http://body-stream:9090"
+      stream_timeout_ms: 300000
+
+  # Observability (all static)
+  observability:
+    logging:
+      level: "info"
+      format: "json"
+      output: ["stdout"]
+      structured_fields:
+        - "request_id"
+        - "tenant_id"
+        - "trace_id"
+        - "worker_id"
+    metrics:
+      enabled: true
+      path: "/metrics"
+      host: "0.0.0.0"
+      port: 9090
+      custom_prefix: "straw_"
+    tracing:
+      enabled: false
+      exporter: "jaeger"  # jaeger | tempo
+      endpoint: "http://jaeger:14268/api/traces"
+      sampling_rate: 0.1
+      propagate_trace_context: true
+      headers:
+        - "traceparent"
+        - "tracestate"
+
+  # Config management
+  config:
+    schema_dir: "/etc/straw/schemas"
+    drift_detection: true
+    drift_check_interval_seconds: 60
+```
+
+#### 20.3.2 Egress Worker Static Configuration
+
+```yaml
+# egress.yaml
+egress:
+  worker_id: "egress-001"
+
+  # NATS connection (all static, same structure as Control)
+  nats:
+    servers:
+      - "nats://nats:4222"
+    user_credentials_file: "/etc/straw/nats/creds.creds"
+    tls_cert_path: "/etc/straw/nats/client.crt"
+    tls_key_path: "/etc/straw/nats/client.key"
+    tls_ca_path: "/etc/straw/nats/ca.crt"
+    reconnect_attempts: 10
+    reconnect_wait_ms: 2000
+    ping_interval_ms: 30000
+    max_ping_failures: 3
+
+  # Worker capabilities (advertised on registration)
+  capabilities:
+    pool_names: ["default"]
+    tags: ["datacenter", "us-west"]
+    countries: ["US"]
+    regions: ["us-west-1"]
+    ip_types: ["datacenter"]
+    supported_ingress_modes: ["rest", "http_proxy", "connect", "mitm"]
+
+  # Browser fingerprint (tls-client preset)
+  fingerprint:
+    # Preset name must match a tls-client built-in preset
+    # Examples: "chrome_120", "firefox_121", "safari_17"
+    # See tls-client preset documentation for the full list
+    default_preset: "chrome_120"
+
+  # Outbound TLS
+  outbound_tls:
+    strict_verify: true
+    ca_bundle_path: "/etc/straw/tls/ca-bundle.crt"
+    supported_versions: ["1.2", "1.3"]
+
+  # Upstream proxy chaining (optional)
+  upstream_proxy:
+    enabled: false
+    type: "http"  # http | socks5
+    host: "proxy.example.com"
+    port: 8080
+    username_env: "STRAW_UPSTREAM_PROXY_USERNAME"
+    password_env: "STRAW_UPSTREAM_PROXY_PASSWORD"
+
+  # Body transport (same structure as Control)
+  body_transport:
+    large_body_threshold_bytes: 1048576
+    object_storage:
+      enabled: false
+      endpoint: "https://s3.amazonaws.com"
+      bucket: "straw-bodies"
+      region: "us-east-1"
+      access_key_env: "STRAW_S3_ACCESS_KEY"
+      secret_key_env: "STRAW_S3_SECRET_KEY"
+    direct_stream:
+      enabled: false
+      endpoint: "http://body-stream:9090"
+      stream_timeout_ms: 300000
+
+  # Heartbeat
+  heartbeat:
+    interval_ms: 5000
+    timeout_ms: 15000  # Control considers worker dead after this without heartbeat
+
+  # TLS for inbound (if Egress exposes a local health endpoint)
+  tls:
+    cert_path: "/etc/straw/tls/server.crt"
+    key_path: "/etc/straw/tls/server.key"
+
+  # Observability
+  observability:
+    logging:
+      level: "info"
+      format: "json"
+      output: ["stdout"]
+```
+
+#### 20.3.3 Provider Adapter Static Configuration
+
+```yaml
+# adapter.yaml
+adapter:
+  worker_id: "adapter-001"
+
+  # NATS connection (same structure as Control/Egress)
+  nats:
+    servers:
+      - "nats://nats:4222"
+    user_credentials_file: "/etc/straw/nats/creds.creds"
+
+  # Provider configuration
+  providers:
+    - name: "bright_data"
+      type: "bright_data"
+      api_endpoint: "https://api.brightdata.com"
+      api_key_env: "STRAW_BRIGHT_DATA_KEY"
+      accounts:
+        - id: "account-1"
+          session_limit: 100
+          max_concurrency: 50
+        - id: "account-2"
+          session_limit: 100
+          max_concurrency: 50
+      pool_names: ["bright-data-pool"]
+      tags: ["residential"]
+      countries: []  # empty = all
+      ip_types: ["residential"]
+
+    - name: "custom_upstream"
+      type: "upstream_proxy"
+      upstream_proxy:
+        type: "http"
+        host: "proxy.provider.com"
+        port: 443
+        username_env: "STRAW_UPSTREAM_USERNAME"
+        password_env: "STRAW_UPSTREAM_PASSWORD"
+      pool_names: ["upstream-pool"]
+      tags: ["upstream"]
+      countries: []
+      ip_types: ["datacenter"]
+
+  # Per-account load balancing
+  load_balancing:
+    strategy: "round_robin"  # round_robin | least_loaded | random
+    account_rotation_enabled: true
+
+  # Heartbeat
+  heartbeat:
+    interval_ms: 5000
+    timeout_ms: 15000
+
+  # Observability
+  observability:
+    logging:
+      level: "info"
+      format: "json"
+      output: ["stdout"]
+```
+
+### 20.4 NATS Configuration Reference
+
+NATS configuration is first-class and entirely static. All NATS settings are documented here, including the subject topology.
+
+#### 20.4.1 Connection Parameters
+
+| Parameter | YAML Key | Env Var | Default | Description |
+|---|---|---|---|---|
+| Servers | `nats.servers` | `STRAW_NATS_URLS` (comma-separated) | `nats://localhost:4222` | NATS server connection URLs |
+| Credentials File | `nats.user_credentials_file` | `STRAW_NATS_CREDS_FILE` | — | Path to NATS NKey/JWT credentials file |
+| TLS Cert | `nats.tls_cert_path` | `STRAW_NATS_TLS_CERT` | — | Client TLS certificate path |
+| TLS Key | `nats.tls_key_path` | `STRAW_NATS_TLS_KEY` | — | Client TLS private key path |
+| TLS CA | `nats.tls_ca_path` | `STRAW_NATS_TLS_CA` | — | CA certificate for server verification |
+| Reconnect Attempts | `nats.reconnect_attempts` | `STRAW_NATS_RECONNECT_ATTEMPTS` | `10` | Max reconnect attempts before giving up |
+| Reconnect Wait | `nats.reconnect_wait_ms` | `STRAW_NATS_RECONNECT_WAIT_MS` | `2000` | Wait between reconnect attempts (ms) |
+| Ping Interval | `nats.ping_interval_ms` | `STRAW_NATS_PING_INTERVAL_MS` | `30000` | NATS server ping interval (ms) |
+| Max Ping Failures | `nats.max_ping_failures` | `STRAW_NATS_MAX_PING_FAILURES` | `3` | Consecutive ping failures before disconnect |
+| Flush Interval | `nats.flush_interval_ms` | `STRAW_NATS_FLUSH_INTERVAL_MS` | `100` | Max time between NATS flushes (ms) |
+| Buffer Size | `nats.buffer_size_mb` | `STRAW_NATS_BUFFER_SIZE_MB` | `32` | NATS client send buffer size (MB) |
+| Max Reconnect Buffer | `nats.max_reconnect_buffer_mb` | `STRAW_NATS_MAX_RECONNECT_BUFFER_MB` | `256` | Max buffer size during reconnect (MB) |
+
+#### 20.4.2 Subject Topology
+
+All NATS subjects follow the pattern `straw.v1.{topic}.{scope}.{action}`.
+
+| Subject | Direction | Payload | Purpose |
+|---|---|---|---|
+| `straw.v1.register.>` | Worker → Control | `RegisterRequest` | Worker registration |
+| `straw.v1.register.reply.{worker_id}` | Control → Worker | `RegisterAck` | Registration acknowledgement |
+| `straw.v1.heartbeat.{worker_id}` | Worker → Control | `HeartbeatRequest` | Worker health report |
+| `straw.v1.heartbeat.reply.{worker_id}` | Control → Worker | `HeartbeatAck` | Heartbeat acknowledgement |
+| `straw.v1.dispatch.{pool_name}` | Control → Workers (queue group) | `AssignRequest` | Work assignment (queue group per pool) |
+| `straw.v1.dispatch.reply.{request_id}` | Worker → Control | `AssignAck` | Assignment acknowledgement |
+| `straw.v1.stream.c2e.{request_id}` | Worker → Control (stream) | `StreamFrame` | Client-to-executor upload / tunnel bytes |
+| `straw.v1.stream.e2c.{request_id}` | Control → Worker (stream) | `StreamFrame` | Executor-to-Control response / tunnel bytes |
+| `straw.v1.cancel.{request_id}` | Worker → Control | `StreamFrame` (cancel) | Request cancellation |
+| `straw.v1.config.invalidate.{tenant_id}` | Control → Control (Redis) | — | Config invalidation broadcast |
+
+#### 20.4.3 Queue Groups
+
+Pool-based load balancing uses NATS queue groups:
+
+- Each executor pool maps to a NATS queue group: `straw.dispatch.pool.{pool_name}`
+- Workers join the queue group by subscribing to the dispatch subject with the pool name as the queue group
+- When Control publishes to `straw.v1.dispatch.{pool_name}`, NATS delivers the message to exactly one worker in the queue group
+- New workers automatically join the queue group on registration
+- Worker removal (heartbeat timeout, disable) causes NATS to redeliver pending messages to other queue members
+
+#### 20.4.4 NATS Message Cleanup
+
+- NATS does not retain old messages after delivery. Each `AssignRequest` is a one-shot request/reply.
+- `StreamFrame` messages are transient and delivered in real-time; no persistence is configured.
+- No stream retention or disk storage is needed for the default NATS deployment.
+
+### 20.5 Dynamic Configuration Reference
+
+#### 20.5.1 Tenant Configuration
+
+Each tenant is a top-level config entity with the following fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | string | Unique tenant identifier (set at creation) |
+| `name` | string | Human-readable tenant name |
+| `status` | enum | `active`, `suspended`, `deleted` |
+| `created_at` | unix_ms | Tenant creation timestamp |
+| `updated_at` | unix_ms | Last config update timestamp |
+| `config_version` | uint64 | Monotonically increasing config version number |
+| `rate_limits` | object | Tenant-level rate limit dimensions (see §20.8) |
+| `quotas` | object | Tenant-level quota limits (see §20.8) |
+| `deny_rules` | array | Tenant-level destination deny rules (see §20.8) |
+| `payload_capture_enabled` | bool | Global payload capture toggle for this tenant |
+| `default_fingerprint_profile` | string | Default fingerprint preset name |
+
+**Config Versioning**
+
+Every dynamic config change increments the `config_version` field atomically in Postgres. The version is used for:
+
+- **Optimistic concurrency**: Updates include the expected `config_version`. If the current version differs, the update is rejected with a `conflict` error, and the client must reload and retry.
+- **Rollback**: Each config change is stored as an immutable audit record with its `config_version`. Admins can rollback to any previous version, creating a new version that reverts the changes.
+- **Audit trail**: All config changes are logged to ClickHouse with `config_version`, `changed_by` (user_id), `action` (create/update/rollback), `field_path`, `old_value`, `new_value`, and `timestamp`.
+
+#### 20.5.2 API Key Configuration
+
+Each API key is a child resource under a tenant:
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | string | Unique API key identifier |
+| `tenant_id` | string | Parent tenant |
+| `key_hash` | string | SHA-256 hash of the API key (never stored in plaintext) |
+| `key_prefix` | string | First 8 characters of the key (for identification; shown only at creation) |
+| `user_id` | string | Owning user |
+| `role` | enum | `admin`, `operator`, `viewer` |
+| `status` | enum | `active`, `revoked` |
+| `created_at` | unix_ms | Key creation timestamp |
+| `revoked_at` | unix_ms | Key revocation timestamp (null if active) |
+| `last_used_at` | unix_ms | Last successful authentication timestamp |
+
+**Key Rotation**
+
+- Multiple active keys are supported simultaneously. During rotation, both old and new keys remain valid.
+- Revocation is immediate: the key hash is marked `revoked` in Postgres, the config version is bumped, and a Redis pub/sub invalidation is published. Control evicts the key from its in-memory cache immediately.
+- In-flight requests authenticated with a revoked key complete normally. New requests using the revoked key are rejected with `invalid_api_key`.
+- Keys are never deleted; they are soft-revoked and retained for audit purposes.
+
+#### 20.5.3 Routing Rules Configuration
+
+Each routing rule is a tenant-scoped config entity:
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | string | Unique rule identifier |
+| `tenant_id` | string | Parent tenant |
+| `priority` | int32 | Evaluation priority (lower number = higher priority). Rules evaluated in ascending priority order. |
+| `enabled` | bool | Whether the rule is active. Disabled rules are skipped during evaluation. |
+| `match_conditions` | object | Match criteria (all required fields must match) |
+| `target_pool_id` | string | Target executor pool (Egress or Provider Adapter) |
+| `fallback_pool_ids` | array | Ordered list of fallback pool IDs. Applied in order if the primary pool has no eligible executors. |
+| `sticky_session_ttl_seconds` | int32 | Sticky session TTL for this rule. 0 = no sticky sessions. |
+| `allow_sticky_fallback` | bool | If true, allow falling back to a different executor when the sticky session target is unavailable. |
+| `config_version` | uint64 | Config version at time of this rule's creation |
+
+**Match Conditions Schema**
+
+```json
+{
+  "tags": ["string"],
+  "country": "ISO-3166-alpha-2",
+  "region": "string",
+  "ip_type": "datacenter | residential | mobile | isp | unknown",
+  "ingress_type": "rest | http_proxy | connect | mitm",
+  "target_host": "string"
+}
+```
+
+- `tags`: All requested tags must be present on the target executor.
+- `country`: Strict ISO-3166 alpha-2 country code match.
+- `region`: Optional executor-advertised region match.
+- `ip_type`: Must match the executor's advertised IP type.
+- `ingress_type`: Optional match for the client's ingress mode.
+- `target_host`: Exact host or suffix domain match (e.g., `*.example.com`).
+
+**Evaluation Order**
+
+1. Rules are sorted by `priority` (ascending).
+2. For each enabled rule, match conditions are evaluated against the request hints.
+3. If all match conditions are satisfied, the rule's `target_pool_id` is selected.
+4. If the target pool has no eligible executors, fallback pools in `fallback_pool_ids` are tried in order.
+5. If no rule matches, the request fails with `route_no_match`.
+6. If all pools are unavailable, the request fails with `route_unavailable`.
+7. There is no implicit default route — admins must create a catch-all rule if desired.
+
+**Rule Matching and Client Hints**
+
+Any hint the client provides is a hard constraint. Missing hints mean no preference. Fallback may relax admin preferences but never client hints.
+
+#### 20.5.4 Fingerprint Profiles Configuration
+
+Fingerprint profiles are fixed `tls-client` built-in presets. Operators select by preset name.
+
+| Field | Type | Description |
+|---|---|---|
+| `preset_name` | string | `tls-client` preset identifier (e.g., `chrome_120`, `firefox_121`, `safari_17`) |
+| `display_name` | string | Human-readable name (e.g., "Chrome 120 on Windows") |
+
+**Built-in Presets**
+
+The following `tls-client` presets are available (subject to the `tls-client` version in use):
+
+| Preset Name | Display Name | Browser | Version | Platform |
+|---|---|---|---|---|
+| `chrome_120` | Chrome 120 | Chrome | 120.0.0.0 | Windows 10 |
+| `chrome_121` | Chrome 121 | Chrome | 121.0.0.0 | Windows 10 |
+| `chrome_123` | Chrome 123 | Chrome | 123.0.0.0 | macOS 14 |
+| `chrome_131` | Chrome 131 | Chrome | 131.0.0.0 | Android 14 |
+| `firefox_120` | Firefox 120 | Firefox | 120.0 | Windows 10 |
+| `firefox_121` | Firefox 121 | Firefox | 121.0 | Windows 10 |
+| `firefox_125` | Firefox 125 | Firefox | 125.0 | macOS 14 |
+| `safari_16` | Safari 16 | Safari | 16.0 | macOS 13 |
+| `safari_17` | Safari 17 | Safari | 17.0 | iOS 17 |
+
+**Selection Flow**
+
+1. Client includes `fingerprint_profile` field in the request with a preset name.
+2. If not specified, the tenant's `default_fingerprint_profile` is used.
+3. Control validates the preset name against the known preset list.
+4. Control sends the preset name to Egress via the `fingerprint_preset` protobuf enum.
+5. Egress maps the enum to the corresponding `tls-client` preset and applies it immediately before making the outbound request.
+6. If the preset is unsupported or the enum value is unknown, Egress returns an `unsupported_fingerprint` error.
+
+**Fingerprint Mutability**
+
+Preset definitions are immutable — they come from `tls-client` and cannot be modified. Operators can change the `default_fingerprint_profile` per tenant, which takes effect on the next request (immediate category).
+
+#### 20.5.5 Header and Cookie Injection Policies
+
+Each injection policy is a tenant-scoped config entity:
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | string | Unique policy identifier |
+| `tenant_id` | string | Parent tenant |
+| `name` | string | Human-readable policy name |
+| `enabled` | bool | Whether the policy is active |
+| `match_conditions` | object | Conditions for applying this policy |
+| `operations` | array | Ordered list of header/cookie operations |
+| `config_version` | uint64 | Config version at time of creation |
+
+**Match Conditions**
+
+```json
+{
+  "tags": ["string"],
+  "target_host": "string"
+}
+```
+
+- `tags`: All requested tags must be present.
+- `target_host`: Exact host or suffix domain match.
+
+**Operations Schema**
+
+Operations are executed in array order for deterministic behavior:
+
+```json
+{
+  "type": "add_header | set_header | remove_header | add_cookie | set_cookie",
+  "name": "string",
+  "value": "string"
+}
+```
+
+- `add_header`: Appends a header (may result in duplicates).
+- `set_header`: Sets a header, overwriting any existing value.
+- `remove_header`: Removes a header by name.
+- `add_cookie`: Appends a cookie to the `Cookie` header.
+- `set_cookie`: Sets a cookie value (overwrites existing cookie by name).
+
+**Straw Header Stripping**
+
+The following headers are stripped by Straw before reaching the target and are never injected or forwarded:
+
+| Header | Reason |
+|---|---|
+| `X-Straw-Request-Id` | Internal request correlation |
+| `X-Straw-Tenant-Id` | Internal tenant identification |
+| `X-Straw-Trace-Id` | Internal trace correlation |
+| `X-Straw-Worker-Id` | Internal worker identification (never exposed to clients) |
+| `X-Straw-Routing-Rule` | Internal routing metadata |
+| `X-Straw-Fingerprint` | Internal fingerprint instruction |
+| `Proxy-Authorization` (on outbound) | Straw manages its own auth; client proxy auth is not forwarded |
+
+#### 20.5.6 Worker Credential Configuration
+
+Worker credentials are generated by the Admin API and distributed to Egress workers.
+
+**Credential Structure**
+
+| Field | Type | Description |
+|---|---|---|
+| `credential_id` | string | Unique public identifier (used in NATS handshake) |
+| `tenant_id` | string | Tenant scope |
+| `pool_scope` | array | Pool names this credential can register to |
+| `signing_algorithm` | string | `Ed25519` (recommended) |
+| `public_key` | string | Base64-encoded public key (shown at creation) |
+| `private_key` | string | Base64-encoded private key (shown **once** at creation, never stored again) |
+| `status` | enum | `active`, `revoked` |
+| `created_at` | unix_ms | Credential creation timestamp |
+| `revoked_at` | unix_ms | Revocation timestamp (null if active) |
+
+**Signing Algorithm**
+
+Credentials use Ed25519 for cryptographic signing. The private key signs a token containing `credential_id`, `tenant_id`, `pool_scope`, and a timestamp. Control verifies the signature statelessly using the stored public key before querying Postgres or Redis.
+
+**Credential Lifecycle**
+
+1. **Create**: Admin calls `POST /api/v1/config/worker-credentials`. Control generates an Ed25519 key pair, stores the public key and metadata in Postgres, and returns the full credential (including the private key) to the admin.
+2. **Distribute**: The admin copies the private key to the Egress worker's config file or sets it via `STRAW_WORKER_PRIVATE_KEY`. The private key is never transmitted over the network in plaintext after this point.
+3. **Register**: On startup, the Egress worker signs a registration token with its private key and sends it to Control via the NATS `RegisterRequest`.
+4. **Verify**: Control verifies the signature statelessly using the stored public key. If valid, the worker is registered and a `session_id` is assigned.
+5. **Rotate**: If a credential is compromised or rotated:
+    - Admin calls `POST /api/v1/config/worker-credentials/{id}/revoke`. The credential is marked `revoked` in Postgres.
+    - Admin calls `POST /api/v1/config/worker-credentials` to generate a new credential.
+    - The new private key is distributed to the Egress worker (config update or env var change).
+    - The worker restarts and re-registers with the new credential.
+    - Old requests authenticated with the revoked credential complete normally. New registrations are rejected with `REJECTED_AUTH`.
+6. **Revoke**: Immediate revocation. The credential is marked `revoked`, the config version is bumped, and a Redis invalidation is published. Control rejects new registrations with the revoked credential.
+
+#### 20.5.7 Payload Capture Configuration
+
+| Field | Type | Description |
+|---|---|---|
+| `enabled` | bool | Whether payload capture is active (tenant-level or global) |
+| `capture_request_headers` | bool | Capture inbound request headers |
+| `capture_request_body` | bool | Capture inbound request body |
+| `capture_response_headers` | bool | Capture outbound response headers |
+| `capture_response_body` | bool | Capture outbound response body |
+| `redaction_rules` | array | Automatic redaction rules for sensitive data |
+| `by_tag` | object | Per-tag capture overrides: `{ "tag_name": { "enabled": bool, ... } }` |
+
+**Capture Scope**
+
+- Global toggle: Admin sets a system-wide `payload_capture_enabled` flag.
+- Per-tenant override: Each tenant has its own `payload_capture_enabled` flag that overrides the global setting.
+- Per-tag override: Within a tenant, specific tags can enable or disable capture independently.
+
+**Redaction Rules**
+
+Automatic redaction is applied before storage. Redaction rules match on header names or body content patterns:
+
+| Rule Type | Match | Action |
+|---|---|---|
+| Header name | Exact header name (e.g., `Authorization`, `Cookie`) | Redact value to `[REDACTED]` |
+| Body pattern | Regex pattern (e.g., `\d{3}-\d{2}-\d{4}` for SSN) | Redact matched content |
+| Field path | JSON path (e.g., `$.password`, `$.credit_card`) | Redact field value |
+
+**Storage**
+
+Captured payloads are stored in ClickHouse in the `payloads` table (see §20.10). Retention is controlled by the ClickHouse retention policy.
+
+**Audit**
+
+All payload capture enable/disable actions are logged to ClickHouse with `changed_by`, `scope` (global/tenant/tag), `old_value`, `new_value`, and `timestamp`.
+
+**Role Restriction**
+
+Only the `admin` role can toggle payload capture. The `operator` and `viewer` roles cannot modify this setting.
+
+#### 20.5.8 Rate Limits and Quotas Configuration
+
+**Rate Limits**
+
+Rate limits are configured per tenant with four dimensions. Each dimension has a configurable limit:
+
+| Dimension | Config Key | Example |
+|---|---|---|
+| Global tenant | `rate_limits.global.requests_per_minute` | `100` |
+| Tenant + API key | `rate_limits.key.requests_per_minute` | `50` |
+| Tenant + target host | `rate_limits.host.requests_per_minute` | `200` |
+| Tenant + IP type | `rate_limits.ip_type.requests_per_minute` | `150` |
+
+- **Algorithm**: Redis Sliding Window Log using Sorted Sets (`ZSET`).
+- **Burst allowance**: None. Strict hard-cap with no burst.
+- **Enforcement**: Immediate drop. Returns `rate_limit_exceeded` error and HTTP `429 Too Many Requests`.
+
+**Quotas**
+
+Quotas are configured per tenant with monthly resets:
+
+| Config Key | Example | Description |
+|---|---|---|
+| `quotas.monthly_requests` | `100000` | Max requests per month |
+| `quotas.monthly_bandwidth_bytes` | `53687091200` | Max bandwidth per month (50 GB) |
+
+- **Reset cadence**: Fixed monthly resets on the 1st of each month.
+- **Enforcement**: Evaluated at request start and end. If breached during an active request, the request finishes. Subsequent requests are blocked with `quota_exhausted` error until reset.
+
+**Destination Deny Rules**
+
+Deny rules block outbound transport to restricted IPs, domains, or network ranges:
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | string | Unique rule identifier |
+| `tenant_id` | string | Parent tenant (empty = global admin rule) |
+| `type` | enum | `ip_cidr`, `domain`, `full_url` |
+| `value` | string | CIDR block, domain pattern, or full URL |
+| `enabled` | bool | Whether the rule is active |
+| `config_version` | uint64 | Config version at creation |
+
+- Deny rules are evaluated before routing. If a match is found, the request is rejected immediately with `destination_denied`.
+- Global deny rules (empty `tenant_id`) apply to all tenants. Per-tenant deny rules apply only to that tenant.
+
+### 20.6 TLS and MITM Configuration
+
+#### 20.6.1 MITM CA Configuration
+
+The MITM CA is used to intercept and decrypt HTTPS traffic for decoded request/response handling.
+
+| Config Key | Env Var | Description |
+|---|---|---|
+| `control.mitm.ca_key_path` | — | Path to the MITM CA private key file |
+| `control.mitm.ca_cert_path` | — | Path to the MITM CA public certificate file |
+| `control.mitm.ca_key_password_env` | `STRAW_MITM_CA_KEY_PASSWORD` | Env var containing the CA key password (if encrypted) |
+| `control.mitm.cert_validity_days` | `STROW_MITM_CERT_VALIDITY_DAYS` | Default validity period for dynamically generated intermediate certificates |
+
+- The CA key and certificate are loaded at startup. Changes require a Control restart.
+- Intermediate certificates are generated on-demand for each SNI encountered. They are signed by the MITM CA and inherit the `cert_validity_days` TTL.
+- Intermediate certificates are cached in memory. Expired certificates are regenerated on the next request.
+
+#### 20.6.2 Inbound TLS (Control)
+
+Control uses the `tls-client` stack for inbound TLS termination to handle HTTP/2 ALPN and SNI negotiation that matches client expectations.
+
+| Config Key | Env Var | Description |
+|---|---|---|
+| `control.tls.cert_path` | `STRAW_TLS_CERT` | Server TLS certificate path |
+| `control.tls.key_path` | `STRAW_TLS_KEY` | Server TLS private key path |
+| `control.tls.supported_versions` | `STRAW_TLS_VERSIONS` | Supported TLS versions (e.g., `["1.2", "1.3"]`) |
+| `control.tls.cipher_suites` | — | Cipher suites (empty = `tls-client` defaults) |
+
+- Certificate paths are static (restart required).
+- `tls-client` handles JA3/JA4 fingerprint matching for inbound connections, ensuring proxy clients' TLS fingerprints are not flagged as non-browser.
+
+#### 20.6.3 Outbound TLS (Egress)
+
+Egress workers control outbound TLS via `tls-client`.
+
+| Config Key | Env Var | Description |
+|---|---|---|
+| `egress.outbound_tls.strict_verify` | `STRAW_OUTBOUND_TLS_STRICT_VERIFY` | Enforce strict certificate verification (default: true) |
+| `egress.outbound_tls.ca_bundle_path` | `STRAW_OUTBOUND_TLS_CA_BUNDLE` | Path to custom CA bundle for private/internal certificates |
+| `egress.outbound_tls.supported_versions` | `STRAW_OUTBOUND_TLS_VERSIONS` | Supported outbound TLS versions |
+
+- `strict_verify` is true by default. Setting it to false is not recommended for production.
+- The CA bundle allows Egress to verify certificates from private/internal CAs.
+
+#### 20.6.4 CA Trust Distribution
+
+Operators must distribute the MITM CA certificate to their scraping clients so clients trust intercepted HTTPS traffic:
+
+- The CA certificate is available at `control.mitm.ca_cert_path` (typically `/etc/straw/mitm/ca.pem`).
+- Distribution methods:
+    - **Docker**: Mount the CA cert into the client container and set `SSL_CERT_FILE` or `NODE_EXTRA_CA_CERTS`.
+    - **Headless browsers**: Import the CA into the system trust store or browser profile.
+    - **HTTP clients**: Configure the client to trust the CA (e.g., `curl --cacert /path/to/ca.pem`, `requests.verify=/path/to/ca.pem`).
+- Straw does not automate CA distribution. This is an operator responsibility.
+
+### 20.7 Large-Body Transport Configuration
+
+#### 20.7.1 Transport Selection Flow
+
+| Body Size | Transport | Config Key |
+|---|---|---|
+| ≤ `large_body_threshold_bytes` | NATS `StreamFrame` messages | `control.body_transport.large_body_threshold_bytes` |
+| > `large_body_threshold_bytes` | Object storage or direct streaming | `control.body_transport.object_storage.enabled` or `direct_stream.enabled` |
+
+If both object storage and direct streaming are enabled, object storage is preferred. Direct streaming is used as a fallback if object storage is unavailable.
+
+#### 20.7.2 Object Storage Configuration
+
+| Config Key | Env Var | Default | Description |
+|---|---|---|---|
+| `body_transport.object_storage.enabled` | `STROW_BODY_OBJECT_STORAGE_ENABLED` | `false` | Enable object storage for large bodies |
+| `body_transport.object_storage.endpoint` | `STRAW_BODY_S3_ENDPOINT` | — | S3-compatible API endpoint |
+| `body_transport.object_storage.bucket` | `STRAW_BODY_S3_BUCKET` | — | Bucket name |
+| `body_transport.object_storage.region` | `STRAW_BODY_S3_REGION` | — | Region |
+| `body_transport.object_storage.access_key_env` | `STRAW_S3_ACCESS_KEY` | — | Env var for access key |
+| `body_transport.object_storage.secret_key_env` | `STRAW_S3_SECRET_KEY` | — | Env var for secret key |
+| `body_transport.object_storage.body_retention_days` | `STRAW_BODY_RETENTION_DAYS` | `1` | Days to retain stored bodies |
+
+#### 20.7.3 Direct Streaming Configuration
+
+| Config Key | Env Var | Default | Description |
+|---|---|---|---|
+| `body_transport.direct_stream.enabled` | `STRAW_BODY_DIRECT_STREAM_ENABLED` | `false` | Enable direct streaming for large bodies |
+| `body_transport.direct_stream.endpoint` | `STRAW_BODY_STREAM_ENDPOINT` | — | Streaming server endpoint URL |
+| `body_transport.direct_stream.stream_timeout_ms` | `STRAW_BODY_STREAM_TIMEOUT_MS` | `300000` | Max time for a stream to complete (ms) |
+
+### 20.8 Observability Configuration
+
+All observability settings are static (restart required).
+
+#### 20.8.1 Logging
+
+| Config Key | Env Var | Default | Description |
+|---|---|---|---|
+| `observability.logging.level` | `STRAW_LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` |
+| `observability.logging.format` | `STRAW_LOG_FORMAT` | `json` | Log format: `json`, `text` |
+| `observability.logging.output` | `STRAW_LOG_OUTPUT` | `["stdout"]` | Output destinations: `stdout`, `stderr`, `file:/path/to/log` |
+| `observability.logging.structured_fields` | — | (see §20.3.1) | Required structured fields in every log entry |
+
+#### 20.8.2 Metrics
+
+| Config Key | Env Var | Default | Description |
+|---|---|---|---|
+| `observability.metrics.enabled` | `STRAW_METRICS_ENABLED` | `true` | Enable Prometheus metrics |
+| `observability.metrics.path` | `STRAW_METRICS_PATH` | `/metrics` | HTTP path for metrics endpoint |
+| `observability.metrics.host` | `STRAW_METRICS_HOST` | `0.0.0.0` | Bind address |
+| `observability.metrics.port` | `STRAW_METRICS_PORT` | `9090` | Bind port |
+| `observability.metrics.custom_prefix` | `STRAW_METRICS_PREFIX` | `straw_` | Metric name prefix |
+
+#### 20.8.3 Tracing
+
+| Config Key | Env Var | Default | Description |
+|---|---|---|---|
+| `observability.tracing.enabled` | `STRAW_TRACING_ENABLED` | `false` | Enable distributed tracing |
+| `observability.tracing.exporter` | `STRAW_TRACING_EXPORTER` | `jaeger` | Trace exporter: `jaeger`, `tempo` |
+| `observability.tracing.endpoint` | `STRAW_TRACING_ENDPOINT` | — | Trace collector endpoint URL |
+| `observability.tracing.sampling_rate` | `STRAW_TRACING_SAMPLING_RATE` | `0.1` | Sampling rate (0.0 to 1.0) |
+| `observability.tracing.propagate_trace_context` | `STRAW_TRACING_PROPAGATE` | `true` | Propagate trace context headers |
+| `observability.tracing.headers` | — | (see §20.3.1) | Trace context headers to propagate |
+
+### 20.9 ClickHouse Schema
+
+ClickHouse stores operational analytics, audit logs, and payload captures.
+
+#### 20.9.1 Database Layout
+
+| Database | Purpose |
+|---|---|
+| `audit` | Configuration change audit trail |
+| `requests` | Request-level operational logs |
+| `workers` | Worker health and lifecycle events |
+| `payloads` | Captured request/response payloads |
+| `metrics` | Aggregated metrics for dashboards |
+
+#### 20.9.2 Table Schemas
+
+**`audit.config_changes`** — Configuration change audit trail
+
+```sql
+CREATE TABLE audit.config_changes
+(
+    id           UInt64,           -- Auto-incrementing unique ID
+    tenant_id    LowCardinality(String),
+    config_type  LowCardinality(String),  -- tenant | api_key | routing_rule | injection_policy | worker_credential | quota | deny_rule | payload_capture
+    action       LowCardinality(String),  -- create | update | rollback | delete
+    config_version UInt64,
+    changed_by   String,           -- user_id of the admin/operator
+    field_path   String,           -- Dot-notation path of changed field (e.g., "routing_rules[0].priority")
+    old_value    String,           -- JSON-encoded previous value
+    new_value    String,           -- JSON-encoded new value
+    timestamp    DateTime64(3, 'UTC')
+)
+ENGINE = MergeTree
+PARTITION BY toYYYYMM(timestamp)
+ORDER BY (tenant_id, config_type, timestamp, id)
+TTL timestamp + INTERVAL 90 DAY;
+```
+
+**`requests.requests`** — Request-level operational logs
+
+```sql
+CREATE TABLE requests.requests
+(
+    request_id       String,
+    tenant_id        LowCardinality(String),
+    trace_id         String,
+    ingress_type     LowCardinality(String),
+    method           LowCardinality(String),
+    target_host      String,
+    target_url       String,
+    fingerprint_profile String,
+    selected_worker  String,
+    selected_pool    String,
+    routing_rule     String,
+    country          LowCardinality(String),
+    region           LowCardinality(String),
+    ip_type          LowCardinality(String),
+    error_code       LowCardinality(String),
+    error_category   LowCardinality(String),
+    upstream_status  UInt16,
+    request_size_bytes    UInt64,
+    response_size_bytes   UInt64,
+    total_duration_ms     UInt32,
+    routing_duration_ms   UInt32,
+    egress_duration_ms    UInt32,
+    attempt               UInt8,
+    timestamp             DateTime64(3, 'UTC')
+)
+ENGINE = MergeTree
+PARTITION BY toYYYYMM(timestamp)
+ORDER BY (tenant_id, timestamp, request_id)
+TTL timestamp + INTERVAL 30 DAY;
+```
+
+**`workers.worker_events`** — Worker health and lifecycle events
+
+```sql
+CREATE TABLE workers.worker_events
+(
+    worker_id      String,
+    event_type     LowCardinality(String),  -- register | heartbeat | drain | disable | dead | unregister
+    health         LowCardinality(String),  -- ready | degraded | unhealthy
+    session_id     String,
+    active_requests    UInt32,
+    max_concurrency    UInt32,
+    available_capacity UInt32,
+    draining          UInt8,
+    reason           String,
+    timestamp         DateTime64(3, 'UTC')
+)
+ENGINE = MergeTree
+PARTITION BY toYYYYMM(timestamp)
+ORDER BY (worker_id, timestamp, event_type)
+TTL timestamp + INTERVAL 90 DAY;
+```
+
+**`payloads.captured`** — Captured request/response payloads
+
+```sql
+CREATE TABLE payloads.captured
+(
+    request_id       String,
+    tenant_id        LowCardinality(String),
+    capture_scope    LowCardinality(String),  -- global | tenant | tag
+    request_headers  String,           -- JSON-encoded request headers
+    request_body     String,           -- JSON or raw body (redacted if applicable)
+    response_headers String,           -- JSON-encoded response headers
+    response_body    String,           -- JSON or raw body (redacted if applicable)
+    redacted_fields  Array(String),    -- List of fields that were redacted
+    captured_at      DateTime64(3, 'UTC')
+)
+ENGINE = MergeTree
+PARTITION BY toYYYYMM(captured_at)
+ORDER BY (tenant_id, captured_at, request_id)
+TTL captured_at + INTERVAL 7 DAY;
+```
+
+**`metrics.aggregated`** — Aggregated metrics for dashboards
+
+```sql
+CREATE TABLE metrics.aggregated
+(
+    metric_name      String,
+    tenant_id        LowCardinality(String),
+    dimensions       Map(String, String),
+    value            Float64,
+    timestamp        DateTime64(3, 'UTC')
+)
+ENGINE = AggregatingMergeTree()
+PARTITION BY toYYYYMM(timestamp)
+ORDER BY (metric_name, tenant_id, dimensions, toStartOfHour(timestamp))
+TTL timestamp + INTERVAL 30 DAY;
+```
+
+#### 20.9.3 Write Path
+
+Control writes to ClickHouse asynchronously via a buffered write queue:
+
+- Writes are batched up to `write_batch_size` (default: 1000) or flushed every `write_flush_interval_ms` (default: 1000ms).
+- If ClickHouse is unavailable, writes are queued in memory up to a configurable limit. If the queue is full, the oldest entries are dropped and a P1 alert fires.
+- Control never blocks on ClickHouse writes. Write failures are logged and counted as metrics.
+
+### 20.10 Config Migration and Upgrade
+
+#### 20.10.1 Schema Versioning
+
+Each config file declares a `config_version` field at the top level:
+
+```yaml
+config_version: "v1"
+```
+
+- Control and Egress reject config files with incompatible `config_version` at startup, exiting with a clear error message: `unsupported config_version: v2, supported: v1`.
+- The error message includes a migration guide link or inline instructions for upgrading.
+- Older config formats are accepted with deprecation warnings for up to 2 minor versions before removal.
+
+#### 20.10.2 Backward Compatibility
+
+- Config files with older `config_version` values are accepted. A warning is logged at startup: `deprecated config_version: v1, expected v2`.
+- Removed config keys are silently ignored (treated as absent) for up to 2 minor versions.
+- New config keys with defaults are accepted without error.
+
+#### 20.10.3 Zero-Downtime Upgrades
+
+- Rolling deploys are supported: old and new Control instances coexist during upgrade.
+- New Control instances load their config on startup and join the NATS cluster.
+- Dynamic config changes are backward-compatible: Control instances with different versions can coexist as long as they share the same config schema version.
+- If a config schema change is incompatible, the deployment must be coordinated: all instances are updated before the new config version is activated.
+
+#### 20.10.4 Config Drift Detection
+
+When `config.drift_detection` is enabled (default: true), Control runs a periodic drift check:
+
+- **Interval**: Configurable via `config.drift_check_interval_seconds` (default: 60 seconds).
+- **Mechanism**: Each Control instance computes a hash of its loaded static config and compares it against the hashes from other Control instances.
+- **Detection**: If hashes differ, drift is detected. The differing keys are reported in the logs and a P2 alert fires.
+- **Resolution**: Drift is resolved by ensuring all Control instances use the same config file. Operators should use a shared config volume or centralized config management (e.g., ConfigMap in Kubernetes).
+- **Scope**: Drift detection only compares static config. Dynamic config is always sourced from Postgres, so it cannot drift between Control instances.
+
+#### 20.10.5 Migration Scripts
+
+For config schema version changes, migration scripts are provided:
+
+- **CLI tool**: `straw config migrate --from v1 --to v2 --input control.yaml --output control.yaml`
+- The tool validates the output against the target schema before writing.
+- Manual migration steps are documented in the release notes for each version change.
+
+### 20.11 Docker Compose and Local Development
+
+#### 20.11.1 docker-compose.yml
+
+```yaml
+version: "3.9"
+
+services:
+  # Infrastructure
+  nats:
+    image: nats:2.10
+    ports:
+      - "4222:4222"
+      - "8222:8222"  # NATS monitoring
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: straw
+      POSTGRES_USER: straw
+      POSTGRES_PASSWORD: ${STRAW_POSTGRES_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24
+    environment:
+      CLICKHOUSE_DB: straw
+      CLICKHOUSE_USER: straw
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - chdata:/var/lib/clickhouse
+
+  # Straw components
+  control:
+    image: straw/control:latest
+    ports:
+      - "8080:8080"  # API
+      - "8081:8081"  # REST
+      - "8082:8082"  # HTTP proxy
+      - "8083:8083"  # CONNECT proxy
+      - "8084:8084"  # MITM proxy
+      - "9090:9090"  # Metrics
+    volumes:
+      - ./config/control.yaml:/etc/straw/control.yaml:ro
+      - ./config/mitm:/etc/straw/mitm:ro
+      - ./config/tls:/etc/straw/tls:ro
+      - ./config/nats:/etc/straw/nats:ro
+      - ./schemas:/etc/straw/schemas:ro
+    environment:
+      STRAW_POSTGRES_DSN: postgresql://straw:${STRAW_POSTGRES_PASSWORD}@postgres:5432/straw?sslmode=disable
+      STRAW_REDIS_URL: redis://redis:6379
+      STRAW_CLICKHOUSE_PASSWORD: ${STRAW_CLICKHOUSE_PASSWORD}
+    depends_on:
+      - nats
+      - postgres
+      - redis
+      - clickhouse
+
+  egress:
+    image: straw/egress:latest
+    ports:
+      - "9091:9090"  # Metrics
+    volumes:
+      - ./config/egress.yaml:/etc/straw/egress.yaml:ro
+      - ./config/nats:/etc/straw/nats:ro
+      - ./config/tls:/etc/straw/tls:ro
+    environment:
+      STRAW_WORKER_ID: egress-local-001
+      STRAW_WORKER_PRIVATE_KEY: ${STRAW_WORKER_PRIVATE_KEY}
+    depends_on:
+      - nats
+
+volumes:
+  pgdata:
+  chdata:
+```
+
+#### 20.11.2 Config File Layout
+
+```
+config/
+  control.yaml          # Control static config
+  egress.yaml           # Egress static config
+  adapter.yaml          # Provider Adapter static config (optional)
+  mitm/
+    ca.key              # MITM CA private key
+    ca.pem              # MITM CA certificate
+  tls/
+    server.crt          # Control inbound TLS certificate
+    server.key          # Control inbound TLS private key
+    ca-bundle.crt       # Egress outbound CA bundle
+  nats/
+    creds.creds         # NATS credentials file
+schemas/
+  control.config.json   # JSON schema for control.yaml
+  egress.config.json    # JSON schema for egress.yaml
+  adapter.config.json   # JSON schema for adapter.yaml
+```
+
+#### 20.11.3 Override Mechanism
+
+Local development overrides are applied via `docker-compose.override.yml`:
+
+```yaml
+version: "3.9"
+
+services:
+  control:
+    environment:
+      STRAW_LOG_LEVEL: debug
+      STRAW_TRACING_ENABLED: "true"
+      STRAW_TRACING_SAMPLING_RATE: "1.0"
+
+  egress:
+    environment:
+      STRAW_LOG_LEVEL: debug
+```
+
+#### 20.11.4 Default Config Templates
+
+Templates are shipped in the `templates/` directory for each component:
+
+```
+templates/
+  control.yaml.template   # Control config template (all defaults)
+  egress.yaml.template    # Egress config template (all defaults)
+  adapter.yaml.template   # Adapter config template (all defaults)
+```
+
+Operators copy the template to `config/` and customize:
+
+```bash
+cp templates/control.yaml.template config/control.yaml
+cp templates/egress.yaml.template config/egress.yaml
+```
+
+### 20.12 Config Management API Surface
+
+All config management endpoints are versioned under `/api/v1/config/`.
+
+#### 20.12.1 Tenant Endpoints
+
+| Method | Path | Role | Description |
+|---|---|---|---|
+| `POST` | `/api/v1/config/tenants` | Admin | Create a new tenant |
+| `GET` | `/api/v1/config/tenants` | Admin, Operator, Viewer | List all tenants |
+| `GET` | `/api/v1/config/tenants/{id}` | Admin, Operator, Viewer | Get tenant config |
+| `PUT` | `/api/v1/config/tenants/{id}` | Admin | Update tenant config |
+| `DELETE` | `/api/v1/config/tenants/{id}` | Admin | Soft-delete a tenant |
+
+#### 20.12.2 API Key Endpoints
+
+| Method | Path | Role | Description |
+|---|---|---|---|
+| `POST` | `/api/v1/config/api-keys` | Admin | Create an API key |
+| `GET` | `/api/v1/config/api-keys` | Admin, Operator | List API keys for a tenant |
+| `GET` | `/api/v1/config/api-keys/{id}` | Admin, Operator | Get API key details |
+| `POST` | `/api/v1/config/api-keys/{id}/revoke` | Admin | Revoke an API key |
+
+#### 20.12.3 Routing Rule Endpoints
+
+| Method | Path | Role | Description |
+|---|---|---|---|
+| `POST` | `/api/v1/config/routing-rules` | Admin, Operator | Create a routing rule |
+| `GET` | `/api/v1/config/routing-rules` | Admin, Operator, Viewer | List routing rules for a tenant |
+| `GET` | `/api/v1/config/routing-rules/{id}` | Admin, Operator, Viewer | Get a routing rule |
+| `PUT` | `/api/v1/config/routing-rules/{id}` | Admin, Operator | Update a routing rule |
+| `DELETE` | `/api/v1/config/routing-rules/{id}` | Admin, Operator | Delete a routing rule |
+
+#### 20.12.4 Fingerprint Profile Endpoints
+
+| Method | Path | Role | Description |
+|---|---|---|---|
+| `GET` | `/api/v1/config/fingerprint-profiles` | Admin, Operator, Viewer | List available fingerprint presets |
+| `GET` | `/api/v1/config/fingerprint-profiles/{preset_name}` | Admin, Operator, Viewer | Get a fingerprint preset details |
+
+#### 20.12.5 Injection Policy Endpoints
+
+| Method | Path | Role | Description |
+|---|---|---|---|
+| `POST` | `/api/v1/config/injection-policies` | Admin, Operator | Create an injection policy |
+| `GET` | `/api/v1/config/injection-policies` | Admin, Operator, Viewer | List injection policies for a tenant |
+| `GET` | `/api/v1/config/injection-policies/{id}` | Admin, Operator, Viewer | Get an injection policy |
+| `PUT` | `/api/v1/config/injection-policies/{id}` | Admin, Operator | Update an injection policy |
+| `DELETE` | `/api/v1/config/injection-policies/{id}` | Admin, Operator | Delete an injection policy |
+
+#### 20.12.6 Worker Credential Endpoints
+
+| Method | Path | Role | Description |
+|---|---|---|---|
+| `POST` | `/api/v1/config/worker-credentials` | Admin | Generate a new worker credential |
+| `GET` | `/api/v1/config/worker-credentials` | Admin | List worker credentials for a tenant |
+| `POST` | `/api/v1/config/worker-credentials/{id}/revoke` | Admin | Revoke a worker credential |
+| `POST` | `/api/v1/config/worker/disable` | Admin | Disable a worker |
+| `POST` | `/api/v1/config/worker/enable` | Admin | Re-enable a disabled worker |
+| `POST` | `/api/v1/config/worker/drain` | Admin | Start draining a worker |
+| `POST` | `/api/v1/config/worker/undrain` | Admin | Stop draining a worker |
+
+#### 20.12.7 Quota and Rate Limit Endpoints
+
+| Method | Path | Role | Description |
+|---|---|---|---|
+| `GET` | `/api/v1/config/quotas` | Admin, Operator, Viewer | Get quota usage for a tenant |
+| `PUT` | `/api/v1/config/quotas` | Admin | Update quota limits for a tenant |
+| `GET` | `/api/v1/config/rate-limits` | Admin, Operator, Viewer | Get rate limit config for a tenant |
+| `PUT` | `/api/v1/config/rate-limits` | Admin | Update rate limit config for a tenant |
+
+#### 20.12.8 Deny Rule Endpoints
+
+| Method | Path | Role | Description |
+|---|---|---|---|
+| `POST` | `/api/v1/config/deny-rules` | Admin | Create a deny rule |
+| `GET` | `/api/v1/config/deny-rules` | Admin, Operator, Viewer | List deny rules (global + tenant) |
+| `PUT` | `/api/v1/config/deny-rules/{id}` | Admin | Update a deny rule |
+| `DELETE` | `/api/v1/config/deny-rules/{id}` | Admin | Delete a deny rule |
+
+#### 20.12.9 Payload Capture Endpoints
+
+| Method | Path | Role | Description |
+|---|---|---|---|
+| `GET` | `/api/v1/config/payload-capture` | Admin, Operator, Viewer | Get payload capture status |
+| `PUT` | `/api/v1/config/payload-capture` | Admin | Update payload capture settings |
+
+#### 20.12.10 Config Versioning Endpoints
+
+| Method | Path | Role | Description |
+|---|---|---|---|
+| `GET` | `/api/v1/config/changes` | Admin, Operator, Viewer | List config change history |
+| `GET` | `/api/v1/config/changes/{version_id}` | Admin, Operator, Viewer | Get details of a specific config version |
+| `POST` | `/api/v1/config/rollback` | Admin | Rollback to a previous config version |
+
+### 20.13 Environment Variable Reference
+
+Comprehensive reference of all `STRAW_*` environment variables.
+
+#### 20.13.1 Control Server
+
+| Variable | Description | Default | YAML Key |
+|---|---|---|---|
+| `STRAW_POSTGRES_DSN` | Postgres connection string | — | `database.postgres.dsn` |
+| `STRAW_REDIS_URL` | Redis connection URL | — | `database.redis.url` |
+| `STRAW_CLICKHOUSE_PASSWORD` | ClickHouse password | — | `database.clickhouse.password` |
+| `STRAW_NATS_URLS` | Comma-separated NATS server URLs | `nats://localhost:4222` | `nats.servers` |
+| `STRAW_NATS_CREDS_FILE` | NATS credentials file path | — | `nats.user_credentials_file` |
+| `STRAW_NATS_TLS_CERT` | NATS client TLS cert path | — | `nats.tls_cert_path` |
+| `STRAW_NATS_TLS_KEY` | NATS client TLS key path | — | `nats.tls_key_path` |
+| `STRAW_NATS_TLS_CA` | NATS CA cert path | — | `nats.tls_ca_path` |
+| `STRAW_NATS_RECONNECT_ATTEMPTS` | Max NATS reconnect attempts | `10` | `nats.reconnect_attempts` |
+| `STRAW_NATS_RECONNECT_WAIT_MS` | NATS reconnect wait interval (ms) | `2000` | `nats.reconnect_wait_ms` |
+| `STRAW_NATS_PING_INTERVAL_MS` | NATS ping interval (ms) | `30000` | `nats.ping_interval_ms` |
+| `STRAW_NATS_MAX_PING_FAILURES` | Max consecutive NATS ping failures | `3` | `nats.max_ping_failures` |
+| `STRAW_MITM_CA_KEY_PASSWORD` | MITM CA key password | — | `mitm.ca_key_password_env` |
+| `STROW_MITM_CERT_VALIDITY_DAYS` | MITM cert validity in days | `365` | `mitm.cert_validity_days` |
+| `STRAW_TLS_CERT` | Server TLS certificate path | — | `tls.cert_path` |
+| `STRAW_TLS_KEY` | Server TLS private key path | — | `tls.key_path` |
+| `STRAW_TLS_VERSIONS` | Comma-separated TLS versions | `1.2,1.3` | `tls.supported_versions` |
+| `STRAW_LOG_LEVEL` | Log level | `info` | `observability.logging.level` |
+| `STRAW_LOG_FORMAT` | Log format | `json` | `observability.logging.format` |
+| `STRAW_LOG_OUTPUT` | Comma-separated log outputs | `stdout` | `observability.logging.output` |
+| `STRAW_METRICS_ENABLED` | Enable metrics | `true` | `observability.metrics.enabled` |
+| `STRAW_METRICS_PATH` | Metrics HTTP path | `/metrics` | `observability.metrics.path` |
+| `STRAW_METRICS_HOST` | Metrics bind address | `0.0.0.0` | `observability.metrics.host` |
+| `STRAW_METRICS_PORT` | Metrics bind port | `9090` | `observability.metrics.port` |
+| `STRAW_METRICS_PREFIX` | Metric name prefix | `straw_` | `observability.metrics.custom_prefix` |
+| `STRAW_TRACING_ENABLED` | Enable distributed tracing | `false` | `observability.tracing.enabled` |
+| `STRAW_TRACING_EXPORTER` | Trace exporter | `jaeger` | `observability.tracing.exporter` |
+| `STRAW_TRACING_ENDPOINT` | Trace collector endpoint | — | `observability.tracing.endpoint` |
+| `STRAW_TRACING_SAMPLING_RATE` | Tracing sampling rate | `0.1` | `observability.tracing.sampling_rate` |
+| `STRAW_BODY_S3_ENDPOINT` | S3-compatible endpoint | — | `body_transport.object_storage.endpoint` |
+| `STRAW_BODY_S3_BUCKET` | S3 bucket name | — | `body_transport.object_storage.bucket` |
+| `STRAW_BODY_S3_REGION` | S3 region | — | `body_transport.object_storage.region` |
+| `STRAW_S3_ACCESS_KEY` | S3 access key | — | `body_transport.object_storage.access_key_env` |
+| `STRAW_S3_SECRET_KEY` | S3 secret key | — | `body_transport.object_storage.secret_key_env` |
+| `STRAW_BODY_RETENTION_DAYS` | Body retention in days | `1` | `body_transport.object_storage.body_retention_days` |
+| `STRAW_BODY_OBJECT_STORAGE_ENABLED` | Enable object storage | `false` | `body_transport.object_storage.enabled` |
+| `STRAW_BODY_DIRECT_STREAM_ENABLED` | Enable direct streaming | `false` | `body_transport.direct_stream.enabled` |
+| `STRAW_BODY_STREAM_ENDPOINT` | Direct stream endpoint URL | — | `body_transport.direct_stream.endpoint` |
+| `STRAW_BODY_STREAM_TIMEOUT_MS` | Direct stream timeout (ms) | `300000` | `body_transport.direct_stream.stream_timeout_ms` |
+| `STRAW_BODY_LARGE_BODY_THRESHOLD_BYTES` | Large body size threshold | `1048576` | `body_transport.large_body_threshold_bytes` |
+
+#### 20.13.2 Egress Worker
+
+| Variable | Description | Default | YAML Key |
+|---|---|---|---|
+| `STRAW_WORKER_ID` | Unique worker identifier | — | `worker_id` |
+| `STRAW_WORKER_PRIVATE_KEY` | Ed25519 private key for credential signing | — | (credential private key) |
+| `STRAW_NATS_URLS` | Comma-separated NATS server URLs | `nats://localhost:4222` | `nats.servers` |
+| `STRAW_NATS_CREDS_FILE` | NATS credentials file path | — | `nats.user_credentials_file` |
+| `STRAW_NATS_TLS_CERT` | NATS client TLS cert path | — | `nats.tls_cert_path` |
+| `STRAW_NATS_TLS_KEY` | NATS client TLS key path | — | `nats.tls_key_path` |
+| `STRAW_NATS_TLS_CA` | NATS CA cert path | — | `nats.tls_ca_path` |
+| `STRAW_NATS_RECONNECT_ATTEMPTS` | Max NATS reconnect attempts | `10` | `nats.reconnect_attempts` |
+| `STRAW_NATS_RECONNECT_WAIT_MS` | NATS reconnect wait interval (ms) | `2000` | `nats.reconnect_wait_ms` |
+| `STRAW_NATS_PING_INTERVAL_MS` | NATS ping interval (ms) | `30000` | `nats.ping_interval_ms` |
+| `STRAW_NATS_MAX_PING_FAILURES` | Max consecutive NATS ping failures | `3` | `nats.max_ping_failures` |
+| `STRAW_OUTBOUND_TLS_STRICT_VERIFY` | Enforce outbound TLS verification | `true` | `outbound_tls.strict_verify` |
+| `STRAW_OUTBOUND_TLS_CA_BUNDLE` | Custom CA bundle path | — | `outbound_tls.ca_bundle_path` |
+| `STRAW_OUTBOUND_TLS_VERSIONS` | Comma-separated TLS versions | `1.2,1.3` | `outbound_tls.supported_versions` |
+| `STRAW_UPSTREAM_PROXY_USERNAME` | Upstream proxy username | — | `upstream_proxy.username` |
+| `STRAW_UPSTREAM_PROXY_PASSWORD` | Upstream proxy password | — | `upstream_proxy.password` |
+| `STRAW_LOG_LEVEL` | Log level | `info` | `observability.logging.level` |
+| `STRAW_LOG_FORMAT` | Log format | `json` | `observability.logging.format` |
+| `STRAW_LOG_OUTPUT` | Comma-separated log outputs | `stdout` | `observability.logging.output` |
+
+#### 20.13.3 Provider Adapter
+
+| Variable | Description | Default | YAML Key |
+|---|---|---|---|
+| `STRAW_WORKER_ID` | Unique adapter identifier | — | `worker_id` |
+| `STRAW_BRIGHT_DATA_KEY` | Bright Data API key | — | `providers[0].api_key_env` |
+| `STRAW_UPSTREAM_USERNAME` | Upstream proxy username | — | `providers[*].upstream_proxy.username` |
+| `STRAW_UPSTREAM_PROXY_PASSWORD` | Upstream proxy password | — | `providers[*].upstream_proxy.password` |
+| `STRAW_NATS_URLS` | Comma-separated NATS server URLs | `nats://localhost:4222` | `nats.servers` |
+| `STRAW_NATS_CREDS_FILE` | NATS credentials file path | — | `nats.user_credentials_file` |
+| `STRAW_LOG_LEVEL` | Log level | `info` | `observability.logging.level` |
+| `STRAW_LOG_FORMAT` | Log format | `json` | `observability.logging.format` |
+
+#### 20.13.4 Shared Variables
+
+| Variable | Description | Default | Used By |
+|---|---|---|---|
+| `STRAW_POSTGRES_PASSWORD` | Postgres password | — | Control |
+| `STRAW_CLICKHOUSE_PASSWORD` | ClickHouse password | — | Control |
+| `STRAW_MITM_CA_KEY_PASSWORD` | MITM CA key password | — | Control |
+| `STRAW_S3_ACCESS_KEY` | S3 access key | — | Control, Egress |
+| `STRAW_S3_SECRET_KEY` | S3 secret key | — | Control, Egress |
 
 ## 21. Deployment
 
