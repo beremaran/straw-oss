@@ -1,4 +1,4 @@
-.PHONY: check commit fmt-check test postgres-migrations-check
+.PHONY: check commit fmt-check test postgres-migrations-check lint
 
 test:
 	go test ./...
@@ -7,7 +7,10 @@ fmt-check:
 	@files="$$(gofmt -l $$(find . -name '*.go' -not -path './.git/*'))"; \
 	test -z "$$files" || { echo "$$files"; exit 1; }
 
-check: fmt-check test
+lint:
+	golangci-lint run --max-issues-per-linter 0 --max-same-issues 0
+
+check: fmt-check test lint
 
 postgres-migrations-check:
 	./scripts/check-postgres-migrations.sh
