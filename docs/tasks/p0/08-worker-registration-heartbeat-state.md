@@ -1,6 +1,6 @@
 # 08 - Worker Registration, Heartbeat, and State
 
-Status: not started
+Status: done
 
 ## Objective
 

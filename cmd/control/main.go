@@ -53,15 +53,18 @@ func main() {
 	authenticator := control.NewAuthenticator(apiKeyStore, pepper)
 	snapshotStore := control.NewInMemorySnapshotStore()
 	configCache := control.NewConfigCache(snapshotStore, nil)
+	workerCreds := control.NewInMemoryWorkerCredentialStore()
+	workerRegistry := control.NewWorkerRegistry(workerCreds, control.DefaultWorkerTimings(), nil)
 
 	adminHandlers := &control.AdminHandlers{
 		Authenticator: authenticator,
 		APIKeys:       apiKeyStore,
-		WorkerCreds:   control.NewInMemoryWorkerCredentialStore(),
+		WorkerCreds:   workerCreds,
 		Tenants:       control.NewInMemoryTenantStore(),
 		Quotas:        control.NewInMemoryQuotaStore(),
 		Audit:         control.NewInMemoryAuditStore(),
 		ConfigCache:   configCache,
+		Workers:       workerRegistry,
 		Pepper:        pepper,
 	}
 
@@ -86,6 +89,15 @@ func main() {
 	mux.HandleFunc("POST /worker-credentials/{id}/revoke", adminHandlers.RevokeWorkerCredential)
 	mux.HandleFunc("GET /quotas", adminHandlers.GetQuotas)
 	mux.HandleFunc("PUT /tenants/{id}/quotas", adminHandlers.PutTenantQuotas)
+	mux.HandleFunc("GET /api/v1/admin/workers", adminHandlers.ListWorkers)
+	mux.HandleFunc("POST /api/v1/admin/workers/{worker_id}/disable", adminHandlers.DisableWorker)
+	mux.HandleFunc("POST /api/v1/admin/workers/{worker_id}/enable", adminHandlers.EnableWorker)
+	mux.HandleFunc("POST /api/v1/admin/workers/{worker_id}/drain", adminHandlers.DrainWorker)
+	mux.HandleFunc("POST /api/v1/admin/workers/{worker_id}/undrain", adminHandlers.UndrainWorker)
+	mux.HandleFunc("POST /api/v1/admin/workers/{worker_id}/tenant-disable", adminHandlers.TenantDisableWorker)
+	mux.HandleFunc("POST /api/v1/admin/workers/{worker_id}/tenant-enable", adminHandlers.TenantEnableWorker)
+	mux.HandleFunc("POST /api/v1/admin/workers/{worker_id}/tenant-drain", adminHandlers.TenantDrainWorker)
+	mux.HandleFunc("POST /api/v1/admin/workers/{worker_id}/tenant-undrain", adminHandlers.TenantUndrainWorker)
 
 	addr := fmt.Sprintf("%s:%d", controlConfig.Server.Host, controlConfig.Server.APIPort)
 	log.Printf("control: listening on %s", addr)

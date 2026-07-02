@@ -24,6 +24,31 @@ func HeartbeatSubject() string {
 	return "straw.v1.control.heartbeat"
 }
 
+// ControlInboxPrefix is the custom reply-inbox prefix Control uses for
+// request/reply clients so inbox permissions can be scoped in the NATS ACL
+// table (docs/planning/12-nats-protocol.md). A concrete inbox subject is
+// this prefix plus NATS-generated tokens; the ACL grants `_INBOX.ctl.>`.
+func ControlInboxPrefix() string {
+	return "_INBOX.ctl"
+}
+
+// WorkerInboxPrefix is the custom reply-inbox prefix a worker uses for its
+// request/reply client. Each worker's inbox is scoped to its own worker_id
+// (`_INBOX.wrk.<worker_id>.>` in the ACL table) so one worker cannot read
+// another's replies.
+func WorkerInboxPrefix(workerID string) (string, error) {
+	if err := validateSubjectToken(workerID); err != nil {
+		return "", fmt.Errorf("worker_id: %w", err)
+	}
+	return fmt.Sprintf("_INBOX.wrk.%s", workerID), nil
+}
+
+// ValidateSubjectToken reports whether token is a safe, dot-free NATS subject
+// token usable for worker_id, session_id, or request_id.
+func ValidateSubjectToken(token string) error {
+	return validateSubjectToken(token)
+}
+
 func AssignmentSubject(workerID, sessionID string) (string, error) {
 	if err := validateSubjectToken(workerID); err != nil {
 		return "", fmt.Errorf("worker_id: %w", err)

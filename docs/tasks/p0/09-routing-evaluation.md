@@ -1,6 +1,6 @@
 # 09 - Routing Evaluation
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -32,16 +32,16 @@ Implement tenant-isolated routing snapshot evaluation and worker eligibility for
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Evaluate routes by tenant and priority.
-- [ ] Apply hard client hints according to the routing model.
-- [ ] Filter workers by tenant, pool, health, draining, disable state, cooldown, and destination policy eligibility.
-- [ ] Implement degraded-worker policy and no-match behavior.
-- [ ] Implement sticky session success and failure behavior using the canonical Redis key structure in Section 10 (`straw:sticky:<tenant_id>:<sticky_session_id>`, tenant-scoped, TTL from the matched rule, re-pinned on permitted fallback).
-- [ ] Add tests for priority order, tenant isolation, client hints, degraded policy, no match, sticky success, and sticky failure.
-- [ ] Run focused routing tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Read all required planning docs.
+- [x] Evaluate routes by tenant and priority.
+- [x] Apply hard client hints according to the routing model.
+- [x] Filter workers by tenant, pool, health, draining, disable state, cooldown, and destination policy eligibility.
+- [x] Implement degraded-worker policy and no-match behavior.
+- [x] Implement sticky session success and failure behavior using the canonical Redis key structure in Section 10 (`straw:sticky:<tenant_id>:<sticky_session_id>`, tenant-scoped, TTL from the matched rule, re-pinned on permitted fallback).
+- [x] Add tests for priority order, tenant isolation, client hints, degraded policy, no match, sticky success, and sticky failure.
+- [x] Run focused routing tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

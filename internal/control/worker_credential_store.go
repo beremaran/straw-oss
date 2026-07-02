@@ -22,6 +22,22 @@ type AllowedPool struct {
 	PoolID   string `json:"pool_id"`
 }
 
+// WorkerCapabilities bounds the capabilities a worker may claim at
+// registration. Each non-empty list is an allow-list: a registering worker
+// may only claim values contained in it. An empty list means the credential
+// places no restriction on that dimension (P0 permissive default; the
+// tenant_admin create API does not yet author these, so they are set
+// directly by platform tooling/tests). See
+// docs/planning/06-identity-roles-and-tenant-isolation.md and the
+// allowed_capabilities schema in docs/planning/26.
+type WorkerCapabilities struct {
+	Tags                  []string `json:"tags"`
+	Countries             []string `json:"countries"`
+	Regions               []string `json:"regions"`
+	IPTypes               []string `json:"ip_types"`
+	SupportedIngressModes []string `json:"supported_ingress_modes"`
+}
+
 // WorkerCredential mirrors the `worker_credentials` table. P0 creation
 // forces TenantScope to a single tenant (the caller's) and rejects
 // AllowedPools entries referencing any other tenant; multi-tenant
@@ -33,6 +49,7 @@ type WorkerCredential struct {
 	PublicKeyEd25519Base64 string
 	TenantScope            []string
 	AllowedPools           []AllowedPool
+	AllowedCapabilities    WorkerCapabilities
 	CreatedAt              time.Time
 	UpdatedAt              time.Time
 	ConfigVersion          uint64

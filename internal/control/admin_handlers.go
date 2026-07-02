@@ -22,6 +22,7 @@ type AdminHandlers struct {
 	Quotas        QuotaStore
 	Audit         AuditStore
 	ConfigCache   *ConfigCache
+	Workers       *WorkerRegistry
 	Pepper        []byte
 }
 
