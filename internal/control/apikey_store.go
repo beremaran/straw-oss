@@ -68,7 +68,9 @@ func (s *InMemoryAPIKeyStore) Create(_ context.Context, record APIKeyRecord) err
 	if _, exists := s.records[record.ID]; exists {
 		return ErrAPIKeyAlreadyExist
 	}
+
 	s.records[record.ID] = record
+
 	return nil
 }
 
@@ -77,11 +79,13 @@ func (s *InMemoryAPIKeyStore) FindByPrefix(_ context.Context, prefix string) ([]
 	defer s.mu.RUnlock()
 
 	var out []APIKeyRecord
+
 	for _, r := range s.records {
 		if r.Prefix == prefix {
 			out = append(out, r)
 		}
 	}
+
 	return out, nil
 }
 
@@ -93,6 +97,7 @@ func (s *InMemoryAPIKeyStore) Get(_ context.Context, id string) (APIKeyRecord, e
 	if !ok {
 		return APIKeyRecord{}, ErrAPIKeyNotFound
 	}
+
 	return r, nil
 }
 
@@ -104,10 +109,12 @@ func (s *InMemoryAPIKeyStore) Revoke(_ context.Context, id string, revokedAt tim
 	if !ok {
 		return APIKeyRecord{}, ErrAPIKeyNotFound
 	}
+
 	r.Status = APIKeyStatusRevoked
 	t := revokedAt
 	r.RevokedAt = &t
 	s.records[id] = r
+
 	return r, nil
 }
 
@@ -116,11 +123,13 @@ func (s *InMemoryAPIKeyStore) ListPlatform(_ context.Context) ([]APIKeyRecord, e
 	defer s.mu.RUnlock()
 
 	var out []APIKeyRecord
+
 	for _, r := range s.records {
 		if r.ScopeType == ScopePlatform {
 			out = append(out, r)
 		}
 	}
+
 	return out, nil
 }
 
@@ -129,11 +138,13 @@ func (s *InMemoryAPIKeyStore) ListTenant(_ context.Context, tenantID string) ([]
 	defer s.mu.RUnlock()
 
 	var out []APIKeyRecord
+
 	for _, r := range s.records {
 		if r.ScopeType == ScopeTenant && r.TenantID == tenantID {
 			out = append(out, r)
 		}
 	}
+
 	return out, nil
 }
 
@@ -142,10 +153,12 @@ func (s *InMemoryAPIKeyStore) CountPlatformSystemAdmins(_ context.Context) (int,
 	defer s.mu.RUnlock()
 
 	count := 0
+
 	for _, r := range s.records {
 		if r.ScopeType == ScopePlatform && r.Role == RoleSystemAdmin && r.Status == APIKeyStatusActive {
 			count++
 		}
 	}
+
 	return count, nil
 }

@@ -84,6 +84,7 @@ func ErrorCodeFromName(name string) ErrorCode {
 			return code
 		}
 	}
+
 	return 0
 }
 
@@ -99,6 +100,7 @@ func ErrorResponseFromCode(code ErrorCode, requestID string, extraDetails map[st
 			HTTPStatus: 500,
 		}
 	}
+
 	resp := ErrorResponse{
 		Category:  entry.Category,
 		Code:      entry.Code,
@@ -109,6 +111,7 @@ func ErrorResponseFromCode(code ErrorCode, requestID string, extraDetails map[st
 	if len(extraDetails) > 0 {
 		resp.Details = extraDetails
 	}
+
 	return resp
 }
 

@@ -1,6 +1,6 @@
 # 10 - Assignment and Stream Lifecycle
 
-Status: not started
+Status: in progress
 
 ## Objective
 

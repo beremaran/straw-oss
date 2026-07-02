@@ -52,6 +52,7 @@ func (s *InMemoryQuotaStore) Get(_ context.Context, tenantID string) (QuotaConfi
 		// rather than an error, mirroring the tenant-snapshot behavior.
 		return QuotaConfig{TenantID: tenantID, Period: "monthly", ConfigVersion: 0}, nil
 	}
+
 	return q, nil
 }
 
@@ -60,14 +61,18 @@ func (s *InMemoryQuotaStore) Put(_ context.Context, quota QuotaConfig, expectedV
 	defer s.mu.Unlock()
 
 	current, ok := s.byTid[quota.TenantID]
+
 	currentVersion := uint64(0)
 	if ok {
 		currentVersion = current.ConfigVersion
 	}
+
 	if currentVersion != expectedVersion {
 		return QuotaConfig{}, ErrQuotaVersionConflict
 	}
+
 	quota.ConfigVersion = currentVersion + 1
 	s.byTid[quota.TenantID] = quota
+
 	return quota, nil
 }

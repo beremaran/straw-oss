@@ -49,6 +49,7 @@ func (ta *testAdmin) seedRegisteredWorker(t *testing.T, workerID string, tenants
 		t.Fatalf("register worker: %+v err=%v", out, err)
 	}
 	reg.Heartbeat(&strawpb.HeartbeatRequest{WorkerId: workerID, SessionId: out.SessionID, Health: strawpb.WorkerHealth_WORKER_HEALTH_READY})
+
 	return reg
 }
 
@@ -64,7 +65,8 @@ func TestListWorkersPlatformSeesSessionTenantDoesNot(t *testing.T) {
 		t.Fatalf("platform list status = %d", w.Code)
 	}
 	var platform []workerAdminView
-	if err := json.Unmarshal(w.Body.Bytes(), &platform); err != nil {
+	err := json.Unmarshal(w.Body.Bytes(), &platform)
+	if err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	if len(platform) != 1 || platform[0].SessionID == "" || platform[0].AssignSubject == "" {
@@ -78,7 +80,8 @@ func TestListWorkersPlatformSeesSessionTenantDoesNot(t *testing.T) {
 		t.Fatalf("tenant list status = %d", w.Code)
 	}
 	var tenant []workerAdminView
-	if err := json.Unmarshal(w.Body.Bytes(), &tenant); err != nil {
+	err := json.Unmarshal(w.Body.Bytes(), &tenant)
+	if err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	if len(tenant) != 1 || tenant[0].WorkerID != "worker-1" {
@@ -100,7 +103,8 @@ func TestTenantWorkerListOmitsOtherTenants(t *testing.T) {
 	w := httptest.NewRecorder()
 	ta.h.ListWorkers(w, newAdminRequest(http.MethodGet, "/api/v1/admin/workers", tenantToken, ""))
 	var views []workerAdminView
-	if err := json.Unmarshal(w.Body.Bytes(), &views); err != nil {
+	err := json.Unmarshal(w.Body.Bytes(), &views)
+	if err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	if len(views) != 0 {

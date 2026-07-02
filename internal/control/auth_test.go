@@ -113,7 +113,8 @@ func TestAuthenticatorHandlesPrefixCollisions(t *testing.T) {
 
 func mustCreate(t *testing.T, store APIKeyStore, record APIKeyRecord) {
 	t.Helper()
-	if err := store.Create(context.Background(), record); err != nil {
+	err := store.Create(context.Background(), record)
+	if err != nil {
 		t.Fatalf("store.Create() error = %v", err)
 	}
 }
@@ -125,7 +126,7 @@ func TestAuthenticateRejectsMissingHeader(t *testing.T) {
 
 	auth := NewAuthenticator(NewInMemoryAPIKeyStore(), nil)
 	_, err := auth.Authenticate(context.Background(), "")
-	if err != ErrAuthFailure {
+	if !errors.Is(err, ErrAuthFailure) {
 		t.Fatalf("Authenticate() error = %v, want ErrAuthFailure", err)
 	}
 }
@@ -135,7 +136,7 @@ func TestAuthenticateRejectsUnknownKey(t *testing.T) {
 
 	auth := NewAuthenticator(NewInMemoryAPIKeyStore(), nil)
 	_, err := auth.Authenticate(context.Background(), "Bearer sk_live_doesnotexist")
-	if err != ErrAuthFailure {
+	if !errors.Is(err, ErrAuthFailure) {
 		t.Fatalf("Authenticate() error = %v, want ErrAuthFailure", err)
 	}
 }
@@ -160,7 +161,7 @@ func TestAuthenticateRejectsRevokedKey(t *testing.T) {
 		t.Fatalf("Revoke() error = %v", err)
 	}
 
-	if _, err := auth.Authenticate(context.Background(), "Bearer "+gen.Secret); err != ErrAuthFailure {
+	if _, err := auth.Authenticate(context.Background(), "Bearer "+gen.Secret); !errors.Is(err, ErrAuthFailure) {
 		t.Fatalf("Authenticate() after revoke error = %v, want ErrAuthFailure (revocation takes effect)", err)
 	}
 }
@@ -217,7 +218,8 @@ func TestPlatformKeyCannotExecuteDataPlaneRequest(t *testing.T) {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusForbidden)
 	}
 	var errResp ErrorResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &errResp); err != nil {
+	err := json.Unmarshal(w.Body.Bytes(), &errResp)
+	if err != nil {
 		t.Fatalf("unmarshal error: %v", err)
 	}
 	if errResp.Code != "insufficient_permissions" {
@@ -241,7 +243,8 @@ func TestUnauthenticatedRequestRejected(t *testing.T) {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusUnauthorized)
 	}
 	var errResp ErrorResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &errResp); err != nil {
+	err := json.Unmarshal(w.Body.Bytes(), &errResp)
+	if err != nil {
 		t.Fatalf("unmarshal error: %v", err)
 	}
 	if errResp.Code != "auth_failure" {

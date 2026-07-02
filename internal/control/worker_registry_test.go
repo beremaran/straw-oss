@@ -20,6 +20,7 @@ type fakeClock struct {
 func (c *fakeClock) Now() time.Time {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	return c.t
 }
 
@@ -54,6 +55,7 @@ func newRegHarness(t *testing.T, cred WorkerCredential) *regHarness {
 		t.Fatalf("create credential: %v", err)
 	}
 	clock := &fakeClock{t: time.Unix(1_700_000_000, 0)}
+
 	return &regHarness{
 		reg:   NewWorkerRegistry(store, DefaultWorkerTimings(), clock.Now),
 		creds: store,
@@ -87,6 +89,7 @@ func (h *regHarness) signedRegister(workerID string, mut ...func(*strawpb.Regist
 	for _, m := range mut {
 		m(req)
 	}
+
 	return req
 }
 
@@ -99,6 +102,7 @@ func (h *regHarness) mustRegister(t *testing.T, req *strawpb.RegisterRequest) st
 	if !out.OK {
 		t.Fatalf("Register rejected: %s", out.Reason)
 	}
+
 	return out.SessionID
 }
 
@@ -316,7 +320,7 @@ func TestCooldownExcludesThenRecovers(t *testing.T) {
 	sess := h.mustRegister(t, h.signedRegister("worker-1"))
 	h.reg.Heartbeat(readyHeartbeat("worker-1", sess))
 
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		h.reg.RecordFailure("worker-1")
 	}
 	if got := h.reg.RuntimeState("worker-1"); got != RuntimeCooldown {
@@ -362,6 +366,7 @@ func multiTenantHarness(t *testing.T) *regHarness {
 	h := newRegHarness(t, cred)
 	sess := h.mustRegister(t, h.signedRegister("worker-1"))
 	h.reg.Heartbeat(readyHeartbeat("worker-1", sess))
+
 	return h
 }
 
@@ -414,7 +419,8 @@ func TestListWorkersForTenantScoping(t *testing.T) {
 	otherCred.AllowedPools = []AllowedPool{{TenantID: "ten_c", PoolID: "pool_1"}}
 	pub := base64.StdEncoding.EncodeToString(h.priv.Public().(ed25519.PublicKey))
 	otherCred.PublicKeyEd25519Base64 = pub
-	if err := h.creds.Create(context.Background(), otherCred); err != nil {
+	err := h.creds.Create(context.Background(), otherCred)
+	if err != nil {
 		t.Fatalf("create other cred: %v", err)
 	}
 	otherReq := &strawpb.RegisterRequest{
@@ -453,7 +459,8 @@ func TestRegisterInvalidCredentialKey(t *testing.T) {
 	// Corrupt the stored public key.
 	corrupt := cred
 	corrupt.PublicKeyEd25519Base64 = "not-base64!!"
-	if err := h.creds.Create(context.Background(), corrupt); err != nil {
+	err := h.creds.Create(context.Background(), corrupt)
+	if err != nil {
 		t.Fatalf("overwrite cred: %v", err)
 	}
 	out, _ := h.reg.Register(context.Background(), h.signedRegister("worker-1"))

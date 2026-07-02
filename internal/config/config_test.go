@@ -82,6 +82,7 @@ func TestLoadControl(t *testing.T) {
 				if err != nil {
 					t.Fatalf("LoadControl() error = %v", err)
 				}
+
 				return
 			}
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
@@ -146,6 +147,7 @@ func TestLoadEgress(t *testing.T) {
 				if err != nil {
 					t.Fatalf("LoadEgress() error = %v", err)
 				}
+
 				return
 			}
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
@@ -160,8 +162,10 @@ func writeConfig(t *testing.T, contents string) string {
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
-	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+	err := os.WriteFile(path, []byte(contents), 0o600)
+	if err != nil {
 		t.Fatalf("write config: %v", err)
 	}
+
 	return path
 }

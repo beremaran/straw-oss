@@ -42,6 +42,7 @@ func (h *RequestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Retryable: false,
 			RequestID: "",
 		})
+
 		return
 	}
 
@@ -55,6 +56,7 @@ func (h *RequestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		default:
 			WriteError(w, http.StatusUnauthorized, ErrorResponseFromCode(AuthFailure, requestID, nil))
 		}
+
 		return
 	}
 
@@ -64,6 +66,7 @@ func (h *RequestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Code:    "invalid_request",
 			Message: "request body is required and must be JSON",
 		})
+
 		return
 	}
 
@@ -72,9 +75,12 @@ func (h *RequestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		var verr *ValidationError
 		if asValidationError(err, &verr) {
 			WriteValidationError(w, requestID, verr)
+
 			return
 		}
+
 		WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(6, requestID, nil))
+
 		return
 	}
 
@@ -117,23 +123,29 @@ func (h *RequestHandler) authenticateAndAuthorize(r *http.Request) (Identity, er
 	if h.authenticator == nil {
 		return Identity{}, ErrAuthFailure
 	}
+
 	identity, err := h.authenticator.Authenticate(r.Context(), r.Header.Get("Authorization"))
 	if err != nil {
 		return Identity{}, err
 	}
+
 	if !CanExecuteDataPlane(identity) {
 		return Identity{}, ErrInsufficientPermissions
 	}
+
 	return identity, nil
 }
 
 func readRequestBody(r *http.Request) ([]byte, error) {
 	const maxBody = 4 << 20
+
 	r.Body = http.MaxBytesReader(nil, r.Body, maxBody)
+
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		return nil, err
 	}
+
 	return body, nil
 }
 
@@ -141,8 +153,10 @@ func asValidationError(err error, target **ValidationError) bool {
 	var verr *ValidationError
 	if errors.As(err, &verr) {
 		*target = verr
+
 		return true
 	}
+
 	return false
 }
 
@@ -179,6 +193,7 @@ func encodeHeadersBase64(headers []HeaderPair) []HeaderPair {
 			Value: base64.StdEncoding.EncodeToString([]byte(h.Value)),
 		}
 	}
+
 	return out
 }
 

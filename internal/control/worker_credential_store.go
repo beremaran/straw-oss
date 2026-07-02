@@ -80,6 +80,7 @@ func (s *InMemoryWorkerCredentialStore) Create(_ context.Context, record WorkerC
 	defer s.mu.Unlock()
 
 	s.records[record.ID] = record
+
 	return nil
 }
 
@@ -91,6 +92,7 @@ func (s *InMemoryWorkerCredentialStore) Get(_ context.Context, id string) (Worke
 	if !ok {
 		return WorkerCredential{}, ErrWorkerCredentialNotFound
 	}
+
 	return r, nil
 }
 
@@ -102,9 +104,11 @@ func (s *InMemoryWorkerCredentialStore) Revoke(_ context.Context, id string, rev
 	if !ok {
 		return WorkerCredential{}, ErrWorkerCredentialNotFound
 	}
+
 	r.Status = WorkerCredentialStatusRevoked
 	r.UpdatedAt = revokedAt
 	s.records[id] = r
+
 	return r, nil
 }
 
@@ -113,13 +117,16 @@ func (s *InMemoryWorkerCredentialStore) ListTenant(_ context.Context, tenantID s
 	defer s.mu.RUnlock()
 
 	var out []WorkerCredential
+
 	for _, r := range s.records {
 		for _, t := range r.TenantScope {
 			if t == tenantID {
 				out = append(out, r)
+
 				break
 			}
 		}
 	}
+
 	return out, nil
 }

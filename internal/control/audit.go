@@ -43,11 +43,14 @@ func (s *InMemoryAuditStore) Record(_ context.Context, record AuditRecord) error
 	defer s.mu.Unlock()
 
 	s.nextID++
+
 	record.ID = s.nextID
 	if record.CreatedAt.IsZero() {
 		record.CreatedAt = time.Now().UTC()
 	}
+
 	s.records = append(s.records, record)
+
 	return nil
 }
 
@@ -56,11 +59,13 @@ func (s *InMemoryAuditStore) ListTenant(_ context.Context, tenantID string) ([]A
 	defer s.mu.RUnlock()
 
 	var out []AuditRecord
+
 	for _, r := range s.records {
 		if r.TenantID == tenantID {
 			out = append(out, r)
 		}
 	}
+
 	return out, nil
 }
 
@@ -70,6 +75,7 @@ func recordAudit(ctx context.Context, store AuditStore, identity Identity, resou
 	if store == nil {
 		return
 	}
+
 	_ = store.Record(ctx, AuditRecord{
 		TenantID:     identity.TenantID,
 		ActorType:    "api_key",

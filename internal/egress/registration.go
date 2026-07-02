@@ -61,6 +61,7 @@ func BuildRegisterRequest(id Identity, caps Capabilities) *strawpb.RegisterReque
 		InitialDraining:       caps.InitialDraining,
 	}
 	req.SignedToken = strawpb.SignRegistration(id.PrivateKey, req)
+
 	return req
 }
 

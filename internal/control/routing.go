@@ -110,6 +110,7 @@ func NewRouter(rules RuleProvider, policies PoolPolicyProvider, candidates Candi
 	if now == nil {
 		now = time.Now
 	}
+
 	return &Router{
 		rules:      rules,
 		policies:   policies,
@@ -161,6 +162,7 @@ func (rt *Router) evaluateSticky(req RouteRequest, rule RoutingRule, candidates 
 		for _, c := range candidates {
 			if c.WorkerID == pinned {
 				rt.sticky.Refresh(req.TenantID, req.StickySessionID, pinned, stickyTTL(rule))
+
 				return RouteOutcome{
 					OK: true, RuleID: rule.ID, PoolID: rule.TargetPoolID,
 					WorkerID: c.WorkerID, SessionID: c.SessionID, AssignSubject: c.AssignSubject, Sticky: true,
@@ -178,7 +180,9 @@ func (rt *Router) evaluateSticky(req RouteRequest, rule RoutingRule, candidates 
 	if !ok {
 		return RouteOutcome{}, false
 	}
+
 	rt.sticky.Set(req.TenantID, req.StickySessionID, picked.WorkerID, stickyTTL(rule))
+
 	return RouteOutcome{
 		OK: true, RuleID: rule.ID, PoolID: rule.TargetPoolID,
 		WorkerID: picked.WorkerID, SessionID: picked.SessionID, AssignSubject: picked.AssignSubject, Sticky: true,
@@ -193,17 +197,22 @@ func stickyTTL(rule RoutingRule) time.Duration {
 // are satisfied by req, in ascending priority order.
 func (rt *Router) matchingRules(req RouteRequest) []RoutingRule {
 	all := rt.rules.RulesForTenant(req.TenantID)
+
 	out := make([]RoutingRule, 0, len(all))
 	for _, r := range all {
 		if r.TenantID != req.TenantID || !r.Enabled {
 			continue
 		}
+
 		if !matches(r.Match, req) {
 			continue
 		}
+
 		out = append(out, r)
 	}
+
 	sortRulesByPriority(out)
+
 	return out
 }
 
@@ -246,14 +255,17 @@ func allTrue(checks []bool) bool {
 			return false
 		}
 	}
+
 	return true
 }
 
 func hostMatches(pattern, host string) bool {
 	if len(pattern) > 2 && pattern[:2] == "*." {
 		suffix := pattern[1:] // ".example.com"
+
 		return len(host) > len(suffix) && host[len(host)-len(suffix):] == suffix
 	}
+
 	return pattern == host
 }
 
@@ -262,19 +274,24 @@ func hostMatches(pattern, host string) bool {
 // all request constraints").
 func (rt *Router) eligibleCandidates(req RouteRequest, rule RoutingRule, policy PoolPolicy) []PoolCandidate {
 	all := rt.candidates.CandidatesForPool(req.TenantID, rule.TargetPoolID)
+
 	out := make([]PoolCandidate, 0, len(all))
 	for _, c := range all {
 		if c.Degraded && !policy.AllowDegradedWorkers {
 			continue
 		}
+
 		if !capabilitySatisfies(c, req) {
 			continue
 		}
+
 		if c.AvailableCap == 0 && c.MaxConcurrency > 0 && c.ActiveRequests >= c.MaxConcurrency {
 			continue
 		}
+
 		out = append(out, c)
 	}
+
 	return out
 }
 
@@ -286,6 +303,7 @@ func capabilitySatisfies(c PoolCandidate, req RouteRequest) bool {
 		req.IPType == "" || len(c.IPTypes) == 0 || containsString(c.IPTypes, req.IPType),
 		req.IngressType == "" || len(c.IngressModes) == 0 || containsString(c.IngressModes, req.IngressType),
 	}
+
 	return allTrue(checks)
 }
 
@@ -303,12 +321,14 @@ func (rt *Router) selectExecutor(tenantID, poolID string, candidates []PoolCandi
 			minLoad = l
 		}
 	}
+
 	tied := make([]PoolCandidate, 0, len(candidates))
 	for _, c := range candidates {
 		if load(c) == minLoad {
 			tied = append(tied, c)
 		}
 	}
+
 	sortCandidatesByWorkerID(tied)
 
 	rt.mu.Lock()
@@ -333,6 +353,7 @@ func load(c PoolCandidate) float64 {
 	if c.MaxConcurrency == 0 {
 		return 0
 	}
+
 	return float64(c.ActiveRequests) / float64(c.MaxConcurrency)
 }
 
@@ -352,6 +373,7 @@ func NewStaticRuleProvider(rules []RoutingRule) *StaticRuleProvider {
 	for _, r := range rules {
 		p.byTenant[r.TenantID] = append(p.byTenant[r.TenantID], r)
 	}
+
 	return p
 }
 
@@ -359,9 +381,11 @@ func NewStaticRuleProvider(rules []RoutingRule) *StaticRuleProvider {
 func (p *StaticRuleProvider) RulesForTenant(tenantID string) []RoutingRule {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
 	rules := p.byTenant[tenantID]
 	out := make([]RoutingRule, len(rules))
 	copy(out, rules)
+
 	return out
 }
 
@@ -378,6 +402,7 @@ func NewStaticPoolPolicyProvider(policies []PoolPolicy) *StaticPoolPolicyProvide
 	for _, pol := range policies {
 		p.policies[pol.TenantID+"\x00"+pol.PoolID] = pol
 	}
+
 	return p
 }
 
@@ -386,6 +411,7 @@ func NewStaticPoolPolicyProvider(policies []PoolPolicy) *StaticPoolPolicyProvide
 func (p *StaticPoolPolicyProvider) PoolPolicy(tenantID, poolID string) PoolPolicy {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
 	return p.policies[tenantID+"\x00"+poolID]
 }
 
@@ -414,6 +440,7 @@ func NewStickyStore(now func() time.Time) *StickyStore {
 	if now == nil {
 		now = time.Now
 	}
+
 	return &StickyStore{now: now, entries: make(map[string]stickyEntry)}
 }
 
@@ -425,10 +452,12 @@ func stickyKey(tenantID, sessionID string) string {
 func (s *StickyStore) Get(tenantID, sessionID string) (string, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	e, ok := s.entries[stickyKey(tenantID, sessionID)]
 	if !ok || s.now().After(e.expiresAt) {
 		return "", false
 	}
+
 	return e.workerID, true
 }
 
@@ -436,6 +465,7 @@ func (s *StickyStore) Get(tenantID, sessionID string) (string, bool) {
 func (s *StickyStore) Set(tenantID, sessionID, workerID string, ttl time.Duration) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	s.entries[stickyKey(tenantID, sessionID)] = stickyEntry{workerID: workerID, expiresAt: s.now().Add(ttl)}
 }
 

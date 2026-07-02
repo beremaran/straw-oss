@@ -48,6 +48,7 @@ func newTestAdmin(t *testing.T) *testAdmin {
 		ConfigCache:   cache,
 		Pepper:        pepper,
 	}
+
 	return ta
 }
 
@@ -64,6 +65,7 @@ func (ta *testAdmin) seedPlatformKey(t *testing.T, id string, role Role) string 
 		Prefix: gen.Prefix, SecretHash: HashAPIKeySecret(gen.Secret, ta.pepper),
 		Status: APIKeyStatusActive, CreatedAt: time.Now().UTC(),
 	})
+
 	return gen.Secret
 }
 
@@ -80,6 +82,7 @@ func (ta *testAdmin) seedTenantKey(t *testing.T, id, tenantID string, role Role)
 		Prefix: gen.Prefix, SecretHash: HashAPIKeySecret(gen.Secret, ta.pepper),
 		Status: APIKeyStatusActive, CreatedAt: time.Now().UTC(),
 	})
+
 	return gen.Secret
 }
 
@@ -89,6 +92,7 @@ func newAdminRequest(method, path, token, body string) *http.Request {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	req.Header.Set("Content-Type", "application/json")
+
 	return req
 }
 
@@ -107,7 +111,8 @@ func TestPlatformAPIKeyLifecycle(t *testing.T) {
 		t.Fatalf("create status = %d, want %d, body=%s", w.Code, http.StatusCreated, w.Body.String())
 	}
 	var created apiKeyCreateResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+	err := json.Unmarshal(w.Body.Bytes(), &created)
+	if err != nil {
 		t.Fatalf("unmarshal create response: %v", err)
 	}
 	if created.Secret == "" {
@@ -124,7 +129,8 @@ func TestPlatformAPIKeyLifecycle(t *testing.T) {
 		t.Fatalf("list status = %d, want %d", w.Code, http.StatusOK)
 	}
 	var listed []apiKeyReadResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &listed); err != nil {
+	err := json.Unmarshal(w.Body.Bytes(), &listed)
+	if err != nil {
 		t.Fatalf("unmarshal list response: %v", err)
 	}
 	found := false
@@ -156,7 +162,7 @@ func TestPlatformAPIKeyLifecycle(t *testing.T) {
 	}
 
 	// Revocation takes effect immediately.
-	if _, err := auth.Authenticate(context.Background(), "Bearer "+created.Secret); err != ErrAuthFailure {
+	if _, err := auth.Authenticate(context.Background(), "Bearer "+created.Secret); !errors.Is(err, ErrAuthFailure) {
 		t.Fatalf("Authenticate() after revoke error = %v, want ErrAuthFailure", err)
 	}
 }
@@ -188,7 +194,8 @@ func TestTenantKeyCannotCreateTenants(t *testing.T) {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusForbidden)
 	}
 	var errResp ErrorResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &errResp); err != nil {
+	err := json.Unmarshal(w.Body.Bytes(), &errResp)
+	if err != nil {
 		t.Fatalf("unmarshal error: %v", err)
 	}
 	if errResp.Code != "insufficient_permissions" {
@@ -254,7 +261,8 @@ func TestTenantIsolationBlocksCrossTenantKeyRevoke(t *testing.T) {
 		t.Fatalf("create status = %d, want %d, body=%s", w.Code, http.StatusCreated, w.Body.String())
 	}
 	var created apiKeyCreateResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+	err := json.Unmarshal(w.Body.Bytes(), &created)
+	if err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 
@@ -271,7 +279,8 @@ func TestTenantIsolationBlocksCrossTenantKeyRevoke(t *testing.T) {
 	w = httptest.NewRecorder()
 	ta.h.ListTenantAPIKeys(w, newAdminRequest(http.MethodGet, "/api-keys", tenantBToken, ""))
 	var listed []apiKeyReadResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &listed); err != nil {
+	err := json.Unmarshal(w.Body.Bytes(), &listed)
+	if err != nil {
 		t.Fatalf("unmarshal list: %v", err)
 	}
 	for _, k := range listed {
@@ -332,7 +341,8 @@ func TestQuotaWriteRequiresPlatformKey(t *testing.T) {
 
 	ta := newTestAdmin(t)
 	tenant := Tenant{ID: "ten_a", Name: "A", Status: TenantStatusActive, CreatedAt: time.Now().UTC()}
-	if err := ta.tenants.Create(context.Background(), tenant); err != nil {
+	err := ta.tenants.Create(context.Background(), tenant)
+	if err != nil {
 		t.Fatalf("seed tenant: %v", err)
 	}
 	tenantAdminToken := ta.seedTenantKey(t, "key_a_admin", "ten_a", RoleTenantAdmin)
@@ -365,7 +375,8 @@ func TestQuotaWriteRequiresPlatformKey(t *testing.T) {
 		t.Fatalf("tenant quota read status = %d, want %d", w.Code, http.StatusOK)
 	}
 	var quota quotaResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &quota); err != nil {
+	err := json.Unmarshal(w.Body.Bytes(), &quota)
+	if err != nil {
 		t.Fatalf("unmarshal quota: %v", err)
 	}
 	if quota.MaxRequests != 1000 {
@@ -388,7 +399,8 @@ func TestWorkerCredentialCreateRejectsForeignTenantScope(t *testing.T) {
 		t.Fatalf("status = %d, want %d, body=%s", w.Code, http.StatusBadRequest, w.Body.String())
 	}
 	var errResp ErrorResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &errResp); err != nil {
+	err := json.Unmarshal(w.Body.Bytes(), &errResp)
+	if err != nil {
 		t.Fatalf("unmarshal error: %v", err)
 	}
 	if errResp.Code != "invalid_request" {
@@ -409,7 +421,8 @@ func TestWorkerCredentialCreateForcesCallerTenantScope(t *testing.T) {
 		t.Fatalf("status = %d, want %d, body=%s", w.Code, http.StatusCreated, w.Body.String())
 	}
 	var created workerCredentialResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+	err := json.Unmarshal(w.Body.Bytes(), &created)
+	if err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	if len(created.TenantScope) != 1 || created.TenantScope[0] != "ten_a" {
@@ -428,7 +441,8 @@ func TestWorkerCredentialRevokeInvalidatesAcrossTenants(t *testing.T) {
 	w := httptest.NewRecorder()
 	ta.h.CreateWorkerCredential(w, newAdminRequest(http.MethodPost, "/worker-credentials", tenantAToken, body))
 	var created workerCredentialResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+	err := json.Unmarshal(w.Body.Bytes(), &created)
+	if err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 

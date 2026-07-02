@@ -11,14 +11,15 @@ package control
 // to no data-plane execution. This is a deny-by-default deviation, not an
 // permission expansion, and is documented in the task handoff.
 
+import "slices"
+
 // RequireRole returns ErrInsufficientPermissions unless identity.Role is
 // one of allowed.
 func RequireRole(identity Identity, allowed ...Role) error {
-	for _, role := range allowed {
-		if identity.Role == role {
-			return nil
-		}
+	if slices.Contains(allowed, identity.Role) {
+		return nil
 	}
+
 	return ErrInsufficientPermissions
 }
 
@@ -28,6 +29,7 @@ func RequirePlatformScope(identity Identity) error {
 	if !identity.IsPlatform() {
 		return ErrInsufficientPermissions
 	}
+
 	return nil
 }
 
@@ -37,6 +39,7 @@ func RequireTenantScope(identity Identity) error {
 	if identity.IsPlatform() {
 		return ErrInsufficientPermissions
 	}
+
 	return nil
 }
 
@@ -44,12 +47,15 @@ func RequireTenantScope(identity Identity) error {
 // tenant-scoped and belongs to tenantID. Used to enforce tenant isolation
 // on tenant-scoped resources (API keys, worker credentials, quotas, ...).
 func RequireOwnTenant(identity Identity, tenantID string) error {
-	if err := RequireTenantScope(identity); err != nil {
+	err := RequireTenantScope(identity)
+	if err != nil {
 		return err
 	}
+
 	if identity.TenantID != tenantID {
 		return ErrInsufficientPermissions
 	}
+
 	return nil
 }
 
@@ -60,6 +66,7 @@ func CanExecuteDataPlane(identity Identity) bool {
 	if identity.IsPlatform() {
 		return false
 	}
+
 	switch identity.Role {
 	case RoleRequester, RoleTenantAdmin:
 		return true

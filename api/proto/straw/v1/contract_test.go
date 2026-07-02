@@ -47,7 +47,8 @@ func TestValidateRejectsUnknownEnums(t *testing.T) {
 			Code:     strawpb.ErrorCode(99),
 		}
 
-		if err := msg.Validate(); err == nil {
+		err := msg.Validate()
+		if err == nil {
 			t.Fatal("expected unknown error enums to be rejected")
 		}
 	})
@@ -63,7 +64,8 @@ func TestValidateRejectsUnknownEnums(t *testing.T) {
 			DestinationPolicy: &strawpb.DestinationPolicy{},
 		}
 
-		if err := msg.Validate(); err == nil {
+		err := msg.Validate()
+		if err == nil {
 			t.Fatal("expected unknown request enums to be rejected")
 		}
 	})

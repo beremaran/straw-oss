@@ -24,11 +24,9 @@ const keyPrefixRunes = 12
 // keyLiteralPrefix is prepended to every generated API key.
 const keyLiteralPrefix = "sk_live_"
 
-var (
-	// ErrMalformedAPIKey is returned when a presented API key does not match
-	// the expected shape (too short to contain a prefix).
-	ErrMalformedAPIKey = errors.New("malformed api key")
-)
+// ErrMalformedAPIKey is returned when a presented API key does not match
+// the expected shape (too short to contain a prefix).
+var ErrMalformedAPIKey = errors.New("malformed api key")
 
 // GeneratedAPIKey holds the plaintext key material produced at creation
 // time. The plaintext Secret is shown to the caller exactly once; it is
@@ -47,6 +45,7 @@ func GenerateAPIKey() (GeneratedAPIKey, error) {
 	if _, err := rand.Read(raw); err != nil {
 		return GeneratedAPIKey{}, err
 	}
+
 	body := base64.RawURLEncoding.EncodeToString(raw)
 	secret := keyLiteralPrefix + body
 
@@ -63,6 +62,7 @@ func ExtractKeyPrefix(fullKey string) (string, error) {
 	if len(fullKey) < keyPrefixRunes {
 		return "", ErrMalformedAPIKey
 	}
+
 	return fullKey[:keyPrefixRunes], nil
 }
 
@@ -72,6 +72,7 @@ func ExtractKeyPrefix(fullKey string) (string, error) {
 func HashAPIKeySecret(fullKey string, pepper []byte) string {
 	mac := hmac.New(sha256.New, pepper)
 	_, _ = mac.Write([]byte(fullKey))
+
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
@@ -84,6 +85,7 @@ func VerifyAPIKeySecret(fullKey, storedHash string, pepper []byte) bool {
 	if len(computed) != len(storedHash) {
 		return false
 	}
+
 	return subtle.ConstantTimeCompare([]byte(computed), []byte(storedHash)) == 1
 }
 
@@ -92,15 +94,19 @@ func VerifyAPIKeySecret(fullKey, storedHash string, pepper []byte) bool {
 // or malformed.
 func BearerToken(authorizationHeader string) (string, error) {
 	const schemePrefix = "Bearer "
+
 	if authorizationHeader == "" {
 		return "", errors.New("missing authorization header")
 	}
+
 	if !strings.HasPrefix(authorizationHeader, schemePrefix) {
 		return "", errors.New("authorization header must use Bearer scheme")
 	}
+
 	token := strings.TrimPrefix(authorizationHeader, schemePrefix)
 	if token == "" {
 		return "", errors.New("empty bearer token")
 	}
+
 	return token, nil
 }

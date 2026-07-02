@@ -28,10 +28,12 @@ func adminMapToStrings(in map[string]AdminState) map[string]string {
 	if len(in) == 0 {
 		return nil
 	}
+
 	out := make(map[string]string, len(in))
 	for k, v := range in {
 		out[k] = string(v)
 	}
+
 	return out
 }
 
@@ -42,10 +44,13 @@ func (h *AdminHandlers) ListWorkers(w http.ResponseWriter, r *http.Request) {
 	identity, err := h.authenticate(r)
 	if err != nil {
 		writeAuthOrRBACError(w, err)
+
 		return
 	}
+
 	if err := RequireRole(identity, RoleSystemAdmin, RoleTenantAdmin, RoleOperator); err != nil {
 		writeAuthOrRBACError(w, err)
+
 		return
 	}
 
@@ -71,8 +76,10 @@ func (h *AdminHandlers) ListWorkers(w http.ResponseWriter, r *http.Request) {
 			row.SessionID = v.SessionID
 			row.AssignSubject = v.AssignSubject
 		}
+
 		out = append(out, row)
 	}
+
 	writeJSON(w, http.StatusOK, out)
 }
 
@@ -83,12 +90,15 @@ func (h *AdminHandlers) requirePlatformSystemAdmin(r *http.Request) (Identity, e
 	if err != nil {
 		return Identity{}, err
 	}
+
 	if err := RequirePlatformScope(identity); err != nil {
 		return Identity{}, err
 	}
+
 	if err := RequireRole(identity, RoleSystemAdmin); err != nil {
 		return Identity{}, err
 	}
+
 	return identity, nil
 }
 
@@ -99,12 +109,15 @@ func (h *AdminHandlers) requireTenantRole(r *http.Request, allowed ...Role) (Ide
 	if err != nil {
 		return Identity{}, err
 	}
+
 	if err := RequireTenantScope(identity); err != nil {
 		return Identity{}, err
 	}
+
 	if err := RequireRole(identity, allowed...); err != nil {
 		return Identity{}, err
 	}
+
 	return identity, nil
 }
 
@@ -113,8 +126,10 @@ func (h *AdminHandlers) globalWorkerAction(w http.ResponseWriter, r *http.Reques
 	identity, err := h.requirePlatformSystemAdmin(r)
 	if err != nil {
 		writeAuthOrRBACError(w, err)
+
 		return
 	}
+
 	workerID := r.PathValue("worker_id")
 	apply(workerID)
 	recordAudit(r.Context(), h.Audit, identity, "worker", workerID, action)
@@ -146,8 +161,10 @@ func (h *AdminHandlers) tenantWorkerAction(w http.ResponseWriter, r *http.Reques
 	identity, err := h.requireTenantRole(r, allowed...)
 	if err != nil {
 		writeAuthOrRBACError(w, err)
+
 		return
 	}
+
 	workerID := r.PathValue("worker_id")
 	apply(workerID, identity.TenantID)
 	recordAudit(r.Context(), h.Audit, identity, "worker", workerID, action)
@@ -191,10 +208,12 @@ func (h *AdminHandlers) workerStateResponse(identity Identity, workerID string) 
 	} else {
 		views = h.Workers.ListWorkersForTenant(identity.TenantID)
 	}
+
 	for _, v := range views {
 		if v.WorkerID != workerID {
 			continue
 		}
+
 		row := workerAdminView{
 			WorkerID:         v.WorkerID,
 			RuntimeState:     string(v.RuntimeState),
@@ -208,6 +227,7 @@ func (h *AdminHandlers) workerStateResponse(identity Identity, workerID string) 
 			row.SessionID = v.SessionID
 			row.AssignSubject = v.AssignSubject
 		}
+
 		return row
 	}
 	// Global admin state may exist for a worker with no active session; a
