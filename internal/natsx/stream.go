@@ -100,16 +100,8 @@ func (v *StreamValidator) RemainingCredit() uint64 { return v.credit }
 // Accept validates f and, on FrameAccepted, advances stream state. All other
 // outcomes leave state unchanged.
 func (v *StreamValidator) Accept(f *strawpb.StreamFrame) FrameOutcome {
-	if f == nil || f.GetPayload() == nil {
-		return FrameInvalid
-	}
-
-	if v.terminal {
-		return FrameAfterTerminal
-	}
-
-	if f.GetAttempt() != v.attempt {
-		return FrameAttemptMismatch
+	if outcome := v.validateFrameShell(f); outcome != FrameAccepted {
+		return outcome
 	}
 
 	seq := f.GetStreamSeq()
@@ -122,6 +114,10 @@ func (v *StreamValidator) Accept(f *strawpb.StreamFrame) FrameOutcome {
 
 	// stream_seq is exactly the next expected value. Apply payload-specific
 	// validation before committing.
+	if outcome := validateP0Payload(f); outcome != FrameAccepted {
+		return outcome
+	}
+
 	if outcome := v.acceptData(f.GetData()); outcome != FrameAccepted {
 		return outcome
 	}
@@ -143,7 +139,35 @@ func (v *StreamValidator) IdleExpired() bool {
 		return false
 	}
 
-	return v.now().Sub(v.lastActivity) > v.idleTimeout
+	return v.now().Sub(v.lastActivity) >= v.idleTimeout
+}
+
+func (v *StreamValidator) validateFrameShell(f *strawpb.StreamFrame) FrameOutcome {
+	if f == nil || f.GetPayload() == nil {
+		return FrameInvalid
+	}
+
+	if v.terminal {
+		return FrameAfterTerminal
+	}
+
+	if f.GetStreamSeq() == 0 {
+		return FrameInvalid
+	}
+
+	if f.GetAttempt() != v.attempt {
+		return FrameAttemptMismatch
+	}
+
+	return FrameAccepted
+}
+
+func validateP0Payload(f *strawpb.StreamFrame) FrameOutcome {
+	if _, ok := f.GetPayload().(*strawpb.StreamFrame_BodyRef); ok {
+		return FrameInvalid
+	}
+
+	return FrameAccepted
 }
 
 func (v *StreamValidator) acceptData(data *strawpb.DataFrame) FrameOutcome {

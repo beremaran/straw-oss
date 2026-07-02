@@ -87,6 +87,9 @@ type Assignment struct {
 	// success envelope, which forbids fallback even for replayable requests
 	// (docs/planning/09 "Replay and Fallback Boundary").
 	clientResponded bool
+	// fallbackAllowed preserves replay eligibility after the attempt has moved
+	// to a terminal state.
+	fallbackAllowed bool
 }
 
 // NewAssignment builds an assignment in the Assigning state, immediately after
@@ -128,6 +131,7 @@ func (a *Assignment) OnAssignAck(code strawpb.AssignAckCode) bool {
 	// RequestStart) but that is the router's decision via CanFallback.
 	a.state = LifecycleTerminated
 	a.terminal = TerminalError
+	a.fallbackAllowed = true
 
 	return false
 }
@@ -142,6 +146,7 @@ func (a *Assignment) OnAckTimeout() bool {
 
 	a.state = LifecycleTerminated
 	a.terminal = TerminalError
+	a.fallbackAllowed = true
 
 	return true
 }
@@ -171,6 +176,10 @@ func (a *Assignment) MarkClientResponded() {
 // allowed only for replayable requests that have not yet emitted a client
 // response.
 func (a *Assignment) CanFallback() bool {
+	if a.fallbackAllowed && !a.clientResponded {
+		return true
+	}
+
 	if a.state == LifecycleAssigning || a.state == LifecycleAccepted {
 		return true
 	}
@@ -201,11 +210,12 @@ func (a *Assignment) RecordTerminal(kind TerminalKind) bool {
 // SynthesizeTerminal terminates the assignment with a synthesized outcome when
 // no terminal frame can arrive (worker death, transport loss, deadline). It is
 // a no-op if already terminated. Returns true if it took effect.
-func (a *Assignment) SynthesizeTerminal(_ strawpb.ErrorCode) bool {
+func (a *Assignment) SynthesizeTerminal(code strawpb.ErrorCode) bool {
 	if a.state == LifecycleTerminated {
 		return false
 	}
 
+	a.fallbackAllowed = code != strawpb.ErrorCode_ERROR_CODE_TIMEOUT_EXCEEDED && a.CanFallback()
 	a.state = LifecycleTerminated
 	a.terminal = TerminalError
 
@@ -253,11 +263,17 @@ func AuthorizeAdminCancel(identity Identity, requestTenantID string) error {
 // ackDeadline is a small helper for callers enforcing the assignment ack
 // timeout bounded by the remaining total deadline (docs/planning/09 "Timeout
 // Hierarchy"). It returns the earlier of now+ackTimeout and the total deadline.
-func ackDeadline(now time.Time, ackTimeout time.Duration, totalDeadline time.Time) time.Time {
-	d := now.Add(ackTimeout)
-	if !totalDeadline.IsZero() && totalDeadline.Before(d) {
-		return totalDeadline
+func ackDeadline(now time.Time, ackTimeoutDuration time.Duration, totalDeadline time.Time) time.Time {
+	deadline, _ := ackTimeout(now, ackTimeoutDuration, totalDeadline)
+
+	return deadline
+}
+
+func ackTimeout(now time.Time, ackTimeoutDuration time.Duration, totalDeadline time.Time) (time.Time, strawpb.TimeoutType) {
+	d := now.Add(ackTimeoutDuration)
+	if !totalDeadline.IsZero() && !d.Before(totalDeadline) {
+		return totalDeadline, strawpb.TimeoutType_TIMEOUT_TYPE_TOTAL_DEADLINE_TIMEOUT
 	}
 
-	return d
+	return d, strawpb.TimeoutType_TIMEOUT_TYPE_ASSIGNMENT_TIMEOUT
 }

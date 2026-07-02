@@ -19,10 +19,16 @@ func TestAssignmentLifecycle(t *testing.T) {
 	if a.State() != LifecycleTerminated || a.Terminal() != TerminalError {
 		t.Fatalf("reject outcome = state %v terminal %v, want terminated/error", a.State(), a.Terminal())
 	}
+	if !a.CanFallback() {
+		t.Fatal("reject before RequestStart should allow fallback")
+	}
 
 	b := NewAssignment("req_1", "ten_a", "worker_1", "sess_1", 1, false)
 	if !b.OnAssignAck(strawpb.AssignAckCode_ASSIGN_ACK_ACCEPTED) {
 		t.Fatal("accepted ack rejected")
+	}
+	if b.OnAssignAck(strawpb.AssignAckCode_ASSIGN_ACK_REJECTED_ERROR) {
+		t.Fatal("duplicate assignment ack should be ignored")
 	}
 	if !b.MarkRequestStart() {
 		t.Fatal("MarkRequestStart() failed after accepted ack")
@@ -38,6 +44,34 @@ func TestAssignmentLifecycle(t *testing.T) {
 	}
 }
 
+func TestAssignmentPreStartFailuresAllowFallback(t *testing.T) {
+	t.Parallel()
+
+	timeout := NewAssignment("req_1", "ten_a", "worker_1", "sess_1", 1, false)
+	if !timeout.OnAckTimeout() {
+		t.Fatal("OnAckTimeout() = false, want true")
+	}
+	if !timeout.CanFallback() {
+		t.Fatal("assignment timeout before RequestStart should allow fallback")
+	}
+
+	lost := NewAssignment("req_1", "ten_a", "worker_1", "sess_1", 1, false)
+	if !lost.SynthesizeTerminal(strawpb.ErrorCode_ERROR_CODE_WORKER_DISCONNECTED) {
+		t.Fatal("SynthesizeTerminal() = false, want true")
+	}
+	if !lost.CanFallback() {
+		t.Fatal("worker loss before RequestStart should allow fallback")
+	}
+
+	deadline := NewAssignment("req_1", "ten_a", "worker_1", "sess_1", 1, true)
+	if !deadline.SynthesizeTerminal(strawpb.ErrorCode_ERROR_CODE_TIMEOUT_EXCEEDED) {
+		t.Fatal("deadline SynthesizeTerminal() = false, want true")
+	}
+	if deadline.CanFallback() {
+		t.Fatal("total deadline terminal should not allow fallback")
+	}
+}
+
 func TestAssignmentFallbackBoundaryAndAdminCancel(t *testing.T) {
 	t.Parallel()
 
@@ -47,6 +81,18 @@ func TestAssignmentFallbackBoundaryAndAdminCancel(t *testing.T) {
 	}
 	if send, ok := a.Cancel(); !ok || send {
 		t.Fatalf("Cancel() before RequestStart = send=%v ok=%v, want false/true", send, ok)
+	}
+
+	replayable := NewAssignment("req_2", "ten_a", "worker_1", "sess_1", 1, true)
+	if !replayable.OnAssignAck(strawpb.AssignAckCode_ASSIGN_ACK_ACCEPTED) || !replayable.MarkRequestStart() {
+		t.Fatal("failed to start replayable assignment")
+	}
+	if !replayable.CanFallback() {
+		t.Fatal("replayable request before client response should allow fallback after RequestStart")
+	}
+	replayable.MarkClientResponded()
+	if replayable.CanFallback() {
+		t.Fatal("client-visible response should forbid replay fallback")
 	}
 
 	err := AuthorizeAdminCancel(Identity{ScopeType: ScopeTenant, TenantID: adminTestTenantA, Role: RoleTenantAdmin}, adminTestTenantA)
@@ -69,6 +115,9 @@ func TestValidateExecutorErrorMapsOutOfSetCodes(t *testing.T) {
 	if mapped, violation := ValidateExecutorError(strawpb.ErrorCode_ERROR_CODE_UPSTREAM_TLS_FAILURE); violation || mapped != strawpb.ErrorCode_ERROR_CODE_UPSTREAM_TLS_FAILURE {
 		t.Fatalf("in-set mapping = %v/%v, want passthrough without violation", mapped, violation)
 	}
+	if mapped, violation := ValidateExecutorError(strawpb.ErrorCode_ERROR_CODE_UNSPECIFIED); !violation || mapped != strawpb.ErrorCode_ERROR_CODE_EXECUTOR_INTERNAL_ERROR {
+		t.Fatalf("unspecified mapping = %v/%v, want executor_internal_error/violation", mapped, violation)
+	}
 	if mapped, violation := ValidateExecutorError(strawpb.ErrorCode_ERROR_CODE_ROUTE_NO_MATCH); !violation || mapped != strawpb.ErrorCode_ERROR_CODE_EXECUTOR_INTERNAL_ERROR {
 		t.Fatalf("out-of-set mapping = %v/%v, want executor_internal_error/violation", mapped, violation)
 	}
@@ -78,6 +127,9 @@ func TestAckDeadlineUsesEarlierClock(t *testing.T) {
 	t.Parallel()
 
 	now := time.Unix(100, 0)
+	if _, got := ackTimeout(now, 10*time.Second, now.Add(10*time.Second)); got != strawpb.TimeoutType_TIMEOUT_TYPE_TOTAL_DEADLINE_TIMEOUT {
+		t.Fatalf("ackTimeout simultaneous type = %v, want total deadline timeout", got)
+	}
 	if got := ackDeadline(now, 10*time.Second, now.Add(5*time.Second)); !got.Equal(now.Add(5 * time.Second)) {
 		t.Fatalf("ackDeadline() = %v, want total deadline", got)
 	}

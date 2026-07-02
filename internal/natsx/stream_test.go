@@ -16,6 +16,9 @@ func TestStreamValidatorRules(t *testing.T) {
 	if got := v.Accept(&strawpb.StreamFrame{StreamSeq: 2, Attempt: 3, Payload: &strawpb.StreamFrame_End{End: &strawpb.EndFrame{Success: true}}}); got != FrameSequenceGap {
 		t.Fatalf("gap outcome = %v, want FrameSequenceGap", got)
 	}
+	if got := v.Accept(&strawpb.StreamFrame{StreamSeq: 0, Attempt: 3, Payload: &strawpb.StreamFrame_End{End: &strawpb.EndFrame{Success: true}}}); got != FrameInvalid {
+		t.Fatalf("zero seq outcome = %v, want FrameInvalid", got)
+	}
 	frame := &strawpb.StreamFrame{
 		StreamSeq: 1,
 		Attempt:   3,
@@ -51,8 +54,28 @@ func TestStreamValidatorCreditOffsetAndIdle(t *testing.T) {
 	if got := v.Accept(&strawpb.StreamFrame{StreamSeq: 1, Attempt: 1, Payload: &strawpb.StreamFrame_Data{Data: &strawpb.DataFrame{Offset: 0, Data: []byte("xy")}}}); got != FrameCreditExhausted {
 		t.Fatalf("credit exhaustion outcome = %v, want FrameCreditExhausted", got)
 	}
-	current = current.Add(2 * time.Second)
+	current = current.Add(time.Second)
 	if !v.IdleExpired() {
 		t.Fatal("IdleExpired() = false, want true after timeout")
+	}
+}
+
+func TestStreamValidatorRejectsP0BodyRef(t *testing.T) {
+	t.Parallel()
+
+	v := NewStreamValidator(1, 0, 0, nil)
+	frame := &strawpb.StreamFrame{
+		StreamSeq: 1,
+		Attempt:   1,
+		Payload: &strawpb.StreamFrame_BodyRef{
+			BodyRef: &strawpb.BodyRefFrame{ExpectedSizeBytes: 10},
+		},
+	}
+
+	if got := v.Accept(frame); got != FrameInvalid {
+		t.Fatalf("BodyRef outcome = %v, want FrameInvalid", got)
+	}
+	if v.ExpectedSeq() != 1 {
+		t.Fatalf("BodyRef advanced seq to %d, want 1", v.ExpectedSeq())
 	}
 }
