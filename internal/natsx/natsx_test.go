@@ -36,12 +36,14 @@ func TestSubjects(t *testing.T) {
 func TestValidateSubjectToken(t *testing.T) {
 	t.Parallel()
 
-	if err := validateSubjectToken("worker-01"); err != nil {
+	err := validateSubjectToken("worker-01")
+	if err != nil {
 		t.Fatalf("validateSubjectToken() error = %v", err)
 	}
 
 	for _, token := range []string{"", "worker.01", "worker 01", "worker*01", "worker>01"} {
-		if err := validateSubjectToken(token); err == nil {
+		err = validateSubjectToken(token)
+		if err == nil {
 			t.Fatalf("validateSubjectToken(%q) = nil, want error", token)
 		}
 	}
@@ -68,11 +70,13 @@ func TestValidateMaxPayload(t *testing.T) {
 func TestValidateServers(t *testing.T) {
 	t.Parallel()
 
-	if err := ValidateServers([]string{"nats://nats:4222"}); err != nil {
+	err := ValidateServers([]string{"nats://nats:4222"})
+	if err != nil {
 		t.Fatalf("ValidateServers() error = %v", err)
 	}
 
-	if err := ValidateServers(nil); err == nil {
+	err := ValidateServers(nil)
+	if err == nil {
 		t.Fatal("ValidateServers(nil) = nil, want error")
 	}
 }

@@ -15,6 +15,7 @@ import (
 
 func main() {
 	configPath := flag.String("config", "", "path to the control config file")
+
 	flag.Parse()
 
 	if *configPath == "" {
@@ -32,6 +33,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+
 	if err := natsx.ValidateMaxPayload(controlConfig.NATS.MaxPayloadBytes, controlConfig.Transport.MaxFrameDataBytes, controlConfig.Request.MaxInlineRequestBodyBytes, controlConfig.Request.MaxInlineResponseBodyBytes); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -101,6 +103,7 @@ func main() {
 
 	addr := fmt.Sprintf("%s:%d", controlConfig.Server.Host, controlConfig.Server.APIPort)
 	log.Printf("control: listening on %s", addr)
+
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		log.Fatalf("control: %v", err)
 	}

@@ -196,6 +196,7 @@ func (s *fakeSnapshotStore) LoadTenantSnapshot(_ context.Context, tenantID strin
 	if !ok {
 		return config.TenantSnapshot{}, errors.New("snapshot not found")
 	}
+
 	return snapshot.Clone(), nil
 }
 
@@ -216,6 +217,7 @@ func (s *fakeSnapshotStore) SaveTenantSnapshot(_ context.Context, snapshot confi
 	}
 	s.snapshots[snapshot.TenantID][snapshot.ConfigVersion] = snapshot.Clone()
 	s.versions[snapshot.TenantID] = snapshot.ConfigVersion
+
 	return snapshot.Clone(), nil
 }
 
@@ -225,5 +227,6 @@ type fakeInvalidationPublisher struct {
 
 func (p *fakeInvalidationPublisher) PublishTenantInvalidation(context.Context, string, uint64) error {
 	p.calls++
+
 	return nil
 }

@@ -57,7 +57,9 @@ func (s *InMemoryTenantStore) Create(_ context.Context, tenant Tenant) error {
 	if _, exists := s.tenants[tenant.ID]; exists {
 		return ErrTenantAlreadyExists
 	}
+
 	s.tenants[tenant.ID] = tenant
+
 	return nil
 }
 
@@ -69,5 +71,6 @@ func (s *InMemoryTenantStore) Get(_ context.Context, id string) (Tenant, error) 
 	if !ok {
 		return Tenant{}, ErrTenantNotFound
 	}
+
 	return t, nil
 }

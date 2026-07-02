@@ -27,6 +27,7 @@ func RegistrationSigningPayload(req *RegisterRequest) []byte {
 	// tokens; executor_type and the protocol digits cannot contain it
 	// either, so the concatenation is unambiguous.
 	var b []byte
+
 	b = append(b, registrationSigningDomain...)
 	b = append(b, req.GetWorkerId()...)
 	b = append(b, '\n')
@@ -37,6 +38,7 @@ func RegistrationSigningPayload(req *RegisterRequest) []byte {
 	b = appendUint32(b, req.GetProtocolMajor())
 	b = append(b, '.')
 	b = appendUint32(b, req.GetProtocolMinor())
+
 	return b
 }
 
@@ -52,6 +54,7 @@ func VerifyRegistrationSignature(pub ed25519.PublicKey, req *RegisterRequest, si
 	if len(pub) != ed25519.PublicKeySize {
 		return false
 	}
+
 	return ed25519.Verify(pub, RegistrationSigningPayload(req), signedToken)
 }
 
@@ -59,12 +62,15 @@ func appendUint32(b []byte, v uint32) []byte {
 	if v == 0 {
 		return append(b, '0')
 	}
+
 	var tmp [10]byte
+
 	i := len(tmp)
 	for v > 0 {
 		i--
 		tmp[i] = byte('0' + v%10)
 		v /= 10
 	}
+
 	return append(b, tmp[i:]...)
 }

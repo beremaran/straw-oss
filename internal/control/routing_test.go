@@ -38,6 +38,7 @@ func newRouteHarness(t *testing.T, rules []RoutingRule, policies []PoolPolicy) *
 	pp := NewStaticPoolPolicyProvider(policies)
 	sticky := NewStickyStore(h.clock.Now)
 	router := NewRouter(rp, pp, h.reg, sticky, h.clock.Now)
+
 	return &routeHarness{regHarness: h, router: router, rules: rp, pols: pp, sticky: sticky}
 }
 
@@ -58,6 +59,7 @@ func (h *routeHarness) registerReady(t *testing.T, workerID, tenantID, poolID st
 	if err != nil || !ok {
 		t.Fatalf("heartbeat: ok=%v err=%v", ok, err)
 	}
+
 	return sess
 }
 
@@ -99,8 +101,10 @@ func TestRoutingTenantIsolation(t *testing.T) {
 func TestRoutingHardClientHints(t *testing.T) {
 	t.Parallel()
 	h := newRouteHarness(t, []RoutingRule{
-		{ID: "r_us", TenantID: "ten_a", Priority: 1, Enabled: true, TargetPoolID: "pool_1",
-			Match: MatchConditions{Country: "US"}},
+		{
+			ID: "r_us", TenantID: "ten_a", Priority: 1, Enabled: true, TargetPoolID: "pool_1",
+			Match: MatchConditions{Country: "US"},
+		},
 	}, nil)
 	h.registerReady(t, "w1", "ten_a", "pool_1")
 
@@ -187,8 +191,10 @@ func TestRoutingStickySuccess(t *testing.T) {
 func TestRoutingStickyFailure(t *testing.T) {
 	t.Parallel()
 	h := newRouteHarness(t, []RoutingRule{
-		{ID: "r1", TenantID: "ten_a", Priority: 1, Enabled: true, TargetPoolID: "pool_1",
-			StickySessionTTLSeconds: 60, AllowStickyFallback: false},
+		{
+			ID: "r1", TenantID: "ten_a", Priority: 1, Enabled: true, TargetPoolID: "pool_1",
+			StickySessionTTLSeconds: 60, AllowStickyFallback: false,
+		},
 	}, nil)
 	sess := h.registerReady(t, "w1", "ten_a", "pool_1")
 
@@ -209,8 +215,10 @@ func TestRoutingStickyFailure(t *testing.T) {
 func TestRoutingStickyFallback(t *testing.T) {
 	t.Parallel()
 	h := newRouteHarness(t, []RoutingRule{
-		{ID: "r1", TenantID: "ten_a", Priority: 1, Enabled: true, TargetPoolID: "pool_1",
-			StickySessionTTLSeconds: 60, AllowStickyFallback: true},
+		{
+			ID: "r1", TenantID: "ten_a", Priority: 1, Enabled: true, TargetPoolID: "pool_1",
+			StickySessionTTLSeconds: 60, AllowStickyFallback: true,
+		},
 	}, nil)
 	h.registerReady(t, "w1", "ten_a", "pool_1")
 	h.registerReady(t, "w2", "ten_a", "pool_1")

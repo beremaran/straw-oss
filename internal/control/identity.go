@@ -104,9 +104,11 @@ func (a *Authenticator) Authenticate(ctx context.Context, authorizationHeader st
 		if candidate.Status != APIKeyStatusActive {
 			continue
 		}
+
 		if !VerifyAPIKeySecret(token, candidate.SecretHash, a.pepper) {
 			continue
 		}
+
 		return Identity{
 			APIKeyID:  candidate.ID,
 			ScopeType: candidate.ScopeType,

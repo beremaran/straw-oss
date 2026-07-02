@@ -29,7 +29,8 @@ func TestHandlerValidRequest(t *testing.T) {
 	}
 
 	var resp SuccessResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	if err != nil {
 		t.Fatalf("unmarshal response: %v", err)
 	}
 	if resp.Status != 200 {
@@ -57,7 +58,8 @@ func TestHandlerMissingMethod(t *testing.T) {
 	}
 
 	var errResp ErrorResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &errResp); err != nil {
+	err := json.Unmarshal(w.Body.Bytes(), &errResp)
+	if err != nil {
 		t.Fatalf("unmarshal error: %v", err)
 	}
 	if errResp.Code != "invalid_request" {
@@ -82,7 +84,8 @@ func TestHandlerCONNECTRejected(t *testing.T) {
 	}
 
 	var errResp ErrorResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &errResp); err != nil {
+	err := json.Unmarshal(w.Body.Bytes(), &errResp)
+	if err != nil {
 		t.Fatalf("unmarshal error: %v", err)
 	}
 	if errResp.Code != "unsupported_ingress_mode" {
@@ -107,7 +110,8 @@ func TestHandlerURLFragmentRejected(t *testing.T) {
 	}
 
 	var errResp ErrorResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &errResp); err != nil {
+	err := json.Unmarshal(w.Body.Bytes(), &errResp)
+	if err != nil {
 		t.Fatalf("unmarshal error: %v", err)
 	}
 	if errResp.Code != "invalid_request" {
@@ -132,7 +136,8 @@ func TestHandlerURLUserInfoRejected(t *testing.T) {
 	}
 
 	var errResp ErrorResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &errResp); err != nil {
+	err := json.Unmarshal(w.Body.Bytes(), &errResp)
+	if err != nil {
 		t.Fatalf("unmarshal error: %v", err)
 	}
 	if errResp.Code != "invalid_request" {
@@ -157,7 +162,8 @@ func TestHandlerHostHeaderRejected(t *testing.T) {
 	}
 
 	var errResp ErrorResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &errResp); err != nil {
+	err := json.Unmarshal(w.Body.Bytes(), &errResp)
+	if err != nil {
 		t.Fatalf("unmarshal error: %v", err)
 	}
 	if errResp.Code != "invalid_request" {
@@ -203,7 +209,8 @@ func TestHandlerBodyLimitExceeded(t *testing.T) {
 	}
 
 	var errResp ErrorResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &errResp); err != nil {
+	err := json.Unmarshal(w.Body.Bytes(), &errResp)
+	if err != nil {
 		t.Fatalf("unmarshal error: %v", err)
 	}
 	if errResp.Code != "body_too_large" {
@@ -228,7 +235,8 @@ func TestHandlerCaptureHintRejected(t *testing.T) {
 	}
 
 	var errResp ErrorResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &errResp); err != nil {
+	err := json.Unmarshal(w.Body.Bytes(), &errResp)
+	if err != nil {
 		t.Fatalf("unmarshal error: %v", err)
 	}
 	if errResp.Code != "invalid_request" {
@@ -269,7 +277,8 @@ func TestHandlerValidRequestWithHeadersAndBody(t *testing.T) {
 	}
 
 	var resp SuccessResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	if err != nil {
 		t.Fatalf("unmarshal response: %v", err)
 	}
 	if resp.Status != 200 {
@@ -533,7 +542,8 @@ func TestHandlerSuccessEnvelopeStructure(t *testing.T) {
 	}
 
 	var resp SuccessResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	if err != nil {
 		t.Fatalf("unmarshal response: %v", err)
 	}
 
@@ -587,13 +597,13 @@ func TestValidateRequestHeaderCountLimit(t *testing.T) {
 
 	// Build a request with 65 headers
 	var headers []map[string]string
-	for i := 0; i < 65; i++ {
+	for i := range 65 {
 		headers = append(headers, map[string]string{
 			"name":         fmt.Sprintf("X-Header-%d", i),
 			"value_base64": "AA==",
 		})
 	}
-	body := map[string]interface{}{
+	body := map[string]any{
 		"method":  "GET",
 		"url":     "https://example.com",
 		"headers": headers,
@@ -613,7 +623,7 @@ func TestValidateRequestHeaderNameTooLong(t *testing.T) {
 	t.Parallel()
 
 	longName := strings.Repeat("a", 65)
-	raw := []byte(fmt.Sprintf(`{"method":"GET","url":"https://example.com","headers":[{"name":"%s","value_base64":"AA=="}]}`, longName))
+	raw := fmt.Appendf(nil, `{"method":"GET","url":"https://example.com","headers":[{"name":"%s","value_base64":"AA=="}]}`, longName)
 	_, err := ValidateRequest(raw, 1_048_576, 120_000)
 	if err == nil {
 		t.Fatal("expected error for header name exceeding 64 bytes")
@@ -715,5 +725,6 @@ func newTestHandler(t *testing.T) (*RequestHandler, string) {
 
 	authenticator := NewAuthenticator(store, pepper)
 	h := NewRequestHandler(1_048_576, 1_048_576, 120_000, authenticator)
+
 	return h, generated.Secret
 }

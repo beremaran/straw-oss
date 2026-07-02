@@ -54,7 +54,7 @@ func TestBootstrapFromEnvNoopWhenAdminExists(t *testing.T) {
 
 	// The second bootstrap key must not have been created/usable.
 	auth := NewAuthenticator(store, pepper)
-	if _, err := auth.Authenticate(context.Background(), "Bearer sk_live_secondbootstrapkey"); err != ErrAuthFailure {
+	if _, err := auth.Authenticate(context.Background(), "Bearer sk_live_secondbootstrapkey"); !errors.Is(err, ErrAuthFailure) {
 		t.Fatalf("second bootstrap key should not authenticate, err = %v", err)
 	}
 }

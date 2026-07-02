@@ -42,9 +42,11 @@ func (s *InMemorySnapshotStore) LoadTenantSnapshot(_ context.Context, tenantID s
 	if snap, ok := s.snapshots[tenantID][version]; ok {
 		return snap.Clone(), nil
 	}
+
 	if version == 0 {
 		return config.NewTenantSnapshot(tenantID, 0, nil), nil
 	}
+
 	return config.TenantSnapshot{}, ErrVersionConflict
 }
 
@@ -56,13 +58,17 @@ func (s *InMemorySnapshotStore) SaveTenantSnapshot(_ context.Context, snapshot c
 	if current != expectedVersion {
 		return config.TenantSnapshot{}, ErrVersionConflict
 	}
+
 	if snapshot.ConfigVersion <= current {
 		return config.TenantSnapshot{}, ErrVersionConflict
 	}
+
 	if s.snapshots[snapshot.TenantID] == nil {
 		s.snapshots[snapshot.TenantID] = make(map[uint64]config.TenantSnapshot)
 	}
+
 	s.snapshots[snapshot.TenantID][snapshot.ConfigVersion] = snapshot.Clone()
 	s.versions[snapshot.TenantID] = snapshot.ConfigVersion
+
 	return snapshot.Clone(), nil
 }

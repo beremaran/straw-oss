@@ -74,8 +74,10 @@ var (
 // ValidateRequest parses and validates a RequestEnvelope against config limits.
 func ValidateRequest(raw []byte, maxRequestBodyBytes, maxTimeoutMs uint64) (*ValidatedRequest, error) {
 	var env RequestEnvelope
+
 	dec := json.NewDecoder(strings.NewReader(string(raw)))
 	dec.DisallowUnknownFields()
+
 	if err := dec.Decode(&env); err != nil {
 		return nil, fmt.Errorf("invalid request JSON: %w", err)
 	}
@@ -119,6 +121,7 @@ func ValidateRequest(raw []byte, maxRequestBodyBytes, maxTimeoutMs uint64) (*Val
 			if env.Routing != nil {
 				return env.Routing.StickySessionID
 			}
+
 			return ""
 		}(),
 	}, nil
@@ -128,17 +131,21 @@ func validateMethod(method string) error {
 	if method == "" {
 		return &ValidationError{Code: "invalid_request", Message: "method is required"}
 	}
+
 	if method != strings.ToUpper(method) {
 		return &ValidationError{Code: "invalid_request", Message: "method must be uppercase"}
 	}
+
 	if method == "CONNECT" {
 		return &ValidationError{Code: "unsupported_ingress_mode", Message: "CONNECT method is not supported in P0 REST transport"}
 	}
+
 	for _, r := range method {
 		if !isMethodChar(r) {
 			return &ValidationError{Code: "invalid_request", Message: "method contains invalid characters"}
 		}
 	}
+
 	return nil
 }
 
@@ -185,6 +192,7 @@ func validateHeaders(headers []HeaderPair) ([]HeaderPair, error) {
 	}
 
 	var totalBytes int
+
 	for _, h := range headers {
 		if len(h.Name) > 64 {
 			return nil, &ValidationError{Code: "invalid_request", Message: "header name exceeds maximum length of 64 bytes"}
@@ -206,6 +214,7 @@ func validateHeaders(headers []HeaderPair) ([]HeaderPair, error) {
 		if err != nil {
 			return nil, &ValidationError{Code: "invalid_request", Message: "header value is not valid base64"}
 		}
+
 		totalBytes += len(h.Name) + len(decoded)
 
 		if totalBytes > 16384 {
@@ -220,6 +229,7 @@ func isValidHTTPToken(s string) bool {
 	if s == "" {
 		return false
 	}
+
 	for _, r := range s {
 		switch {
 		case r == '!' || r == '#' || r == '$' || r == '%' || r == '&' || r == '\'' ||
@@ -233,6 +243,7 @@ func isValidHTTPToken(s string) bool {
 			return false
 		}
 	}
+
 	return true
 }
 
@@ -272,12 +283,15 @@ func validateTimeout(timeoutMs, maxTimeoutMs uint64) (uint64, error) {
 	if timeoutMs == 0 {
 		return 0, nil
 	}
+
 	if timeoutMs < 1000 {
 		return 0, &ValidationError{Code: "invalid_request", Message: "timeout_ms must be at least 1000"}
 	}
+
 	if timeoutMs > maxTimeoutMs {
 		return 0, &ValidationError{Code: "invalid_request", Message: "timeout_ms exceeds maximum"}
 	}
+
 	return timeoutMs, nil
 }
 
@@ -285,6 +299,7 @@ func validateCaptureHint(hint string) error {
 	if hint == "" || hint == "none" {
 		return nil
 	}
+
 	return &ValidationError{Code: "invalid_request", Message: "capture_hint must be absent or none in P0"}
 }
 

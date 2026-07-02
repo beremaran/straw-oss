@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
+	"maps"
 	"sync"
 	"time"
 
@@ -120,6 +121,7 @@ func (s *runtimeSession) lastSeen() time.Time {
 	if s.hasHeartbeat {
 		return s.lastHeartbeat
 	}
+
 	return s.registeredAt
 }
 
@@ -156,6 +158,7 @@ func NewWorkerRegistry(creds WorkerCredentialStore, timings WorkerTimings, now f
 	if now == nil {
 		now = time.Now
 	}
+
 	return &WorkerRegistry{
 		now:     now,
 		timings: timings,
@@ -174,6 +177,7 @@ func (r *WorkerRegistry) entry(workerID string) *workerEntry {
 		}
 		r.workers[workerID] = e
 	}
+
 	return e
 }
 
@@ -184,6 +188,7 @@ func (r *WorkerRegistry) Register(ctx context.Context, req *strawpb.RegisterRequ
 	if req == nil {
 		return RegisterOutcome{Reason: RejectInvalidWorkerID}, nil
 	}
+
 	if err := natsx.ValidateSubjectToken(req.GetWorkerId()); err != nil {
 		return RegisterOutcome{Reason: RejectInvalidWorkerID}, nil
 	}
@@ -192,12 +197,15 @@ func (r *WorkerRegistry) Register(ctx context.Context, req *strawpb.RegisterRequ
 	if err != nil {
 		return RegisterOutcome{Reason: RejectUnknownCredential}, nil
 	}
+
 	if cred.Status != WorkerCredentialStatusActive {
 		return RegisterOutcome{Reason: RejectCredentialRevoked}, nil
 	}
+
 	if cred.ExecutorType != "" && req.GetExecutorType() != "" && cred.ExecutorType != req.GetExecutorType() {
 		return RegisterOutcome{Reason: RejectExecutorMismatch}, nil
 	}
+
 	if req.GetProtocolMajor() != ProtocolMajor {
 		return RegisterOutcome{Reason: RejectIncompatibleProto}, nil
 	}
@@ -225,6 +233,7 @@ func (r *WorkerRegistry) Register(ctx context.Context, req *strawpb.RegisterRequ
 	if err != nil || len(pub) != ed25519.PublicKeySize {
 		return RegisterOutcome{Reason: RejectInvalidCredKey}, nil
 	}
+
 	if !strawpb.VerifyRegistrationSignature(ed25519.PublicKey(pub), req, req.GetSignedToken()) {
 		return RegisterOutcome{Reason: RejectInvalidSignature}, nil
 	}
@@ -262,6 +271,7 @@ func (r *WorkerRegistry) Register(ctx context.Context, req *strawpb.RegisterRequ
 		e.superseded = e.current
 		e.superseded.draining = true
 	}
+
 	e.current = session
 
 	return RegisterOutcome{OK: true, SessionID: sessionID}, nil
@@ -275,6 +285,7 @@ func (r *WorkerRegistry) Heartbeat(hb *strawpb.HeartbeatRequest) (bool, error) {
 	if hb == nil {
 		return false, nil
 	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -282,26 +293,33 @@ func (r *WorkerRegistry) Heartbeat(hb *strawpb.HeartbeatRequest) (bool, error) {
 	if !ok || e.current == nil {
 		return false, nil
 	}
+
 	if e.current.sessionID != hb.GetSessionId() {
 		// Stale (or superseded) session: recognized, ignored for routing.
 		if e.superseded != nil && e.superseded.sessionID == hb.GetSessionId() {
 			return true, nil
 		}
+
 		return false, nil
 	}
 
 	s := e.current
 	s.hasHeartbeat = true
+
 	s.lastHeartbeat = r.now()
 	if hb.Health.Valid() && hb.GetHealth() != strawpb.WorkerHealth_WORKER_HEALTH_UNSPECIFIED {
 		s.health = hb.GetHealth()
 	}
+
 	s.activeRequests = hb.GetActiveRequests()
+
 	s.availableCap = hb.GetAvailableCapacity()
 	if hb.GetMaxConcurrency() > 0 {
 		s.maxConcurrency = hb.GetMaxConcurrency()
 	}
+
 	s.draining = hb.GetDraining()
+
 	return true, nil
 }
 
@@ -316,14 +334,17 @@ func (r *WorkerRegistry) RecordFailure(workerID string) {
 	if !ok {
 		return
 	}
+
 	now := r.now()
 	cutoff := now.Add(-r.timings.CooldownWindow)
+
 	kept := e.failures[:0]
 	for _, t := range e.failures {
 		if t.After(cutoff) {
 			kept = append(kept, t)
 		}
 	}
+
 	e.failures = append(kept, now)
 	if len(e.failures) >= r.timings.CooldownFailureCount {
 		e.cooldownUntil = now.Add(r.timings.CooldownDuration)
@@ -338,22 +359,28 @@ func (r *WorkerRegistry) runtimeState(e *workerEntry, now time.Time) WorkerRunti
 	if s == nil {
 		return RuntimeUnregistered
 	}
+
 	staleness := now.Sub(s.lastSeen())
 	if staleness > r.timings.DeadTimeout {
 		return RuntimeDead
 	}
+
 	if staleness > r.timings.AvailabilityTimeout {
 		return RuntimeUnavailable
 	}
+
 	if !s.hasHeartbeat {
 		return RuntimeRegistered
 	}
+
 	if now.Before(e.cooldownUntil) {
 		return RuntimeCooldown
 	}
+
 	if s.draining {
 		return RuntimeDraining
 	}
+
 	switch s.health {
 	case strawpb.WorkerHealth_WORKER_HEALTH_DEGRADED:
 		return RuntimeDegraded
@@ -369,10 +396,12 @@ func (r *WorkerRegistry) runtimeState(e *workerEntry, now time.Time) WorkerRunti
 func (r *WorkerRegistry) RuntimeState(workerID string) WorkerRuntimeState {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
 	e, ok := r.workers[workerID]
 	if !ok {
 		return RuntimeUnregistered
 	}
+
 	return r.runtimeState(e, r.now())
 }
 
@@ -389,18 +418,23 @@ func (r *WorkerRegistry) EligibleForTenant(workerID, tenantID string) bool {
 	if !ok || e.current == nil {
 		return false
 	}
+
 	if !containsString(e.current.tenantScope, tenantID) {
 		return false
 	}
+
 	if e.globalAdmin == AdminDisabled {
 		return false
 	}
+
 	if e.tenantAdmin[tenantID] == AdminDisabled {
 		return false
 	}
+
 	if e.globalDrain || e.tenantDrain[tenantID] {
 		return false
 	}
+
 	switch r.runtimeState(e, r.now()) {
 	case RuntimeReady, RuntimeDegraded:
 		return true
@@ -438,28 +472,35 @@ func (r *WorkerRegistry) CandidatesForPool(tenantID, poolID string) []PoolCandid
 
 	now := r.now()
 	out := make([]PoolCandidate, 0)
+
 	for workerID, e := range r.workers {
 		s := e.current
 		if s == nil || !containsString(s.tenantScope, tenantID) {
 			continue
 		}
+
 		if !workerInPool(s.pools, tenantID, poolID) {
 			continue
 		}
+
 		if e.globalAdmin == AdminDisabled || e.tenantAdmin[tenantID] == AdminDisabled {
 			continue
 		}
+
 		if e.globalDrain || e.tenantDrain[tenantID] {
 			continue
 		}
+
 		state := r.runtimeState(e, now)
 		if state != RuntimeReady && state != RuntimeDegraded {
 			continue
 		}
+
 		subject, err := natsx.AssignmentSubject(workerID, s.sessionID)
 		if err != nil {
 			continue
 		}
+
 		out = append(out, PoolCandidate{
 			WorkerID:       workerID,
 			SessionID:      s.sessionID,
@@ -475,6 +516,7 @@ func (r *WorkerRegistry) CandidatesForPool(tenantID, poolID string) []PoolCandid
 			AvailableCap:   s.availableCap,
 		})
 	}
+
 	return out
 }
 
@@ -484,6 +526,7 @@ func workerInPool(pools []AllowedPool, tenantID, poolID string) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -493,6 +536,7 @@ func workerInPool(pools []AllowedPool, tenantID, poolID string) bool {
 func (r *WorkerRegistry) SetGlobalAdmin(workerID string, state AdminState) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
 	r.entry(workerID).globalAdmin = state
 }
 
@@ -500,6 +544,7 @@ func (r *WorkerRegistry) SetGlobalAdmin(workerID string, state AdminState) {
 func (r *WorkerRegistry) SetGlobalDrain(workerID string, draining bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
 	r.entry(workerID).globalDrain = draining
 }
 
@@ -507,6 +552,7 @@ func (r *WorkerRegistry) SetGlobalDrain(workerID string, draining bool) {
 func (r *WorkerRegistry) SetTenantAdmin(workerID, tenantID string, state AdminState) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
 	r.entry(workerID).tenantAdmin[tenantID] = state
 }
 
@@ -514,6 +560,7 @@ func (r *WorkerRegistry) SetTenantAdmin(workerID, tenantID string, state AdminSt
 func (r *WorkerRegistry) SetTenantDrain(workerID, tenantID string, draining bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
 	r.entry(workerID).tenantDrain[tenantID] = draining
 }
 
@@ -521,7 +568,9 @@ func (r *WorkerRegistry) SetTenantDrain(workerID, tenantID string, draining bool
 func (r *WorkerRegistry) KnownWorker(workerID string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
 	_, ok := r.workers[workerID]
+
 	return ok
 }
 
@@ -554,6 +603,7 @@ func (r *WorkerRegistry) ListWorkersPlatform() []WorkerView {
 	defer r.mu.Unlock()
 
 	now := r.now()
+
 	out := make([]WorkerView, 0, len(r.workers))
 	for workerID, e := range r.workers {
 		v := WorkerView{
@@ -566,13 +616,16 @@ func (r *WorkerRegistry) ListWorkersPlatform() []WorkerView {
 		}
 		if e.current != nil {
 			v.SessionID = e.current.sessionID
+
 			v.ExecutorType = e.current.executorType
 			if subject, err := natsx.AssignmentSubject(workerID, e.current.sessionID); err == nil {
 				v.AssignSubject = subject
 			}
 		}
+
 		out = append(out, v)
 	}
+
 	return out
 }
 
@@ -585,6 +638,7 @@ func (r *WorkerRegistry) ListWorkersForTenant(tenantID string) []WorkerView {
 
 	now := r.now()
 	out := make([]WorkerView, 0)
+
 	for workerID, e := range r.workers {
 		if e.current == nil || !containsString(e.current.tenantScope, tenantID) {
 			continue
@@ -603,6 +657,7 @@ func (r *WorkerRegistry) ListWorkersForTenant(tenantID string) []WorkerView {
 		}
 		out = append(out, v)
 	}
+
 	return out
 }
 
@@ -610,6 +665,7 @@ func tenantAdminState(e *workerEntry, tenantID string) AdminState {
 	if s, ok := e.tenantAdmin[tenantID]; ok {
 		return s
 	}
+
 	return AdminEnabled
 }
 
@@ -621,6 +677,7 @@ func credentialAllowsPool(cred WorkerCredential, tenantID, poolID string) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -629,6 +686,7 @@ func poolRefsToAllowed(refs []*strawpb.RegisterRequest_PoolRef) []AllowedPool {
 	for _, p := range refs {
 		out = append(out, AllowedPool{TenantID: p.GetTenantId(), PoolID: p.GetPoolId()})
 	}
+
 	return out
 }
 
@@ -638,31 +696,32 @@ func subset(claimed, allowed []string) bool {
 	if len(allowed) == 0 {
 		return true
 	}
+
 	set := make(map[string]struct{}, len(allowed))
 	for _, a := range allowed {
 		set[a] = struct{}{}
 	}
+
 	for _, c := range claimed {
 		if _, ok := set[c]; !ok {
 			return false
 		}
 	}
+
 	return true
 }
 
 func copyAdminMap(in map[string]AdminState) map[string]AdminState {
 	out := make(map[string]AdminState, len(in))
-	for k, v := range in {
-		out[k] = v
-	}
+	maps.Copy(out, in)
+
 	return out
 }
 
 func copyBoolMap(in map[string]bool) map[string]bool {
 	out := make(map[string]bool, len(in))
-	for k, v := range in {
-		out[k] = v
-	}
+	maps.Copy(out, in)
+
 	return out
 }
 
@@ -671,5 +730,6 @@ func newSessionID() (string, error) {
 	if _, err := rand.Read(raw); err != nil {
 		return "", err
 	}
+
 	return "sess_" + hex.EncodeToString(raw), nil
 }

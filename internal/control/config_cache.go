@@ -48,6 +48,7 @@ func (c *ConfigCache) Snapshot(ctx context.Context, tenantID string) (config.Ten
 		if snapshot, ok := c.cachedSnapshot(tenantID); ok {
 			return snapshot.Clone(), nil
 		}
+
 		return config.TenantSnapshot{}, err
 	}
 
@@ -60,12 +61,14 @@ func (c *ConfigCache) SyncTenantVersion(ctx context.Context, tenantID string) (b
 		if _, ok := c.cachedSnapshot(tenantID); ok {
 			return false, nil
 		}
+
 		return false, err
 	}
 
 	c.mu.RLock()
 	currentVersion := c.latestVersion[tenantID]
 	c.mu.RUnlock()
+
 	if version <= currentVersion {
 		return false, nil
 	}
@@ -74,8 +77,10 @@ func (c *ConfigCache) SyncTenantVersion(ctx context.Context, tenantID string) (b
 		if _, ok := c.cachedSnapshot(tenantID); ok {
 			return false, nil
 		}
+
 		return false, err
 	}
+
 	return true, nil
 }
 
@@ -86,9 +91,11 @@ func (c *ConfigCache) Save(ctx context.Context, snapshot config.TenantSnapshot, 
 	}
 
 	c.storeSnapshot(saved)
+
 	if c.publisher != nil {
 		_ = c.publisher.PublishTenantInvalidation(ctx, saved.TenantID, saved.ConfigVersion)
 	}
+
 	return saved.Clone(), nil
 }
 
@@ -99,6 +106,7 @@ func (c *ConfigCache) ApplyInvalidation(tenantID string, version uint64) {
 	if current, ok := c.latestVersion[tenantID]; ok && version <= current {
 		return
 	}
+
 	c.latestVersion[tenantID] = version
 	delete(c.latest, tenantID)
 }
@@ -108,6 +116,7 @@ func (c *ConfigCache) cachedSnapshot(tenantID string) (config.TenantSnapshot, bo
 	defer c.mu.RUnlock()
 
 	snapshot, ok := c.latest[tenantID]
+
 	return snapshot, ok
 }
 
@@ -116,7 +125,9 @@ func (c *ConfigCache) loadAndStore(ctx context.Context, tenantID string, version
 	if err != nil {
 		return config.TenantSnapshot{}, fmt.Errorf("load tenant %s version %d: %w", tenantID, version, err)
 	}
+
 	c.storeSnapshot(snapshot)
+
 	return snapshot.Clone(), nil
 }
 

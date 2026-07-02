@@ -11,6 +11,7 @@ import (
 
 func main() {
 	configPath := flag.String("config", "", "path to the egress config file")
+
 	flag.Parse()
 
 	if *configPath == "" {

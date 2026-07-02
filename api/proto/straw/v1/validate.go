@@ -1,79 +1,99 @@
 package strawpb
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 func (m *AssignRequest) Validate() error {
 	if m == nil {
-		return fmt.Errorf("assign request is nil")
+		return errors.New("assign request is nil")
 	}
+
 	if !m.Mode.Valid() {
 		return fmt.Errorf("invalid assign request mode: %d", m.Mode)
 	}
+
 	return nil
 }
 
 func (m *DestinationPolicy) Validate() error {
 	if m == nil {
-		return fmt.Errorf("destination policy is nil")
+		return errors.New("destination policy is nil")
 	}
+
 	if !m.SniHostMismatchPolicy.Valid() {
 		return fmt.Errorf("invalid sni host mismatch policy: %d", m.SniHostMismatchPolicy)
 	}
+
 	if !m.RedirectPolicy.Valid() {
 		return fmt.Errorf("invalid redirect policy: %d", m.RedirectPolicy)
 	}
+
 	if !m.ResolutionMode.Valid() {
 		return fmt.Errorf("invalid destination resolution mode: %d", m.ResolutionMode)
 	}
+
 	return nil
 }
 
 func (m *RequestStart) Validate() error {
 	if m == nil {
-		return fmt.Errorf("request start is nil")
+		return errors.New("request start is nil")
 	}
+
 	if !m.Mode.Valid() {
 		return fmt.Errorf("invalid request mode: %d", m.Mode)
 	}
+
 	if !m.RedirectPolicy.Valid() {
 		return fmt.Errorf("invalid redirect policy: %d", m.RedirectPolicy)
 	}
+
 	return m.DestinationPolicy.Validate()
 }
 
 func (m *ErrorResponse) Validate() error {
 	if m == nil {
-		return fmt.Errorf("error response is nil")
+		return errors.New("error response is nil")
 	}
+
 	if !m.Category.Valid() {
 		return fmt.Errorf("invalid error category: %d", m.Category)
 	}
+
 	if !m.Code.Valid() {
 		return fmt.Errorf("invalid error code: %d", m.Code)
 	}
+
 	if m.TimeoutType != nil && !m.TimeoutType.Valid() {
 		return fmt.Errorf("invalid timeout type: %d", *m.TimeoutType)
 	}
+
 	return nil
 }
 
 func (m *HeartbeatRequest) Validate() error {
 	if m == nil {
-		return fmt.Errorf("heartbeat request is nil")
+		return errors.New("heartbeat request is nil")
 	}
+
 	if !m.Health.Valid() {
 		return fmt.Errorf("invalid worker health: %d", m.Health)
 	}
+
 	return nil
 }
 
 func (m *AssignAck) Validate() error {
 	if m == nil {
-		return fmt.Errorf("assign ack is nil")
+		return errors.New("assign ack is nil")
 	}
+
 	if !m.Code.Valid() {
 		return fmt.Errorf("invalid assign ack code: %d", m.Code)
 	}
+
 	return nil
 }
 

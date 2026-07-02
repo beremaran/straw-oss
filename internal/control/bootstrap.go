@@ -41,6 +41,7 @@ func BootstrapFromEnv(ctx context.Context, store APIKeyStore, bootstrapKey strin
 	if err != nil {
 		return "", false, err
 	}
+
 	if count > 0 {
 		return "", false, nil
 	}
@@ -68,6 +69,7 @@ func BootstrapFromEnv(ctx context.Context, store APIKeyStore, bootstrapKey strin
 	if err := store.Create(ctx, record); err != nil {
 		return "", false, err
 	}
+
 	return keyID, true, nil
 }
 
@@ -78,5 +80,6 @@ func newRandomID(kind string) (string, error) {
 	if _, err := rand.Read(raw); err != nil {
 		return "", err
 	}
+
 	return fmt.Sprintf("%s_%s", kind, hex.EncodeToString(raw)), nil
 }
