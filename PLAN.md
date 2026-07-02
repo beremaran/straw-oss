@@ -1035,115 +1035,41 @@ and actionable internal operator audits.
 
 What is persisted or cached.
 
-- Postgres Data Model: durable tables and ownership.
-- Redis Usage: ephemeral keys and TTLs.
-- Session State: sticky sessions and routing affinity.
-- Worker State: registration snapshots and health.
-- Request Logs: metadata, payload policy, retention.
-- Retention: cleanup rules.
-
 ## 16. Authentication and Authorization
 
 Who can access what.
-
-- Client Authentication: API/client identity.
-- API Keys or Tokens: issuance, hashing, revocation.
-- Worker Authentication: worker identity and trust.
-- NATS Authentication: service credentials.
-- Admin Access: privileged operations.
-- Tenant Isolation: cross-tenant safety rules.
 
 ## 17. Rate Limits and Quotas
 
 How abuse and overload are controlled.
 
-- Per-Client Limits: client request caps.
-- Per-Worker Limits: worker capacity caps.
-- Global Limits: system-wide protection.
-- Burst Handling: short spikes.
-- Limit Error Responses: status codes and error payloads.
-
 ## 18. Error Handling
 
 Canonical failure behavior.
-
-- Client Errors: bad input and auth failures.
-- Routing Errors: no worker or invalid route hints.
-- Worker Errors: crashes, rejection, capacity.
-- Upstream Errors: DNS, TLS, timeout, refused connection.
-- NATS Errors: publish/request/reply failures.
-- Timeout Errors: which timeout fired.
-- Error Codes: stable internal and external codes.
 
 ## 19. Observability
 
 How the system is operated.
 
-- Logs: structure, fields, redaction.
-- Metrics: latency, volume, errors, worker health.
-- Tracing: request spans across Control/NATS/Egress.
-- Request IDs: propagation rules.
-- Health Endpoints: liveness/readiness.
-- Debug Endpoints: restricted diagnostics.
-
 ## 20. Configuration
 
 Runtime configuration surface.
-
-- Control Config: ports, NATS, auth, limits.
-- Egress Config: worker ID, capabilities, fingerprints.
-- NATS Config: URLs and credentials.
-- Redis Config: URL and key namespace.
-- Postgres Config: DSN and migrations.
-- Secrets: source and rotation.
-- Environment Variables: supported env names.
 
 ## 21. Deployment
 
 How it runs outside code.
 
-- Local Development: docker-compose and dev commands.
-- Docker Compose: local dependency topology.
-- Production Topology: service layout.
-- Scaling Control: horizontal behavior.
-- Scaling Egress: pool growth and regional workers.
-- Rolling Deploys: compatibility during deploy.
-- Draining and Shutdown: graceful stop behavior.
-
 ## 22. Security
 
 Threat model and protections.
-
-- Trust Boundaries: client/control/worker/NATS/storage boundaries.
-- Secret Handling: storage and logging rules.
-- Certificate Handling: MITM CA protection.
-- Request Data Handling: sensitive payload policy.
-- Abuse Prevention: SSRF, spam, forbidden destinations.
-- Audit Logging: security-relevant events.
 
 ## 23. Testing
 
 Checks needed to trust the system.
 
-- Unit Tests: routing, config, parsing, error mapping.
-- Protobuf Contract Tests: compatibility and required fields.
-- NATS Integration Tests: request/reply and worker registration.
-- Proxy Integration Tests: REST, HTTP proxy, CONNECT.
-- MITM Tests: cert generation and intercepted HTTPS.
-- Load Tests: capacity and backpressure.
-- Failure Tests: worker loss, NATS outage, timeout paths.
-
 ## 24. Operational Behavior
 
 Expected behavior during incidents.
-
-- Startup: dependency checks and readiness.
-- Graceful Shutdown: stop accepting, finish active work.
-- Worker Loss: reroute or fail active requests.
-- NATS Outage: degradation and recovery.
-- Redis Outage: features affected.
-- Postgres Outage: features affected.
-- Partial Degradation: what still works.
 
 ## 25. Open Decisions
 
