@@ -23,8 +23,9 @@ All config update/create endpoints use `expected_config_version` in the request 
 
 Version mismatch returns HTTP 409 `conflict` with `details.current_config_version` containing the current version.
 
-Create endpoints are not inherently idempotent. Duplicate creates without an idempotency key
-return `conflict`.
+Create endpoints are not inherently idempotent unless the endpoint explicitly supports client-supplied stable IDs or a
+future idempotency-key mechanism. For P0, routing rules and executor pools may use client-supplied stable IDs; other
+resources use server-generated UUIDs.
 
 Delete endpoints are **soft-delete** for all resources: the resource status changes to `deleted` and `deleted_at` is
 set. The resource remains queryable for audit purposes but is excluded from routing evaluation.
@@ -47,11 +48,11 @@ Selected resources (routing rules, executor pools) allow client-supplied stable 
 | GET    | `/worker-credentials`             | `tenant_admin`                       | List worker credentials   |
 | POST   | `/worker-credentials/{id}/revoke` | `tenant_admin`                       | Revoke worker credential  |
 | POST   | `/executor-pools`                 | `tenant_admin`, `operator`           | Create pool               |
-| GET    | `/executor-pools`                 | `tenant_admin`, `operator`, `viewer` | List pools              |
+| GET    | `/executor-pools`                 | `tenant_admin`, `operator`, `viewer` | List pools                |
 | PUT    | `/executor-pools/{id}`            | `tenant_admin`, `operator`           | Update pool               |
 | DELETE | `/executor-pools/{id}`            | `tenant_admin`                       | Delete/disable pool       |
 | POST   | `/routing-rules`                  | `tenant_admin`, `operator`           | Create route              |
-| GET    | `/routing-rules`                  | `tenant_admin`, `operator`, `viewer` | List routes              |
+| GET    | `/routing-rules`                  | `tenant_admin`, `operator`, `viewer` | List routes               |
 | PUT    | `/routing-rules/{id}`             | `tenant_admin`, `operator`           | Update route              |
 | DELETE | `/routing-rules/{id}`             | `tenant_admin`, `operator`           | Delete route              |
 | GET    | `/fingerprint-profiles`           | `tenant_admin`, `operator`, `viewer` | List profiles             |

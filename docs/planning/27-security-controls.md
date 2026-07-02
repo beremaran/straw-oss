@@ -148,8 +148,9 @@ P0 injection operations are validated before being sent to Egress:
 | `Authorization`     | Allow only if tenant_admin-created policy; audit-redacted         |
 | `Cookie`            | Allow only if tenant_admin-created policy; audit-redacted         |
 
-All header name matching is case-insensitive. Duplicate `set` operations for the same header are rejected. `append` may repeat a header name. Maximum
-injected header bytes is bounded by `control.transport.max_frame_data_bytes`. Injected header values must not contain bare CR
+All header name matching is case-insensitive. Duplicate `set` operations for the same header are rejected. `append` may
+repeat a header name. Maximum injected header bytes is bounded by
+`control.transport.max_frame_data_bytes`. Injected header values must not contain bare CR
 or LF characters.
 
 ### NATS Subject Tokens
