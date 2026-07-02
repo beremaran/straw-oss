@@ -981,13 +981,55 @@ handle sensitive or regulated data.
 
 How workers perform outbound requests.
 
-- `tls-client` Integration: exact library and call boundary.
-- Browser Fingerprints: available profiles and selection.
-- Proxy Chaining: whether egress can use another upstream proxy.
-- DNS Resolution: local, remote, custom resolver behavior.
-- Source IP Selection: how worker IP is chosen.
-- Timeout Handling: dial, TLS, header, body, total timeout.
-- Error Mapping: translating execution failures to Control errors.
+**`tls-client` Integration and CGO Boundary**
+Egress workers utilize `bogdanfinn/tls-client` to handle TLS negotiation and mimic precise browser fingerprint behavior.
+Because `tls-client` relies on CGO and FFI to bridge Go and the underlying TLS library, blocking overhead is a severe
+risk to high-concurrency request dispatch. To prevent stalling the primary NATS message loop, Egress workers isolate TLS
+execution. The worker manages a dedicated pool of goroutines or persistent OS threads (via `runtime.LockOSThread`). It
+maintains long-lived, per-thread `tls-client` instances to amortize initialization costs, passing connection dialing and
+handshake parameters across the CGO boundary asynchronously via non-blocking channels.
+
+**Browser Fingerprints**
+Control strictly dictates fingerprint behavior via the `straw.v1` protobuf schema. The Egress worker implements a 1:1
+mapping between these protobuf enums and `tls-client` preset profiles (e.g., specific Chrome, Firefox, or Safari
+versions). The worker does not infer or guess profiles; it strictly applies the exact profile resolved by Control. If
+Control dispatches an unknown or unsupported enum, the worker immediately rejects the assignment with the typed
+`unsupported_fingerprint` error.
+
+**Proxy Chaining**
+When routes require hitting a third-party residential or datacenter proxy network before reaching the target, the
+upstream proxy configuration—including URLs and authentication credentials—lives locally within the Egress worker's
+configuration. Control does not manage upstream proxy credentials. The Egress worker handles proxy authentication
+dynamically before tunneling the payload. Upstream connection failures, auth rejections, or timeouts at the proxy layer
+are natively trapped by the worker and translated into client-facing typed errors (e.g., `upstream_failure`), while
+verbose internal logs capture the raw proxy rejection for operator debugging.
+
+**DNS Resolution**
+By default, Egress workers rely on the host OS local resolver to prevent DNS leakage and leverage existing
+infrastructure caching. Operators can explicitly override this by configuring custom remote DNS servers directly on the
+worker. Additionally, Egress workers can opt-in to use a caching DNS resolver maintained by Control, ensuring uniform,
+high-speed resolution across geographically distributed worker pools.
+
+**Source IP Selection**
+For hosts with multiple network interfaces or IP blocks, Egress relies on standard OS routing tables by default. To
+support strict egress routing paths, operators can configure the worker to bind outbound upstream TCP connections to a
+specific local IP address or network interface. This binding is managed locally at the worker level, decoupling Control
+from the underlying host network topology.
+
+**Timeout Handling**
+Timeouts are governed strictly by Control's computed `deadline_unix_ms`. The Egress worker wraps the entire outbound
+lifecycle—DNS dial, TLS handshake, header read, and body stream—in a single Go `context.Context` derived via
+`context.WithDeadline`. This enforces a hard, unified stop across all execution phases, superseding any internal
+`tls-client` default timers and guaranteeing the worker terminates resources exactly when Control expects the request to
+expire.
+
+**Error Mapping**
+Egress translates raw Go and network errors into standard Straw protobuf typed errors to maintain the stable API
+contract. Using `errors.As` and `errors.Is`, the worker inspects the failure chain: `net.DNSError` maps to
+`dns_failure`, `syscall.ECONNREFUSED` to `connection_refused`, `context.DeadlineExceeded` to `timeout`, and `tls-client`
+certificate/handshake errors to `tls_failure`. Unhandled network errors default to `upstream_failure`. Egress embeds the
+raw Go error string exclusively in the protobuf `Error` details map, bridging the gap between stable external API codes
+and actionable internal operator audits.
 
 ## 15. State and Storage
 
