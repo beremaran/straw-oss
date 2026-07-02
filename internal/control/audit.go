@@ -10,6 +10,7 @@ import (
 // the API key ID in P0 (docs/planning/26). Secret fields must be redacted
 // before a record is written; this task never writes plaintext key
 // material or hashes into audit records.
+// AuditRecord mirrors the config audit table.
 type AuditRecord struct {
 	ID           int64
 	TenantID     string // empty for platform-scoped actions
@@ -22,22 +23,26 @@ type AuditRecord struct {
 }
 
 // AuditStore persists config audit records.
+// AuditStore persists config audit records.
 type AuditStore interface {
 	Record(ctx context.Context, record AuditRecord) error
 	ListTenant(ctx context.Context, tenantID string) ([]AuditRecord, error)
 }
 
 // InMemoryAuditStore is the P0 store implementation.
+// InMemoryAuditStore is the P0 audit store implementation.
 type InMemoryAuditStore struct {
 	mu      sync.RWMutex
 	records []AuditRecord
 	nextID  int64
 }
 
+// NewInMemoryAuditStore builds an empty in-memory audit store.
 func NewInMemoryAuditStore() *InMemoryAuditStore {
 	return &InMemoryAuditStore{}
 }
 
+// Record appends an audit record.
 func (s *InMemoryAuditStore) Record(_ context.Context, record AuditRecord) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -54,6 +59,7 @@ func (s *InMemoryAuditStore) Record(_ context.Context, record AuditRecord) error
 	return nil
 }
 
+// ListTenant returns audit records for a tenant.
 func (s *InMemoryAuditStore) ListTenant(_ context.Context, tenantID string) ([]AuditRecord, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

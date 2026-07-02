@@ -26,6 +26,7 @@ const (
 type TerminalKind int
 
 const (
+	// TerminalNone means no terminal frame has been recorded yet.
 	TerminalNone TerminalKind = iota
 	// TerminalEnd is a clean EndFrame.
 	TerminalEnd
@@ -60,7 +61,7 @@ var executorEmittableCodes = map[strawpb.ErrorCode]struct{}{
 // UNSPECIFIED) maps to executor_internal_error and is flagged as a protocol
 // violation the caller must count toward worker cooldown
 // (docs/planning/13, docs/planning/30 "Error mapping" row).
-func ValidateExecutorError(code strawpb.ErrorCode) (mapped strawpb.ErrorCode, violation bool) {
+func ValidateExecutorError(code strawpb.ErrorCode) (strawpb.ErrorCode, bool) {
 	if _, ok := executorEmittableCodes[code]; ok {
 		return code, false
 	}
@@ -113,7 +114,7 @@ func (a *Assignment) Terminal() TerminalKind { return a.terminal }
 // assignment to Accepted. Any rejection terminates the attempt; fallback is
 // permitted because rejection happens before RequestStart. The returned
 // accepted flag is true only for a fresh ACCEPTED transition.
-func (a *Assignment) OnAssignAck(code strawpb.AssignAckCode) (accepted bool) {
+func (a *Assignment) OnAssignAck(code strawpb.AssignAckCode) bool {
 	if a.state != LifecycleAssigning {
 		return false
 	}
@@ -186,7 +187,7 @@ func (a *Assignment) CanFallback() bool {
 // once terminated) is a duplicate/late frame: ignored and counted toward
 // worker cooldown by the caller (docs/planning/09 "Terminal Rule"). Returns
 // accepted=true only for the first terminal.
-func (a *Assignment) RecordTerminal(kind TerminalKind) (accepted bool) {
+func (a *Assignment) RecordTerminal(kind TerminalKind) bool {
 	if a.state == LifecycleTerminated {
 		return false
 	}
@@ -200,7 +201,7 @@ func (a *Assignment) RecordTerminal(kind TerminalKind) (accepted bool) {
 // SynthesizeTerminal terminates the assignment with a synthesized outcome when
 // no terminal frame can arrive (worker death, transport loss, deadline). It is
 // a no-op if already terminated. Returns true if it took effect.
-func (a *Assignment) SynthesizeTerminal(outcome strawpb.ErrorCode) bool {
+func (a *Assignment) SynthesizeTerminal(_ strawpb.ErrorCode) bool {
 	if a.state == LifecycleTerminated {
 		return false
 	}
@@ -216,7 +217,7 @@ func (a *Assignment) SynthesizeTerminal(outcome strawpb.ErrorCode) bool {
 // whether a CancelFrame should be sent to the executor: a CancelFrame is only
 // meaningful once the request-scoped c2e path exists, i.e. from RequestStart
 // onward. Cancelling an already-terminated assignment is a no-op.
-func (a *Assignment) Cancel() (sendCancelFrame bool, ok bool) {
+func (a *Assignment) Cancel() (bool, bool) {
 	if a.state == LifecycleTerminated {
 		return false, false
 	}

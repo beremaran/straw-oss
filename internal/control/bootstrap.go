@@ -8,6 +8,8 @@ import (
 	"time"
 )
 
+const sessionIDBytes = 16
+
 // BootstrapSystemAdminEnvVar is the environment variable Control reads on
 // startup to seed the first platform system_admin API key. This is the P0
 // bootstrap flow required by docs/planning/06 and
@@ -32,14 +34,14 @@ const BootstrapSystemAdminEnvVar = "STRAW_BOOTSTRAP_SYSTEM_ADMIN_KEY"
 // This is idempotent-safe to call on every Control startup: once a
 // system_admin key exists (whether created by this bootstrap or by a later
 // /platform-api-keys call), subsequent calls are no-ops.
-func BootstrapFromEnv(ctx context.Context, store APIKeyStore, bootstrapKey string, pepper []byte) (id string, created bool, err error) {
+func BootstrapFromEnv(ctx context.Context, store APIKeyStore, bootstrapKey string, pepper []byte) (string, bool, error) {
 	if bootstrapKey == "" {
 		return "", false, nil
 	}
 
 	count, err := store.CountPlatformSystemAdmins(ctx)
 	if err != nil {
-		return "", false, err
+		return "", false, fmt.Errorf("count platform system admins: %w", err)
 	}
 
 	if count > 0 {
@@ -53,7 +55,7 @@ func BootstrapFromEnv(ctx context.Context, store APIKeyStore, bootstrapKey strin
 
 	keyID, err := newRandomID("key")
 	if err != nil {
-		return "", false, err
+		return "", false, fmt.Errorf("generate bootstrap key id: %w", err)
 	}
 
 	record := APIKeyRecord{
@@ -66,8 +68,10 @@ func BootstrapFromEnv(ctx context.Context, store APIKeyStore, bootstrapKey strin
 		CreatedAt:     time.Now().UTC(),
 		ConfigVersion: 0,
 	}
-	if err := store.Create(ctx, record); err != nil {
-		return "", false, err
+
+	err = store.Create(ctx, record)
+	if err != nil {
+		return "", false, fmt.Errorf("create bootstrap api key: %w", err)
 	}
 
 	return keyID, true, nil
@@ -76,9 +80,11 @@ func BootstrapFromEnv(ctx context.Context, store APIKeyStore, bootstrapKey strin
 // newRandomID builds an opaque, non-guessable resource ID with the given
 // prefix (e.g. "key_", "wcred_", "ten_").
 func newRandomID(kind string) (string, error) {
-	raw := make([]byte, 16)
-	if _, err := rand.Read(raw); err != nil {
-		return "", err
+	raw := make([]byte, sessionIDBytes)
+
+	_, err := rand.Read(raw)
+	if err != nil {
+		return "", fmt.Errorf("generate random id: %w", err)
 	}
 
 	return fmt.Sprintf("%s_%s", kind, hex.EncodeToString(raw)), nil

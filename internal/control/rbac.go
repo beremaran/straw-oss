@@ -70,9 +70,9 @@ func CanExecuteDataPlane(identity Identity) bool {
 	switch identity.Role {
 	case RoleRequester, RoleTenantAdmin:
 		return true
+	case RoleOperator, RoleViewer, RoleSystemAdmin:
+		return false
 	default:
-		// viewer: never. operator: P0 defaults to no execution (see note
-		// above).
 		return false
 	}
 }

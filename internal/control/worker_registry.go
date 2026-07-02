@@ -6,12 +6,22 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
+	"fmt"
 	"maps"
 	"sync"
 	"time"
 
 	strawpb "github.com/beremaran/straw/v2/api/proto/straw/v1"
 	"github.com/beremaran/straw/v2/internal/natsx"
+)
+
+const (
+	workerAvailabilityTimeout   = 15 * time.Second
+	workerDeadTimeout           = 30 * time.Second
+	workerDuplicateSessionGrace = 10 * time.Second
+	workerCooldownFailureCount  = 3
+	workerCooldownWindow        = 60 * time.Second
+	workerCooldownDuration      = 30 * time.Second
 )
 
 // ProtocolMajor is the worker protocol major version Control speaks. A worker
@@ -25,15 +35,25 @@ const ProtocolMajor uint32 = 1
 type WorkerRuntimeState string
 
 const (
-	RuntimeUnregistered      WorkerRuntimeState = "unregistered"
-	RuntimeRegistered        WorkerRuntimeState = "registered"
-	RuntimeReady             WorkerRuntimeState = "ready"
-	RuntimeDegraded          WorkerRuntimeState = "degraded"
-	RuntimeUnhealthy         WorkerRuntimeState = "unhealthy"
-	RuntimeUnavailable       WorkerRuntimeState = "unavailable"
-	RuntimeDead              WorkerRuntimeState = "dead"
-	RuntimeDraining          WorkerRuntimeState = "draining"
-	RuntimeCooldown          WorkerRuntimeState = "cooldown"
+	// RuntimeUnregistered means the worker has no live session.
+	RuntimeUnregistered WorkerRuntimeState = "unregistered"
+	// RuntimeRegistered means the worker registered but has not heartbeated.
+	RuntimeRegistered WorkerRuntimeState = "registered"
+	// RuntimeReady means the worker is healthy and available.
+	RuntimeReady WorkerRuntimeState = "ready"
+	// RuntimeDegraded means the worker is still eligible but degraded.
+	RuntimeDegraded WorkerRuntimeState = "degraded"
+	// RuntimeUnhealthy means the worker is unhealthy and not eligible.
+	RuntimeUnhealthy WorkerRuntimeState = "unhealthy"
+	// RuntimeUnavailable means the worker has gone stale but not yet dead.
+	RuntimeUnavailable WorkerRuntimeState = "unavailable"
+	// RuntimeDead means the worker session has expired.
+	RuntimeDead WorkerRuntimeState = "dead"
+	// RuntimeDraining means the worker is draining and should not receive new work.
+	RuntimeDraining WorkerRuntimeState = "draining"
+	// RuntimeCooldown means the worker is temporarily excluded after failures.
+	RuntimeCooldown WorkerRuntimeState = "cooldown"
+	// RuntimeDuplicateReplaced means a newer session replaced the old one.
 	RuntimeDuplicateReplaced WorkerRuntimeState = "duplicate_replaced"
 )
 
@@ -42,7 +62,9 @@ const (
 type AdminState string
 
 const (
-	AdminEnabled  AdminState = "enabled"
+	// AdminEnabled means the override allows the worker.
+	AdminEnabled AdminState = "enabled"
+	// AdminDisabled means the override blocks the worker.
 	AdminDisabled AdminState = "disabled"
 )
 
@@ -60,28 +82,29 @@ type WorkerTimings struct {
 // DefaultWorkerTimings returns the P0 default thresholds.
 func DefaultWorkerTimings() WorkerTimings {
 	return WorkerTimings{
-		AvailabilityTimeout:   15 * time.Second,
-		DeadTimeout:           30 * time.Second,
-		DuplicateSessionGrace: 10 * time.Second,
-		CooldownFailureCount:  3,
-		CooldownWindow:        60 * time.Second,
-		CooldownDuration:      30 * time.Second,
+		AvailabilityTimeout:   workerAvailabilityTimeout,
+		DeadTimeout:           workerDeadTimeout,
+		DuplicateSessionGrace: workerDuplicateSessionGrace,
+		CooldownFailureCount:  workerCooldownFailureCount,
+		CooldownWindow:        workerCooldownWindow,
+		CooldownDuration:      workerCooldownDuration,
 	}
 }
 
 // Registration rejection reasons. These are stable identifiers surfaced in
 // the RegisterAck error field and asserted by tests.
 const (
-	RejectInvalidWorkerID   = "invalid_worker_id"
-	RejectUnknownCredential = "unknown_credential"
-	RejectCredentialRevoked = "credential_revoked"
-	RejectExecutorMismatch  = "executor_type_mismatch"
-	RejectTenantScope       = "tenant_scope"
-	RejectPoolScope         = "pool_out_of_scope"
-	RejectCapabilityScope   = "capability_out_of_scope"
-	RejectIncompatibleProto = "incompatible_protocol"
-	RejectInvalidSignature  = "invalid_signature"
-	RejectInvalidCredKey    = "invalid_credential_key"
+	RejectInvalidWorkerID    = "invalid_worker_id"
+	RejectUnknownCredential  = "unknown_credential"
+	RejectRevokedCredential  = "revoked_worker_key"
+	RejectExecutorMismatch   = "executor_type_mismatch"
+	RejectTenantScope        = "tenant_scope"
+	RejectPoolScope          = "pool_out_of_scope"
+	RejectCapabilityScope    = "capability_out_of_scope"
+	RejectIncompatibleProto  = "incompatible_protocol"
+	RejectInvalidSignature   = "invalid_signature"
+	RejectInvalidKeyMaterial = "invalid_key_material"
+	randomIDBytes            = 16
 )
 
 // RegisterOutcome is the result of processing a RegisterRequest. OK is false
@@ -167,20 +190,6 @@ func NewWorkerRegistry(creds WorkerCredentialStore, timings WorkerTimings, now f
 	}
 }
 
-func (r *WorkerRegistry) entry(workerID string) *workerEntry {
-	e, ok := r.workers[workerID]
-	if !ok {
-		e = &workerEntry{
-			globalAdmin: AdminEnabled,
-			tenantAdmin: make(map[string]AdminState),
-			tenantDrain: make(map[string]bool),
-		}
-		r.workers[workerID] = e
-	}
-
-	return e
-}
-
 // Register validates a RegisterRequest against the referenced worker
 // credential and, on success, replaces any existing session with a fresh one
 // and returns the new session_id.
@@ -189,7 +198,8 @@ func (r *WorkerRegistry) Register(ctx context.Context, req *strawpb.RegisterRequ
 		return RegisterOutcome{Reason: RejectInvalidWorkerID}, nil
 	}
 
-	if err := natsx.ValidateSubjectToken(req.GetWorkerId()); err != nil {
+	err := natsx.ValidateSubjectToken(req.GetWorkerId())
+	if err != nil {
 		return RegisterOutcome{Reason: RejectInvalidWorkerID}, nil
 	}
 
@@ -198,44 +208,9 @@ func (r *WorkerRegistry) Register(ctx context.Context, req *strawpb.RegisterRequ
 		return RegisterOutcome{Reason: RejectUnknownCredential}, nil
 	}
 
-	if cred.Status != WorkerCredentialStatusActive {
-		return RegisterOutcome{Reason: RejectCredentialRevoked}, nil
-	}
-
-	if cred.ExecutorType != "" && req.GetExecutorType() != "" && cred.ExecutorType != req.GetExecutorType() {
-		return RegisterOutcome{Reason: RejectExecutorMismatch}, nil
-	}
-
-	if req.GetProtocolMajor() != ProtocolMajor {
-		return RegisterOutcome{Reason: RejectIncompatibleProto}, nil
-	}
-
-	// Pool scope: every registered pool must be granted by the credential.
-	for _, p := range req.GetAllowedPools() {
-		if !credentialAllowsPool(cred, p.GetTenantId(), p.GetPoolId()) {
-			return RegisterOutcome{Reason: RejectPoolScope}, nil
-		}
-	}
-
-	// Capability scope: each claimed capability must be inside the
-	// credential's allow-list for that dimension (empty list = unrestricted).
-	caps := cred.AllowedCapabilities
-	if !subset(req.GetTags(), caps.Tags) ||
-		!subset(req.GetCountries(), caps.Countries) ||
-		!subset(req.GetRegions(), caps.Regions) ||
-		!subset(req.GetIpTypes(), caps.IPTypes) ||
-		!subset(req.GetSupportedIngressModes(), caps.SupportedIngressModes) {
-		return RegisterOutcome{Reason: RejectCapabilityScope}, nil
-	}
-
-	// Signature: prove possession of the credential private key.
-	pub, err := base64.StdEncoding.DecodeString(cred.PublicKeyEd25519Base64)
-	if err != nil || len(pub) != ed25519.PublicKeySize {
-		return RegisterOutcome{Reason: RejectInvalidCredKey}, nil
-	}
-
-	if !strawpb.VerifyRegistrationSignature(ed25519.PublicKey(pub), req, req.GetSignedToken()) {
-		return RegisterOutcome{Reason: RejectInvalidSignature}, nil
+	reason := rejectRegisterRequest(cred, req)
+	if reason != "" {
+		return RegisterOutcome{Reason: reason}, nil
 	}
 
 	sessionID, err := newSessionID()
@@ -345,64 +320,13 @@ func (r *WorkerRegistry) RecordFailure(workerID string) {
 		}
 	}
 
-	e.failures = append(kept, now)
+	kept = append(kept, now)
+	e.failures = kept
+
 	if len(e.failures) >= r.timings.CooldownFailureCount {
 		e.cooldownUntil = now.Add(r.timings.CooldownDuration)
 		e.failures = nil
 	}
-}
-
-// runtimeState derives the current runtime state for the worker's active
-// session under lock.
-func (r *WorkerRegistry) runtimeState(e *workerEntry, now time.Time) WorkerRuntimeState {
-	s := e.current
-	if s == nil {
-		return RuntimeUnregistered
-	}
-
-	staleness := now.Sub(s.lastSeen())
-	if staleness > r.timings.DeadTimeout {
-		return RuntimeDead
-	}
-
-	if staleness > r.timings.AvailabilityTimeout {
-		return RuntimeUnavailable
-	}
-
-	if !s.hasHeartbeat {
-		return RuntimeRegistered
-	}
-
-	if now.Before(e.cooldownUntil) {
-		return RuntimeCooldown
-	}
-
-	if s.draining {
-		return RuntimeDraining
-	}
-
-	switch s.health {
-	case strawpb.WorkerHealth_WORKER_HEALTH_DEGRADED:
-		return RuntimeDegraded
-	case strawpb.WorkerHealth_WORKER_HEALTH_UNHEALTHY:
-		return RuntimeUnhealthy
-	default:
-		return RuntimeReady
-	}
-}
-
-// RuntimeState returns the current runtime state for a worker (unregistered
-// if unknown or with no active session).
-func (r *WorkerRegistry) RuntimeState(workerID string) WorkerRuntimeState {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	e, ok := r.workers[workerID]
-	if !ok {
-		return RuntimeUnregistered
-	}
-
-	return r.runtimeState(e, r.now())
 }
 
 // EligibleForTenant reports whether the worker may receive new assignments
@@ -419,28 +343,13 @@ func (r *WorkerRegistry) EligibleForTenant(workerID, tenantID string) bool {
 		return false
 	}
 
-	if !containsString(e.current.tenantScope, tenantID) {
+	if !eligibleForTenantAdmin(e, tenantID) {
 		return false
 	}
 
-	if e.globalAdmin == AdminDisabled {
-		return false
-	}
+	state := r.runtimeState(e, r.now())
 
-	if e.tenantAdmin[tenantID] == AdminDisabled {
-		return false
-	}
-
-	if e.globalDrain || e.tenantDrain[tenantID] {
-		return false
-	}
-
-	switch r.runtimeState(e, r.now()) {
-	case RuntimeReady, RuntimeDegraded:
-		return true
-	default:
-		return false
-	}
+	return state == RuntimeReady || state == RuntimeDegraded
 }
 
 // PoolCandidate is one worker session eligible (per admin/runtime state) for
@@ -483,15 +392,11 @@ func (r *WorkerRegistry) CandidatesForPool(tenantID, poolID string) []PoolCandid
 			continue
 		}
 
-		if e.globalAdmin == AdminDisabled || e.tenantAdmin[tenantID] == AdminDisabled {
+		if !eligibleForTenantAdmin(e, tenantID) {
 			continue
 		}
 
-		if e.globalDrain || e.tenantDrain[tenantID] {
-			continue
-		}
-
-		state := r.runtimeState(e, now)
+		state := runtimeStateForSession(r.timings, e.cooldownUntil, s, now)
 		if state != RuntimeReady && state != RuntimeDegraded {
 			continue
 		}
@@ -518,6 +423,138 @@ func (r *WorkerRegistry) CandidatesForPool(tenantID, poolID string) []PoolCandid
 	}
 
 	return out
+}
+
+func rejectRegisterRequest(cred WorkerCredential, req *strawpb.RegisterRequest) string {
+	if cred.Status != WorkerCredentialStatusActive {
+		return RejectRevokedCredential
+	}
+
+	reason := rejectRegisterRequestScope(cred, req)
+	if reason != "" {
+		return reason
+	}
+
+	reason = rejectRegisterRequestCapabilities(cred, req)
+	if reason != "" {
+		return reason
+	}
+
+	return rejectRegisterRequestSignature(cred, req)
+}
+
+func rejectRegisterRequestScope(cred WorkerCredential, req *strawpb.RegisterRequest) string {
+	if cred.ExecutorType != "" && req.GetExecutorType() != "" && cred.ExecutorType != req.GetExecutorType() {
+		return RejectExecutorMismatch
+	}
+
+	if req.GetProtocolMajor() != ProtocolMajor {
+		return RejectIncompatibleProto
+	}
+
+	for _, p := range req.GetAllowedPools() {
+		if !credentialAllowsPool(cred, p.GetTenantId(), p.GetPoolId()) {
+			return RejectPoolScope
+		}
+	}
+
+	return ""
+}
+
+func rejectRegisterRequestCapabilities(cred WorkerCredential, req *strawpb.RegisterRequest) string {
+	caps := cred.AllowedCapabilities
+	if !subset(req.GetTags(), caps.Tags) ||
+		!subset(req.GetCountries(), caps.Countries) ||
+		!subset(req.GetRegions(), caps.Regions) ||
+		!subset(req.GetIpTypes(), caps.IPTypes) ||
+		!subset(req.GetSupportedIngressModes(), caps.SupportedIngressModes) {
+		return RejectCapabilityScope
+	}
+
+	return ""
+}
+
+func rejectRegisterRequestSignature(cred WorkerCredential, req *strawpb.RegisterRequest) string {
+	pub, err := base64.StdEncoding.DecodeString(cred.PublicKeyEd25519Base64)
+	if err != nil || len(pub) != ed25519.PublicKeySize {
+		return RejectInvalidKeyMaterial
+	}
+
+	if !strawpb.VerifyRegistrationSignature(ed25519.PublicKey(pub), req, req.GetSignedToken()) {
+		return RejectInvalidSignature
+	}
+
+	return ""
+}
+
+func eligibleForTenantAdmin(e *workerEntry, tenantID string) bool {
+	if !containsString(e.current.tenantScope, tenantID) {
+		return false
+	}
+
+	if e.globalAdmin == AdminDisabled {
+		return false
+	}
+
+	if e.tenantAdmin[tenantID] == AdminDisabled {
+		return false
+	}
+
+	return !e.globalDrain && !e.tenantDrain[tenantID]
+}
+
+// RuntimeState returns the current runtime state for a worker (unregistered
+// if unknown or with no active session).
+func (r *WorkerRegistry) RuntimeState(workerID string) WorkerRuntimeState {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	e, ok := r.workers[workerID]
+	if !ok {
+		return RuntimeUnregistered
+	}
+
+	return r.runtimeState(e, r.now())
+}
+
+func runtimeStateForSession(timings WorkerTimings, cooldownUntil time.Time, s *runtimeSession, now time.Time) WorkerRuntimeState {
+	staleness := now.Sub(s.lastSeen())
+	if staleness > timings.DeadTimeout {
+		return RuntimeDead
+	}
+
+	if staleness > timings.AvailabilityTimeout {
+		return RuntimeUnavailable
+	}
+
+	if !s.hasHeartbeat {
+		return RuntimeRegistered
+	}
+
+	if s.draining {
+		return RuntimeDraining
+	}
+
+	if now.Before(cooldownUntil) {
+		return RuntimeCooldown
+	}
+
+	return healthState(s.health)
+}
+
+func healthState(health strawpb.WorkerHealth) WorkerRuntimeState {
+	switch health {
+	case strawpb.WorkerHealth_WORKER_HEALTH_UNSPECIFIED:
+		return RuntimeRegistered
+	case strawpb.WorkerHealth_WORKER_HEALTH_READY:
+		return RuntimeReady
+	case strawpb.WorkerHealth_WORKER_HEALTH_DEGRADED:
+		return RuntimeDegraded
+	case strawpb.WorkerHealth_WORKER_HEALTH_UNHEALTHY:
+		return RuntimeUnhealthy
+	default:
+		return RuntimeReady
+	}
 }
 
 func workerInPool(pools []AllowedPool, tenantID, poolID string) bool {
@@ -618,7 +655,9 @@ func (r *WorkerRegistry) ListWorkersPlatform() []WorkerView {
 			v.SessionID = e.current.sessionID
 
 			v.ExecutorType = e.current.executorType
-			if subject, err := natsx.AssignmentSubject(workerID, e.current.sessionID); err == nil {
+
+			subject, err := natsx.AssignmentSubject(workerID, e.current.sessionID)
+			if err == nil {
 				v.AssignSubject = subject
 			}
 		}
@@ -659,6 +698,29 @@ func (r *WorkerRegistry) ListWorkersForTenant(tenantID string) []WorkerView {
 	}
 
 	return out
+}
+
+func (r *WorkerRegistry) runtimeState(e *workerEntry, now time.Time) WorkerRuntimeState {
+	s := e.current
+	if s == nil {
+		return RuntimeUnregistered
+	}
+
+	return runtimeStateForSession(r.timings, e.cooldownUntil, s, now)
+}
+
+func (r *WorkerRegistry) entry(workerID string) *workerEntry {
+	e, ok := r.workers[workerID]
+	if !ok {
+		e = &workerEntry{
+			globalAdmin: AdminEnabled,
+			tenantAdmin: make(map[string]AdminState),
+			tenantDrain: make(map[string]bool),
+		}
+		r.workers[workerID] = e
+	}
+
+	return e
 }
 
 func tenantAdminState(e *workerEntry, tenantID string) AdminState {
@@ -726,9 +788,11 @@ func copyBoolMap(in map[string]bool) map[string]bool {
 }
 
 func newSessionID() (string, error) {
-	raw := make([]byte, 16)
-	if _, err := rand.Read(raw); err != nil {
-		return "", err
+	raw := make([]byte, randomIDBytes)
+
+	_, err := rand.Read(raw)
+	if err != nil {
+		return "", fmt.Errorf("generate session id: %w", err)
 	}
 
 	return "sess_" + hex.EncodeToString(raw), nil

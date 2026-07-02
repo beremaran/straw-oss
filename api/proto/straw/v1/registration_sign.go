@@ -1,3 +1,4 @@
+// Package strawpb contains the Straw protobuf API.
 package strawpb
 
 import (

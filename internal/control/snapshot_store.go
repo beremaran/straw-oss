@@ -28,6 +28,7 @@ func NewInMemorySnapshotStore() *InMemorySnapshotStore {
 	}
 }
 
+// CurrentTenantConfigVersion returns the latest known version for a tenant.
 func (s *InMemorySnapshotStore) CurrentTenantConfigVersion(_ context.Context, tenantID string) (uint64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -35,6 +36,7 @@ func (s *InMemorySnapshotStore) CurrentTenantConfigVersion(_ context.Context, te
 	return s.versions[tenantID], nil
 }
 
+// LoadTenantSnapshot returns a stored tenant snapshot for a version.
 func (s *InMemorySnapshotStore) LoadTenantSnapshot(_ context.Context, tenantID string, version uint64) (config.TenantSnapshot, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -50,6 +52,7 @@ func (s *InMemorySnapshotStore) LoadTenantSnapshot(_ context.Context, tenantID s
 	return config.TenantSnapshot{}, ErrVersionConflict
 }
 
+// SaveTenantSnapshot stores a tenant snapshot with optimistic concurrency.
 func (s *InMemorySnapshotStore) SaveTenantSnapshot(_ context.Context, snapshot config.TenantSnapshot, expectedVersion uint64) (config.TenantSnapshot, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

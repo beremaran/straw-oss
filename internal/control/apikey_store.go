@@ -11,7 +11,9 @@ import (
 type APIKeyStatus string
 
 const (
-	APIKeyStatusActive  APIKeyStatus = "active"
+	// APIKeyStatusActive marks a live API key.
+	APIKeyStatusActive APIKeyStatus = "active"
+	// APIKeyStatusRevoked marks a revoked API key.
 	APIKeyStatusRevoked APIKeyStatus = "revoked"
 )
 
@@ -32,7 +34,9 @@ type APIKeyRecord struct {
 }
 
 var (
-	ErrAPIKeyNotFound     = errors.New("api key not found")
+	// ErrAPIKeyNotFound is returned when a key ID cannot be found.
+	ErrAPIKeyNotFound = errors.New("api key not found")
+	// ErrAPIKeyAlreadyExist is returned when inserting a duplicate key ID.
 	ErrAPIKeyAlreadyExist = errors.New("api key already exists")
 )
 
@@ -61,6 +65,7 @@ func NewInMemoryAPIKeyStore() *InMemoryAPIKeyStore {
 	return &InMemoryAPIKeyStore{records: make(map[string]APIKeyRecord)}
 }
 
+// Create inserts an API key record.
 func (s *InMemoryAPIKeyStore) Create(_ context.Context, record APIKeyRecord) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -74,6 +79,7 @@ func (s *InMemoryAPIKeyStore) Create(_ context.Context, record APIKeyRecord) err
 	return nil
 }
 
+// FindByPrefix returns active records matching a lookup prefix.
 func (s *InMemoryAPIKeyStore) FindByPrefix(_ context.Context, prefix string) ([]APIKeyRecord, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -89,6 +95,7 @@ func (s *InMemoryAPIKeyStore) FindByPrefix(_ context.Context, prefix string) ([]
 	return out, nil
 }
 
+// Get returns an API key record by ID.
 func (s *InMemoryAPIKeyStore) Get(_ context.Context, id string) (APIKeyRecord, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -101,6 +108,7 @@ func (s *InMemoryAPIKeyStore) Get(_ context.Context, id string) (APIKeyRecord, e
 	return r, nil
 }
 
+// Revoke marks an API key revoked.
 func (s *InMemoryAPIKeyStore) Revoke(_ context.Context, id string, revokedAt time.Time) (APIKeyRecord, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -118,6 +126,7 @@ func (s *InMemoryAPIKeyStore) Revoke(_ context.Context, id string, revokedAt tim
 	return r, nil
 }
 
+// ListPlatform returns platform-scoped API keys.
 func (s *InMemoryAPIKeyStore) ListPlatform(_ context.Context) ([]APIKeyRecord, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -133,6 +142,7 @@ func (s *InMemoryAPIKeyStore) ListPlatform(_ context.Context) ([]APIKeyRecord, e
 	return out, nil
 }
 
+// ListTenant returns tenant-scoped API keys for a tenant.
 func (s *InMemoryAPIKeyStore) ListTenant(_ context.Context, tenantID string) ([]APIKeyRecord, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -148,6 +158,7 @@ func (s *InMemoryAPIKeyStore) ListTenant(_ context.Context, tenantID string) ([]
 	return out, nil
 }
 
+// CountPlatformSystemAdmins returns the number of active platform admins.
 func (s *InMemoryAPIKeyStore) CountPlatformSystemAdmins(_ context.Context) (int, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

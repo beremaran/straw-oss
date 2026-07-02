@@ -10,8 +10,10 @@ import (
 type ScopeType string
 
 const (
+	// ScopePlatform marks platform-scoped credentials.
 	ScopePlatform ScopeType = "platform"
-	ScopeTenant   ScopeType = "tenant"
+	// ScopeTenant marks tenant-scoped credentials.
+	ScopeTenant ScopeType = "tenant"
 )
 
 // Role is an API key role. Platform scope has exactly one role
@@ -20,10 +22,15 @@ const (
 type Role string
 
 const (
+	// RoleSystemAdmin is the platform administrator role.
 	RoleSystemAdmin Role = "system_admin"
-	RoleRequester   Role = "requester"
-	RoleViewer      Role = "viewer"
-	RoleOperator    Role = "operator"
+	// RoleRequester may execute data-plane requests.
+	RoleRequester Role = "requester"
+	// RoleViewer is read-only.
+	RoleViewer Role = "viewer"
+	// RoleOperator is reserved for tenant policy in later work.
+	RoleOperator Role = "operator"
+	// RoleTenantAdmin manages tenant-scoped resources.
 	RoleTenantAdmin Role = "tenant_admin"
 )
 
@@ -35,6 +42,8 @@ func ValidPlatformRole(role Role) bool {
 // ValidTenantRole reports whether role is valid for scope_type = tenant.
 func ValidTenantRole(role Role) bool {
 	switch role {
+	case RoleSystemAdmin:
+		return false
 	case RoleRequester, RoleViewer, RoleOperator, RoleTenantAdmin:
 		return true
 	default:

@@ -1,3 +1,4 @@
+// Package natsx contains NATS helpers for Straw services.
 package natsx
 
 import (
@@ -9,33 +10,42 @@ import (
 
 const payloadSafetyMargin = 64 * 1024
 
+var (
+	errUnsupportedStreamDirection = errors.New("unsupported stream direction")
+	errMaxPayloadTooSmall         = errors.New("nats max payload must exceed safety margin")
+	errFrameBodyLimitTooLarge     = errors.New("configured frame/body limit exceeds nats max payload")
+	errNATSServersRequired        = errors.New("nats servers are required")
+	errNATSServerEmpty            = errors.New("nats server is empty")
+	errSubjectTokenRequired       = errors.New("subject token is required")
+	errSubjectTokenUnsafe         = errors.New("subject token contains unsafe character")
+)
+
+// StreamDirection identifies the direction of a stream subject.
 type StreamDirection string
 
 const (
+	// DirectionControlToExecutor marks control-to-executor stream subjects.
 	DirectionControlToExecutor StreamDirection = "c2e"
+	// DirectionExecutorToControl marks executor-to-control stream subjects.
 	DirectionExecutorToControl StreamDirection = "e2c"
 )
 
+// RegistrationSubject returns the NATS subject for worker registration.
 func RegistrationSubject() string {
 	return "straw.v1.control.register"
 }
 
+// HeartbeatSubject returns the NATS subject for worker heartbeats.
 func HeartbeatSubject() string {
 	return "straw.v1.control.heartbeat"
 }
 
-// ControlInboxPrefix is the custom reply-inbox prefix Control uses for
-// request/reply clients so inbox permissions can be scoped in the NATS ACL
-// table (docs/planning/12-nats-protocol.md). A concrete inbox subject is
-// this prefix plus NATS-generated tokens; the ACL grants `_INBOX.ctl.>`.
+// ControlInboxPrefix returns the reply-inbox prefix used by control clients.
 func ControlInboxPrefix() string {
 	return "_INBOX.ctl"
 }
 
-// WorkerInboxPrefix is the custom reply-inbox prefix a worker uses for its
-// request/reply client. Each worker's inbox is scoped to its own worker_id
-// (`_INBOX.wrk.<worker_id>.>` in the ACL table) so one worker cannot read
-// another's replies.
+// WorkerInboxPrefix returns the worker-specific reply inbox prefix.
 func WorkerInboxPrefix(workerID string) (string, error) {
 	err := validateSubjectToken(workerID)
 	if err != nil {
@@ -45,12 +55,12 @@ func WorkerInboxPrefix(workerID string) (string, error) {
 	return "_INBOX.wrk." + workerID, nil
 }
 
-// ValidateSubjectToken reports whether token is a safe, dot-free NATS subject
-// token usable for worker_id, session_id, or request_id.
+// ValidateSubjectToken reports whether token is a safe NATS subject token.
 func ValidateSubjectToken(token string) error {
 	return validateSubjectToken(token)
 }
 
+// AssignmentSubject returns the assignment subject for a worker session.
 func AssignmentSubject(workerID, sessionID string) (string, error) {
 	err := validateSubjectToken(workerID)
 	if err != nil {
@@ -65,6 +75,7 @@ func AssignmentSubject(workerID, sessionID string) (string, error) {
 	return fmt.Sprintf("straw.v1.executor.%s.%s.assign", workerID, sessionID), nil
 }
 
+// StreamSubject returns the stream subject for a request, worker, and session.
 func StreamSubject(requestID, workerID, sessionID string, direction StreamDirection) (string, error) {
 	err := validateSubjectToken(requestID)
 	if err != nil {
@@ -85,44 +96,45 @@ func StreamSubject(requestID, workerID, sessionID string, direction StreamDirect
 	case DirectionControlToExecutor, DirectionExecutorToControl:
 		return fmt.Sprintf("straw.v1.req.%s.%s.%s.%s", requestID, workerID, sessionID, direction), nil
 	default:
-		return "", fmt.Errorf("unsupported stream direction %q", direction)
+		return "", fmt.Errorf("%w: %q", errUnsupportedStreamDirection, direction)
 	}
 }
 
+// TerminalSubject returns the terminal subject for a request stream.
 func TerminalSubject(requestID, workerID, sessionID string, direction StreamDirection) (string, error) {
 	return StreamSubject(requestID, workerID, sessionID, direction)
 }
 
+// ValidateMaxPayload checks the configured NATS payload limits.
 func ValidateMaxPayload(maxPayloadBytes *uint64, maxFrameDataBytes, maxInlineRequestBodyBytes, maxInlineResponseBodyBytes uint64) error {
 	if maxPayloadBytes == nil {
 		return nil
 	}
 
 	if *maxPayloadBytes <= payloadSafetyMargin {
-		return fmt.Errorf("nats max payload %d must exceed %d bytes of safety margin", *maxPayloadBytes, payloadSafetyMargin)
+		return fmt.Errorf("%w: %d <= %d", errMaxPayloadTooSmall, *maxPayloadBytes, payloadSafetyMargin)
 	}
 
 	limit := max(maxInlineRequestBodyBytes, maxFrameDataBytes)
 
-	if maxInlineResponseBodyBytes > limit {
-		limit = maxInlineResponseBodyBytes
-	}
+	limit = max(limit, maxInlineResponseBodyBytes)
 
 	if limit > *maxPayloadBytes-payloadSafetyMargin {
-		return fmt.Errorf("configured frame/body limit %d exceeds nats max payload %d minus %d-byte safety margin", limit, *maxPayloadBytes, payloadSafetyMargin)
+		return fmt.Errorf("%w: %d > %d - %d safety margin", errFrameBodyLimitTooLarge, limit, *maxPayloadBytes, payloadSafetyMargin)
 	}
 
 	return nil
 }
 
+// ValidateServers validates the configured NATS server list.
 func ValidateServers(servers []string) error {
 	if len(servers) == 0 {
-		return errors.New("nats servers are required")
+		return errNATSServersRequired
 	}
 
 	for i, server := range servers {
 		if strings.TrimSpace(server) == "" {
-			return fmt.Errorf("nats server %d is empty", i)
+			return fmt.Errorf("%w: %d", errNATSServerEmpty, i)
 		}
 	}
 
@@ -131,14 +143,14 @@ func ValidateServers(servers []string) error {
 
 func validateSubjectToken(token string) error {
 	if token == "" {
-		return errors.New("subject token is required")
+		return errSubjectTokenRequired
 	}
 
 	for _, r := range token {
 		switch {
 		case unicode.IsLetter(r), unicode.IsDigit(r), r == '-', r == '_':
 		default:
-			return fmt.Errorf("subject token %q contains unsafe character %q", token, r)
+			return fmt.Errorf("%w: %q", errSubjectTokenUnsafe, r)
 		}
 	}
 

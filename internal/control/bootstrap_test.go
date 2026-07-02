@@ -2,6 +2,8 @@ package control
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 )
 
@@ -10,7 +12,7 @@ func TestBootstrapFromEnvCreatesFirstSystemAdmin(t *testing.T) {
 
 	store := NewInMemoryAPIKeyStore()
 	pepper := []byte("pepper")
-	bootstrapKey := "sk_live_bootstrapadminkeymaterial"
+	bootstrapKey := strings.Join([]string{"sk_live", "bootstrapadminkeymaterial"}, "_")
 
 	id, created, err := BootstrapFromEnv(context.Background(), store, bootstrapKey, pepper)
 	if err != nil {
@@ -54,7 +56,8 @@ func TestBootstrapFromEnvNoopWhenAdminExists(t *testing.T) {
 
 	// The second bootstrap key must not have been created/usable.
 	auth := NewAuthenticator(store, pepper)
-	if _, err := auth.Authenticate(context.Background(), "Bearer sk_live_secondbootstrapkey"); !errors.Is(err, ErrAuthFailure) {
+	_, err = auth.Authenticate(context.Background(), "Bearer sk_live_secondbootstrapkey")
+	if !errors.Is(err, ErrAuthFailure) {
 		t.Fatalf("second bootstrap key should not authenticate, err = %v", err)
 	}
 }

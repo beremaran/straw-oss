@@ -11,7 +11,9 @@ import (
 type TenantStatus string
 
 const (
-	TenantStatusActive  TenantStatus = "active"
+	// TenantStatusActive marks a live tenant record.
+	TenantStatusActive TenantStatus = "active"
+	// TenantStatusDeleted marks a deleted tenant record.
 	TenantStatusDeleted TenantStatus = "deleted"
 )
 
@@ -30,7 +32,9 @@ type Tenant struct {
 }
 
 var (
-	ErrTenantNotFound      = errors.New("tenant not found")
+	// ErrTenantNotFound is returned when a tenant ID cannot be found.
+	ErrTenantNotFound = errors.New("tenant not found")
+	// ErrTenantAlreadyExists is returned when inserting a duplicate tenant.
 	ErrTenantAlreadyExists = errors.New("tenant already exists")
 )
 
@@ -46,10 +50,12 @@ type InMemoryTenantStore struct {
 	tenants map[string]Tenant
 }
 
+// NewInMemoryTenantStore builds an empty tenant store.
 func NewInMemoryTenantStore() *InMemoryTenantStore {
 	return &InMemoryTenantStore{tenants: make(map[string]Tenant)}
 }
 
+// Create inserts a tenant record.
 func (s *InMemoryTenantStore) Create(_ context.Context, tenant Tenant) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -63,6 +69,7 @@ func (s *InMemoryTenantStore) Create(_ context.Context, tenant Tenant) error {
 	return nil
 }
 
+// Get fetches a tenant record by ID.
 func (s *InMemoryTenantStore) Get(_ context.Context, id string) (Tenant, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

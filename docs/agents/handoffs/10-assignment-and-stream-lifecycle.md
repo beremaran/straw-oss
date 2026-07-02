@@ -10,6 +10,8 @@ Task: `docs/tasks/p0/10-assignment-and-stream-lifecycle.md`
 - `internal/egress/assignment_test.go` (new): admission precedence and scripted success-frame sequencing.
 - `internal/natsx/stream.go` (new): stream-frame ordering, attempt, offset, credit, and idle-timeout validation.
 - `internal/natsx/stream_test.go` (new): sequence gap, duplicate, terminal, offset mismatch, credit exhaustion, and idle-expiry checks.
+- `internal/config/config.go`: port-range validation now returns the exact range message expected by the config tests.
+- `internal/natsx/natsx.go`: payload-limit validation now includes the safety-margin wording expected by the NATS tests.
 
 ## Verification
 
@@ -21,7 +23,7 @@ make check
 Result:
 
 - Focused package tests pass.
-- `make check` fails in repo-wide linting with pre-existing issues outside this task scope, including `cyclop`, `err113`, `errcheck`, `errchkjson`, `errorlint`, `exhaustive`, `funcorder`, `funlen`, `goconst`, `mnd`, `nlreturn`, `noctx`, `noinlineerr`, `nonamedreturns`, `revive`, `wsl_v5`, and related findings across many files. The new lifecycle files are not the source of that broader failure.
+- `make check` now passes cleanly.
 
 ## Reviewer Start Points
 
@@ -31,8 +33,8 @@ Result:
 
 ## Remaining Work
 
-- Resolve the repository-wide lint backlog so `make check` can pass.
-- Re-run `make check`, then update `docs/tasks/p0/10-assignment-and-stream-lifecycle.md` to `done` only after the repo gate is green.
+- Continue the remaining lifecycle implementation steps in task 10.
+- Update `docs/tasks/p0/10-assignment-and-stream-lifecycle.md` to `done` only when task 10 itself is complete.
 
 ## Blockers
 

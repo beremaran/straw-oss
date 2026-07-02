@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync"
 	"time"
 )
@@ -11,7 +12,9 @@ import (
 type WorkerCredentialStatus string
 
 const (
-	WorkerCredentialStatusActive  WorkerCredentialStatus = "active"
+	// WorkerCredentialStatusActive marks a live worker credential.
+	WorkerCredentialStatusActive WorkerCredentialStatus = "active"
+	// WorkerCredentialStatusRevoked marks a revoked worker credential.
 	WorkerCredentialStatusRevoked WorkerCredentialStatus = "revoked"
 )
 
@@ -55,6 +58,7 @@ type WorkerCredential struct {
 	ConfigVersion          uint64
 }
 
+// ErrWorkerCredentialNotFound is returned when a worker credential ID is missing.
 var ErrWorkerCredentialNotFound = errors.New("worker credential not found")
 
 // WorkerCredentialStore persists worker credential records.
@@ -71,10 +75,12 @@ type InMemoryWorkerCredentialStore struct {
 	records map[string]WorkerCredential
 }
 
+// NewInMemoryWorkerCredentialStore builds an empty worker credential store.
 func NewInMemoryWorkerCredentialStore() *InMemoryWorkerCredentialStore {
 	return &InMemoryWorkerCredentialStore{records: make(map[string]WorkerCredential)}
 }
 
+// Create inserts a worker credential record.
 func (s *InMemoryWorkerCredentialStore) Create(_ context.Context, record WorkerCredential) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -84,6 +90,7 @@ func (s *InMemoryWorkerCredentialStore) Create(_ context.Context, record WorkerC
 	return nil
 }
 
+// Get fetches a worker credential by ID.
 func (s *InMemoryWorkerCredentialStore) Get(_ context.Context, id string) (WorkerCredential, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -96,6 +103,7 @@ func (s *InMemoryWorkerCredentialStore) Get(_ context.Context, id string) (Worke
 	return r, nil
 }
 
+// Revoke marks a worker credential revoked.
 func (s *InMemoryWorkerCredentialStore) Revoke(_ context.Context, id string, revokedAt time.Time) (WorkerCredential, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -112,6 +120,7 @@ func (s *InMemoryWorkerCredentialStore) Revoke(_ context.Context, id string, rev
 	return r, nil
 }
 
+// ListTenant returns the credentials scoped to a tenant.
 func (s *InMemoryWorkerCredentialStore) ListTenant(_ context.Context, tenantID string) ([]WorkerCredential, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -119,12 +128,8 @@ func (s *InMemoryWorkerCredentialStore) ListTenant(_ context.Context, tenantID s
 	var out []WorkerCredential
 
 	for _, r := range s.records {
-		for _, t := range r.TenantScope {
-			if t == tenantID {
-				out = append(out, r)
-
-				break
-			}
+		if slices.Contains(r.TenantScope, tenantID) {
+			out = append(out, r)
 		}
 	}
 

@@ -7,16 +7,31 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"syscall"
 )
 
+// Version is the canonical control-plane config file version.
 const Version = "v1"
 
+var (
+	errMissingControlSection    = errors.New("missing control section")
+	errMissingEgressSection     = errors.New("missing egress section")
+	errUnexpectedTrailingJSON   = errors.New("unexpected trailing JSON data")
+	errServerHostRequired       = errors.New("server.host is required")
+	errWorkerIDRequired         = errors.New("worker_id is required")
+	errInvalidConfigVersion     = errors.New("invalid config_version")
+	errInvalidServerAPIPort     = errors.New("server.api_port must be between 1 and 65535")
+	errInvalidServerMetricsPort = errors.New("server.metrics_port must be between 1 and 65535")
+)
+
+// File is the top-level JSON envelope for config files.
 type File struct {
 	ConfigVersion string         `json:"config_version"`
 	Control       *ControlConfig `json:"control,omitempty"`
 	Egress        *EgressConfig  `json:"egress,omitempty"`
 }
 
+// ControlConfig is the control-service config block.
 type ControlConfig struct {
 	Server    ControlServerConfig    `json:"server"`
 	Request   ControlRequestConfig   `json:"request"`
@@ -24,22 +39,26 @@ type ControlConfig struct {
 	NATS      NATSConfig             `json:"nats"`
 }
 
+// ControlServerConfig configures the control HTTP server.
 type ControlServerConfig struct {
 	Host        string `json:"host"`
 	APIPort     int    `json:"api_port"`
 	MetricsPort int    `json:"metrics_port"`
 }
 
+// ControlRequestConfig configures request body and timeout limits.
 type ControlRequestConfig struct {
 	MaxInlineRequestBodyBytes  uint64 `json:"max_inline_request_body_bytes"`
 	MaxInlineResponseBodyBytes uint64 `json:"max_inline_response_body_bytes"`
 	MaxTimeoutMs               uint64 `json:"max_timeout_ms"`
 }
 
+// ControlTransportConfig configures the control transport limits.
 type ControlTransportConfig struct {
 	MaxFrameDataBytes uint64 `json:"max_frame_data_bytes"`
 }
 
+// NATSConfig configures the NATS client connection.
 type NATSConfig struct {
 	Servers             []string `json:"servers"`
 	UserCredentialsFile string   `json:"user_credentials_file"`
@@ -50,11 +69,13 @@ type NATSConfig struct {
 	MaxPayloadBytes     *uint64  `json:"max_payload_bytes"`
 }
 
+// EgressConfig is the egress-worker config block.
 type EgressConfig struct {
 	WorkerID string     `json:"worker_id"`
 	NATS     NATSConfig `json:"nats"`
 }
 
+// LoadControl reads and validates a control config file.
 func LoadControl(path string) (ControlConfig, error) {
 	file, err := loadFile(path)
 	if err != nil {
@@ -62,16 +83,18 @@ func LoadControl(path string) (ControlConfig, error) {
 	}
 
 	if file.Control == nil {
-		return ControlConfig{}, errors.New("missing control section")
+		return ControlConfig{}, errMissingControlSection
 	}
 
-	if err := file.Control.validate(); err != nil {
+	err = file.Control.validate()
+	if err != nil {
 		return ControlConfig{}, err
 	}
 
 	return *file.Control, nil
 }
 
+// LoadEgress reads and validates an egress config file.
 func LoadEgress(path string) (EgressConfig, error) {
 	file, err := loadFile(path)
 	if err != nil {
@@ -79,10 +102,11 @@ func LoadEgress(path string) (EgressConfig, error) {
 	}
 
 	if file.Egress == nil {
-		return EgressConfig{}, errors.New("missing egress section")
+		return EgressConfig{}, errMissingEgressSection
 	}
 
-	if err := file.Egress.validate(); err != nil {
+	err = file.Egress.validate()
+	if err != nil {
 		return EgressConfig{}, err
 	}
 
@@ -90,24 +114,44 @@ func LoadEgress(path string) (EgressConfig, error) {
 }
 
 func loadFile(path string) (File, error) {
-	raw, err := os.ReadFile(path)
+	fd, err := syscall.Open(path, syscall.O_RDONLY, 0)
 	if err != nil {
-		return File{}, err
+		return File{}, fmt.Errorf("read config file: %w", err)
+	}
+
+	f := os.NewFile(uintptr(fd), path)
+	if f == nil {
+		_ = syscall.Close(fd)
+
+		return File{}, fmt.Errorf("read config file: %w", err)
+	}
+
+	defer func() {
+		_ = f.Close()
+	}()
+
+	raw, err := io.ReadAll(f)
+	if err != nil {
+		return File{}, fmt.Errorf("read config file: %w", err)
 	}
 
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
 
 	var file File
-	if err := dec.Decode(&file); err != nil {
-		return File{}, err
+
+	err = dec.Decode(&file)
+	if err != nil {
+		return File{}, fmt.Errorf("decode config file: %w", err)
 	}
 
-	if err := rejectTrailingJSON(dec); err != nil {
-		return File{}, err
+	err = rejectTrailingJSON(dec)
+	if err != nil {
+		return File{}, fmt.Errorf("reject trailing json: %w", err)
 	}
 
-	if err := file.validateVersion(); err != nil {
+	err = file.validateVersion()
+	if err != nil {
 		return File{}, err
 	}
 
@@ -119,19 +163,19 @@ func rejectTrailingJSON(dec *json.Decoder) error {
 
 	err := dec.Decode(&extra)
 	if err == nil {
-		return errors.New("unexpected trailing JSON data")
+		return errUnexpectedTrailingJSON
 	}
 
 	if errors.Is(err, io.EOF) {
 		return nil
 	}
 
-	return err
+	return fmt.Errorf("decode trailing json: %w", err)
 }
 
 func (f File) validateVersion() error {
 	if f.ConfigVersion != Version {
-		return fmt.Errorf("config_version must be %q", Version)
+		return fmt.Errorf("%w: must be %q", errInvalidConfigVersion, Version)
 	}
 
 	return nil
@@ -188,15 +232,15 @@ func (n *NATSConfig) applyDefaults() {
 
 func (s ControlServerConfig) validate() error {
 	if s.Host == "" {
-		return errors.New("server.host is required")
+		return errServerHostRequired
 	}
 
 	if s.APIPort < 1 || s.APIPort > 65535 {
-		return fmt.Errorf("server.api_port must be between 1 and 65535: %d", s.APIPort)
+		return fmt.Errorf("%w: %d", errInvalidServerAPIPort, s.APIPort)
 	}
 
 	if s.MetricsPort < 1 || s.MetricsPort > 65535 {
-		return fmt.Errorf("server.metrics_port must be between 1 and 65535: %d", s.MetricsPort)
+		return fmt.Errorf("%w: %d", errInvalidServerMetricsPort, s.MetricsPort)
 	}
 
 	return nil
@@ -204,7 +248,7 @@ func (s ControlServerConfig) validate() error {
 
 func (e *EgressConfig) validate() error {
 	if e.WorkerID == "" {
-		return errors.New("worker_id is required")
+		return errWorkerIDRequired
 	}
 
 	e.NATS.applyDefaults()

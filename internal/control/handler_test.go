@@ -7,18 +7,34 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
 )
+
+const (
+	handlerTestInvalidRequestCode = "invalid_request"
+	handlerTestUnsupportedCode    = "unsupported_ingress_mode"
+	handlerTestBodyTooLargeCode   = "body_too_large"
+	handlerTestAuthFailureCode    = "auth_failure"
+	handlerTestClientCategory     = "client"
+	handlerTestInlineBase64       = "inline_base64"
+)
+
+var handlerTestReqURL = func() string {
+	u := &url.URL{Scheme: "https", Host: "example.com", Path: "/path"}
+
+	return u.String()
+}()
 
 func TestHandlerValidRequest(t *testing.T) {
 	t.Parallel()
 
 	h, token := newTestHandler(t)
 
-	payload := `{"method":"GET","url":"https://example.com/path"}`
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	payload := `{"method":"GET","url":"` + handlerTestReqURL + `"}`
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
 	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 
@@ -47,7 +63,7 @@ func TestHandlerMissingMethod(t *testing.T) {
 	h, token := newTestHandler(t)
 
 	payload := `{"url":"https://example.com"}`
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
 	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 
@@ -62,8 +78,8 @@ func TestHandlerMissingMethod(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unmarshal error: %v", err)
 	}
-	if errResp.Code != "invalid_request" {
-		t.Fatalf("code = %q, want %q", errResp.Code, "invalid_request")
+	if errResp.Code != handlerTestInvalidRequestCode {
+		t.Fatalf("code = %q, want %q", errResp.Code, handlerTestInvalidRequestCode)
 	}
 }
 
@@ -73,7 +89,7 @@ func TestHandlerCONNECTRejected(t *testing.T) {
 	h, token := newTestHandler(t)
 
 	payload := `{"method":"CONNECT","url":"https://example.com"}`
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
 	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 
@@ -88,8 +104,8 @@ func TestHandlerCONNECTRejected(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unmarshal error: %v", err)
 	}
-	if errResp.Code != "unsupported_ingress_mode" {
-		t.Fatalf("code = %q, want %q", errResp.Code, "unsupported_ingress_mode")
+	if errResp.Code != handlerTestUnsupportedCode {
+		t.Fatalf("code = %q, want %q", errResp.Code, handlerTestUnsupportedCode)
 	}
 }
 
@@ -99,7 +115,7 @@ func TestHandlerURLFragmentRejected(t *testing.T) {
 	h, token := newTestHandler(t)
 
 	payload := `{"method":"GET","url":"https://example.com/path#section"}`
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
 	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 
@@ -114,8 +130,8 @@ func TestHandlerURLFragmentRejected(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unmarshal error: %v", err)
 	}
-	if errResp.Code != "invalid_request" {
-		t.Fatalf("code = %q, want %q", errResp.Code, "invalid_request")
+	if errResp.Code != handlerTestInvalidRequestCode {
+		t.Fatalf("code = %q, want %q", errResp.Code, handlerTestInvalidRequestCode)
 	}
 }
 
@@ -124,8 +140,10 @@ func TestHandlerURLUserInfoRejected(t *testing.T) {
 
 	h, token := newTestHandler(t)
 
-	payload := `{"method":"GET","url":"https://user:pass@example.com/path"}`
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	u := &url.URL{Scheme: "https", Host: "example.com", Path: "/path"}
+	u.User = url.UserPassword("user", "pass")
+	payload := `{"method":"GET","url":"` + u.String() + `"}`
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
 	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 
@@ -140,8 +158,8 @@ func TestHandlerURLUserInfoRejected(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unmarshal error: %v", err)
 	}
-	if errResp.Code != "invalid_request" {
-		t.Fatalf("code = %q, want %q", errResp.Code, "invalid_request")
+	if errResp.Code != handlerTestInvalidRequestCode {
+		t.Fatalf("code = %q, want %q", errResp.Code, handlerTestInvalidRequestCode)
 	}
 }
 
@@ -151,7 +169,7 @@ func TestHandlerHostHeaderRejected(t *testing.T) {
 	h, token := newTestHandler(t)
 
 	payload := `{"method":"GET","url":"https://example.com","headers":[{"name":"Host","value_base64":"ZXhhbXBsZS5jb20="}]}`
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
 	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 
@@ -166,8 +184,8 @@ func TestHandlerHostHeaderRejected(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unmarshal error: %v", err)
 	}
-	if errResp.Code != "invalid_request" {
-		t.Fatalf("code = %q, want %q", errResp.Code, "invalid_request")
+	if errResp.Code != handlerTestInvalidRequestCode {
+		t.Fatalf("code = %q, want %q", errResp.Code, handlerTestInvalidRequestCode)
 	}
 }
 
@@ -178,7 +196,7 @@ func TestHandlerDuplicateHeaders(t *testing.T) {
 
 	// "hello" in base64
 	payload := `{"method":"GET","url":"https://example.com","headers":[{"name":"X-Custom","value_base64":"aGVsbG8="},{"name":"X-Custom","value_base64":"d29ybGQ="}]}`
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
 	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 
@@ -198,7 +216,7 @@ func TestHandlerBodyLimitExceeded(t *testing.T) {
 	// 2 MB of base64 data (which decodes to ~1.5 MB)
 	largeData := strings.Repeat("A", 1_400_000)
 	payload := `{"method":"POST","url":"https://example.com","body":{"mode":"inline_base64","data_base64":"` + largeData + `"}}`
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
 	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 
@@ -213,8 +231,8 @@ func TestHandlerBodyLimitExceeded(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unmarshal error: %v", err)
 	}
-	if errResp.Code != "body_too_large" {
-		t.Fatalf("code = %q, want %q", errResp.Code, "body_too_large")
+	if errResp.Code != handlerTestBodyTooLargeCode {
+		t.Fatalf("code = %q, want %q", errResp.Code, handlerTestBodyTooLargeCode)
 	}
 }
 
@@ -224,7 +242,7 @@ func TestHandlerCaptureHintRejected(t *testing.T) {
 	h, token := newTestHandler(t)
 
 	payload := `{"method":"GET","url":"https://example.com","capture_hint":"full"}`
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
 	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 
@@ -239,8 +257,8 @@ func TestHandlerCaptureHintRejected(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unmarshal error: %v", err)
 	}
-	if errResp.Code != "invalid_request" {
-		t.Fatalf("code = %q, want %q", errResp.Code, "invalid_request")
+	if errResp.Code != handlerTestInvalidRequestCode {
+		t.Fatalf("code = %q, want %q", errResp.Code, handlerTestInvalidRequestCode)
 	}
 }
 
@@ -249,7 +267,7 @@ func TestHandlerNonPOSTMethod(t *testing.T) {
 
 	h, _ := newTestHandler(t)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/requests", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/requests", nil)
 	w := httptest.NewRecorder()
 
 	h.ServeHTTP(w, req)
@@ -266,7 +284,7 @@ func TestHandlerValidRequestWithHeadersAndBody(t *testing.T) {
 
 	// "application/json" in base64
 	payload := `{"method":"POST","url":"https://example.com/api","headers":[{"name":"Content-Type","value_base64":"YXBwbGljYXRpb24vanNvbg=="}],"body":{"mode":"inline_base64","data_base64":"aGVsbG8="}}`
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
 	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 
@@ -292,7 +310,7 @@ func TestHandlerTimeoutTooLow(t *testing.T) {
 	h, token := newTestHandler(t)
 
 	payload := `{"method":"GET","url":"https://example.com","timeout_ms":500}`
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
 	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 
@@ -309,7 +327,7 @@ func TestHandlerUnknownFieldsRejected(t *testing.T) {
 	h, token := newTestHandler(t)
 
 	payload := `{"method":"GET","url":"https://example.com","unknown_field":true}`
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
 	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 
@@ -326,7 +344,7 @@ func TestHandlerInvalidMethodCasing(t *testing.T) {
 	h, token := newTestHandler(t)
 
 	payload := `{"method":"get","url":"https://example.com"}`
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
 	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 
@@ -381,11 +399,11 @@ func TestErrorResponseFromCode(t *testing.T) {
 	t.Parallel()
 
 	resp := ErrorResponseFromCode(1, "req_abc", nil)
-	if resp.Code != "auth_failure" {
-		t.Fatalf("code = %q, want %q", resp.Code, "auth_failure")
+	if resp.Code != handlerTestAuthFailureCode {
+		t.Fatalf("code = %q, want %q", resp.Code, handlerTestAuthFailureCode)
 	}
-	if resp.Category != "client" {
-		t.Fatalf("category = %q, want %q", resp.Category, "client")
+	if resp.Category != handlerTestClientCategory {
+		t.Fatalf("category = %q, want %q", resp.Category, handlerTestClientCategory)
 	}
 	if resp.Retryable {
 		t.Fatal("auth_failure should not be retryable")
@@ -399,7 +417,8 @@ func TestValidateRequestEmptyMethod(t *testing.T) {
 	t.Parallel()
 
 	raw := []byte(`{"url":"https://example.com"}`)
-	_, err := ValidateRequest(raw, 1_048_576, 120_000)
+	var err error
+	_, err = ValidateRequest(raw, 1_048_576, 120_000)
 	if err == nil {
 		t.Fatal("expected error for empty method")
 	}
@@ -407,8 +426,8 @@ func TestValidateRequestEmptyMethod(t *testing.T) {
 	if !errors.As(err, &verr) {
 		t.Fatalf("expected ValidationError, got %T", err)
 	}
-	if verr.Code != "invalid_request" {
-		t.Fatalf("code = %q, want %q", verr.Code, "invalid_request")
+	if verr.Code != handlerTestInvalidRequestCode {
+		t.Fatalf("code = %q, want %q", verr.Code, handlerTestInvalidRequestCode)
 	}
 }
 
@@ -416,7 +435,8 @@ func TestValidateRequestInvalidURLScheme(t *testing.T) {
 	t.Parallel()
 
 	raw := []byte(`{"method":"GET","url":"ftp://example.com"}`)
-	_, err := ValidateRequest(raw, 1_048_576, 120_000)
+	var err error
+	_, err = ValidateRequest(raw, 1_048_576, 120_000)
 	if err == nil {
 		t.Fatal("expected error for invalid URL scheme")
 	}
@@ -430,7 +450,8 @@ func TestValidateRequestBodyRefRejected(t *testing.T) {
 	t.Parallel()
 
 	raw := []byte(`{"method":"POST","url":"https://example.com","body":{"mode":"body_ref","body_ref_id":"ref_123"}}`)
-	_, err := ValidateRequest(raw, 1_048_576, 120_000)
+	var err error
+	_, err = ValidateRequest(raw, 1_048_576, 120_000)
 	if err == nil {
 		t.Fatal("expected error for BodyRef body")
 	}
@@ -438,8 +459,8 @@ func TestValidateRequestBodyRefRejected(t *testing.T) {
 	if !errors.As(err, &verr) {
 		t.Fatalf("expected ValidationError, got %T", err)
 	}
-	if verr.Code != "invalid_request" {
-		t.Fatalf("code = %q, want %q", verr.Code, "invalid_request")
+	if verr.Code != handlerTestInvalidRequestCode {
+		t.Fatalf("code = %q, want %q", verr.Code, handlerTestInvalidRequestCode)
 	}
 }
 
@@ -447,7 +468,8 @@ func TestValidateRequestCaptureHintOtherThanNone(t *testing.T) {
 	t.Parallel()
 
 	raw := []byte(`{"method":"GET","url":"https://example.com","capture_hint":"full"}`)
-	_, err := ValidateRequest(raw, 1_048_576, 120_000)
+	var err error
+	_, err = ValidateRequest(raw, 1_048_576, 120_000)
 	if err == nil {
 		t.Fatal("expected error for non-none capture_hint")
 	}
@@ -531,7 +553,7 @@ func TestHandlerSuccessEnvelopeStructure(t *testing.T) {
 	h, token := newTestHandler(t)
 
 	payload := `{"method":"GET","url":"https://example.com"}`
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
 	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 
@@ -554,8 +576,8 @@ func TestHandlerSuccessEnvelopeStructure(t *testing.T) {
 	if resp.Status != 200 {
 		t.Fatalf("envelope status = %d, want 200 (upstream passthrough stub)", resp.Status)
 	}
-	if resp.Body.Mode != "inline_base64" {
-		t.Fatalf("body mode = %q, want %q", resp.Body.Mode, "inline_base64")
+	if resp.Body.Mode != handlerTestInlineBase64 {
+		t.Fatalf("body mode = %q, want %q", resp.Body.Mode, handlerTestInlineBase64)
 	}
 	if resp.Body.Truncated {
 		t.Fatal("truncated should be false for stub")
@@ -569,7 +591,8 @@ func TestValidateRequestIPv6ZoneRejected(t *testing.T) {
 	t.Parallel()
 
 	raw := []byte(`{"method":"GET","url":"https://[::1%eth0]/path"}`)
-	_, err := ValidateRequest(raw, 1_048_576, 120_000)
+	var err error
+	_, err = ValidateRequest(raw, 1_048_576, 120_000)
 	if err == nil {
 		t.Fatal("expected error for IPv6 zone identifier")
 	}
@@ -577,8 +600,8 @@ func TestValidateRequestIPv6ZoneRejected(t *testing.T) {
 	if !errors.As(err, &verr) {
 		t.Fatalf("expected ValidationError, got %T", err)
 	}
-	if verr.Code != "invalid_request" {
-		t.Fatalf("code = %q, want %q", verr.Code, "invalid_request")
+	if verr.Code != handlerTestInvalidRequestCode {
+		t.Fatalf("code = %q, want %q", verr.Code, handlerTestInvalidRequestCode)
 	}
 }
 
@@ -586,7 +609,8 @@ func TestValidateRequestEmptyHostRejected(t *testing.T) {
 	t.Parallel()
 
 	raw := []byte(`{"method":"GET","url":"https:///path"}`)
-	_, err := ValidateRequest(raw, 1_048_576, 120_000)
+	var err error
+	_, err = ValidateRequest(raw, 1_048_576, 120_000)
 	if err == nil {
 		t.Fatal("expected error for empty host")
 	}
@@ -608,8 +632,11 @@ func TestValidateRequestHeaderCountLimit(t *testing.T) {
 		"url":     "https://example.com",
 		"headers": headers,
 	}
-	raw, _ := json.Marshal(body)
-	_, err := ValidateRequest(raw, 1_048_576, 120_000)
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("marshal body: %v", err)
+	}
+	_, err = ValidateRequest(raw, 1_048_576, 120_000)
 	if err == nil {
 		t.Fatal("expected error for header count exceeding 64")
 	}
@@ -675,10 +702,10 @@ func TestHTTPValidationErrorStatus(t *testing.T) {
 		code     string
 		expected int
 	}{
-		{"invalid_request", http.StatusBadRequest},
-		{"body_too_large", http.StatusRequestEntityTooLarge},
-		{"unsupported_ingress_mode", http.StatusBadRequest},
-		{"auth_failure", http.StatusUnauthorized},
+		{handlerTestInvalidRequestCode, http.StatusBadRequest},
+		{handlerTestBodyTooLargeCode, http.StatusRequestEntityTooLarge},
+		{handlerTestUnsupportedCode, http.StatusBadRequest},
+		{handlerTestAuthFailureCode, http.StatusUnauthorized},
 		{"insufficient_permissions", http.StatusForbidden},
 		{"destination_denied", http.StatusForbidden},
 	}
@@ -719,7 +746,8 @@ func newTestHandler(t *testing.T) (*RequestHandler, string) {
 		Status:     APIKeyStatusActive,
 		CreatedAt:  time.Now().UTC(),
 	}
-	if err := store.Create(context.Background(), record); err != nil {
+	err = store.Create(context.Background(), record)
+	if err != nil {
 		t.Fatalf("store.Create() error = %v", err)
 	}
 

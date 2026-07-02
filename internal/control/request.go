@@ -3,12 +3,44 @@ package control
 import (
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+)
+
+const (
+	urlSchemeHTTP  = "http"
+	urlSchemeHTTPS = "https"
+)
+
+var httpTokenAllowed = func() [256]bool {
+	var allowed [256]bool
+
+	for _, r := range "!#$%&'*+-.^_`|~" {
+		allowed[byte(r)] = true
+	}
+
+	for r := byte('0'); r <= '9'; r++ {
+		allowed[r] = true
+	}
+
+	for r := byte('A'); r <= 'Z'; r++ {
+		allowed[r] = true
+	}
+
+	for r := byte('a'); r <= 'z'; r++ {
+		allowed[r] = true
+	}
+
+	return allowed
+}()
+
+const (
+	maxRequestHeaderCount = 64
+	maxRequestHeaderBytes = 16384
+	minRequestTimeoutMs   = 1000
 )
 
 // RequestEnvelope is the JSON shape for POST /api/v1/requests.
@@ -57,20 +89,6 @@ type ValidatedRequest struct {
 	StickySessionID string
 }
 
-var (
-	errMethodRequired     = errors.New("method is required")
-	errURLRequired        = errors.New("url is required")
-	errURLScheme          = errors.New("url scheme must be http or https")
-	errURLFragment        = errors.New("url fragments are rejected")
-	errURLUserInfo        = errors.New("url userinfo is rejected")
-	errURLEmptyHost       = errors.New("url host is empty")
-	errCaptureHintInvalid = errors.New("capture_hint must be absent or none in P0")
-	errBodyModeInvalid    = errors.New("body mode must be inline_base64 or omitted in P0")
-	errBodyRefInP0        = errors.New("BodyRef body is rejected in P0")
-	errTimeoutTooLow      = errors.New("timeout_ms must be at least 1000")
-	errTimeoutTooHigh     = errors.New("timeout_ms exceeds maximum")
-)
-
 // ValidateRequest parses and validates a RequestEnvelope against config limits.
 func ValidateRequest(raw []byte, maxRequestBodyBytes, maxTimeoutMs uint64) (*ValidatedRequest, error) {
 	var env RequestEnvelope
@@ -78,11 +96,13 @@ func ValidateRequest(raw []byte, maxRequestBodyBytes, maxTimeoutMs uint64) (*Val
 	dec := json.NewDecoder(strings.NewReader(string(raw)))
 	dec.DisallowUnknownFields()
 
-	if err := dec.Decode(&env); err != nil {
+	err := dec.Decode(&env)
+	if err != nil {
 		return nil, fmt.Errorf("invalid request JSON: %w", err)
 	}
 
-	if err := validateMethod(env.Method); err != nil {
+	err = validateMethod(env.Method)
+	if err != nil {
 		return nil, err
 	}
 
@@ -106,7 +126,8 @@ func ValidateRequest(raw []byte, maxRequestBodyBytes, maxTimeoutMs uint64) (*Val
 		return nil, err
 	}
 
-	if err := validateCaptureHint(env.CaptureHint); err != nil {
+	err = validateCaptureHint(env.CaptureHint)
+	if err != nil {
 		return nil, err
 	}
 
@@ -129,20 +150,20 @@ func ValidateRequest(raw []byte, maxRequestBodyBytes, maxTimeoutMs uint64) (*Val
 
 func validateMethod(method string) error {
 	if method == "" {
-		return &ValidationError{Code: "invalid_request", Message: "method is required"}
+		return &ValidationError{Code: errorCodeInvalidRequest, Message: "method is required"}
 	}
 
 	if method != strings.ToUpper(method) {
-		return &ValidationError{Code: "invalid_request", Message: "method must be uppercase"}
+		return &ValidationError{Code: errorCodeInvalidRequest, Message: "method must be uppercase"}
 	}
 
 	if method == "CONNECT" {
-		return &ValidationError{Code: "unsupported_ingress_mode", Message: "CONNECT method is not supported in P0 REST transport"}
+		return &ValidationError{Code: errorCodeUnsupportedIngressMode, Message: "CONNECT method is not supported in P0 REST transport"}
 	}
 
 	for _, r := range method {
 		if !isMethodChar(r) {
-			return &ValidationError{Code: "invalid_request", Message: "method contains invalid characters"}
+			return &ValidationError{Code: errorCodeInvalidRequest, Message: "method contains invalid characters"}
 		}
 	}
 
@@ -155,70 +176,70 @@ func isMethodChar(r rune) bool {
 
 func validateURL(rawURL string) (*url.URL, error) {
 	if rawURL == "" {
-		return nil, &ValidationError{Code: "invalid_request", Message: "url is required"}
+		return nil, &ValidationError{Code: errorCodeInvalidRequest, Message: "url is required"}
 	}
 
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
-		return nil, &ValidationError{Code: "invalid_request", Message: "url is not a valid URL"}
+		return nil, &ValidationError{Code: errorCodeInvalidRequest, Message: "url is not a valid URL"}
 	}
 
-	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return nil, &ValidationError{Code: "invalid_request", Message: "url scheme must be http or https"}
+	if parsed.Scheme != urlSchemeHTTP && parsed.Scheme != urlSchemeHTTPS {
+		return nil, &ValidationError{Code: errorCodeInvalidRequest, Message: fmt.Sprintf("url scheme must be %s or %s", urlSchemeHTTP, urlSchemeHTTPS)}
 	}
 
 	if parsed.Fragment != "" {
-		return nil, &ValidationError{Code: "invalid_request", Message: "url fragments are rejected"}
+		return nil, &ValidationError{Code: errorCodeInvalidRequest, Message: "url fragments are rejected"}
 	}
 
 	if parsed.User != nil {
-		return nil, &ValidationError{Code: "invalid_request", Message: "url userinfo is rejected"}
+		return nil, &ValidationError{Code: errorCodeInvalidRequest, Message: "url userinfo is rejected"}
 	}
 
 	if parsed.Host == "" {
-		return nil, &ValidationError{Code: "invalid_request", Message: "url host is empty"}
+		return nil, &ValidationError{Code: errorCodeInvalidRequest, Message: "url host is empty"}
 	}
 
 	if strings.Contains(parsed.Host, "%") {
-		return nil, &ValidationError{Code: "invalid_request", Message: "IPv6 zone identifiers are rejected"}
+		return nil, &ValidationError{Code: errorCodeInvalidRequest, Message: "IPv6 zone identifiers are rejected"}
 	}
 
 	return parsed, nil
 }
 
 func validateHeaders(headers []HeaderPair) ([]HeaderPair, error) {
-	if len(headers) > 64 {
-		return nil, &ValidationError{Code: "invalid_request", Message: "header count exceeds maximum of 64"}
+	if len(headers) > maxRequestHeaderCount {
+		return nil, &ValidationError{Code: errorCodeInvalidRequest, Message: "header count exceeds maximum of 64"}
 	}
 
 	var totalBytes int
 
 	for _, h := range headers {
-		if len(h.Name) > 64 {
-			return nil, &ValidationError{Code: "invalid_request", Message: "header name exceeds maximum length of 64 bytes"}
+		if len(h.Name) > maxRequestHeaderCount {
+			return nil, &ValidationError{Code: errorCodeInvalidRequest, Message: "header name exceeds maximum length of 64 bytes"}
 		}
 
 		if !isValidHTTPToken(h.Name) {
-			return nil, &ValidationError{Code: "invalid_request", Message: "header name is not a valid HTTP token"}
+			return nil, &ValidationError{Code: errorCodeInvalidRequest, Message: "header name is not a valid HTTP token"}
 		}
 
 		if strings.EqualFold(h.Name, "host") {
-			return nil, &ValidationError{Code: "invalid_request", Message: "client-supplied Host header is rejected"}
+			return nil, &ValidationError{Code: errorCodeInvalidRequest, Message: "client-supplied Host header is rejected"}
 		}
 
 		if strings.ContainsRune(h.Value, '\r') || strings.ContainsRune(h.Value, '\n') {
-			return nil, &ValidationError{Code: "invalid_request", Message: "header values must not contain CR or LF"}
+			return nil, &ValidationError{Code: errorCodeInvalidRequest, Message: "header values must not contain CR or LF"}
 		}
 
 		decoded, err := base64.StdEncoding.DecodeString(h.Value)
 		if err != nil {
-			return nil, &ValidationError{Code: "invalid_request", Message: "header value is not valid base64"}
+			return nil, &ValidationError{Code: errorCodeInvalidRequest, Message: "header value is not valid base64"}
 		}
 
 		totalBytes += len(h.Name) + len(decoded)
 
-		if totalBytes > 16384 {
-			return nil, &ValidationError{Code: "invalid_request", Message: "aggregate header bytes exceed maximum of 16384"}
+		if totalBytes > maxRequestHeaderBytes {
+			return nil, &ValidationError{Code: errorCodeInvalidRequest, Message: "aggregate header bytes exceed maximum of 16384"}
 		}
 	}
 
@@ -231,15 +252,7 @@ func isValidHTTPToken(s string) bool {
 	}
 
 	for _, r := range s {
-		switch {
-		case r == '!' || r == '#' || r == '$' || r == '%' || r == '&' || r == '\'' ||
-			r == '*' || r == '+' || r == '-' || r == '.' ||
-			(r >= '0' && r <= '9') ||
-			(r >= 'A' && r <= 'Z') ||
-			(r >= 'a' && r <= 'z') ||
-			r == '^' || r == '_' || r == '`' || r == '|' || r == '~':
-			// Valid token chars per RFC 7230
-		default:
+		if r > 255 || !httpTokenAllowed[int(r)] {
 			return false
 		}
 	}
@@ -253,11 +266,11 @@ func validateBody(body *RequestBody, maxBytes uint64) ([]byte, error) {
 	}
 
 	if body.Mode != "" && body.Mode != "inline_base64" {
-		return nil, &ValidationError{Code: "invalid_request", Message: "body mode must be inline_base64 or omitted in P0"}
+		return nil, &ValidationError{Code: errorCodeInvalidRequest, Message: "body mode must be inline_base64 or omitted in P0"}
 	}
 
 	if body.BodyRefID != "" {
-		return nil, &ValidationError{Code: "invalid_request", Message: "BodyRef body is rejected in P0"}
+		return nil, &ValidationError{Code: errorCodeInvalidRequest, Message: "BodyRef body is rejected in P0"}
 	}
 
 	if body.Mode == "" {
@@ -266,11 +279,11 @@ func validateBody(body *RequestBody, maxBytes uint64) ([]byte, error) {
 
 	decoded, err := base64.StdEncoding.DecodeString(body.DataBase64)
 	if err != nil {
-		return nil, &ValidationError{Code: "invalid_request", Message: "body data is not valid base64"}
+		return nil, &ValidationError{Code: errorCodeInvalidRequest, Message: "body data is not valid base64"}
 	}
 
 	if uint64(len(decoded)) > maxBytes {
-		return nil, &ValidationError{Code: "body_too_large", Message: "request body exceeds limit", Details: map[string]string{
+		return nil, &ValidationError{Code: errorCodeBodyTooLarge, Message: "request body exceeds limit", Details: map[string]string{
 			"direction":   "request",
 			"limit_bytes": strconv.FormatUint(maxBytes, 10),
 		}}
@@ -284,12 +297,12 @@ func validateTimeout(timeoutMs, maxTimeoutMs uint64) (uint64, error) {
 		return 0, nil
 	}
 
-	if timeoutMs < 1000 {
-		return 0, &ValidationError{Code: "invalid_request", Message: "timeout_ms must be at least 1000"}
+	if timeoutMs < minRequestTimeoutMs {
+		return 0, &ValidationError{Code: errorCodeInvalidRequest, Message: "timeout_ms must be at least 1000"}
 	}
 
 	if timeoutMs > maxTimeoutMs {
-		return 0, &ValidationError{Code: "invalid_request", Message: "timeout_ms exceeds maximum"}
+		return 0, &ValidationError{Code: errorCodeInvalidRequest, Message: "timeout_ms exceeds maximum"}
 	}
 
 	return timeoutMs, nil
@@ -300,7 +313,7 @@ func validateCaptureHint(hint string) error {
 		return nil
 	}
 
-	return &ValidationError{Code: "invalid_request", Message: "capture_hint must be absent or none in P0"}
+	return &ValidationError{Code: errorCodeInvalidRequest, Message: "capture_hint must be absent or none in P0"}
 }
 
 // ValidationError is a structured validation error.
@@ -317,11 +330,11 @@ func (e *ValidationError) Error() string {
 // HTTPStatus returns the HTTP status code for this validation error.
 func (e *ValidationError) HTTPStatus() int {
 	switch e.Code {
-	case "invalid_request":
+	case errorCodeInvalidRequest:
 		return http.StatusBadRequest
-	case "body_too_large":
+	case errorCodeBodyTooLarge:
 		return http.StatusRequestEntityTooLarge
-	case "unsupported_ingress_mode":
+	case errorCodeUnsupportedIngressMode:
 		return http.StatusBadRequest
 	case "auth_failure":
 		return http.StatusUnauthorized

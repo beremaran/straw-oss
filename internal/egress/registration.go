@@ -2,6 +2,7 @@ package egress
 
 import (
 	"crypto/ed25519"
+	"fmt"
 
 	strawpb "github.com/beremaran/straw/v2/api/proto/straw/v1"
 	"github.com/beremaran/straw/v2/internal/natsx"
@@ -69,7 +70,12 @@ func BuildRegisterRequest(id Identity, caps Capabilities) *strawpb.RegisterReque
 // on its NATS request/reply client (`_INBOX.wrk.<worker_id>`), per the ACL
 // table in docs/planning/12-nats-protocol.md.
 func (id Identity) InboxPrefix() (string, error) {
-	return natsx.WorkerInboxPrefix(id.WorkerID)
+	prefix, err := natsx.WorkerInboxPrefix(id.WorkerID)
+	if err != nil {
+		return "", fmt.Errorf("worker inbox prefix: %w", err)
+	}
+
+	return prefix, nil
 }
 
 // BuildHeartbeat assembles a HeartbeatRequest for the given active session.

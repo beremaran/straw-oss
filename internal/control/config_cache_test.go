@@ -9,15 +9,21 @@ import (
 	"github.com/beremaran/straw/v2/internal/config"
 )
 
+const (
+	testTenantA = "tenant-a"
+	testKeyA    = "key-a"
+	testKeyB    = "key-b"
+)
+
 func TestConfigCacheSnapshotHit(t *testing.T) {
 	t.Parallel()
 
 	store := newFakeSnapshotStore()
-	store.seedSnapshot(config.NewTenantSnapshot("tenant-a", 1, []string{"key-a"}))
-	store.setCurrentVersion("tenant-a", 1)
+	store.seedSnapshot(config.NewTenantSnapshot(testTenantA, 1, []string{testKeyA}))
+	store.setCurrentVersion(testTenantA, 1)
 	cache := NewConfigCache(store, nil)
 
-	snapshot, err := cache.Snapshot(context.Background(), "tenant-a")
+	snapshot, err := cache.Snapshot(context.Background(), testTenantA)
 	if err != nil {
 		t.Fatalf("Snapshot() error = %v", err)
 	}
@@ -30,12 +36,12 @@ func TestConfigCacheSnapshotHit(t *testing.T) {
 
 	snapshot.RevokedAPIKeyIDs[0] = "mutated"
 
-	again, err := cache.Snapshot(context.Background(), "tenant-a")
+	again, err := cache.Snapshot(context.Background(), testTenantA)
 	if err != nil {
 		t.Fatalf("Snapshot() second call error = %v", err)
 	}
-	if again.RevokedAPIKeyIDs[0] != "key-a" {
-		t.Fatalf("cached snapshot mutated = %q, want %q", again.RevokedAPIKeyIDs[0], "key-a")
+	if again.RevokedAPIKeyIDs[0] != testKeyA {
+		t.Fatalf("cached snapshot mutated = %q, want %q", again.RevokedAPIKeyIDs[0], testKeyA)
 	}
 	if got := store.loadCalls; got != 1 {
 		t.Fatalf("LoadTenantSnapshot calls after cache hit = %d, want 1", got)
@@ -46,11 +52,11 @@ func TestConfigCacheSaveVersionConflict(t *testing.T) {
 	t.Parallel()
 
 	store := newFakeSnapshotStore()
-	store.seedSnapshot(config.NewTenantSnapshot("tenant-a", 1, nil))
-	store.setCurrentVersion("tenant-a", 1)
+	store.seedSnapshot(config.NewTenantSnapshot(testTenantA, 1, nil))
+	store.setCurrentVersion(testTenantA, 1)
 	cache := NewConfigCache(store, nil)
 
-	_, err := cache.Save(context.Background(), config.NewTenantSnapshot("tenant-a", 2, nil), 0)
+	_, err := cache.Save(context.Background(), config.NewTenantSnapshot(testTenantA, 2, nil), 0)
 	if !errors.Is(err, ErrVersionConflict) {
 		t.Fatalf("Save() error = %v, want %v", err, ErrVersionConflict)
 	}
@@ -63,12 +69,12 @@ func TestConfigCacheInvalidationLoadsNewVersion(t *testing.T) {
 	t.Parallel()
 
 	store := newFakeSnapshotStore()
-	store.seedSnapshot(config.NewTenantSnapshot("tenant-a", 1, []string{"key-a"}))
-	store.seedSnapshot(config.NewTenantSnapshot("tenant-a", 2, []string{"key-a", "key-b"}))
-	store.setCurrentVersion("tenant-a", 1)
+	store.seedSnapshot(config.NewTenantSnapshot(testTenantA, 1, []string{testKeyA}))
+	store.seedSnapshot(config.NewTenantSnapshot(testTenantA, 2, []string{testKeyA, testKeyB}))
+	store.setCurrentVersion(testTenantA, 1)
 	cache := NewConfigCache(store, nil)
 
-	first, err := cache.Snapshot(context.Background(), "tenant-a")
+	first, err := cache.Snapshot(context.Background(), testTenantA)
 	if err != nil {
 		t.Fatalf("Snapshot() error = %v", err)
 	}
@@ -76,10 +82,10 @@ func TestConfigCacheInvalidationLoadsNewVersion(t *testing.T) {
 		t.Fatalf("Snapshot() version = %d, want 1", first.ConfigVersion)
 	}
 
-	store.setCurrentVersion("tenant-a", 2)
-	cache.ApplyInvalidation("tenant-a", 2)
+	store.setCurrentVersion(testTenantA, 2)
+	cache.ApplyInvalidation(testTenantA, 2)
 
-	second, err := cache.Snapshot(context.Background(), "tenant-a")
+	second, err := cache.Snapshot(context.Background(), testTenantA)
 	if err != nil {
 		t.Fatalf("Snapshot() after invalidation error = %v", err)
 	}
@@ -95,19 +101,19 @@ func TestConfigCacheMissedPubSubRecovery(t *testing.T) {
 	t.Parallel()
 
 	store := newFakeSnapshotStore()
-	store.seedSnapshot(config.NewTenantSnapshot("tenant-a", 1, nil))
-	store.setCurrentVersion("tenant-a", 1)
+	store.seedSnapshot(config.NewTenantSnapshot(testTenantA, 1, nil))
+	store.setCurrentVersion(testTenantA, 1)
 	cache := NewConfigCache(store, nil)
 
-	_, err := cache.Snapshot(context.Background(), "tenant-a")
+	_, err := cache.Snapshot(context.Background(), testTenantA)
 	if err != nil {
 		t.Fatalf("Snapshot() error = %v", err)
 	}
 
-	store.seedSnapshot(config.NewTenantSnapshot("tenant-a", 2, nil))
-	store.setCurrentVersion("tenant-a", 2)
+	store.seedSnapshot(config.NewTenantSnapshot(testTenantA, 2, nil))
+	store.setCurrentVersion(testTenantA, 2)
 
-	updated, err := cache.SyncTenantVersion(context.Background(), "tenant-a")
+	updated, err := cache.SyncTenantVersion(context.Background(), testTenantA)
 	if err != nil {
 		t.Fatalf("SyncTenantVersion() error = %v", err)
 	}
@@ -115,7 +121,7 @@ func TestConfigCacheMissedPubSubRecovery(t *testing.T) {
 		t.Fatalf("SyncTenantVersion() updated = false, want true")
 	}
 
-	snapshot, err := cache.Snapshot(context.Background(), "tenant-a")
+	snapshot, err := cache.Snapshot(context.Background(), testTenantA)
 	if err != nil {
 		t.Fatalf("Snapshot() after sync error = %v", err)
 	}
@@ -163,23 +169,6 @@ func newFakeSnapshotStore() *fakeSnapshotStore {
 	}
 }
 
-func (s *fakeSnapshotStore) seedSnapshot(snapshot config.TenantSnapshot) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.snapshots[snapshot.TenantID] == nil {
-		s.snapshots[snapshot.TenantID] = make(map[uint64]config.TenantSnapshot)
-	}
-	s.snapshots[snapshot.TenantID][snapshot.ConfigVersion] = snapshot.Clone()
-}
-
-func (s *fakeSnapshotStore) setCurrentVersion(tenantID string, version uint64) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.versions[tenantID] = version
-}
-
 func (s *fakeSnapshotStore) CurrentTenantConfigVersion(_ context.Context, tenantID string) (uint64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -219,6 +208,23 @@ func (s *fakeSnapshotStore) SaveTenantSnapshot(_ context.Context, snapshot confi
 	s.versions[snapshot.TenantID] = snapshot.ConfigVersion
 
 	return snapshot.Clone(), nil
+}
+
+func (s *fakeSnapshotStore) seedSnapshot(snapshot config.TenantSnapshot) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.snapshots[snapshot.TenantID] == nil {
+		s.snapshots[snapshot.TenantID] = make(map[uint64]config.TenantSnapshot)
+	}
+	s.snapshots[snapshot.TenantID][snapshot.ConfigVersion] = snapshot.Clone()
+}
+
+func (s *fakeSnapshotStore) setCurrentVersion(tenantID string, version uint64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.versions[tenantID] = version
 }
 
 type fakeInvalidationPublisher struct {

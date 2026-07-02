@@ -1,6 +1,8 @@
 package egress
 
 import (
+	"slices"
+
 	strawpb "github.com/beremaran/straw/v2/api/proto/straw/v1"
 )
 
@@ -28,13 +30,7 @@ func (c Capacity) supportsMode(mode strawpb.RequestMode) bool {
 		return true
 	}
 
-	for _, m := range c.SupportedModes {
-		if m == mode {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(c.SupportedModes, mode)
 }
 
 // EvaluateAssignment implements the executor-side admission decision for an
@@ -46,20 +42,20 @@ func (c Capacity) supportsMode(mode strawpb.RequestMode) bool {
 // Precedence: an invalid request is rejected first, then draining, then
 // unsupported mode, then capacity. Capacity is reserved by the caller only
 // when this returns ASSIGN_ACK_ACCEPTED.
-func EvaluateAssignment(req *strawpb.AssignRequest, cap Capacity) strawpb.AssignAckCode {
+func EvaluateAssignment(req *strawpb.AssignRequest, capacity Capacity) strawpb.AssignAckCode {
 	if req == nil || req.Validate() != nil {
 		return strawpb.AssignAckCode_ASSIGN_ACK_REJECTED_ERROR
 	}
 
-	if cap.Draining {
+	if capacity.Draining {
 		return strawpb.AssignAckCode_ASSIGN_ACK_REJECTED_DRAINING
 	}
 
-	if !cap.supportsMode(req.GetMode()) {
+	if !capacity.supportsMode(req.GetMode()) {
 		return strawpb.AssignAckCode_ASSIGN_ACK_REJECTED_UNSUPPORTED
 	}
 
-	if !cap.hasCapacity() {
+	if !capacity.hasCapacity() {
 		return strawpb.AssignAckCode_ASSIGN_ACK_REJECTED_CAPACITY
 	}
 
@@ -80,17 +76,10 @@ func NewFakeExecutor(attempt uint32) *FakeExecutor {
 	return &FakeExecutor{attempt: attempt}
 }
 
-// next returns the next sequenced StreamFrame shell for the e2c direction.
-func (f *FakeExecutor) next(payload isPayload) *strawpb.StreamFrame {
-	f.seq++
-	frame := &strawpb.StreamFrame{StreamSeq: f.seq, Attempt: f.attempt}
-	payload.set(frame)
-
-	return frame
-}
-
 // isPayload lets the fake set a oneof payload without repeating the switch.
-type isPayload interface{ set(*strawpb.StreamFrame) }
+type isPayload interface {
+	set(frame *strawpb.StreamFrame)
+}
 
 type outboundStart struct {
 	host string
@@ -154,4 +143,13 @@ func (f *FakeExecutor) ErrorResponse(host string, port uint32, code strawpb.Erro
 		f.next(outboundStart{host: host, port: port}),
 		f.next(errorFrame{code: code, fact: fact}),
 	}
+}
+
+// next returns the next sequenced StreamFrame shell for the e2c direction.
+func (f *FakeExecutor) next(payload isPayload) *strawpb.StreamFrame {
+	f.seq++
+	frame := &strawpb.StreamFrame{StreamSeq: f.seq, Attempt: f.attempt}
+	payload.set(frame)
+
+	return frame
 }

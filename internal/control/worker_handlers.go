@@ -48,7 +48,8 @@ func (h *AdminHandlers) ListWorkers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := RequireRole(identity, RoleSystemAdmin, RoleTenantAdmin, RoleOperator); err != nil {
+	err = RequireRole(identity, RoleSystemAdmin, RoleTenantAdmin, RoleOperator)
+	if err != nil {
 		writeAuthOrRBACError(w, err)
 
 		return
@@ -91,11 +92,13 @@ func (h *AdminHandlers) requirePlatformSystemAdmin(r *http.Request) (Identity, e
 		return Identity{}, err
 	}
 
-	if err := RequirePlatformScope(identity); err != nil {
+	err = RequirePlatformScope(identity)
+	if err != nil {
 		return Identity{}, err
 	}
 
-	if err := RequireRole(identity, RoleSystemAdmin); err != nil {
+	err = RequireRole(identity, RoleSystemAdmin)
+	if err != nil {
 		return Identity{}, err
 	}
 
@@ -110,11 +113,13 @@ func (h *AdminHandlers) requireTenantRole(r *http.Request, allowed ...Role) (Ide
 		return Identity{}, err
 	}
 
-	if err := RequireTenantScope(identity); err != nil {
+	err = RequireTenantScope(identity)
+	if err != nil {
 		return Identity{}, err
 	}
 
-	if err := RequireRole(identity, allowed...); err != nil {
+	err = RequireRole(identity, allowed...)
+	if err != nil {
 		return Identity{}, err
 	}
 
