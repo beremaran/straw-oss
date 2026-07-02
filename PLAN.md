@@ -1342,17 +1342,286 @@ Errors are logged at different levels based on category:
 
 ## 19. Observability
 
-ClickHouse acts as the centralized engine for structured logs, metrics, tracing, and request metadata.
+Straw's observability stack follows a layered architecture: ClickHouse serves as the primary data lake for request-level records, structured logs, traces, and metrics rollups; Prometheus provides real-time metrics for alerting and SLO tracking; Loki aggregates structured logs for log-level querying; Jaeger/Tempo handles distributed tracing; and Grafana unifies all data sources into dashboards and alerting rules.
 
-Operational data is ingested continuously by Control into ClickHouse. To enable rich analytical queries and
-observability
-dashboards (e.g., filtering request metrics by tenant tier or routing rule), tenant configuration is synced from
-Postgres
-to ClickHouse via CDC (Change Data Capture) or ClickHouse Dictionaries. This isolates heavy analytical reads from the
-transactional configuration database.
+### 19.1 Data Flow
 
-Observability is not a separate deployable component within Straw. Each service emits its own structured logs, metrics,
-traces, propagated request IDs, health checks, and readiness checks directly to the telemetry pipeline.
+```
+Egress → NATS → Control → Fluent Bit/Vector → ClickHouse
+Egress → NATS → Control → Prometheus (/metrics scrape)
+Egress → NATS → Control → Loki
+Egress → NATS → Control → Jaeger/Tempo
+Prometheus → Grafana (real-time dashboards, alerting)
+ClickHouse → Grafana (deep analysis, historical queries)
+Loki → Grafana (log-level querying)
+Jaeger/Tempo → Grafana (distributed tracing)
+```
+
+Egress workers emit only to NATS. Control is the sole observability aggregator — it centralizes all telemetry, enriches it with routing context, and pushes it to the appropriate backend. This keeps Egress implementations simple and portable.
+
+Control pushes telemetry through a lightweight sidecar (Fluent Bit or Vector) that buffers and batches writes to ClickHouse, providing backpressure handling and retry semantics. Prometheus scrapes Control's `/metrics` endpoint directly. Loki receives structured logs via HTTP push from Control. Jaeger/Tempo receives trace spans via gRPC/HTTP from Control.
+
+### 19.2 ClickHouse Schema
+
+ClickHouse stores four tables with materialized views for pre-aggregated metrics.
+
+**Table: `requests`** — every request as a row (the main data lake, TTL: ~90 days)
+
+| Column | Type | Description |
+|---|---|---|
+| `request_id` | String | Propagated from client through Control to Egress |
+| `trace_id` | String | Distributed trace identifier |
+| `tenant_id` | String | Tenant identifier |
+| `api_key_id` | String | API key used for authentication |
+| `timestamp_ingest` | DateTime64 | When Control ingested the request |
+| `timestamp_request` | DateTime64 | When the client sent the request |
+| `timestamp_response` | DateTime64 | When the response was received |
+| `timestamp_total_ms` | Float64 | Total request latency |
+| `method` | String | HTTP method |
+| `url` | String | Request URL |
+| `user_agent` | String | Client user agent |
+| `fingerprint_profile` | String | Browser fingerprint profile used |
+| `routing_rule` | String | Matching routing rule name |
+| `selected_worker` | String | Egress worker selected for egress |
+| `upstream_proxy` | String | Upstream proxy used (if any) |
+| `country` | String | Target country code |
+| `region` | String | Target region code |
+| `ip_type` | String | Residential, datacenter, mobile |
+| `sticky_session_id` | String | Sticky session identifier |
+| `session_id` | String | Session identifier |
+| `tags` | Array(String) | Tags used for routing match |
+| `injected_header_count` | UInt32 | Number of injected headers |
+| `error_code` | String | Straw error code |
+| `error_category` | String | transport, egress, client, routing, system |
+| `upstream_status` | UInt16 | Raw upstream HTTP status code |
+| `client_status` | UInt16 | HTTP status returned to client |
+| `timeout_type` | String | CONNECT_TIMEOUT, REQUEST_TIMEOUT, IDLE_TIMEOUT, WORKER_TIMEOUT, UPLOAD_TIMEOUT, DOWNLOAD_TIMEOUT |
+| `worker_status` | String | alive, draining, disconnected |
+| `retry_count` | UInt32 | Number of retries attempted |
+| `is_retry` | UInt8 | Whether this is a retried request |
+| `request_body_size` | UInt64 | Size of request body in bytes |
+| `response_body_size` | UInt64 | Size of response body in bytes |
+| `body_captured` | UInt8 | Whether payload capture was enabled |
+| `latency_connect_ms` | Float64 | Time to establish outbound connection |
+| `latency_upload_ms` | Float64 | Time to upload request body |
+| `latency_download_ms` | Float64 | Time to download response body |
+| `latency_routing_ms` | Float64 | Time spent on Control-side routing decision |
+
+**Table: `logs`** — structured log events (TTL: ~30 days)
+
+| Column | Type | Description |
+|---|---|---|
+| `timestamp` | DateTime64 | Log event timestamp |
+| `service` | String | control, egress |
+| `level` | String | DEBUG, INFO, WARN, ERROR, FATAL |
+| `message` | String | Log message |
+| `request_id` | String | Correlated request ID (nullable) |
+| `tenant_id` | String | Correlated tenant ID (nullable) |
+| `trace_id` | String | Correlated trace ID (nullable) |
+| `worker_id` | String | Worker identifier (nullable) |
+| `error_code` | String | Straw error code (nullable) |
+| `extra` | Map(String, String) | Additional structured fields |
+
+**Table: `traces`** — distributed trace spans (TTL: ~7 days)
+
+| Column | Type | Description |
+|---|---|---|
+| `trace_id` | String | Distributed trace identifier |
+| `span_id` | String | Span identifier |
+| `parent_span_id` | String | Parent span identifier (nullable) |
+| `service` | String | control, egress |
+| `operation` | String | Span operation name |
+| `start_time` | DateTime64 | Span start time |
+| `duration_ms` | Float64 | Span duration |
+| `status` | String | OK, ERROR, UNSET |
+| `tags` | Map(String, String) | Key-value metadata (request_id, tenant_id, error_code, etc.) |
+
+**Table: `events`** — operational events (TTL: ~90 days)
+
+| Column | Type | Description |
+|---|---|---|
+| `timestamp` | DateTime64 | Event timestamp |
+| `event_type` | String | worker_registered, worker_deregistered, worker_draining, config_updated, admin_action, worker_disconnected, nats_outage, rate_limit_triggered |
+| `tenant_id` | String | Affected tenant (nullable) |
+| `worker_id` | String | Affected worker (nullable) |
+| `admin_user` | String | Admin user who triggered the event (nullable) |
+| `details` | String | Human-readable event description |
+| `extra` | Map(String, String) | Additional structured fields |
+
+**Materialized View: `metrics_rollups`** — pre-aggregated metrics (TTL: ~180 days)
+
+Hourly and daily rollups of request rate, error rate, and latency percentiles, partitioned by tenant_id, routing_rule, selected_worker, error_code, and country. These are computed via ClickHouse materialized views triggered by inserts into the `requests` table.
+
+### 19.3 Prometheus Metrics
+
+Prometheus collects real-time metrics via a `/metrics` endpoint on Control. Services expose counters, histograms, and gauges for alerting and SLO tracking.
+
+**Counters** (monotonically increasing):
+
+| Metric | Labels | Description |
+|---|---|---|
+| `straw_requests_total` | `method`, `url`, `tenant_id`, `error_code`, `error_category`, `routing_rule`, `selected_worker`, `upstream_proxy`, `country`, `region`, `ip_type`, `fingerprint_profile` | Total requests processed |
+| `straw_requests_retried_total` | `method`, `tenant_id`, `error_code` | Total retried requests |
+| `straw_worker_registered_total` | `worker_id` | Worker registration events |
+| `straw_worker_deregistered_total` | `worker_id` | Worker deregistration events |
+| `straw_worker_drain_started_total` | `worker_id` | Worker drain events |
+| `straw_worker_disconnected_total` | `worker_id` | Worker disconnection events |
+| `straw_upstream_proxy_connected_total` | `proxy_name` | Upstream proxy connection events |
+| `straw_upstream_proxy_disconnected_total` | `proxy_name` | Upstream proxy disconnection events |
+| `straw_payload_captured_total` | `tenant_id` | Payload capture events (opt-in) |
+| `straw_nats_messages_sent_total` | `message_type` | NATS messages sent by Control |
+| `straw_nats_messages_received_total` | `message_type` | NATS messages received by Control |
+| `straw_nats_errors_total` | `error_type` | NATS transport errors |
+
+**Histograms** (latency distributions):
+
+| Metric | Labels | Description |
+|---|---|---|
+| `straw_request_duration_seconds` | `method`, `tenant_id`, `error_code`, `routing_rule` | Total request latency |
+| `straw_routing_duration_seconds` | `method`, `tenant_id` | Control-side routing decision latency |
+| `straw_connect_duration_seconds` | `method`, `tenant_id` | Outbound connection establishment latency |
+| `straw_upload_duration_seconds` | `method`, `tenant_id` | Request body upload latency |
+| `straw_download_duration_seconds` | `method`, `tenant_id` | Response body download latency |
+| `straw_nats_request_duration_seconds` | `message_type` | NATS request/reply latency |
+| `straw_request_body_size_bytes` | `method`, `tenant_id` | Request body size distribution |
+| `straw_response_body_size_bytes` | `method`, `tenant_id`, `error_code` | Response body size distribution |
+
+**Gauges** (current state):
+
+| Metric | Labels | Description |
+|---|---|---|
+| `straw_active_connections` | `tenant_id`, `protocol` (http, connect, mitm) | Active client connections |
+| `straw_active_requests` | `tenant_id`, `method` | Currently in-flight requests |
+| `straw_workers_available` | `worker_id`, `country`, `region`, `ip_type` | Workers available for routing |
+| `straw_workers_draining` | `worker_id` | Workers in drain state |
+| `straw_nats_subscriptions` | `subscription_type` | Active NATS subscriptions |
+| `straw_nats_connection_status` | `cluster_node` | NATS connection health (1=connected, 0=disconnected) |
+| `straw_clickhouse_write_queue_depth` | | Pending writes to ClickHouse |
+| `straw_clickhouse_write_errors_total` | | Failed ClickHouse writes |
+| `straw_rate_limit_remaining` | `tenant_id` | Remaining rate limit quota |
+| `straw_quota_remaining` | `tenant_id` | Remaining quota |
+
+### 19.4 Structured Logs
+
+All services emit JSON-structured logs. Control enriches logs with `request_id`, `tenant_id`, and `trace_id` where available.
+
+**Log levels and categories:**
+
+| Level | Categories | Purpose |
+|---|---|---|
+| `ERROR` | Transport failures, Egress worker crashes, NATS disconnections, ClickHouse write failures | Operational incidents requiring investigation |
+| `WARN` | Rate limits, no workers available, timeout warnings, retry attempts | Expected operational noise |
+| `INFO` | Request processing, worker registration/deregistration, config updates, routing decisions | Operational visibility |
+| `DEBUG` | Routing rule matching details, NATS message payloads, header injection details | Debugging and troubleshooting |
+
+**Log enrichment:** Every log entry includes `service`, `request_id` (where applicable), `tenant_id` (where applicable), `trace_id` (where applicable), and a structured `extra` field for domain-specific context.
+
+### 19.5 Distributed Tracing
+
+Tracing follows OpenTelemetry conventions. Control generates trace spans for each request lifecycle stage:
+
+1. **Client receive** — request received from client entrypoint
+2. **Auth** — API key authentication and tenant resolution
+3. **Routing** — routing rule evaluation, worker selection
+4. **NATS request** — request forwarded to Egress via NATS
+5. **NATS reply** — response received from Egress via NATS
+6. **Response send** — response returned to client
+
+Each span includes tags for `request_id`, `tenant_id`, `error_code` (if applicable), `selected_worker`, and `routing_rule`. Spans are exported to Jaeger/Tempo for trace correlation and latency visualization.
+
+Request IDs are propagated through all NATS messages, enabling log-to-trace correlation even when spans are incomplete.
+
+### 19.6 SLOs and Targets
+
+| SLO | Target | Measurement |
+|---|---|---|
+| **Availability** | 99.99% of requests succeed (excluding upstream failures) | `straw_requests_total` where `error_code` is not an internal error, divided by total requests |
+| **Latency — p50** | < 100 ms for Control-side routing overhead | `straw_routing_duration_seconds` p50 |
+| **Latency — p99** | < 500 ms for Control-side routing overhead | `straw_routing_duration_seconds` p99 |
+| **Error rate** | < 1% of requests hit `control_internal_error` or `worker_timeout` | `straw_requests_total` where `error_code` in (`control_internal_error`, `worker_timeout`), divided by total requests |
+| **Worker health** | > 95% of registered workers responding within timeout | Gauge of responsive workers vs. registered workers |
+
+### 19.7 Alerting Tiers
+
+**Critical (P1)** — Immediate response required:
+
+| Alert | Condition | Duration |
+|---|---|---|
+| Control cluster down | No health check from any Control instance | 1 minute |
+| Error rate critical | `error_code` in (`control_internal_error`, `worker_timeout`) > 5% of requests | 5 minutes |
+| Worker pool critical | Available workers < 20% of registered workers | 5 minutes |
+| NATS cluster unavailable | `straw_nats_connection_status` = 0 for any cluster node | 1 minute |
+| ClickHouse write failure | Write queue depth > 10,000 or write error rate > 10% | 5 minutes |
+
+**Warning (P2)** — Response within hours:
+
+| Alert | Condition | Duration |
+|---|---|---|
+| Error rate elevated | `error_code` in (`control_internal_error`, `worker_timeout`) > 1% of requests | 10 minutes |
+| Latency SLO breach | p99 routing latency exceeds 500 ms | 15 minutes |
+| Worker pool degraded | Available workers < 50% of registered workers | 10 minutes |
+| Worker disconnected | Individual worker disconnected from NATS | Immediate |
+| Rate limit triggered | Tenant rate limit exceeded | Immediate |
+
+**Info (P3)** — Capacity trends, no immediate action:
+
+| Alert | Condition | Duration |
+|---|---|---|
+| Worker pool trending low | Available workers < 80% of registered workers | 30 minutes |
+| Latency trending upward | p95 routing latency increasing > 20% over 1 hour | 1 hour |
+| Storage approaching capacity | ClickHouse/table storage > 80% of allocated capacity | Daily |
+| Quota exhaustion warning | Tenant quota remaining < 10% | Immediate |
+
+### 19.8 Grafana Dashboards
+
+**Dashboard: System Overview**
+
+- Request rate (RPS) over time
+- Error rate by category (line chart)
+- Latency percentiles (p50, p90, p95, p99)
+- Active connections and in-flight requests
+- Worker availability (pie chart)
+- Active alerts panel
+
+**Dashboard: Per-Tenant**
+
+- Request volume per tenant
+- Error rate per tenant
+- Latency percentiles per tenant
+- Quota usage and rate limit utilization
+- Top error codes per tenant
+
+**Dashboard: Routing**
+
+- Routing rule performance (request count, error rate, latency)
+- Upstream proxy health and availability
+- Country/region distribution map
+- IP type distribution
+- Sticky session hit rate
+
+**Dashboard: Worker Pool**
+
+- Worker registration/deregistration timeline
+- Worker health status (alive, draining, disconnected)
+- Worker capacity by country/region/IP type
+- Drain event history
+- Worker response time distribution
+
+**Dashboard: SLO & Alerts**
+
+- SLO burn rate (availability, latency, error rate)
+- Error budget remaining (days)
+- Active alerts by tier
+- Alert history and resolution time
+- SLO trend over time
+
+**Dashboard: Infrastructure**
+
+- NATS cluster health (connection status, message latency, subscription count)
+- ClickHouse ingestion lag and write queue depth
+- Prometheus scrape health and target status
+- Fluent Bit/Vector buffer depth and error rate
+- Storage utilization per ClickHouse table
 
 ## 20. Configuration
 
