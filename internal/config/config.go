@@ -79,9 +79,19 @@ type PostgresConfig struct {
 	ConnMaxLifetimeMS int    `json:"conn_max_lifetime_ms"`
 }
 
+// RedisConfig configures the Redis client connection used for rate limits,
+// quotas, sticky sessions, and config invalidation (docs/planning/21).
+type RedisConfig struct {
+	URLEnv         string `json:"url_env"`
+	DialTimeoutMS  int    `json:"dial_timeout_ms"`
+	ReadTimeoutMS  int    `json:"read_timeout_ms"`
+	WriteTimeoutMS int    `json:"write_timeout_ms"`
+}
+
 // DatabaseConfig configures all database connections for control.
 type DatabaseConfig struct {
 	Postgres PostgresConfig `json:"postgres"`
+	Redis    RedisConfig    `json:"redis"`
 }
 
 // EgressConfig is the egress-worker config block.
@@ -232,6 +242,7 @@ func (c *ControlConfig) applyDefaults() {
 
 func (d *DatabaseConfig) applyDefaults() {
 	d.Postgres.applyDefaults()
+	d.Redis.applyDefaults()
 }
 
 func (p *PostgresConfig) applyDefaults() {
@@ -245,6 +256,24 @@ func (p *PostgresConfig) applyDefaults() {
 
 	if p.ConnMaxLifetimeMS == 0 {
 		p.ConnMaxLifetimeMS = 1_800_000 // 30 minutes
+	}
+}
+
+func (r *RedisConfig) applyDefaults() {
+	if r.URLEnv == "" {
+		r.URLEnv = "STRAW_REDIS_URL"
+	}
+
+	if r.DialTimeoutMS == 0 {
+		r.DialTimeoutMS = 2000
+	}
+
+	if r.ReadTimeoutMS == 0 {
+		r.ReadTimeoutMS = 500
+	}
+
+	if r.WriteTimeoutMS == 0 {
+		r.WriteTimeoutMS = 500
 	}
 }
 

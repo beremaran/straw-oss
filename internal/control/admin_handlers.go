@@ -42,6 +42,16 @@ type AdminHandlers struct {
 	DenyRules           DenyRuleStore
 	InjectionPolicies   InjectionPolicyStore
 	FingerprintProfiles FingerprintProfileStore
+
+	// Runtime Redis-backed admission components (docs/tasks/p0/21). The
+	// binary constructs these against a live Redis client; no admin handler
+	// in this task reads them. They exist here so the request dispatch
+	// pipeline (docs/tasks/p0/24) has a constructed instance to consume
+	// instead of building its own. Nil in tests that do not need them.
+	RateLimiter        *RateLimiter
+	RateLimitAdmission *RateLimitAdmission
+	QuotaAdmission     *QuotaAdmission
+	StickySessions     StickyBackend
 }
 
 // ConfigWriteStore persists mutable tenant/platform config and its audit row in
