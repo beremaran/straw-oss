@@ -108,7 +108,14 @@ func runControl(controlConfig config.ControlConfig, natsConn *natsx.Connection) 
 	workerCreds := control.NewPostgresWorkerCredentialStore(pool)
 	workerRegistry := control.NewWorkerRegistry(workerCreds, control.DefaultWorkerTimings(), nil)
 
-	mux := buildControlMux(controlConfig, apiKeyStore, pepper, workerRegistry, workerCreds, pool)
+	configStore := control.NewPostgresConfigStore(pool)
+
+	err = rehydrateWorkerAdminState(context.Background(), configStore, workerRegistry)
+	if err != nil {
+		return fmt.Errorf("rehydrate worker admin state: %w", err)
+	}
+
+	mux := buildControlMux(controlConfig, apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore)
 
 	err = control.SetupWorkerDiscoverySubscriptions(natsConn, workerRegistry)
 	if err != nil {
@@ -149,10 +156,39 @@ func openPostgres(pgCfg config.PostgresConfig) (*pgxpool.Pool, error) {
 	return pool, nil
 }
 
+// rehydrateWorkerAdminState reloads durable worker disable decisions from
+// Postgres into the runtime registry so admin actions survive a Control
+// restart (docs/planning/21). Drain state is runtime-only and is not restored.
+func rehydrateWorkerAdminState(ctx context.Context, configStore *control.PostgresConfigStore, registry *control.WorkerRegistry) error {
+	globals, err := configStore.ListWorkerAdminStates(ctx)
+	if err != nil {
+		return fmt.Errorf("list worker admin states: %w", err)
+	}
+
+	for _, g := range globals {
+		if g.Disabled {
+			registry.SetGlobalAdmin(g.WorkerID, control.AdminDisabled)
+		}
+	}
+
+	overrides, err := configStore.ListTenantWorkerOverrides(ctx)
+	if err != nil {
+		return fmt.Errorf("list tenant worker overrides: %w", err)
+	}
+
+	for _, o := range overrides {
+		if o.Disabled {
+			registry.SetTenantAdmin(o.WorkerID, o.TenantID, control.AdminDisabled)
+		}
+	}
+
+	return nil
+}
+
 // buildControlMux assembles the HTTP handler with the Postgres-backed identity
-// stores.
-func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool) *http.ServeMux {
-	adminHandlers := buildAdminHandlers(apiKeyStore, pepper, workerRegistry, workerCreds, pool)
+// and config stores.
+func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool, configStore *control.PostgresConfigStore) *http.ServeMux {
+	adminHandlers := buildAdminHandlers(apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore)
 	requestHandler := control.NewRequestHandler(
 		controlConfig.Request.MaxInlineRequestBodyBytes,
 		controlConfig.Request.MaxInlineResponseBodyBytes,
@@ -168,22 +204,22 @@ func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.API
 }
 
 // buildAdminHandlers constructs the AdminHandlers with the Postgres-backed
-// identity stores this task owns (tenants, API keys, worker credentials, audit).
-// Quota, rate-limit, config-cache, and snapshot stores stay in-memory here until
-// their owning tasks back them with Postgres/Redis (docs/tasks/p0/19, 20, 21).
-func buildAdminHandlers(apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool) *control.AdminHandlers {
-	snapshotStore := control.NewInMemorySnapshotStore()
-
+// stores. The config store assembles immutable tenant snapshots from Postgres
+// (docs/tasks/p0/19). Redis-backed config invalidation is wired in
+// docs/tasks/p0/21 — the ConfigCache publisher stays nil until then.
+func buildAdminHandlers(apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool, configStore *control.PostgresConfigStore) *control.AdminHandlers {
 	return &control.AdminHandlers{
 		Authenticator: control.NewAuthenticator(apiKeyStore, pepper),
 		APIKeys:       apiKeyStore,
 		WorkerCreds:   workerCreds,
 		Tenants:       control.NewPostgresTenantStore(pool),
-		Quotas:        control.NewInMemoryQuotaStore(),
-		RateLimits:    control.NewInMemoryRateLimitConfigStore(),
+		Quotas:        control.NewPostgresQuotaStore(pool),
+		RateLimits:    control.NewPostgresRateLimitConfigStore(pool),
 		Audit:         control.NewPostgresAuditStore(pool),
-		ConfigCache:   control.NewConfigCache(snapshotStore, nil),
+		ConfigCache:   control.NewConfigCache(configStore, nil),
 		Workers:       workerRegistry,
+		ConfigWrites:  configStore,
+		WorkerAdmin:   configStore,
 		Pepper:        pepper,
 	}
 }

@@ -84,7 +84,7 @@ func recordAudit(ctx context.Context, store AuditStore, identity Identity, resou
 
 	_ = store.Record(ctx, AuditRecord{
 		TenantID:     identity.TenantID,
-		ActorType:    "api_key",
+		ActorType:    configActorTypeAPIKey,
 		ActorID:      identity.APIKeyID,
 		ResourceType: resourceType,
 		ResourceID:   resourceID,

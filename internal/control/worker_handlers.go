@@ -1,6 +1,8 @@
 package control
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 )
 
@@ -127,7 +129,10 @@ func (h *AdminHandlers) requireTenantRole(r *http.Request, allowed ...Role) (Ide
 }
 
 // globalWorkerAction is the shared body for the four global admin endpoints.
-func (h *AdminHandlers) globalWorkerAction(w http.ResponseWriter, r *http.Request, action string, apply func(workerID string)) {
+// registryApply updates the in-memory runtime state; durable, when non-nil and
+// a durable store is wired, persists the decision (disable/enable only — drain
+// is runtime-only per docs/planning/21).
+func (h *AdminHandlers) globalWorkerAction(w http.ResponseWriter, r *http.Request, action string, registryApply func(workerID string), durable func(ctx context.Context, workerID string, actor ConfigActor) (bool, error)) {
 	identity, err := h.requirePlatformSystemAdmin(r)
 	if err != nil {
 		writeAuthOrRBACError(w, err)
@@ -136,33 +141,59 @@ func (h *AdminHandlers) globalWorkerAction(w http.ResponseWriter, r *http.Reques
 	}
 
 	workerID := r.PathValue("worker_id")
-	apply(workerID)
+	registryApply(workerID)
+
+	if durable != nil && (h.ConfigWrites != nil || h.WorkerAdmin != nil) {
+		audited, err := durable(r.Context(), workerID, configActor(identity))
+		if err != nil {
+			WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
+
+			return
+		}
+
+		if audited {
+			writeJSON(w, http.StatusOK, h.workerStateResponse(identity, workerID))
+
+			return
+		}
+	}
+
 	recordAudit(r.Context(), h.Audit, identity, "worker", workerID, action)
 	writeJSON(w, http.StatusOK, h.workerStateResponse(identity, workerID))
 }
 
 // DisableWorker handles POST /workers/{worker_id}/disable.
 func (h *AdminHandlers) DisableWorker(w http.ResponseWriter, r *http.Request) {
-	h.globalWorkerAction(w, r, "disable", func(id string) { h.Workers.SetGlobalAdmin(id, AdminDisabled) })
+	h.globalWorkerAction(w, r, "disable",
+		func(id string) { h.Workers.SetGlobalAdmin(id, AdminDisabled) },
+		func(ctx context.Context, id string, actor ConfigActor) (bool, error) {
+			return h.setGlobalWorkerAdmin(ctx, id, true, actor)
+		})
 }
 
 // EnableWorker handles POST /workers/{worker_id}/enable.
 func (h *AdminHandlers) EnableWorker(w http.ResponseWriter, r *http.Request) {
-	h.globalWorkerAction(w, r, "enable", func(id string) { h.Workers.SetGlobalAdmin(id, AdminEnabled) })
+	h.globalWorkerAction(w, r, "enable",
+		func(id string) { h.Workers.SetGlobalAdmin(id, AdminEnabled) },
+		func(ctx context.Context, id string, actor ConfigActor) (bool, error) {
+			return h.setGlobalWorkerAdmin(ctx, id, false, actor)
+		})
 }
 
 // DrainWorker handles POST /workers/{worker_id}/drain.
 func (h *AdminHandlers) DrainWorker(w http.ResponseWriter, r *http.Request) {
-	h.globalWorkerAction(w, r, "drain", func(id string) { h.Workers.SetGlobalDrain(id, true) })
+	h.globalWorkerAction(w, r, "drain", func(id string) { h.Workers.SetGlobalDrain(id, true) }, nil)
 }
 
 // UndrainWorker handles POST /workers/{worker_id}/undrain.
 func (h *AdminHandlers) UndrainWorker(w http.ResponseWriter, r *http.Request) {
-	h.globalWorkerAction(w, r, "undrain", func(id string) { h.Workers.SetGlobalDrain(id, false) })
+	h.globalWorkerAction(w, r, "undrain", func(id string) { h.Workers.SetGlobalDrain(id, false) }, nil)
 }
 
 // tenantWorkerAction is the shared body for the four tenant admin endpoints.
-func (h *AdminHandlers) tenantWorkerAction(w http.ResponseWriter, r *http.Request, action string, allowed []Role, apply func(workerID, tenantID string)) {
+// For durable disable/enable it also bumps the tenant config version so tenant
+// snapshots invalidate, matching the other tenant-scoped config writes.
+func (h *AdminHandlers) tenantWorkerAction(w http.ResponseWriter, r *http.Request, action string, allowed []Role, registryApply func(workerID, tenantID string), durable func(ctx context.Context, tenantID, workerID string, actor ConfigActor) (bool, error)) {
 	identity, err := h.requireTenantRole(r, allowed...)
 	if err != nil {
 		writeAuthOrRBACError(w, err)
@@ -171,37 +202,98 @@ func (h *AdminHandlers) tenantWorkerAction(w http.ResponseWriter, r *http.Reques
 	}
 
 	workerID := r.PathValue("worker_id")
-	apply(workerID, identity.TenantID)
+	registryApply(workerID, identity.TenantID)
+
+	if durable != nil && (h.ConfigWrites != nil || h.WorkerAdmin != nil) {
+		audited, err := durable(r.Context(), identity.TenantID, workerID, configActor(identity))
+		if err != nil {
+			WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
+
+			return
+		}
+
+		if audited {
+			writeJSON(w, http.StatusOK, h.workerStateResponse(identity, workerID))
+
+			return
+		}
+
+		_, err = h.bumpTenantVersion(r.Context(), identity.TenantID, nil)
+		if err != nil {
+			WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
+
+			return
+		}
+	}
+
 	recordAudit(r.Context(), h.Audit, identity, "worker", workerID, action)
 	writeJSON(w, http.StatusOK, h.workerStateResponse(identity, workerID))
 }
 
 // TenantDisableWorker handles POST /workers/{worker_id}/tenant-disable.
 func (h *AdminHandlers) TenantDisableWorker(w http.ResponseWriter, r *http.Request) {
-	h.tenantWorkerAction(w, r, "tenant_disable", []Role{RoleTenantAdmin}, func(id, tid string) {
-		h.Workers.SetTenantAdmin(id, tid, AdminDisabled)
-	})
+	h.tenantWorkerAction(w, r, "tenant_disable", []Role{RoleTenantAdmin},
+		func(id, tid string) { h.Workers.SetTenantAdmin(id, tid, AdminDisabled) },
+		func(ctx context.Context, tid, id string, actor ConfigActor) (bool, error) {
+			return h.setTenantWorkerOverride(ctx, tid, id, true, actor)
+		})
 }
 
 // TenantEnableWorker handles POST /workers/{worker_id}/tenant-enable.
 func (h *AdminHandlers) TenantEnableWorker(w http.ResponseWriter, r *http.Request) {
-	h.tenantWorkerAction(w, r, "tenant_enable", []Role{RoleTenantAdmin}, func(id, tid string) {
-		h.Workers.SetTenantAdmin(id, tid, AdminEnabled)
-	})
+	h.tenantWorkerAction(w, r, "tenant_enable", []Role{RoleTenantAdmin},
+		func(id, tid string) { h.Workers.SetTenantAdmin(id, tid, AdminEnabled) },
+		func(ctx context.Context, tid, id string, actor ConfigActor) (bool, error) {
+			return h.setTenantWorkerOverride(ctx, tid, id, false, actor)
+		})
 }
 
 // TenantDrainWorker handles POST /workers/{worker_id}/tenant-drain.
 func (h *AdminHandlers) TenantDrainWorker(w http.ResponseWriter, r *http.Request) {
-	h.tenantWorkerAction(w, r, "tenant_drain", []Role{RoleTenantAdmin, RoleOperator}, func(id, tid string) {
-		h.Workers.SetTenantDrain(id, tid, true)
-	})
+	h.tenantWorkerAction(w, r, "tenant_drain", []Role{RoleTenantAdmin, RoleOperator},
+		func(id, tid string) { h.Workers.SetTenantDrain(id, tid, true) }, nil)
 }
 
 // TenantUndrainWorker handles POST /workers/{worker_id}/tenant-undrain.
 func (h *AdminHandlers) TenantUndrainWorker(w http.ResponseWriter, r *http.Request) {
-	h.tenantWorkerAction(w, r, "tenant_undrain", []Role{RoleTenantAdmin, RoleOperator}, func(id, tid string) {
-		h.Workers.SetTenantDrain(id, tid, false)
-	})
+	h.tenantWorkerAction(w, r, "tenant_undrain", []Role{RoleTenantAdmin, RoleOperator},
+		func(id, tid string) { h.Workers.SetTenantDrain(id, tid, false) }, nil)
+}
+
+func (h *AdminHandlers) setGlobalWorkerAdmin(ctx context.Context, workerID string, disabled bool, actor ConfigActor) (bool, error) {
+	if h.ConfigWrites != nil {
+		err := h.ConfigWrites.SetGlobalWorkerAdminConfig(ctx, workerID, disabled, "", actor)
+		if err != nil {
+			return true, fmt.Errorf("persist global worker admin config: %w", err)
+		}
+
+		return true, nil
+	}
+
+	err := h.WorkerAdmin.SetGlobalWorkerAdmin(ctx, workerID, disabled, "")
+	if err != nil {
+		return false, fmt.Errorf("persist global worker admin: %w", err)
+	}
+
+	return false, nil
+}
+
+func (h *AdminHandlers) setTenantWorkerOverride(ctx context.Context, tenantID, workerID string, disabled bool, actor ConfigActor) (bool, error) {
+	if h.ConfigWrites != nil {
+		err := h.ConfigWrites.SetTenantWorkerOverrideConfig(ctx, tenantID, workerID, disabled, "", actor)
+		if err != nil {
+			return true, fmt.Errorf("persist tenant worker override config: %w", err)
+		}
+
+		return true, nil
+	}
+
+	err := h.WorkerAdmin.SetTenantWorkerOverride(ctx, tenantID, workerID, disabled, "")
+	if err != nil {
+		return false, fmt.Errorf("persist tenant worker override: %w", err)
+	}
+
+	return false, nil
 }
 
 // workerStateResponse builds a single-worker view for the action response,

@@ -33,7 +33,7 @@ type QuotaStore interface {
 	Put(ctx context.Context, quota QuotaConfig, expectedVersion uint64) (QuotaConfig, error)
 }
 
-// InMemoryQuotaStore is the P0 store implementation.
+// InMemoryQuotaStore is the test/local quota store implementation.
 type InMemoryQuotaStore struct {
 	mu    sync.Mutex
 	byTid map[string]QuotaConfig
@@ -53,7 +53,7 @@ func (s *InMemoryQuotaStore) Get(_ context.Context, tenantID string) (QuotaConfi
 	if !ok {
 		// An unconfigured tenant reads as an empty, version-0 quota config
 		// rather than an error, mirroring the tenant-snapshot behavior.
-		return QuotaConfig{TenantID: tenantID, Period: "monthly", ConfigVersion: 0}, nil
+		return QuotaConfig{TenantID: tenantID, Period: quotaPeriodMonthly, ConfigVersion: 0}, nil
 	}
 
 	return q, nil

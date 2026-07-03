@@ -97,7 +97,7 @@ type RateLimitConfigStore interface {
 	Put(ctx context.Context, cfg RateLimitConfig, expectedVersion uint64, ceiling *RateLimitCeiling) (RateLimitConfig, error)
 }
 
-// InMemoryRateLimitConfigStore is the P0 store implementation.
+// InMemoryRateLimitConfigStore is the test/local rate-limit config store.
 type InMemoryRateLimitConfigStore struct {
 	mu    sync.Mutex
 	byTid map[string]RateLimitConfig
