@@ -1,6 +1,6 @@
 # 26 - Egress Destination Policy Precedence and Suffix Enforcement
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -53,29 +53,29 @@ This task exists because of two gaps identified while implementing task 22
 
 ## Steps
 
-- [ ] Read all required planning docs and `internal/control/destination_policy.go`'s `evaluateLiteralIPDeny` doc
+- [x] Read all required planning docs and `internal/control/destination_policy.go`'s `evaluateLiteralIPDeny` doc
       comment for the exact override semantics to match.
-- [ ] Change `validateCIDRPolicy`/`deniedByDefault` (or their replacement) so an address matching
+- [x] Change `validateCIDRPolicy`/`deniedByDefault` (or their replacement) so an address matching
       `DestinationPolicy.allowed_cidrs` short-circuits as allowed, taking precedence over the private/loopback/
       link-local/metadata booleans and the static default-deny prefix list. `Is4In6` (IPv4-mapped IPv6) remains
       unconditionally denied regardless of `allowed_cidrs` — do not let it be overridden.
-- [ ] Preserve existing behavior when `allowed_cidrs` is empty or does not match: default-deny booleans, static
+- [x] Preserve existing behavior when `allowed_cidrs` is empty or does not match: default-deny booleans, static
       prefix list, and `denied_cidrs` still apply exactly as today.
-- [ ] Wire `denied_host_suffixes`: reject the request if the request's Host (already available to Egress from
+- [x] Wire `denied_host_suffixes`: reject the request if the request's Host (already available to Egress from
       `RequestStart`) has any entry in `denied_host_suffixes` as an exact match or dot-boundary suffix, mapping to
       `destination_denied` via the existing `dnsDeniedIPFact`-style fact-to-code path (or an equivalent host-deny
       fact if a distinct one is warranted — check the Section 16 fact table before adding a new fact/code pair).
-- [ ] Wire `denied_cname_suffixes`: after DNS resolution, if the resolver returns CNAME records for the target host,
+- [x] Wire `denied_cname_suffixes`: after DNS resolution, if the resolver returns CNAME records for the target host,
       reject the request if any CNAME in the chain has a `denied_cname_suffixes` entry as an exact match or
       dot-boundary suffix. Go's standard resolver (`net.Resolver`) does not expose the CNAME chain through
       `LookupIPAddr`; use `LookupCNAME` (single hop) or document why deeper chain inspection is out of reach with the
       stdlib resolver alone, rather than silently skipping multi-hop chains.
-- [ ] Add tests for: allowed_cidrs overriding a private/loopback/metadata address, allowed_cidrs not overriding
+- [x] Add tests for: allowed_cidrs overriding a private/loopback/metadata address, allowed_cidrs not overriding
       Is4In6, denied_host_suffixes rejection, denied_cname_suffixes rejection, and confirmation that existing
       default-deny/denied_cidrs behavior is unchanged when allowed_cidrs is absent.
-- [ ] Run focused executor destination-policy tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Run focused executor destination-policy tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

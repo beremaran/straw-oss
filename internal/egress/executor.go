@@ -27,6 +27,8 @@ const (
 	invalidDestinationFact  = "invalid_destination_policy"
 	unsupportedModeFact     = "unsupported_resolution_mode"
 	dnsDeniedIPFact         = "dns_denied_ip"
+	hostDeniedSuffixFact    = "host_denied_suffix"
+	cnameDeniedSuffixFact   = "cname_denied_suffix"
 	dnsNoRecordsFact        = "dns_no_records"
 	tcpRefusedFact          = "tcp_refused"
 	tlsHandshakeFailedFact  = "tls_handshake_failed"
@@ -45,6 +47,14 @@ const (
 // Resolver is the DNS boundary Egress uses before validating resolved IPs.
 type Resolver interface {
 	LookupIPAddr(ctx context.Context, host string) ([]net.IPAddr, error)
+
+	// LookupCNAME returns the canonical name for host, per net.Resolver's
+	// LookupCNAME semantics: it follows the full CNAME chain and returns the
+	// final name (trailing dot included), or host itself if there is no
+	// CNAME. Go's standard resolver does not expose intermediate hops, so
+	// only the final canonical name is available for denied_cname_suffixes
+	// enforcement (single-hop/final-name inspection, not the full chain).
+	LookupCNAME(ctx context.Context, host string) (string, error)
 }
 
 // ExecutorOptions configures the P0 outbound executor.
@@ -68,6 +78,15 @@ func (defaultResolver) LookupIPAddr(ctx context.Context, host string) ([]net.IPA
 	}
 
 	return ips, nil
+}
+
+func (defaultResolver) LookupCNAME(ctx context.Context, host string) (string, error) {
+	cname, err := net.DefaultResolver.LookupCNAME(ctx, host)
+	if err != nil {
+		return "", fmt.Errorf("lookup CNAME %q: %w", host, err)
+	}
+
+	return cname, nil
 }
 
 // NewExecutor builds an executor with P0 transport defaults.
@@ -114,6 +133,11 @@ func (e *Executor) Execute(ctx context.Context, start *strawpb.RequestStart, bod
 	emit := []*strawpb.StreamFrame{frames.outboundStart(target.host, target.port)}
 
 	failure = validateStart(start)
+	if failure != nil {
+		return append(emit, frames.error(failure))
+	}
+
+	failure = validateHostSuffixPolicy(target.host, start.GetDestinationPolicy())
 	if failure != nil {
 		return append(emit, frames.error(failure))
 	}
@@ -216,6 +240,11 @@ func (e *Executor) dialValidated(ctx context.Context, network, address string, p
 		if i == 0 {
 			selected = addr
 		}
+	}
+
+	failure := validateCNAMESuffixPolicy(ctx, e.resolver, host, policy)
+	if failure != nil {
+		return nil, failure
 	}
 
 	return e.dialContext(ctx, network, net.JoinHostPort(selected.String(), port))
@@ -518,6 +547,12 @@ func netIPAddr(ip net.IPAddr) (netip.Addr, bool) {
 	return addr, ok
 }
 
+// validateResolvedIP applies the precedence order Control's resolver promises
+// (internal/control/destination_policy.go evaluateLiteralIPDeny):
+// Is4In6 (unconditional) -> allowed_cidrs override -> denied_cidrs ->
+// metadata/private/loopback/link-local/multicast -> default-deny prefixes.
+// allowed_cidrs is a true override: a match short-circuits every later check,
+// including denied_cidrs. Is4In6 is never overridable.
 func validateResolvedIP(policy *strawpb.DestinationPolicy, addr netip.Addr) *executionError {
 	if policy == nil {
 		return executorFailure(strawpb.ErrorCode_ERROR_CODE_EXECUTOR_INTERNAL_ERROR, invalidDestinationFact)
@@ -527,26 +562,13 @@ func validateResolvedIP(policy *strawpb.DestinationPolicy, addr netip.Addr) *exe
 		return executorFailure(strawpb.ErrorCode_ERROR_CODE_DESTINATION_DENIED, dnsDeniedIPFact)
 	}
 
-	failure := validateCIDRPolicy(policy, addr)
-	if failure != nil {
-		return failure
-	}
-
-	if deniedByDefault(policy, addr) {
-		return executorFailure(strawpb.ErrorCode_ERROR_CODE_DESTINATION_DENIED, dnsDeniedIPFact)
-	}
-
-	return nil
-}
-
-func validateCIDRPolicy(policy *strawpb.DestinationPolicy, addr netip.Addr) *executionError {
 	allowed, failure := parsePrefixes(policy.GetAllowedCidrs())
 	if failure != nil {
 		return failure
 	}
 
-	if len(allowed) > 0 && !prefixesContain(allowed, addr) {
-		return executorFailure(strawpb.ErrorCode_ERROR_CODE_DESTINATION_DENIED, dnsDeniedIPFact)
+	if prefixesContain(allowed, addr) {
+		return nil
 	}
 
 	denied, failure := parsePrefixes(policy.GetDeniedCidrs())
@@ -558,7 +580,67 @@ func validateCIDRPolicy(policy *strawpb.DestinationPolicy, addr netip.Addr) *exe
 		return executorFailure(strawpb.ErrorCode_ERROR_CODE_DESTINATION_DENIED, dnsDeniedIPFact)
 	}
 
+	if deniedByDefault(policy, addr) {
+		return executorFailure(strawpb.ErrorCode_ERROR_CODE_DESTINATION_DENIED, dnsDeniedIPFact)
+	}
+
 	return nil
+}
+
+// validateHostSuffixPolicy rejects a request whose target host matches a
+// denied_host_suffixes entry as an exact match or dot-boundary suffix.
+func validateHostSuffixPolicy(host string, policy *strawpb.DestinationPolicy) *executionError {
+	if matchesAnySuffix(host, policy.GetDeniedHostSuffixes()) {
+		return executorFailure(strawpb.ErrorCode_ERROR_CODE_DESTINATION_DENIED, hostDeniedSuffixFact)
+	}
+
+	return nil
+}
+
+// validateCNAMESuffixPolicy rejects a request whose resolved canonical name
+// matches a denied_cname_suffixes entry. Go's net.Resolver only exposes the
+// final name after following the whole CNAME chain (see the Resolver
+// interface doc comment), so this checks that final name rather than every
+// intermediate hop.
+func validateCNAMESuffixPolicy(ctx context.Context, resolver Resolver, host string, policy *strawpb.DestinationPolicy) *executionError {
+	suffixes := policy.GetDeniedCnameSuffixes()
+	if len(suffixes) == 0 {
+		return nil
+	}
+
+	cname, lookupErr := resolver.LookupCNAME(ctx, host)
+	if lookupErr == nil {
+		cname = strings.TrimSuffix(strings.ToLower(cname), ".")
+		normalizedHost := strings.TrimSuffix(strings.ToLower(host), ".")
+
+		if cname != "" && cname != normalizedHost && matchesAnySuffix(cname, suffixes) {
+			return executorFailure(strawpb.ErrorCode_ERROR_CODE_DESTINATION_DENIED, cnameDeniedSuffixFact)
+		}
+	}
+
+	return nil
+}
+
+func matchesAnySuffix(host string, suffixes []string) bool {
+	for _, suffix := range suffixes {
+		if hostMatchesSuffix(host, suffix) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func hostMatchesSuffix(host, suffix string) bool {
+	if suffix == "" {
+		return false
+	}
+
+	if host == suffix {
+		return true
+	}
+
+	return strings.HasSuffix(host, "."+suffix)
 }
 
 func deniedByDefault(policy *strawpb.DestinationPolicy, addr netip.Addr) bool {
