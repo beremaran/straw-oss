@@ -96,6 +96,7 @@ func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.API
 		WorkerCreds:   workerCreds,
 		Tenants:       control.NewInMemoryTenantStore(),
 		Quotas:        control.NewInMemoryQuotaStore(),
+		RateLimits:    control.NewInMemoryRateLimitConfigStore(),
 		Audit:         control.NewInMemoryAuditStore(),
 		ConfigCache:   configCache,
 		Workers:       workerRegistry,
@@ -123,6 +124,8 @@ func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.API
 	mux.HandleFunc("POST /worker-credentials/{id}/revoke", adminHandlers.RevokeWorkerCredential)
 	mux.HandleFunc("GET /quotas", adminHandlers.GetQuotas)
 	mux.HandleFunc("PUT /tenants/{id}/quotas", adminHandlers.PutTenantQuotas)
+	mux.HandleFunc("GET /rate-limits", adminHandlers.GetRateLimits)
+	mux.HandleFunc("PUT /rate-limits", adminHandlers.PutRateLimits)
 	mux.HandleFunc("GET /api/v1/admin/workers", adminHandlers.ListWorkers)
 	mux.HandleFunc("POST /api/v1/admin/workers/{worker_id}/disable", adminHandlers.DisableWorker)
 	mux.HandleFunc("POST /api/v1/admin/workers/{worker_id}/enable", adminHandlers.EnableWorker)

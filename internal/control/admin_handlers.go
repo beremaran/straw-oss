@@ -22,6 +22,7 @@ type AdminHandlers struct {
 	WorkerCreds   WorkerCredentialStore
 	Tenants       TenantStore
 	Quotas        QuotaStore
+	RateLimits    RateLimitConfigStore
 	Audit         AuditStore
 	ConfigCache   *ConfigCache
 	Workers       *WorkerRegistry
@@ -629,6 +630,141 @@ func (h *AdminHandlers) PutTenantQuotas(w http.ResponseWriter, r *http.Request) 
 	}
 
 	h.putTenantQuotas(w, r, identity, tenantID, req)
+}
+
+// ---- Rate limit config (tenant-managed, bounded by optional
+// system_admin-set ceiling) ----
+
+type rateLimitRuleJSON struct {
+	Dimension     string `json:"dimension"`
+	Key           string `json:"key"`
+	WindowSeconds uint32 `json:"window_seconds"`
+	MaxRequests   uint32 `json:"max_requests"`
+	FailPolicy    string `json:"fail_policy"`
+}
+
+type rateLimitResponse struct {
+	TenantID      string              `json:"tenant_id"`
+	Limits        []rateLimitRuleJSON `json:"limits"`
+	ConfigVersion uint64              `json:"config_version"`
+}
+
+func toRateLimitResponse(cfg RateLimitConfig) rateLimitResponse {
+	limits := make([]rateLimitRuleJSON, 0, len(cfg.Limits))
+	for _, l := range cfg.Limits {
+		limits = append(limits, rateLimitRuleJSON{
+			Dimension:     string(l.Dimension),
+			Key:           l.Key,
+			WindowSeconds: l.WindowSeconds,
+			MaxRequests:   l.MaxRequests,
+			FailPolicy:    string(l.FailPolicy),
+		})
+	}
+
+	return rateLimitResponse{TenantID: cfg.TenantID, Limits: limits, ConfigVersion: cfg.ConfigVersion}
+}
+
+// GetRateLimits handles GET /rate-limits, scoped to the caller's tenant.
+func (h *AdminHandlers) GetRateLimits(w http.ResponseWriter, r *http.Request) {
+	identity, err := h.authenticate(r)
+	if err != nil {
+		writeAuthOrRBACError(w, err)
+
+		return
+	}
+
+	err = RequireRole(identity, RoleTenantAdmin, RoleOperator, RoleViewer)
+	if err != nil {
+		writeAuthOrRBACError(w, err)
+
+		return
+	}
+
+	cfg, err := h.RateLimits.Get(r.Context(), identity.TenantID)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
+
+		return
+	}
+
+	writeJSON(w, http.StatusOK, toRateLimitResponse(cfg))
+}
+
+type rateLimitPutRequest struct {
+	ExpectedConfigVersion uint64              `json:"expected_config_version"`
+	Limits                []rateLimitRuleJSON `json:"limits"`
+}
+
+// PutRateLimits handles PUT /rate-limits. Requires tenant_admin. Values
+// exceeding the tenant's system_admin-set rate_limit_ceiling are rejected
+// with invalid_request (docs/planning/26).
+func (h *AdminHandlers) PutRateLimits(w http.ResponseWriter, r *http.Request) {
+	identity, err := h.authenticate(r)
+	if err != nil {
+		writeAuthOrRBACError(w, err)
+
+		return
+	}
+
+	err = RequireRole(identity, RoleTenantAdmin)
+	if err != nil {
+		writeAuthOrRBACError(w, err)
+
+		return
+	}
+
+	var req rateLimitPutRequest
+
+	err = decodeJSONBody(r, &req)
+	if err != nil {
+		WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", nil))
+
+		return
+	}
+
+	tenant, err := h.Tenants.Get(r.Context(), identity.TenantID)
+	if err != nil {
+		WriteError(w, http.StatusNotFound, ErrorResponseFromCode(TenantNotFound, "", nil))
+
+		return
+	}
+
+	h.putRateLimits(w, r, identity, tenant, req)
+}
+
+func (h *AdminHandlers) putRateLimits(w http.ResponseWriter, r *http.Request, identity Identity, tenant Tenant, req rateLimitPutRequest) {
+	limits := make([]RateLimitRule, 0, len(req.Limits))
+	for _, l := range req.Limits {
+		limits = append(limits, RateLimitRule{
+			Dimension:     RateLimitDimension(l.Dimension),
+			Key:           l.Key,
+			WindowSeconds: l.WindowSeconds,
+			MaxRequests:   l.MaxRequests,
+			FailPolicy:    RateLimitFailPolicy(l.FailPolicy),
+		})
+	}
+
+	cfg := RateLimitConfig{TenantID: identity.TenantID, Limits: limits}
+
+	saved, err := h.RateLimits.Put(r.Context(), cfg, req.ExpectedConfigVersion, tenant.RateLimitCeiling)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrRateLimitVersionConflict):
+			WriteError(w, http.StatusConflict, ErrorResponseFromCode(Conflict, "", nil))
+		case errors.Is(err, ErrRateLimitCeilingExceeded):
+			WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", map[string]string{
+				"reason": "rate limit exceeds tenant rate_limit_ceiling",
+			}))
+		default:
+			WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
+		}
+
+		return
+	}
+
+	recordAudit(r.Context(), h.Audit, identity, "rate_limit_config", identity.TenantID, "update")
+
+	writeJSON(w, http.StatusOK, toRateLimitResponse(saved))
 }
 
 func decodeAndValidatePlatformKeyRole(w http.ResponseWriter, r *http.Request) (Role, bool) {

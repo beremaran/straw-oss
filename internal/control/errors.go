@@ -7,13 +7,14 @@ import (
 
 // ErrorResponse is the public error envelope per the canonical error registry.
 type ErrorResponse struct {
-	Category    string            `json:"category"`
-	Code        string            `json:"code"`
-	Message     string            `json:"message"`
-	Retryable   bool              `json:"retryable"`
-	RequestID   string            `json:"request_id"`
-	TimeoutType string            `json:"timeout_type,omitempty"`
-	Details     map[string]string `json:"details,omitempty"`
+	Category     string            `json:"category"`
+	Code         string            `json:"code"`
+	Message      string            `json:"message"`
+	Retryable    bool              `json:"retryable"`
+	RequestID    string            `json:"request_id"`
+	TimeoutType  string            `json:"timeout_type,omitempty"`
+	RetryAfterMs int64             `json:"retry_after_ms,omitempty"`
+	Details      map[string]string `json:"details,omitempty"`
 }
 
 // ErrorCode represents a canonical error code from the error registry.
@@ -224,6 +225,20 @@ func ErrorResponseFromCode(code ErrorCode, requestID string, extraDetails map[st
 	}
 	if len(extraDetails) > 0 {
 		resp.Details = extraDetails
+	}
+
+	return resp
+}
+
+// ErrorResponseFromCodeWithRetry builds an ErrorResponse for a canonical
+// code, additionally setting retry_after_ms when computable
+// (docs/planning/20: "Breaches return rate_limit_exceeded with HTTP 429 and
+// retry_after_ms when computable"; docs/planning/14: "retry_after_ms is
+// omitted when zero or not computable").
+func ErrorResponseFromCodeWithRetry(code ErrorCode, requestID string, extraDetails map[string]string, retryAfterMs int64) ErrorResponse {
+	resp := ErrorResponseFromCode(code, requestID, extraDetails)
+	if retryAfterMs > 0 {
+		resp.RetryAfterMs = retryAfterMs
 	}
 
 	return resp
