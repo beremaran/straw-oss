@@ -1,6 +1,6 @@
 # 20 - Config Admin APIs for Routing, Deny, Injection, Fingerprint
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -35,22 +35,22 @@ read-only fingerprint profiles, backed by the Postgres stores from task 19.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Add `GET/POST/PUT/DELETE /api/v1/config/routing-rules` handlers with tenant scoping, role checks, pagination,
+- [x] Read all required planning docs.
+- [x] Add `GET/POST/PUT/DELETE /api/v1/config/routing-rules` handlers with tenant scoping, role checks, pagination,
       soft delete, stable ID behavior, and `expected_config_version` conflict handling.
-- [ ] Add `GET/POST/PUT/DELETE /api/v1/config/deny-rules` handlers with normalization inputs needed by Section 27 and
+- [x] Add `GET/POST/PUT/DELETE /api/v1/config/deny-rules` handlers with normalization inputs needed by Section 27 and
       tenant-admin-only writes.
-- [ ] Add `GET/POST/PUT/DELETE /api/v1/config/injection-policies` handlers with header safety validation, sensitive
+- [x] Add `GET/POST/PUT/DELETE /api/v1/config/injection-policies` handlers with header safety validation, sensitive
       header role restrictions, operation count bounds, and secret audit redaction.
-- [ ] Add read-only `GET /api/v1/config/fingerprint-profiles` for built-in P0 profiles.
-- [ ] Ensure every successful config write increments tenant config version, records actor audit source, and calls the
+- [x] Add read-only `GET /api/v1/config/fingerprint-profiles` for built-in P0 profiles.
+- [x] Ensure every successful config write increments tenant config version, records actor audit source, and calls the
       injected invalidation publisher interface after commit.
-- [ ] Wire the handlers into `cmd/control/main.go` using the existing `Authenticator`/RBAC patterns.
-- [ ] Add tests for role access, tenant isolation, pagination defaults, conflict responses, soft deletion, fingerprint
+- [x] Wire the handlers into `cmd/control/main.go` using the existing `Authenticator`/RBAC patterns.
+- [x] Add tests for role access, tenant isolation, pagination defaults, conflict responses, soft deletion, fingerprint
       read-only behavior, injection safety, deny-rule validation, and invalidation publisher calls.
-- [ ] Run focused config API tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Run focused config API tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

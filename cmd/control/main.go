@@ -221,6 +221,11 @@ func buildAdminHandlers(apiKeyStore control.APIKeyStore, pepper []byte, workerRe
 		ConfigWrites:  configStore,
 		WorkerAdmin:   configStore,
 		Pepper:        pepper,
+
+		RoutingRules:        configStore,
+		DenyRules:           configStore,
+		InjectionPolicies:   configStore,
+		FingerprintProfiles: configStore,
 	}
 }
 
@@ -240,6 +245,19 @@ func serveAdminRoutes(mux *http.ServeMux, h *control.AdminHandlers) {
 	mux.HandleFunc("PUT /tenants/{id}/quotas", h.PutTenantQuotas)
 	mux.HandleFunc("GET /rate-limits", h.GetRateLimits)
 	mux.HandleFunc("PUT /rate-limits", h.PutRateLimits)
+	mux.HandleFunc("GET /api/v1/config/routing-rules", h.ListRoutingRules)
+	mux.HandleFunc("POST /api/v1/config/routing-rules", h.CreateRoutingRule)
+	mux.HandleFunc("PUT /api/v1/config/routing-rules/{id}", h.UpdateRoutingRule)
+	mux.HandleFunc("DELETE /api/v1/config/routing-rules/{id}", h.DeleteRoutingRule)
+	mux.HandleFunc("GET /api/v1/config/deny-rules", h.ListDenyRules)
+	mux.HandleFunc("POST /api/v1/config/deny-rules", h.CreateDenyRule)
+	mux.HandleFunc("PUT /api/v1/config/deny-rules/{id}", h.UpdateDenyRule)
+	mux.HandleFunc("DELETE /api/v1/config/deny-rules/{id}", h.DeleteDenyRule)
+	mux.HandleFunc("GET /api/v1/config/injection-policies", h.ListInjectionPolicies)
+	mux.HandleFunc("POST /api/v1/config/injection-policies", h.CreateInjectionPolicy)
+	mux.HandleFunc("PUT /api/v1/config/injection-policies/{id}", h.UpdateInjectionPolicy)
+	mux.HandleFunc("DELETE /api/v1/config/injection-policies/{id}", h.DeleteInjectionPolicy)
+	mux.HandleFunc("GET /api/v1/config/fingerprint-profiles", h.ListFingerprintProfiles)
 	mux.HandleFunc("GET /api/v1/admin/workers", h.ListWorkers)
 	mux.HandleFunc("POST /api/v1/admin/workers/{worker_id}/disable", h.DisableWorker)
 	mux.HandleFunc("POST /api/v1/admin/workers/{worker_id}/enable", h.EnableWorker)

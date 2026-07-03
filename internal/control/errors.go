@@ -35,6 +35,10 @@ const (
 	statusTooEarly              = http.StatusTooEarly
 	statusClientClosedRequest   = 499
 
+	// errorDetailReasonKey is the ErrorResponse.Details key admin handlers use
+	// to explain an invalid_request rejection.
+	errorDetailReasonKey = "reason"
+
 	errorCategoryClient    = "client"
 	errorCategoryRouting   = "routing"
 	errorCategoryTransport = "transport"

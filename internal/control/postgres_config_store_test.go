@@ -34,23 +34,23 @@ func TestPostgresConfigStoreSnapshotAssembly(t *testing.T) {
 		t.Fatalf("UpsertExecutorPool() error = %v", err)
 	}
 
-	_, err = store.UpsertRoutingRule(ctx, pgTestTenantA, config.RoutingRule{
+	_, _, err = store.UpsertRoutingRule(ctx, pgTestTenantA, config.RoutingRule{
 		ID:           "route_keep",
 		Priority:     20,
 		Enabled:      true,
 		Match:        config.MatchConditions{TargetHost: "*.example.com", Tags: []string{"fast"}},
 		TargetPoolID: pgConfigPoolA,
-	}, actor)
+	}, 0, actor)
 	if err != nil {
 		t.Fatalf("UpsertRoutingRule(keep) error = %v", err)
 	}
 
-	_, err = store.UpsertRoutingRule(ctx, pgTestTenantA, config.RoutingRule{
+	_, _, err = store.UpsertRoutingRule(ctx, pgTestTenantA, config.RoutingRule{
 		ID:           "route_delete",
 		Priority:     10,
 		Enabled:      true,
 		TargetPoolID: pgConfigPoolA,
-	}, actor)
+	}, 0, actor)
 	if err != nil {
 		t.Fatalf("UpsertRoutingRule(delete) error = %v", err)
 	}
@@ -60,27 +60,27 @@ func TestPostgresConfigStoreSnapshotAssembly(t *testing.T) {
 		t.Fatalf("DeleteRoutingRule() error = %v", err)
 	}
 
-	_, err = store.UpsertDenyRule(ctx, pgTestTenantA, config.DenyRule{
+	_, _, err = store.UpsertDenyRule(ctx, pgTestTenantA, config.DenyRule{
 		ID:             "deny_host",
-		RuleType:       "host",
-		Action:         "deny",
+		RuleType:       denyRuleTypeHost,
+		Action:         denyRuleActionDeny,
 		Enabled:        true,
 		RawPattern:     pgConfigBlockedHost,
 		NormalizedHost: pgConfigBlockedHost,
-	}, actor)
+	}, 0, actor)
 	if err != nil {
 		t.Fatalf("UpsertDenyRule() error = %v", err)
 	}
 
-	_, err = store.UpsertInjectionPolicy(ctx, pgTestTenantA, config.InjectionPolicy{
+	_, _, err = store.UpsertInjectionPolicy(ctx, pgTestTenantA, config.InjectionPolicy{
 		ID:      "inject_auth",
 		Enabled: true,
 		Operations: []config.InjectionOperation{{
-			Op:          "set",
+			Op:          injectionOpSet,
 			HeaderName:  "X-Test-Secret",
 			ValueBase64: pgConfigEncodedValue,
 		}},
-	}, actor)
+	}, 0, actor)
 	if err != nil {
 		t.Fatalf("UpsertInjectionPolicy() error = %v", err)
 	}
@@ -176,21 +176,22 @@ func TestPostgresConfigStoreRedactsInjectionPolicyAudit(t *testing.T) {
 	store := NewPostgresConfigStore(pool)
 	actor := ConfigActor{ActorType: configActorTypeAPIKey, ActorID: pgConfigActorID}
 
-	_, err := store.UpsertInjectionPolicy(ctx, pgTestTenantA, config.InjectionPolicy{
+	_, _, err := store.UpsertInjectionPolicy(ctx, pgTestTenantA, config.InjectionPolicy{
 		ID:      "inject_redact",
 		Enabled: true,
 		Operations: []config.InjectionOperation{{
-			Op:          "set",
+			Op:          injectionOpSet,
 			HeaderName:  testAuthorizationHeader,
 			ValueBase64: pgConfigEncodedValue,
 		}},
-	}, actor)
+	}, 0, actor)
 	if err != nil {
 		t.Fatalf("UpsertInjectionPolicy() error = %v", err)
 	}
 
 	var auditJSON string
-	err = pool.QueryRow(ctx,
+	err = pool.QueryRow(
+		ctx,
 		`SELECT new_value_json::text
 		 FROM config_audit_source
 		 WHERE tenant_id = $1 AND resource_type = 'injection_policy' AND resource_id = 'inject_redact'`,
@@ -216,18 +217,18 @@ func TestPostgresConfigStoreWriteIsAtomic(t *testing.T) {
 	store := NewPostgresConfigStore(pool)
 	actor := ConfigActor{ActorType: configActorTypeAPIKey, ActorID: pgConfigActorID}
 
-	v1, err := store.UpsertRoutingRule(ctx, pgTestTenantA, config.RoutingRule{
+	_, v1, err := store.UpsertRoutingRule(ctx, pgTestTenantA, config.RoutingRule{
 		ID: "route_a", Priority: 10, Enabled: true, TargetPoolID: pgConfigPoolA,
-	}, actor)
+	}, 0, actor)
 	if err != nil {
 		t.Fatalf("UpsertRoutingRule() error = %v", err)
 	}
 
 	// An invalid CIDR fails the ::cidr cast inside the write transaction.
-	_, err = store.UpsertDenyRule(ctx, pgTestTenantA, config.DenyRule{
-		ID: "deny_bad", RuleType: "cidr", Action: "deny", Enabled: true,
+	_, _, err = store.UpsertDenyRule(ctx, pgTestTenantA, config.DenyRule{
+		ID: "deny_bad", RuleType: denyRuleTypeCIDR, Action: denyRuleActionDeny, Enabled: true,
 		RawPattern: "not-a-cidr", NormalizedCIDR: "not-a-cidr",
-	}, actor)
+	}, 0, actor)
 	if err == nil {
 		t.Fatal("UpsertDenyRule() with invalid CIDR: expected error, got nil")
 	}

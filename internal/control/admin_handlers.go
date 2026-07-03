@@ -32,6 +32,16 @@ type AdminHandlers struct {
 	// the Postgres store so disables survive restarts and reach snapshots.
 	WorkerAdmin WorkerAdminStore
 	Pepper      []byte
+
+	// Config admin API surface (docs/tasks/p0/20): routing rules, deny rules,
+	// injection policies, and read-only fingerprint profiles. The binary
+	// wires PostgresConfigStore for all four; unit tests may use the
+	// InMemory* doubles in config_resource_store.go or leave a field nil
+	// (its handlers then respond control_internal_error instead of panicking).
+	RoutingRules        RoutingRuleStore
+	DenyRules           DenyRuleStore
+	InjectionPolicies   InjectionPolicyStore
+	FingerprintProfiles FingerprintProfileStore
 }
 
 // ConfigWriteStore persists mutable tenant/platform config and its audit row in
@@ -795,7 +805,7 @@ func (h *AdminHandlers) writeRateLimitError(w http.ResponseWriter, err error) {
 		WriteError(w, http.StatusConflict, ErrorResponseFromCode(Conflict, "", nil))
 	case errors.Is(err, ErrRateLimitCeilingExceeded):
 		WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", map[string]string{
-			"reason": "rate limit exceeds tenant rate_limit_ceiling",
+			errorDetailReasonKey: "rate limit exceeds tenant rate_limit_ceiling",
 		}))
 	default:
 		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
@@ -1073,7 +1083,7 @@ func validateWorkerCredentialRequest(w http.ResponseWriter, req workerCredential
 	for _, pool := range req.AllowedPools {
 		if pool.TenantID != tenantID {
 			WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", map[string]string{
-				"reason": "allowed_pools entries must reference the caller's tenant in P0",
+				errorDetailReasonKey: "allowed_pools entries must reference the caller's tenant in P0",
 			}))
 
 			return workerCredentialCreateRequest{}, false
