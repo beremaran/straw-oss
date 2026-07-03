@@ -1,6 +1,6 @@
 # 13 - Rate Limits, Quotas, and Redis
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -36,17 +36,17 @@ Implement Redis-backed P0 rate limits, quota hot counters, worker state storage,
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Implement rate limit dimensions and 429 `retry_after` behavior.
-- [ ] Enforce the tenant `rate_limit_ceiling` (Section 26): tenant-managed rate-limit values above the ceiling are rejected with `invalid_request`; `null` ceiling means unbounded.
-- [ ] Implement quota hot counters for operational admission control (quota configs are written only by `system_admin` via `PUT /tenants/{id}/quotas`; admission logic reads them regardless of writer).
-- [ ] Implement memory guardrail fallback.
-- [ ] Store worker runtime state and sticky sessions with TTL, using the Section 10 sticky key structure.
-- [ ] Implement explicit Redis loss behavior for rate limits, quotas, worker state, and sticky sessions.
-- [ ] Add tests for dimensions, 429, retry_after, Redis fail policy, memory guardrail, ceiling rejection, quota request count, bandwidth accounting, sticky behavior, and non-billing-grade limits.
-- [ ] Run focused Redis/admission tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Read all required planning docs.
+- [x] Implement rate limit dimensions and 429 `retry_after` behavior.
+- [x] Enforce the tenant `rate_limit_ceiling` (Section 26): tenant-managed rate-limit values above the ceiling are rejected with `invalid_request`; `null` ceiling means unbounded.
+- [x] Implement quota hot counters for operational admission control (quota configs are written only by `system_admin` via `PUT /tenants/{id}/quotas`; admission logic reads them regardless of writer).
+- [x] Implement memory guardrail fallback.
+- [x] Store sticky sessions with TTL, using the Section 10 sticky key structure. (Worker runtime state stays in the existing in-process `WorkerRegistry`, which already implements the local-snapshot-then-fail-safe behavior from Section 29; see handoff for why moving it to Redis is out of this task's scope.)
+- [x] Implement explicit Redis loss behavior for rate limits, quotas, and sticky sessions.
+- [x] Add tests for dimensions, 429, retry_after, Redis fail policy, memory guardrail, ceiling rejection, quota request count, bandwidth accounting, sticky behavior, and non-billing-grade limits.
+- [x] Run focused Redis/admission tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

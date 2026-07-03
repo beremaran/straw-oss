@@ -98,15 +98,17 @@ type Router struct {
 	rules      RuleProvider
 	policies   PoolPolicyProvider
 	candidates CandidateSource
-	sticky     *StickyStore
+	sticky     StickyBackend
 	now        func() time.Time
 
 	mu    sync.Mutex
 	rrIdx map[string]int // round-robin cursor per tenant+pool
 }
 
-// NewRouter builds a Router. now may be nil (defaults to time.Now).
-func NewRouter(rules RuleProvider, policies PoolPolicyProvider, candidates CandidateSource, sticky *StickyStore, now func() time.Time) *Router {
+// NewRouter builds a Router. sticky may be an in-process *StickyStore (tests,
+// no-Redis dev) or a *RedisStickyStore (P0 durable-ephemeral backing); now
+// may be nil (defaults to time.Now).
+func NewRouter(rules RuleProvider, policies PoolPolicyProvider, candidates CandidateSource, sticky StickyBackend, now func() time.Time) *Router {
 	if now == nil {
 		now = time.Now
 	}
@@ -422,12 +424,12 @@ type stickyEntry struct {
 	expiresAt time.Time
 }
 
-// StickyStore is the P0 in-process emulation of the canonical Redis sticky
-// key structure (docs/planning/10): key
+// StickyStore is an in-process emulation of the canonical Redis sticky key
+// structure (docs/planning/10): key
 // straw:sticky:<tenant_id>:<sticky_session_id>, TTL from the matched rule,
-// refreshed on each use. A durable Redis-backed implementation is future
-// work; the key shape and TTL-refresh semantics match so that swap is
-// mechanical.
+// refreshed on each use. It is used for tests and no-Redis dev; production
+// P0 wiring uses RedisStickyStore (sticky_redis.go), which shares the same
+// key shape and TTL-refresh semantics.
 type StickyStore struct {
 	mu      sync.Mutex
 	now     func() time.Time

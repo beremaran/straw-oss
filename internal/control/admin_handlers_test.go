@@ -32,6 +32,7 @@ type testAdmin struct {
 	workerCreds *InMemoryWorkerCredentialStore
 	tenants     *InMemoryTenantStore
 	quotas      *InMemoryQuotaStore
+	rateLimits  *InMemoryRateLimitConfigStore
 	audit       *InMemoryAuditStore
 	pepper      []byte
 }
@@ -49,6 +50,7 @@ func newTestAdmin(t *testing.T) *testAdmin {
 		workerCreds: NewInMemoryWorkerCredentialStore(),
 		tenants:     NewInMemoryTenantStore(),
 		quotas:      NewInMemoryQuotaStore(),
+		rateLimits:  NewInMemoryRateLimitConfigStore(),
 		audit:       NewInMemoryAuditStore(),
 		pepper:      pepper,
 	}
@@ -58,6 +60,7 @@ func newTestAdmin(t *testing.T) *testAdmin {
 		WorkerCreds:   ta.workerCreds,
 		Tenants:       ta.tenants,
 		Quotas:        ta.quotas,
+		RateLimits:    ta.rateLimits,
 		Audit:         ta.audit,
 		ConfigCache:   cache,
 		Pepper:        pepper,
@@ -398,6 +401,96 @@ func TestQuotaWriteRequiresPlatformKey(t *testing.T) {
 	}
 	if quota.MaxRequests != 1000 {
 		t.Fatalf("max_requests = %d, want 1000", quota.MaxRequests)
+	}
+}
+
+// ---- rate limit config: dimension write, tenant read, ceiling rejection ----
+
+func TestRateLimitsWriteRequiresTenantAdmin(t *testing.T) {
+	t.Parallel()
+
+	ta := newTestAdmin(t)
+	tenant := Tenant{ID: adminTestTenantA, Name: "A", Status: TenantStatusActive, CreatedAt: time.Now().UTC()}
+	err := ta.tenants.Create(context.Background(), tenant)
+	if err != nil {
+		t.Fatalf("seed tenant: %v", err)
+	}
+
+	tenantAdminToken := ta.seedTenantKey(t, adminTestKeyAAdmin, adminTestTenantA, RoleTenantAdmin)
+	viewerToken := ta.seedTenantKey(t, "key_a_viewer", adminTestTenantA, RoleViewer)
+
+	body := `{"expected_config_version":0,"limits":[{"dimension":"tenant","key":"*","window_seconds":60,"max_requests":600,"fail_policy":"open"}]}`
+
+	// Viewer rejected.
+	w := httptest.NewRecorder()
+	ta.h.PutRateLimits(w, newAdminRequest(http.MethodPut, "/rate-limits", viewerToken, body))
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("viewer write status = %d, want %d", w.Code, http.StatusForbidden)
+	}
+
+	// Tenant admin succeeds.
+	w = httptest.NewRecorder()
+	ta.h.PutRateLimits(w, newAdminRequest(http.MethodPut, "/rate-limits", tenantAdminToken, body))
+	if w.Code != http.StatusOK {
+		t.Fatalf("tenant_admin write status = %d, want %d, body=%s", w.Code, http.StatusOK, w.Body.String())
+	}
+
+	var saved rateLimitResponse
+
+	err = json.Unmarshal(w.Body.Bytes(), &saved)
+	if err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if len(saved.Limits) != 1 || saved.Limits[0].MaxRequests != 600 {
+		t.Fatalf("saved limits = %+v, want one rule with max_requests=600", saved.Limits)
+	}
+
+	// Viewer retains read access.
+	w = httptest.NewRecorder()
+	ta.h.GetRateLimits(w, newAdminRequest(http.MethodGet, "/rate-limits", viewerToken, ""))
+	if w.Code != http.StatusOK {
+		t.Fatalf("viewer read status = %d, want %d", w.Code, http.StatusOK)
+	}
+}
+
+// TestRateLimitsCeilingRejectsExceedingWrite proves the HTTP surface for
+// docs/planning/26: tenant-managed rate-limit values above the
+// system_admin-set rate_limit_ceiling are rejected with invalid_request.
+func TestRateLimitsCeilingRejectsExceedingWrite(t *testing.T) {
+	t.Parallel()
+
+	ta := newTestAdmin(t)
+	tenant := Tenant{
+		ID: adminTestTenantA, Name: "A", Status: TenantStatusActive, CreatedAt: time.Now().UTC(),
+		RateLimitCeiling: &RateLimitCeiling{WindowSeconds: 60, MaxRequests: 100},
+	}
+
+	err := ta.tenants.Create(context.Background(), tenant)
+	if err != nil {
+		t.Fatalf("seed tenant: %v", err)
+	}
+
+	tenantAdminToken := ta.seedTenantKey(t, adminTestKeyAAdmin, adminTestTenantA, RoleTenantAdmin)
+
+	// 200 req / 60s exceeds the 100 req / 60s ceiling.
+	body := `{"expected_config_version":0,"limits":[{"dimension":"tenant","key":"*","window_seconds":60,"max_requests":200,"fail_policy":"open"}]}`
+
+	w := httptest.NewRecorder()
+	ta.h.PutRateLimits(w, newAdminRequest(http.MethodPut, "/rate-limits", tenantAdminToken, body))
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d, body=%s", w.Code, http.StatusBadRequest, w.Body.String())
+	}
+
+	var errResp ErrorResponse
+
+	err = json.Unmarshal(w.Body.Bytes(), &errResp)
+	if err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+
+	if errResp.Code != adminTestInvalidRequest {
+		t.Fatalf("code = %q, want %q", errResp.Code, adminTestInvalidRequest)
 	}
 }
 

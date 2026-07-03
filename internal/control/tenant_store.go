@@ -29,6 +29,10 @@ type Tenant struct {
 	Name      string
 	Status    TenantStatus
 	CreatedAt time.Time
+	// RateLimitCeiling bounds tenant-managed rate-limit values
+	// (docs/planning/26); nil means unbounded. Settable only by
+	// system_admin.
+	RateLimitCeiling *RateLimitCeiling
 }
 
 var (
