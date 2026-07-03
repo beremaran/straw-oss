@@ -20,6 +20,7 @@ const (
 	handlerTestAuthFailureCode    = "auth_failure"
 	handlerTestClientCategory     = "client"
 	handlerTestInlineBase64       = "inline_base64"
+	handlerTestMessage            = "test"
 	testExampleHost               = "example.com"
 )
 
@@ -713,7 +714,7 @@ func TestHTTPValidationErrorStatus(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.code, func(t *testing.T) {
-			verr := &ValidationError{Code: tt.code, Message: "test"}
+			verr := &ValidationError{Code: tt.code, Message: handlerTestMessage}
 			if got := verr.HTTPStatus(); got != tt.expected {
 				t.Errorf("HTTPStatus(%q) = %d, want %d", tt.code, got, tt.expected)
 			}

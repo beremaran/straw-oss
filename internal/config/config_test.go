@@ -114,7 +114,8 @@ func TestLoadEgress(t *testing.T) {
 					}
 				},
 				"egress": {
-					"worker_id": "egress-local-001"
+					"worker_id": "egress-local-001",
+					"credential_id": "wcred_test"
 				}
 			}`,
 		},
@@ -127,11 +128,22 @@ func TestLoadEgress(t *testing.T) {
 			wantErr: "worker_id is required",
 		},
 		{
+			name: "missing credential id",
+			config: `{
+				"config_version": "v1",
+				"egress": {
+					"worker_id": "egress-local-001"
+				}
+			}`,
+			wantErr: "credential_id is required",
+		},
+		{
 			name: configTestUnknownField,
 			config: `{
 				"config_version": "v1",
 				"egress": {
 					"worker_id": "egress-local-001",
+					"credential_id": "wcred_test",
 					"extra": true
 				}
 			}`,
