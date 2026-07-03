@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	strawpb "github.com/beremaran/straw/v2/api/proto/straw/v1"
@@ -100,8 +101,12 @@ func Heartbeat(ctx context.Context, conn *natsx.Connection, id Identity, session
 	return nil
 }
 
-// Run keeps the worker registered and heartbeating until ctx is canceled.
-func Run(ctx context.Context, conn *natsx.Connection, id Identity, caps Capabilities, heartbeatInterval time.Duration) error {
+// Run keeps the worker registered and heartbeating, and runs the live
+// assignment execution loop, until ctx is canceled. On shutdown it sends a
+// draining heartbeat before telling the assignment loop to stop accepting
+// new work and drain in-flight requests (docs/planning/29 "Worker Graceful
+// Shutdown").
+func Run(ctx context.Context, conn *natsx.Connection, id Identity, caps Capabilities, executor *Executor, heartbeatInterval time.Duration) error {
 	if heartbeatInterval <= 0 {
 		heartbeatInterval = defaultHeartbeatInterval
 	}
@@ -111,10 +116,27 @@ func Run(ctx context.Context, conn *natsx.Connection, id Identity, caps Capabili
 		return err
 	}
 
-	availableCapacity := capacityFromConcurrency(0, caps.MaxConcurrency)
-
-	err = Heartbeat(ctx, conn, id, sessionID, strawpb.WorkerHealth_WORKER_HEALTH_READY, 0, availableCapacity, caps.MaxConcurrency, false)
+	worker, err := NewWorker(conn, id, executor, sessionID, caps.MaxConcurrency)
 	if err != nil {
+		return err
+	}
+
+	stop := make(chan struct{})
+
+	stopServing := sync.OnceFunc(func() { close(stop) })
+	defer stopServing()
+
+	serveDone := make(chan error, 1)
+
+	go func() { serveDone <- worker.Serve(stop) }()
+
+	active := worker.ActiveRequests()
+
+	err = Heartbeat(ctx, conn, id, sessionID, strawpb.WorkerHealth_WORKER_HEALTH_READY, active, capacityFromConcurrency(active, caps.MaxConcurrency), caps.MaxConcurrency, false)
+	if err != nil {
+		stopServing()
+		<-serveDone
+
 		return err
 	}
 
@@ -124,11 +146,16 @@ func Run(ctx context.Context, conn *natsx.Connection, id Identity, caps Capabili
 	for {
 		select {
 		case <-ctx.Done():
-			_ = Heartbeat(context.WithoutCancel(ctx), conn, id, sessionID, strawpb.WorkerHealth_WORKER_HEALTH_READY, 0, availableCapacity, caps.MaxConcurrency, true)
+			active = worker.ActiveRequests()
+			_ = Heartbeat(context.WithoutCancel(ctx), conn, id, sessionID, strawpb.WorkerHealth_WORKER_HEALTH_READY, active, capacityFromConcurrency(active, caps.MaxConcurrency), caps.MaxConcurrency, true)
+
+			stopServing()
+			<-serveDone
 
 			return nil
 		case <-ticker.C:
-			_ = Heartbeat(ctx, conn, id, sessionID, strawpb.WorkerHealth_WORKER_HEALTH_READY, 0, availableCapacity, caps.MaxConcurrency, false)
+			active = worker.ActiveRequests()
+			_ = Heartbeat(ctx, conn, id, sessionID, strawpb.WorkerHealth_WORKER_HEALTH_READY, active, capacityFromConcurrency(active, caps.MaxConcurrency), caps.MaxConcurrency, false)
 		}
 	}
 }

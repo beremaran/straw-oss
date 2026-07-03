@@ -192,7 +192,7 @@ func TestWorkerRunLoopAppearsInAdminWorkersAndDrainsOnCancel(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		runErr = egress.Run(ctx, workerConn, id, caps, 25*time.Millisecond)
+		runErr = egress.Run(ctx, workerConn, id, caps, egress.NewExecutor(egress.ExecutorOptions{}), 25*time.Millisecond)
 		runMu.Lock()
 		defer runMu.Unlock()
 	}()

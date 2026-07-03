@@ -1,6 +1,6 @@
 # 23 - Egress Assignment Execution Loop
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -36,26 +36,26 @@ the existing executor, and streams terminal protocol frames back to Control.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Subscribe on `straw.v1.executor.<worker_id>.<session_id>.assign` using the exact session from task 17; do not use
+- [x] Read all required planning docs.
+- [x] Subscribe on `straw.v1.executor.<worker_id>.<session_id>.assign` using the exact session from task 17; do not use
       queue groups for executor assignment subjects.
-- [ ] Validate and reserve assignments with the existing `EvaluateAssignment` logic, including capacity and deadline
+- [x] Validate and reserve assignments with the existing `EvaluateAssignment` logic, including capacity and deadline
       checks.
-- [ ] Before accepting, subscribe and flush the request-scoped `c2e` stream subject so Control cannot publish
+- [x] Before accepting, subscribe and flush the request-scoped `c2e` stream subject so Control cannot publish
       `RequestStart` before Egress is ready.
-- [ ] Reply with `AssignAck`, then process `RequestStart`, request body `DataFrame`s, credit, and cancel frames with
+- [x] Reply with `AssignAck`, then process `RequestStart`, request body `DataFrame`s, credit, and cancel frames with
       the existing stream validation rules.
-- [ ] Execute accepted requests through `Executor.Execute`, preserving the DNS validation/dial-target invariant and P0
+- [x] Execute accepted requests through `Executor.Execute`, preserving the DNS validation/dial-target invariant and P0
       HTTP/2 disabled behavior.
-- [ ] Publish `OutboundStartFrame`, `ResponseStart`, response `DataFrame`s, optional trailers, and exactly one terminal
+- [x] Publish `OutboundStartFrame`, `ResponseStart`, response `DataFrame`s, optional trailers, and exactly one terminal
       frame (`EndFrame`, `ErrorFrame`, or `CancelledFrame`) on the request-scoped `e2c` subject.
-- [ ] Enforce deadlines, upload/download/frame idle timeouts, cancellation, credit exhaustion, sequence/offset
+- [x] Enforce deadlines, upload/download/frame idle timeouts, cancellation, credit exhaustion, sequence/offset
       validation, and graceful drain behavior.
-- [ ] Add tests for assignment subscription ordering, rejected assignments, accepted execution, stream sequencing,
+- [x] Add tests for assignment subscription ordering, rejected assignments, accepted execution, stream sequencing,
       credit/backpressure, terminal-frame uniqueness, cancellation, deadline expiry, and graceful drain.
-- [ ] Run focused egress assignment/stream tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Run focused egress assignment/stream tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 
