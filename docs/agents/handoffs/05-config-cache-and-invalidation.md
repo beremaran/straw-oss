@@ -26,7 +26,10 @@ Result:
 
 ## Remaining Work
 
-- None.
+- (Corrected by audit 2026-07-03.) At runtime the cache is backed by `NewInMemorySnapshotStore` and the
+  `InvalidationPublisher` is `nil` (`cmd/control/main.go`). No Postgres-backed `SnapshotStore` and no Redis
+  pub/sub invalidation implementation exist. Owned by `docs/tasks/p0/19-postgres-config-stores-and-snapshot.md`
+  and `docs/tasks/p0/21-redis-wiring-and-config-invalidation.md`.
 
 ## Blockers
 

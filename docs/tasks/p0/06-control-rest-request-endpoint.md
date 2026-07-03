@@ -1,6 +1,6 @@
 # 06 - Control REST Request Endpoint
 
-Status: not started
+Status: done
 
 ## Objective
 

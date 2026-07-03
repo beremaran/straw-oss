@@ -38,7 +38,9 @@ Add the P0 NATS connection layer, startup max-payload validation, and exact-sess
 - [x] Add validation for safe subject tokens.
 - [x] Add startup validation for NATS max payload against configured frame/body limits.
 - [x] Add tests for exact assignment subject, no pool queue dispatch, unsafe token rejection, and max payload validation.
-- [x] Wire connection setup into Control and Egress without starting full request flow.
+- [ ] Wire connection setup into Control and Egress without starting full request flow.
+      (Audit 2026-07-03: NOT done — only server-list and payload validation were wired; no NATS client or
+      connection object exists. Owned by `docs/tasks/p0/16-nats-client-foundation.md`.)
 - [x] Run `go test ./internal/natsx`.
 - [x] Run `make check`.
 - [x] Write a handoff note.

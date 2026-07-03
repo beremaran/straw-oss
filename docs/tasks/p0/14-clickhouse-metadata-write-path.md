@@ -66,3 +66,4 @@ Implement asynchronous ClickHouse request metadata writes with redaction, saniti
 
 - Stop before adding telemetry read APIs.
 - Stop before storing payload capture data.
+- Stop if a deferral would have no owning task file.
