@@ -124,8 +124,8 @@ func TestErrorRegistryRows(t *testing.T) {
 // request_id is always present (docs/planning/14 "ErrorResponse JSON Format").
 func TestErrorResponseIsPublicSafe(t *testing.T) {
 	resp := ErrorResponseFromCode(BodyTooLarge, "req_abc123", map[string]string{
-		"direction":   "request",
-		"limit_bytes": strconv.Itoa(1048576),
+		errorDetailDirectionKey:  "request",
+		errorDetailLimitBytesKey: strconv.Itoa(1048576),
 	})
 
 	raw, err := json.Marshal(resp)

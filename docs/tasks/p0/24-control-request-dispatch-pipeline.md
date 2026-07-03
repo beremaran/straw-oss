@@ -1,6 +1,6 @@
 # 24 - Control Request Dispatch Pipeline
 
-Status: not started
+Status: in progress
 
 ## Objective
 
@@ -43,29 +43,29 @@ admission through routing, assignment, streaming, response buffering, and canoni
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Delete the synthetic success path in `internal/control/handler.go` and route validated requests into a dispatch
+- [x] Read all required planning docs.
+- [x] Delete the synthetic success path in `internal/control/handler.go` and route validated requests into a dispatch
       pipeline.
-- [ ] Run rate-limit and quota admission using the Redis-backed components from task 21 before routing, returning
+- [x] Run rate-limit and quota admission using the Redis-backed components from task 21 before routing, returning
       canonical 429 errors with `retry_after_ms` where computable.
-- [ ] Capture the immutable tenant snapshot, evaluate routing with sticky-session behavior, and select an eligible
+- [x] Capture the immutable tenant snapshot, evaluate routing with sticky-session behavior, and select an eligible
       exact worker session.
-- [ ] Resolve the destination-policy, header-injection, and fingerprint bundle using task 22.
+- [x] Resolve the destination-policy, header-injection, and fingerprint bundle using task 22.
 - [ ] Subscribe and flush the request-scoped `e2c` subject before publishing `AssignRequest`; enforce assignment ack
       timeout and fallback/replay boundaries from Section 9.
 - [ ] Publish `RequestStart`, stream inline request bodies as `DataFrame`s under credit limits, and send cancels on
       client disconnect, deadline, admin cancel, shutdown, or obsolete fallback attempts.
 - [ ] Consume executor-to-Control stream frames, validate sequence/offset/attempt/terminal rules, replenish credit, and
       buffer the upstream response up to `control.request.max_inline_response_body_bytes`.
-- [ ] Return the real REST success envelope with upstream status, headers, inline body, and timing; map every failure
+- [x] Return the real REST success envelope with upstream status, headers, inline body, and timing; map every failure
       through the canonical error registry with public-safe details.
 - [ ] Add tests for admission ordering, route no-match/unavailable, assignment timeout, fallback before `RequestStart`,
       stream protocol errors, response body too large, upstream status passthrough, cancellation, and 429 retry_after.
-- [ ] Add an end-to-end local test: Control -> NATS -> Egress -> upstream -> Control returns the upstream's real status
+- [x] Add an end-to-end local test: Control -> NATS -> Egress -> upstream -> Control returns the upstream's real status
       and body.
-- [ ] Run focused dispatch pipeline tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Run focused dispatch pipeline tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

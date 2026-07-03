@@ -134,7 +134,7 @@ func runControl(controlConfig config.ControlConfig, natsConn *natsx.Connection) 
 
 	configCache := wireConfigInvalidation(ctx, configStore, redisClient)
 
-	mux := buildControlMux(controlConfig, apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore, configCache, redisClient)
+	mux := buildControlMux(controlConfig, apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore, configCache, redisClient, natsConn)
 
 	err = control.SetupWorkerDiscoverySubscriptions(natsConn, workerRegistry)
 	if err != nil {
@@ -313,7 +313,7 @@ func rehydrateWorkerAdminState(ctx context.Context, configStore *control.Postgre
 
 // buildControlMux assembles the HTTP handler with the Postgres-backed identity
 // and config stores.
-func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool, configStore *control.PostgresConfigStore, configCache *control.ConfigCache, redisClient *redis.Client) *http.ServeMux {
+func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool, configStore *control.PostgresConfigStore, configCache *control.ConfigCache, redisClient *redis.Client, natsConn *natsx.Connection) *http.ServeMux {
 	adminHandlers := buildAdminHandlers(apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore, configCache, redisClient)
 	requestHandler := control.NewRequestHandler(
 		controlConfig.Request.MaxInlineRequestBodyBytes,
@@ -321,6 +321,17 @@ func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.API
 		controlConfig.Request.MaxTimeoutMs,
 		control.NewAuthenticator(apiKeyStore, pepper),
 	)
+	requestHandler.SetDispatcher(control.NewDefaultRequestDispatcher(control.RequestDispatcherOptions{
+		ConfigCache:                configCache,
+		Workers:                    workerRegistry,
+		Sticky:                     control.NewRedisStickyStore(redisClient),
+		NATS:                       natsConn,
+		RateLimitAdmission:         control.NewRateLimitAdmission(control.NewRateLimiter(redisClient, control.DefaultRateLimitGuardrails(), nil)),
+		QuotaAdmission:             control.NewQuotaAdmission(redisClient, nil),
+		MaxInlineResponseBodyBytes: controlConfig.Request.MaxInlineResponseBodyBytes,
+		MaxFrameDataBytes:          controlConfig.Transport.MaxFrameDataBytes,
+		MaxTimeoutMs:               controlConfig.Request.MaxTimeoutMs,
+	}))
 
 	mux := http.NewServeMux()
 	mux.Handle("POST /api/v1/requests", requestHandler)
