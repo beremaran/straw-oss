@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -37,6 +38,49 @@ var (
 	errUnknownConfigResource     = errors.New("unknown config resource type")
 	errUnsigned32ValueOutOfRange = errors.New("value out of uint32 range")
 )
+
+// ErrConfigResourceVersionConflict is returned when a routing rule, deny rule,
+// or injection policy write's expected_config_version does not match the
+// resource's current per-row config_version (docs/planning/26 "Shared Config
+// API Contract").
+var ErrConfigResourceVersionConflict = errors.New("config resource version conflict")
+
+// RoutingRuleRecord is a routing rule read from Postgres, carrying the
+// per-resource fields the admin API surface needs on top of the config-layer
+// config.RoutingRule (docs/tasks/p0/20).
+type RoutingRuleRecord struct {
+	config.RoutingRule
+	TenantID      string
+	CreatedAt     time.Time
+	ConfigVersion uint64
+}
+
+// DenyRuleRecord is a deny rule read from Postgres with admin-API fields.
+type DenyRuleRecord struct {
+	config.DenyRule
+	TenantID      string
+	CreatedAt     time.Time
+	ConfigVersion uint64
+}
+
+// InjectionPolicyRecord is an injection policy read from Postgres with
+// admin-API fields. Operations carry real (non-redacted) values, matching
+// snapshot assembly; handlers must not echo these back over the wire for
+// sensitive operations without the same role check applied on write.
+type InjectionPolicyRecord struct {
+	config.InjectionPolicy
+	TenantID      string
+	CreatedAt     time.Time
+	ConfigVersion uint64
+}
+
+// FingerprintProfileRecord is a fingerprint profile visible to a tenant
+// (global built-ins plus, if ever added, tenant-scoped rows).
+type FingerprintProfileRecord struct {
+	config.FingerprintProfile
+	CreatedAt     time.Time
+	ConfigVersion uint64
+}
 
 // ConfigActor identifies the API-key actor behind a config write, recorded in
 // config_audit_source (docs/planning/21). ActorID is the API key ID in P0.
@@ -169,7 +213,8 @@ func inConfigTx(ctx context.Context, pool *pgxpool.Pool, fn func(pgx.Tx) error) 
 func bumpTenantConfigVersion(ctx context.Context, tx pgx.Tx, tenantID string) (uint64, error) {
 	var v int64
 
-	err := tx.QueryRow(ctx,
+	err := tx.QueryRow(
+		ctx,
 		`INSERT INTO tenant_config_versions (tenant_id, config_version, updated_at)
 		 VALUES ($1, 1, now())
 		 ON CONFLICT (tenant_id) DO UPDATE
@@ -201,7 +246,8 @@ func insertConfigAudit(ctx context.Context, tx pgx.Tx, entry auditEntry) error {
 		return fmt.Errorf("marshal audit old value: %w", err)
 	}
 
-	_, err = tx.Exec(ctx,
+	_, err = tx.Exec(
+		ctx,
 		`INSERT INTO config_audit_source
 		  (tenant_id, actor_type, actor_id, resource_type, resource_id, action,
 		   request_id, old_value_json, new_value_json, created_at)
@@ -266,21 +312,38 @@ func matchFromJSON(m matchConditionsJSON) config.MatchConditions {
 
 // UpsertRoutingRule inserts or updates a routing rule by its stable
 // (tenant_id, id), clearing any prior soft delete (docs/planning/10, 26).
-func (s *PostgresConfigStore) UpsertRoutingRule(ctx context.Context, tenantID string, rule config.RoutingRule, actor ConfigActor) (uint64, error) {
+// expectedVersion is checked against the resource's own config_version
+// (0 for a not-yet-existing or soft-deleted row) under optimistic
+// concurrency; a mismatch returns ErrConfigResourceVersionConflict. It
+// returns the saved record and the bumped tenant config version (for cache
+// invalidation).
+func (s *PostgresConfigStore) UpsertRoutingRule(ctx context.Context, tenantID string, rule config.RoutingRule, expectedVersion uint64, actor ConfigActor) (RoutingRuleRecord, uint64, error) {
 	matchJSON, err := json.Marshal(matchToJSON(rule.Match))
 	if err != nil {
-		return 0, fmt.Errorf("marshal match conditions: %w", err)
+		return RoutingRuleRecord{}, 0, fmt.Errorf("marshal match conditions: %w", err)
 	}
 
-	return writeTenantConfig(ctx, s.pool, tenantID, auditEntry{
+	var record RoutingRuleRecord
+
+	tenantVersion, err := writeTenantConfig(ctx, s.pool, tenantID, auditEntry{
 		actor: actor, resourceType: "routing_rule", resourceID: rule.ID, action: configActionUpsert,
 		newValue: rule,
 	}, func(ctx context.Context, tx pgx.Tx) error {
-		_, execErr := tx.Exec(ctx,
+		nextVersion, nextVersionParam, verErr := checkResourceVersion(ctx, tx,
+			`SELECT config_version FROM routing_rules WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
+			[]any{tenantID, rule.ID}, expectedVersion)
+		if verErr != nil {
+			return verErr
+		}
+
+		var createdAt time.Time
+
+		execErr := tx.QueryRow(
+			ctx,
 			`INSERT INTO routing_rules
 			  (tenant_id, id, priority, enabled, match_conditions_jsonb, target_pool_id,
 			   sticky_session_ttl_seconds, allow_sticky_fallback, created_at, updated_at, config_version, deleted_at)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now(), now(), 1, NULL)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now(), now(), $9, NULL)
 			 ON CONFLICT (tenant_id, id) DO UPDATE SET
 			   priority = EXCLUDED.priority,
 			   enabled = EXCLUDED.enabled,
@@ -289,17 +352,48 @@ func (s *PostgresConfigStore) UpsertRoutingRule(ctx context.Context, tenantID st
 			   sticky_session_ttl_seconds = EXCLUDED.sticky_session_ttl_seconds,
 			   allow_sticky_fallback = EXCLUDED.allow_sticky_fallback,
 			   updated_at = now(),
-			   config_version = routing_rules.config_version + 1,
-			   deleted_at = NULL`,
+			   config_version = $9,
+			   deleted_at = NULL
+			 RETURNING created_at`,
 			tenantID, rule.ID, rule.Priority, rule.Enabled, matchJSON, rule.TargetPoolID,
-			int64(rule.StickySessionTTLSeconds), rule.AllowStickyFallback,
-		)
+			int64(rule.StickySessionTTLSeconds), rule.AllowStickyFallback, nextVersionParam,
+		).Scan(&createdAt)
 		if execErr != nil {
 			return fmt.Errorf("upsert routing rule: %w", execErr)
 		}
 
+		record = RoutingRuleRecord{RoutingRule: rule, TenantID: tenantID, CreatedAt: createdAt, ConfigVersion: nextVersion}
+
 		return nil
 	})
+	if err != nil {
+		return RoutingRuleRecord{}, 0, err
+	}
+
+	return record, tenantVersion, nil
+}
+
+// checkResourceVersion reads a resource's current config_version (0 when
+// missing or soft-deleted, matching what a GET/List would show) and confirms
+// it equals expectedVersion, returning ErrConfigResourceVersionConflict
+// otherwise. On success it returns the next version both as a uint64 and as
+// the int64 SQL parameter to write.
+func checkResourceVersion(ctx context.Context, tx pgx.Tx, currentVersionQuery string, args []any, expectedVersion uint64) (uint64, int64, error) {
+	current, err := currentResourceVersion(ctx, tx, currentVersionQuery, args...)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	if current != expectedVersion {
+		return 0, 0, ErrConfigResourceVersionConflict
+	}
+
+	nextVersion, nextVersionParam, err := nextConfigVersionParam(expectedVersion)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return nextVersion, nextVersionParam, nil
 }
 
 // DeleteRoutingRule soft-deletes a routing rule so it drops out of assembled
@@ -321,7 +415,8 @@ func (s *PostgresConfigStore) UpsertExecutorPool(ctx context.Context, tenantID s
 		actor: actor, resourceType: "executor_pool", resourceID: pool.ID, action: configActionUpsert,
 		newValue: pool,
 	}, func(ctx context.Context, tx pgx.Tx) error {
-		_, execErr := tx.Exec(ctx,
+		_, execErr := tx.Exec(
+			ctx,
 			`INSERT INTO executor_pools
 			  (tenant_id, id, executor_type, tags_jsonb, enabled, created_at, updated_at, config_version, deleted_at)
 			 VALUES ($1, $2, $3, $4, $5, now(), now(), 1, NULL)
@@ -350,19 +445,32 @@ func (s *PostgresConfigStore) DeleteExecutorPool(ctx context.Context, tenantID, 
 // ---- Deny rules ----
 
 // UpsertDenyRule inserts or updates a host/CIDR/CNAME/IP deny or allow rule.
-func (s *PostgresConfigStore) UpsertDenyRule(ctx context.Context, tenantID string, rule config.DenyRule, actor ConfigActor) (uint64, error) {
-	return writeTenantConfig(ctx, s.pool, tenantID, auditEntry{
+// See UpsertRoutingRule for expectedVersion/return semantics.
+func (s *PostgresConfigStore) UpsertDenyRule(ctx context.Context, tenantID string, rule config.DenyRule, expectedVersion uint64, actor ConfigActor) (DenyRuleRecord, uint64, error) {
+	var record DenyRuleRecord
+
+	tenantVersion, err := writeTenantConfig(ctx, s.pool, tenantID, auditEntry{
 		actor: actor, resourceType: "deny_rule", resourceID: rule.ID, action: configActionUpsert,
 		newValue: rule,
 	}, func(ctx context.Context, tx pgx.Tx) error {
-		_, execErr := tx.Exec(ctx,
+		nextVersion, nextVersionParam, verErr := checkResourceVersion(ctx, tx,
+			`SELECT config_version FROM deny_rules WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
+			[]any{tenantID, rule.ID}, expectedVersion)
+		if verErr != nil {
+			return verErr
+		}
+
+		var createdAt time.Time
+
+		execErr := tx.QueryRow(
+			ctx,
 			`INSERT INTO deny_rules
 			  (tenant_id, id, rule_type, action, enabled, raw_pattern,
 			   normalized_host, normalized_cidr, normalized_ip, normalized_cname,
 			   created_at, updated_at, config_version, deleted_at)
 			 VALUES ($1, $2, $3, $4, $5, $6,
 			         nullif($7, ''), nullif($8, '')::cidr, nullif($9, '')::inet, nullif($10, ''),
-			         now(), now(), 1, NULL)
+			         now(), now(), $11, NULL)
 			 ON CONFLICT (tenant_id, id) DO UPDATE SET
 			   rule_type = EXCLUDED.rule_type,
 			   action = EXCLUDED.action,
@@ -373,17 +481,25 @@ func (s *PostgresConfigStore) UpsertDenyRule(ctx context.Context, tenantID strin
 			   normalized_ip = EXCLUDED.normalized_ip,
 			   normalized_cname = EXCLUDED.normalized_cname,
 			   updated_at = now(),
-			   config_version = deny_rules.config_version + 1,
-			   deleted_at = NULL`,
+			   config_version = $11,
+			   deleted_at = NULL
+			 RETURNING created_at`,
 			tenantID, rule.ID, rule.RuleType, rule.Action, rule.Enabled, rule.RawPattern,
-			rule.NormalizedHost, rule.NormalizedCIDR, rule.NormalizedIP, rule.NormalizedName,
-		)
+			rule.NormalizedHost, rule.NormalizedCIDR, rule.NormalizedIP, rule.NormalizedName, nextVersionParam,
+		).Scan(&createdAt)
 		if execErr != nil {
 			return fmt.Errorf("upsert deny rule: %w", execErr)
 		}
 
+		record = DenyRuleRecord{DenyRule: rule, TenantID: tenantID, CreatedAt: createdAt, ConfigVersion: nextVersion}
+
 		return nil
 	})
+	if err != nil {
+		return DenyRuleRecord{}, 0, err
+	}
+
+	return record, tenantVersion, nil
 }
 
 // DeleteDenyRule soft-deletes a deny rule.
@@ -403,39 +519,60 @@ type injectionOperationJSON struct {
 
 // UpsertInjectionPolicy inserts or updates an ordered header-injection policy.
 // The audit record redacts each operation's value_base64 (secret classification,
-// docs/planning/21 Config Secret Classification).
-func (s *PostgresConfigStore) UpsertInjectionPolicy(ctx context.Context, tenantID string, pol config.InjectionPolicy, actor ConfigActor) (uint64, error) {
+// docs/planning/21 Config Secret Classification). See UpsertRoutingRule for
+// expectedVersion/return semantics.
+func (s *PostgresConfigStore) UpsertInjectionPolicy(ctx context.Context, tenantID string, pol config.InjectionPolicy, expectedVersion uint64, actor ConfigActor) (InjectionPolicyRecord, uint64, error) {
 	if len(pol.Operations) > maxInjectionOperations {
-		return 0, fmt.Errorf("%w: %s has %d operations, max %d", errInjectionPolicyTooLarge, pol.ID, len(pol.Operations), maxInjectionOperations)
+		return InjectionPolicyRecord{}, 0, fmt.Errorf("%w: %s has %d operations, max %d", errInjectionPolicyTooLarge, pol.ID, len(pol.Operations), maxInjectionOperations)
 	}
 
 	opsJSON, err := json.Marshal(injectionOpsToJSON(pol.Operations))
 	if err != nil {
-		return 0, fmt.Errorf("marshal injection operations: %w", err)
+		return InjectionPolicyRecord{}, 0, fmt.Errorf("marshal injection operations: %w", err)
 	}
 
-	return writeTenantConfig(ctx, s.pool, tenantID, auditEntry{
+	var record InjectionPolicyRecord
+
+	tenantVersion, err := writeTenantConfig(ctx, s.pool, tenantID, auditEntry{
 		actor: actor, resourceType: "injection_policy", resourceID: pol.ID, action: configActionUpsert,
 		newValue: redactInjectionPolicy(pol),
 	}, func(ctx context.Context, tx pgx.Tx) error {
-		_, execErr := tx.Exec(ctx,
+		nextVersion, nextVersionParam, verErr := checkResourceVersion(ctx, tx,
+			`SELECT config_version FROM injection_policies WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
+			[]any{tenantID, pol.ID}, expectedVersion)
+		if verErr != nil {
+			return verErr
+		}
+
+		var createdAt time.Time
+
+		execErr := tx.QueryRow(
+			ctx,
 			`INSERT INTO injection_policies
 			  (tenant_id, id, enabled, operations, audit_redacted, created_at, updated_at, config_version, deleted_at)
-			 VALUES ($1, $2, $3, $4, true, now(), now(), 1, NULL)
+			 VALUES ($1, $2, $3, $4, true, now(), now(), $5, NULL)
 			 ON CONFLICT (tenant_id, id) DO UPDATE SET
 			   enabled = EXCLUDED.enabled,
 			   operations = EXCLUDED.operations,
 			   updated_at = now(),
-			   config_version = injection_policies.config_version + 1,
-			   deleted_at = NULL`,
-			tenantID, pol.ID, pol.Enabled, opsJSON,
-		)
+			   config_version = $5,
+			   deleted_at = NULL
+			 RETURNING created_at`,
+			tenantID, pol.ID, pol.Enabled, opsJSON, nextVersionParam,
+		).Scan(&createdAt)
 		if execErr != nil {
 			return fmt.Errorf("upsert injection policy: %w", execErr)
 		}
 
+		record = InjectionPolicyRecord{InjectionPolicy: pol, TenantID: tenantID, CreatedAt: createdAt, ConfigVersion: nextVersion}
+
 		return nil
 	})
+	if err != nil {
+		return InjectionPolicyRecord{}, 0, err
+	}
+
+	return record, tenantVersion, nil
 }
 
 // DeleteInjectionPolicy soft-deletes an injection policy.
@@ -470,7 +607,8 @@ func (s *PostgresConfigStore) SetTenantWorkerOverrideConfig(ctx context.Context,
 }
 
 func setTenantWorkerOverride(ctx context.Context, exec pgxExecutor, tenantID, workerID string, disabled bool, reason string) error {
-	_, err := exec.Exec(ctx,
+	_, err := exec.Exec(
+		ctx,
 		`INSERT INTO tenant_worker_admin_state
 		  (tenant_id, worker_id, disabled, disabled_reason, created_at, updated_at, config_version)
 		 VALUES ($1, $2, $3, nullif($4, ''), now(), now(), 1)
@@ -513,7 +651,8 @@ func (s *PostgresConfigStore) SetGlobalWorkerAdminConfig(ctx context.Context, wo
 }
 
 func setGlobalWorkerAdmin(ctx context.Context, exec pgxExecutor, workerID string, disabled bool, reason string) error {
-	_, err := exec.Exec(ctx,
+	_, err := exec.Exec(
+		ctx,
 		`INSERT INTO worker_admin_state
 		  (worker_id, disabled, disabled_reason, created_at, updated_at, config_version)
 		 VALUES ($1, $2, nullif($3, ''), now(), now(), 1)

@@ -27,14 +27,18 @@ const (
 // testAdmin bundles an AdminHandlers with its backing stores for direct
 // inspection in tests (e.g. asserting on AuditStore contents).
 type testAdmin struct {
-	h           *AdminHandlers
-	apiKeys     *InMemoryAPIKeyStore
-	workerCreds *InMemoryWorkerCredentialStore
-	tenants     *InMemoryTenantStore
-	quotas      *InMemoryQuotaStore
-	rateLimits  *InMemoryRateLimitConfigStore
-	audit       *InMemoryAuditStore
-	pepper      []byte
+	h                 *AdminHandlers
+	apiKeys           *InMemoryAPIKeyStore
+	workerCreds       *InMemoryWorkerCredentialStore
+	tenants           *InMemoryTenantStore
+	quotas            *InMemoryQuotaStore
+	rateLimits        *InMemoryRateLimitConfigStore
+	audit             *InMemoryAuditStore
+	routingRules      *InMemoryRoutingRuleStore
+	denyRules         *InMemoryDenyRuleStore
+	injectionPolicies *InMemoryInjectionPolicyStore
+	fingerprints      *InMemoryFingerprintProfileStore
+	pepper            []byte
 }
 
 type recordingConfigWrites struct {
@@ -95,24 +99,32 @@ func newTestAdmin(t *testing.T) *testAdmin {
 	cache := NewConfigCache(snapshotStore, nil)
 
 	ta := &testAdmin{
-		apiKeys:     apiKeys,
-		workerCreds: NewInMemoryWorkerCredentialStore(),
-		tenants:     NewInMemoryTenantStore(),
-		quotas:      NewInMemoryQuotaStore(),
-		rateLimits:  NewInMemoryRateLimitConfigStore(),
-		audit:       NewInMemoryAuditStore(),
-		pepper:      pepper,
+		apiKeys:           apiKeys,
+		workerCreds:       NewInMemoryWorkerCredentialStore(),
+		tenants:           NewInMemoryTenantStore(),
+		quotas:            NewInMemoryQuotaStore(),
+		rateLimits:        NewInMemoryRateLimitConfigStore(),
+		audit:             NewInMemoryAuditStore(),
+		routingRules:      NewInMemoryRoutingRuleStore(),
+		denyRules:         NewInMemoryDenyRuleStore(),
+		injectionPolicies: NewInMemoryInjectionPolicyStore(),
+		fingerprints:      NewInMemoryFingerprintProfileStore(),
+		pepper:            pepper,
 	}
 	ta.h = &AdminHandlers{
-		Authenticator: NewAuthenticator(apiKeys, pepper),
-		APIKeys:       apiKeys,
-		WorkerCreds:   ta.workerCreds,
-		Tenants:       ta.tenants,
-		Quotas:        ta.quotas,
-		RateLimits:    ta.rateLimits,
-		Audit:         ta.audit,
-		ConfigCache:   cache,
-		Pepper:        pepper,
+		Authenticator:       NewAuthenticator(apiKeys, pepper),
+		APIKeys:             apiKeys,
+		WorkerCreds:         ta.workerCreds,
+		Tenants:             ta.tenants,
+		Quotas:              ta.quotas,
+		RateLimits:          ta.rateLimits,
+		Audit:               ta.audit,
+		ConfigCache:         cache,
+		Pepper:              pepper,
+		RoutingRules:        ta.routingRules,
+		DenyRules:           ta.denyRules,
+		InjectionPolicies:   ta.injectionPolicies,
+		FingerprintProfiles: ta.fingerprints,
 	}
 
 	return ta
