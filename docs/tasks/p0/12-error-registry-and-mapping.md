@@ -1,6 +1,6 @@
 # 12 - Error Registry and Mapping
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -34,16 +34,16 @@ Implement the canonical ErrorResponse registry and HTTP/retry/category mapping.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Define every canonical P0 ErrorCode in one registry.
-- [ ] Map each ErrorCode to HTTP status, retryability, category, and public-safe detail behavior.
-- [ ] Define the executor-emittable code set from Section 13 in the registry and expose it for `ErrorFrame` validation (out-of-set codes map to `executor_internal_error`).
-- [ ] Wire Control REST errors through the registry.
-- [ ] Preserve upstream origin 4xx/5xx as successful API envelopes with upstream status.
-- [ ] Add tests that every ErrorCode maps exactly once and origin errors are not ErrorResponse.
-- [ ] Run focused error mapping tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Read all required planning docs.
+- [x] Define every canonical P0 ErrorCode in one registry.
+- [x] Map each ErrorCode to HTTP status, retryability, category, and public-safe detail behavior.
+- [x] Define the executor-emittable code set from Section 13 in the registry and expose it for `ErrorFrame` validation (out-of-set codes map to `executor_internal_error`).
+- [x] Wire Control REST errors through the registry.
+- [x] Preserve upstream origin 4xx/5xx as successful API envelopes with upstream status.
+- [x] Add tests that every ErrorCode maps exactly once and origin errors are not ErrorResponse.
+- [x] Run focused error mapping tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 
