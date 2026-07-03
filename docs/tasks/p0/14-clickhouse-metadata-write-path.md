@@ -1,6 +1,6 @@
 # 14 - ClickHouse Metadata Write Path
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -33,16 +33,16 @@ Implement asynchronous ClickHouse request metadata writes with redaction, saniti
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Define the P0 metadata record from the canonical schema.
-- [ ] Sanitize target URLs and drop query by default.
-- [ ] Redact auth, cookie, injection secret values, and API key material.
-- [ ] Implement async bounded queue writes.
-- [ ] Handle ClickHouse outage without failing request transport.
-- [ ] Add tests for async write success, outage, bounded queue drop, sanitized target URL, redacted headers, and actor API key audit source.
-- [ ] Run focused metadata writer tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Read all required planning docs.
+- [x] Define the P0 metadata record from the canonical schema.
+- [x] Sanitize target URLs and drop query by default.
+- [x] Redact auth, cookie, injection secret values, and API key material.
+- [x] Implement async bounded queue writes.
+- [x] Handle ClickHouse outage without failing request transport.
+- [x] Add tests for async write success, outage, bounded queue drop, sanitized target URL, redacted headers, and actor API key audit source.
+- [x] Run focused metadata writer tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

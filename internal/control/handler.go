@@ -15,6 +15,7 @@ type RequestHandler struct {
 	maxResponseBodyBytes uint64
 	maxTimeoutMs         uint64
 	authenticator        *Authenticator
+	metadataWriter       RequestMetadataRecorder
 }
 
 // NewRequestHandler creates a handler with the given config limits. auth
@@ -22,12 +23,18 @@ type RequestHandler struct {
 // MustNewRequestHandler-style callers should not happen in production, but
 // ServeHTTP treats a nil authenticator as "always deny" rather than
 // "always allow" to fail closed.
-func NewRequestHandler(maxRequestBodyBytes, maxResponseBodyBytes, maxTimeoutMs uint64, auth *Authenticator) *RequestHandler {
+func NewRequestHandler(maxRequestBodyBytes, maxResponseBodyBytes, maxTimeoutMs uint64, auth *Authenticator, metadataWriter ...RequestMetadataRecorder) *RequestHandler {
+	var recorder RequestMetadataRecorder
+	if len(metadataWriter) > 0 {
+		recorder = metadataWriter[0]
+	}
+
 	return &RequestHandler{
 		maxRequestBodyBytes:  maxRequestBodyBytes,
 		maxResponseBodyBytes: maxResponseBodyBytes,
 		maxTimeoutMs:         maxTimeoutMs,
 		authenticator:        auth,
+		metadataWriter:       recorder,
 	}
 }
 
@@ -81,6 +88,10 @@ func (h *RequestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, requestID, nil))
 
 		return
+	}
+
+	if h.metadataWriter != nil {
+		h.metadataWriter.Enqueue(buildRequestEvent(requestID, identity, validated))
 	}
 
 	_ = validated // validated is used by later tasks; stub for now.
