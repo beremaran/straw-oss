@@ -1,6 +1,6 @@
 # 16 - NATS Client Foundation
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -34,26 +34,26 @@ Add the real NATS client and connection lifecycle, and wire a live NATS connecti
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Add the `github.com/nats-io/nats.go` dependency to `go.mod`/`go.sum`.
-- [ ] Implement a connection wrapper in `internal/natsx` that dials the configured server list with reconnect and
+- [x] Read all required planning docs.
+- [x] Add the `github.com/nats-io/nats.go` dependency to `go.mod`/`go.sum`.
+- [x] Implement a connection wrapper in `internal/natsx` that dials the configured server list with reconnect and
       backoff, exposing the underlying `*nats.Conn` (or an interface over it) for later tasks to subscribe/publish on.
-- [ ] Implement connect-time verification of the live server's advertised `max_payload` against
+- [x] Implement connect-time verification of the live server's advertised `max_payload` against
       `control.transport.max_frame_data_bytes` (and the inline body limits), per the Section 12 rule
       (`max_frame_data_bytes <= nats.max_payload_bytes - 65536`). This is in addition to, not a replacement for, the
       existing config-vs-config `ValidateMaxPayload` check in task 03.
-- [ ] Implement graceful drain on shutdown (drain, not abrupt close) so in-flight request/reply exchanges are not cut
+- [x] Implement graceful drain on shutdown (drain, not abrupt close) so in-flight request/reply exchanges are not cut
       off, consistent with the Control/Worker graceful shutdown sequences in Section 29.
-- [ ] Wire the connection wrapper into `cmd/control/main.go` startup so Control holds a live NATS connection before
+- [x] Wire the connection wrapper into `cmd/control/main.go` startup so Control holds a live NATS connection before
       serving HTTP, and fails startup if the connection or max-payload verification fails.
-- [ ] Wire the connection wrapper into `cmd/egress/main.go` startup so Egress holds a live NATS connection, replacing
+- [x] Wire the connection wrapper into `cmd/egress/main.go` startup so Egress holds a live NATS connection, replacing
       the current discarded `_ = egress.NewExecutor(...)` dead end with a connection that later tasks (17, 23) can
       subscribe/publish on. This completes task 03's unchecked "wire connection setup" step.
-- [ ] Add tests for successful connect, reconnect/backoff behavior (using an embedded or fake NATS server), max
+- [x] Add tests for successful connect, reconnect/backoff behavior (using an embedded or fake NATS server), max
       payload verification failure at connect time, and graceful drain.
-- [ ] Run `go test ./internal/natsx ./cmd/...`.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Run `go test ./internal/natsx ./cmd/...`.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

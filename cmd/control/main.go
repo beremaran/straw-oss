@@ -3,11 +3,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/beremaran/straw/v2/internal/config"
@@ -16,8 +19,9 @@ import (
 )
 
 const (
-	exitUsage         = 2
-	readHeaderTimeout = 5 * time.Second
+	exitUsage              = 2
+	readHeaderTimeout      = 5 * time.Second
+	controlShutdownTimeout = 5 * time.Second
 )
 
 func main() {
@@ -43,10 +47,38 @@ func run() error {
 		return fmt.Errorf("validate payload limits: %w", err)
 	}
 
-	return runControl(controlConfig)
+	natsConn, err := natsx.Connect(natsx.ConnectOptions{
+		Servers:             controlConfig.NATS.Servers,
+		UserCredentialsFile: controlConfig.NATS.UserCredentialsFile,
+		ReconnectAttempts:   controlConfig.NATS.ReconnectAttempts,
+		ReconnectWait:       time.Duration(controlConfig.NATS.ReconnectWaitMS) * time.Millisecond,
+		PingInterval:        time.Duration(controlConfig.NATS.PingIntervalMS) * time.Millisecond,
+		MaxPingFailures:     controlConfig.NATS.MaxPingFailures,
+	})
+	if err != nil {
+		return fmt.Errorf("connect nats: %w", err)
+	}
+
+	err = natsx.ValidateConnectedMaxPayload(natsConn, controlConfig.Transport.MaxFrameDataBytes, controlConfig.Request.MaxInlineRequestBodyBytes, controlConfig.Request.MaxInlineResponseBodyBytes)
+	if err != nil {
+		natsConn.Close()
+
+		return fmt.Errorf("validate live nats payload limits: %w", err)
+	}
+
+	return runControl(controlConfig, natsConn)
 }
 
-func runControl(controlConfig config.ControlConfig) error {
+func runControl(controlConfig config.ControlConfig, natsConn *natsx.Connection) error {
+	defer func() {
+		if natsConn != nil {
+			drainErr := natsConn.Drain()
+			if drainErr != nil {
+				log.Printf("control: drain nats connection: %v", drainErr)
+			}
+		}
+	}()
+
 	apiKeyStore := control.NewInMemoryAPIKeyStore()
 	pepper := []byte(os.Getenv("STRAW_API_KEY_PEPPER"))
 
@@ -61,14 +93,36 @@ func runControl(controlConfig config.ControlConfig) error {
 
 	mux := buildControlMux(controlConfig, apiKeyStore, pepper)
 
+	return serveControlHTTP(controlConfig, mux)
+}
+
+func serveControlHTTP(controlConfig config.ControlConfig, mux *http.ServeMux) error {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	addr := fmt.Sprintf("%s:%d", controlConfig.Server.Host, controlConfig.Server.APIPort)
 	log.Printf("control: listening on %s", addr)
 
 	server := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: readHeaderTimeout}
+	serveErr := make(chan error, 1)
 
-	err = server.ListenAndServe()
-	if err != nil {
-		return fmt.Errorf("listen and serve control http server: %w", err)
+	go func() {
+		serveErr <- server.ListenAndServe()
+	}()
+
+	select {
+	case <-ctx.Done():
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), controlShutdownTimeout)
+		defer cancel()
+
+		shutdownErr := server.Shutdown(shutdownCtx)
+		if shutdownErr != nil {
+			return fmt.Errorf("shutdown control http server: %w", shutdownErr)
+		}
+	case err := <-serveErr:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return fmt.Errorf("listen and serve control http server: %w", err)
+		}
 	}
 
 	return nil
