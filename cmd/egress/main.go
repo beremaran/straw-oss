@@ -99,9 +99,11 @@ func runWorker(ctx context.Context, natsConn *natsx.Connection, cfg config.Egres
 
 	heartbeatInterval := time.Duration(cfg.HeartbeatIntervalMs) * time.Millisecond
 
+	executor := egress.NewExecutor(egress.ExecutorOptions{})
+
 	log.Printf("egress: starting run loop (worker=%s, heartbeat=%v)", cfg.WorkerID, heartbeatInterval)
 
-	err = egress.Run(ctx, natsConn, id, caps, heartbeatInterval)
+	err = egress.Run(ctx, natsConn, id, caps, executor, heartbeatInterval)
 	if err != nil {
 		return fmt.Errorf("egress run loop: %w", err)
 	}

@@ -34,6 +34,7 @@ const (
 	upstreamResetFact       = "upstream_reset_before_headers"
 	executorInternalFact    = "executor_internal_error"
 	unsupportedFingerprint  = "unsupported_fingerprint_profile"
+	requestCancelledFact    = "request_cancelled"
 	opSet                   = "set"
 	opAppend                = "append"
 	opRemove                = "remove"
@@ -478,6 +479,10 @@ func mapHTTPError(ctx context.Context, err error) *executionError {
 
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.Is(err, context.DeadlineExceeded) {
 		return timeoutFailure()
+	}
+
+	if errors.Is(ctx.Err(), context.Canceled) || errors.Is(err, context.Canceled) {
+		return executorFailure(strawpb.ErrorCode_ERROR_CODE_CANCELLED, requestCancelledFact)
 	}
 
 	if errors.Is(err, syscall.ECONNREFUSED) {
