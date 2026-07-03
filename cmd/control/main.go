@@ -13,9 +13,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/beremaran/straw/v2/internal/config"
 	"github.com/beremaran/straw/v2/internal/control"
 	"github.com/beremaran/straw/v2/internal/natsx"
+	"github.com/beremaran/straw/v2/internal/postgresx"
+	"github.com/beremaran/straw/v2/migrations"
 )
 
 const (
@@ -79,8 +83,18 @@ func runControl(controlConfig config.ControlConfig, natsConn *natsx.Connection) 
 		}
 	}()
 
-	apiKeyStore := control.NewInMemoryAPIKeyStore()
 	pepper := []byte(os.Getenv("STRAW_API_KEY_PEPPER"))
+
+	// Postgres is the control-plane source of truth for identity state and is
+	// required at startup (docs/planning/21-state-and-storage.md).
+	pool, err := openPostgres(controlConfig.Database.Postgres)
+	if err != nil {
+		return fmt.Errorf("open postgres: %w", err)
+	}
+
+	defer pool.Close()
+
+	apiKeyStore := control.NewPostgresAPIKeyStore(pool, pepper)
 
 	created, err := bootstrapAPIKey(apiKeyStore, pepper)
 	if err != nil {
@@ -91,9 +105,10 @@ func runControl(controlConfig config.ControlConfig, natsConn *natsx.Connection) 
 		log.Printf("control: bootstrapped first platform system_admin API key from %s", control.BootstrapSystemAdminEnvVar)
 	}
 
-	workerRegistry, workerCreds := buildWorkerRegistry()
+	workerCreds := control.NewPostgresWorkerCredentialStore(pool)
+	workerRegistry := control.NewWorkerRegistry(workerCreds, control.DefaultWorkerTimings(), nil)
 
-	mux := buildControlMux(controlConfig, apiKeyStore, pepper, workerRegistry, workerCreds)
+	mux := buildControlMux(controlConfig, apiKeyStore, pepper, workerRegistry, workerCreds, pool)
 
 	err = control.SetupWorkerDiscoverySubscriptions(natsConn, workerRegistry)
 	if err != nil {
@@ -101,6 +116,103 @@ func runControl(controlConfig config.ControlConfig, natsConn *natsx.Connection) 
 	}
 
 	return serveControlHTTP(controlConfig, mux)
+}
+
+// openPostgres connects to Postgres and applies the embedded migrations. The
+// DSN (from STRAW_POSTGRES_DSN) is required; Control does not serve without its
+// durable state store.
+func openPostgres(pgCfg config.PostgresConfig) (*pgxpool.Pool, error) {
+	cfg := postgresx.Config{
+		DSNEnv:            pgCfg.DSNEnv,
+		MaxOpenConns:      pgCfg.MaxOpenConns,
+		MaxIdleConns:      pgCfg.MaxIdleConns,
+		ConnMaxLifetimeMS: pgCfg.ConnMaxLifetimeMS,
+	}
+
+	dsn, err := postgresx.ResolveDSN(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("resolve postgres dsn: %w", err)
+	}
+
+	pool, err := postgresx.Connect(context.Background(), cfg, dsn)
+	if err != nil {
+		return nil, fmt.Errorf("connect postgres: %w", err)
+	}
+
+	err = postgresx.ApplyMigrations(context.Background(), pool, migrations.Postgres)
+	if err != nil {
+		pool.Close()
+
+		return nil, fmt.Errorf("apply postgres migrations: %w", err)
+	}
+
+	return pool, nil
+}
+
+// buildControlMux assembles the HTTP handler with the Postgres-backed identity
+// stores.
+func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool) *http.ServeMux {
+	adminHandlers := buildAdminHandlers(apiKeyStore, pepper, workerRegistry, workerCreds, pool)
+	requestHandler := control.NewRequestHandler(
+		controlConfig.Request.MaxInlineRequestBodyBytes,
+		controlConfig.Request.MaxInlineResponseBodyBytes,
+		controlConfig.Request.MaxTimeoutMs,
+		control.NewAuthenticator(apiKeyStore, pepper),
+	)
+
+	mux := http.NewServeMux()
+	mux.Handle("POST /api/v1/requests", requestHandler)
+	serveAdminRoutes(mux, adminHandlers)
+
+	return mux
+}
+
+// buildAdminHandlers constructs the AdminHandlers with the Postgres-backed
+// identity stores this task owns (tenants, API keys, worker credentials, audit).
+// Quota, rate-limit, config-cache, and snapshot stores stay in-memory here until
+// their owning tasks back them with Postgres/Redis (docs/tasks/p0/19, 20, 21).
+func buildAdminHandlers(apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool) *control.AdminHandlers {
+	snapshotStore := control.NewInMemorySnapshotStore()
+
+	return &control.AdminHandlers{
+		Authenticator: control.NewAuthenticator(apiKeyStore, pepper),
+		APIKeys:       apiKeyStore,
+		WorkerCreds:   workerCreds,
+		Tenants:       control.NewPostgresTenantStore(pool),
+		Quotas:        control.NewInMemoryQuotaStore(),
+		RateLimits:    control.NewInMemoryRateLimitConfigStore(),
+		Audit:         control.NewPostgresAuditStore(pool),
+		ConfigCache:   control.NewConfigCache(snapshotStore, nil),
+		Workers:       workerRegistry,
+		Pepper:        pepper,
+	}
+}
+
+// serveAdminRoutes registers all admin HTTP routes on the given mux.
+func serveAdminRoutes(mux *http.ServeMux, h *control.AdminHandlers) {
+	mux.HandleFunc("POST /tenants", h.CreateTenant)
+	mux.HandleFunc("POST /platform-api-keys", h.CreatePlatformAPIKey)
+	mux.HandleFunc("GET /platform-api-keys", h.ListPlatformAPIKeys)
+	mux.HandleFunc("POST /platform-api-keys/{id}/revoke", h.RevokePlatformAPIKey)
+	mux.HandleFunc("POST /api-keys", h.CreateTenantAPIKey)
+	mux.HandleFunc("GET /api-keys", h.ListTenantAPIKeys)
+	mux.HandleFunc("POST /api-keys/{id}/revoke", h.RevokeTenantAPIKey)
+	mux.HandleFunc("POST /worker-credentials", h.CreateWorkerCredential)
+	mux.HandleFunc("GET /worker-credentials", h.ListWorkerCredentials)
+	mux.HandleFunc("POST /worker-credentials/{id}/revoke", h.RevokeWorkerCredential)
+	mux.HandleFunc("GET /quotas", h.GetQuotas)
+	mux.HandleFunc("PUT /tenants/{id}/quotas", h.PutTenantQuotas)
+	mux.HandleFunc("GET /rate-limits", h.GetRateLimits)
+	mux.HandleFunc("PUT /rate-limits", h.PutRateLimits)
+	mux.HandleFunc("GET /api/v1/admin/workers", h.ListWorkers)
+	mux.HandleFunc("POST /api/v1/admin/workers/{worker_id}/disable", h.DisableWorker)
+	mux.HandleFunc("POST /api/v1/admin/workers/{worker_id}/enable", h.EnableWorker)
+	mux.HandleFunc("POST /api/v1/admin/workers/{worker_id}/drain", h.DrainWorker)
+	mux.HandleFunc("POST /api/v1/admin/workers/{worker_id}/undrain", h.UndrainWorker)
+	mux.HandleFunc("POST /api/v1/admin/workers/{worker_id}/tenant-disable", h.TenantDisableWorker)
+	mux.HandleFunc("POST /api/v1/admin/workers/{worker_id}/tenant-enable", h.TenantEnableWorker)
+	mux.HandleFunc("POST /api/v1/admin/workers/{worker_id}/tenant-drain", h.TenantDrainWorker)
+	mux.HandleFunc("POST /api/v1/admin/workers/{worker_id}/tenant-undrain", h.TenantUndrainWorker)
 }
 
 func serveControlHTTP(controlConfig config.ControlConfig, mux *http.ServeMux) error {
@@ -142,67 +254,6 @@ func bootstrapAPIKey(store control.APIKeyStore, pepper []byte) (bool, error) {
 	}
 
 	return created, nil
-}
-
-func buildWorkerRegistry() (*control.WorkerRegistry, control.WorkerCredentialStore) {
-	workerCreds := control.NewInMemoryWorkerCredentialStore()
-	registry := control.NewWorkerRegistry(workerCreds, control.DefaultWorkerTimings(), nil)
-
-	return registry, workerCreds
-}
-
-func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore) *http.ServeMux {
-	authenticator := control.NewAuthenticator(apiKeyStore, pepper)
-	snapshotStore := control.NewInMemorySnapshotStore()
-	configCache := control.NewConfigCache(snapshotStore, nil)
-
-	adminHandlers := &control.AdminHandlers{
-		Authenticator: authenticator,
-		APIKeys:       apiKeyStore,
-		WorkerCreds:   workerCreds,
-		Tenants:       control.NewInMemoryTenantStore(),
-		Quotas:        control.NewInMemoryQuotaStore(),
-		RateLimits:    control.NewInMemoryRateLimitConfigStore(),
-		Audit:         control.NewInMemoryAuditStore(),
-		ConfigCache:   configCache,
-		Workers:       workerRegistry,
-		Pepper:        pepper,
-	}
-
-	requestHandler := control.NewRequestHandler(
-		controlConfig.Request.MaxInlineRequestBodyBytes,
-		controlConfig.Request.MaxInlineResponseBodyBytes,
-		controlConfig.Request.MaxTimeoutMs,
-		authenticator,
-	)
-
-	mux := http.NewServeMux()
-	mux.Handle("POST /api/v1/requests", requestHandler)
-	mux.HandleFunc("POST /tenants", adminHandlers.CreateTenant)
-	mux.HandleFunc("POST /platform-api-keys", adminHandlers.CreatePlatformAPIKey)
-	mux.HandleFunc("GET /platform-api-keys", adminHandlers.ListPlatformAPIKeys)
-	mux.HandleFunc("POST /platform-api-keys/{id}/revoke", adminHandlers.RevokePlatformAPIKey)
-	mux.HandleFunc("POST /api-keys", adminHandlers.CreateTenantAPIKey)
-	mux.HandleFunc("GET /api-keys", adminHandlers.ListTenantAPIKeys)
-	mux.HandleFunc("POST /api-keys/{id}/revoke", adminHandlers.RevokeTenantAPIKey)
-	mux.HandleFunc("POST /worker-credentials", adminHandlers.CreateWorkerCredential)
-	mux.HandleFunc("GET /worker-credentials", adminHandlers.ListWorkerCredentials)
-	mux.HandleFunc("POST /worker-credentials/{id}/revoke", adminHandlers.RevokeWorkerCredential)
-	mux.HandleFunc("GET /quotas", adminHandlers.GetQuotas)
-	mux.HandleFunc("PUT /tenants/{id}/quotas", adminHandlers.PutTenantQuotas)
-	mux.HandleFunc("GET /rate-limits", adminHandlers.GetRateLimits)
-	mux.HandleFunc("PUT /rate-limits", adminHandlers.PutRateLimits)
-	mux.HandleFunc("GET /api/v1/admin/workers", adminHandlers.ListWorkers)
-	mux.HandleFunc("POST /api/v1/admin/workers/{worker_id}/disable", adminHandlers.DisableWorker)
-	mux.HandleFunc("POST /api/v1/admin/workers/{worker_id}/enable", adminHandlers.EnableWorker)
-	mux.HandleFunc("POST /api/v1/admin/workers/{worker_id}/drain", adminHandlers.DrainWorker)
-	mux.HandleFunc("POST /api/v1/admin/workers/{worker_id}/undrain", adminHandlers.UndrainWorker)
-	mux.HandleFunc("POST /api/v1/admin/workers/{worker_id}/tenant-disable", adminHandlers.TenantDisableWorker)
-	mux.HandleFunc("POST /api/v1/admin/workers/{worker_id}/tenant-enable", adminHandlers.TenantEnableWorker)
-	mux.HandleFunc("POST /api/v1/admin/workers/{worker_id}/tenant-drain", adminHandlers.TenantDrainWorker)
-	mux.HandleFunc("POST /api/v1/admin/workers/{worker_id}/tenant-undrain", adminHandlers.TenantUndrainWorker)
-
-	return mux
 }
 
 func loadControlConfig() (config.ControlConfig, error) {

@@ -38,6 +38,7 @@ type ControlConfig struct {
 	Request   ControlRequestConfig   `json:"request"`
 	Transport ControlTransportConfig `json:"transport"`
 	NATS      NATSConfig             `json:"nats"`
+	Database  DatabaseConfig         `json:"database"`
 }
 
 // ControlServerConfig configures the control HTTP server.
@@ -68,6 +69,19 @@ type NATSConfig struct {
 	PingIntervalMS      int      `json:"ping_interval_ms"`
 	MaxPingFailures     int      `json:"max_ping_failures"`
 	MaxPayloadBytes     *uint64  `json:"max_payload_bytes"`
+}
+
+// PostgresConfig configures the Postgres connection pool.
+type PostgresConfig struct {
+	DSNEnv            string `json:"dsn_env"`
+	MaxOpenConns      int    `json:"max_open_conns"`
+	MaxIdleConns      int    `json:"max_idle_conns"`
+	ConnMaxLifetimeMS int    `json:"conn_max_lifetime_ms"`
+}
+
+// DatabaseConfig configures all database connections for control.
+type DatabaseConfig struct {
+	Postgres PostgresConfig `json:"postgres"`
 }
 
 // EgressConfig is the egress-worker config block.
@@ -213,6 +227,25 @@ func (c *ControlConfig) applyDefaults() {
 	}
 
 	c.NATS.applyDefaults()
+	c.Database.applyDefaults()
+}
+
+func (d *DatabaseConfig) applyDefaults() {
+	d.Postgres.applyDefaults()
+}
+
+func (p *PostgresConfig) applyDefaults() {
+	if p.MaxOpenConns == 0 {
+		p.MaxOpenConns = 20
+	}
+
+	if p.MaxIdleConns == 0 {
+		p.MaxIdleConns = 5
+	}
+
+	if p.ConnMaxLifetimeMS == 0 {
+		p.ConnMaxLifetimeMS = 1_800_000 // 30 minutes
+	}
 }
 
 func (n *NATSConfig) applyDefaults() {

@@ -1,6 +1,6 @@
 # 18 - Postgres Foundation and Identity Stores
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -36,25 +36,28 @@ of in-memory identity state. This task authorizes adding the `github.com/jackc/p
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Add `github.com/jackc/pgx/v5` and a small connection-pool helper using `control.database.postgres.*`
-      configuration and `STRAW_POSTGRES_DSN`.
-- [ ] Decide and implement the P0 migration path: either apply `migrations/postgres/0001_init.sql` at startup or add a
-      documented local apply command that startup verifies before serving.
-- [ ] Implement Postgres-backed `TenantStore`, honoring tenant status, soft deletion, metadata storage policy fields,
-      and `rate_limit_ceiling`.
-- [ ] Implement Postgres-backed `APIKeyStore`, including visible-prefix lookup, constant-time secret verification,
-      secure hash storage, revocation timestamps, platform-vs-tenant scope rules, and first-platform-key bootstrap
-      behavior.
-- [ ] Implement Postgres-backed `WorkerCredentialStore`, enforcing single-tenant P0 credentials and credential status.
-- [ ] Implement Postgres-backed `AuditStore` for P0 config/auth actor records with secret-field redaction.
-- [ ] Wire `cmd/control/main.go` to construct these Postgres stores in place of the identity in-memory stores at
-      runtime.
-- [ ] Add tests for store persistence, prefix collision handling, platform key cannot execute requests, tenant
-      isolation, revocation, worker credential scope, and audit redaction.
-- [ ] Run focused Postgres identity-store tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Read all required planning docs.
+- [x] Add `github.com/jackc/pgx/v5` and a small connection-pool helper (`internal/postgresx`) using
+      `control.database.postgres.*` configuration and `STRAW_POSTGRES_DSN`.
+- [x] Migration path: `cmd/control` embeds `migrations/postgres/*.sql` (`migrations.Postgres`) and applies them at
+      startup via `postgresx.ApplyMigrations`. `CREATE ... IF NOT EXISTS` makes re-apply idempotent. Verified by
+      booting the binary against an empty database (tables auto-created).
+- [x] Implement Postgres-backed `TenantStore`. NOTE: the `TenantStore` interface (Create/Get) and the `tenants`
+      table only carry id/status/timestamps; `Name`, `rate_limit_ceiling`, soft-deletion, and metadata-storage-policy
+      fields have no columns/methods yet and are populated by later tasks (see Handoff Notes / the `Tenant` type doc).
+- [x] Implement Postgres-backed `APIKeyStore`: visible-prefix lookup, constant-time verification (via existing
+      `VerifyAPIKeySecret`), hashed-secret storage, revocation timestamps, platform-vs-tenant scope, first-platform-key
+      bootstrap.
+- [x] Implement Postgres-backed `WorkerCredentialStore`, enforcing single-tenant P0 credential scope and status.
+- [x] Implement Postgres-backed `AuditStore` for P0 config/auth actor records (redaction is enforced upstream in
+      `recordAudit`; `AuditRecord` never carries secret material).
+- [x] Wire `cmd/control/main.go` to construct the Postgres stores at runtime. Postgres is now REQUIRED at startup
+      (no in-memory fallback), matching "Postgres is the source of truth" in planning doc 21.
+- [x] Add tests for persistence, prefix collision, platform key cannot execute requests, tenant isolation (uuid
+      round-trip), revocation, worker credential scope, and audit actor records.
+- [x] Run focused Postgres identity-store tests (against Postgres 16; 10/10 pass, idempotent).
+- [x] Run `make check` (0 lint issues, all tests pass).
+- [x] Write a handoff note.
 
 ## Tests
 

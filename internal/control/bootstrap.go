@@ -3,12 +3,21 @@ package control
 import (
 	"context"
 	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"time"
 )
 
-const sessionIDBytes = 16
+const resourceIDBytes = 16
+
+// RFC 4122 version/variant bit patterns for a version 4 (random) UUID.
+const (
+	uuidVersionByte  = 6
+	uuidVersionMask  = 0x0f
+	uuidVersion4Bits = 0x40
+	uuidVariantByte  = 8
+	uuidVariantMask  = 0x3f
+	uuidVariantBits  = 0x80
+)
 
 // BootstrapSystemAdminEnvVar is the environment variable Control reads on
 // startup to seed the first platform system_admin API key. This is the P0
@@ -53,7 +62,7 @@ func BootstrapFromEnv(ctx context.Context, store APIKeyStore, bootstrapKey strin
 		return "", false, fmt.Errorf("bootstrap key too short: %w", err)
 	}
 
-	keyID, err := newRandomID("key")
+	keyID, err := newResourceID()
 	if err != nil {
 		return "", false, fmt.Errorf("generate bootstrap key id: %w", err)
 	}
@@ -77,15 +86,20 @@ func BootstrapFromEnv(ctx context.Context, store APIKeyStore, bootstrapKey strin
 	return keyID, true, nil
 }
 
-// newRandomID builds an opaque, non-guessable resource ID with the given
-// prefix (e.g. "key_", "wcred_", "ten_").
-func newRandomID(kind string) (string, error) {
-	raw := make([]byte, sessionIDBytes)
+// newResourceID builds an opaque, non-guessable resource ID as an RFC 4122
+// version 4 UUID string. The identity tables (tenants, api_keys,
+// worker_credentials) use uuid primary keys, so IDs must be uuid-formatted to
+// persist. See migrations/postgres/0001_init.sql.
+func newResourceID() (string, error) {
+	var raw [resourceIDBytes]byte
 
-	_, err := rand.Read(raw)
+	_, err := rand.Read(raw[:])
 	if err != nil {
-		return "", fmt.Errorf("generate random id: %w", err)
+		return "", fmt.Errorf("generate resource id: %w", err)
 	}
 
-	return fmt.Sprintf("%s_%s", kind, hex.EncodeToString(raw)), nil
+	raw[uuidVersionByte] = (raw[uuidVersionByte] & uuidVersionMask) | uuidVersion4Bits
+	raw[uuidVariantByte] = (raw[uuidVariantByte] & uuidVariantMask) | uuidVariantBits
+
+	return fmt.Sprintf("%x-%x-%x-%x-%x", raw[0:4], raw[4:6], raw[6:8], raw[8:10], raw[10:16]), nil
 }
