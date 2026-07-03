@@ -5,10 +5,15 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     restart: unless-stopped
 
   nats:
-    image: nats:latest
+    image: nats:alpine
     command: ["--config", "/etc/nats/nats-server.conf"]
     ports:
       - "4222:4222"
@@ -16,6 +21,11 @@ services:
     volumes:
       - nats_data:/data
       - ./deploy/docker/nats-server.conf:/etc/nats/nats-server.conf:ro
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8222/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     restart: unless-stopped
 
   postgres:
@@ -28,9 +38,78 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-straw}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-straw}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24-alpine
+    ports:
+      - "8123:8123"
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./deploy/docker/clickhouse-schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8123/ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  control:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile.control
+    ports:
+      - "8080:8080"
+      - "9090:9090"
+    environment:
+      STRAW_POSTGRES_DSN: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-straw}?sslmode=disable
+      STRAW_REDIS_URL: redis://redis:6379/0
+      STRAW_CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
+      STRAW_CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-}
+      STRAW_API_KEY_PEPPER: ${STRAW_API_KEY_PEPPER:-local-dev-pepper}
+      STRAW_BOOTSTRAP_SYSTEM_ADMIN_KEY: ${STRAW_BOOTSTRAP_SYSTEM_ADMIN_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/control", "-config", "/etc/straw/control.json", "-healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  # The egress worker connects to NATS and attempts to register. Successful
+  # registration requires a provisioned worker credential whose ed25519 public
+  # key matches the worker's key; see deploy/docker/README.md ("Worker
+  # provisioning") for the known limitation and steps.
+  egress:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile.egress
+    depends_on:
+      nats:
+        condition: service_healthy
+      control:
+        condition: service_started
     restart: unless-stopped
 
 volumes:
   redis_data:
   nats_data:
   postgres_data:
+  clickhouse_data:

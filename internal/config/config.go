@@ -88,10 +88,25 @@ type RedisConfig struct {
 	WriteTimeoutMS int    `json:"write_timeout_ms"`
 }
 
+// ClickHouseConfig configures the async request-metadata write path
+// (docs/planning/22). It is optional: when Endpoint is empty, Control does not
+// write telemetry (the recorder stays a no-op) and the request transport is
+// unaffected.
+type ClickHouseConfig struct {
+	Endpoint        string `json:"endpoint"`
+	Database        string `json:"database"`
+	UserEnv         string `json:"user_env"`
+	PasswordEnv     string `json:"password_env"`
+	MaxQueueEntries int    `json:"max_queue_entries"`
+	BatchSize       int    `json:"batch_size"`
+	FlushIntervalMS int    `json:"flush_interval_ms"`
+}
+
 // DatabaseConfig configures all database connections for control.
 type DatabaseConfig struct {
-	Postgres PostgresConfig `json:"postgres"`
-	Redis    RedisConfig    `json:"redis"`
+	Postgres   PostgresConfig   `json:"postgres"`
+	Redis      RedisConfig      `json:"redis"`
+	ClickHouse ClickHouseConfig `json:"clickhouse"`
 }
 
 // EgressConfig is the egress-worker config block.
@@ -243,6 +258,37 @@ func (c *ControlConfig) applyDefaults() {
 func (d *DatabaseConfig) applyDefaults() {
 	d.Postgres.applyDefaults()
 	d.Redis.applyDefaults()
+	d.ClickHouse.applyDefaults()
+}
+
+func (c *ClickHouseConfig) applyDefaults() {
+	if c.Endpoint == "" {
+		return
+	}
+
+	if c.Database == "" {
+		c.Database = "straw"
+	}
+
+	if c.UserEnv == "" {
+		c.UserEnv = "STRAW_CLICKHOUSE_USER"
+	}
+
+	if c.PasswordEnv == "" {
+		c.PasswordEnv = "STRAW_CLICKHOUSE_PASSWORD"
+	}
+
+	if c.MaxQueueEntries == 0 {
+		c.MaxQueueEntries = 10_000
+	}
+
+	if c.BatchSize == 0 {
+		c.BatchSize = 500
+	}
+
+	if c.FlushIntervalMS == 0 {
+		c.FlushIntervalMS = 1000
+	}
 }
 
 func (p *PostgresConfig) applyDefaults() {
