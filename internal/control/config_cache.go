@@ -126,6 +126,28 @@ func (c *ConfigCache) PublishInvalidation(ctx context.Context, tenantID string, 
 	}
 }
 
+// PollAllTenants re-checks the durable Postgres version for every tenant
+// currently cached, refreshing any that have advanced. This is the durable
+// fallback for a missed Redis pub/sub invalidation message
+// (docs/planning/25 "periodic Postgres version poll"); it only needs to
+// cover already-cached tenants since an uncached tenant loads fresh on its
+// next Snapshot call regardless. Per-tenant errors are swallowed so one
+// unreachable tenant does not stop the poll for the rest.
+func (c *ConfigCache) PollAllTenants(ctx context.Context) {
+	c.mu.RLock()
+	tenantIDs := make([]string, 0, len(c.latestVersion))
+
+	for id := range c.latestVersion {
+		tenantIDs = append(tenantIDs, id)
+	}
+
+	c.mu.RUnlock()
+
+	for _, id := range tenantIDs {
+		_, _ = c.SyncTenantVersion(ctx, id)
+	}
+}
+
 // ApplyInvalidation clears stale cached state for a tenant version.
 func (c *ConfigCache) ApplyInvalidation(tenantID string, version uint64) {
 	c.mu.Lock()

@@ -1,6 +1,6 @@
 # 21 - Redis Wiring and Config Invalidation
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -36,23 +36,28 @@ durable fallback checks required when pub/sub messages are missed.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Promote the existing `github.com/redis/go-redis/v9` usage to a direct module dependency if it is still indirect.
-- [ ] Dial Redis from `cmd/control/main.go` using `control.database.redis.*` configuration and `STRAW_REDIS_URL`.
-- [ ] Construct the existing Redis-backed `RateLimiter`, `RateLimitAdmission`, `QuotaAdmission`, and `RedisStickyStore`
+- [x] Read all required planning docs.
+- [x] Promote the existing `github.com/redis/go-redis/v9` usage to a direct module dependency if it is still indirect.
+      (Already direct as of this task's start; verified in `go.mod`.)
+- [x] Dial Redis from `cmd/control/main.go` using `control.database.redis.*` configuration and `STRAW_REDIS_URL`.
+- [x] Construct the existing Redis-backed `RateLimiter`, `RateLimitAdmission`, `QuotaAdmission`, and `RedisStickyStore`
       at runtime so task 24 can consume them.
-- [ ] Implement a Redis pub/sub `InvalidationPublisher` that publishes `straw:config:invalidate:<tenant_id>` messages
+- [x] Implement a Redis pub/sub `InvalidationPublisher` that publishes `straw:config:invalidate:<tenant_id>` messages
       after committed config writes.
-- [ ] Implement a subscriber wired to `ConfigCache` invalidation, storing the latest seen tenant config version.
-- [ ] Implement the durable fallback mechanism from Section 25: periodic Postgres tenant-version polling, plus forced
+- [x] Implement a subscriber wired to `ConfigCache` invalidation, storing the latest seen tenant config version.
+- [x] Implement the durable fallback mechanism from Section 25: periodic Postgres tenant-version polling, plus forced
       Postgres version checks for sensitive operations such as API key, worker credential, and deny-rule changes.
-- [ ] Enforce explicit Redis outage behavior for rate limits, quotas, sticky sessions, and invalidation according to
-      configured fail policies.
-- [ ] Add tests for Redis dial/config validation, pub/sub invalidation, missed-message version polling, sensitive forced
+      (Forced checks were already implemented by `AdminHandlers.bumpTenantVersion`/`ConfigCache.Save` writing
+      synchronously to Postgres before returning success — this task adds the periodic poll and the real publisher.)
+- [x] Enforce explicit Redis outage behavior for rate limits, quotas, sticky sessions, and invalidation according to
+      configured fail policies. (Fail policies were already implemented per-component in task 13; this task adds
+      Control-startup behavior: an unresolvable/malformed Redis URL fails startup, an unreachable-but-configured
+      Redis does not.)
+- [x] Add tests for Redis dial/config validation, pub/sub invalidation, missed-message version polling, sensitive forced
       checks, fail-open/fail-closed admission behavior, quota loss behavior, and sticky-session degradation.
-- [ ] Run focused Redis wiring and invalidation tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Run focused Redis wiring and invalidation tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

@@ -154,6 +154,51 @@ func TestConfigCacheAPIKeyRevocationInvalidation(t *testing.T) {
 	}
 }
 
+// TestConfigCachePollAllTenantsRecoversMissedInvalidation proves the
+// periodic Postgres poll (docs/planning/25 "periodic Postgres version
+// poll") refreshes every cached tenant whose durable version has advanced,
+// without needing a pub/sub message.
+func TestConfigCachePollAllTenantsRecoversMissedInvalidation(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeSnapshotStore()
+	store.seedSnapshot(config.NewTenantSnapshot(testTenantA, 1, nil))
+	store.setCurrentVersion(testTenantA, 1)
+	store.seedSnapshot(config.NewTenantSnapshot("tenant-b", 1, nil))
+	store.setCurrentVersion("tenant-b", 1)
+	cache := NewConfigCache(store, nil)
+
+	_, err := cache.Snapshot(context.Background(), testTenantA)
+	if err != nil {
+		t.Fatalf("Snapshot() tenant-a error = %v", err)
+	}
+
+	_, err = cache.Snapshot(context.Background(), "tenant-b")
+	if err != nil {
+		t.Fatalf("Snapshot() tenant-b error = %v", err)
+	}
+
+	// tenant-a's durable version advances without a pub/sub message reaching
+	// the cache; tenant-b is untouched.
+	store.seedSnapshot(config.NewTenantSnapshot(testTenantA, 2, []string{testKeyA}))
+	store.setCurrentVersion(testTenantA, 2)
+
+	cache.PollAllTenants(context.Background())
+
+	snapshotA, err := cache.Snapshot(context.Background(), testTenantA)
+	if err != nil {
+		t.Fatalf("Snapshot() tenant-a after poll error = %v", err)
+	}
+
+	if snapshotA.ConfigVersion != 2 {
+		t.Fatalf("tenant-a Snapshot() version = %d, want 2", snapshotA.ConfigVersion)
+	}
+
+	if got := store.loadCalls; got != 3 {
+		t.Fatalf("LoadTenantSnapshot calls = %d, want 3 (2 initial loads + 1 poll refresh)", got)
+	}
+}
+
 type fakeSnapshotStore struct {
 	mu        sync.Mutex
 	versions  map[string]uint64

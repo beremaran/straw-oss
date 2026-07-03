@@ -94,6 +94,35 @@ func TestLoadControl(t *testing.T) {
 	}
 }
 
+func TestLoadControlRedisDefaults(t *testing.T) {
+	t.Parallel()
+
+	path := writeConfig(t, `{
+		"config_version": "v1",
+		"control": {
+			"server": {
+				"host": "127.0.0.1",
+				"api_port": 8080,
+				"metrics_port": 9090
+			}
+		}
+	}`)
+
+	cfg, err := LoadControl(path)
+	if err != nil {
+		t.Fatalf("LoadControl() error = %v", err)
+	}
+
+	redisCfg := cfg.Database.Redis
+	if redisCfg.URLEnv != "STRAW_REDIS_URL" {
+		t.Fatalf("Database.Redis.URLEnv = %q, want STRAW_REDIS_URL", redisCfg.URLEnv)
+	}
+
+	if redisCfg.DialTimeoutMS != 2000 || redisCfg.ReadTimeoutMS != 500 || redisCfg.WriteTimeoutMS != 500 {
+		t.Fatalf("Database.Redis timeouts = %+v, want {2000 500 500}", redisCfg)
+	}
+}
+
 func TestLoadEgress(t *testing.T) {
 	t.Parallel()
 

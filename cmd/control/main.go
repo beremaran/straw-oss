@@ -14,11 +14,13 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/beremaran/straw/v2/internal/config"
 	"github.com/beremaran/straw/v2/internal/control"
 	"github.com/beremaran/straw/v2/internal/natsx"
 	"github.com/beremaran/straw/v2/internal/postgresx"
+	"github.com/beremaran/straw/v2/internal/redisx"
 	"github.com/beremaran/straw/v2/migrations"
 )
 
@@ -26,6 +28,8 @@ const (
 	exitUsage              = 2
 	readHeaderTimeout      = 5 * time.Second
 	controlShutdownTimeout = 5 * time.Second
+	redisPingTimeout       = 2 * time.Second
+	invalidationPollPeriod = 30 * time.Second
 )
 
 func main() {
@@ -83,6 +87,9 @@ func runControl(controlConfig config.ControlConfig, natsConn *natsx.Connection) 
 		}
 	}()
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	pepper := []byte(os.Getenv("STRAW_API_KEY_PEPPER"))
 
 	// Postgres is the control-plane source of truth for identity state and is
@@ -94,15 +101,25 @@ func runControl(controlConfig config.ControlConfig, natsConn *natsx.Connection) 
 
 	defer pool.Close()
 
-	apiKeyStore := control.NewPostgresAPIKeyStore(pool, pepper)
-
-	created, err := bootstrapAPIKey(apiKeyStore, pepper)
+	// Redis is ephemeral runtime state only (docs/planning/21). A Redis
+	// outage degrades rate limits, quotas, sticky sessions, and invalidation
+	// acceleration per their configured fail policies; it must not block
+	// Control startup the way a missing Postgres does.
+	redisClient, err := openRedis(controlConfig.Database.Redis)
 	if err != nil {
-		return err
+		return fmt.Errorf("open redis: %w", err)
 	}
 
-	if created {
-		log.Printf("control: bootstrapped first platform system_admin API key from %s", control.BootstrapSystemAdminEnvVar)
+	defer func() {
+		closeErr := redisClient.Close()
+		if closeErr != nil {
+			log.Printf("control: close redis client: %v", closeErr)
+		}
+	}()
+
+	apiKeyStore, err := setupAPIKeyStore(pool, pepper)
+	if err != nil {
+		return err
 	}
 
 	workerCreds := control.NewPostgresWorkerCredentialStore(pool)
@@ -115,14 +132,47 @@ func runControl(controlConfig config.ControlConfig, natsConn *natsx.Connection) 
 		return fmt.Errorf("rehydrate worker admin state: %w", err)
 	}
 
-	mux := buildControlMux(controlConfig, apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore)
+	configCache := wireConfigInvalidation(ctx, configStore, redisClient)
+
+	mux := buildControlMux(controlConfig, apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore, configCache, redisClient)
 
 	err = control.SetupWorkerDiscoverySubscriptions(natsConn, workerRegistry)
 	if err != nil {
 		return fmt.Errorf("setup worker discovery: %w", err)
 	}
 
-	return serveControlHTTP(controlConfig, mux)
+	return serveControlHTTP(ctx, controlConfig, mux)
+}
+
+// setupAPIKeyStore builds the Postgres-backed API key store and bootstraps
+// the first platform system_admin key from STRAW_BOOTSTRAP_SYSTEM_ADMIN_KEY
+// if the store is empty.
+func setupAPIKeyStore(pool *pgxpool.Pool, pepper []byte) (control.APIKeyStore, error) {
+	apiKeyStore := control.NewPostgresAPIKeyStore(pool, pepper)
+
+	created, err := bootstrapAPIKey(apiKeyStore, pepper)
+	if err != nil {
+		return nil, err
+	}
+
+	if created {
+		log.Printf("control: bootstrapped first platform system_admin API key from %s", control.BootstrapSystemAdminEnvVar)
+	}
+
+	return apiKeyStore, nil
+}
+
+// wireConfigInvalidation builds the ConfigCache with a real Redis-backed
+// invalidation publisher and starts the pub/sub subscriber and periodic
+// Postgres poller that keep it in sync (docs/planning/25). Both background
+// loops run until ctx is canceled.
+func wireConfigInvalidation(ctx context.Context, configStore *control.PostgresConfigStore, redisClient *redis.Client) *control.ConfigCache {
+	configCache := control.NewConfigCache(configStore, control.NewRedisInvalidationPublisher(redisClient))
+
+	go runInvalidationSubscriber(ctx, redisClient, configCache)
+	go runInvalidationPoller(ctx, configCache)
+
+	return configCache
 }
 
 // openPostgres connects to Postgres and applies the embedded migrations. The
@@ -156,6 +206,82 @@ func openPostgres(pgCfg config.PostgresConfig) (*pgxpool.Pool, error) {
 	return pool, nil
 }
 
+// openRedis resolves the Redis connection URL from STRAW_REDIS_URL (or
+// redisCfg.URLEnv) and builds a client. An unresolvable URL is a
+// configuration error and fails startup, the same as a missing Postgres
+// DSN. A configured-but-unreachable Redis is different: per
+// docs/planning/29 ("Redis unavailable: Apply configured fail policy"),
+// Control must still start and serve, since every Redis-backed runtime
+// component (RateLimiter, QuotaAdmission, RedisStickyStore, invalidation)
+// already applies its own explicit fail policy per call.
+func openRedis(redisCfg config.RedisConfig) (*redis.Client, error) {
+	url, err := redisx.ResolveURL(redisCfg.URLEnv)
+	if err != nil {
+		return nil, fmt.Errorf("resolve redis url: %w", err)
+	}
+
+	client, err := redisx.NewClientFromURL(url, redisx.Config{
+		DialTimeout:  time.Duration(redisCfg.DialTimeoutMS) * time.Millisecond,
+		ReadTimeout:  time.Duration(redisCfg.ReadTimeoutMS) * time.Millisecond,
+		WriteTimeout: time.Duration(redisCfg.WriteTimeoutMS) * time.Millisecond,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("parse redis url: %w", err)
+	}
+
+	pingCtx, cancel := context.WithTimeout(context.Background(), redisPingTimeout)
+	defer cancel()
+
+	pingErr := client.Ping(pingCtx).Err()
+	if pingErr != nil {
+		log.Printf("control: redis unreachable at startup: %v (continuing with Redis-backed features degraded)", pingErr)
+	}
+
+	return client, nil
+}
+
+// runInvalidationSubscriber runs the Redis pub/sub config-invalidation
+// subscriber until ctx is canceled, reconnecting after transient errors
+// (e.g. a Redis restart) rather than exiting the process — pub/sub is an
+// acceleration mechanism, and runInvalidationPoller is the durable fallback.
+func runInvalidationSubscriber(ctx context.Context, client *redis.Client, cache *control.ConfigCache) {
+	subscriber := control.NewRedisInvalidationSubscriber(client, cache)
+
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+
+		err := subscriber.Run(ctx)
+		if err != nil && ctx.Err() == nil {
+			log.Printf("control: config invalidation subscriber: %v (retrying)", err)
+
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(time.Second):
+			}
+		}
+	}
+}
+
+// runInvalidationPoller periodically re-checks Postgres tenant versions for
+// every cached tenant, recovering from a missed Redis invalidation message
+// (docs/planning/25 "periodic Postgres version poll").
+func runInvalidationPoller(ctx context.Context, cache *control.ConfigCache) {
+	ticker := time.NewTicker(invalidationPollPeriod)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			cache.PollAllTenants(ctx)
+		}
+	}
+}
+
 // rehydrateWorkerAdminState reloads durable worker disable decisions from
 // Postgres into the runtime registry so admin actions survive a Control
 // restart (docs/planning/21). Drain state is runtime-only and is not restored.
@@ -187,8 +313,8 @@ func rehydrateWorkerAdminState(ctx context.Context, configStore *control.Postgre
 
 // buildControlMux assembles the HTTP handler with the Postgres-backed identity
 // and config stores.
-func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool, configStore *control.PostgresConfigStore) *http.ServeMux {
-	adminHandlers := buildAdminHandlers(apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore)
+func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool, configStore *control.PostgresConfigStore, configCache *control.ConfigCache, redisClient *redis.Client) *http.ServeMux {
+	adminHandlers := buildAdminHandlers(apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore, configCache, redisClient)
 	requestHandler := control.NewRequestHandler(
 		controlConfig.Request.MaxInlineRequestBodyBytes,
 		controlConfig.Request.MaxInlineResponseBodyBytes,
@@ -204,10 +330,13 @@ func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.API
 }
 
 // buildAdminHandlers constructs the AdminHandlers with the Postgres-backed
-// stores. The config store assembles immutable tenant snapshots from Postgres
-// (docs/tasks/p0/19). Redis-backed config invalidation is wired in
-// docs/tasks/p0/21 — the ConfigCache publisher stays nil until then.
-func buildAdminHandlers(apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool, configStore *control.PostgresConfigStore) *control.AdminHandlers {
+// stores and the Redis-backed runtime admission components
+// (docs/tasks/p0/21). The rate limiter, quota admission, and sticky store are
+// constructed against the live Redis client but not yet consumed on the
+// request path; that wiring is docs/tasks/p0/24.
+func buildAdminHandlers(apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool, configStore *control.PostgresConfigStore, configCache *control.ConfigCache, redisClient *redis.Client) *control.AdminHandlers {
+	rateLimiter := control.NewRateLimiter(redisClient, control.DefaultRateLimitGuardrails(), nil)
+
 	return &control.AdminHandlers{
 		Authenticator: control.NewAuthenticator(apiKeyStore, pepper),
 		APIKeys:       apiKeyStore,
@@ -216,7 +345,7 @@ func buildAdminHandlers(apiKeyStore control.APIKeyStore, pepper []byte, workerRe
 		Quotas:        control.NewPostgresQuotaStore(pool),
 		RateLimits:    control.NewPostgresRateLimitConfigStore(pool),
 		Audit:         control.NewPostgresAuditStore(pool),
-		ConfigCache:   control.NewConfigCache(configStore, nil),
+		ConfigCache:   configCache,
 		Workers:       workerRegistry,
 		ConfigWrites:  configStore,
 		WorkerAdmin:   configStore,
@@ -226,6 +355,11 @@ func buildAdminHandlers(apiKeyStore control.APIKeyStore, pepper []byte, workerRe
 		DenyRules:           configStore,
 		InjectionPolicies:   configStore,
 		FingerprintProfiles: configStore,
+
+		RateLimiter:        rateLimiter,
+		RateLimitAdmission: control.NewRateLimitAdmission(rateLimiter),
+		QuotaAdmission:     control.NewQuotaAdmission(redisClient, nil),
+		StickySessions:     control.NewRedisStickyStore(redisClient),
 	}
 }
 
@@ -269,10 +403,7 @@ func serveAdminRoutes(mux *http.ServeMux, h *control.AdminHandlers) {
 	mux.HandleFunc("POST /api/v1/admin/workers/{worker_id}/tenant-undrain", h.TenantUndrainWorker)
 }
 
-func serveControlHTTP(controlConfig config.ControlConfig, mux *http.ServeMux) error {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
+func serveControlHTTP(ctx context.Context, controlConfig config.ControlConfig, mux *http.ServeMux) error {
 	addr := fmt.Sprintf("%s:%d", controlConfig.Server.Host, controlConfig.Server.APIPort)
 	log.Printf("control: listening on %s", addr)
 
@@ -285,7 +416,7 @@ func serveControlHTTP(controlConfig config.ControlConfig, mux *http.ServeMux) er
 
 	select {
 	case <-ctx.Done():
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), controlShutdownTimeout)
+		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), controlShutdownTimeout)
 		defer cancel()
 
 		shutdownErr := server.Shutdown(shutdownCtx)
