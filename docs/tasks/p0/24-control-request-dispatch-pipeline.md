@@ -1,6 +1,6 @@
 # 24 - Control Request Dispatch Pipeline
 
-Status: in progress
+Status: done
 
 ## Objective
 
@@ -51,15 +51,15 @@ admission through routing, assignment, streaming, response buffering, and canoni
 - [x] Capture the immutable tenant snapshot, evaluate routing with sticky-session behavior, and select an eligible
       exact worker session.
 - [x] Resolve the destination-policy, header-injection, and fingerprint bundle using task 22.
-- [ ] Subscribe and flush the request-scoped `e2c` subject before publishing `AssignRequest`; enforce assignment ack
+- [x] Subscribe and flush the request-scoped `e2c` subject before publishing `AssignRequest`; enforce assignment ack
       timeout and fallback/replay boundaries from Section 9.
-- [ ] Publish `RequestStart`, stream inline request bodies as `DataFrame`s under credit limits, and send cancels on
+- [x] Publish `RequestStart`, stream inline request bodies as `DataFrame`s under credit limits, and send cancels on
       client disconnect, deadline, admin cancel, shutdown, or obsolete fallback attempts.
-- [ ] Consume executor-to-Control stream frames, validate sequence/offset/attempt/terminal rules, replenish credit, and
+- [x] Consume executor-to-Control stream frames, validate sequence/offset/attempt/terminal rules, replenish credit, and
       buffer the upstream response up to `control.request.max_inline_response_body_bytes`.
 - [x] Return the real REST success envelope with upstream status, headers, inline body, and timing; map every failure
       through the canonical error registry with public-safe details.
-- [ ] Add tests for admission ordering, route no-match/unavailable, assignment timeout, fallback before `RequestStart`,
+- [x] Add tests for admission ordering, route no-match/unavailable, assignment timeout, fallback before `RequestStart`,
       stream protocol errors, response body too large, upstream status passthrough, cancellation, and 429 retry_after.
 - [x] Add an end-to-end local test: Control -> NATS -> Egress -> upstream -> Control returns the upstream's real status
       and body.

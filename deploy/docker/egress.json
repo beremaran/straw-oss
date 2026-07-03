@@ -1,0 +1,11 @@
+{
+  "config_version": "v1",
+  "egress": {
+    "worker_id": "egress-local-1",
+    "credential_id": "cred-local-1",
+    "heartbeat_interval_ms": 5000,
+    "nats": {
+      "servers": ["nats://nats:4222"]
+    }
+  }
+}

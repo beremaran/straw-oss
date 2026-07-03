@@ -1,0 +1,12 @@
+# Build the Straw control service.
+FROM golang:1.26 AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -o /out/control ./cmd/control
+
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/control /control
+COPY deploy/docker/control.json /etc/straw/control.json
+ENTRYPOINT ["/control", "-config", "/etc/straw/control.json"]

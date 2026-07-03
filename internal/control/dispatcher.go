@@ -288,12 +288,12 @@ func (d *DefaultRequestDispatcher) executeAttempt(ctx context.Context, in Dispat
 
 	assignmentMs := millisSince(assignmentStarted, d.opts.Now())
 
-	err = d.sendRequestStart(c2eSubject, in, route, policy, configVersion, deadline)
+	nextSeq, err := d.sendRequestStart(c2eSubject, in, route, policy, configVersion, deadline)
 	if err != nil {
 		return dispatchResult{}, assignmentMs, &PipelineError{Code: TransportUnavailable}
 	}
 
-	result, perr := d.readResponse(ctx, frames, route, deadline)
+	result, perr := d.readResponse(ctx, frames, route, deadline, c2eSubject, in, nextSeq)
 
 	return result, assignmentMs, perr
 }
@@ -340,7 +340,10 @@ func (d *DefaultRequestDispatcher) requestAssign(subject string, in DispatchInpu
 	return reply.GetAssignAck(), nil
 }
 
-func (d *DefaultRequestDispatcher) sendRequestStart(subject string, in DispatchInput, route RouteOutcome, policy *DestinationPolicyResult, configVersion uint64, deadline time.Time) error {
+// sendRequestStart publishes RequestStart and inline body DataFrames on the c2e
+// subject and returns the next c2e stream_seq (i.e. the seq a subsequent
+// CancelFrame should use).
+func (d *DefaultRequestDispatcher) sendRequestStart(subject string, in DispatchInput, route RouteOutcome, policy *DestinationPolicyResult, configVersion uint64, deadline time.Time) (uint64, error) {
 	start := &strawpb.RequestStart{
 		Mode:                   strawpb.RequestMode_REQUEST_MODE_DECODED_HTTP,
 		Method:                 in.Request.Method,
@@ -366,7 +369,7 @@ func (d *DefaultRequestDispatcher) sendRequestStart(subject string, in DispatchI
 		Payload:   &strawpb.StreamFrame_RequestStart{RequestStart: start},
 	})
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	offset := uint64(0)
@@ -384,7 +387,7 @@ func (d *DefaultRequestDispatcher) sendRequestStart(subject string, in DispatchI
 			Payload:   &strawpb.StreamFrame_Data{Data: &strawpb.DataFrame{Offset: offset, Data: chunk}},
 		})
 		if err != nil {
-			return err
+			return 0, err
 		}
 
 		offset += uint64(len(chunk))
@@ -392,10 +395,10 @@ func (d *DefaultRequestDispatcher) sendRequestStart(subject string, in DispatchI
 
 	err = d.opts.NATS.Flush()
 	if err != nil {
-		return fmt.Errorf("flush request stream: %w", err)
+		return 0, fmt.Errorf("flush request stream: %w", err)
 	}
 
-	return nil
+	return seq + 1, nil
 }
 
 func (d *DefaultRequestDispatcher) publishFrame(subject string, in DispatchInput, deadline time.Time, frame *strawpb.StreamFrame) error {
@@ -421,7 +424,7 @@ func (d *DefaultRequestDispatcher) publishFrame(subject string, in DispatchInput
 	return nil
 }
 
-func (d *DefaultRequestDispatcher) readResponse(ctx context.Context, frames <-chan *strawpb.StreamFrame, route RouteOutcome, deadline time.Time) (dispatchResult, *PipelineError) {
+func (d *DefaultRequestDispatcher) readResponse(ctx context.Context, frames <-chan *strawpb.StreamFrame, route RouteOutcome, deadline time.Time, c2eSubject string, in DispatchInput, cancelSeq uint64) (dispatchResult, *PipelineError) {
 	validator := natsx.NewStreamValidator(defaultRequestAttempt, d.opts.InitialDownloadCreditBytes, d.opts.FrameIdleTimeout, d.opts.Now)
 	result := dispatchResult{status: http.StatusOK}
 	egressStarted := time.Time{}
@@ -432,11 +435,17 @@ func (d *DefaultRequestDispatcher) readResponse(ctx context.Context, frames <-ch
 	for {
 		select {
 		case <-ctx.Done():
+			d.sendCancel(c2eSubject, in, deadline, cancelSeq, "client_cancelled")
+
 			return dispatchResult{}, &PipelineError{Code: Cancelled}
 		case <-time.After(time.Until(deadline)):
+			d.sendCancel(c2eSubject, in, deadline, cancelSeq, "deadline_exceeded")
+
 			return dispatchResult{}, &PipelineError{Code: TimeoutExceeded, TimeoutType: timeoutTypeTotalDeadline}
 		case <-ticker.C:
 			if validator.IdleExpired() {
+				d.sendCancel(c2eSubject, in, deadline, cancelSeq, "idle_timeout")
+
 				return dispatchResult{}, &PipelineError{Code: TimeoutExceeded, TimeoutType: timeoutTypeIdle}
 			}
 		case frame := <-frames:
@@ -450,6 +459,21 @@ func (d *DefaultRequestDispatcher) readResponse(ctx context.Context, frames <-ch
 			}
 		}
 	}
+}
+
+// sendCancel publishes a best-effort CancelFrame to the c2e subject.
+// Cancellation is best-effort per docs/planning/09; errors are silently
+// dropped.
+func (d *DefaultRequestDispatcher) sendCancel(c2eSubject string, in DispatchInput, deadline time.Time, seq uint64, reason string) {
+	if d.opts.NATS == nil {
+		return
+	}
+
+	_ = d.publishFrame(c2eSubject, in, deadline, &strawpb.StreamFrame{
+		StreamSeq: seq,
+		Attempt:   defaultRequestAttempt,
+		Payload:   &strawpb.StreamFrame_Cancel{Cancel: &strawpb.CancelFrame{Reason: reason}},
+	})
 }
 
 func (d *DefaultRequestDispatcher) acceptResponseFrame(validator *natsx.StreamValidator, frame *strawpb.StreamFrame, route RouteOutcome, result *dispatchResult, egressStarted *time.Time) (bool, *PipelineError) {

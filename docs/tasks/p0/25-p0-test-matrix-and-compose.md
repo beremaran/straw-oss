@@ -1,6 +1,6 @@
 # 25 - P0 Test Matrix and Compose
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -32,17 +32,25 @@ Close the P0 test matrix and provide a local docker-compose environment for the 
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Audit `docs/planning/30-testing-matrix.md` row by row against implemented tests.
-- [ ] Add missing P0 tests with the smallest useful scope.
-- [ ] Configure docker-compose for local Control, Egress, NATS, Postgres, Redis, and ClickHouse. Preserve the NATS `max_payload` config (`deploy/docker/nats-server.conf`, mounted by compose) — the stock NATS 1 MiB default fails Control startup validation against the default frame size.
-- [ ] Wire Control `/healthz` and `/readyz` on the metrics port (planning Section 7) if not already implemented, and use them for compose healthchecks; `/readyz` must go non-2xx when shutdown drain begins.
-- [ ] Add a full P0 E2E test for REST request through Control to Egress and back.
-- [ ] Add outage tests for NATS, Redis, and ClickHouse behaviors required by P0.
-- [ ] Document local compose startup and teardown commands.
-- [ ] Run the full test command chosen for local E2E.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Read all required planning docs.
+- [x] Audit `docs/planning/30-testing-matrix.md` row by row against implemented tests. (`docs/agents/testing-matrix-audit.md`)
+- [x] Add missing P0 tests with the smallest useful scope. (`TestDispatcherNATSUnavailable`; existing suite already covered the rest — see audit.)
+- [x] Configure docker-compose for local Control, Egress, NATS, Postgres, Redis, and ClickHouse. Preserve the NATS `max_payload` config (`deploy/docker/nats-server.conf`, mounted by compose). ClickHouse P0 schema at `deploy/docker/clickhouse-schema.sql`.
+- [x] Wire Control `/healthz` and `/readyz` on the metrics port and use them for compose healthchecks; `/readyz` goes 503 when shutdown drain begins. (`cmd/control/health.go`; `TestReadyzReflectsReadiness`)
+- [x] Add a full P0 E2E test for REST request through Control to Egress and back. (`TestDispatcherControlNATSEgressRoundTrip` — pre-existing, confirmed as the vertical-slice proof in the audit.)
+- [x] Add outage tests for NATS, Redis, and ClickHouse behaviors required by P0. (See audit "Outage rows".)
+- [x] Document local compose startup and teardown commands. (`deploy/docker/README.md`)
+- [x] Run the full test command chosen for local E2E. (compose stack brought up + verified healthy; `go test ./...`)
+- [x] Run `make check`.
+- [x] Write a handoff note.
+
+## Known limitation (flagged, no owning task)
+
+The `egress` compose service connects to NATS but **cannot complete registration**: `cmd/egress/main.go` generates a
+random ed25519 keypair on every boot, and registration requires a pre-seeded worker credential whose public key
+matches. No P0 task owns persisting the egress identity key or seeding its credential, so a turnkey request flow
+*through the compose stack* is not wired. The automated vertical-slice proof is the in-process Go test
+`TestDispatcherControlNATSEgressRoundTrip`. See `deploy/docker/README.md`.
 
 ## Tests
 

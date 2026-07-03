@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -25,12 +26,16 @@ import (
 )
 
 const (
-	exitUsage              = 2
-	readHeaderTimeout      = 5 * time.Second
-	controlShutdownTimeout = 5 * time.Second
-	redisPingTimeout       = 2 * time.Second
-	invalidationPollPeriod = 30 * time.Second
+	exitUsage               = 2
+	readHeaderTimeout       = 5 * time.Second
+	controlShutdownTimeout  = 5 * time.Second
+	redisPingTimeout        = 2 * time.Second
+	invalidationPollPeriod  = 30 * time.Second
+	clickHouseWriteTimeout  = 5 * time.Second
+	healthcheckProbeTimeout = 2 * time.Second
 )
+
+var errHealthcheckNotReady = errors.New("healthcheck probe returned non-2xx status")
 
 func main() {
 	err := run()
@@ -40,9 +45,13 @@ func main() {
 }
 
 func run() error {
-	controlConfig, err := loadControlConfig()
+	controlConfig, healthcheck, err := loadControlConfig()
 	if err != nil {
 		return fmt.Errorf("load control config: %w", err)
+	}
+
+	if healthcheck {
+		return runHealthcheck(controlConfig)
 	}
 
 	err = natsx.ValidateServers(controlConfig.NATS.Servers)
@@ -92,30 +101,12 @@ func runControl(controlConfig config.ControlConfig, natsConn *natsx.Connection) 
 
 	pepper := []byte(os.Getenv("STRAW_API_KEY_PEPPER"))
 
-	// Postgres is the control-plane source of truth for identity state and is
-	// required at startup (docs/planning/21-state-and-storage.md).
-	pool, err := openPostgres(controlConfig.Database.Postgres)
+	pool, redisClient, closeStores, err := openStores(controlConfig)
 	if err != nil {
-		return fmt.Errorf("open postgres: %w", err)
+		return err
 	}
 
-	defer pool.Close()
-
-	// Redis is ephemeral runtime state only (docs/planning/21). A Redis
-	// outage degrades rate limits, quotas, sticky sessions, and invalidation
-	// acceleration per their configured fail policies; it must not block
-	// Control startup the way a missing Postgres does.
-	redisClient, err := openRedis(controlConfig.Database.Redis)
-	if err != nil {
-		return fmt.Errorf("open redis: %w", err)
-	}
-
-	defer func() {
-		closeErr := redisClient.Close()
-		if closeErr != nil {
-			log.Printf("control: close redis client: %v", closeErr)
-		}
-	}()
+	defer closeStores()
 
 	apiKeyStore, err := setupAPIKeyStore(pool, pepper)
 	if err != nil {
@@ -134,14 +125,87 @@ func runControl(controlConfig config.ControlConfig, natsConn *natsx.Connection) 
 
 	configCache := wireConfigInvalidation(ctx, configStore, redisClient)
 
-	mux := buildControlMux(controlConfig, apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore, configCache, redisClient, natsConn)
+	metadataWriter := wireClickHouse(controlConfig.Database.ClickHouse)
+	if metadataWriter != nil {
+		defer metadataWriter.Close()
+	}
+
+	mux := buildControlMux(controlConfig, apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore, configCache, redisClient, natsConn, metadataWriter)
 
 	err = control.SetupWorkerDiscoverySubscriptions(natsConn, workerRegistry)
 	if err != nil {
 		return fmt.Errorf("setup worker discovery: %w", err)
 	}
 
-	return serveControlHTTP(ctx, controlConfig, mux)
+	return serveControl(ctx, controlConfig, mux)
+}
+
+// openStores opens the required Postgres pool and the Redis client and returns
+// a cleanup that closes both. Postgres is the control-plane source of truth and
+// must be reachable at startup (docs/planning/21); a configured-but-unreachable
+// Redis only degrades Redis-backed features per their fail policies and does
+// not block startup (see openRedis).
+func openStores(controlConfig config.ControlConfig) (*pgxpool.Pool, *redis.Client, func(), error) {
+	pool, err := openPostgres(controlConfig.Database.Postgres)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("open postgres: %w", err)
+	}
+
+	redisClient, err := openRedis(controlConfig.Database.Redis)
+	if err != nil {
+		pool.Close()
+
+		return nil, nil, nil, fmt.Errorf("open redis: %w", err)
+	}
+
+	cleanup := func() {
+		closeErr := redisClient.Close()
+		if closeErr != nil {
+			log.Printf("control: close redis client: %v", closeErr)
+		}
+
+		pool.Close()
+	}
+
+	return pool, redisClient, cleanup, nil
+}
+
+// serveControl starts the metrics/readiness server and the API server, marking
+// readiness true until ctx cancellation begins drain.
+func serveControl(ctx context.Context, controlConfig config.ControlConfig, mux *http.ServeMux) error {
+	ready := &atomic.Bool{}
+	ready.Store(true)
+
+	stopMetrics := serveMetricsHTTP(ctx, controlConfig, ready)
+	defer stopMetrics()
+
+	return serveControlHTTP(ctx, controlConfig, mux, ready)
+}
+
+// serveMetricsHTTP starts the liveness/readiness server on the metrics port
+// (docs/planning/28) and returns a stop function that shuts it down.
+func serveMetricsHTTP(ctx context.Context, controlConfig config.ControlConfig, ready *atomic.Bool) func() {
+	addr := fmt.Sprintf("%s:%d", controlConfig.Server.Host, controlConfig.Server.MetricsPort)
+	server := &http.Server{Addr: addr, Handler: newMetricsMux(ready), ReadHeaderTimeout: readHeaderTimeout}
+
+	go func() {
+		serveErr := server.ListenAndServe()
+		if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+			log.Printf("control: metrics server: %v", serveErr)
+		}
+	}()
+
+	log.Printf("control: metrics listening on %s", addr)
+
+	return func() {
+		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), controlShutdownTimeout)
+		defer cancel()
+
+		shutdownErr := server.Shutdown(shutdownCtx)
+		if shutdownErr != nil {
+			log.Printf("control: shutdown metrics server: %v", shutdownErr)
+		}
+	}
 }
 
 // setupAPIKeyStore builds the Postgres-backed API key store and bootstraps
@@ -173,6 +237,31 @@ func wireConfigInvalidation(ctx context.Context, configStore *control.PostgresCo
 	go runInvalidationPoller(ctx, configCache)
 
 	return configCache
+}
+
+// wireClickHouse builds the async request-metadata writer backed by the live
+// ClickHouse HTTP interface (docs/planning/22). It returns nil when no
+// endpoint is configured, in which case Control records no telemetry. A
+// ClickHouse outage never blocks the transport: the writer keeps a bounded
+// queue and drops oldest events per docs/planning/29.
+func wireClickHouse(cfg config.ClickHouseConfig) *control.RequestMetadataWriter {
+	if cfg.Endpoint == "" {
+		log.Printf("control: no clickhouse endpoint configured; request telemetry disabled")
+
+		return nil
+	}
+
+	sink := control.NewHTTPClickHouseSink(
+		cfg.Endpoint,
+		cfg.Database,
+		os.Getenv(cfg.UserEnv),
+		os.Getenv(cfg.PasswordEnv),
+		&http.Client{Timeout: clickHouseWriteTimeout},
+	)
+
+	log.Printf("control: request telemetry writing to clickhouse at %s (db=%s)", cfg.Endpoint, cfg.Database)
+
+	return control.NewRequestMetadataWriter(sink, cfg.MaxQueueEntries, cfg.BatchSize, time.Duration(cfg.FlushIntervalMS)*time.Millisecond)
 }
 
 // openPostgres connects to Postgres and applies the embedded migrations. The
@@ -313,14 +402,29 @@ func rehydrateWorkerAdminState(ctx context.Context, configStore *control.Postgre
 
 // buildControlMux assembles the HTTP handler with the Postgres-backed identity
 // and config stores.
-func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool, configStore *control.PostgresConfigStore, configCache *control.ConfigCache, redisClient *redis.Client, natsConn *natsx.Connection) *http.ServeMux {
+func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool, configStore *control.PostgresConfigStore, configCache *control.ConfigCache, redisClient *redis.Client, natsConn *natsx.Connection, metadataWriter *control.RequestMetadataWriter) *http.ServeMux {
 	adminHandlers := buildAdminHandlers(apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore, configCache, redisClient)
-	requestHandler := control.NewRequestHandler(
-		controlConfig.Request.MaxInlineRequestBodyBytes,
-		controlConfig.Request.MaxInlineResponseBodyBytes,
-		controlConfig.Request.MaxTimeoutMs,
-		control.NewAuthenticator(apiKeyStore, pepper),
-	)
+
+	authenticator := control.NewAuthenticator(apiKeyStore, pepper)
+
+	var requestHandler *control.RequestHandler
+	if metadataWriter != nil {
+		requestHandler = control.NewRequestHandler(
+			controlConfig.Request.MaxInlineRequestBodyBytes,
+			controlConfig.Request.MaxInlineResponseBodyBytes,
+			controlConfig.Request.MaxTimeoutMs,
+			authenticator,
+			metadataWriter,
+		)
+	} else {
+		requestHandler = control.NewRequestHandler(
+			controlConfig.Request.MaxInlineRequestBodyBytes,
+			controlConfig.Request.MaxInlineResponseBodyBytes,
+			controlConfig.Request.MaxTimeoutMs,
+			authenticator,
+		)
+	}
+
 	requestHandler.SetDispatcher(control.NewDefaultRequestDispatcher(control.RequestDispatcherOptions{
 		ConfigCache:                configCache,
 		Workers:                    workerRegistry,
@@ -414,7 +518,7 @@ func serveAdminRoutes(mux *http.ServeMux, h *control.AdminHandlers) {
 	mux.HandleFunc("POST /api/v1/admin/workers/{worker_id}/tenant-undrain", h.TenantUndrainWorker)
 }
 
-func serveControlHTTP(ctx context.Context, controlConfig config.ControlConfig, mux *http.ServeMux) error {
+func serveControlHTTP(ctx context.Context, controlConfig config.ControlConfig, mux *http.ServeMux, ready *atomic.Bool) error {
 	addr := fmt.Sprintf("%s:%d", controlConfig.Server.Host, controlConfig.Server.APIPort)
 	log.Printf("control: listening on %s", addr)
 
@@ -427,6 +531,11 @@ func serveControlHTTP(ctx context.Context, controlConfig config.ControlConfig, m
 
 	select {
 	case <-ctx.Done():
+		// Drain begins: mark readiness false so /readyz returns 503 and load
+		// balancers stop sending new requests before the API server stops
+		// (docs/planning/29 graceful shutdown).
+		ready.Store(false)
+
 		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), controlShutdownTimeout)
 		defer cancel()
 
@@ -452,8 +561,9 @@ func bootstrapAPIKey(store control.APIKeyStore, pepper []byte) (bool, error) {
 	return created, nil
 }
 
-func loadControlConfig() (config.ControlConfig, error) {
+func loadControlConfig() (config.ControlConfig, bool, error) {
 	configPath := flag.String("config", "", "path to the control config file")
+	healthcheck := flag.Bool("healthcheck", false, "probe the local /readyz endpoint and exit (for container healthchecks)")
 
 	flag.Parse()
 
@@ -467,8 +577,36 @@ func loadControlConfig() (config.ControlConfig, error) {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 
-		return config.ControlConfig{}, fmt.Errorf("load control config: %w", err)
+		return config.ControlConfig{}, false, fmt.Errorf("load control config: %w", err)
 	}
 
-	return controlConfig, nil
+	return controlConfig, *healthcheck, nil
+}
+
+// runHealthcheck probes the local /readyz endpoint on the metrics port and
+// returns nil only on a 2xx. Container healthchecks invoke the control binary
+// with -healthcheck so the distroless image needs no extra probe tooling.
+func runHealthcheck(controlConfig config.ControlConfig) error {
+	url := fmt.Sprintf("http://127.0.0.1:%d/readyz", controlConfig.Server.MetricsPort)
+
+	ctx, cancel := context.WithTimeout(context.Background(), healthcheckProbeTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return fmt.Errorf("build healthcheck request: %w", err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("healthcheck probe %s: %w", url, err)
+	}
+
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("%w: %s -> %d", errHealthcheckNotReady, url, resp.StatusCode)
+	}
+
+	return nil
 }

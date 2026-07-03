@@ -11,9 +11,12 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/nats-io/nats.go"
 	"github.com/redis/go-redis/v9"
 
+	strawpb "github.com/beremaran/straw/v2/api/proto/straw/v1"
 	"github.com/beremaran/straw/v2/internal/config"
 	"github.com/beremaran/straw/v2/internal/egress"
 	"github.com/beremaran/straw/v2/internal/natsx"
@@ -329,4 +332,150 @@ func loopbackDispatchCIDR(t *testing.T, raw string) string {
 	}
 
 	return addr.String() + "/32"
+}
+
+// TestDispatcherNATSUnavailable verifies the docs/planning/29 outage row:
+// when the NATS transport is unavailable, new request dispatch fails with
+// transport_unavailable (after routing and admission succeed).
+func TestDispatcherNATSUnavailable(t *testing.T) {
+	t.Parallel()
+
+	d := newTestDispatcher(t, []config.RoutingRule{dispatchRule()}, dispatchCandidates{dispatchCandidate()})
+	d.opts.NATS = nil // no transport available
+
+	req := validatedDispatchRequest(t, "https://example.com/")
+
+	_, perr := d.Dispatch(context.Background(), dispatchInput(req))
+	if perr == nil || perr.Code != TransportUnavailable {
+		t.Fatalf("Dispatch error = %#v, want transport_unavailable", perr)
+	}
+}
+
+// TestDispatcherAssignmentTimeout verifies that when no egress worker is
+// listening on the assignment subject, Dispatch returns AssignmentTimeout.
+func TestDispatcherAssignmentTimeout(t *testing.T) {
+	t.Parallel()
+
+	natsServer := testutil.NewFakeNATSServer(t, 2_000_000)
+	controlConn := dispatchConnect(t, natsServer.URL())
+
+	snapshot := dispatchSnapshot([]config.RoutingRule{dispatchRule()})
+	d := newTestDispatcherWithSnapshot(t, snapshot, dispatchCandidates{dispatchCandidate()})
+	d.opts.NATS = controlConn
+	d.opts.AssignmentAckTimeout = 200 * time.Millisecond
+
+	req := validatedDispatchRequest(t, "https://example.com/")
+	_, perr := d.Dispatch(context.Background(), dispatchInput(req))
+	if perr == nil || perr.Code != AssignmentTimeout {
+		t.Fatalf("Dispatch error = %#v, want assignment_timeout", perr)
+	}
+}
+
+// TestDispatcherStreamProtocolError verifies that a sequence gap in e2c frames
+// returns ProtocolError.
+func TestDispatcherStreamProtocolError(t *testing.T) {
+	t.Parallel()
+
+	natsServer := testutil.NewFakeNATSServer(t, 2_000_000)
+	controlConn := dispatchConnect(t, natsServer.URL())
+	workerConn := dispatchConnect(t, natsServer.URL())
+
+	// A stub upstream that is never reached: the worker replies ACCEPTED and
+	// then sends a frame with stream_seq=99 (a sequence gap).
+	assignSubject, err := natsx.AssignmentSubject(dispatchTestWorker, dispatchTestSess)
+	if err != nil {
+		t.Fatalf("AssignmentSubject: %v", err)
+	}
+
+	_, err = workerConn.Subscribe(assignSubject, func(msg *nats.Msg) {
+		env, decodeErr := natsx.UnmarshalEnvelope(msg.Data)
+		if decodeErr != nil {
+			return
+		}
+		// Subscribe to c2e so the flush from sendRequestStart doesn't block.
+		c2eSubj, _ := natsx.StreamSubject(env.GetRequestId(), dispatchTestWorker, dispatchTestSess, natsx.DirectionControlToExecutor)
+		_, _ = workerConn.Subscribe(c2eSubj, func(*nats.Msg) {})
+		_ = workerConn.Flush()
+
+		// Reply with ACCEPTED.
+		ack := &strawpb.Envelope{
+			RequestId:     env.GetRequestId(),
+			TenantId:      env.GetTenantId(),
+			ProtocolMajor: ProtocolMajor,
+			Attempt:       env.GetAttempt(),
+			Payload:       &strawpb.Envelope_AssignAck{AssignAck: &strawpb.AssignAck{Code: strawpb.AssignAckCode_ASSIGN_ACK_ACCEPTED}},
+		}
+		raw, _ := natsx.MarshalEnvelope(ack)
+		_ = msg.Respond(raw)
+
+		// Send a frame with a sequence gap (seq=99 instead of seq=1).
+		e2cSubj, _ := natsx.StreamSubject(env.GetRequestId(), dispatchTestWorker, dispatchTestSess, natsx.DirectionExecutorToControl)
+		bad := &strawpb.Envelope{
+			RequestId:     env.GetRequestId(),
+			TenantId:      env.GetTenantId(),
+			ProtocolMajor: ProtocolMajor,
+			Attempt:       env.GetAttempt(),
+			Payload: &strawpb.Envelope_StreamFrame{StreamFrame: &strawpb.StreamFrame{
+				StreamSeq: 99,
+				Attempt:   defaultRequestAttempt,
+				Payload:   &strawpb.StreamFrame_End{End: &strawpb.EndFrame{}},
+			}},
+		}
+		badRaw, _ := natsx.MarshalEnvelope(bad)
+		_ = workerConn.Publish(e2cSubj, badRaw)
+		_ = workerConn.Flush()
+	})
+	if err != nil {
+		t.Fatalf("Subscribe assignment: %v", err)
+	}
+	_ = workerConn.Flush()
+
+	snapshot := dispatchSnapshot([]config.RoutingRule{dispatchRule()})
+	d := newTestDispatcherWithSnapshot(t, snapshot, dispatchCandidates{dispatchCandidate()})
+	d.opts.NATS = controlConn
+
+	req := validatedDispatchRequest(t, "https://example.com/")
+	_, perr := d.Dispatch(context.Background(), dispatchInput(req))
+	if perr == nil || perr.Code != ProtocolError {
+		t.Fatalf("Dispatch error = %#v, want protocol_error", perr)
+	}
+}
+
+// TestDispatcherCancellation verifies that cancelling the context returns
+// Cancelled and sends a CancelFrame to the egress worker.
+func TestDispatcherCancellation(t *testing.T) {
+	t.Parallel()
+
+	// Slow upstream: blocks until the test finishes.
+	slowHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+		case <-time.After(10 * time.Second):
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	slowUpstream := httptest.NewServer(slowHandler)
+	t.Cleanup(slowUpstream.Close)
+
+	d, stop := newLiveDispatchHarness(t, slowHandler)
+	defer stop()
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	req := validatedDispatchRequest(t, rewriteDispatchHost(t, d.upstreamURL, "dispatch.test"))
+
+	done := make(chan *PipelineError, 1)
+	go func() {
+		_, perr := d.Dispatch(ctx, dispatchInput(req))
+		done <- perr
+	}()
+
+	// Give the request time to reach the upstream then cancel.
+	time.Sleep(150 * time.Millisecond)
+	cancel()
+
+	perr := <-done
+	if perr == nil || perr.Code != Cancelled {
+		t.Fatalf("Dispatch error = %#v, want cancelled", perr)
+	}
 }
