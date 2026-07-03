@@ -53,7 +53,10 @@ Result:
 
 ## Remaining Work
 
-- None for task 11.
+- (Corrected by audit 2026-07-03.) The executor is never invoked by the running binary:
+  `cmd/egress/main.go` constructs it and discards it (`_ = egress.NewExecutor(...)`), and no
+  assignment-consumption loop exists. Live invocation is owned by
+  `docs/tasks/p0/23-egress-assignment-execution-loop.md`.
 
 ## Blockers
 

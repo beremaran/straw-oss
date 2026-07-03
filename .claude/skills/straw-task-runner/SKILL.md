@@ -19,8 +19,31 @@ Use this skill to complete exactly one Straw task safely.
 6. Implement only the selected task.
 7. Update tests with the smallest checks that prove the task behavior.
 8. Run focused tests first, then `make check`.
-9. Update task status only after verification.
-10. Write a handoff note using `docs/agents/templates/handoff.md`.
+9. Run the completion audit below.
+10. Update task status only after verification and the audit.
+11. Write a handoff note using `docs/agents/templates/handoff.md`.
+
+## Completion Audit
+
+Before marking any step or task done, verify each claim against the definitions below. Past runs checked off
+"wire connection setup" after adding only config validation, and wrote "Remaining Work: None" for code backed
+entirely by in-memory fakes. Do not repeat that.
+
+- "Wire", "connect", or "integrate" means the built binary (`cmd/control`, `cmd/egress`) actually constructs and
+  uses the real component at runtime. Startup validation, subject helpers, or interface definitions do NOT satisfy
+  a wiring step. If the task means library-only work, it says so explicitly.
+- A step you did not fully do stays unchecked. Partially done = unchecked, with a note on what remains.
+- Every behavior you defer must name the exact task file that owns it (e.g. "deferred to
+  `docs/tasks/p0/13-rate-limits-quotas-redis.md`"). If no existing task owns it, STOP: report the gap to the user
+  instead of writing "deferred to later tasks". Unowned deferrals are how work silently disappears.
+- If you introduce an in-memory or fake implementation of something the planning docs require to be backed by a
+  real system (NATS, Postgres, Redis, ClickHouse — see `docs/planning/21-state-and-storage.md`), the handoff's
+  Remaining Work section must list the real-backend swap and its owning task. "Remaining Work: None" is only valid
+  when nothing in the task is faked, stubbed, or deferred.
+- Before writing the handoff, grep your diff for `InMemory`, `stub`, `fake`, `synthetic`, and `TODO`, and account
+  for every hit in Remaining Work.
+- Re-read the task's Acceptance Criteria last, and confirm each one against the code you actually wrote, not the
+  code you planned to write.
 
 ## Rules
 
@@ -40,7 +63,8 @@ Stop and ask before editing further if:
 - the task requires an open decision from `docs/planning/32-open-decisions.md`;
 - a new dependency seems necessary;
 - verification fails for a reason outside the selected task;
-- completing the task requires changing another task's scope.
+- completing the task requires changing another task's scope;
+- you must defer behavior that no existing task file owns.
 
 ## Good Invocation
 

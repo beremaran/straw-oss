@@ -1,4 +1,4 @@
-# 15 - P0 Test Matrix and Compose
+# 25 - P0 Test Matrix and Compose
 
 Status: not started
 
@@ -16,7 +16,7 @@ Close the P0 test matrix and provide a local docker-compose environment for the 
 
 ## Prerequisites
 
-- Tasks 01 through 14 completed.
+- Tasks 01 through 24 completed (including the integration tasks 16-24 added by the 2026-07-03 audit).
 
 ## Out of Scope
 
@@ -66,3 +66,4 @@ Close the P0 test matrix and provide a local docker-compose environment for the 
 
 - Stop if a missing test requires an undecided P1/P2 policy.
 - Stop before adding production deployment manifests.
+- Stop if a deferral would have no owning task file.
