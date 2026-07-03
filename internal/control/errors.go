@@ -48,6 +48,7 @@ const (
 	errorCodeQuotaExhausted            = "quota_exhausted"
 	errorCodeInvalidRequest            = "invalid_request"
 	errorCodeDestinationDenied         = "destination_denied"
+	errorCodeHeaderInjectionFailed     = "header_injection_failed"
 	errorCodeConflict                  = "conflict"
 	errorCodeUnsupportedIngressMode    = "unsupported_ingress_mode"
 	errorCodeRouteNoMatch              = "route_no_match"
@@ -90,6 +91,8 @@ const (
 	InvalidRequest ErrorCode = 6
 	// DestinationDenied is returned when a deny rule matches the request.
 	DestinationDenied ErrorCode = 7
+	// HeaderInjectionFailed is returned when a Control-resolved injection operation is invalid.
+	HeaderInjectionFailed ErrorCode = 8
 	// Conflict is returned when a versioned write collides with a newer value.
 	Conflict ErrorCode = 9
 	// UnsupportedIngressMode is returned when the endpoint rejects the mode.
@@ -151,6 +154,7 @@ var ErrorRegistry = map[ErrorCode]ErrorEntry{
 	QuotaExhausted:            {Category: errorCategoryClient, Code: errorCodeQuotaExhausted, Message: "Quota exhausted", Retryable: true, HTTPStatus: statusTooManyRequests},
 	InvalidRequest:            {Category: errorCategoryClient, Code: errorCodeInvalidRequest, Message: "Malformed request or missing business fields", Retryable: false, HTTPStatus: statusBadRequest},
 	DestinationDenied:         {Category: errorCategoryClient, Code: errorCodeDestinationDenied, Message: "Deny rule matched", Retryable: false, HTTPStatus: statusForbidden},
+	HeaderInjectionFailed:     {Category: errorCategoryClient, Code: errorCodeHeaderInjectionFailed, Message: "Resolved injection invalid", Retryable: false, HTTPStatus: statusBadRequest},
 	Conflict:                  {Category: errorCategoryClient, Code: errorCodeConflict, Message: "Config version conflict", Retryable: false, HTTPStatus: statusConflict},
 	UnsupportedIngressMode:    {Category: errorCategoryClient, Code: errorCodeUnsupportedIngressMode, Message: "Unsupported mode for endpoint or route", Retryable: false, HTTPStatus: statusBadRequest},
 	RouteNoMatch:              {Category: errorCategoryRouting, Code: errorCodeRouteNoMatch, Message: "No rule matched", Retryable: false, HTTPStatus: statusNotFound},
