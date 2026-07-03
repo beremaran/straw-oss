@@ -3,6 +3,8 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"flag"
 	"fmt"
 	"log"
@@ -12,10 +14,14 @@ import (
 	"time"
 
 	"github.com/beremaran/straw/v2/internal/config"
+	"github.com/beremaran/straw/v2/internal/egress"
 	"github.com/beremaran/straw/v2/internal/natsx"
 )
 
-const exitUsage = 2
+const (
+	exitUsage          = 2
+	defaultConcurrency = 4
+)
 
 func main() {
 	err := run()
@@ -69,7 +75,36 @@ func run() error {
 
 	log.Printf("egress: connected to %s", natsConn.ConnectedUrlRedacted())
 
-	<-ctx.Done()
+	return runWorker(ctx, natsConn, egressConfig)
+}
+
+func runWorker(ctx context.Context, natsConn *natsx.Connection, cfg config.EgressConfig) error {
+	// Generate the worker's ed25519 identity keypair.
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return fmt.Errorf("generate worker key: %w", err)
+	}
+
+	id := egress.Identity{
+		WorkerID:     cfg.WorkerID,
+		CredentialID: cfg.CredentialID,
+		ExecutorType: "egress",
+		PrivateKey:   priv,
+	}
+
+	caps := egress.Capabilities{
+		SoftwareVersion: "dev",
+		MaxConcurrency:  defaultConcurrency,
+	}
+
+	heartbeatInterval := time.Duration(cfg.HeartbeatIntervalMs) * time.Millisecond
+
+	log.Printf("egress: starting run loop (worker=%s, heartbeat=%v)", cfg.WorkerID, heartbeatInterval)
+
+	err = egress.Run(ctx, natsConn, id, caps, heartbeatInterval)
+	if err != nil {
+		return fmt.Errorf("egress run loop: %w", err)
+	}
 
 	return nil
 }

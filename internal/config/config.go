@@ -19,6 +19,7 @@ var (
 	errUnexpectedTrailingJSON   = errors.New("unexpected trailing JSON data")
 	errServerHostRequired       = errors.New("server.host is required")
 	errWorkerIDRequired         = errors.New("worker_id is required")
+	errCredentialIDRequired     = errors.New("credential_id is required")
 	errInvalidConfigVersion     = errors.New("invalid config_version")
 	errInvalidServerAPIPort     = errors.New("server.api_port must be between 1 and 65535")
 	errInvalidServerMetricsPort = errors.New("server.metrics_port must be between 1 and 65535")
@@ -71,8 +72,10 @@ type NATSConfig struct {
 
 // EgressConfig is the egress-worker config block.
 type EgressConfig struct {
-	WorkerID string     `json:"worker_id"`
-	NATS     NATSConfig `json:"nats"`
+	WorkerID            string     `json:"worker_id"`
+	CredentialID        string     `json:"credential_id"`
+	HeartbeatIntervalMs int        `json:"heartbeat_interval_ms"`
+	NATS                NATSConfig `json:"nats"`
 }
 
 // LoadControl reads and validates a control config file.
@@ -249,6 +252,14 @@ func (s ControlServerConfig) validate() error {
 func (e *EgressConfig) validate() error {
 	if e.WorkerID == "" {
 		return errWorkerIDRequired
+	}
+
+	if e.CredentialID == "" {
+		return errCredentialIDRequired
+	}
+
+	if e.HeartbeatIntervalMs <= 0 {
+		e.HeartbeatIntervalMs = 5000
 	}
 
 	e.NATS.applyDefaults()

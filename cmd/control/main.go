@@ -91,7 +91,14 @@ func runControl(controlConfig config.ControlConfig, natsConn *natsx.Connection) 
 		log.Printf("control: bootstrapped first platform system_admin API key from %s", control.BootstrapSystemAdminEnvVar)
 	}
 
-	mux := buildControlMux(controlConfig, apiKeyStore, pepper)
+	workerRegistry, workerCreds := buildWorkerRegistry()
+
+	mux := buildControlMux(controlConfig, apiKeyStore, pepper, workerRegistry, workerCreds)
+
+	err = control.SetupWorkerDiscoverySubscriptions(natsConn, workerRegistry)
+	if err != nil {
+		return fmt.Errorf("setup worker discovery: %w", err)
+	}
 
 	return serveControlHTTP(controlConfig, mux)
 }
@@ -137,12 +144,17 @@ func bootstrapAPIKey(store control.APIKeyStore, pepper []byte) (bool, error) {
 	return created, nil
 }
 
-func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.APIKeyStore, pepper []byte) *http.ServeMux {
+func buildWorkerRegistry() (*control.WorkerRegistry, control.WorkerCredentialStore) {
+	workerCreds := control.NewInMemoryWorkerCredentialStore()
+	registry := control.NewWorkerRegistry(workerCreds, control.DefaultWorkerTimings(), nil)
+
+	return registry, workerCreds
+}
+
+func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore) *http.ServeMux {
 	authenticator := control.NewAuthenticator(apiKeyStore, pepper)
 	snapshotStore := control.NewInMemorySnapshotStore()
 	configCache := control.NewConfigCache(snapshotStore, nil)
-	workerCreds := control.NewInMemoryWorkerCredentialStore()
-	workerRegistry := control.NewWorkerRegistry(workerCreds, control.DefaultWorkerTimings(), nil)
 
 	adminHandlers := &control.AdminHandlers{
 		Authenticator: authenticator,
