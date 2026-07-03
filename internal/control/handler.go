@@ -16,6 +16,7 @@ type RequestHandler struct {
 	maxTimeoutMs         uint64
 	authenticator        *Authenticator
 	metadataWriter       RequestMetadataRecorder
+	dispatcher           RequestDispatcher
 }
 
 // NewRequestHandler creates a handler with the given config limits. auth
@@ -36,6 +37,11 @@ func NewRequestHandler(maxRequestBodyBytes, maxResponseBodyBytes, maxTimeoutMs u
 		authenticator:        auth,
 		metadataWriter:       recorder,
 	}
+}
+
+// SetDispatcher wires the real request execution path.
+func (h *RequestHandler) SetDispatcher(dispatcher RequestDispatcher) {
+	h.dispatcher = dispatcher
 }
 
 // Handler is the http.HandlerFunc for POST /api/v1/requests.
@@ -94,10 +100,28 @@ func (h *RequestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.metadataWriter.Enqueue(buildRequestEvent(requestID, identity, validated))
 	}
 
-	_ = validated // validated is used by later tasks; stub for now.
-	_ = identity  // tenant_id/role feed routing and quotas in later tasks.
+	h.dispatchValidated(w, r, requestID, identity, validated)
+}
 
-	writeSuccessResponse(w, requestID)
+func (h *RequestHandler) dispatchValidated(w http.ResponseWriter, r *http.Request, requestID string, identity Identity, validated *ValidatedRequest) {
+	if h.dispatcher == nil {
+		writePipelineError(w, requestID, &PipelineError{Code: ControlInternalError})
+
+		return
+	}
+
+	resp, dispatchErr := h.dispatcher.Dispatch(r.Context(), DispatchInput{
+		RequestID: requestID,
+		Identity:  identity,
+		Request:   validated,
+	})
+	if dispatchErr != nil {
+		writePipelineError(w, requestID, dispatchErr)
+
+		return
+	}
+
+	writeSuccessResponse(w, resp)
 }
 
 // authenticateAndAuthorize resolves the caller's Identity and enforces the
@@ -146,23 +170,7 @@ func asValidationError(err error, target **ValidationError) bool {
 	return false
 }
 
-func writeSuccessResponse(w http.ResponseWriter, requestID string) {
-	response := SuccessResponse{
-		RequestID: requestID,
-		Status:    http.StatusOK,
-		Headers:   nil,
-		Body: ResponseBody{
-			Mode:      "inline_base64",
-			Truncated: false,
-		},
-		Timing: RequestTiming{
-			RoutingMs:    0,
-			AssignmentMs: 0,
-			EgressMs:     0,
-			TotalMs:      0,
-		},
-	}
-
+func writeSuccessResponse(w http.ResponseWriter, response SuccessResponse) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 
@@ -170,6 +178,28 @@ func writeSuccessResponse(w http.ResponseWriter, requestID string) {
 	if err != nil {
 		return
 	}
+}
+
+func writePipelineError(w http.ResponseWriter, requestID string, err *PipelineError) {
+	if err == nil {
+		err = &PipelineError{Code: ControlInternalError}
+	}
+
+	resp := ErrorResponseFromCodeWithRetry(err.Code, requestID, err.Details, err.RetryAfterMs)
+	if err.Message != "" {
+		resp.Message = err.Message
+	}
+
+	if err.TimeoutType != "" {
+		resp.TimeoutType = err.TimeoutType
+	}
+
+	status := http.StatusInternalServerError
+	if entry, ok := ErrorRegistry[err.Code]; ok {
+		status = entry.HTTPStatus
+	}
+
+	WriteError(w, status, resp)
 }
 
 // SuccessResponse is the JSON envelope for successful upstream transport.

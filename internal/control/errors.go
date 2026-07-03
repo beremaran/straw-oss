@@ -37,7 +37,9 @@ const (
 
 	// errorDetailReasonKey is the ErrorResponse.Details key admin handlers use
 	// to explain an invalid_request rejection.
-	errorDetailReasonKey = "reason"
+	errorDetailReasonKey     = "reason"
+	errorDetailDirectionKey  = "direction"
+	errorDetailLimitBytesKey = "limit_bytes"
 
 	errorCategoryClient    = "client"
 	errorCategoryRouting   = "routing"

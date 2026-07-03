@@ -269,6 +269,7 @@ func TestRequestHandlerQueuesSanitizedMetadata(t *testing.T) {
 
 	recorder := &captureRequestMetadataRecorder{}
 	handler := NewRequestHandler(1_048_576, 1_048_576, 120_000, NewAuthenticator(store, pepper), recorder)
+	handler.SetDispatcher(fakeRequestDispatcher{})
 
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/requests", strings.NewReader(requestMetadataTestRequestEnvelope))
 	req.Header.Set("Authorization", "Bearer "+gen.Secret)

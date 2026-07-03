@@ -156,6 +156,11 @@ func ResolveDestinationPolicy(req DestinationPolicyRequest) (*DestinationPolicyR
 	}
 
 	policy := &strawpb.DestinationPolicy{
+		AllowLoopback:         allowedPrefixesContain(allowedCidrs, func(addr netip.Addr) bool { return addr.IsLoopback() }),
+		AllowPrivateRanges:    allowedPrefixesContain(allowedCidrs, func(addr netip.Addr) bool { return addr.IsPrivate() }),
+		AllowLinkLocal:        allowedPrefixesContain(allowedCidrs, func(addr netip.Addr) bool { return addr.IsLinkLocalUnicast() }),
+		AllowMulticast:        allowedPrefixesContain(allowedCidrs, func(addr netip.Addr) bool { return addr.IsMulticast() }),
+		AllowMetadataIps:      allowedPrefixesContain(allowedCidrs, isMetadataAddr),
 		DeniedCidrs:           deniedCidrs,
 		AllowedCidrs:          allowedCidrs,
 		DeniedHostSuffixes:    deniedHostSuffixes,
@@ -167,6 +172,25 @@ func ResolveDestinationPolicy(req DestinationPolicyRequest) (*DestinationPolicyR
 	}
 
 	return &DestinationPolicyResult{Policy: policy, InjectionOperations: ops, FingerprintProfile: fingerprint}, nil
+}
+
+func allowedPrefixesContain(prefixes []string, match func(netip.Addr) bool) bool {
+	for _, raw := range prefixes {
+		prefix, err := netip.ParsePrefix(raw)
+		if err != nil {
+			continue
+		}
+
+		if match(prefix.Addr()) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func isMetadataAddr(addr netip.Addr) bool {
+	return slices.Contains(metadataIPs, addr)
 }
 
 // normalizeTargetHost lowercases and trims the trailing dot from the URL

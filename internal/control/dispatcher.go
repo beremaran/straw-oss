@@ -1,0 +1,795 @@
+package control
+
+import (
+	"context"
+	"encoding/base64"
+	"errors"
+	"fmt"
+	"math"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/nats-io/nats.go"
+
+	strawpb "github.com/beremaran/straw/v2/api/proto/straw/v1"
+	"github.com/beremaran/straw/v2/internal/config"
+	"github.com/beremaran/straw/v2/internal/natsx"
+)
+
+const (
+	defaultAssignmentAckTimeout   = 2 * time.Second
+	defaultInitialStreamCredit    = 8 << 20
+	defaultMaxInflightStreamBytes = 16 << 20
+	defaultFrameIdleTimeout       = 15 * time.Second
+	defaultRequestFrameBuffer     = 32
+	defaultRequestAttempt         = uint32(1)
+	defaultPayloadCaptureDecision = "none"
+	defaultMaxFrameDataBytes      = 1048576
+	defaultRequestTimeoutFallback = 120000
+	responseFrameCheckInterval    = 100 * time.Millisecond
+	timeoutTypeAssignment         = "assignment_timeout"
+	timeoutTypeTotalDeadline      = "total_deadline_timeout"
+	timeoutTypeIdle               = "idle_timeout"
+)
+
+// RequestDispatcher executes a validated REST request.
+type RequestDispatcher interface {
+	Dispatch(ctx context.Context, in DispatchInput) (SuccessResponse, *PipelineError)
+}
+
+// DispatchInput is the authenticated, validated request context.
+type DispatchInput struct {
+	RequestID string
+	Identity  Identity
+	Request   *ValidatedRequest
+}
+
+// PipelineError is a canonical dispatch failure.
+type PipelineError struct {
+	Code         ErrorCode
+	Message      string
+	Details      map[string]string
+	RetryAfterMs int64
+	TimeoutType  string
+}
+
+// RequestDispatcherOptions wires the Control request pipeline.
+type RequestDispatcherOptions struct {
+	ConfigCache                *ConfigCache
+	Workers                    CandidateSource
+	Sticky                     StickyBackend
+	NATS                       *natsx.Connection
+	RateLimitAdmission         *RateLimitAdmission
+	QuotaAdmission             *QuotaAdmission
+	MaxInlineResponseBodyBytes uint64
+	MaxFrameDataBytes          uint64
+	MaxTimeoutMs               uint64
+	AssignmentAckTimeout       time.Duration
+	InitialUploadCreditBytes   uint64
+	InitialDownloadCreditBytes uint64
+	MaxInflightUploadBytes     uint64
+	MaxInflightDownloadBytes   uint64
+	FrameIdleTimeout           time.Duration
+	Now                        func() time.Time
+}
+
+// DefaultRequestDispatcher is the P0 Control dispatch pipeline.
+type DefaultRequestDispatcher struct {
+	opts RequestDispatcherOptions
+}
+
+// NewDefaultRequestDispatcher builds the real Control request dispatcher.
+func NewDefaultRequestDispatcher(opts RequestDispatcherOptions) *DefaultRequestDispatcher {
+	if opts.AssignmentAckTimeout == 0 {
+		opts.AssignmentAckTimeout = defaultAssignmentAckTimeout
+	}
+
+	if opts.InitialUploadCreditBytes == 0 {
+		opts.InitialUploadCreditBytes = defaultInitialStreamCredit
+	}
+
+	if opts.InitialDownloadCreditBytes == 0 {
+		opts.InitialDownloadCreditBytes = defaultInitialStreamCredit
+	}
+
+	if opts.MaxInflightUploadBytes == 0 {
+		opts.MaxInflightUploadBytes = defaultMaxInflightStreamBytes
+	}
+
+	if opts.MaxInflightDownloadBytes == 0 {
+		opts.MaxInflightDownloadBytes = defaultMaxInflightStreamBytes
+	}
+
+	if opts.MaxFrameDataBytes == 0 {
+		opts.MaxFrameDataBytes = defaultMaxFrameDataBytes
+	}
+
+	if opts.FrameIdleTimeout == 0 {
+		opts.FrameIdleTimeout = defaultFrameIdleTimeout
+	}
+
+	if opts.Sticky == nil {
+		opts.Sticky = NewStickyStore(opts.Now)
+	}
+
+	if opts.Now == nil {
+		opts.Now = time.Now
+	}
+
+	return &DefaultRequestDispatcher{opts: opts}
+}
+
+// Dispatch runs admission, routing, assignment, streaming, and response
+// buffering for one REST request.
+func (d *DefaultRequestDispatcher) Dispatch(ctx context.Context, in DispatchInput) (SuccessResponse, *PipelineError) {
+	started := d.opts.Now()
+
+	if in.Request == nil || d.opts.ConfigCache == nil || d.opts.Workers == nil {
+		return SuccessResponse{}, &PipelineError{Code: ControlInternalError}
+	}
+
+	snapshot, err := d.opts.ConfigCache.Snapshot(ctx, in.Identity.TenantID)
+	if err != nil {
+		return SuccessResponse{}, &PipelineError{Code: ControlInternalError}
+	}
+
+	if perr := d.admit(ctx, in, snapshot); perr != nil {
+		return SuccessResponse{}, perr
+	}
+
+	routeStart := d.opts.Now()
+	route := d.route(in, snapshot)
+	routingMs := millisSince(routeStart, d.opts.Now())
+
+	if !route.OK {
+		return SuccessResponse{}, routeError(route.ErrorCode)
+	}
+
+	policy, verr := ResolveDestinationPolicy(DestinationPolicyRequest{
+		Snapshot:                    snapshot,
+		TargetURL:                   in.Request.URL,
+		RequestedFingerprintProfile: in.Request.Fingerprint,
+		MaxInjectedHeaderBytes:      d.opts.MaxFrameDataBytes,
+		UpstreamProxyEnabled:        false,
+		UpstreamProxyTrusted:        false,
+	})
+	if verr != nil {
+		return SuccessResponse{}, validationPipelineError(verr)
+	}
+
+	deadline := d.deadline(in.Request)
+
+	result, assignmentMs, perr := d.executeAttempt(ctx, in, route, policy, snapshot.ConfigVersion, deadline)
+	if perr != nil {
+		return SuccessResponse{}, perr
+	}
+
+	if d.opts.QuotaAdmission != nil {
+		_ = d.opts.QuotaAdmission.RecordSuccess(ctx, quotaFromSnapshot(in.Identity.TenantID, snapshot.Quota))
+		_ = d.opts.QuotaAdmission.AddBandwidth(ctx, in.Identity.TenantID, int64(len(in.Request.BodyData)+len(result.body)))
+	}
+
+	return successFromDispatch(in.RequestID, result, routingMs, assignmentMs, millisSince(started, d.opts.Now())), nil
+}
+
+func successFromDispatch(requestID string, result dispatchResult, routingMs, assignmentMs, totalMs int64) SuccessResponse {
+	return SuccessResponse{
+		RequestID: requestID,
+		Status:    int(result.status),
+		Headers:   headersFromProto(result.headers),
+		Body: ResponseBody{
+			Mode:       "inline_base64",
+			DataBase64: base64.StdEncoding.EncodeToString(result.body),
+			Truncated:  false,
+		},
+		Timing: RequestTiming{
+			RoutingMs:    routingMs,
+			AssignmentMs: assignmentMs,
+			EgressMs:     result.egressMs,
+			TotalMs:      totalMs,
+		},
+	}
+}
+
+func (d *DefaultRequestDispatcher) admit(ctx context.Context, in DispatchInput, snapshot config.TenantSnapshot) *PipelineError {
+	if d.opts.RateLimitAdmission != nil {
+		decision := d.opts.RateLimitAdmission.Check(ctx, rateLimitFromSnapshot(in.Identity.TenantID, snapshot.RateLimits), RateLimitRequest{
+			TenantID:   in.Identity.TenantID,
+			APIKeyID:   in.Identity.APIKeyID,
+			TargetHost: strings.ToLower(in.Request.URL.Hostname()),
+			IPType:     in.Request.Routing.IPType,
+		})
+		if !decision.Allowed {
+			return &PipelineError{Code: RateLimitExceeded, RetryAfterMs: decision.RetryAfterMs}
+		}
+	}
+
+	if d.opts.QuotaAdmission != nil {
+		decision := d.opts.QuotaAdmission.CheckAdmission(ctx, quotaFromSnapshot(in.Identity.TenantID, snapshot.Quota))
+		if !decision.Allowed {
+			details := map[string]string{}
+			if decision.Reason != "" {
+				details["reason"] = decision.Reason
+			}
+
+			return &PipelineError{Code: QuotaExhausted, Details: details}
+		}
+	}
+
+	return nil
+}
+
+func (d *DefaultRequestDispatcher) route(in DispatchInput, snapshot config.TenantSnapshot) RouteOutcome {
+	router := NewRouter(
+		snapshotRules{tenantID: in.Identity.TenantID, rules: snapshot.RoutingRules},
+		NewStaticPoolPolicyProvider(nil),
+		d.opts.Workers,
+		d.opts.Sticky,
+		d.opts.Now,
+	)
+
+	return router.Evaluate(RouteRequest{
+		TenantID:        in.Identity.TenantID,
+		Tags:            in.Request.Routing.Tags,
+		Country:         in.Request.Routing.Country,
+		Region:          in.Request.Routing.Region,
+		IPType:          in.Request.Routing.IPType,
+		IngressType:     requestMetadataIngressType,
+		TargetHost:      strings.ToLower(in.Request.URL.Hostname()),
+		StickySessionID: in.Request.StickySessionID,
+	})
+}
+
+func (d *DefaultRequestDispatcher) executeAttempt(ctx context.Context, in DispatchInput, route RouteOutcome, policy *DestinationPolicyResult, configVersion uint64, deadline time.Time) (dispatchResult, int64, *PipelineError) {
+	assignmentStarted := d.opts.Now()
+
+	if d.opts.NATS == nil {
+		return dispatchResult{}, 0, &PipelineError{Code: TransportUnavailable}
+	}
+
+	c2eSubject, err := natsx.StreamSubject(in.RequestID, route.WorkerID, route.SessionID, natsx.DirectionControlToExecutor)
+	if err != nil {
+		return dispatchResult{}, 0, &PipelineError{Code: ControlInternalError}
+	}
+
+	e2cSubject, err := natsx.StreamSubject(in.RequestID, route.WorkerID, route.SessionID, natsx.DirectionExecutorToControl)
+	if err != nil {
+		return dispatchResult{}, 0, &PipelineError{Code: ControlInternalError}
+	}
+
+	frames := make(chan *strawpb.StreamFrame, defaultRequestFrameBuffer)
+
+	sub, err := d.opts.NATS.Subscribe(e2cSubject, func(msg *nats.Msg) {
+		frames <- decodeDispatchFrame(msg.Data)
+	})
+	if err != nil {
+		return dispatchResult{}, 0, &PipelineError{Code: TransportUnavailable}
+	}
+
+	defer func() { _ = sub.Unsubscribe() }()
+
+	err = d.opts.NATS.Flush()
+	if err != nil {
+		return dispatchResult{}, 0, &PipelineError{Code: TransportUnavailable}
+	}
+
+	assign := d.assignRequest(in, route, configVersion, deadline)
+
+	ack, perr := d.requestAssign(route.AssignSubject, in, assign, deadline)
+	if perr != nil {
+		return dispatchResult{}, millisSince(assignmentStarted, d.opts.Now()), perr
+	}
+
+	if ack.GetCode() != strawpb.AssignAckCode_ASSIGN_ACK_ACCEPTED {
+		return dispatchResult{}, millisSince(assignmentStarted, d.opts.Now()), assignRejectError(ack.GetCode())
+	}
+
+	assignmentMs := millisSince(assignmentStarted, d.opts.Now())
+
+	err = d.sendRequestStart(c2eSubject, in, route, policy, configVersion, deadline)
+	if err != nil {
+		return dispatchResult{}, assignmentMs, &PipelineError{Code: TransportUnavailable}
+	}
+
+	result, perr := d.readResponse(ctx, frames, route, deadline)
+
+	return result, assignmentMs, perr
+}
+
+func (d *DefaultRequestDispatcher) requestAssign(subject string, in DispatchInput, assign *strawpb.AssignRequest, deadline time.Time) (*strawpb.AssignAck, *PipelineError) {
+	env := &strawpb.Envelope{
+		RequestId:      in.RequestID,
+		TenantId:       in.Identity.TenantID,
+		DeadlineUnixMs: deadline.UnixMilli(),
+		ProtocolMajor:  ProtocolMajor,
+		Attempt:        defaultRequestAttempt,
+		Payload:        &strawpb.Envelope_AssignRequest{AssignRequest: assign},
+	}
+
+	raw, err := natsx.MarshalEnvelope(env)
+	if err != nil {
+		return nil, &PipelineError{Code: ControlInternalError}
+	}
+
+	timeout := time.Until(ackDeadline(d.opts.Now(), d.opts.AssignmentAckTimeout, deadline))
+	if timeout <= 0 {
+		return nil, &PipelineError{Code: AssignmentTimeout, TimeoutType: timeoutTypeTotalDeadline}
+	}
+
+	msg, err := d.opts.NATS.Request(subject, raw, timeout)
+	if err != nil {
+		if errors.Is(err, nats.ErrTimeout) {
+			timeoutType := timeoutTypeAssignment
+			if !d.opts.Now().Before(deadline) {
+				timeoutType = timeoutTypeTotalDeadline
+			}
+
+			return nil, &PipelineError{Code: AssignmentTimeout, TimeoutType: timeoutType}
+		}
+
+		return nil, &PipelineError{Code: TransportUnavailable}
+	}
+
+	reply, err := natsx.UnmarshalEnvelope(msg.Data)
+	if err != nil || reply.GetAssignAck() == nil {
+		return nil, &PipelineError{Code: ProtocolError}
+	}
+
+	return reply.GetAssignAck(), nil
+}
+
+func (d *DefaultRequestDispatcher) sendRequestStart(subject string, in DispatchInput, route RouteOutcome, policy *DestinationPolicyResult, configVersion uint64, deadline time.Time) error {
+	start := &strawpb.RequestStart{
+		Mode:                   strawpb.RequestMode_REQUEST_MODE_DECODED_HTTP,
+		Method:                 in.Request.Method,
+		Url:                    in.Request.URL.String(),
+		Headers:                headersToProto(in.Request.Headers),
+		SelectedRouteId:        route.RuleID,
+		SelectedPoolId:         route.PoolID,
+		DeadlineUnixMs:         deadline.UnixMilli(),
+		Replayable:             in.Request.Replayable,
+		PayloadCaptureDecision: defaultPayloadCaptureDecision,
+		FingerprintInstruction: wireFingerprint(policy.FingerprintProfile),
+		InjectionOperations:    policy.InjectionOperations,
+		RedirectPolicy:         strawpb.RedirectPolicy_REDIRECT_POLICY_NO_FOLLOW,
+		DestinationPolicy:      policy.Policy,
+		PolicyVersion:          strconv.FormatUint(configVersion, 10),
+	}
+
+	seq := uint64(1)
+
+	err := d.publishFrame(subject, in, deadline, &strawpb.StreamFrame{
+		StreamSeq: seq,
+		Attempt:   defaultRequestAttempt,
+		Payload:   &strawpb.StreamFrame_RequestStart{RequestStart: start},
+	})
+	if err != nil {
+		return err
+	}
+
+	offset := uint64(0)
+
+	body := in.Request.BodyData
+	for len(body) > 0 {
+		seq++
+		n := frameChunkSize(len(body), d.opts.MaxFrameDataBytes)
+		chunk := body[:n]
+		body = body[n:]
+
+		err = d.publishFrame(subject, in, deadline, &strawpb.StreamFrame{
+			StreamSeq: seq,
+			Attempt:   defaultRequestAttempt,
+			Payload:   &strawpb.StreamFrame_Data{Data: &strawpb.DataFrame{Offset: offset, Data: chunk}},
+		})
+		if err != nil {
+			return err
+		}
+
+		offset += uint64(len(chunk))
+	}
+
+	err = d.opts.NATS.Flush()
+	if err != nil {
+		return fmt.Errorf("flush request stream: %w", err)
+	}
+
+	return nil
+}
+
+func (d *DefaultRequestDispatcher) publishFrame(subject string, in DispatchInput, deadline time.Time, frame *strawpb.StreamFrame) error {
+	env := &strawpb.Envelope{
+		RequestId:      in.RequestID,
+		TenantId:       in.Identity.TenantID,
+		DeadlineUnixMs: deadline.UnixMilli(),
+		ProtocolMajor:  ProtocolMajor,
+		Attempt:        defaultRequestAttempt,
+		Payload:        &strawpb.Envelope_StreamFrame{StreamFrame: frame},
+	}
+
+	raw, err := natsx.MarshalEnvelope(env)
+	if err != nil {
+		return fmt.Errorf("marshal stream frame: %w", err)
+	}
+
+	err = d.opts.NATS.Publish(subject, raw)
+	if err != nil {
+		return fmt.Errorf("publish stream frame: %w", err)
+	}
+
+	return nil
+}
+
+func (d *DefaultRequestDispatcher) readResponse(ctx context.Context, frames <-chan *strawpb.StreamFrame, route RouteOutcome, deadline time.Time) (dispatchResult, *PipelineError) {
+	validator := natsx.NewStreamValidator(defaultRequestAttempt, d.opts.InitialDownloadCreditBytes, d.opts.FrameIdleTimeout, d.opts.Now)
+	result := dispatchResult{status: http.StatusOK}
+	egressStarted := time.Time{}
+
+	ticker := time.NewTicker(responseFrameCheckInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return dispatchResult{}, &PipelineError{Code: Cancelled}
+		case <-time.After(time.Until(deadline)):
+			return dispatchResult{}, &PipelineError{Code: TimeoutExceeded, TimeoutType: timeoutTypeTotalDeadline}
+		case <-ticker.C:
+			if validator.IdleExpired() {
+				return dispatchResult{}, &PipelineError{Code: TimeoutExceeded, TimeoutType: timeoutTypeIdle}
+			}
+		case frame := <-frames:
+			done, perr := d.acceptResponseFrame(validator, frame, route, &result, &egressStarted)
+			if perr != nil {
+				return dispatchResult{}, perr
+			}
+
+			if done {
+				return result, nil
+			}
+		}
+	}
+}
+
+func (d *DefaultRequestDispatcher) acceptResponseFrame(validator *natsx.StreamValidator, frame *strawpb.StreamFrame, route RouteOutcome, result *dispatchResult, egressStarted *time.Time) (bool, *PipelineError) {
+	ok, done, perr := acceptedResponseFrame(validator.Accept(frame))
+	if !ok || done {
+		return done, perr
+	}
+
+	if handled, perr := d.acceptResponseProgress(frame, result, egressStarted); handled {
+		return false, perr
+	}
+
+	return d.acceptResponseTerminal(frame, route, result, egressStarted)
+}
+
+func (d *DefaultRequestDispatcher) acceptResponseProgress(frame *strawpb.StreamFrame, result *dispatchResult, egressStarted *time.Time) (bool, *PipelineError) {
+	switch p := frame.GetPayload().(type) {
+	case *strawpb.StreamFrame_OutboundStart:
+		*egressStarted = d.opts.Now()
+	case *strawpb.StreamFrame_ResponseStart:
+		result.status = p.ResponseStart.GetStatus()
+		result.headers = p.ResponseStart.GetHeaders()
+	case *strawpb.StreamFrame_Data:
+		_, perr := d.acceptResponseData(p.Data, result)
+
+		return true, perr
+	default:
+		return false, nil
+	}
+
+	return true, nil
+}
+
+func (d *DefaultRequestDispatcher) acceptResponseTerminal(frame *strawpb.StreamFrame, route RouteOutcome, result *dispatchResult, egressStarted *time.Time) (bool, *PipelineError) {
+	switch p := frame.GetPayload().(type) {
+	case *strawpb.StreamFrame_Error:
+		return true, d.executorError(route, p.Error)
+	case *strawpb.StreamFrame_Cancelled:
+		return true, &PipelineError{Code: Cancelled}
+	case *strawpb.StreamFrame_End:
+		result.egressMs = egressMillis(*egressStarted, d.opts.Now())
+
+		return true, nil
+	case *strawpb.StreamFrame_Trailers:
+		return false, nil
+	default:
+		routeFailure(d.opts.Workers, route.WorkerID)
+
+		return true, &PipelineError{Code: ProtocolError}
+	}
+}
+
+func acceptedResponseFrame(outcome natsx.FrameOutcome) (bool, bool, *PipelineError) {
+	if outcome == natsx.FrameDuplicate || outcome == natsx.FrameAfterTerminal {
+		return false, false, nil
+	}
+
+	if outcome != natsx.FrameAccepted {
+		return false, true, &PipelineError{Code: ProtocolError}
+	}
+
+	return true, false, nil
+}
+
+func (d *DefaultRequestDispatcher) acceptResponseData(data *strawpb.DataFrame, result *dispatchResult) (bool, *PipelineError) {
+	result.body = append(result.body, data.GetData()...)
+	if len(result.body) <= responseBodyLimit(d.opts.MaxInlineResponseBodyBytes) {
+		return false, nil
+	}
+
+	return true, &PipelineError{
+		Code: BodyTooLarge,
+		Details: map[string]string{
+			errorDetailDirectionKey:  "response",
+			errorDetailLimitBytesKey: strconv.FormatUint(d.opts.MaxInlineResponseBodyBytes, 10),
+		},
+	}
+}
+
+func (d *DefaultRequestDispatcher) executorError(route RouteOutcome, frame *strawpb.ErrorFrame) *PipelineError {
+	code, violation := ValidateExecutorError(frame.GetCode())
+	if violation {
+		routeFailure(d.opts.Workers, route.WorkerID)
+	}
+
+	return errorFramePipelineError(code, frame)
+}
+
+func egressMillis(start, end time.Time) int64 {
+	if start.IsZero() {
+		return 0
+	}
+
+	return millisSince(start, end)
+}
+
+func (d *DefaultRequestDispatcher) assignRequest(in DispatchInput, route RouteOutcome, configVersion uint64, deadline time.Time) *strawpb.AssignRequest {
+	return &strawpb.AssignRequest{
+		Mode:                       strawpb.RequestMode_REQUEST_MODE_DECODED_HTTP,
+		DeadlineUnixMs:             deadline.UnixMilli(),
+		ExpectedUploadBytes:        int64(len(in.Request.BodyData)),
+		SelectedRouteId:            route.RuleID,
+		SelectedPoolId:             route.PoolID,
+		SelectedExecutorId:         route.WorkerID,
+		Replayable:                 in.Request.Replayable,
+		Attempt:                    defaultRequestAttempt,
+		PolicyVersion:              strconv.FormatUint(configVersion, 10),
+		InitialUploadCreditBytes:   d.opts.InitialUploadCreditBytes,
+		InitialDownloadCreditBytes: d.opts.InitialDownloadCreditBytes,
+		MaxInflightUploadBytes:     d.opts.MaxInflightUploadBytes,
+		MaxInflightDownloadBytes:   d.opts.MaxInflightDownloadBytes,
+	}
+}
+
+func (d *DefaultRequestDispatcher) deadline(req *ValidatedRequest) time.Time {
+	timeoutMs := req.TimeoutMs
+	if timeoutMs == 0 {
+		timeoutMs = d.opts.MaxTimeoutMs
+	}
+
+	if timeoutMs == 0 {
+		timeoutMs = defaultRequestTimeoutFallback
+	}
+
+	return d.opts.Now().Add(time.Duration(timeoutMs) * time.Millisecond)
+}
+
+type dispatchResult struct {
+	status   uint32
+	headers  []*strawpb.Header
+	body     []byte
+	egressMs int64
+}
+
+type snapshotRules struct {
+	tenantID string
+	rules    []config.RoutingRule
+}
+
+func (s snapshotRules) RulesForTenant(tenantID string) []RoutingRule {
+	if tenantID != s.tenantID {
+		return nil
+	}
+
+	out := make([]RoutingRule, 0, len(s.rules))
+	for _, r := range s.rules {
+		out = append(out, RoutingRule{
+			ID:                      r.ID,
+			TenantID:                tenantID,
+			Priority:                r.Priority,
+			Enabled:                 r.Enabled,
+			Match:                   matchFromSnapshot(r.Match),
+			TargetPoolID:            r.TargetPoolID,
+			StickySessionTTLSeconds: r.StickySessionTTLSeconds,
+			AllowStickyFallback:     r.AllowStickyFallback,
+		})
+	}
+
+	return out
+}
+
+func matchFromSnapshot(m config.MatchConditions) MatchConditions {
+	return MatchConditions{
+		Tags:        append([]string(nil), m.Tags...),
+		Country:     m.Country,
+		Region:      m.Region,
+		IPType:      m.IPType,
+		IngressType: m.IngressType,
+		TargetHost:  m.TargetHost,
+	}
+}
+
+func rateLimitFromSnapshot(tenantID string, rules []config.RateLimitRule) RateLimitConfig {
+	out := RateLimitConfig{TenantID: tenantID}
+	for _, r := range rules {
+		out.Limits = append(out.Limits, RateLimitRule{
+			Dimension:     RateLimitDimension(r.Dimension),
+			Key:           r.Key,
+			WindowSeconds: r.WindowSeconds,
+			MaxRequests:   r.MaxRequests,
+			FailPolicy:    RateLimitFailPolicy(r.FailPolicy),
+		})
+	}
+
+	return out
+}
+
+func quotaFromSnapshot(tenantID string, q config.QuotaConfig) QuotaConfig {
+	policy := quotaRequestCountOnSuccess
+	if q.CountOnAdmission {
+		policy = quotaRequestCountOnAdmission
+	}
+
+	maxRequests := q.RequestCountLimit
+	maxBandwidth := q.BandwidthBytesLimit
+
+	if !q.Enabled {
+		maxRequests = 0
+		maxBandwidth = 0
+	}
+
+	return QuotaConfig{
+		TenantID:           tenantID,
+		Period:             quotaPeriodMonthly,
+		MaxRequests:        maxRequests,
+		MaxBandwidthBytes:  maxBandwidth,
+		RequestCountPolicy: policy,
+		RedisFailPolicy:    q.FailPolicy,
+	}
+}
+
+func routeError(code string) *PipelineError {
+	switch code {
+	case RouteErrNoMatch:
+		return &PipelineError{Code: RouteNoMatch}
+	case RouteErrStickyUnavailable:
+		return &PipelineError{Code: StickySessionUnavailable}
+	case RouteErrCapacityExhausted:
+		return &PipelineError{Code: ExecutorCapacityExhausted}
+	default:
+		return &PipelineError{Code: RouteUnavailable}
+	}
+}
+
+func validationPipelineError(verr *ValidationError) *PipelineError {
+	code := ErrorCodeFromName(verr.Code)
+	if code == 0 {
+		code = InvalidRequest
+	}
+
+	return &PipelineError{Code: code, Message: verr.Message, Details: verr.Details}
+}
+
+func assignRejectError(code strawpb.AssignAckCode) *PipelineError {
+	if code == strawpb.AssignAckCode_ASSIGN_ACK_REJECTED_CAPACITY {
+		return &PipelineError{Code: ExecutorCapacityExhausted}
+	}
+
+	return &PipelineError{Code: RouteUnavailable}
+}
+
+func errorFramePipelineError(code strawpb.ErrorCode, frame *strawpb.ErrorFrame) *PipelineError {
+	perr := &PipelineError{
+		Code:         ErrorCode(code),
+		Message:      frame.GetMessage(),
+		RetryAfterMs: retryAfterMs(frame.GetRetryAfterMs()),
+		Details:      frame.GetDetails(),
+	}
+
+	if frame.TimeoutType != nil {
+		perr.TimeoutType = timeoutTypeName(frame.GetTimeoutType())
+	}
+
+	return perr
+}
+
+func retryAfterMs(v uint64) int64 {
+	if v > math.MaxInt64 {
+		return math.MaxInt64
+	}
+
+	return int64(v)
+}
+
+func frameChunkSize(bodyLen int, limit uint64) int {
+	if limit == 0 {
+		return bodyLen
+	}
+
+	n, err := strconv.Atoi(strconv.FormatUint(limit, 10))
+	if err != nil || n > bodyLen {
+		return bodyLen
+	}
+
+	return n
+}
+
+func responseBodyLimit(limit uint64) int {
+	n, err := strconv.Atoi(strconv.FormatUint(limit, 10))
+	if err != nil {
+		return math.MaxInt
+	}
+
+	return n
+}
+
+func timeoutTypeName(t strawpb.TimeoutType) string {
+	name := strings.TrimPrefix(t.String(), "TIMEOUT_TYPE_")
+	name = strings.ToLower(name)
+
+	return name
+}
+
+func wireFingerprint(profile string) string {
+	if profile == defaultFingerprintProfileName {
+		return ""
+	}
+
+	return profile
+}
+
+func headersToProto(headers []HeaderPair) []*strawpb.Header {
+	out := make([]*strawpb.Header, 0, len(headers))
+	for _, h := range headers {
+		value, err := base64.StdEncoding.DecodeString(h.Value)
+		if err != nil {
+			continue
+		}
+
+		out = append(out, &strawpb.Header{Name: h.Name, Value: value})
+	}
+
+	return out
+}
+
+func headersFromProto(headers []*strawpb.Header) []HeaderPair {
+	out := make([]HeaderPair, 0, len(headers))
+	for _, h := range headers {
+		out = append(out, HeaderPair{Name: h.GetName(), Value: base64.StdEncoding.EncodeToString(h.GetValue())})
+	}
+
+	return out
+}
+
+func decodeDispatchFrame(raw []byte) *strawpb.StreamFrame {
+	env, err := natsx.UnmarshalEnvelope(raw)
+	if err != nil {
+		return nil
+	}
+
+	return env.GetStreamFrame()
+}
+
+func routeFailure(candidates CandidateSource, workerID string) {
+	recorder, ok := candidates.(interface{ RecordFailure(workerID string) })
+	if ok {
+		recorder.RecordFailure(workerID)
+	}
+}
+
+func millisSince(start, end time.Time) int64 {
+	return end.Sub(start).Milliseconds()
+}

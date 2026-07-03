@@ -84,6 +84,8 @@ type ValidatedRequest struct {
 	URL             *url.URL
 	Headers         []HeaderPair
 	BodyData        []byte
+	Routing         RoutingHints
+	Fingerprint     string
 	TimeoutMs       uint64
 	Replayable      bool
 	StickySessionID string
@@ -131,20 +133,22 @@ func ValidateRequest(raw []byte, maxRequestBodyBytes, maxTimeoutMs uint64) (*Val
 		return nil, err
 	}
 
-	return &ValidatedRequest{
-		Method:     env.Method,
-		URL:        parsedURL,
-		Headers:    headers,
-		BodyData:   bodyData,
-		TimeoutMs:  timeoutMs,
-		Replayable: env.Replayable,
-		StickySessionID: func() string {
-			if env.Routing != nil {
-				return env.Routing.StickySessionID
-			}
+	routing := RoutingHints{}
+	if env.Routing != nil {
+		routing = *env.Routing
+		routing.Tags = append([]string(nil), env.Routing.Tags...)
+	}
 
-			return ""
-		}(),
+	return &ValidatedRequest{
+		Method:          env.Method,
+		URL:             parsedURL,
+		Headers:         headers,
+		BodyData:        bodyData,
+		Routing:         routing,
+		Fingerprint:     env.FingerprintProto,
+		TimeoutMs:       timeoutMs,
+		Replayable:      env.Replayable,
+		StickySessionID: routing.StickySessionID,
 	}, nil
 }
 
@@ -284,8 +288,8 @@ func validateBody(body *RequestBody, maxBytes uint64) ([]byte, error) {
 
 	if uint64(len(decoded)) > maxBytes {
 		return nil, &ValidationError{Code: errorCodeBodyTooLarge, Message: "request body exceeds limit", Details: map[string]string{
-			"direction":   "request",
-			"limit_bytes": strconv.FormatUint(maxBytes, 10),
+			errorDetailDirectionKey:  "request",
+			errorDetailLimitBytesKey: strconv.FormatUint(maxBytes, 10),
 		}}
 	}
 

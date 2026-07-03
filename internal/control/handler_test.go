@@ -576,13 +576,13 @@ func TestHandlerSuccessEnvelopeStructure(t *testing.T) {
 		t.Fatal("request_id is empty")
 	}
 	if resp.Status != 200 {
-		t.Fatalf("envelope status = %d, want 200 (upstream passthrough stub)", resp.Status)
+		t.Fatalf("envelope status = %d, want 200", resp.Status)
 	}
 	if resp.Body.Mode != handlerTestInlineBase64 {
 		t.Fatalf("body mode = %q, want %q", resp.Body.Mode, handlerTestInlineBase64)
 	}
 	if resp.Body.Truncated {
-		t.Fatal("truncated should be false for stub")
+		t.Fatal("truncated should be false")
 	}
 	if resp.Timing.TotalMs < 0 {
 		t.Fatalf("total_ms = %d, want >= 0", resp.Timing.TotalMs)
@@ -755,6 +755,20 @@ func newTestHandler(t *testing.T) (*RequestHandler, string) {
 
 	authenticator := NewAuthenticator(store, pepper)
 	h := NewRequestHandler(1_048_576, 1_048_576, 120_000, authenticator)
+	h.SetDispatcher(fakeRequestDispatcher{})
 
 	return h, generated.Secret
+}
+
+type fakeRequestDispatcher struct{}
+
+func (fakeRequestDispatcher) Dispatch(_ context.Context, in DispatchInput) (SuccessResponse, *PipelineError) {
+	return SuccessResponse{
+		RequestID: in.RequestID,
+		Status:    http.StatusOK,
+		Body: ResponseBody{
+			Mode:      handlerTestInlineBase64,
+			Truncated: false,
+		},
+	}, nil
 }
