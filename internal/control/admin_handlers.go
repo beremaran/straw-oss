@@ -102,7 +102,7 @@ func (h *AdminHandlers) CreateTenant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, err := newRandomID("ten")
+	id, err := newResourceID()
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
 
@@ -839,7 +839,7 @@ func (h *AdminHandlers) createPlatformAPIKey(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	id, err := newRandomID("key")
+	id, err := newResourceID()
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
 
@@ -883,7 +883,7 @@ func (h *AdminHandlers) createTenantAPIKey(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	id, err := newRandomID("key")
+	id, err := newResourceID()
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
 
@@ -965,7 +965,7 @@ func (h *AdminHandlers) putTenantQuotas(w http.ResponseWriter, r *http.Request, 
 }
 
 func (h *AdminHandlers) createWorkerCredential(w http.ResponseWriter, r *http.Request, identity Identity, req workerCredentialCreateRequest) bool {
-	id, err := newRandomID("wcred")
+	id, err := newResourceID()
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
 
