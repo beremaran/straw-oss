@@ -7,13 +7,10 @@ import (
 	"github.com/beremaran/straw/v2/internal/config"
 )
 
-// InMemorySnapshotStore is the P0 SnapshotStore implementation backing
-// ConfigCache. A Postgres-backed implementation is future work once a
-// database driver dependency is introduced for Control; until then this
-// process-local store is the durable-ish backing used by admin handlers
-// and tests. Unknown tenants read as an implicit version-0 empty
-// snapshot rather than an error, so first writes for a brand-new tenant
-// succeed without a separate "initialize snapshot" step.
+// InMemorySnapshotStore is a test/local SnapshotStore implementation for
+// ConfigCache. Runtime Control wires PostgresConfigStore. Unknown tenants read
+// as an implicit version-0 empty snapshot rather than an error, so first writes
+// for a brand-new tenant succeed without a separate initialize step.
 type InMemorySnapshotStore struct {
 	mu        sync.Mutex
 	versions  map[string]uint64

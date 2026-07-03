@@ -17,6 +17,7 @@ const (
 	requestMetadataTestNextRequestID   = "req_2"
 	requestMetadataTestTargetURL       = "https://example.com/path"
 	requestMetadataTestRequestEnvelope = `{"method":"GET","url":"https://example.com/path?token=secret"}`
+	testAuthorizationHeader            = "Authorization"
 )
 
 type recordingRequestEventSink struct {
@@ -97,7 +98,7 @@ func TestRedactSensitiveHeaderValue(t *testing.T) {
 		value string
 		want  string
 	}{
-		{name: "Authorization", value: "Bearer secret", want: requestMetadataRedacted},
+		{name: testAuthorizationHeader, value: "Bearer secret", want: requestMetadataRedacted},
 		{name: "Cookie", value: "session=secret", want: requestMetadataRedacted},
 		{name: "Proxy-Authorization", value: "Basic secret", want: requestMetadataRedacted},
 		{name: "Set-Cookie", value: "session=secret", want: requestMetadataRedacted},

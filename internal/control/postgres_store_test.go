@@ -7,6 +7,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/beremaran/straw/v2/internal/postgresx"
+	"github.com/beremaran/straw/v2/migrations"
 )
 
 // These tests exercise the Postgres-backed identity stores against a real
@@ -39,9 +42,17 @@ func newIdentityTestPool(t *testing.T) *pgxpool.Pool {
 	t.Cleanup(pool.Close)
 
 	_, err = pool.Exec(context.Background(),
-		`TRUNCATE tenants, api_keys, worker_credentials, config_audit_source RESTART IDENTITY CASCADE`)
+		`TRUNCATE tenants, worker_admin_state, worker_credentials, api_keys, config_audit_source RESTART IDENTITY CASCADE`)
 	if err != nil {
-		t.Fatalf("truncate identity tables: %v", err)
+		t.Fatalf("truncate control tables: %v", err)
+	}
+
+	// The CASCADE above also empties fingerprint_profiles (it references
+	// tenants), so re-apply the idempotent migrations to restore the seeded
+	// built-in global profiles the production binary always has.
+	err = postgresx.ApplyMigrations(context.Background(), pool, migrations.Postgres)
+	if err != nil {
+		t.Fatalf("reapply migrations: %v", err)
 	}
 
 	return pool

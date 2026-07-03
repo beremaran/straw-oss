@@ -37,6 +37,55 @@ type testAdmin struct {
 	pepper      []byte
 }
 
+type recordingConfigWrites struct {
+	quotaCalled     bool
+	quota           QuotaConfig
+	quotaExpected   uint64
+	quotaActor      ConfigActor
+	rateCalled      bool
+	rate            RateLimitConfig
+	rateExpected    uint64
+	rateCeiling     *RateLimitCeiling
+	rateActor       ConfigActor
+	globalWorkerID  string
+	tenantWorkerID  string
+	tenantWorkerTid string
+}
+
+func (w *recordingConfigWrites) PutQuotaConfig(_ context.Context, quota QuotaConfig, expectedVersion uint64, actor ConfigActor) (QuotaConfig, error) {
+	w.quotaCalled = true
+	w.quota = quota
+	w.quotaExpected = expectedVersion
+	w.quotaActor = actor
+	quota.ConfigVersion = expectedVersion + 1
+
+	return quota, nil
+}
+
+func (w *recordingConfigWrites) PutRateLimitConfig(_ context.Context, cfg RateLimitConfig, expectedVersion uint64, ceiling *RateLimitCeiling, actor ConfigActor) (RateLimitConfig, error) {
+	w.rateCalled = true
+	w.rate = cfg
+	w.rateExpected = expectedVersion
+	w.rateCeiling = ceiling
+	w.rateActor = actor
+	cfg.ConfigVersion = expectedVersion + 1
+
+	return cfg, nil
+}
+
+func (w *recordingConfigWrites) SetGlobalWorkerAdminConfig(_ context.Context, workerID string, _ bool, _ string, _ ConfigActor) error {
+	w.globalWorkerID = workerID
+
+	return nil
+}
+
+func (w *recordingConfigWrites) SetTenantWorkerOverrideConfig(_ context.Context, tenantID, workerID string, _ bool, _ string, _ ConfigActor) error {
+	w.tenantWorkerTid = tenantID
+	w.tenantWorkerID = workerID
+
+	return nil
+}
+
 func newTestAdmin(t *testing.T) *testAdmin {
 	t.Helper()
 
@@ -253,8 +302,8 @@ func TestActorAuditSourceRecorded(t *testing.T) {
 		t.Fatal("expected at least one audit record")
 	}
 	rec := ta.audit.records[len(ta.audit.records)-1]
-	if rec.ActorType != "api_key" {
-		t.Fatalf("actor_type = %q, want %q", rec.ActorType, "api_key")
+	if rec.ActorType != configActorTypeAPIKey {
+		t.Fatalf("actor_type = %q, want %q", rec.ActorType, configActorTypeAPIKey)
 	}
 	if rec.ActorID != "key_admin" {
 		t.Fatalf("actor_id = %q, want %q", rec.ActorID, "key_admin")
@@ -491,6 +540,61 @@ func TestRateLimitsCeilingRejectsExceedingWrite(t *testing.T) {
 
 	if errResp.Code != adminTestInvalidRequest {
 		t.Fatalf("code = %q, want %q", errResp.Code, adminTestInvalidRequest)
+	}
+}
+
+func TestQuotaAndRateLimitWritesUseTransactionalConfigStore(t *testing.T) {
+	t.Parallel()
+
+	ta := newTestAdmin(t)
+	writes := &recordingConfigWrites{}
+	ta.h.ConfigWrites = writes
+	adminToken := ta.seedPlatformKey(t, "platform_cfg_admin", RoleSystemAdmin)
+	tenantToken := ta.seedTenantKey(t, adminTestKeyTenantAdmin, adminTestTenantA, RoleTenantAdmin)
+	err := ta.tenants.Create(context.Background(), Tenant{
+		ID: adminTestTenantA, Name: "A", Status: TenantStatusActive, CreatedAt: time.Now().UTC(),
+		RateLimitCeiling: &RateLimitCeiling{WindowSeconds: 60, MaxRequests: 100},
+	})
+	if err != nil {
+		t.Fatalf("seed tenant: %v", err)
+	}
+
+	quotaBody := `{"expected_config_version":0,"period":"monthly","max_requests":10,"max_bandwidth_bytes":2048,"request_count_policy":"count_on_admission","redis_fail_policy":"fail_closed"}`
+	quotaReq := newAdminRequest(http.MethodPut, "/tenants/"+adminTestTenantA+"/quotas", adminToken, quotaBody)
+	quotaReq.SetPathValue("id", adminTestTenantA)
+	quotaResp := httptest.NewRecorder()
+	ta.h.PutTenantQuotas(quotaResp, quotaReq)
+	if quotaResp.Code != http.StatusOK {
+		t.Fatalf("quota status = %d, want %d, body=%s", quotaResp.Code, http.StatusOK, quotaResp.Body.String())
+	}
+	if !writes.quotaCalled {
+		t.Fatal("quota write did not use transactional config writer")
+	}
+	if writes.quota.TenantID != adminTestTenantA || writes.quota.MaxRequests != 10 || writes.quotaExpected != 0 {
+		t.Fatalf("quota write = %+v expected=%d", writes.quota, writes.quotaExpected)
+	}
+	if writes.quotaActor.ActorID != "platform_cfg_admin" || writes.quotaActor.ActorType != configActorTypeAPIKey {
+		t.Fatalf("quota actor = %+v, want platform API key actor", writes.quotaActor)
+	}
+
+	rateBody := `{"expected_config_version":0,"limits":[{"dimension":"tenant","key":"*","window_seconds":60,"max_requests":50,"fail_policy":"open"}]}`
+	rateReq := newAdminRequest(http.MethodPut, "/rate-limits", tenantToken, rateBody)
+	rateResp := httptest.NewRecorder()
+	ta.h.PutRateLimits(rateResp, rateReq)
+	if rateResp.Code != http.StatusOK {
+		t.Fatalf("rate status = %d, want %d, body=%s", rateResp.Code, http.StatusOK, rateResp.Body.String())
+	}
+	if !writes.rateCalled {
+		t.Fatal("rate-limit write did not use transactional config writer")
+	}
+	if writes.rate.TenantID != adminTestTenantA || len(writes.rate.Limits) != 1 || writes.rateExpected != 0 {
+		t.Fatalf("rate write = %+v expected=%d", writes.rate, writes.rateExpected)
+	}
+	if writes.rateCeiling == nil || writes.rateCeiling.MaxRequests != 100 {
+		t.Fatalf("rate ceiling = %+v, want tenant ceiling", writes.rateCeiling)
+	}
+	if writes.rateActor.ActorID != adminTestKeyTenantAdmin || writes.rateActor.ActorType != configActorTypeAPIKey {
+		t.Fatalf("rate actor = %+v, want tenant API key actor", writes.rateActor)
 	}
 }
 

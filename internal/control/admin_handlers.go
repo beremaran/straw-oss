@@ -26,7 +26,25 @@ type AdminHandlers struct {
 	Audit         AuditStore
 	ConfigCache   *ConfigCache
 	Workers       *WorkerRegistry
-	Pepper        []byte
+	ConfigWrites  ConfigWriteStore
+	// WorkerAdmin persists durable worker disable state. Optional: nil keeps
+	// runtime-only (single-Control) behavior for unit tests; the binary wires
+	// the Postgres store so disables survive restarts and reach snapshots.
+	WorkerAdmin WorkerAdminStore
+	Pepper      []byte
+}
+
+// ConfigWriteStore persists mutable tenant/platform config and its audit row in
+// the same Postgres transaction as the tenant version bump.
+type ConfigWriteStore interface {
+	PutQuotaConfig(ctx context.Context, quota QuotaConfig, expectedVersion uint64, actor ConfigActor) (QuotaConfig, error)
+	PutRateLimitConfig(ctx context.Context, cfg RateLimitConfig, expectedVersion uint64, ceiling *RateLimitCeiling, actor ConfigActor) (RateLimitConfig, error)
+	SetGlobalWorkerAdminConfig(ctx context.Context, workerID string, disabled bool, reason string, actor ConfigActor) error
+	SetTenantWorkerOverrideConfig(ctx context.Context, tenantID, workerID string, disabled bool, reason string, actor ConfigActor) error
+}
+
+func configActor(identity Identity) ConfigActor {
+	return ConfigActor{ActorType: configActorTypeAPIKey, ActorID: identity.APIKeyID}
 }
 
 func writeAuthOrRBACError(w http.ResponseWriter, err error) {
@@ -746,18 +764,22 @@ func (h *AdminHandlers) putRateLimits(w http.ResponseWriter, r *http.Request, id
 
 	cfg := RateLimitConfig{TenantID: identity.TenantID, Limits: limits}
 
+	if h.ConfigWrites != nil {
+		saved, err := h.ConfigWrites.PutRateLimitConfig(r.Context(), cfg, req.ExpectedConfigVersion, tenant.RateLimitCeiling, configActor(identity))
+		if err != nil {
+			h.writeRateLimitError(w, err)
+
+			return
+		}
+
+		writeJSON(w, http.StatusOK, toRateLimitResponse(saved))
+
+		return
+	}
+
 	saved, err := h.RateLimits.Put(r.Context(), cfg, req.ExpectedConfigVersion, tenant.RateLimitCeiling)
 	if err != nil {
-		switch {
-		case errors.Is(err, ErrRateLimitVersionConflict):
-			WriteError(w, http.StatusConflict, ErrorResponseFromCode(Conflict, "", nil))
-		case errors.Is(err, ErrRateLimitCeilingExceeded):
-			WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", map[string]string{
-				"reason": "rate limit exceeds tenant rate_limit_ceiling",
-			}))
-		default:
-			WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
-		}
+		h.writeRateLimitError(w, err)
 
 		return
 	}
@@ -765,6 +787,19 @@ func (h *AdminHandlers) putRateLimits(w http.ResponseWriter, r *http.Request, id
 	recordAudit(r.Context(), h.Audit, identity, "rate_limit_config", identity.TenantID, "update")
 
 	writeJSON(w, http.StatusOK, toRateLimitResponse(saved))
+}
+
+func (h *AdminHandlers) writeRateLimitError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, ErrRateLimitVersionConflict):
+		WriteError(w, http.StatusConflict, ErrorResponseFromCode(Conflict, "", nil))
+	case errors.Is(err, ErrRateLimitCeilingExceeded):
+		WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", map[string]string{
+			"reason": "rate limit exceeds tenant rate_limit_ceiling",
+		}))
+	default:
+		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
+	}
 }
 
 func decodeAndValidatePlatformKeyRole(w http.ResponseWriter, r *http.Request) (Role, bool) {
@@ -937,6 +972,25 @@ func (h *AdminHandlers) putTenantQuotas(w http.ResponseWriter, r *http.Request, 
 		RequestCountPolicy: req.RequestCountPolicy,
 		RedisFailPolicy:    req.RedisFailPolicy,
 		UpdatedAt:          time.Now().UTC(),
+	}
+
+	if h.ConfigWrites != nil {
+		saved, err := h.ConfigWrites.PutQuotaConfig(r.Context(), quota, req.ExpectedConfigVersion, configActor(identity))
+		if err != nil {
+			if errors.Is(err, ErrQuotaVersionConflict) {
+				WriteError(w, http.StatusConflict, ErrorResponseFromCode(Conflict, "", nil))
+
+				return
+			}
+
+			WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
+
+			return
+		}
+
+		writeJSON(w, http.StatusOK, toQuotaResponse(saved))
+
+		return
 	}
 
 	saved, err := h.Quotas.Put(r.Context(), quota, req.ExpectedConfigVersion)

@@ -1,6 +1,6 @@
 # 19 - Postgres Config Stores and Snapshot Assembly
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -37,27 +37,29 @@ snapshots from Postgres instead of in-memory config fakes.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Extend `internal/config.TenantSnapshot` to carry P0 routing rules, executor pools, deny rules, injection
+- [x] Read all required planning docs.
+- [x] Extend `internal/config.TenantSnapshot` to carry P0 routing rules, executor pools, deny rules, injection
       policies, fingerprint profiles, rate-limit configs, quota configs, worker admin state, tenant worker overrides,
       and the captured `tenant_config_version`.
-- [ ] Implement Postgres stores for routing rules and executor pools, including priority ordering, soft deletion,
+- [x] Implement Postgres stores for routing rules and executor pools, including priority ordering, soft deletion,
       tenant scoping, and idempotent stable IDs where Section 26 allows them.
-- [ ] Implement Postgres stores for deny rules, injection policies, and seeded built-in fingerprint profiles; do not
+- [x] Implement Postgres stores for deny rules, injection policies, and seeded built-in fingerprint profiles; do not
       add a P0 fingerprint-profile write path.
-- [ ] Implement Postgres stores for rate-limit configs and quota configs, including tenant `rate_limit_ceiling`
+- [x] Implement Postgres stores for rate-limit configs and quota configs, including tenant `rate_limit_ceiling`
       validation and platform-managed quota writes.
-- [ ] Implement durable worker admin disable/drain state and tenant worker override stores backed by Postgres.
-- [ ] Implement a Postgres `SnapshotStore` that assembles a full immutable tenant snapshot keyed by
+- [x] Implement durable worker admin disable/drain state and tenant worker override stores backed by Postgres.
+      (Durable disable only — `worker_admin_state`/`tenant_worker_admin_state` are disable-only per Section 21;
+      drain remains runtime-only, so drain is intentionally not persisted.)
+- [x] Implement a Postgres `SnapshotStore` that assembles a full immutable tenant snapshot keyed by
       `(tenant_id, tenant_config_version)`.
-- [ ] Ensure config writes increment `tenant_config_versions` and append `config_audit_source` records in the same
+- [x] Ensure config writes increment `tenant_config_versions` and append `config_audit_source` records in the same
       transaction, with secret fields redacted.
-- [ ] Wire `cmd/control/main.go` to use the Postgres `SnapshotStore` instead of `NewInMemorySnapshotStore`.
-- [ ] Add tests for transactional version increments, snapshot immutability, deleted resources excluded from routing,
+- [x] Wire `cmd/control/main.go` to use the Postgres `SnapshotStore` instead of `NewInMemorySnapshotStore`.
+- [x] Add tests for transactional version increments, snapshot immutability, deleted resources excluded from routing,
       audit redaction, seeded fingerprint profiles, and quota/rate-limit config loading.
-- [ ] Run focused config-store and snapshot tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Run focused config-store and snapshot tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 
