@@ -280,7 +280,7 @@ func TestFingerprintProfilesReadOnly(t *testing.T) {
 
 	found := false
 	for _, p := range profiles {
-		if p.Name == "default" && p.ScopeType == "global" {
+		if p.Name == defaultFingerprintProfileName && p.ScopeType == fingerprintProfileScopeGlobal {
 			found = true
 		}
 	}

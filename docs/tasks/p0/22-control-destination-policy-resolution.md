@@ -1,6 +1,6 @@
 # 22 - Control Destination Policy Resolution
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -34,26 +34,32 @@ fingerprint profile support before task 24 dispatches a request to Egress.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Define a resolver API that consumes the validated request, captured tenant snapshot, selected route/executor, and
+- [x] Read all required planning docs.
+- [x] Define a resolver API that consumes the validated request, captured tenant snapshot, selected route/executor, and
       worker capabilities, and returns the `strawpb.DestinationPolicy` plus resolved injection and fingerprint data.
-- [ ] Reject URL userinfo before dispatch and ensure public errors/details never contain unsanitized full URLs,
+      (Fingerprint validation uses `config.FingerprintProfile.SupportedByWorker` from the snapshot, since P0's
+      `RegisterRequest` wire protocol carries no per-worker fingerprint capability list to consume directly.)
+- [x] Reject URL userinfo before dispatch and ensure public errors/details never contain unsanitized full URLs,
       credentials, worker IDs, session IDs, or NATS subjects.
-- [ ] Evaluate deny rules with lowercase hostnames, IDNA/punycode, trailing-dot normalization, default ports, IPv4/IPv6
-      literal handling, CNAME semantics, metadata IPs, and private/link-local defaults.
-- [ ] Resolve ordered header-injection operations, enforcing the Section 15 denied-header table, sensitive-header role
+- [x] Evaluate deny rules with lowercase hostnames, trailing-dot normalization, default ports, IPv4/IPv6 literal
+      handling, CNAME semantics, metadata IPs, and private/link-local defaults. IDNA/punycode is a flagged gap, not
+      implemented: it requires `golang.org/x/net/idna`, a new dependency; non-ASCII hostnames are rejected outright
+      instead (fail-closed). See the handoff note for details and the no-owning-task flag.
+- [x] Resolve ordered header-injection operations, enforcing the Section 15 denied-header table, sensitive-header role
       restrictions, duplicate `set` rejection, size bounds, and CR/LF rejection.
-- [ ] Validate the requested or tenant-default fingerprint profile against the selected worker's supported profiles and
+- [x] Validate the requested or tenant-default fingerprint profile against the selected worker's supported profiles and
       map unsupported profiles to `unsupported_fingerprint`.
-- [ ] Produce direct-local or upstream-proxy destination resolution mode according to deployment config and reject
-      untrusted upstream-proxy remote resolution.
-- [ ] Map resolver failures through the existing error registry codes (`destination_denied`, `header_injection_failed`,
+- [x] Produce direct-local or upstream-proxy destination resolution mode according to deployment config and reject
+      untrusted upstream-proxy remote resolution. (P0 has no upstream-proxy config surface anywhere in this repo, so
+      real callers always resolve to direct-local; the upstream-proxy-remote path is implemented and tested but
+      unreachable from any current caller.)
+- [x] Map resolver failures through the existing error registry codes (`destination_denied`, `header_injection_failed`,
       `unsupported_fingerprint`, `invalid_request`) without leaking internals.
-- [ ] Add tests for deny normalization, metadata IP defaults, allow overrides, CNAME denial, injection safety,
+- [x] Add tests for deny normalization, metadata IP defaults, allow overrides, CNAME denial, injection safety,
       fingerprint mismatch, upstream-proxy trust policy, and public-safe error details.
-- [ ] Run focused destination-policy resolver tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Run focused destination-policy resolver tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

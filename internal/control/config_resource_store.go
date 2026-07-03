@@ -332,16 +332,20 @@ type InMemoryFingerprintProfileStore struct {
 	profiles []FingerprintProfileRecord
 }
 
+// fingerprintProfileScopeGlobal marks a built-in profile visible to every
+// tenant (docs/planning/21: "P0 rows are seeded built-ins only").
+const fingerprintProfileScopeGlobal = "global"
+
 // NewInMemoryFingerprintProfileStore builds a store seeded with P0's built-in
 // global profiles.
 func NewInMemoryFingerprintProfileStore() *InMemoryFingerprintProfileStore {
-	names := []string{"default", "chrome_120", "firefox_121", "safari_17"}
+	names := []string{defaultFingerprintProfileName, "chrome_120", "firefox_121", "safari_17"}
 	profiles := make([]FingerprintProfileRecord, 0, len(names))
 
 	for _, name := range names {
 		profiles = append(profiles, FingerprintProfileRecord{
 			FingerprintProfile: config.FingerprintProfile{
-				Name: name, ScopeType: "global", SupportedByWorker: true, Enabled: true,
+				Name: name, ScopeType: fingerprintProfileScopeGlobal, SupportedByWorker: true, Enabled: true,
 			},
 			ConfigVersion: 1,
 		})

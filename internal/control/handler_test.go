@@ -25,7 +25,7 @@ const (
 )
 
 var handlerTestReqURL = func() string {
-	u := &url.URL{Scheme: "https", Host: testExampleHost, Path: "/path"}
+	u := &url.URL{Scheme: urlSchemeHTTPS, Host: testExampleHost, Path: "/path"}
 
 	return u.String()
 }()
@@ -142,7 +142,7 @@ func TestHandlerURLUserInfoRejected(t *testing.T) {
 
 	h, token := newTestHandler(t)
 
-	u := &url.URL{Scheme: "https", Host: testExampleHost, Path: "/path"}
+	u := &url.URL{Scheme: urlSchemeHTTPS, Host: testExampleHost, Path: "/path"}
 	u.User = url.UserPassword("user", "pass")
 	payload := `{"method":"GET","url":"` + u.String() + `"}`
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
