@@ -116,6 +116,119 @@ func TestExecutorDeniesPrivateAndMetadataIPsByDefault(t *testing.T) {
 	}
 }
 
+func TestExecutorAllowedCIDRsOverridePrivateAndMetadataDenials(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]netip.Addr{
+		"private":  netip.MustParseAddr("10.0.0.1"),
+		"loopback": netip.MustParseAddr("127.0.0.1"),
+		"metadata": netip.MustParseAddr("169.254.169.254"),
+	}
+	for name, addr := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			policy := directPolicy(false)
+			policy.AllowedCidrs = []string{addr.String() + "/32"}
+
+			dialed := false
+			exec := NewExecutor(ExecutorOptions{
+				Resolver: staticResolver{"override.test": addr},
+				DialContext: func(context.Context, string, string) (net.Conn, error) {
+					dialed = true
+
+					return nil, errors.New("no real upstream in this test")
+				},
+			})
+
+			frames := exec.Execute(context.Background(), requestStart("http://override.test", policy), nil, 1)
+			if !dialed {
+				t.Fatal("executor did not dial the allowed_cidrs-overridden address")
+			}
+			errFrame := terminalError(t, frames)
+			if errFrame.GetDetails()["fact"] == dnsDeniedIPFact {
+				t.Fatalf("details = %#v, want no destination-denied rejection", errFrame.GetDetails())
+			}
+		})
+	}
+}
+
+func TestExecutorIs4In6NeverOverriddenByAllowedCIDRs(t *testing.T) {
+	t.Parallel()
+
+	addr := netip.MustParseAddr("::ffff:169.254.169.254")
+	policy := directPolicy(false)
+	policy.AllowedCidrs = []string{"::ffff:0:0/96"}
+
+	exec := NewExecutor(ExecutorOptions{
+		Resolver: staticResolver{"mapped.test": addr},
+		DialContext: func(context.Context, string, string) (net.Conn, error) {
+			t.Fatal("executor dialed an Is4In6 address")
+
+			return nil, errors.New("unexpected dial")
+		},
+	})
+
+	frames := exec.Execute(context.Background(), requestStart("http://mapped.test", policy), nil, 1)
+	errFrame := terminalError(t, frames)
+	if errFrame.GetCode() != strawpb.ErrorCode_ERROR_CODE_DESTINATION_DENIED {
+		t.Fatalf("code = %v, want destination_denied", errFrame.GetCode())
+	}
+}
+
+func TestExecutorRejectsDeniedHostSuffix(t *testing.T) {
+	t.Parallel()
+
+	policy := directPolicy(true)
+	policy.DeniedHostSuffixes = []string{"blocked.example"}
+
+	exec := NewExecutor(ExecutorOptions{
+		Resolver: staticResolver{"sub.blocked.example": netip.MustParseAddr("127.0.0.1")},
+		DialContext: func(context.Context, string, string) (net.Conn, error) {
+			t.Fatal("executor dialed a denied-host-suffix target")
+
+			return nil, errors.New("unexpected dial")
+		},
+	})
+
+	frames := exec.Execute(context.Background(), requestStart("http://sub.blocked.example", policy), nil, 1)
+	errFrame := terminalError(t, frames)
+	if errFrame.GetCode() != strawpb.ErrorCode_ERROR_CODE_DESTINATION_DENIED {
+		t.Fatalf("code = %v, want destination_denied", errFrame.GetCode())
+	}
+	if got := errFrame.GetDetails()["fact"]; got != "host_denied_suffix" {
+		t.Fatalf("fact = %q, want host_denied_suffix", got)
+	}
+}
+
+func TestExecutorRejectsDeniedCNAMESuffix(t *testing.T) {
+	t.Parallel()
+
+	policy := directPolicy(true)
+	policy.DeniedCnameSuffixes = []string{"denied-cdn.example"}
+
+	exec := NewExecutor(ExecutorOptions{
+		Resolver: cnameResolver{
+			staticResolver: staticResolver{"cname.test": netip.MustParseAddr("127.0.0.1")},
+			cname:          "edge.denied-cdn.example.",
+		},
+		DialContext: func(context.Context, string, string) (net.Conn, error) {
+			t.Fatal("executor dialed a denied-cname-suffix target")
+
+			return nil, errors.New("unexpected dial")
+		},
+	})
+
+	frames := exec.Execute(context.Background(), requestStart("http://cname.test", policy), nil, 1)
+	errFrame := terminalError(t, frames)
+	if errFrame.GetCode() != strawpb.ErrorCode_ERROR_CODE_DESTINATION_DENIED {
+		t.Fatalf("code = %v, want destination_denied", errFrame.GetCode())
+	}
+	if got := errFrame.GetDetails()["fact"]; got != "cname_denied_suffix" {
+		t.Fatalf("fact = %q, want cname_denied_suffix", got)
+	}
+}
+
 func TestExecutorBlocksDNSRebindingByDialingValidatedIP(t *testing.T) {
 	t.Parallel()
 
@@ -256,6 +369,22 @@ func (r staticResolver) LookupIPAddr(context.Context, string) ([]net.IPAddr, err
 	}
 
 	return out, nil
+}
+
+func (r staticResolver) LookupCNAME(_ context.Context, host string) (string, error) {
+	return host, nil
+}
+
+// cnameResolver wraps staticResolver's IP lookups and returns a fixed
+// canonical name regardless of the requested host, for denied_cname_suffixes
+// tests.
+type cnameResolver struct {
+	staticResolver
+	cname string
+}
+
+func (r cnameResolver) LookupCNAME(context.Context, string) (string, error) {
+	return r.cname, nil
 }
 
 func requestStart(rawURL string, policy *strawpb.DestinationPolicy) *strawpb.RequestStart {
