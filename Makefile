@@ -16,4 +16,4 @@ postgres-migrations-check:
 	./scripts/check-postgres-migrations.sh
 
 commit:
-	opencode run --model llama.cpp/qwen-4b --thinking --title 'Committing changes' --pure --auto 'Commit all changes.'
+	opencode run --model llama.cpp/qwen-4b --thinking --title 'Committing changes' --pure --auto 'Commit all changes. If anything fails, stop, and let me know what is wrong'
