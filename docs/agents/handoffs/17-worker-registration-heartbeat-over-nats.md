@@ -29,6 +29,15 @@ Result: all tests pass, lint clean (0 issues).
 
 - None.
 
+## 2026-07-04 status reconciliation
+
+- The implementation, wiring, tests, and this handoff were all already in place, but the task file's header still
+  read `Status: not started` and its step boxes were unchecked (the prior run never flipped them; the board already
+  marked #17 done). Verified against actual code — `SetupWorkerDiscoverySubscriptions` wired at
+  `cmd/control/main.go:135`, `egress.Run` loop in `cmd/egress/main.go`, integration coverage in
+  `internal/control/worker_nats_test.go` — then set `Status: done` and checked the completed steps. Focused tests
+  and `make check` pass (0 lint issues). No code changes.
+
 ## Blockers
 
 - None.
