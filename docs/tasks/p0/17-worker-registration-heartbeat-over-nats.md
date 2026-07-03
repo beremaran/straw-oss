@@ -1,6 +1,6 @@
 # 17 - Worker Registration and Heartbeat over NATS
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -38,29 +38,29 @@ work end to end over the wire, not just in-process against fakes.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Give `cmd/egress` a real run loop: on startup, publish a `RegisterRequest` (built via
+- [x] Read all required planning docs.
+- [x] Give `cmd/egress` a real run loop: on startup, publish a `RegisterRequest` (built via
       `internal/egress/registration.go`) as a NATS request/reply call on `straw.v1.control.register`, block on the
       response, and exit non-zero on rejection.
-- [ ] After successful registration, start a periodic heartbeat loop on `straw.v1.control.heartbeat` using the
+- [x] After successful registration, start a periodic heartbeat loop on `straw.v1.control.heartbeat` using the
       `egress.heartbeat.interval_ms` default (5s) from Section 11, carrying health, active request count, capacity,
       and draining flag.
-- [ ] Handle OS shutdown signals (SIGINT/SIGTERM) in the Egress run loop: send a draining heartbeat, then exit per
+- [x] Handle OS shutdown signals (SIGINT/SIGTERM) in the Egress run loop: send a draining heartbeat, then exit per
       the Worker Graceful Shutdown sequence in Section 29.
-- [ ] In Control, subscribe to `straw.v1.control.register` and `straw.v1.control.heartbeat` using the `control` queue
+- [x] In Control, subscribe to `straw.v1.control.register` and `straw.v1.control.heartbeat` using the `control` queue
       group (per the Section 12 subject table) and wire inbound messages into the existing
       `WorkerRegistry.Register`/`Heartbeat` methods.
-- [ ] Wire the Control subscription setup into `cmd/control/main.go` startup, using the live NATS connection from
+- [x] Wire the Control subscription setup into `cmd/control/main.go` startup, using the live NATS connection from
       task 16.
-- [ ] Verify duplicate-session replacement (new registration for the same `worker_id` supersedes the old session
+- [x] Verify duplicate-session replacement (new registration for the same `worker_id` supersedes the old session
       after grace) and heartbeat-timeout transitions (unavailable at 15s, dead at 30s) work when driven over real
       NATS request/reply, not just direct `WorkerRegistry` calls.
-- [ ] Add an integration test that starts an embedded/fake NATS server, runs a real (or in-process-driven) Egress
+- [x] Add an integration test that starts an embedded/fake NATS server, runs a real (or in-process-driven) Egress
       registration+heartbeat flow, and asserts the worker becomes visible via `WorkerRegistry`.
-- [ ] Add a test proving a locally started Egress worker appears in `GET /api/v1/admin/workers`.
-- [ ] Run focused registration/heartbeat integration tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Add a test proving a locally started Egress worker appears in `GET /api/v1/admin/workers`.
+- [x] Run focused registration/heartbeat integration tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 
