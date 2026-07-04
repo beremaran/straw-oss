@@ -20,7 +20,7 @@ Start with:
 ## Workflow
 
 - Pick exactly one task from `docs/tasks/p0.md`.
-- If skills are available, use the repo-local skill at `skills/straw-task-runner` for task execution.
+- If skills are available, use the repo-local skill at `.llm-docs/skills/straw-task-runner` for task execution.
 - Use sub-agents when available. Prefer them for parallel codebase research, independent implementation slices, test
   triage, and review.
 - Keep one owning agent responsible for the selected task, final edits, verification, task status updates, and handoff.
