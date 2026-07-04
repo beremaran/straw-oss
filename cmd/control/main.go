@@ -587,29 +587,29 @@ func serveAdminRoutes(mux *http.ServeMux, h *control.AdminHandlers) {
 // serveIdentityRoutes registers tenant, API key, and worker credential
 // lifecycle routes.
 func serveIdentityRoutes(mux *http.ServeMux, h *control.AdminHandlers) {
-	mux.HandleFunc("POST /tenants", h.CreateTenant)
+	mux.HandleFunc("POST /api/v1/config/tenants", h.CreateTenant)
 	mux.HandleFunc("GET /api/v1/config/tenants", h.ListTenants)
 	mux.HandleFunc("GET /api/v1/config/tenants/{id}", h.GetTenant)
 	mux.HandleFunc("PUT /api/v1/config/tenants/{id}", h.UpdateTenant)
 	mux.HandleFunc("DELETE /api/v1/config/tenants/{id}", h.SoftDeleteTenant)
-	mux.HandleFunc("POST /platform-api-keys", h.CreatePlatformAPIKey)
-	mux.HandleFunc("GET /platform-api-keys", h.ListPlatformAPIKeys)
-	mux.HandleFunc("POST /platform-api-keys/{id}/revoke", h.RevokePlatformAPIKey)
-	mux.HandleFunc("POST /api-keys", h.CreateTenantAPIKey)
-	mux.HandleFunc("GET /api-keys", h.ListTenantAPIKeys)
-	mux.HandleFunc("POST /api-keys/{id}/revoke", h.RevokeTenantAPIKey)
-	mux.HandleFunc("POST /worker-credentials", h.CreateWorkerCredential)
-	mux.HandleFunc("GET /worker-credentials", h.ListWorkerCredentials)
-	mux.HandleFunc("POST /worker-credentials/{id}/revoke", h.RevokeWorkerCredential)
+	mux.HandleFunc("POST /api/v1/config/platform-api-keys", h.CreatePlatformAPIKey)
+	mux.HandleFunc("GET /api/v1/config/platform-api-keys", h.ListPlatformAPIKeys)
+	mux.HandleFunc("POST /api/v1/config/platform-api-keys/{id}/revoke", h.RevokePlatformAPIKey)
+	mux.HandleFunc("POST /api/v1/config/api-keys", h.CreateTenantAPIKey)
+	mux.HandleFunc("GET /api/v1/config/api-keys", h.ListTenantAPIKeys)
+	mux.HandleFunc("POST /api/v1/config/api-keys/{id}/revoke", h.RevokeTenantAPIKey)
+	mux.HandleFunc("POST /api/v1/config/worker-credentials", h.CreateWorkerCredential)
+	mux.HandleFunc("GET /api/v1/config/worker-credentials", h.ListWorkerCredentials)
+	mux.HandleFunc("POST /api/v1/config/worker-credentials/{id}/revoke", h.RevokeWorkerCredential)
 }
 
 // serveConfigResourceRoutes registers quota, rate-limit, routing, deny,
 // injection, and fingerprint config routes.
 func serveConfigResourceRoutes(mux *http.ServeMux, h *control.AdminHandlers) {
-	mux.HandleFunc("GET /quotas", h.GetQuotas)
-	mux.HandleFunc("PUT /tenants/{id}/quotas", h.PutTenantQuotas)
-	mux.HandleFunc("GET /rate-limits", h.GetRateLimits)
-	mux.HandleFunc("PUT /rate-limits", h.PutRateLimits)
+	mux.HandleFunc("GET /api/v1/config/quotas", h.GetQuotas)
+	mux.HandleFunc("PUT /api/v1/config/tenants/{id}/quotas", h.PutTenantQuotas)
+	mux.HandleFunc("GET /api/v1/config/rate-limits", h.GetRateLimits)
+	mux.HandleFunc("PUT /api/v1/config/rate-limits", h.PutRateLimits)
 	mux.HandleFunc("GET /api/v1/config/routing-rules", h.ListRoutingRules)
 	mux.HandleFunc("POST /api/v1/config/routing-rules", h.CreateRoutingRule)
 	mux.HandleFunc("PUT /api/v1/config/routing-rules/{id}", h.UpdateRoutingRule)

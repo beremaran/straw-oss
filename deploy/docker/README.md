@@ -50,7 +50,7 @@ keypair: `STRAW_WORKER_PRIVATE_KEY_ED25519_BASE64` on the `egress` service is th
 on first startup (`control.BootstrapWorkerCredentialFromEnv`, `internal/control/bootstrap.go`) if that credential ID
 doesn't already exist. Both reference the same key pair, so Control's signature check against the seeded credential's
 public key succeeds. **Never reuse this keypair outside local development** — generate and provision a real one
-through the `/worker-credentials` admin API for any non-dev deployment.
+through the `/api/v1/config/worker-credentials` admin API for any non-dev deployment.
 
 Registration also requires a nonce and issued-at timestamp within the configured clock-skew tolerance
 (`control.worker.registration_clock_skew_ms`, default 60s) and is checked against a Redis-backed nonce store for

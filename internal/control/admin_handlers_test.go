@@ -188,7 +188,7 @@ func TestPlatformAPIKeyLifecycle(t *testing.T) {
 
 	// Create.
 	w := httptest.NewRecorder()
-	ta.h.CreatePlatformAPIKey(w, newAdminRequest(http.MethodPost, "/platform-api-keys", adminToken, `{"role":"system_admin"}`))
+	ta.h.CreatePlatformAPIKey(w, newAdminRequest(http.MethodPost, "/api/v1/config/platform-api-keys", adminToken, `{"role":"system_admin"}`))
 	if w.Code != http.StatusCreated {
 		t.Fatalf("create status = %d, want %d, body=%s", w.Code, http.StatusCreated, w.Body.String())
 	}
@@ -206,7 +206,7 @@ func TestPlatformAPIKeyLifecycle(t *testing.T) {
 
 	// List.
 	w = httptest.NewRecorder()
-	ta.h.ListPlatformAPIKeys(w, newAdminRequest(http.MethodGet, "/platform-api-keys", adminToken, ""))
+	ta.h.ListPlatformAPIKeys(w, newAdminRequest(http.MethodGet, "/api/v1/config/platform-api-keys", adminToken, ""))
 	if w.Code != http.StatusOK {
 		t.Fatalf("list status = %d, want %d", w.Code, http.StatusOK)
 	}
@@ -237,7 +237,7 @@ func TestPlatformAPIKeyLifecycle(t *testing.T) {
 
 	// Revoke.
 	w = httptest.NewRecorder()
-	req := newAdminRequest(http.MethodPost, "/platform-api-keys/"+created.ID+"/revoke", adminToken, "")
+	req := newAdminRequest(http.MethodPost, "/api/v1/config/platform-api-keys/"+created.ID+"/revoke", adminToken, "")
 	req.SetPathValue("id", created.ID)
 	ta.h.RevokePlatformAPIKey(w, req)
 	if w.Code != http.StatusOK {
@@ -258,7 +258,7 @@ func TestPlatformAPIKeyLifecycleRequiresSystemAdmin(t *testing.T) {
 	tenantToken := ta.seedTenantKey(t, adminTestKeyTenantAdmin, adminTestTenantA, RoleTenantAdmin)
 
 	w := httptest.NewRecorder()
-	ta.h.CreatePlatformAPIKey(w, newAdminRequest(http.MethodPost, "/platform-api-keys", tenantToken, `{"role":"system_admin"}`))
+	ta.h.CreatePlatformAPIKey(w, newAdminRequest(http.MethodPost, "/api/v1/config/platform-api-keys", tenantToken, `{"role":"system_admin"}`))
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusForbidden)
 	}
@@ -273,7 +273,7 @@ func TestTenantKeyCannotCreateTenants(t *testing.T) {
 	tenantAdminToken := ta.seedTenantKey(t, adminTestKeyTenantAdmin, adminTestTenantA, RoleTenantAdmin)
 
 	w := httptest.NewRecorder()
-	ta.h.CreateTenant(w, newAdminRequest(http.MethodPost, "/tenants", tenantAdminToken, `{"name":"Sneaky Tenant"}`))
+	ta.h.CreateTenant(w, newAdminRequest(http.MethodPost, "/api/v1/config/tenants", tenantAdminToken, `{"name":"Sneaky Tenant"}`))
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusForbidden)
 	}
@@ -294,7 +294,7 @@ func TestSystemAdminCanCreateTenants(t *testing.T) {
 	adminToken := ta.seedPlatformKey(t, "key_admin", RoleSystemAdmin)
 
 	w := httptest.NewRecorder()
-	ta.h.CreateTenant(w, newAdminRequest(http.MethodPost, "/tenants", adminToken, `{"name":"Real Tenant"}`))
+	ta.h.CreateTenant(w, newAdminRequest(http.MethodPost, "/api/v1/config/tenants", adminToken, `{"name":"Real Tenant"}`))
 	if w.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want %d, body=%s", w.Code, http.StatusCreated, w.Body.String())
 	}
@@ -306,7 +306,7 @@ func createTenantForTest(t *testing.T, ta *testAdmin, adminToken, name string) s
 	t.Helper()
 
 	w := httptest.NewRecorder()
-	ta.h.CreateTenant(w, newAdminRequest(http.MethodPost, "/tenants", adminToken, `{"name":"`+name+`"}`))
+	ta.h.CreateTenant(w, newAdminRequest(http.MethodPost, "/api/v1/config/tenants", adminToken, `{"name":"`+name+`"}`))
 	if w.Code != http.StatusCreated {
 		t.Fatalf("CreateTenant() status = %d, body=%s", w.Code, w.Body.String())
 	}
@@ -423,7 +423,7 @@ func TestUpdateTenantPersistsRateLimitCeilingAndForcesInvalidation(t *testing.T)
 	// A rate-limit write above the ceiling is now rejected end to end.
 	tenantAdminToken := ta.seedTenantKey(t, "key_tenant_admin_ceiling", tenantID, RoleTenantAdmin)
 	rlBody := `{"limits":[{"dimension":"tenant","key":"*","window_seconds":60,"max_requests":7000,"fail_policy":"open"}],"expected_config_version":0}`
-	rlReq := newAdminRequest(http.MethodPut, "/rate-limits", tenantAdminToken, rlBody)
+	rlReq := newAdminRequest(http.MethodPut, "/api/v1/config/rate-limits", tenantAdminToken, rlBody)
 	rlW := httptest.NewRecorder()
 	ta.h.PutRateLimits(rlW, rlReq)
 	if rlW.Code != http.StatusBadRequest {
@@ -513,7 +513,7 @@ func TestActorAuditSourceRecorded(t *testing.T) {
 	adminToken := ta.seedPlatformKey(t, "key_admin", RoleSystemAdmin)
 
 	w := httptest.NewRecorder()
-	ta.h.CreatePlatformAPIKey(w, newAdminRequest(http.MethodPost, "/platform-api-keys", adminToken, `{"role":"system_admin"}`))
+	ta.h.CreatePlatformAPIKey(w, newAdminRequest(http.MethodPost, "/api/v1/config/platform-api-keys", adminToken, `{"role":"system_admin"}`))
 	if w.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusCreated)
 	}
@@ -641,7 +641,7 @@ func TestQuotaWriteRequiresPlatformKey(t *testing.T) {
 
 	// Tenant key rejected.
 	w := httptest.NewRecorder()
-	req := newAdminRequest(http.MethodPut, "/tenants/ten_a/quotas", tenantAdminToken, body)
+	req := newAdminRequest(http.MethodPut, "/api/v1/config/tenants/ten_a/quotas", tenantAdminToken, body)
 	req.SetPathValue("id", adminTestTenantA)
 	ta.h.PutTenantQuotas(w, req)
 	if w.Code != http.StatusForbidden {
@@ -650,7 +650,7 @@ func TestQuotaWriteRequiresPlatformKey(t *testing.T) {
 
 	// Platform key succeeds.
 	w = httptest.NewRecorder()
-	req = newAdminRequest(http.MethodPut, "/tenants/ten_a/quotas", adminToken, body)
+	req = newAdminRequest(http.MethodPut, "/api/v1/config/tenants/ten_a/quotas", adminToken, body)
 	req.SetPathValue("id", adminTestTenantA)
 	ta.h.PutTenantQuotas(w, req)
 	if w.Code != http.StatusOK {
@@ -659,7 +659,7 @@ func TestQuotaWriteRequiresPlatformKey(t *testing.T) {
 
 	// Tenant retains read-only access.
 	w = httptest.NewRecorder()
-	ta.h.GetQuotas(w, newAdminRequest(http.MethodGet, "/quotas", tenantAdminToken, ""))
+	ta.h.GetQuotas(w, newAdminRequest(http.MethodGet, "/api/v1/config/quotas", tenantAdminToken, ""))
 	if w.Code != http.StatusOK {
 		t.Fatalf("tenant quota read status = %d, want %d", w.Code, http.StatusOK)
 	}
@@ -692,14 +692,14 @@ func TestRateLimitsWriteRequiresTenantAdmin(t *testing.T) {
 
 	// Viewer rejected.
 	w := httptest.NewRecorder()
-	ta.h.PutRateLimits(w, newAdminRequest(http.MethodPut, "/rate-limits", viewerToken, body))
+	ta.h.PutRateLimits(w, newAdminRequest(http.MethodPut, "/api/v1/config/rate-limits", viewerToken, body))
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("viewer write status = %d, want %d", w.Code, http.StatusForbidden)
 	}
 
 	// Tenant admin succeeds.
 	w = httptest.NewRecorder()
-	ta.h.PutRateLimits(w, newAdminRequest(http.MethodPut, "/rate-limits", tenantAdminToken, body))
+	ta.h.PutRateLimits(w, newAdminRequest(http.MethodPut, "/api/v1/config/rate-limits", tenantAdminToken, body))
 	if w.Code != http.StatusOK {
 		t.Fatalf("tenant_admin write status = %d, want %d, body=%s", w.Code, http.StatusOK, w.Body.String())
 	}
@@ -717,7 +717,7 @@ func TestRateLimitsWriteRequiresTenantAdmin(t *testing.T) {
 
 	// Viewer retains read access.
 	w = httptest.NewRecorder()
-	ta.h.GetRateLimits(w, newAdminRequest(http.MethodGet, "/rate-limits", viewerToken, ""))
+	ta.h.GetRateLimits(w, newAdminRequest(http.MethodGet, "/api/v1/config/rate-limits", viewerToken, ""))
 	if w.Code != http.StatusOK {
 		t.Fatalf("viewer read status = %d, want %d", w.Code, http.StatusOK)
 	}
@@ -746,7 +746,7 @@ func TestRateLimitsCeilingRejectsExceedingWrite(t *testing.T) {
 	body := `{"expected_config_version":0,"limits":[{"dimension":"tenant","key":"*","window_seconds":60,"max_requests":200,"fail_policy":"open"}]}`
 
 	w := httptest.NewRecorder()
-	ta.h.PutRateLimits(w, newAdminRequest(http.MethodPut, "/rate-limits", tenantAdminToken, body))
+	ta.h.PutRateLimits(w, newAdminRequest(http.MethodPut, "/api/v1/config/rate-limits", tenantAdminToken, body))
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d, body=%s", w.Code, http.StatusBadRequest, w.Body.String())
 	}
@@ -780,7 +780,7 @@ func TestQuotaAndRateLimitWritesUseTransactionalConfigStore(t *testing.T) {
 	}
 
 	quotaBody := `{"expected_config_version":0,"period":"monthly","max_requests":10,"max_bandwidth_bytes":2048,"request_count_policy":"count_on_admission","redis_fail_policy":"fail_closed"}`
-	quotaReq := newAdminRequest(http.MethodPut, "/tenants/"+adminTestTenantA+"/quotas", adminToken, quotaBody)
+	quotaReq := newAdminRequest(http.MethodPut, "/tenants/"+adminTestTenantA+"/api/v1/config/quotas", adminToken, quotaBody)
 	quotaReq.SetPathValue("id", adminTestTenantA)
 	quotaResp := httptest.NewRecorder()
 	ta.h.PutTenantQuotas(quotaResp, quotaReq)
@@ -798,7 +798,7 @@ func TestQuotaAndRateLimitWritesUseTransactionalConfigStore(t *testing.T) {
 	}
 
 	rateBody := `{"expected_config_version":0,"limits":[{"dimension":"tenant","key":"*","window_seconds":60,"max_requests":50,"fail_policy":"open"}]}`
-	rateReq := newAdminRequest(http.MethodPut, "/rate-limits", tenantToken, rateBody)
+	rateReq := newAdminRequest(http.MethodPut, "/api/v1/config/rate-limits", tenantToken, rateBody)
 	rateResp := httptest.NewRecorder()
 	ta.h.PutRateLimits(rateResp, rateReq)
 	if rateResp.Code != http.StatusOK {
@@ -828,7 +828,7 @@ func TestWorkerCredentialCreateRejectsForeignTenantScope(t *testing.T) {
 
 	body := `{"executor_type":"egress","allowed_pools":[{"tenant_id":"ten_b","pool_id":"pool_x"}],"public_key_ed25519_base64":"YWJjZA=="}`
 	w := httptest.NewRecorder()
-	ta.h.CreateWorkerCredential(w, newAdminRequest(http.MethodPost, "/worker-credentials", tenantAdminToken, body))
+	ta.h.CreateWorkerCredential(w, newAdminRequest(http.MethodPost, "/api/v1/config/worker-credentials", tenantAdminToken, body))
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d, body=%s", w.Code, http.StatusBadRequest, w.Body.String())
 	}
@@ -850,7 +850,7 @@ func TestWorkerCredentialCreateForcesCallerTenantScope(t *testing.T) {
 
 	body := `{"executor_type":"egress","allowed_pools":[{"tenant_id":"ten_a","pool_id":"pool_x"}],"public_key_ed25519_base64":"YWJjZA=="}`
 	w := httptest.NewRecorder()
-	ta.h.CreateWorkerCredential(w, newAdminRequest(http.MethodPost, "/worker-credentials", tenantAdminToken, body))
+	ta.h.CreateWorkerCredential(w, newAdminRequest(http.MethodPost, "/api/v1/config/worker-credentials", tenantAdminToken, body))
 	if w.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want %d, body=%s", w.Code, http.StatusCreated, w.Body.String())
 	}
@@ -873,7 +873,7 @@ func TestWorkerCredentialRevokeInvalidatesAcrossTenants(t *testing.T) {
 
 	body := `{"executor_type":"egress","allowed_pools":[],"public_key_ed25519_base64":"YWJjZA=="}`
 	w := httptest.NewRecorder()
-	ta.h.CreateWorkerCredential(w, newAdminRequest(http.MethodPost, "/worker-credentials", tenantAToken, body))
+	ta.h.CreateWorkerCredential(w, newAdminRequest(http.MethodPost, "/api/v1/config/worker-credentials", tenantAToken, body))
 	var created workerCredentialResponse
 	err := json.Unmarshal(w.Body.Bytes(), &created)
 	if err != nil {
@@ -881,7 +881,7 @@ func TestWorkerCredentialRevokeInvalidatesAcrossTenants(t *testing.T) {
 	}
 
 	w = httptest.NewRecorder()
-	req := newAdminRequest(http.MethodPost, "/worker-credentials/"+created.ID+"/revoke", tenantBToken, "")
+	req := newAdminRequest(http.MethodPost, "/api/v1/config/worker-credentials/"+created.ID+"/revoke", tenantBToken, "")
 	req.SetPathValue("id", created.ID)
 	ta.h.RevokeWorkerCredential(w, req)
 	if w.Code != http.StatusForbidden {

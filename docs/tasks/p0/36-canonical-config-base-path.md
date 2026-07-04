@@ -1,6 +1,6 @@
 # 36 - Canonical Config Base Path Normalization
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -46,15 +46,15 @@ or expect a small rebase (shared `cmd/control/main.go`).
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Move the bare registrations under `/api/v1/config` (for example `POST /api/v1/config/tenants`,
+- [x] Read all required planning docs.
+- [x] Move the bare registrations under `/api/v1/config` (for example `POST /api/v1/config/tenants`,
       `PUT /api/v1/config/tenants/{id}/quotas`, `GET /api/v1/config/rate-limits`), keeping method and handler
       unchanged.
-- [ ] Update tests that route through the mux; grep the repo for remaining bare-path literals and fix any hits.
-- [ ] Verify the old bare paths now return 404 and the canonical paths behave identically to before.
-- [ ] Run the focused tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Update tests that route through the mux; grep the repo for remaining bare-path literals and fix any hits.
+- [x] Verify the old bare paths now return 404 and the canonical paths behave identically to before.
+- [x] Run the focused tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 
