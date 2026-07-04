@@ -69,7 +69,7 @@ func TestWorkerDiscoveryOverNATSDuplicateSessionAndTimeouts(t *testing.T) {
 		PrivateKey:   priv,
 	}
 	caps := egress.Capabilities{
-		AllowedPools:          []strawpb.RegisterRequest_PoolRef{{TenantId: workerNATSTestTenant, PoolId: routingTestPool1}},
+		AllowedPools:          []*strawpb.RegisterRequest_PoolRef{{TenantId: workerNATSTestTenant, PoolId: routingTestPool1}},
 		SoftwareVersion:       workerTestVersion,
 		MaxConcurrency:        4,
 		SupportedIngressModes: []string{requestMetadataIngressType},
@@ -180,7 +180,7 @@ func TestWorkerRunLoopAppearsInAdminWorkersAndDrainsOnCancel(t *testing.T) {
 		PrivateKey:   priv,
 	}
 	caps := egress.Capabilities{
-		AllowedPools:          []strawpb.RegisterRequest_PoolRef{{TenantId: workerNATSTestTenant, PoolId: routingTestPool1}},
+		AllowedPools:          []*strawpb.RegisterRequest_PoolRef{{TenantId: workerNATSTestTenant, PoolId: routingTestPool1}},
 		SoftwareVersion:       workerTestVersion,
 		MaxConcurrency:        2,
 		SupportedIngressModes: []string{"rest"},

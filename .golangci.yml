@@ -28,6 +28,7 @@ linters:
     - goheader
     - goprintffuncname
     - gosec
+    - govet
     - iface
     - inamedparam
     - ineffassign

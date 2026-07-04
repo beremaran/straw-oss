@@ -23,7 +23,7 @@ func TestBuildRegisterRequestSignsVerifiably(t *testing.T) {
 	}
 	id := Identity{WorkerID: testWorker1, CredentialID: testWcred1, ExecutorType: testEgress, PrivateKey: priv}
 	caps := Capabilities{
-		AllowedPools:   []strawpb.RegisterRequest_PoolRef{{TenantId: testTenantA, PoolId: testPool1}},
+		AllowedPools:   []*strawpb.RegisterRequest_PoolRef{{TenantId: testTenantA, PoolId: testPool1}},
 		Tags:           []string{"datacenter"},
 		MaxConcurrency: 4,
 	}
