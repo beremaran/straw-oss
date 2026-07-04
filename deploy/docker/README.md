@@ -16,6 +16,7 @@ Local docker-compose support for the full P0 vertical slice: Control, Egress, NA
 |------------|------|--------------------------------|
 | control    | 8080 | REST/config/admin API          |
 | control    | 9090 | Metrics + `/healthz` `/readyz`  |
+| egress     | 8090 | `/healthz` `/readyz` (container-local; not published) |
 | nats       | 4222 | client / 8222 monitoring       |
 | postgres   | 5432 | Postgres                       |
 | redis      | 6379 | Redis                          |

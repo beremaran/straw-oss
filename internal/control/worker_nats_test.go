@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -187,12 +188,13 @@ func TestWorkerRunLoopAppearsInAdminWorkersAndDrainsOnCancel(t *testing.T) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
+	ready := &atomic.Bool{}
 	var runErr error
 	var runMu sync.Mutex
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		runErr = egress.Run(ctx, workerConn, id, caps, egress.NewExecutor(egress.ExecutorOptions{}), 25*time.Millisecond)
+		runErr = egress.Run(ctx, workerConn, id, caps, egress.NewExecutor(egress.ExecutorOptions{}), 25*time.Millisecond, ready)
 		runMu.Lock()
 		defer runMu.Unlock()
 	}()
@@ -200,10 +202,18 @@ func TestWorkerRunLoopAppearsInAdminWorkersAndDrainsOnCancel(t *testing.T) {
 	platformToken := h.seedPlatformKey(t, "key_admin", RoleSystemAdmin)
 	waitForWorkerState(t, h.h, platformToken, workerRegTestWorker2, string(RuntimeReady))
 
+	if !ready.Load() {
+		t.Fatalf("ready flag = false after registration, want true (docs/tasks/p0/38)")
+	}
+
 	cancel()
 	<-done
 	if runErr != nil {
 		t.Fatalf("worker run loop error: %v", runErr)
+	}
+
+	if ready.Load() {
+		t.Fatalf("ready flag = true after drain, want false (docs/tasks/p0/38)")
 	}
 
 	waitForWorkerState(t, h.h, platformToken, workerRegTestWorker2, string(RuntimeDraining))

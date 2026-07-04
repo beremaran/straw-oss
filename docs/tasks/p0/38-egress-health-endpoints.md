@@ -1,6 +1,6 @@
 # 38 - Egress Worker Health Endpoints
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -43,17 +43,17 @@ Control already has the pattern in `cmd/control/health.go`. Direct worker Promet
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Add the egress `health_port` config field with the same validation shape as Control's ports.
-- [ ] Serve `/healthz` (200 while the process runs) and `/readyz` (200 only after successful registration and while
+- [x] Read all required planning docs.
+- [x] Add the egress `health_port` config field with the same validation shape as Control's ports.
+- [x] Serve `/healthz` (200 while the process runs) and `/readyz` (200 only after successful registration and while
       not draining) on the health port.
-- [ ] Wire the readiness transitions to the run loop: false at start, true on `RegisterAck` OK, false when draining
+- [x] Wire the readiness transitions to the run loop: false at start, true on `RegisterAck` OK, false when draining
       begins.
-- [ ] Add the compose healthcheck and port wiring.
-- [ ] Add tests for the readiness transitions and both endpoints.
-- [ ] Run the focused tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Add the compose healthcheck and port wiring.
+- [x] Add tests for the readiness transitions and both endpoints.
+- [x] Run the focused tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

@@ -9,8 +9,10 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -21,9 +23,14 @@ import (
 )
 
 const (
-	exitUsage          = 2
-	defaultConcurrency = 4
+	exitUsage               = 2
+	defaultConcurrency      = 4
+	readHeaderTimeout       = 5 * time.Second
+	healthShutdownTimeout   = 5 * time.Second
+	healthcheckProbeTimeout = 2 * time.Second
 )
+
+var errHealthcheckNotReady = errors.New("healthcheck probe returned non-2xx status")
 
 var (
 	errPrivateKeyEnvUnset   = errors.New("configured private key environment variable is unset or empty")
@@ -68,18 +75,13 @@ func main() {
 }
 
 func run() error {
-	configPath := flag.String("config", "", "path to the egress config file")
-
-	flag.Parse()
-
-	if *configPath == "" {
-		fmt.Fprintln(os.Stderr, "missing required -config flag")
-		os.Exit(exitUsage)
+	egressConfig, healthcheck, err := loadEgressConfig()
+	if err != nil {
+		return err
 	}
 
-	egressConfig, err := config.LoadEgress(*configPath)
-	if err != nil {
-		return fmt.Errorf("load egress config: %w", err)
+	if healthcheck {
+		return runHealthcheck(egressConfig)
 	}
 
 	err = natsx.ValidateServers(egressConfig.NATS.Servers)
@@ -115,6 +117,82 @@ func run() error {
 	return runWorker(ctx, natsConn, egressConfig)
 }
 
+// loadEgressConfig parses flags and loads the egress config, returning
+// whether -healthcheck was requested (for container healthchecks against the
+// distroless image, mirroring cmd/control/main.go).
+func loadEgressConfig() (config.EgressConfig, bool, error) {
+	configPath := flag.String("config", "", "path to the egress config file")
+	healthcheck := flag.Bool("healthcheck", false, "probe the local /readyz endpoint and exit (for container healthchecks)")
+
+	flag.Parse()
+
+	if *configPath == "" {
+		fmt.Fprintln(os.Stderr, "missing required -config flag")
+		os.Exit(exitUsage)
+	}
+
+	egressConfig, err := config.LoadEgress(*configPath)
+	if err != nil {
+		return config.EgressConfig{}, false, fmt.Errorf("load egress config: %w", err)
+	}
+
+	return egressConfig, *healthcheck, nil
+}
+
+// runHealthcheck probes the local /readyz endpoint on the health port and
+// returns nil only on a 2xx.
+func runHealthcheck(cfg config.EgressConfig) error {
+	url := fmt.Sprintf("http://127.0.0.1:%d/readyz", cfg.HealthPort)
+
+	ctx, cancel := context.WithTimeout(context.Background(), healthcheckProbeTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return fmt.Errorf("build healthcheck request: %w", err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("healthcheck probe %s: %w", url, err)
+	}
+
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("%w: %s status %d", errHealthcheckNotReady, url, resp.StatusCode)
+	}
+
+	return nil
+}
+
+// serveHealthHTTP starts the /healthz and /readyz server on the health port
+// (docs/planning/23, docs/planning/28) and returns a stop function that
+// shuts it down.
+func serveHealthHTTP(ctx context.Context, cfg config.EgressConfig, ready *atomic.Bool) func() {
+	addr := fmt.Sprintf(":%d", cfg.HealthPort)
+	server := &http.Server{Addr: addr, Handler: newHealthMux(ready), ReadHeaderTimeout: readHeaderTimeout}
+
+	go func() {
+		serveErr := server.ListenAndServe()
+		if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+			slog.Error("health server failed", "error", serveErr)
+		}
+	}()
+
+	slog.Info("health listening", "addr", addr)
+
+	return func() {
+		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), healthShutdownTimeout)
+		defer cancel()
+
+		shutdownErr := server.Shutdown(shutdownCtx)
+		if shutdownErr != nil {
+			slog.Error("shutdown health server failed", "error", shutdownErr)
+		}
+	}
+}
+
 func runWorker(ctx context.Context, natsConn *natsx.Connection, cfg config.EgressConfig) error {
 	priv, err := loadWorkerPrivateKey(cfg)
 	if err != nil {
@@ -137,9 +215,14 @@ func runWorker(ctx context.Context, natsConn *natsx.Connection, cfg config.Egres
 
 	executor := egress.NewExecutor(egress.ExecutorOptions{})
 
+	ready := &atomic.Bool{}
+
+	stopHealth := serveHealthHTTP(ctx, cfg, ready)
+	defer stopHealth()
+
 	slog.Info("starting run loop", "worker_id", cfg.WorkerID, "heartbeat_interval", heartbeatInterval.String())
 
-	err = egress.Run(ctx, natsConn, id, caps, executor, heartbeatInterval)
+	err = egress.Run(ctx, natsConn, id, caps, executor, heartbeatInterval, ready)
 	if err != nil {
 		return fmt.Errorf("egress run loop: %w", err)
 	}

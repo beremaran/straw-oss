@@ -13,6 +13,9 @@ import (
 // Version is the canonical control-plane config file version.
 const Version = "v1"
 
+// defaultEgressHealthPort is used when egress.health_port is unset.
+const defaultEgressHealthPort = 8090
+
 var (
 	errMissingControlSection    = errors.New("missing control section")
 	errMissingEgressSection     = errors.New("missing egress section")
@@ -24,6 +27,7 @@ var (
 	errInvalidConfigVersion     = errors.New("invalid config_version")
 	errInvalidServerAPIPort     = errors.New("server.api_port must be between 1 and 65535")
 	errInvalidServerMetricsPort = errors.New("server.metrics_port must be between 1 and 65535")
+	errInvalidEgressHealthPort  = errors.New("health_port must be between 1 and 65535")
 )
 
 // File is the top-level JSON envelope for config files.
@@ -140,9 +144,12 @@ type EgressConfig struct {
 	// (32-byte seed or the full 64-byte private key). Secrets are never
 	// stored directly in the config file, matching every other credential
 	// field in this package (e.g. RedisConfig.URLEnv).
-	PrivateKeyEd25519Env string     `json:"private_key_ed25519_env"`
-	HeartbeatIntervalMs  int        `json:"heartbeat_interval_ms"`
-	NATS                 NATSConfig `json:"nats"`
+	PrivateKeyEd25519Env string `json:"private_key_ed25519_env"`
+	HeartbeatIntervalMs  int    `json:"heartbeat_interval_ms"`
+	// HealthPort serves local /healthz and /readyz (docs/planning/23:
+	// "P0 should prefer direct local /healthz and /readyz" for egress).
+	HealthPort int        `json:"health_port"`
+	NATS       NATSConfig `json:"nats"`
 }
 
 // LoadControl reads and validates a control config file.
@@ -411,6 +418,14 @@ func (e *EgressConfig) validate() error {
 
 	if e.HeartbeatIntervalMs <= 0 {
 		e.HeartbeatIntervalMs = 5000
+	}
+
+	if e.HealthPort == 0 {
+		e.HealthPort = defaultEgressHealthPort
+	}
+
+	if e.HealthPort < 1 || e.HealthPort > 65535 {
+		return fmt.Errorf("%w: %d", errInvalidEgressHealthPort, e.HealthPort)
 	}
 
 	e.NATS.applyDefaults()

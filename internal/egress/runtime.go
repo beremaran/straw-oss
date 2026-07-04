@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	strawpb "github.com/beremaran/straw/v2/api/proto/straw/v1"
@@ -109,19 +110,27 @@ func Heartbeat(ctx context.Context, conn *natsx.Connection, id Identity, session
 // assignment execution loop, until ctx is canceled. On shutdown it sends a
 // draining heartbeat before telling the assignment loop to stop accepting
 // new work and drain in-flight requests (docs/planning/29 "Worker Graceful
-// Shutdown").
-func Run(ctx context.Context, conn *natsx.Connection, id Identity, caps Capabilities, executor *Executor, heartbeatInterval time.Duration) error {
+// Shutdown"). If ready is non-nil, it is set true once registration succeeds
+// and false again once draining begins, so an egress /readyz endpoint
+// (docs/planning/23) can reflect the run loop's live state.
+func Run(ctx context.Context, conn *natsx.Connection, id Identity, caps Capabilities, executor *Executor, heartbeatInterval time.Duration, ready *atomic.Bool) error {
 	if heartbeatInterval <= 0 {
 		heartbeatInterval = defaultHeartbeatInterval
 	}
+
+	setReady(ready, false)
 
 	sessionID, err := Register(ctx, conn, id, caps)
 	if err != nil {
 		return err
 	}
 
+	setReady(ready, true)
+
 	worker, err := NewWorker(conn, id, executor, sessionID, caps.MaxConcurrency)
 	if err != nil {
+		setReady(ready, false)
+
 		return err
 	}
 
@@ -138,29 +147,49 @@ func Run(ctx context.Context, conn *natsx.Connection, id Identity, caps Capabili
 
 	err = Heartbeat(ctx, conn, id, sessionID, strawpb.WorkerHealth_WORKER_HEALTH_READY, active, capacityFromConcurrency(active, caps.MaxConcurrency), caps.MaxConcurrency, false)
 	if err != nil {
+		setReady(ready, false)
+
 		stopServing()
 		<-serveDone
 
 		return err
 	}
 
+	runHeartbeatLoop(ctx, conn, id, sessionID, caps, worker, heartbeatInterval, ready)
+
+	stopServing()
+	<-serveDone
+
+	return nil
+}
+
+// runHeartbeatLoop sends periodic heartbeats until ctx is canceled, then
+// sends a final draining heartbeat (docs/planning/29 "Worker Graceful
+// Shutdown" step 1) and clears ready.
+func runHeartbeatLoop(ctx context.Context, conn *natsx.Connection, id Identity, sessionID string, caps Capabilities, worker *Worker, heartbeatInterval time.Duration, ready *atomic.Bool) {
 	ticker := time.NewTicker(heartbeatInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
-			active = worker.ActiveRequests()
+			setReady(ready, false)
+
+			active := worker.ActiveRequests()
 			_ = Heartbeat(context.WithoutCancel(ctx), conn, id, sessionID, strawpb.WorkerHealth_WORKER_HEALTH_READY, active, capacityFromConcurrency(active, caps.MaxConcurrency), caps.MaxConcurrency, true)
 
-			stopServing()
-			<-serveDone
-
-			return nil
+			return
 		case <-ticker.C:
-			active = worker.ActiveRequests()
+			active := worker.ActiveRequests()
 			_ = Heartbeat(ctx, conn, id, sessionID, strawpb.WorkerHealth_WORKER_HEALTH_READY, active, capacityFromConcurrency(active, caps.MaxConcurrency), caps.MaxConcurrency, false)
 		}
+	}
+}
+
+// setReady stores v in ready if ready is non-nil.
+func setReady(ready *atomic.Bool, v bool) {
+	if ready != nil {
+		ready.Store(v)
 	}
 }
 

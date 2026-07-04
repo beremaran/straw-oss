@@ -117,6 +117,11 @@ services:
         condition: service_healthy
       control:
         condition: service_started
+    healthcheck:
+      test: ["CMD", "/egress", "-config", "/etc/straw/egress.json", "-healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     restart: unless-stopped
 
 volumes:
