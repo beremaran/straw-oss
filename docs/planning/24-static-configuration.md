@@ -25,6 +25,9 @@ these full paths.
 | `control.worker.cooldown_failure_count`                 | `3`        | 11                                 |
 | `control.worker.cooldown_window_ms`                     | `60000`    | 11                                 |
 | `control.worker.cooldown_duration_ms`                   | `30000`    | 11                                 |
+| `control.worker.registration_clock_skew_ms`             | `60000`    | 27                                 |
+| `control.worker.registration_nonce_ttl_ms`              | `300000`   | 27                                 |
+| `control.worker.registration_fail_open_on_redis_outage` | `false`    | 27                                 |
 | `control.transport.max_frame_data_bytes`                | `1048576`  | 12                                 |
 | `control.transport.initial_upload_credit_bytes`         | `8388608`  | 12                                 |
 | `control.transport.initial_download_credit_bytes`       | `8388608`  | 12                                 |
@@ -73,6 +76,7 @@ these full paths.
 | `egress.nats.max_ping_failures`                         | `3`        | 24                                 |
 | `egress.credential.credential_id_env`                   | —          | 24                                 |
 | `egress.credential.private_key_env`                     | —          | 24                                 |
+| `egress.private_key_ed25519_env`                        | —          | 24, 27 (implemented flat key, see note below the tables) |
 | `egress.capabilities.pool_ids`                          | —          | 24                                 |
 | `egress.capabilities.tags`                              | `[]`       | 24                                 |
 | `egress.capabilities.countries`                         | `[]`       | 24                                 |
@@ -102,6 +106,11 @@ these full paths.
 | `egress.observability.health.host`                       | `0.0.0.0`  | 24                                 |
 | `egress.observability.health.port`                       | `9090`     | 24                                 |
 
+`egress.worker_id` and `egress.credential_id` are implemented as flat top-level keys (not nested under
+`egress.credential`), a pre-existing gap predating task 35. `egress.private_key_ed25519_env` (added by task 35) is
+likewise flat, alongside them, rather than `egress.credential.private_key_env`, for consistency with the fields it
+sits next to. Reconciling the nested `egress.credential.*` shape into the implemented flat shape has no owning task.
+
 ### Control Config Example
 
 ```yaml
@@ -128,6 +137,9 @@ control:
     cooldown_failure_count: 3
     cooldown_window_ms: 60000
     cooldown_duration_ms: 30000
+    registration_clock_skew_ms: 60000
+    registration_nonce_ttl_ms: 300000
+    registration_fail_open_on_redis_outage: false
 
   transport:
     max_frame_data_bytes: 1048576
@@ -205,6 +217,8 @@ control:
 config_version: "v1"
 egress:
   worker_id: "egress-local-001"
+  credential_id: "wcred-local-001"
+  private_key_ed25519_env: "STRAW_WORKER_PRIVATE_KEY_ED25519_BASE64"
 
   nats:
     servers: [ "nats://nats:4222" ]

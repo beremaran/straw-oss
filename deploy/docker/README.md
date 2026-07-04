@@ -41,13 +41,21 @@ docker compose down -v
 Control's compose healthcheck runs `control -healthcheck`, which probes its own `/readyz`; `/readyz` returns 503
 once graceful-shutdown drain begins (`docs/planning/29`).
 
-## Worker provisioning (known limitation)
+## Worker provisioning
 
-The `egress` service connects to NATS and attempts to register, but **registration will not succeed out of the box**.
-Registration requires a worker credential in Postgres whose ed25519 public key matches the worker's private key, and
-the egress binary currently generates a fresh random keypair on every boot (`cmd/egress/main.go`). No P0 task owns
-persisting the egress identity key or seeding its credential, so a turnkey request flow through the compose stack is
-not yet wired.
+The `egress` service registers successfully out of the box. `docker-compose.yml` bakes in a **dev-only** ed25519
+keypair: `STRAW_WORKER_PRIVATE_KEY_ED25519_BASE64` on the `egress` service is the persistent private key egress loads
+(`cmd/egress/main.go`, `egress.private_key_ed25519_env` in `egress.json`); `STRAW_BOOTSTRAP_WORKER_CREDENTIAL_ID` and
+`STRAW_BOOTSTRAP_WORKER_PUBLIC_KEY_ED25519_BASE64` on the `control` service seed a matching `worker_credentials` row
+on first startup (`control.BootstrapWorkerCredentialFromEnv`, `internal/control/bootstrap.go`) if that credential ID
+doesn't already exist. Both reference the same key pair, so Control's signature check against the seeded credential's
+public key succeeds. **Never reuse this keypair outside local development** — generate and provision a real one
+through the `/worker-credentials` admin API for any non-dev deployment.
+
+Registration also requires a nonce and issued-at timestamp within the configured clock-skew tolerance
+(`control.worker.registration_clock_skew_ms`, default 60s) and is checked against a Redis-backed nonce store for
+replay protection (`docs/planning/27-security-controls.md`); this needs no extra compose configuration since Redis
+is already part of the stack.
 
 The automated proof of the end-to-end REST -> Control -> NATS -> Egress -> upstream path is the in-process Go test
 `TestDispatcherControlNATSEgressRoundTrip` (run with `go test ./internal/control/`), which controls both the worker

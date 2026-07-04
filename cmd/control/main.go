@@ -116,6 +116,12 @@ func runControl(controlConfig config.ControlConfig, natsConn *natsx.Connection) 
 
 	workerCreds := control.NewPostgresWorkerCredentialStore(pool)
 	workerRegistry := control.NewWorkerRegistry(workerCreds, control.DefaultWorkerTimings(), nil)
+	wireWorkerRegistrationReplayProtection(workerRegistry, controlConfig.Worker, redisClient)
+
+	err = bootstrapWorkerCredential(workerCreds)
+	if err != nil {
+		return err
+	}
 
 	configStore := control.NewPostgresConfigStore(pool)
 
@@ -141,6 +147,20 @@ func runControl(controlConfig config.ControlConfig, natsConn *natsx.Connection) 
 	}
 
 	return serveControl(ctx, controlConfig, mux, metricsReg)
+}
+
+// wireWorkerRegistrationReplayProtection wires the Redis-backed registration
+// nonce store into workerRegistry per the configured skew/TTL/fail policy
+// (docs/planning/27-security-controls.md "Worker Credential Signing"). A
+// configured-but-unreachable Redis is not special-cased here: the store's
+// Consume call surfaces the error per-registration and the registry applies
+// workerCfg.RegistrationFailOpenOnRedisOutage (fail-closed by default).
+func wireWorkerRegistrationReplayProtection(workerRegistry *control.WorkerRegistry, workerCfg config.ControlWorkerConfig, redisClient *redis.Client) {
+	workerRegistry.SetNonceStore(control.NewRedisWorkerNonceStore(redisClient), control.WorkerRegistrationPolicy{
+		ClockSkew:                 time.Duration(workerCfg.RegistrationClockSkewMS) * time.Millisecond,
+		NonceTTL:                  time.Duration(workerCfg.RegistrationNonceTTLMS) * time.Millisecond,
+		FailOpenOnNonceStoreError: workerCfg.RegistrationFailOpenOnRedisOutage,
+	})
 }
 
 // wireMetrics builds the Prometheus registry and the P0 metric series
@@ -666,6 +686,28 @@ func bootstrapAPIKey(store control.APIKeyStore, pepper []byte) (bool, error) {
 	}
 
 	return created, nil
+}
+
+// bootstrapWorkerCredential seeds a dev worker credential from
+// STRAW_BOOTSTRAP_WORKER_CREDENTIAL_ID/STRAW_BOOTSTRAP_WORKER_PUBLIC_KEY_ED25519_BASE64
+// so the docker-compose egress worker can register out of the box (see
+// deploy/docker/README.md). A no-op when either variable is unset.
+func bootstrapWorkerCredential(store control.WorkerCredentialStore) error {
+	created, err := control.BootstrapWorkerCredentialFromEnv(
+		context.Background(),
+		store,
+		os.Getenv(control.DevWorkerIDEnvVar),
+		os.Getenv(control.DevWorkerPublicEd25519EnvVar),
+	)
+	if err != nil {
+		return fmt.Errorf("bootstrap worker credential: %w", err)
+	}
+
+	if created {
+		log.Printf("control: bootstrapped dev worker credential from %s", control.DevWorkerIDEnvVar)
+	}
+
+	return nil
 }
 
 func loadControlConfig() (config.ControlConfig, bool, error) {

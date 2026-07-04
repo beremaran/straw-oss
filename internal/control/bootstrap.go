@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -84,6 +85,65 @@ func BootstrapFromEnv(ctx context.Context, store APIKeyStore, bootstrapKey strin
 	}
 
 	return keyID, true, nil
+}
+
+// DevWorkerIDEnvVar and DevWorkerPublicEd25519EnvVar are the environment
+// variables Control reads on startup to seed a dev worker credential
+// matching a persistent egress identity key, so a docker-compose worker can
+// register without a manual admin API call. Dev-only: production
+// deployments provision worker credentials through the
+// `/worker-credentials` admin API instead.
+const (
+	DevWorkerIDEnvVar            = "STRAW_BOOTSTRAP_WORKER_CREDENTIAL_ID"
+	DevWorkerPublicEd25519EnvVar = "STRAW_BOOTSTRAP_WORKER_PUBLIC_KEY_ED25519_BASE64"
+	devWorkerTenantScope         = "dev"
+	devWorkerExecutorEgress      = "egress"
+)
+
+// BootstrapWorkerCredentialFromEnv seeds a single worker credential from
+// credentialID/publicKeyBase64 (typically read from
+// DevWorkerIDEnvVar/DevWorkerPublicEd25519EnvVar by
+// the caller) if, and only if, no credential with that ID already exists. It
+// returns whether a credential was created.
+//
+// This is idempotent-safe to call on every Control startup, mirroring
+// BootstrapFromEnv: once the credential exists (whether created by this
+// bootstrap or by a later /worker-credentials call), subsequent calls are
+// no-ops. The seeded credential's TenantScope is a fixed "dev" placeholder;
+// registration does not check tenant scope (only routing/eligibility does),
+// so this is sufficient to let a worker register against the seeded
+// credential without requiring a real provisioned tenant.
+func BootstrapWorkerCredentialFromEnv(ctx context.Context, store WorkerCredentialStore, credentialID, publicKeyBase64 string) (bool, error) {
+	if credentialID == "" || publicKeyBase64 == "" {
+		return false, nil
+	}
+
+	_, err := store.Get(ctx, credentialID)
+	if err == nil {
+		return false, nil
+	}
+
+	if !errors.Is(err, ErrWorkerCredentialNotFound) {
+		return false, fmt.Errorf("get worker credential: %w", err)
+	}
+
+	now := time.Now().UTC()
+	record := WorkerCredential{
+		ID:                     credentialID,
+		Status:                 WorkerCredentialStatusActive,
+		ExecutorType:           devWorkerExecutorEgress,
+		PublicKeyEd25519Base64: publicKeyBase64,
+		TenantScope:            []string{devWorkerTenantScope},
+		CreatedAt:              now,
+		UpdatedAt:              now,
+	}
+
+	err = store.Create(ctx, record)
+	if err != nil {
+		return false, fmt.Errorf("create bootstrap worker credential: %w", err)
+	}
+
+	return true, nil
 }
 
 // newResourceID builds an opaque, non-guessable resource ID as an RFC 4122

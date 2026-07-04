@@ -20,7 +20,11 @@ const (
 // Register sends a worker registration request over NATS and returns the
 // Control-assigned session id.
 func Register(ctx context.Context, conn *natsx.Connection, id Identity, caps Capabilities) (string, error) {
-	req := BuildRegisterRequest(id, caps)
+	req, err := BuildRegisterRequest(id, caps)
+	if err != nil {
+		return "", fmt.Errorf("build register request: %w", err)
+	}
+
 	env := &strawpb.Envelope{
 		ProtocolMajor: ProtocolMajor,
 		ProtocolMinor: 0,

@@ -3,7 +3,9 @@ package control
 import (
 	"context"
 	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -91,11 +93,13 @@ func defaultCred() WorkerCredential {
 // signedRegister builds a signed RegisterRequest, then applies mutators.
 func (h *regHarness) signedRegister(workerID string, mut ...func(*strawpb.RegisterRequest)) *strawpb.RegisterRequest {
 	req := &strawpb.RegisterRequest{
-		WorkerId:      workerID,
-		ExecutorType:  h.cred.ExecutorType,
-		CredentialId:  h.cred.ID,
-		ProtocolMajor: ProtocolMajor,
-		AllowedPools:  []*strawpb.RegisterRequest_PoolRef{{TenantId: workerRegTestTenantA, PoolId: workerRegTestPool1}},
+		WorkerId:       workerID,
+		ExecutorType:   h.cred.ExecutorType,
+		CredentialId:   h.cred.ID,
+		ProtocolMajor:  ProtocolMajor,
+		AllowedPools:   []*strawpb.RegisterRequest_PoolRef{{TenantId: workerRegTestTenantA, PoolId: workerRegTestPool1}},
+		Nonce:          newTestNonce(),
+		IssuedAtUnixMs: h.clock.Now().UnixMilli(),
 	}
 	req.SignedToken = strawpb.SignRegistration(h.priv, req)
 	for _, m := range mut {
@@ -103,6 +107,15 @@ func (h *regHarness) signedRegister(workerID string, mut ...func(*strawpb.Regist
 	}
 
 	return req
+}
+
+// newTestNonce returns a fresh random nonce for tests that build
+// RegisterRequests directly.
+func newTestNonce() []byte {
+	nonce := make([]byte, 8)
+	_, _ = rand.Read(nonce)
+
+	return nonce
 }
 
 func (h *regHarness) mustRegister(t *testing.T, req *strawpb.RegisterRequest) string {
@@ -459,8 +472,10 @@ func TestListWorkersForTenantScoping(t *testing.T) {
 	}
 	otherReq := &strawpb.RegisterRequest{
 		WorkerId: "worker-2", ExecutorType: "egress", CredentialId: "wcred_other",
-		ProtocolMajor: ProtocolMajor,
-		AllowedPools:  []*strawpb.RegisterRequest_PoolRef{{TenantId: workerRegTestTenantC, PoolId: routingTestPool1}},
+		ProtocolMajor:  ProtocolMajor,
+		AllowedPools:   []*strawpb.RegisterRequest_PoolRef{{TenantId: workerRegTestTenantC, PoolId: routingTestPool1}},
+		Nonce:          newTestNonce(),
+		IssuedAtUnixMs: h.clock.Now().UnixMilli(),
 	}
 	otherReq.SignedToken = strawpb.SignRegistration(h.priv, otherReq)
 	h.mustRegister(t, otherReq)
@@ -502,3 +517,120 @@ func TestRegisterInvalidCredentialKey(t *testing.T) {
 		t.Fatalf("outcome = %+v, want reject invalid_credential_key", out)
 	}
 }
+
+// fakeNonceStore is a controllable WorkerNonceStore for registration replay
+// tests: it can simulate a store outage (err set) independent of Redis.
+type fakeNonceStore struct {
+	mu   sync.Mutex
+	seen map[string]bool
+	err  error
+}
+
+func (f *fakeNonceStore) Consume(_ context.Context, credentialID string, nonce []byte, _ time.Duration) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	if f.err != nil {
+		return false, f.err
+	}
+
+	if f.seen == nil {
+		f.seen = make(map[string]bool)
+	}
+
+	key := credentialID + ":" + string(nonce)
+	if f.seen[key] {
+		return false, nil
+	}
+
+	f.seen[key] = true
+
+	return true, nil
+}
+
+func TestRegisterStaleIssuedAtRejected(t *testing.T) {
+	t.Parallel()
+	h := newRegHarness(t, defaultCred())
+	req := h.signedRegister(workerRegTestWorker1, func(r *strawpb.RegisterRequest) {
+		r.IssuedAtUnixMs = h.clock.Now().Add(-5 * time.Minute).UnixMilli()
+		r.SignedToken = strawpb.SignRegistration(h.priv, r)
+	})
+	out, err := h.reg.Register(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Register error: %v", err)
+	}
+	if out.OK || out.Reason != RejectStaleIssuedAt {
+		t.Fatalf("outcome = %+v, want reject stale_issued_at", out)
+	}
+}
+
+func TestRegisterFutureIssuedAtRejected(t *testing.T) {
+	t.Parallel()
+	h := newRegHarness(t, defaultCred())
+	req := h.signedRegister(workerRegTestWorker1, func(r *strawpb.RegisterRequest) {
+		r.IssuedAtUnixMs = h.clock.Now().Add(5 * time.Minute).UnixMilli()
+		r.SignedToken = strawpb.SignRegistration(h.priv, r)
+	})
+	out, err := h.reg.Register(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Register error: %v", err)
+	}
+	if out.OK || out.Reason != RejectStaleIssuedAt {
+		t.Fatalf("outcome = %+v, want reject stale_issued_at", out)
+	}
+}
+
+func TestRegisterIssuedAtWithinSkewAccepted(t *testing.T) {
+	t.Parallel()
+	h := newRegHarness(t, defaultCred())
+	req := h.signedRegister(workerRegTestWorker1, func(r *strawpb.RegisterRequest) {
+		r.IssuedAtUnixMs = h.clock.Now().Add(50 * time.Second).UnixMilli()
+		r.SignedToken = strawpb.SignRegistration(h.priv, r)
+	})
+	h.mustRegister(t, req)
+}
+
+func TestRegisterNonceReplayRejectedDespiteValidSignature(t *testing.T) {
+	t.Parallel()
+	h := newRegHarness(t, defaultCred())
+	h.reg.SetNonceStore(&fakeNonceStore{}, WorkerRegistrationPolicy{ClockSkew: time.Minute, NonceTTL: time.Minute})
+
+	req := h.signedRegister(workerRegTestWorker1)
+	h.mustRegister(t, req)
+
+	// Re-submitting the exact same signed request (same nonce, same
+	// issued-at) must be rejected even though its signature is still valid.
+	out, err := h.reg.Register(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Register error: %v", err)
+	}
+	if out.OK || out.Reason != RejectNonceReplayed {
+		t.Fatalf("replay outcome = %+v, want reject nonce_replayed", out)
+	}
+}
+
+func TestRegisterNonceStoreOutageFailsClosedByDefault(t *testing.T) {
+	t.Parallel()
+	h := newRegHarness(t, defaultCred())
+	h.reg.SetNonceStore(&fakeNonceStore{err: errRegNonceStoreDown}, WorkerRegistrationPolicy{ClockSkew: time.Minute, NonceTTL: time.Minute})
+
+	out, err := h.reg.Register(context.Background(), h.signedRegister(workerRegTestWorker1))
+	if err != nil {
+		t.Fatalf("Register error: %v", err)
+	}
+	if out.OK || out.Reason != RejectNonceStoreUnavailable {
+		t.Fatalf("outcome = %+v, want reject nonce_store_unavailable (fail-closed default)", out)
+	}
+}
+
+func TestRegisterNonceStoreOutageFailsOpenWhenConfigured(t *testing.T) {
+	t.Parallel()
+	h := newRegHarness(t, defaultCred())
+	h.reg.SetNonceStore(&fakeNonceStore{err: errRegNonceStoreDown}, WorkerRegistrationPolicy{
+		ClockSkew: time.Minute, NonceTTL: time.Minute, FailOpenOnNonceStoreError: true,
+	})
+
+	h.mustRegister(t, h.signedRegister(workerRegTestWorker1))
+}
+
+var errRegNonceStoreDown = errors.New("nonce store unreachable")

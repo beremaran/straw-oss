@@ -841,6 +841,8 @@ type RegisterRequest struct {
 	StableEgressIdentity  string                     `protobuf:"bytes,14,opt,name=stable_egress_identity,json=stableEgressIdentity,proto3" json:"stable_egress_identity,omitempty"`
 	MaxConcurrency        uint32                     `protobuf:"varint,15,opt,name=max_concurrency,json=maxConcurrency,proto3" json:"max_concurrency,omitempty"`
 	InitialDraining       bool                       `protobuf:"varint,16,opt,name=initial_draining,json=initialDraining,proto3" json:"initial_draining,omitempty"`
+	Nonce                 []byte                     `protobuf:"bytes,17,opt,name=nonce,proto3" json:"nonce,omitempty"`
+	IssuedAtUnixMs        int64                      `protobuf:"varint,18,opt,name=issued_at_unix_ms,json=issuedAtUnixMs,proto3" json:"issued_at_unix_ms,omitempty"`
 	unknownFields         protoimpl.UnknownFields
 	sizeCache             protoimpl.SizeCache
 }
@@ -985,6 +987,20 @@ func (x *RegisterRequest) GetInitialDraining() bool {
 		return x.InitialDraining
 	}
 	return false
+}
+
+func (x *RegisterRequest) GetNonce() []byte {
+	if x != nil {
+		return x.Nonce
+	}
+	return nil
+}
+
+func (x *RegisterRequest) GetIssuedAtUnixMs() int64 {
+	if x != nil {
+		return x.IssuedAtUnixMs
+	}
+	return 0
 }
 
 type RegisterAck struct {
@@ -2974,7 +2990,7 @@ const file_straw_v1_straw_proto_rawDesc = "" +
 	"\n" +
 	"assign_ack\x18\x19 \x01(\v2\x13.straw.v1.AssignAckH\x00R\tassignAck\x12:\n" +
 	"\fstream_frame\x18\x1a \x01(\v2\x15.straw.v1.StreamFrameH\x00R\vstreamFrameB\t\n" +
-	"\apayload\"\xc6\x05\n" +
+	"\apayload\"\x87\x06\n" +
 	"\x0fRegisterRequest\x12\x1b\n" +
 	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x12#\n" +
 	"\rexecutor_type\x18\x02 \x01(\tR\fexecutorType\x12#\n" +
@@ -2992,7 +3008,9 @@ const file_straw_v1_straw_proto_rawDesc = "" +
 	"\x17supported_ingress_modes\x18\r \x03(\tR\x15supportedIngressModes\x124\n" +
 	"\x16stable_egress_identity\x18\x0e \x01(\tR\x14stableEgressIdentity\x12'\n" +
 	"\x0fmax_concurrency\x18\x0f \x01(\rR\x0emaxConcurrency\x12)\n" +
-	"\x10initial_draining\x18\x10 \x01(\bR\x0finitialDraining\x1a?\n" +
+	"\x10initial_draining\x18\x10 \x01(\bR\x0finitialDraining\x12\x14\n" +
+	"\x05nonce\x18\x11 \x01(\fR\x05nonce\x12)\n" +
+	"\x11issued_at_unix_ms\x18\x12 \x01(\x03R\x0eissuedAtUnixMs\x1a?\n" +
 	"\aPoolRef\x12\x1b\n" +
 	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x17\n" +
 	"\apool_id\x18\x02 \x01(\tR\x06poolId\"R\n" +

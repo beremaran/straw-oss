@@ -1,6 +1,6 @@
 # 35 - Worker Registration Replay Protection and Persistent Identity Key
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -74,26 +74,26 @@ nonce/replay requirements on top (union, not conflict). Existing scope/capabilit
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Add `nonce` and `issued_at_unix_ms` to `RegisterRequest`, regenerate, and record the addition in
+- [x] Read all required planning docs.
+- [x] Add `nonce` and `issued_at_unix_ms` to `RegisterRequest`, regenerate, and record the addition in
       `docs/planning/13` and `docs/planning/a-reconciliation-notes.md`.
-- [ ] Include nonce and issued-at in `RegistrationSigningPayload`; keep the domain-separation prefix and the
+- [x] Include nonce and issued-at in `RegistrationSigningPayload`; keep the domain-separation prefix and the
       unambiguous field joining.
-- [ ] Populate nonce (crypto/rand) and issued-at on the egress side.
-- [ ] Add the egress private-key config field with validation; load it in `cmd/egress/main.go` instead of generating a
+- [x] Populate nonce (crypto/rand) and issued-at on the egress side.
+- [x] Add the egress private-key config field with validation; load it in `cmd/egress/main.go` instead of generating a
       keypair.
-- [ ] Add the Redis nonce store: reject a seen nonce, TTL per `docs/planning/27`, scoped by `credential_id`;
+- [x] Add the Redis nonce store: reject a seen nonce, TTL per `docs/planning/27`, scoped by `credential_id`;
       registration fails closed on Redis error unless an explicit fail-open config flag is set (default off).
-- [ ] Enforce issued-at within a configurable skew (default 60s) and consume the nonce in `WorkerRegistry.Register`
+- [x] Enforce issued-at within a configurable skew (default 60s) and consume the nonce in `WorkerRegistry.Register`
       after signature verification, with distinct reject reasons.
-- [ ] Seed a dev key and matching worker credential for docker compose; update `deploy/docker/README.md` to drop the
+- [x] Seed a dev key and matching worker credential for docker compose; update `deploy/docker/README.md` to drop the
       "will not succeed out of the box" caveat.
-- [ ] Add tests for: replayed nonce rejected despite a valid signature; stale issued-at rejected; issued-at within
+- [x] Add tests for: replayed nonce rejected despite a valid signature; stale issued-at rejected; issued-at within
       skew accepted; Redis outage fails closed (and fail-open only when configured); configured-key registration
       succeeds against the seeded credential; existing scope/capability rejections unchanged.
-- [ ] Run the focused tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Run the focused tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

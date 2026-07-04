@@ -61,3 +61,12 @@ A pre-implementation audit applied these corrections and decisions:
   and `RedirectPolicy` use the safest behavior as their zero value.
 - Deduplicates the credit-exhaustion paragraph in Section 12 and makes Section 15 the single canonical home of the
   header-injection safety table (Section 27 now references it).
+
+## Task 35 Follow-up — 2026-07-04
+
+- Adds `nonce` (bytes) and `issued_at_unix_ms` (int64, matching the existing `deadline_unix_ms`/
+  `worker_timestamp_ms` unix-millis convention) fields to `RegisterRequest` (Section 13) to satisfy the
+  `docs/planning/27` "Worker Credential Signing" replay-protection requirement: the nonce and issued-at travel inside
+  the signed token so Core NATS request/reply needs no extra channel. The signed payload
+  (`api/proto/straw/v1/registration_sign.go`) now binds a length-prefixed nonce and the issued-at timestamp after the
+  existing `worker_id`/`credential_id`/`executor_type`/protocol fields.

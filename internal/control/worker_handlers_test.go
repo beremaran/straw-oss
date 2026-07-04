@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
@@ -40,9 +41,12 @@ func (ta *testAdmin) seedRegisteredWorker(t *testing.T, workerID string, tenants
 	reg := NewWorkerRegistry(ta.workerCreds, DefaultWorkerTimings(), time.Now)
 	ta.h.Workers = reg
 
+	nonce := make([]byte, 8)
+	_, _ = rand.Read(nonce)
 	req := &strawpb.RegisterRequest{
 		WorkerId: workerID, ExecutorType: routingTestEgress, CredentialId: "wcred_1",
 		ProtocolMajor: ProtocolMajor, AllowedPools: poolRefs,
+		Nonce: nonce, IssuedAtUnixMs: time.Now().UnixMilli(),
 	}
 	req.SignedToken = strawpb.SignRegistration(priv, req)
 	out, err := reg.Register(context.Background(), req)

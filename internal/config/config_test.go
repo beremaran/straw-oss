@@ -144,7 +144,8 @@ func TestLoadEgress(t *testing.T) {
 				},
 				"egress": {
 					"worker_id": "egress-local-001",
-					"credential_id": "wcred_test"
+					"credential_id": "wcred_test",
+					"private_key_ed25519_env": "STRAW_WORKER_PRIVATE_KEY_ED25519_BASE64"
 				}
 			}`,
 		},
@@ -167,12 +168,24 @@ func TestLoadEgress(t *testing.T) {
 			wantErr: "credential_id is required",
 		},
 		{
+			name: "missing private key env",
+			config: `{
+				"config_version": "v1",
+				"egress": {
+					"worker_id": "egress-local-001",
+					"credential_id": "wcred_test"
+				}
+			}`,
+			wantErr: "private_key_ed25519_env is required",
+		},
+		{
 			name: configTestUnknownField,
 			config: `{
 				"config_version": "v1",
 				"egress": {
 					"worker_id": "egress-local-001",
 					"credential_id": "wcred_test",
+					"private_key_ed25519_env": "STRAW_WORKER_PRIVATE_KEY_ED25519_BASE64",
 					"extra": true
 				}
 			}`,
