@@ -1,6 +1,6 @@
 # 37 - Structured JSON Logging
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -41,16 +41,16 @@ the ClickHouse `log_events` table is a separate, deferred concern owned by `docs
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Set a `slog` JSON handler as each binary's logger with a constant `service` attribute; route stdlib `log`
+- [x] Read all required planning docs.
+- [x] Set a `slog` JSON handler as each binary's logger with a constant `service` attribute; route stdlib `log`
       output through it (`slog.SetDefault` covers `log.Printf` callers).
-- [ ] Convert the existing `log.Printf`/`log.Fatal` sites to leveled `slog` calls, attaching `request_id`,
+- [x] Convert the existing `log.Printf`/`log.Fatal` sites to leveled `slog` calls, attaching `request_id`,
       `tenant_id`, `error_code`, or `worker_id` attributes where the calling code already has them.
-- [ ] Confirm no log line can carry secret material per `docs/planning/27` (key secrets, pepper, NATS credentials,
+- [x] Confirm no log line can carry secret material per `docs/planning/27` (key secrets, pepper, NATS credentials,
       signed URLs).
-- [ ] Run the focused tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Run the focused tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 
@@ -68,6 +68,7 @@ the ClickHouse `log_events` table is a separate, deferred concern owned by `docs
 ## Handoff Notes
 
 - Document the handler setup, the `service` values, and which call sites carry contextual attributes.
+- See `docs/agents/handoffs/37-structured-json-logging.md`.
 
 ## Stop Conditions
 

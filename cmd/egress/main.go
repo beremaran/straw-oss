@@ -8,7 +8,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -16,6 +16,7 @@ import (
 
 	"github.com/beremaran/straw/v2/internal/config"
 	"github.com/beremaran/straw/v2/internal/egress"
+	"github.com/beremaran/straw/v2/internal/logging"
 	"github.com/beremaran/straw/v2/internal/natsx"
 )
 
@@ -57,9 +58,12 @@ func loadWorkerPrivateKey(cfg config.EgressConfig) (ed25519.PrivateKey, error) {
 }
 
 func main() {
+	slog.SetDefault(logging.New("egress"))
+
 	err := run()
 	if err != nil {
-		log.Fatalf("egress: %v", err)
+		slog.Error("egress failed", "error", err)
+		os.Exit(1)
 	}
 }
 
@@ -101,12 +105,12 @@ func run() error {
 		if natsConn != nil {
 			drainErr := natsConn.Drain()
 			if drainErr != nil {
-				log.Printf("egress: drain nats connection: %v", drainErr)
+				slog.Warn("drain nats connection failed", "error", drainErr)
 			}
 		}
 	}()
 
-	log.Printf("egress: connected to %s", natsConn.ConnectedUrlRedacted())
+	slog.Info("connected to nats", "url", natsConn.ConnectedUrlRedacted())
 
 	return runWorker(ctx, natsConn, egressConfig)
 }
@@ -133,7 +137,7 @@ func runWorker(ctx context.Context, natsConn *natsx.Connection, cfg config.Egres
 
 	executor := egress.NewExecutor(egress.ExecutorOptions{})
 
-	log.Printf("egress: starting run loop (worker=%s, heartbeat=%v)", cfg.WorkerID, heartbeatInterval)
+	slog.Info("starting run loop", "worker_id", cfg.WorkerID, "heartbeat_interval", heartbeatInterval.String())
 
 	err = egress.Run(ctx, natsConn, id, caps, executor, heartbeatInterval)
 	if err != nil {
