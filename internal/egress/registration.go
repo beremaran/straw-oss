@@ -24,7 +24,7 @@ type Identity struct {
 // They must be within the worker credential's allowed scope or Control rejects
 // the registration.
 type Capabilities struct {
-	AllowedPools          []strawpb.RegisterRequest_PoolRef
+	AllowedPools          []*strawpb.RegisterRequest_PoolRef
 	Tags                  []string
 	Countries             []string
 	Regions               []string
@@ -40,9 +40,8 @@ type Capabilities struct {
 // payload in SignedToken.
 func BuildRegisterRequest(id Identity, caps Capabilities) *strawpb.RegisterRequest {
 	pools := make([]*strawpb.RegisterRequest_PoolRef, 0, len(caps.AllowedPools))
-	for i := range caps.AllowedPools {
-		p := caps.AllowedPools[i]
-		pools = append(pools, &strawpb.RegisterRequest_PoolRef{TenantId: p.TenantId, PoolId: p.PoolId})
+	for _, p := range caps.AllowedPools {
+		pools = append(pools, &strawpb.RegisterRequest_PoolRef{TenantId: p.GetTenantId(), PoolId: p.GetPoolId()})
 	}
 
 	req := &strawpb.RegisterRequest{

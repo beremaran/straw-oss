@@ -14,9 +14,10 @@ import (
 
 // These tests exercise the Postgres-backed identity stores against a real
 // database. They are skipped unless STRAW_TEST_POSTGRES_DSN points at a
-// Postgres instance with migrations/postgres applied. Each test truncates the
-// identity tables first, so the suite is idempotent across reruns; because of
-// that shared-state reset the tests are intentionally not run in parallel.
+// reachable Postgres instance; the harness applies migrations itself, so the
+// target database may be empty. Each test truncates the identity tables first,
+// so the suite is idempotent across reruns; because of that shared-state reset
+// the tests are intentionally not run in parallel.
 const (
 	pgTestTenantA      = "11111111-1111-1111-1111-111111111111"
 	pgTestTenantB      = "22222222-2222-2222-2222-222222222222"
@@ -40,6 +41,16 @@ func newIdentityTestPool(t *testing.T) *pgxpool.Pool {
 	}
 
 	t.Cleanup(pool.Close)
+
+	// Bootstrap the schema first so the harness works against a fresh, empty
+	// database (only STRAW_TEST_POSTGRES_DSN is required). ApplyMigrations is
+	// idempotent, so this is a no-op when the schema already exists; without it
+	// the TRUNCATE below fails on a clean database with "relation ... does not
+	// exist".
+	err = postgresx.ApplyMigrations(context.Background(), pool, migrations.Postgres)
+	if err != nil {
+		t.Fatalf("bootstrap migrations: %v", err)
+	}
 
 	_, err = pool.Exec(context.Background(),
 		`TRUNCATE tenants, worker_admin_state, worker_credentials, api_keys, config_audit_source RESTART IDENTITY CASCADE`)
