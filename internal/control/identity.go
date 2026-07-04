@@ -78,8 +78,9 @@ var (
 // Authenticator resolves a bearer token into an Identity by prefix lookup
 // followed by constant-time secret comparison.
 type Authenticator struct {
-	store  APIKeyStore
-	pepper []byte
+	store   APIKeyStore
+	pepper  []byte
+	tenants TenantStore
 }
 
 // NewAuthenticator builds an Authenticator backed by store. pepper may be
@@ -87,6 +88,17 @@ type Authenticator struct {
 // from a secret manager or environment variable.
 func NewAuthenticator(store APIKeyStore, pepper []byte) *Authenticator {
 	return &Authenticator{store: store, pepper: pepper}
+}
+
+// SetTenantStore wires tenant status enforcement into Authenticate: a
+// tenant-scoped key whose tenant is not active fails with
+// ErrTenantNotFound (docs/tasks/p0/29). A nil tenants store (the default)
+// skips this check, matching pre-task-29 behavior for callers that only
+// need API-key validity (e.g. platform-only auth in tests).
+func (a *Authenticator) SetTenantStore(tenants TenantStore) *Authenticator {
+	a.tenants = tenants
+
+	return a
 }
 
 // Authenticate resolves the Authorization header value into an Identity.
@@ -118,6 +130,11 @@ func (a *Authenticator) Authenticate(ctx context.Context, authorizationHeader st
 			continue
 		}
 
+		tenantErr := a.checkTenantActive(ctx, candidate)
+		if tenantErr != nil {
+			return Identity{}, tenantErr
+		}
+
 		return Identity{
 			APIKeyID:  candidate.ID,
 			ScopeType: candidate.ScopeType,
@@ -127,4 +144,21 @@ func (a *Authenticator) Authenticate(ctx context.Context, authorizationHeader st
 	}
 
 	return Identity{}, ErrAuthFailure
+}
+
+// checkTenantActive enforces tenant status for a tenant-scoped candidate
+// key (docs/tasks/p0/29). A nil tenants store skips the check. Missing,
+// suspended, and deleted tenants all collapse to ErrTenantNotFound so
+// callers cannot probe tenant state.
+func (a *Authenticator) checkTenantActive(ctx context.Context, candidate APIKeyRecord) error {
+	if candidate.ScopeType != ScopeTenant || a.tenants == nil {
+		return nil
+	}
+
+	tenant, err := a.tenants.Get(ctx, candidate.TenantID)
+	if err != nil || tenant.Status != TenantStatusActive {
+		return ErrTenantNotFound
+	}
+
+	return nil
 }

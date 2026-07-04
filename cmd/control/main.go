@@ -426,9 +426,10 @@ func rehydrateWorkerAdminState(ctx context.Context, configStore *control.Postgre
 // and config stores.
 func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool, configStore *control.PostgresConfigStore, configCache *control.ConfigCache, redisClient *redis.Client, natsConn *natsx.Connection, metadataWriter *control.RequestMetadataWriter, metrics *control.Metrics) *http.ServeMux {
 	inflight := control.NewInFlightRegistry()
-	adminHandlers := buildAdminHandlers(apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore, configCache, redisClient, inflight)
+	tenantStore := control.NewPostgresTenantStore(pool)
+	adminHandlers := buildAdminHandlers(apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore, configCache, redisClient, inflight, tenantStore)
 
-	authenticator := control.NewAuthenticator(apiKeyStore, pepper)
+	authenticator := control.NewAuthenticator(apiKeyStore, pepper).SetTenantStore(tenantStore)
 
 	var requestHandler *control.RequestHandler
 	if metadataWriter != nil {
@@ -480,14 +481,14 @@ func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.API
 // (docs/tasks/p0/21). The rate limiter, quota admission, and sticky store are
 // constructed against the live Redis client but not yet consumed on the
 // request path; that wiring is docs/tasks/p0/24.
-func buildAdminHandlers(apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool, configStore *control.PostgresConfigStore, configCache *control.ConfigCache, redisClient *redis.Client, inflight *control.InFlightRegistry) *control.AdminHandlers {
+func buildAdminHandlers(apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool, configStore *control.PostgresConfigStore, configCache *control.ConfigCache, redisClient *redis.Client, inflight *control.InFlightRegistry, tenantStore control.TenantStore) *control.AdminHandlers {
 	rateLimiter := control.NewRateLimiter(redisClient, control.DefaultRateLimitGuardrails(), nil)
 
 	return &control.AdminHandlers{
-		Authenticator: control.NewAuthenticator(apiKeyStore, pepper),
+		Authenticator: control.NewAuthenticator(apiKeyStore, pepper).SetTenantStore(tenantStore),
 		APIKeys:       apiKeyStore,
 		WorkerCreds:   workerCreds,
-		Tenants:       control.NewPostgresTenantStore(pool),
+		Tenants:       tenantStore,
 		Quotas:        control.NewPostgresQuotaStore(pool),
 		RateLimits:    control.NewPostgresRateLimitConfigStore(pool),
 		Audit:         control.NewPostgresAuditStore(pool),
@@ -512,7 +513,19 @@ func buildAdminHandlers(apiKeyStore control.APIKeyStore, pepper []byte, workerRe
 
 // serveAdminRoutes registers all admin HTTP routes on the given mux.
 func serveAdminRoutes(mux *http.ServeMux, h *control.AdminHandlers) {
+	serveIdentityRoutes(mux, h)
+	serveConfigResourceRoutes(mux, h)
+	serveWorkerAdminRoutes(mux, h)
+}
+
+// serveIdentityRoutes registers tenant, API key, and worker credential
+// lifecycle routes.
+func serveIdentityRoutes(mux *http.ServeMux, h *control.AdminHandlers) {
 	mux.HandleFunc("POST /tenants", h.CreateTenant)
+	mux.HandleFunc("GET /api/v1/config/tenants", h.ListTenants)
+	mux.HandleFunc("GET /api/v1/config/tenants/{id}", h.GetTenant)
+	mux.HandleFunc("PUT /api/v1/config/tenants/{id}", h.UpdateTenant)
+	mux.HandleFunc("DELETE /api/v1/config/tenants/{id}", h.SoftDeleteTenant)
 	mux.HandleFunc("POST /platform-api-keys", h.CreatePlatformAPIKey)
 	mux.HandleFunc("GET /platform-api-keys", h.ListPlatformAPIKeys)
 	mux.HandleFunc("POST /platform-api-keys/{id}/revoke", h.RevokePlatformAPIKey)
@@ -522,6 +535,11 @@ func serveAdminRoutes(mux *http.ServeMux, h *control.AdminHandlers) {
 	mux.HandleFunc("POST /worker-credentials", h.CreateWorkerCredential)
 	mux.HandleFunc("GET /worker-credentials", h.ListWorkerCredentials)
 	mux.HandleFunc("POST /worker-credentials/{id}/revoke", h.RevokeWorkerCredential)
+}
+
+// serveConfigResourceRoutes registers quota, rate-limit, routing, deny,
+// injection, and fingerprint config routes.
+func serveConfigResourceRoutes(mux *http.ServeMux, h *control.AdminHandlers) {
 	mux.HandleFunc("GET /quotas", h.GetQuotas)
 	mux.HandleFunc("PUT /tenants/{id}/quotas", h.PutTenantQuotas)
 	mux.HandleFunc("GET /rate-limits", h.GetRateLimits)
@@ -539,6 +557,11 @@ func serveAdminRoutes(mux *http.ServeMux, h *control.AdminHandlers) {
 	mux.HandleFunc("PUT /api/v1/config/injection-policies/{id}", h.UpdateInjectionPolicy)
 	mux.HandleFunc("DELETE /api/v1/config/injection-policies/{id}", h.DeleteInjectionPolicy)
 	mux.HandleFunc("GET /api/v1/config/fingerprint-profiles", h.ListFingerprintProfiles)
+}
+
+// serveWorkerAdminRoutes registers runtime worker admin and request
+// cancellation routes.
+func serveWorkerAdminRoutes(mux *http.ServeMux, h *control.AdminHandlers) {
 	mux.HandleFunc("GET /api/v1/admin/workers", h.ListWorkers)
 	mux.HandleFunc("POST /api/v1/admin/workers/{worker_id}/disable", h.DisableWorker)
 	mux.HandleFunc("POST /api/v1/admin/workers/{worker_id}/enable", h.EnableWorker)

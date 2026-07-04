@@ -1,6 +1,6 @@
 # 29 - Tenant Lifecycle API and Status Enforcement
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -63,26 +63,26 @@ CHECK, migrating any `'disabled'` rows to `'suspended'`.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Add the migration for `name` and `rate_limit_ceiling`, the `('active', 'suspended', 'deleted')` status CHECK
+- [x] Read all required planning docs.
+- [x] Add the migration for `name` and `rate_limit_ceiling`, the `('active', 'suspended', 'deleted')` status CHECK
       (migrating `'disabled'` rows), and the `soft_deleted_at` -> `deleted_at` rename; keep it idempotent and
       re-appliable.
-- [ ] Persist and load `name` and `rate_limit_ceiling` in the Postgres tenant store; add status update and soft delete
+- [x] Persist and load `name` and `rate_limit_ceiling` in the Postgres tenant store; add status update and soft delete
       (`status = 'deleted'`, `deleted_at = now()`), and a paginated list.
-- [ ] Enforce tenant status in authentication: a tenant-scoped key whose tenant is `suspended` or `deleted` fails with
+- [x] Enforce tenant status in authentication: a tenant-scoped key whose tenant is `suspended` or `deleted` fails with
       `tenant_not_found`, collapsing all cases so callers cannot probe tenant state.
-- [ ] Add `GET /tenants` and `PUT/DELETE /tenants/{id}` (system_admin) and `GET /tenants/{id}` (system_admin plus the
+- [x] Add `GET /tenants` and `PUT/DELETE /tenants/{id}` (system_admin) and `GET /tenants/{id}` (system_admin plus the
       owning tenant's roles), per the `docs/planning/26` RBAC column. Register the new routes under the canonical
       `/api/v1/config` base path; task 36 moves the existing bare registrations (shared `cmd/control/main.go`, so land
       36 first or coordinate).
-- [ ] On disable/soft-delete, force config-cache/auth invalidation before returning success (same pattern as API key
+- [x] On disable/soft-delete, force config-cache/auth invalidation before returning success (same pattern as API key
       revocation in task 07/21).
-- [ ] Add tests for: each endpoint's RBAC; tenant isolation on `GET /tenants/{id}`; suspended/deleted tenant key
+- [x] Add tests for: each endpoint's RBAC; tenant isolation on `GET /tenants/{id}`; suspended/deleted tenant key
       returns `tenant_not_found`; `rate_limit_ceiling` persists and a rate-limit write above the ceiling is rejected
       with `invalid_request` end to end (proving the ceiling is now live).
-- [ ] Run the focused tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Run the focused tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 
