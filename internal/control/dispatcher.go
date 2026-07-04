@@ -73,6 +73,11 @@ type RequestDispatcherOptions struct {
 	MaxInflightDownloadBytes   uint64
 	FrameIdleTimeout           time.Duration
 	Now                        func() time.Time
+	// InFlight registers each dispatched request's cancel function so an
+	// admin cancel (docs/tasks/p0/27) can reach it. Optional: nil disables
+	// admin cancellation without affecting client-disconnect/deadline
+	// cancellation, which is driven directly by ctx.
+	InFlight *InFlightRegistry
 }
 
 // DefaultRequestDispatcher is the P0 Control dispatch pipeline.
@@ -129,6 +134,12 @@ func (d *DefaultRequestDispatcher) Dispatch(ctx context.Context, in DispatchInpu
 	if in.Request == nil || d.opts.ConfigCache == nil || d.opts.Workers == nil {
 		return SuccessResponse{}, &PipelineError{Code: ControlInternalError}
 	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	d.opts.InFlight.Register(in.RequestID, in.Identity.TenantID, cancel)
+	defer d.opts.InFlight.Deregister(in.RequestID)
 
 	snapshot, err := d.opts.ConfigCache.Snapshot(ctx, in.Identity.TenantID)
 	if err != nil {

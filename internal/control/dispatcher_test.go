@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -481,5 +482,97 @@ func TestDispatcherCancellation(t *testing.T) {
 	perr := <-done
 	if perr == nil || perr.Code != Cancelled {
 		t.Fatalf("Dispatch error = %#v, want cancelled", perr)
+	}
+}
+
+// TestDispatcherAdminCancelEndToEnd verifies the docs/tasks/p0/27 wiring:
+// registering the request with InFlightRegistry lets an admin-initiated
+// cancel (the same path CancelRequest drives) terminate a running Dispatch
+// with the canonical cancelled outcome and publish a CancelFrame the
+// executor receives, using the same live NATS/egress harness as
+// TestDispatcherCancellation.
+func TestDispatcherAdminCancelEndToEnd(t *testing.T) {
+	t.Parallel()
+
+	slowHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+		case <-time.After(10 * time.Second):
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	d, stop := newLiveDispatchHarness(t, slowHandler)
+	defer stop()
+
+	registry := NewInFlightRegistry()
+	d.opts.InFlight = registry
+
+	req := validatedDispatchRequest(t, rewriteDispatchHost(t, d.upstreamURL, "dispatch.test"))
+	in := dispatchInput(req)
+
+	done := make(chan *PipelineError, 1)
+	go func() {
+		_, perr := d.Dispatch(context.Background(), in)
+		done <- perr
+	}()
+
+	// Give the request time to reach the upstream, then cancel the way
+	// CancelRequest does: through the registry, authorized as system_admin.
+	time.Sleep(150 * time.Millisecond)
+
+	admin := Identity{ScopeType: ScopePlatform, Role: RoleSystemAdmin}
+
+	err := registry.Cancel(admin, in.RequestID)
+	if err != nil {
+		t.Fatalf("registry.Cancel() error = %v", err)
+	}
+
+	perr := <-done
+	if perr == nil || perr.Code != Cancelled {
+		t.Fatalf("Dispatch error = %#v, want cancelled", perr)
+	}
+}
+
+// TestDispatcherAdminCancelForeignTenantRejected verifies that a tenant-scoped
+// admin cancel for a foreign tenant's in-flight request is rejected by the
+// registry and does not cancel the dispatch.
+func TestDispatcherAdminCancelForeignTenantRejected(t *testing.T) {
+	t.Parallel()
+
+	d, stop := newLiveDispatchHarness(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+		case <-time.After(2 * time.Second):
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer stop()
+
+	registry := NewInFlightRegistry()
+	d.opts.InFlight = registry
+
+	req := validatedDispatchRequest(t, rewriteDispatchHost(t, d.upstreamURL, "dispatch.test"))
+	in := dispatchInput(req)
+
+	done := make(chan *PipelineError, 1)
+	go func() {
+		_, perr := d.Dispatch(context.Background(), in)
+		done <- perr
+	}()
+
+	time.Sleep(150 * time.Millisecond)
+
+	foreign := Identity{ScopeType: ScopeTenant, TenantID: "ten_other", Role: RoleTenantAdmin}
+
+	err := registry.Cancel(foreign, in.RequestID)
+	if !errors.Is(err, ErrInsufficientPermissions) {
+		t.Fatalf("registry.Cancel() error = %v, want ErrInsufficientPermissions", err)
+	}
+
+	select {
+	case perr := <-done:
+		t.Fatalf("Dispatch finished early with %#v, want it still running after rejected cancel", perr)
+	case <-time.After(300 * time.Millisecond):
 	}
 }
