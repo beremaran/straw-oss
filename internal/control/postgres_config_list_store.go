@@ -150,6 +150,98 @@ func unmarshalMatchConditions(matchJSON []byte) (config.MatchConditions, error) 
 	return matchFromJSON(mc), nil
 }
 
+// ---- Executor pools ----
+
+// GetExecutorPool returns a live (non-deleted) executor pool, or
+// ErrConfigResourceNotFound.
+func (s *PostgresConfigStore) GetExecutorPool(ctx context.Context, tenantID, id string) (ExecutorPoolRecord, error) {
+	var (
+		record   ExecutorPoolRecord
+		tagsJSON []byte
+		version  int64
+	)
+
+	record.TenantID = tenantID
+	record.ID = id
+
+	err := s.pool.QueryRow(
+		ctx,
+		`SELECT executor_type, tags_jsonb, enabled, allow_degraded_workers, created_at, config_version
+		 FROM executor_pools WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
+		tenantID, id,
+	).Scan(&record.ExecutorType, &tagsJSON, &record.Enabled, &record.AllowDegradedWorkers,
+		&record.CreatedAt, &version)
+	if err != nil {
+		return ExecutorPoolRecord{}, mapConfigResourceNotFound(err)
+	}
+
+	if len(tagsJSON) > 0 {
+		err = json.Unmarshal(tagsJSON, &record.Tags)
+		if err != nil {
+			return ExecutorPoolRecord{}, fmt.Errorf("unmarshal pool tags: %w", err)
+		}
+	}
+
+	record.ConfigVersion, err = dbUint64(version, "executor pool config version")
+	if err != nil {
+		return ExecutorPoolRecord{}, err
+	}
+
+	return record, nil
+}
+
+// ListExecutorPools returns a page of live executor pools for a tenant.
+func (s *PostgresConfigStore) ListExecutorPools(ctx context.Context, tenantID string, limit, offset int) ([]ExecutorPoolRecord, error) {
+	rows, err := s.pool.Query(
+		ctx,
+		`SELECT id, executor_type, tags_jsonb, enabled, allow_degraded_workers, created_at, config_version
+		 FROM executor_pools
+		 WHERE tenant_id = $1 AND deleted_at IS NULL
+		 ORDER BY created_at DESC, id ASC
+		 LIMIT $2 OFFSET $3`,
+		tenantID, clampConfigListLimit(limit), offset,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list executor pools: %w", err)
+	}
+
+	defer rows.Close()
+
+	var out []ExecutorPoolRecord
+
+	for rows.Next() {
+		var (
+			record   ExecutorPoolRecord
+			tagsJSON []byte
+			version  int64
+		)
+
+		record.TenantID = tenantID
+
+		scanErr := rows.Scan(&record.ID, &record.ExecutorType, &tagsJSON, &record.Enabled,
+			&record.AllowDegradedWorkers, &record.CreatedAt, &version)
+		if scanErr != nil {
+			return nil, fmt.Errorf("scan executor pool: %w", scanErr)
+		}
+
+		if len(tagsJSON) > 0 {
+			err = json.Unmarshal(tagsJSON, &record.Tags)
+			if err != nil {
+				return nil, fmt.Errorf("unmarshal pool tags: %w", err)
+			}
+		}
+
+		record.ConfigVersion, err = dbUint64(version, "executor pool config version")
+		if err != nil {
+			return nil, err
+		}
+
+		out = append(out, record)
+	}
+
+	return out, checkRows(rows, "executor pool list")
+}
+
 // ---- Deny rules ----
 
 // GetDenyRule returns a live deny rule, or ErrConfigResourceNotFound.

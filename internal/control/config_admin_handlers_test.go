@@ -176,6 +176,180 @@ func TestRoutingRulesPaginationDefaults(t *testing.T) {
 	}
 }
 
+func createExecutorPool(t *testing.T, ta *testAdmin, token, body string) (*httptest.ResponseRecorder, executorPoolResponse) {
+	t.Helper()
+
+	w := httptest.NewRecorder()
+	ta.h.CreateExecutorPool(w, newAdminRequest(http.MethodPost, "/api/v1/config/executor-pools", token, body))
+
+	var resp executorPoolResponse
+	if w.Code == http.StatusOK {
+		err := json.Unmarshal(w.Body.Bytes(), &resp)
+		if err != nil {
+			t.Fatalf("unmarshal executor pool response: %v, body=%s", err, w.Body.String())
+		}
+	}
+
+	return w, resp
+}
+
+func TestExecutorPoolCRUDAndRBAC(t *testing.T) {
+	t.Parallel()
+
+	ta := newTestAdmin(t)
+	tenantAdmin := ta.seedTenantKey(t, "key_pool_admin", adminTestTenantA, RoleTenantAdmin)
+	operator := ta.seedTenantKey(t, "key_pool_operator", adminTestTenantA, RoleOperator)
+	viewer := ta.seedTenantKey(t, "key_pool_viewer", adminTestTenantA, RoleViewer)
+
+	// Operator cannot create (docs/planning/26: executor-pool writes are
+	// tenant_admin-only).
+	w, _ := createExecutorPool(t, ta, operator, `{"id":"pool_crud_1"}`)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("operator create status = %d, want 403", w.Code)
+	}
+
+	// tenant_admin creates with a client-supplied stable ID.
+	w, created := createExecutorPool(t, ta, tenantAdmin, `{"id":"pool_crud_1","allow_degraded_workers":true}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("create status = %d, want 200, body=%s", w.Code, w.Body.String())
+	}
+	if created.ID != "pool_crud_1" || created.ConfigVersion != 1 || !created.Enabled || !created.AllowDegradedWorkers {
+		t.Fatalf("created = %+v, want id=pool_crud_1 version=1 enabled=true allow_degraded_workers=true", created)
+	}
+
+	// Viewer and operator can list/read.
+	w = httptest.NewRecorder()
+	ta.h.ListExecutorPools(w, newAdminRequest(http.MethodGet, "/api/v1/config/executor-pools", viewer, ""))
+	if w.Code != http.StatusOK {
+		t.Fatalf("list status = %d, want 200", w.Code)
+	}
+	var listed []executorPoolResponse
+	err := json.Unmarshal(w.Body.Bytes(), &listed)
+	if err != nil {
+		t.Fatalf("unmarshal list: %v", err)
+	}
+	if len(listed) != 1 || listed[0].ID != "pool_crud_1" {
+		t.Fatalf("listed = %+v, want one pool_crud_1", listed)
+	}
+
+	// Update with a stale expected_config_version conflicts and reports the
+	// current version in details.
+	w = httptest.NewRecorder()
+	req := newAdminRequest(http.MethodPut, "/api/v1/config/executor-pools/pool_crud_1", tenantAdmin,
+		`{"expected_config_version":0}`)
+	req.SetPathValue("id", "pool_crud_1")
+	ta.h.UpdateExecutorPool(w, req)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("stale update status = %d, want 409, body=%s", w.Code, w.Body.String())
+	}
+	var conflictResp ErrorResponse
+	err = json.Unmarshal(w.Body.Bytes(), &conflictResp)
+	if err != nil {
+		t.Fatalf("unmarshal conflict: %v", err)
+	}
+	if conflictResp.Details["current_config_version"] != "1" {
+		t.Fatalf("conflict details = %+v, want current_config_version=1", conflictResp.Details)
+	}
+
+	// Update with the correct version succeeds and can flip
+	// allow_degraded_workers off.
+	w = httptest.NewRecorder()
+	req = newAdminRequest(http.MethodPut, "/api/v1/config/executor-pools/pool_crud_1", tenantAdmin,
+		`{"expected_config_version":1,"allow_degraded_workers":false}`)
+	req.SetPathValue("id", "pool_crud_1")
+	ta.h.UpdateExecutorPool(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("update status = %d, want 200, body=%s", w.Code, w.Body.String())
+	}
+	var updated executorPoolResponse
+	err = json.Unmarshal(w.Body.Bytes(), &updated)
+	if err != nil {
+		t.Fatalf("unmarshal update: %v", err)
+	}
+	if updated.AllowDegradedWorkers {
+		t.Fatalf("updated = %+v, want allow_degraded_workers=false", updated)
+	}
+
+	// Delete soft-deletes: it drops from the list.
+	w = httptest.NewRecorder()
+	req = newAdminRequest(http.MethodDelete, "/api/v1/config/executor-pools/pool_crud_1", tenantAdmin, "")
+	req.SetPathValue("id", "pool_crud_1")
+	ta.h.DeleteExecutorPool(w, req)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("delete status = %d, want 204", w.Code)
+	}
+
+	w = httptest.NewRecorder()
+	ta.h.ListExecutorPools(w, newAdminRequest(http.MethodGet, "/api/v1/config/executor-pools", tenantAdmin, ""))
+	var afterDelete []executorPoolResponse
+	err = json.Unmarshal(w.Body.Bytes(), &afterDelete)
+	if err != nil {
+		t.Fatalf("unmarshal list after delete: %v", err)
+	}
+	if len(afterDelete) != 0 {
+		t.Fatalf("listed after delete = %+v, want none", afterDelete)
+	}
+
+	// Deleting again reports not found.
+	w = httptest.NewRecorder()
+	req = newAdminRequest(http.MethodDelete, "/api/v1/config/executor-pools/pool_crud_1", tenantAdmin, "")
+	req.SetPathValue("id", "pool_crud_1")
+	ta.h.DeleteExecutorPool(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("second delete status = %d, want 404", w.Code)
+	}
+}
+
+func TestExecutorPoolsTenantIsolation(t *testing.T) {
+	t.Parallel()
+
+	ta := newTestAdmin(t)
+	adminA := ta.seedTenantKey(t, "key_pool_iso_a", adminTestTenantA, RoleTenantAdmin)
+	adminB := ta.seedTenantKey(t, "key_pool_iso_b", adminTestTenantB, RoleTenantAdmin)
+
+	_, created := createExecutorPool(t, ta, adminA, `{"id":"pool_shared"}`)
+	if created.ID != "pool_shared" {
+		t.Fatalf("create for tenant A failed: %+v", created)
+	}
+
+	w := httptest.NewRecorder()
+	ta.h.ListExecutorPools(w, newAdminRequest(http.MethodGet, "/api/v1/config/executor-pools", adminB, ""))
+	var listed []executorPoolResponse
+	err := json.Unmarshal(w.Body.Bytes(), &listed)
+	if err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(listed) != 0 {
+		t.Fatalf("tenant B listed = %+v, want none (isolation)", listed)
+	}
+}
+
+func TestExecutorPoolsPaginationDefaults(t *testing.T) {
+	t.Parallel()
+
+	ta := newTestAdmin(t)
+	tenantAdmin := ta.seedTenantKey(t, "key_pool_page_admin", adminTestTenantA, RoleTenantAdmin)
+
+	for i := range 3 {
+		id := "pool_" + string(rune('a'+i))
+		_, created := createExecutorPool(t, ta, tenantAdmin, `{"id":"`+id+`"}`)
+		if created.ID != id {
+			t.Fatalf("create %s failed", id)
+		}
+	}
+
+	w := httptest.NewRecorder()
+	ta.h.ListExecutorPools(w, newAdminRequest(http.MethodGet, "/api/v1/config/executor-pools?limit=2&offset=0", tenantAdmin, ""))
+	var page []executorPoolResponse
+	err := json.Unmarshal(w.Body.Bytes(), &page)
+	if err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(page) != 2 {
+		t.Fatalf("page len = %d, want 2 (limit applied)", len(page))
+	}
+}
+
 func TestDenyRuleValidationAndRoleRestriction(t *testing.T) {
 	t.Parallel()
 

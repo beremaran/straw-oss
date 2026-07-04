@@ -1,6 +1,6 @@
 # 30 - Executor Pool Config API
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -43,20 +43,20 @@ surface and a list/get store method, and feeds pool policy from the snapshot.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Add `ListExecutorPools`/`GetExecutorPool` to the config list store.
-- [ ] Add `GET/POST/PUT/DELETE /api/v1/config/executor-pools` handlers: client-supplied stable IDs (per
+- [x] Read all required planning docs.
+- [x] Add `ListExecutorPools`/`GetExecutorPool` to the config list store.
+- [x] Add `GET/POST/PUT/DELETE /api/v1/config/executor-pools` handlers: client-supplied stable IDs (per
       `docs/planning/26`), soft delete, `expected_config_version` -> HTTP 409 `conflict`, and the RBAC roles from the
       `docs/planning/26` table (`tenant_admin` write; `tenant_admin`/`operator`/`viewer` read).
-- [ ] Increment tenant config version, record the actor audit source, and publish invalidation on every successful
+- [x] Increment tenant config version, record the actor audit source, and publish invalidation on every successful
       write (same pattern as routing/deny/injection handlers in task 20).
-- [ ] Replace `NewStaticPoolPolicyProvider(nil)` in the dispatcher with a provider built from the captured snapshot's
+- [x] Replace `NewStaticPoolPolicyProvider(nil)` in the dispatcher with a provider built from the captured snapshot's
       `ExecutorPools` so degraded-pool policy is configuration-driven.
-- [ ] Add tests for: pool CRUD with stable IDs and soft delete; tenant isolation; pagination defaults; version
+- [x] Add tests for: pool CRUD with stable IDs and soft delete; tenant isolation; pagination defaults; version
       conflict; a pool created via the API appearing in the assembled snapshot and influencing routing.
-- [ ] Run the focused tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Run the focused tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

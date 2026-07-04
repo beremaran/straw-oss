@@ -500,6 +500,7 @@ func buildAdminHandlers(apiKeyStore control.APIKeyStore, pepper []byte, workerRe
 		Pepper:        pepper,
 
 		RoutingRules:        configStore,
+		ExecutorPools:       configStore,
 		DenyRules:           configStore,
 		InjectionPolicies:   configStore,
 		FingerprintProfiles: configStore,
@@ -548,6 +549,10 @@ func serveConfigResourceRoutes(mux *http.ServeMux, h *control.AdminHandlers) {
 	mux.HandleFunc("POST /api/v1/config/routing-rules", h.CreateRoutingRule)
 	mux.HandleFunc("PUT /api/v1/config/routing-rules/{id}", h.UpdateRoutingRule)
 	mux.HandleFunc("DELETE /api/v1/config/routing-rules/{id}", h.DeleteRoutingRule)
+	mux.HandleFunc("GET /api/v1/config/executor-pools", h.ListExecutorPools)
+	mux.HandleFunc("POST /api/v1/config/executor-pools", h.CreateExecutorPool)
+	mux.HandleFunc("PUT /api/v1/config/executor-pools/{id}", h.UpdateExecutorPool)
+	mux.HandleFunc("DELETE /api/v1/config/executor-pools/{id}", h.DeleteExecutorPool)
 	mux.HandleFunc("GET /api/v1/config/deny-rules", h.ListDenyRules)
 	mux.HandleFunc("POST /api/v1/config/deny-rules", h.CreateDenyRule)
 	mux.HandleFunc("PUT /api/v1/config/deny-rules/{id}", h.UpdateDenyRule)

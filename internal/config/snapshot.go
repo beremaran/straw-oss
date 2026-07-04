@@ -49,12 +49,16 @@ type RoutingRule struct {
 	AllowStickyFallback     bool
 }
 
-// ExecutorPool is a tenant-visible pool (docs/planning/21).
+// ExecutorPool is a tenant-visible pool (docs/planning/21). AllowDegradedWorkers
+// sources the degraded-pool routing policy (docs/planning/10): a pool with
+// this set to true lets Router select a degraded-health worker when no ready
+// worker is available.
 type ExecutorPool struct {
-	ID           string
-	ExecutorType string
-	Tags         []string
-	Enabled      bool
+	ID                   string
+	ExecutorType         string
+	Tags                 []string
+	Enabled              bool
+	AllowDegradedWorkers bool
 }
 
 // DenyRule is one host/CIDR/CNAME deny or allow override (docs/planning/21).
