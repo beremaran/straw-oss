@@ -18,14 +18,15 @@ import (
 // maxInjectionOperations bounds an injection policy's operation count, matching
 // the injection_policies CHECK constraint (migrations/postgres/0001_init.sql).
 const (
-	maxInjectionOperations = 32
-	configActorTypeAPIKey  = "api_key"
-	configActionDelete     = "delete"
-	configActionUpdate     = "update"
-	configActionUpsert     = "upsert"
-	quotaPeriodMonthly     = "monthly"
-	postgresFailClosed     = "fail_closed"
-	postgresFailOpen       = "fail_open"
+	maxInjectionOperations  = 32
+	configActorTypeAPIKey   = "api_key"
+	configActionDelete      = "delete"
+	configActionUpdate      = "update"
+	configActionUpsert      = "upsert"
+	quotaPeriodMonthly      = "monthly"
+	postgresFailClosed      = "fail_closed"
+	postgresFailOpen        = "fail_open"
+	resourceTypeRoutingRule = "routing_rule"
 )
 
 // ErrConfigResourceNotFound is returned when a soft delete targets a resource
@@ -335,7 +336,7 @@ func (s *PostgresConfigStore) UpsertRoutingRule(ctx context.Context, tenantID st
 	var record RoutingRuleRecord
 
 	tenantVersion, err := writeTenantConfig(ctx, s.pool, tenantID, auditEntry{
-		actor: actor, resourceType: "routing_rule", resourceID: rule.ID, action: configActionUpsert,
+		actor: actor, resourceType: resourceTypeRoutingRule, resourceID: rule.ID, action: configActionUpsert,
 		newValue: rule,
 	}, func(ctx context.Context, tx pgx.Tx) error {
 		nextVersion, nextVersionParam, verErr := checkResourceVersion(ctx, tx,
@@ -408,7 +409,7 @@ func checkResourceVersion(ctx context.Context, tx pgx.Tx, currentVersionQuery st
 // DeleteRoutingRule soft-deletes a routing rule so it drops out of assembled
 // snapshots while retaining version history.
 func (s *PostgresConfigStore) DeleteRoutingRule(ctx context.Context, tenantID, id string, actor ConfigActor) (uint64, error) {
-	return s.softDelete(ctx, tenantID, "routing_rule", id, actor)
+	return s.softDelete(ctx, tenantID, resourceTypeRoutingRule, id, actor)
 }
 
 // ---- Executor pools ----
@@ -795,7 +796,7 @@ type WorkerAdminStore interface {
 // Using constant statements (rather than concatenating a table name into SQL)
 // keeps the query free of any dynamic-SQL construction.
 var softDeleteQueries = map[string]string{
-	"routing_rule": `UPDATE routing_rules SET deleted_at = now(), updated_at = now(), config_version = config_version + 1
+	resourceTypeRoutingRule: `UPDATE routing_rules SET deleted_at = now(), updated_at = now(), config_version = config_version + 1
 	                 WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
 	"executor_pool": `UPDATE executor_pools SET deleted_at = now(), updated_at = now(), config_version = config_version + 1
 	                  WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,

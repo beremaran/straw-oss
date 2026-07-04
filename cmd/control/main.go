@@ -562,6 +562,7 @@ func serveConfigResourceRoutes(mux *http.ServeMux, h *control.AdminHandlers) {
 	mux.HandleFunc("PUT /api/v1/config/injection-policies/{id}", h.UpdateInjectionPolicy)
 	mux.HandleFunc("DELETE /api/v1/config/injection-policies/{id}", h.DeleteInjectionPolicy)
 	mux.HandleFunc("GET /api/v1/config/fingerprint-profiles", h.ListFingerprintProfiles)
+	mux.HandleFunc("GET /api/v1/config/changes", h.ListChanges)
 }
 
 // serveWorkerAdminRoutes registers runtime worker admin and request

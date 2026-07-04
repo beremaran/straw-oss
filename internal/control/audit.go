@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"sort"
 	"sync"
 	"time"
 )
@@ -27,6 +28,10 @@ type AuditRecord struct {
 type AuditStore interface {
 	Record(ctx context.Context, record AuditRecord) error
 	ListTenant(ctx context.Context, tenantID string) ([]AuditRecord, error)
+	// ListTenantPage returns a tenant's audit history ordered created_at
+	// descending then id ascending, per the shared list contract
+	// (docs/planning/26). Callers pass an already-clamped limit.
+	ListTenantPage(ctx context.Context, tenantID string, limit, offset int) ([]AuditRecord, error)
 }
 
 // InMemoryAuditStore is the P0 store implementation.
@@ -73,6 +78,37 @@ func (s *InMemoryAuditStore) ListTenant(_ context.Context, tenantID string) ([]A
 	}
 
 	return out, nil
+}
+
+// ListTenantPage returns a paginated, tenant-scoped view of the audit log,
+// sorted created_at descending then id ascending.
+func (s *InMemoryAuditStore) ListTenantPage(_ context.Context, tenantID string, limit, offset int) ([]AuditRecord, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var matched []AuditRecord
+
+	for _, r := range s.records {
+		if r.TenantID == tenantID {
+			matched = append(matched, r)
+		}
+	}
+
+	sort.Slice(matched, func(i, j int) bool {
+		if !matched[i].CreatedAt.Equal(matched[j].CreatedAt) {
+			return matched[i].CreatedAt.After(matched[j].CreatedAt)
+		}
+
+		return matched[i].ID < matched[j].ID
+	})
+
+	if offset >= len(matched) {
+		return []AuditRecord{}, nil
+	}
+
+	end := min(offset+limit, len(matched))
+
+	return matched[offset:end], nil
 }
 
 // recordAudit is a small helper used by admin handlers so every mutation
