@@ -162,6 +162,8 @@ message RegisterRequest {
   string stable_egress_identity = 14;
   uint32 max_concurrency = 15;
   bool initial_draining = 16;
+  bytes nonce = 17;
+  int64 issued_at_unix_ms = 18;
 }
 
 message RegisterAck {

@@ -3,10 +3,12 @@ package control
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -82,6 +84,10 @@ func (s *postgresWorkerCredentialStore) Get(ctx context.Context, id string) (Wor
 		&record.ConfigVersion,
 	)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return WorkerCredential{}, ErrWorkerCredentialNotFound
+		}
+
 		return WorkerCredential{}, fmt.Errorf("postgres worker credential get: %w", err)
 	}
 

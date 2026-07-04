@@ -22,7 +22,36 @@ const (
 	workerCooldownFailureCount  = 3
 	workerCooldownWindow        = 60 * time.Second
 	workerCooldownDuration      = 30 * time.Second
+
+	// defaultRegistrationClockSkew and defaultRegistrationNonceTTL are the
+	// docs/planning/27 defaults applied when SetNonceStore is never called
+	// (e.g. most unit tests) or is called with zero-value durations.
+	defaultRegistrationClockSkew = 60 * time.Second
+	defaultRegistrationNonceTTL  = 5 * time.Minute
 )
+
+// WorkerRegistrationPolicy configures registration replay protection
+// (docs/planning/27-security-controls.md "Worker Credential Signing").
+type WorkerRegistrationPolicy struct {
+	// ClockSkew bounds how far a signed issued-at timestamp may differ from
+	// Control's receive time before registration is rejected.
+	ClockSkew time.Duration
+	// NonceTTL is how long a consumed nonce is remembered before it may be
+	// reused; must exceed ClockSkew*2 to guarantee no replay window opens
+	// before a nonce would naturally fall outside the skew tolerance anyway.
+	NonceTTL time.Duration
+	// FailOpenOnNonceStoreError allows registration to proceed without
+	// replay protection when the nonce store errors (e.g. Redis outage).
+	// Disabled by default: docs/planning/27 requires fail-closed unless a
+	// deployment explicitly opts in.
+	FailOpenOnNonceStoreError bool
+}
+
+// DefaultWorkerRegistrationPolicy returns the docs/planning/27 default
+// clock-skew tolerance and nonce TTL, fail-closed.
+func DefaultWorkerRegistrationPolicy() WorkerRegistrationPolicy {
+	return WorkerRegistrationPolicy{ClockSkew: defaultRegistrationClockSkew, NonceTTL: defaultRegistrationNonceTTL}
+}
 
 // ProtocolMajor is the worker protocol major version Control speaks. A worker
 // registering with a different major is rejected as incompatible. Minor
@@ -104,7 +133,16 @@ const (
 	RejectIncompatibleProto  = "incompatible_protocol"
 	RejectInvalidSignature   = "invalid_signature"
 	RejectInvalidKeyMaterial = "invalid_key_material"
-	randomIDBytes            = 16
+	// RejectStaleIssuedAt means the signed issued-at timestamp is outside the
+	// configured clock-skew tolerance (docs/planning/27).
+	RejectStaleIssuedAt = "stale_issued_at"
+	// RejectNonceReplayed means the signed nonce was already consumed for
+	// this credential (docs/planning/27 replay protection).
+	RejectNonceReplayed = "nonce_replayed"
+	// RejectNonceStoreUnavailable means the nonce store could not be reached
+	// and the registry's fail policy is fail-closed (the default).
+	RejectNonceStoreUnavailable = "nonce_store_unavailable"
+	randomIDBytes               = 16
 )
 
 // RegisterOutcome is the result of processing a RegisterRequest. OK is false
@@ -168,26 +206,31 @@ type workerEntry struct {
 // P0 in-process store; runtime state is never made durable
 // (docs/planning/11). Redis-backed state with TTLs is future work.
 type WorkerRegistry struct {
-	mu      sync.Mutex
-	now     func() time.Time
-	timings WorkerTimings
-	creds   WorkerCredentialStore
-	workers map[string]*workerEntry
-	events  WorkerEventRecorder
+	mu        sync.Mutex
+	now       func() time.Time
+	timings   WorkerTimings
+	creds     WorkerCredentialStore
+	workers   map[string]*workerEntry
+	events    WorkerEventRecorder
+	nonces    WorkerNonceStore
+	regPolicy WorkerRegistrationPolicy
 }
 
 // NewWorkerRegistry builds a registry. now may be nil (defaults to
-// time.Now); tests inject a controllable clock.
+// time.Now); tests inject a controllable clock. Registration replay
+// protection uses DefaultWorkerRegistrationPolicy with no nonce store (skew
+// enforced, replay/outage checks skipped) until SetNonceStore is called.
 func NewWorkerRegistry(creds WorkerCredentialStore, timings WorkerTimings, now func() time.Time) *WorkerRegistry {
 	if now == nil {
 		now = time.Now
 	}
 
 	return &WorkerRegistry{
-		now:     now,
-		timings: timings,
-		creds:   creds,
-		workers: make(map[string]*workerEntry),
+		now:       now,
+		timings:   timings,
+		creds:     creds,
+		workers:   make(map[string]*workerEntry),
+		regPolicy: DefaultWorkerRegistrationPolicy(),
 	}
 }
 
@@ -199,6 +242,28 @@ func (r *WorkerRegistry) SetEventRecorder(rec WorkerEventRecorder) {
 	defer r.mu.Unlock()
 
 	r.events = rec
+}
+
+// SetNonceStore wires the Redis-backed registration nonce store and its
+// replay-protection policy (docs/planning/27-security-controls.md). Zero
+// values in policy fall back to DefaultWorkerRegistrationPolicy's durations.
+// Optional: if never called, ClockSkew stays at its default (enforced) and
+// nonce replay/outage checks are skipped since there is no store to consult.
+func (r *WorkerRegistry) SetNonceStore(store WorkerNonceStore, policy WorkerRegistrationPolicy) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.nonces = store
+
+	if policy.ClockSkew > 0 {
+		r.regPolicy.ClockSkew = policy.ClockSkew
+	}
+
+	if policy.NonceTTL > 0 {
+		r.regPolicy.NonceTTL = policy.NonceTTL
+	}
+
+	r.regPolicy.FailOpenOnNonceStoreError = policy.FailOpenOnNonceStoreError
 }
 
 // Register validates a RegisterRequest against the referenced worker
@@ -220,6 +285,15 @@ func (r *WorkerRegistry) Register(ctx context.Context, req *strawpb.RegisterRequ
 	}
 
 	reason := rejectRegisterRequest(cred, req)
+	if reason != "" {
+		return RegisterOutcome{Reason: reason}, nil
+	}
+
+	reason, err = r.checkRegistrationReplay(ctx, cred.ID, req)
+	if err != nil {
+		return RegisterOutcome{}, err
+	}
+
 	if reason != "" {
 		return RegisterOutcome{Reason: reason}, nil
 	}
@@ -524,6 +598,14 @@ func rejectRegisterRequestSignature(cred WorkerCredential, req *strawpb.Register
 	return ""
 }
 
+func absDuration(d time.Duration) time.Duration {
+	if d < 0 {
+		return -d
+	}
+
+	return d
+}
+
 func eligibleForTenantAdmin(e *workerEntry, tenantID string) bool {
 	if !containsString(e.current.tenantScope, tenantID) {
 		return false
@@ -817,6 +899,41 @@ func (r *WorkerRegistry) ListWorkersForTenant(tenantID string) []WorkerView {
 	}
 
 	return out
+}
+
+// checkRegistrationReplay enforces the docs/planning/27 issued-at skew
+// tolerance and, when a nonce store is configured, consumes the signed nonce
+// to reject replays. It runs only after signature verification succeeds, so
+// a forged nonce/issued-at cannot be used to probe this check.
+func (r *WorkerRegistry) checkRegistrationReplay(ctx context.Context, credentialID string, req *strawpb.RegisterRequest) (string, error) {
+	r.mu.Lock()
+	nonces := r.nonces
+	policy := r.regPolicy
+	r.mu.Unlock()
+
+	issuedAt := time.UnixMilli(req.GetIssuedAtUnixMs())
+	if absDuration(r.now().Sub(issuedAt)) > policy.ClockSkew {
+		return RejectStaleIssuedAt, nil
+	}
+
+	if nonces == nil {
+		return "", nil
+	}
+
+	fresh, err := nonces.Consume(ctx, credentialID, req.GetNonce(), policy.NonceTTL)
+	if err != nil {
+		if policy.FailOpenOnNonceStoreError {
+			return "", nil
+		}
+
+		return RejectNonceStoreUnavailable, nil
+	}
+
+	if !fresh {
+		return RejectNonceReplayed, nil
+	}
+
+	return "", nil
 }
 
 // emitWorkerEvent enqueues a worker_events row if a recorder is wired. Must

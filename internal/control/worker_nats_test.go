@@ -27,7 +27,7 @@ func TestWorkerDiscoveryOverNATSDuplicateSessionAndTimeouts(t *testing.T) {
 	t.Parallel()
 
 	h := newTestAdmin(t)
-	clock := &wireClock{t: time.Unix(1_700_000_000, 0)}
+	clock := &wireClock{t: time.Now()}
 	reg := NewWorkerRegistry(h.workerCreds, DefaultWorkerTimings(), clock.Now)
 	h.h.Workers = reg
 
@@ -138,7 +138,7 @@ func TestWorkerRunLoopAppearsInAdminWorkersAndDrainsOnCancel(t *testing.T) {
 	t.Parallel()
 
 	h := newTestAdmin(t)
-	clock := &wireClock{t: time.Unix(1_700_000_100, 0)}
+	clock := &wireClock{t: time.Now()}
 	reg := NewWorkerRegistry(h.workerCreds, DefaultWorkerTimings(), clock.Now)
 	h.h.Workers = reg
 

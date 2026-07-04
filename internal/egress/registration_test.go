@@ -28,7 +28,10 @@ func TestBuildRegisterRequestSignsVerifiably(t *testing.T) {
 		MaxConcurrency: 4,
 	}
 
-	req := BuildRegisterRequest(id, caps)
+	req, err := BuildRegisterRequest(id, caps)
+	if err != nil {
+		t.Fatalf("BuildRegisterRequest: %v", err)
+	}
 	if req.GetProtocolMajor() != ProtocolMajor {
 		t.Fatalf("protocol major = %d, want %d", req.GetProtocolMajor(), ProtocolMajor)
 	}

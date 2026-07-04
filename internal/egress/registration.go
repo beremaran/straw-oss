@@ -2,11 +2,17 @@ package egress
 
 import (
 	"crypto/ed25519"
+	"crypto/rand"
 	"fmt"
+	"time"
 
 	strawpb "github.com/beremaran/straw/v2/api/proto/straw/v1"
 	"github.com/beremaran/straw/v2/internal/natsx"
 )
+
+// registrationNonceBytes is the size of the random nonce bound into every
+// signed registration token (docs/planning/27 "Worker Credential Signing").
+const registrationNonceBytes = 16
 
 // ProtocolMajor is the worker protocol major version this worker speaks. It
 // must match the Control-side constant for registration to succeed.
@@ -37,11 +43,20 @@ type Capabilities struct {
 
 // BuildRegisterRequest assembles and signs a RegisterRequest for the worker.
 // The returned message carries the ed25519 signature over its canonical
-// payload in SignedToken.
-func BuildRegisterRequest(id Identity, caps Capabilities) *strawpb.RegisterRequest {
+// payload in SignedToken, binding a fresh crypto/rand nonce and the current
+// time as issued-at so Control can reject replays and stale requests
+// (docs/planning/27-security-controls.md).
+func BuildRegisterRequest(id Identity, caps Capabilities) (*strawpb.RegisterRequest, error) {
 	pools := make([]*strawpb.RegisterRequest_PoolRef, 0, len(caps.AllowedPools))
 	for _, p := range caps.AllowedPools {
 		pools = append(pools, &strawpb.RegisterRequest_PoolRef{TenantId: p.GetTenantId(), PoolId: p.GetPoolId()})
+	}
+
+	nonce := make([]byte, registrationNonceBytes)
+
+	_, err := rand.Read(nonce)
+	if err != nil {
+		return nil, fmt.Errorf("generate registration nonce: %w", err)
 	}
 
 	req := &strawpb.RegisterRequest{
@@ -59,10 +74,12 @@ func BuildRegisterRequest(id Identity, caps Capabilities) *strawpb.RegisterReque
 		SupportedIngressModes: caps.SupportedIngressModes,
 		MaxConcurrency:        caps.MaxConcurrency,
 		InitialDraining:       caps.InitialDraining,
+		Nonce:                 nonce,
+		IssuedAtUnixMs:        time.Now().UnixMilli(),
 	}
 	req.SignedToken = strawpb.SignRegistration(id.PrivateKey, req)
 
-	return req
+	return req, nil
 }
 
 // InboxPrefix returns the scoped reply-inbox prefix this worker must configure

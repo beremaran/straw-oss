@@ -77,6 +77,11 @@ services:
       STRAW_CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-}
       STRAW_API_KEY_PEPPER: ${STRAW_API_KEY_PEPPER:-local-dev-pepper}
       STRAW_BOOTSTRAP_SYSTEM_ADMIN_KEY: ${STRAW_BOOTSTRAP_SYSTEM_ADMIN_KEY:-}
+      # Dev-only worker credential seed matching egress's baked-in identity
+      # key below, so compose registration succeeds without a manual
+      # /worker-credentials call. See deploy/docker/README.md.
+      STRAW_BOOTSTRAP_WORKER_CREDENTIAL_ID: "11111111-1111-4111-8111-111111111111"
+      STRAW_BOOTSTRAP_WORKER_PUBLIC_KEY_ED25519_BASE64: "pRt97w+OVIQlr+uYeiECfFepc3WjylxQw/edkmcfprQ="
     depends_on:
       postgres:
         condition: service_healthy
@@ -93,14 +98,20 @@ services:
       retries: 10
     restart: unless-stopped
 
-  # The egress worker connects to NATS and attempts to register. Successful
-  # registration requires a provisioned worker credential whose ed25519 public
-  # key matches the worker's key; see deploy/docker/README.md ("Worker
-  # provisioning") for the known limitation and steps.
+  # The egress worker connects to NATS and registers using the dev identity
+  # key below, matching the dev worker credential Control bootstraps from
+  # STRAW_BOOTSTRAP_WORKER_* above. See deploy/docker/README.md ("Worker
+  # provisioning").
   egress:
     build:
       context: .
       dockerfile: deploy/docker/Dockerfile.egress
+    environment:
+      # Dev-only persistent ed25519 private key (base64, 64-byte
+      # seed+public form) matching the public key Control bootstraps into
+      # the seeded worker credential above. Never reuse this key outside
+      # local development.
+      STRAW_WORKER_PRIVATE_KEY_ED25519_BASE64: "j/eBWp+t1HoYi16+4lNQV7anaDFMCb9PuEoZdFnGgNGlG33vD45UhCWv65h6IQJ8V6lzdaPKXFDD952SZx+mtA=="
     depends_on:
       nats:
         condition: service_healthy

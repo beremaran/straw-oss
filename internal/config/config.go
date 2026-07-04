@@ -20,6 +20,7 @@ var (
 	errServerHostRequired       = errors.New("server.host is required")
 	errWorkerIDRequired         = errors.New("worker_id is required")
 	errCredentialIDRequired     = errors.New("credential_id is required")
+	errPrivateKeyEnvRequired    = errors.New("private_key_ed25519_env is required")
 	errInvalidConfigVersion     = errors.New("invalid config_version")
 	errInvalidServerAPIPort     = errors.New("server.api_port must be between 1 and 65535")
 	errInvalidServerMetricsPort = errors.New("server.metrics_port must be between 1 and 65535")
@@ -37,8 +38,27 @@ type ControlConfig struct {
 	Server    ControlServerConfig    `json:"server"`
 	Request   ControlRequestConfig   `json:"request"`
 	Transport ControlTransportConfig `json:"transport"`
+	Worker    ControlWorkerConfig    `json:"worker"`
 	NATS      NATSConfig             `json:"nats"`
 	Database  DatabaseConfig         `json:"database"`
+}
+
+// ControlWorkerConfig configures worker registration replay protection
+// (docs/planning/27-security-controls.md "Worker Credential Signing").
+type ControlWorkerConfig struct {
+	// RegistrationNonceTTLMS bounds how long a consumed registration nonce is
+	// remembered in Redis before it may be reused. Must comfortably exceed
+	// RegistrationClockSkewMS*2 so a nonce cannot expire and become
+	// replayable while still inside the accepted issued-at window.
+	RegistrationNonceTTLMS int `json:"registration_nonce_ttl_ms"`
+	// RegistrationClockSkewMS is the maximum allowed difference between a
+	// worker's issued-at timestamp and Control's receive time.
+	RegistrationClockSkewMS int `json:"registration_clock_skew_ms"`
+	// RegistrationFailOpenOnRedisOutage allows registration to proceed
+	// without nonce replay protection when Redis is unavailable. Disabled by
+	// default: docs/planning/27 requires registration to fail closed unless a
+	// deployment explicitly opts in.
+	RegistrationFailOpenOnRedisOutage bool `json:"registration_fail_open_on_redis_outage"`
 }
 
 // ControlServerConfig configures the control HTTP server.
@@ -111,10 +131,18 @@ type DatabaseConfig struct {
 
 // EgressConfig is the egress-worker config block.
 type EgressConfig struct {
-	WorkerID            string     `json:"worker_id"`
-	CredentialID        string     `json:"credential_id"`
-	HeartbeatIntervalMs int        `json:"heartbeat_interval_ms"`
-	NATS                NATSConfig `json:"nats"`
+	WorkerID string `json:"worker_id"`
+	// CredentialID identifies the worker_credentials row Control verifies
+	// PrivateKeyEd25519Env's matching public key against.
+	CredentialID string `json:"credential_id"`
+	// PrivateKeyEd25519Env is the name of an environment variable holding
+	// the worker's persistent ed25519 private key, base64-standard-encoded
+	// (32-byte seed or the full 64-byte private key). Secrets are never
+	// stored directly in the config file, matching every other credential
+	// field in this package (e.g. RedisConfig.URLEnv).
+	PrivateKeyEd25519Env string     `json:"private_key_ed25519_env"`
+	HeartbeatIntervalMs  int        `json:"heartbeat_interval_ms"`
+	NATS                 NATSConfig `json:"nats"`
 }
 
 // LoadControl reads and validates a control config file.
@@ -251,8 +279,19 @@ func (c *ControlConfig) applyDefaults() {
 		c.Request.MaxTimeoutMs = 120_000
 	}
 
+	c.Worker.applyDefaults()
 	c.NATS.applyDefaults()
 	c.Database.applyDefaults()
+}
+
+func (w *ControlWorkerConfig) applyDefaults() {
+	if w.RegistrationClockSkewMS == 0 {
+		w.RegistrationClockSkewMS = 60_000
+	}
+
+	if w.RegistrationNonceTTLMS == 0 {
+		w.RegistrationNonceTTLMS = 300_000
+	}
 }
 
 func (d *DatabaseConfig) applyDefaults() {
@@ -364,6 +403,10 @@ func (e *EgressConfig) validate() error {
 
 	if e.CredentialID == "" {
 		return errCredentialIDRequired
+	}
+
+	if e.PrivateKeyEd25519Env == "" {
+		return errPrivateKeyEnvRequired
 	}
 
 	if e.HeartbeatIntervalMs <= 0 {
