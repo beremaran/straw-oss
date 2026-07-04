@@ -5,7 +5,7 @@ Status: not started
 ## Objective
 
 Implement the remaining P0 tenant endpoints (list, get, update, soft-delete), persist and load tenant `name` and
-`rate_limit_ceiling`, and enforce tenant status during authentication so a disabled or soft-deleted tenant's keys
+`rate_limit_ceiling`, and enforce tenant status during authentication so a suspended or soft-deleted tenant's keys
 fail with `tenant_not_found`.
 
 ## Context (gap being closed)
@@ -17,6 +17,12 @@ missing/deleted tenant) is unreachable and a disabled tenant's keys keep executi
 only `id/status/timestamps`, so `Tenant.RateLimitCeiling` is never persisted or loaded — the rate-limit ceiling
 enforcement wired in tasks 13/26 is inert in the real binary. Task 18 explicitly deferred these columns to a later
 task; this is that task.
+
+Vocabulary reconciliation: migration `0001_init.sql` gave `tenants` a status CHECK of
+`('active', 'disabled', 'deleted')` and a `soft_deleted_at` column, but `docs/planning/26` defines the tenant status
+enum as `active | suspended | deleted` and the shared soft-delete contract sets `deleted_at` (which migration 0002
+already uses for config resources). The planning doc wins: this task's migration renames the column and replaces the
+CHECK, migrating any `'disabled'` rows to `'suspended'`.
 
 ## Required Planning Docs
 
@@ -41,8 +47,9 @@ task; this is that task.
 
 ## Expected Files
 
-- Create: `migrations/postgres/0003_tenant_fields.sql` (add `name text`, `rate_limit_ceiling` column(s); idempotent
-  `ADD COLUMN IF NOT EXISTS`).
+- Create: `migrations/postgres/0003_tenant_fields.sql` (add `name text`, `rate_limit_ceiling` column(s); replace the
+  tenants status CHECK with `('active', 'suspended', 'deleted')` migrating `'disabled'` rows to `'suspended'`; rename
+  `soft_deleted_at` to `deleted_at` per `docs/planning/26`; idempotent and re-appliable).
 - Modify: `internal/control/tenant_store.go` (extend `TenantStore` with List/Update/SoftDelete; load `Name`,
   `RateLimitCeiling`).
 - Modify: `internal/control/postgres_tenant_store.go` (persist/load the new columns; status update; soft delete;
@@ -56,17 +63,21 @@ task; this is that task.
 
 ## Steps
 
-- [ ] Read the required planning docs.
-- [ ] Add the migration for `name` and `rate_limit_ceiling`; keep it idempotent and re-appliable.
+- [ ] Read all required planning docs.
+- [ ] Add the migration for `name` and `rate_limit_ceiling`, the `('active', 'suspended', 'deleted')` status CHECK
+      (migrating `'disabled'` rows), and the `soft_deleted_at` -> `deleted_at` rename; keep it idempotent and
+      re-appliable.
 - [ ] Persist and load `name` and `rate_limit_ceiling` in the Postgres tenant store; add status update and soft delete
-      (`status = 'deleted'`, `soft_deleted_at = now()`), and a paginated list.
-- [ ] Enforce tenant status in authentication: a tenant-scoped key whose tenant is `disabled` or `deleted` fails with
+      (`status = 'deleted'`, `deleted_at = now()`), and a paginated list.
+- [ ] Enforce tenant status in authentication: a tenant-scoped key whose tenant is `suspended` or `deleted` fails with
       `tenant_not_found`, collapsing all cases so callers cannot probe tenant state.
 - [ ] Add `GET /tenants` and `PUT/DELETE /tenants/{id}` (system_admin) and `GET /tenants/{id}` (system_admin plus the
-      owning tenant's roles), per the `docs/planning/26` RBAC column.
+      owning tenant's roles), per the `docs/planning/26` RBAC column. Register the new routes under the canonical
+      `/api/v1/config` base path; task 36 moves the existing bare registrations (shared `cmd/control/main.go`, so land
+      36 first or coordinate).
 - [ ] On disable/soft-delete, force config-cache/auth invalidation before returning success (same pattern as API key
       revocation in task 07/21).
-- [ ] Add tests for: each endpoint's RBAC; tenant isolation on `GET /tenants/{id}`; disabled/deleted tenant key
+- [ ] Add tests for: each endpoint's RBAC; tenant isolation on `GET /tenants/{id}`; suspended/deleted tenant key
       returns `tenant_not_found`; `rate_limit_ceiling` persists and a rate-limit write above the ceiling is rejected
       with `invalid_request` end to end (proving the ceiling is now live).
 - [ ] Run the focused tests.
@@ -81,7 +92,9 @@ task; this is that task.
 ## Acceptance Criteria
 
 - All five P0 tenant endpoints exist with the `docs/planning/26` RBAC.
-- A disabled or soft-deleted tenant's API key is rejected with `tenant_not_found`.
+- A suspended or soft-deleted tenant's API key is rejected with `tenant_not_found`.
+- The tenants schema matches `docs/planning/26` vocabulary: status enum `active | suspended | deleted` and
+  `deleted_at`.
 - `rate_limit_ceiling` is persisted, loaded, and enforced: an over-ceiling rate-limit write is rejected.
 - Migrations apply cleanly to a fresh database and are re-appliable.
 
@@ -94,3 +107,4 @@ task; this is that task.
 
 - Stop before adding P1 tenant fields or rollback.
 - Stop if a schema change would conflict with task 04's documented model without reconciling it here.
+- Stop if a deferral would have no owning task file.

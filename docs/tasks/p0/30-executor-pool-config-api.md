@@ -43,7 +43,7 @@ surface and a list/get store method, and feeds pool policy from the snapshot.
 
 ## Steps
 
-- [ ] Read the required planning docs.
+- [ ] Read all required planning docs.
 - [ ] Add `ListExecutorPools`/`GetExecutorPool` to the config list store.
 - [ ] Add `GET/POST/PUT/DELETE /api/v1/config/executor-pools` handlers: client-supplied stable IDs (per
       `docs/planning/26`), soft delete, `expected_config_version` -> HTTP 409 `conflict`, and the RBAC roles from the
@@ -79,3 +79,4 @@ surface and a list/get store method, and feeds pool policy from the snapshot.
 
 - Stop before adding P1 pool fields or rollback.
 - Stop if a requested endpoint is not in the `docs/planning/26` P0 table.
+- Stop if a deferral would have no owning task file.

@@ -48,7 +48,7 @@ This is a cleanup/integration task per the board rules; it changes no product be
 
 ## Steps
 
-- [x] Read the board rules and the affected files.
+- [x] Read all required planning docs. (For this cleanup task: the board rules and the affected files.)
 - [x] Add `govet` to `.golangci.yml` and confirm it runs under `make check`.
 - [x] Fix the `copylocks` violation so `go vet ./...` is clean; update any callers/tests of the changed
       `Capabilities` field. (`Capabilities.AllowedPools` changed from `[]strawpb.RegisterRequest_PoolRef` to

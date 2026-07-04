@@ -42,7 +42,7 @@ value is not checked.
 
 ## Steps
 
-- [ ] Read the required planning docs.
+- [ ] Read all required planning docs.
 - [ ] After base64-decoding each header value, reject with `invalid_request` if the decoded bytes contain CR or LF;
       keep the existing raw-string and HTTP-token checks.
 - [ ] Update `TestValidateRequestCRInHeaderValue` to assert an actual rejection for a value whose decoded bytes
@@ -71,3 +71,4 @@ value is not checked.
 ## Stop Conditions
 
 - Stop if rejecting decoded control characters would contradict `docs/planning/15` header semantics.
+- Stop if a deferral would have no owning task file.

@@ -48,7 +48,7 @@ cancellation are already implemented in `dispatcher.go` `readResponse`; this tas
 
 ## Steps
 
-- [ ] Read the required planning docs.
+- [ ] Read all required planning docs.
 - [ ] Add an in-flight registry: on dispatch start, store `request_id -> (tenant_id, cancelFunc)`; deregister when
       the request completes or errors (defer-based).
 - [ ] Add `CancelRequest` handler: authenticate, look up the request, apply `AuthorizeAdminCancel` against the stored
@@ -59,7 +59,8 @@ cancellation are already implemented in `dispatcher.go` `readResponse`; this tas
 - [ ] Register `POST /api/v1/admin/requests/{request_id}/cancel` in `serveAdminRoutes`.
 - [ ] Update `docs/agents/testing-matrix-audit.md` so the "admin cancel" Cancellation/Worker-admin rows map to the
       real endpoint test, not only `AuthorizeAdminCancel`.
-- [ ] Add tests for: platform `system_admin` cancels any request; tenant admin cancels own-tenant request; tenant
+- [ ] Add tests for: platform `system_admin` cancels any request; tenant `tenant_admin` and `operator` keys cancel an
+      own-tenant request (the full `docs/planning/26` role column: `system_admin`, `tenant_admin`, `operator`); tenant
       admin cancelling a foreign request gets `insufficient_permissions` with no existence disclosure; unknown
       `request_id` behaves identically for tenant scope; a cancelled in-flight request terminates the REST call with
       `cancelled` and a `CancelFrame` reaches the executor.
@@ -78,7 +79,8 @@ cancellation are already implemented in `dispatcher.go` `readResponse`; this tas
 - Cancelling an in-flight request causes the original REST request to end with the canonical `cancelled` error and a
   `CancelFrame` to be published on the request's `c2e` subject.
 - Foreign-tenant and unknown-request cancels from a tenant-scoped key return `insufficient_permissions` without
-  disclosing whether the request exists; `system_admin` can cancel any request.
+  disclosing whether the request exists; `system_admin` can cancel any request, and tenant-scoped `tenant_admin` and
+  `operator` keys can cancel own-tenant requests.
 - The testing-matrix admin-cancel rows are backed by an endpoint test, not only the authorization predicate.
 
 ## Handoff Notes
@@ -90,3 +92,4 @@ cancellation are already implemented in `dispatcher.go` `readResponse`; this tas
 
 - Stop before adding durable cancellation state or multi-Control coordination.
 - Stop if a cancellation outcome would have no canonical error-code mapping.
+- Stop if a deferral would have no owning task file.
