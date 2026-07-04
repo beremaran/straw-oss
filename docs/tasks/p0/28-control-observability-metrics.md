@@ -28,7 +28,7 @@ of the `docs/planning/23` P0 metrics are implemented. No task owned this surface
 
 ## Out of Scope
 
-- Do not implement direct worker Prometheus scraping (P1).
+- Do not implement direct worker Prometheus scraping (owned by `docs/tasks/p1/15-egress-metrics-exposure.md`).
 - Do not implement telemetry read APIs, dashboards, or exemplars beyond what the stdlib client offers.
 - Do not add high-cardinality labels (no raw URLs; see `docs/planning/23`).
 
@@ -46,7 +46,7 @@ of the `docs/planning/23` P0 metrics are implemented. No task owned this surface
 
 ## Steps
 
-- [ ] Read the required planning docs.
+- [ ] Read all required planning docs.
 - [ ] Add the `prometheus/client_golang` dependency and a metrics registry constructed at startup.
 - [ ] Define the P0 metrics from `docs/planning/23`: `straw_requests_total`, `straw_request_duration_seconds`,
       `straw_routing_duration_seconds`, `straw_assignment_duration_seconds`, `straw_active_requests`,
@@ -84,3 +84,4 @@ of the `docs/planning/23` P0 metrics are implemented. No task owned this surface
 
 - Stop before adding worker-scrape or telemetry read APIs.
 - Stop if a required metric has no clear P0 signal source and would be fabricated.
+- Stop if a deferral would have no owning task file.

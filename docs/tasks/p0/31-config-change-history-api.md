@@ -41,7 +41,7 @@ read-only exposure task.
 
 ## Steps
 
-- [ ] Read the required planning docs.
+- [ ] Read all required planning docs.
 - [ ] Add a paginated audit list method scoped to a tenant with the shared list ordering/limits.
 - [ ] Add the `ListChanges` handler with RBAC `tenant_admin`/`operator`/`viewer` (per the `docs/planning/26` row) and
       tenant scoping so it never returns another tenant's rows.
@@ -72,3 +72,4 @@ read-only exposure task.
 
 - Stop before adding rollback or mutation behavior.
 - Stop if the endpoint would expose a field not permitted by `docs/planning/27`.
+- Stop if a deferral would have no owning task file.

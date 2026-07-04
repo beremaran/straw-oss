@@ -35,7 +35,8 @@ adds outcome accuracy and the two missing write paths.
 
 - Do not implement telemetry read APIs or dashboards (P1).
 - Do not implement payload capture (P2).
-- Do not build the `log_events` ingestion pipeline; leave it as a documented deferral with an owning note.
+- Do not build the `log_events` ingestion pipeline; the owning follow-up is
+  `docs/tasks/p1/20-log-events-ingestion.md`.
 
 ## Expected Files
 
@@ -50,7 +51,7 @@ adds outcome accuracy and the two missing write paths.
 
 ## Steps
 
-- [ ] Read the required planning docs.
+- [ ] Read all required planning docs.
 - [ ] Emit the `request_events` row after dispatch with the real `upstream_status`/`client_status`,
       `error_code`/`error_category`/`timeout_type`, `request_size_bytes`/`response_size_bytes`, and
       `routing_ms`/`assignment_ms`/`egress_ms`/`total_ms`; on a dispatch failure, emit the row with the canonical
@@ -59,7 +60,7 @@ adds outcome accuracy and the two missing write paths.
       bounded, and non-blocking on outage.
 - [ ] Add a `worker_events` write path fed by registration/heartbeat/disable/drain transitions.
 - [ ] Add a `config_audit_events` write path mirroring `config_audit_source` writes (already redacted upstream).
-- [ ] Document the `log_events` deferral and name the owning follow-up.
+- [ ] Document the `log_events` deferral, naming `docs/tasks/p1/20-log-events-ingestion.md` as the owning follow-up.
 - [ ] Add tests for: a completed request producing a `request_events` row with real status/timings/sizes; a failed
       request producing a row with the canonical `error_code`/category; `worker_events` and `config_audit_events`
       rows written; transport unaffected by a sink outage (fake sink); redaction still holds.
@@ -82,9 +83,11 @@ adds outcome accuracy and the two missing write paths.
 ## Handoff Notes
 
 - Document the outcome-capture point in the pipeline and the fields written per table.
-- List fields intentionally omitted and the `log_events` deferral's owning task.
+- List fields intentionally omitted and the `log_events` deferral's owning task
+  (`docs/tasks/p1/20-log-events-ingestion.md`).
 
 ## Stop Conditions
 
 - Stop before adding telemetry read APIs or payload capture.
 - Stop if recording an outcome field would require exposing a redacted/secret value.
+- Stop if a deferral would have no owning task file.

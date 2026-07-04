@@ -56,7 +56,7 @@ of in-memory identity state. This task authorizes adding the `github.com/jackc/p
 - [x] Add tests for persistence, prefix collision, platform key cannot execute requests, tenant isolation (uuid
       round-trip), revocation, worker credential scope, and audit actor records.
 - [x] Run focused Postgres identity-store tests (against Postgres 16; 10/10 pass, idempotent).
-- [x] Run `make check` (0 lint issues, all tests pass).
+- [x] Run `make check`. (0 lint issues, all tests pass.)
 - [x] Write a handoff note.
 
 ## Tests

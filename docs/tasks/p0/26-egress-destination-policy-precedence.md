@@ -53,8 +53,8 @@ This task exists because of two gaps identified while implementing task 22
 
 ## Steps
 
-- [x] Read all required planning docs and `internal/control/destination_policy.go`'s `evaluateLiteralIPDeny` doc
-      comment for the exact override semantics to match.
+- [x] Read all required planning docs. Also read `internal/control/destination_policy.go`'s `evaluateLiteralIPDeny`
+      doc comment for the exact override semantics to match.
 - [x] Change `validateCIDRPolicy`/`deniedByDefault` (or their replacement) so an address matching
       `DestinationPolicy.allowed_cidrs` short-circuits as allowed, taking precedence over the private/loopback/
       link-local/metadata booleans and the static default-deny prefix list. `Is4In6` (IPv4-mapped IPv6) remains
