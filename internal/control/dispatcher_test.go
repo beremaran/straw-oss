@@ -56,6 +56,39 @@ func TestDispatcherRouteUnavailable(t *testing.T) {
 	}
 }
 
+// TestDispatcherRoutePoolPolicyFromSnapshot verifies degraded-pool policy is
+// sourced from the tenant snapshot's executor pools (docs/tasks/p0/30)
+// instead of the previous NewStaticPoolPolicyProvider(nil) that always
+// rejected degraded workers.
+func TestDispatcherRoutePoolPolicyFromSnapshot(t *testing.T) {
+	t.Parallel()
+
+	degradedCandidate := dispatchCandidate()
+	degradedCandidate.Degraded = true
+
+	snapshot := dispatchSnapshot([]config.RoutingRule{dispatchRule()})
+	d := newTestDispatcherWithSnapshot(t, snapshot, dispatchCandidates{degradedCandidate})
+	req := validatedDispatchRequest(t, "https://example.com/")
+
+	// No executor pool configured: unknown-pool policy defaults to
+	// AllowDegradedWorkers=false, so the only (degraded) candidate is rejected.
+	outcome := d.route(dispatchInput(req), snapshot)
+	if outcome.OK {
+		t.Fatalf("route outcome = %+v, want unavailable with no pool policy", outcome)
+	}
+
+	// A pool with allow_degraded_workers=true in the snapshot admits the
+	// degraded candidate.
+	snapshot.ExecutorPools = []config.ExecutorPool{
+		{ID: dispatchTestPool, Enabled: true, AllowDegradedWorkers: true},
+	}
+
+	outcome = d.route(dispatchInput(req), snapshot)
+	if !outcome.OK || outcome.WorkerID != dispatchTestWorker {
+		t.Fatalf("route outcome = %+v, want OK with worker %s", outcome, dispatchTestWorker)
+	}
+}
+
 func TestDispatcherRateLimitRetryAfter(t *testing.T) {
 	client := newTestRedisClient(t)
 

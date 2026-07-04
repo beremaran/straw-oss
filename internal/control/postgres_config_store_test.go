@@ -24,12 +24,13 @@ func TestPostgresConfigStoreSnapshotAssembly(t *testing.T) {
 	store := NewPostgresConfigStore(pool)
 	actor := ConfigActor{ActorType: configActorTypeAPIKey, ActorID: pgConfigActorID, RequestID: "req_config"}
 
-	_, err := store.UpsertExecutorPool(ctx, pgTestTenantA, config.ExecutorPool{
-		ID:           pgConfigPoolA,
-		ExecutorType: pgTestExecutorType,
-		Tags:         []string{"fast", "au"},
-		Enabled:      true,
-	}, actor)
+	_, _, err := store.UpsertExecutorPool(ctx, pgTestTenantA, config.ExecutorPool{
+		ID:                   pgConfigPoolA,
+		ExecutorType:         pgTestExecutorType,
+		Tags:                 []string{"fast", "au"},
+		Enabled:              true,
+		AllowDegradedWorkers: true,
+	}, 0, actor)
 	if err != nil {
 		t.Fatalf("UpsertExecutorPool() error = %v", err)
 	}
@@ -137,8 +138,8 @@ func TestPostgresConfigStoreSnapshotAssembly(t *testing.T) {
 	if len(snap.RoutingRules) != 1 || snap.RoutingRules[0].ID != "route_keep" {
 		t.Fatalf("routing rules = %+v, want only live route_keep", snap.RoutingRules)
 	}
-	if len(snap.ExecutorPools) != 1 || snap.ExecutorPools[0].ID != pgConfigPoolA {
-		t.Fatalf("executor pools = %+v, want %s", snap.ExecutorPools, pgConfigPoolA)
+	if len(snap.ExecutorPools) != 1 || snap.ExecutorPools[0].ID != pgConfigPoolA || !snap.ExecutorPools[0].AllowDegradedWorkers {
+		t.Fatalf("executor pools = %+v, want %s with allow_degraded_workers=true", snap.ExecutorPools, pgConfigPoolA)
 	}
 	if len(snap.DenyRules) != 1 || snap.DenyRules[0].NormalizedHost != pgConfigBlockedHost {
 		t.Fatalf("deny rules = %+v, want %s", snap.DenyRules, pgConfigBlockedHost)

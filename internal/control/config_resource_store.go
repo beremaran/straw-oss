@@ -24,6 +24,16 @@ type RoutingRuleStore interface {
 	DeleteRoutingRule(ctx context.Context, tenantID, id string, actor ConfigActor) (uint64, error)
 }
 
+// ExecutorPoolStore persists tenant-scoped executor pools with a
+// client-supplied stable ID and optimistic concurrency on each pool's own
+// config_version (docs/tasks/p0/30).
+type ExecutorPoolStore interface {
+	ListExecutorPools(ctx context.Context, tenantID string, limit, offset int) ([]ExecutorPoolRecord, error)
+	GetExecutorPool(ctx context.Context, tenantID, id string) (ExecutorPoolRecord, error)
+	UpsertExecutorPool(ctx context.Context, tenantID string, pool config.ExecutorPool, expectedVersion uint64, actor ConfigActor) (ExecutorPoolRecord, uint64, error)
+	DeleteExecutorPool(ctx context.Context, tenantID, id string, actor ConfigActor) (uint64, error)
+}
+
 // DenyRuleStore persists tenant-scoped deny/allow rules, server-generating IDs.
 type DenyRuleStore interface {
 	ListDenyRules(ctx context.Context, tenantID string, limit, offset int) ([]DenyRuleRecord, error)
@@ -144,6 +154,94 @@ func sortRoutingRules(rules []RoutingRuleRecord) {
 
 		return rules[i].CreatedAt.After(rules[j].CreatedAt)
 	})
+}
+
+// InMemoryExecutorPoolStore is a handler-test double; production wires
+// PostgresConfigStore.
+type InMemoryExecutorPoolStore struct {
+	mu   sync.Mutex
+	byID map[string]map[string]*inMemoryResource[ExecutorPoolRecord]
+}
+
+// NewInMemoryExecutorPoolStore builds an empty store.
+func NewInMemoryExecutorPoolStore() *InMemoryExecutorPoolStore {
+	return &InMemoryExecutorPoolStore{byID: make(map[string]map[string]*inMemoryResource[ExecutorPoolRecord])}
+}
+
+// ListExecutorPools implements ExecutorPoolStore.
+func (s *InMemoryExecutorPoolStore) ListExecutorPools(_ context.Context, tenantID string, limit, offset int) ([]ExecutorPoolRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var out []ExecutorPoolRecord
+
+	for _, entry := range s.byID[tenantID] {
+		if !entry.deleted {
+			out = append(out, entry.value)
+		}
+	}
+
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].CreatedAt.Equal(out[j].CreatedAt) {
+			return out[i].ID < out[j].ID
+		}
+
+		return out[i].CreatedAt.After(out[j].CreatedAt)
+	})
+
+	return paginate(out, limit, offset), nil
+}
+
+// GetExecutorPool implements ExecutorPoolStore.
+func (s *InMemoryExecutorPoolStore) GetExecutorPool(_ context.Context, tenantID, id string) (ExecutorPoolRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	entry, ok := s.byID[tenantID][id]
+	if !ok || entry.deleted {
+		return ExecutorPoolRecord{}, ErrConfigResourceNotFound
+	}
+
+	return entry.value, nil
+}
+
+// UpsertExecutorPool implements ExecutorPoolStore.
+func (s *InMemoryExecutorPoolStore) UpsertExecutorPool(_ context.Context, tenantID string, pool config.ExecutorPool, expectedVersion uint64, _ ConfigActor) (ExecutorPoolRecord, uint64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.byID[tenantID] == nil {
+		s.byID[tenantID] = make(map[string]*inMemoryResource[ExecutorPoolRecord])
+	}
+
+	current := currentVersionOf(s.byID[tenantID][pool.ID])
+	if current != expectedVersion {
+		return ExecutorPoolRecord{}, 0, ErrConfigResourceVersionConflict
+	}
+
+	record := ExecutorPoolRecord{ExecutorPool: pool, TenantID: tenantID, ConfigVersion: expectedVersion + 1}
+	if existing := s.byID[tenantID][pool.ID]; existing != nil {
+		record.CreatedAt = existing.value.CreatedAt
+	}
+
+	s.byID[tenantID][pool.ID] = &inMemoryResource[ExecutorPoolRecord]{value: record}
+
+	return record, expectedVersion + 1, nil
+}
+
+// DeleteExecutorPool implements ExecutorPoolStore.
+func (s *InMemoryExecutorPoolStore) DeleteExecutorPool(_ context.Context, tenantID, id string, _ ConfigActor) (uint64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	entry, ok := s.byID[tenantID][id]
+	if !ok || entry.deleted {
+		return 0, ErrConfigResourceNotFound
+	}
+
+	entry.deleted = true
+
+	return entry.value.ConfigVersion, nil
 }
 
 // InMemoryDenyRuleStore is a handler-test double; production wires
@@ -360,28 +458,18 @@ func (s *InMemoryFingerprintProfileStore) ListFingerprintProfiles(_ context.Cont
 }
 
 func currentVersionOf[T any](entry *inMemoryResource[T]) uint64 {
-	if entry == nil {
+	if entry == nil || entry.deleted {
 		return 0
 	}
 
 	switch v := any(entry.value).(type) {
 	case RoutingRuleRecord:
-		if entry.deleted {
-			return 0
-		}
-
+		return v.ConfigVersion
+	case ExecutorPoolRecord:
 		return v.ConfigVersion
 	case DenyRuleRecord:
-		if entry.deleted {
-			return 0
-		}
-
 		return v.ConfigVersion
 	case InjectionPolicyRecord:
-		if entry.deleted {
-			return 0
-		}
-
 		return v.ConfigVersion
 	default:
 		return 0

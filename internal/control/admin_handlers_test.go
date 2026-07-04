@@ -36,6 +36,7 @@ type testAdmin struct {
 	rateLimits        *InMemoryRateLimitConfigStore
 	audit             *InMemoryAuditStore
 	routingRules      *InMemoryRoutingRuleStore
+	executorPools     *InMemoryExecutorPoolStore
 	denyRules         *InMemoryDenyRuleStore
 	injectionPolicies *InMemoryInjectionPolicyStore
 	fingerprints      *InMemoryFingerprintProfileStore
@@ -107,6 +108,7 @@ func newTestAdmin(t *testing.T) *testAdmin {
 		rateLimits:        NewInMemoryRateLimitConfigStore(),
 		audit:             NewInMemoryAuditStore(),
 		routingRules:      NewInMemoryRoutingRuleStore(),
+		executorPools:     NewInMemoryExecutorPoolStore(),
 		denyRules:         NewInMemoryDenyRuleStore(),
 		injectionPolicies: NewInMemoryInjectionPolicyStore(),
 		fingerprints:      NewInMemoryFingerprintProfileStore(),
@@ -123,6 +125,7 @@ func newTestAdmin(t *testing.T) *testAdmin {
 		ConfigCache:         cache,
 		Pepper:              pepper,
 		RoutingRules:        ta.routingRules,
+		ExecutorPools:       ta.executorPools,
 		DenyRules:           ta.denyRules,
 		InjectionPolicies:   ta.injectionPolicies,
 		FingerprintProfiles: ta.fingerprints,

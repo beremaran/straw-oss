@@ -303,6 +303,181 @@ func (h *AdminHandlers) DeleteRoutingRule(w http.ResponseWriter, r *http.Request
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// ---- executor pools ----
+
+type executorPoolRequest struct {
+	ID                    string   `json:"id"`
+	ExecutorType          string   `json:"executor_type"`
+	Tags                  []string `json:"tags"`
+	Enabled               *bool    `json:"enabled"`
+	AllowDegradedWorkers  bool     `json:"allow_degraded_workers"`
+	ExpectedConfigVersion uint64   `json:"expected_config_version"`
+}
+
+type executorPoolResponse struct {
+	ID                   string   `json:"id"`
+	TenantID             string   `json:"tenant_id"`
+	ExecutorType         string   `json:"executor_type"`
+	Tags                 []string `json:"tags"`
+	Enabled              bool     `json:"enabled"`
+	AllowDegradedWorkers bool     `json:"allow_degraded_workers"`
+	ConfigVersion        uint64   `json:"config_version"`
+}
+
+func toExecutorPoolResponse(r ExecutorPoolRecord) executorPoolResponse {
+	return executorPoolResponse{
+		ID:                   r.ID,
+		TenantID:             r.TenantID,
+		ExecutorType:         defaultExecutorType(r.ExecutorType),
+		Tags:                 nonNilStrings(r.Tags),
+		Enabled:              r.Enabled,
+		AllowDegradedWorkers: r.AllowDegradedWorkers,
+		ConfigVersion:        r.ConfigVersion,
+	}
+}
+
+// ListExecutorPools handles GET /api/v1/config/executor-pools.
+func (h *AdminHandlers) ListExecutorPools(w http.ResponseWriter, r *http.Request) {
+	identity, ok := h.authorizeConfig(w, r, RoleTenantAdmin, RoleOperator, RoleViewer)
+	if !ok {
+		return
+	}
+
+	if h.ExecutorPools == nil {
+		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
+
+		return
+	}
+
+	limit, offset := parsePagination(r)
+
+	records, err := h.ExecutorPools.ListExecutorPools(r.Context(), identity.TenantID, limit, offset)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
+
+		return
+	}
+
+	out := make([]executorPoolResponse, 0, len(records))
+	for _, rec := range records {
+		out = append(out, toExecutorPoolResponse(rec))
+	}
+
+	writeJSON(w, http.StatusOK, out)
+}
+
+// CreateExecutorPool handles POST /api/v1/config/executor-pools. Executor
+// pools use a client-supplied stable ID (docs/planning/26).
+func (h *AdminHandlers) CreateExecutorPool(w http.ResponseWriter, r *http.Request) {
+	identity, ok := h.authorizeConfig(w, r, RoleTenantAdmin)
+	if !ok {
+		return
+	}
+
+	var req executorPoolRequest
+
+	err := decodeJSONBody(r, &req)
+	if err != nil {
+		WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", nil))
+
+		return
+	}
+
+	if req.ID == "" {
+		WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", map[string]string{
+			errorDetailReasonKey: "id is required",
+		}))
+
+		return
+	}
+
+	h.upsertExecutorPool(w, r, identity, req)
+}
+
+// UpdateExecutorPool handles PUT /api/v1/config/executor-pools/{id}.
+func (h *AdminHandlers) UpdateExecutorPool(w http.ResponseWriter, r *http.Request) {
+	identity, ok := h.authorizeConfig(w, r, RoleTenantAdmin)
+	if !ok {
+		return
+	}
+
+	var req executorPoolRequest
+
+	err := decodeJSONBody(r, &req)
+	if err != nil {
+		WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", nil))
+
+		return
+	}
+
+	req.ID = r.PathValue("id")
+
+	h.upsertExecutorPool(w, r, identity, req)
+}
+
+func (h *AdminHandlers) upsertExecutorPool(w http.ResponseWriter, r *http.Request, identity Identity, req executorPoolRequest) {
+	if h.ExecutorPools == nil {
+		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
+
+		return
+	}
+
+	pool := config.ExecutorPool{
+		ID:                   req.ID,
+		ExecutorType:         defaultExecutorType(req.ExecutorType),
+		Tags:                 req.Tags,
+		Enabled:              boolOrDefault(req.Enabled, true),
+		AllowDegradedWorkers: req.AllowDegradedWorkers,
+	}
+
+	record, tenantVersion, err := h.ExecutorPools.UpsertExecutorPool(r.Context(), identity.TenantID, pool, req.ExpectedConfigVersion, configActor(identity))
+	if err != nil {
+		h.writeConfigResourceError(r, w, err, func(ctx context.Context) (uint64, error) {
+			got, getErr := h.ExecutorPools.GetExecutorPool(ctx, identity.TenantID, req.ID)
+			if getErr != nil {
+				return 0, fmt.Errorf("get executor pool: %w", getErr)
+			}
+
+			return got.ConfigVersion, nil
+		})
+
+		return
+	}
+
+	h.ConfigCache.PublishInvalidation(r.Context(), identity.TenantID, tenantVersion)
+	recordAudit(r.Context(), h.Audit, identity, "executor_pool", record.ID, configActionUpsert)
+
+	writeJSON(w, http.StatusOK, toExecutorPoolResponse(record))
+}
+
+// DeleteExecutorPool handles DELETE /api/v1/config/executor-pools/{id}.
+func (h *AdminHandlers) DeleteExecutorPool(w http.ResponseWriter, r *http.Request) {
+	identity, ok := h.authorizeConfig(w, r, RoleTenantAdmin)
+	if !ok {
+		return
+	}
+
+	if h.ExecutorPools == nil {
+		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
+
+		return
+	}
+
+	id := r.PathValue("id")
+
+	tenantVersion, err := h.ExecutorPools.DeleteExecutorPool(r.Context(), identity.TenantID, id, configActor(identity))
+	if err != nil {
+		h.writeConfigResourceError(r, w, err, nil)
+
+		return
+	}
+
+	h.ConfigCache.PublishInvalidation(r.Context(), identity.TenantID, tenantVersion)
+	recordAudit(r.Context(), h.Audit, identity, "executor_pool", id, configActionDelete)
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // ---- deny rules ----
 
 // denyRuleTypes/denyRuleActions mirror the CHECK constraints on the deny_rules

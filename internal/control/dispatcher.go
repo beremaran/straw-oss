@@ -258,7 +258,7 @@ func (d *DefaultRequestDispatcher) admit(ctx context.Context, in DispatchInput, 
 func (d *DefaultRequestDispatcher) route(in DispatchInput, snapshot config.TenantSnapshot) RouteOutcome {
 	router := NewRouter(
 		snapshotRules{tenantID: in.Identity.TenantID, rules: snapshot.RoutingRules},
-		NewStaticPoolPolicyProvider(nil),
+		NewStaticPoolPolicyProvider(poolPoliciesFromSnapshot(in.Identity.TenantID, snapshot.ExecutorPools)),
 		d.opts.Workers,
 		d.opts.Sticky,
 		d.opts.Now,
@@ -274,6 +274,20 @@ func (d *DefaultRequestDispatcher) route(in DispatchInput, snapshot config.Tenan
 		TargetHost:      strings.ToLower(in.Request.URL.Hostname()),
 		StickySessionID: in.Request.StickySessionID,
 	})
+}
+
+// poolPoliciesFromSnapshot converts a tenant snapshot's executor pools into
+// the flat PoolPolicy list StaticPoolPolicyProvider expects, so degraded-pool
+// routing policy (docs/planning/10) is sourced from the pools config admins
+// manage through /api/v1/config/executor-pools (docs/tasks/p0/30) instead of a
+// nil provider.
+func poolPoliciesFromSnapshot(tenantID string, pools []config.ExecutorPool) []PoolPolicy {
+	out := make([]PoolPolicy, 0, len(pools))
+	for _, p := range pools {
+		out = append(out, PoolPolicy{TenantID: tenantID, PoolID: p.ID, AllowDegradedWorkers: p.AllowDegradedWorkers})
+	}
+
+	return out
 }
 
 // executeAttempt runs one assignment-and-stream attempt, recording the

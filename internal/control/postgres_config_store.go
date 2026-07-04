@@ -82,6 +82,15 @@ type FingerprintProfileRecord struct {
 	ConfigVersion uint64
 }
 
+// ExecutorPoolRecord is an executor pool read from Postgres with admin-API
+// fields (docs/tasks/p0/30).
+type ExecutorPoolRecord struct {
+	config.ExecutorPool
+	TenantID      string
+	CreatedAt     time.Time
+	ConfigVersion uint64
+}
+
 // ConfigActor identifies the API-key actor behind a config write, recorded in
 // config_audit_source (docs/planning/21). ActorID is the API key ID in P0.
 type ConfigActor struct {
@@ -404,37 +413,61 @@ func (s *PostgresConfigStore) DeleteRoutingRule(ctx context.Context, tenantID, i
 
 // ---- Executor pools ----
 
-// UpsertExecutorPool inserts or updates a tenant-visible executor pool.
-func (s *PostgresConfigStore) UpsertExecutorPool(ctx context.Context, tenantID string, pool config.ExecutorPool, actor ConfigActor) (uint64, error) {
+// UpsertExecutorPool inserts or updates a tenant-visible executor pool by its
+// stable (tenant_id, id), clearing any prior soft delete. See
+// UpsertRoutingRule for expectedVersion/return semantics.
+func (s *PostgresConfigStore) UpsertExecutorPool(ctx context.Context, tenantID string, pool config.ExecutorPool, expectedVersion uint64, actor ConfigActor) (ExecutorPoolRecord, uint64, error) {
 	tagsJSON, err := json.Marshal(nonNilStrings(pool.Tags))
 	if err != nil {
-		return 0, fmt.Errorf("marshal pool tags: %w", err)
+		return ExecutorPoolRecord{}, 0, fmt.Errorf("marshal pool tags: %w", err)
 	}
 
-	return writeTenantConfig(ctx, s.pool, tenantID, auditEntry{
+	var record ExecutorPoolRecord
+
+	tenantVersion, err := writeTenantConfig(ctx, s.pool, tenantID, auditEntry{
 		actor: actor, resourceType: "executor_pool", resourceID: pool.ID, action: configActionUpsert,
 		newValue: pool,
 	}, func(ctx context.Context, tx pgx.Tx) error {
-		_, execErr := tx.Exec(
+		nextVersion, nextVersionParam, verErr := checkResourceVersion(ctx, tx,
+			`SELECT config_version FROM executor_pools WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
+			[]any{tenantID, pool.ID}, expectedVersion)
+		if verErr != nil {
+			return verErr
+		}
+
+		var createdAt time.Time
+
+		execErr := tx.QueryRow(
 			ctx,
 			`INSERT INTO executor_pools
-			  (tenant_id, id, executor_type, tags_jsonb, enabled, created_at, updated_at, config_version, deleted_at)
-			 VALUES ($1, $2, $3, $4, $5, now(), now(), 1, NULL)
+			  (tenant_id, id, executor_type, tags_jsonb, enabled, allow_degraded_workers,
+			   created_at, updated_at, config_version, deleted_at)
+			 VALUES ($1, $2, $3, $4, $5, $6, now(), now(), $7, NULL)
 			 ON CONFLICT (tenant_id, id) DO UPDATE SET
 			   executor_type = EXCLUDED.executor_type,
 			   tags_jsonb = EXCLUDED.tags_jsonb,
 			   enabled = EXCLUDED.enabled,
+			   allow_degraded_workers = EXCLUDED.allow_degraded_workers,
 			   updated_at = now(),
-			   config_version = executor_pools.config_version + 1,
-			   deleted_at = NULL`,
+			   config_version = $7,
+			   deleted_at = NULL
+			 RETURNING created_at`,
 			tenantID, pool.ID, defaultExecutorType(pool.ExecutorType), tagsJSON, pool.Enabled,
-		)
+			pool.AllowDegradedWorkers, nextVersionParam,
+		).Scan(&createdAt)
 		if execErr != nil {
 			return fmt.Errorf("upsert executor pool: %w", execErr)
 		}
 
+		record = ExecutorPoolRecord{ExecutorPool: pool, TenantID: tenantID, CreatedAt: createdAt, ConfigVersion: nextVersion}
+
 		return nil
 	})
+	if err != nil {
+		return ExecutorPoolRecord{}, 0, err
+	}
+
+	return record, tenantVersion, nil
 }
 
 // DeleteExecutorPool soft-deletes an executor pool.

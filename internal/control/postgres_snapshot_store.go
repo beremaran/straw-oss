@@ -303,7 +303,7 @@ func readRoutingRules(ctx context.Context, tx pgx.Tx, tenantID string, snap *con
 
 func readExecutorPools(ctx context.Context, tx pgx.Tx, tenantID string, snap *config.TenantSnapshot) error {
 	rows, err := tx.Query(ctx,
-		`SELECT id, executor_type, tags_jsonb, enabled
+		`SELECT id, executor_type, tags_jsonb, enabled, allow_degraded_workers
 		 FROM executor_pools
 		 WHERE tenant_id = $1 AND deleted_at IS NULL
 		 ORDER BY id`,
@@ -321,7 +321,7 @@ func readExecutorPools(ctx context.Context, tx pgx.Tx, tenantID string, snap *co
 			tagsJSON []byte
 		)
 
-		err := rows.Scan(&pool.ID, &pool.ExecutorType, &tagsJSON, &pool.Enabled)
+		err := rows.Scan(&pool.ID, &pool.ExecutorType, &tagsJSON, &pool.Enabled, &pool.AllowDegradedWorkers)
 		if err != nil {
 			return fmt.Errorf("scan executor pool: %w", err)
 		}

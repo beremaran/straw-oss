@@ -43,6 +43,7 @@ type AdminHandlers struct {
 	// InMemory* doubles in config_resource_store.go or leave a field nil
 	// (its handlers then respond control_internal_error instead of panicking).
 	RoutingRules        RoutingRuleStore
+	ExecutorPools       ExecutorPoolStore
 	DenyRules           DenyRuleStore
 	InjectionPolicies   InjectionPolicyStore
 	FingerprintProfiles FingerprintProfileStore
