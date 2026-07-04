@@ -1,6 +1,7 @@
 package control
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -219,28 +220,12 @@ func validateHeaders(headers []HeaderPair) ([]HeaderPair, error) {
 	var totalBytes int
 
 	for _, h := range headers {
-		if len(h.Name) > maxRequestHeaderCount {
-			return nil, &ValidationError{Code: errorCodeInvalidRequest, Message: "header name exceeds maximum length of 64 bytes"}
-		}
-
-		if !isValidHTTPToken(h.Name) {
-			return nil, &ValidationError{Code: errorCodeInvalidRequest, Message: "header name is not a valid HTTP token"}
-		}
-
-		if strings.EqualFold(h.Name, "host") {
-			return nil, &ValidationError{Code: errorCodeInvalidRequest, Message: "client-supplied Host header is rejected"}
-		}
-
-		if strings.ContainsRune(h.Value, '\r') || strings.ContainsRune(h.Value, '\n') {
-			return nil, &ValidationError{Code: errorCodeInvalidRequest, Message: "header values must not contain CR or LF"}
-		}
-
-		decoded, err := base64.StdEncoding.DecodeString(h.Value)
+		decodedLen, err := validateHeaderPair(h)
 		if err != nil {
-			return nil, &ValidationError{Code: errorCodeInvalidRequest, Message: "header value is not valid base64"}
+			return nil, err
 		}
 
-		totalBytes += len(h.Name) + len(decoded)
+		totalBytes += len(h.Name) + decodedLen
 
 		if totalBytes > maxRequestHeaderBytes {
 			return nil, &ValidationError{Code: errorCodeInvalidRequest, Message: "aggregate header bytes exceed maximum of 16384"}
@@ -248,6 +233,35 @@ func validateHeaders(headers []HeaderPair) ([]HeaderPair, error) {
 	}
 
 	return headers, nil
+}
+
+func validateHeaderPair(h HeaderPair) (int, error) {
+	if len(h.Name) > maxRequestHeaderCount {
+		return 0, &ValidationError{Code: errorCodeInvalidRequest, Message: "header name exceeds maximum length of 64 bytes"}
+	}
+
+	if !isValidHTTPToken(h.Name) {
+		return 0, &ValidationError{Code: errorCodeInvalidRequest, Message: "header name is not a valid HTTP token"}
+	}
+
+	if strings.EqualFold(h.Name, "host") {
+		return 0, &ValidationError{Code: errorCodeInvalidRequest, Message: "client-supplied Host header is rejected"}
+	}
+
+	if strings.ContainsRune(h.Value, '\r') || strings.ContainsRune(h.Value, '\n') {
+		return 0, &ValidationError{Code: errorCodeInvalidRequest, Message: "header values must not contain CR or LF"}
+	}
+
+	decoded, err := base64.StdEncoding.DecodeString(h.Value)
+	if err != nil {
+		return 0, &ValidationError{Code: errorCodeInvalidRequest, Message: "header value is not valid base64"}
+	}
+
+	if bytes.ContainsAny(decoded, "\r\n") {
+		return 0, &ValidationError{Code: errorCodeInvalidRequest, Message: "decoded header value must not contain CR or LF"}
+	}
+
+	return len(decoded), nil
 }
 
 func isValidHTTPToken(s string) bool {

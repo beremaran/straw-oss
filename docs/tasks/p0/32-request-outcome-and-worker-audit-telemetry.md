@@ -1,6 +1,6 @@
 # 32 - Request-Outcome Telemetry and Worker/Audit ClickHouse Writes
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -51,22 +51,26 @@ adds outcome accuracy and the two missing write paths.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Emit the `request_events` row after dispatch with the real `upstream_status`/`client_status`,
+- [x] Read all required planning docs.
+- [x] Emit the `request_events` row after dispatch with the real `upstream_status`/`client_status`,
       `error_code`/`error_category`/`timeout_type`, `request_size_bytes`/`response_size_bytes`, and
       `routing_ms`/`assignment_ms`/`egress_ms`/`total_ms`; on a dispatch failure, emit the row with the canonical
       failure fields instead of a synthetic success.
-- [ ] Preserve the existing sanitization (drop query/userinfo/fragment) and header redaction; keep the write async,
+- [x] Preserve the existing sanitization (drop query/userinfo/fragment) and header redaction; keep the write async,
       bounded, and non-blocking on outage.
-- [ ] Add a `worker_events` write path fed by registration/heartbeat/disable/drain transitions.
-- [ ] Add a `config_audit_events` write path mirroring `config_audit_source` writes (already redacted upstream).
-- [ ] Document the `log_events` deferral, naming `docs/tasks/p1/20-log-events-ingestion.md` as the owning follow-up.
-- [ ] Add tests for: a completed request producing a `request_events` row with real status/timings/sizes; a failed
+- [x] Add a `worker_events` write path fed by registration/heartbeat/disable/drain transitions.
+- [x] Add a `config_audit_events` write path mirroring `config_audit_source` writes (already redacted upstream).
+      Partial: covers every `recordAudit`/`AuditStore.Record` call site (tenant, API key, worker credential,
+      routing/deny/injection/pool config, worker admin, request cancel) with tenant/actor/resource/action, but
+      does not thread `field_path`/`old_value_json`/`new_value_json`/`config_version` from the separate
+      `insertConfigAudit`/`writeTenantConfig` Postgres path — see the task 32 handoff's Remaining Work.
+- [x] Document the `log_events` deferral, naming `docs/tasks/p1/20-log-events-ingestion.md` as the owning follow-up.
+- [x] Add tests for: a completed request producing a `request_events` row with real status/timings/sizes; a failed
       request producing a row with the canonical `error_code`/category; `worker_events` and `config_audit_events`
       rows written; transport unaffected by a sink outage (fake sink); redaction still holds.
-- [ ] Run the focused tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Run the focused tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

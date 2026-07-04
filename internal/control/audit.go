@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"sync"
 	"time"
@@ -126,4 +127,47 @@ func recordAudit(ctx context.Context, store AuditStore, identity Identity, resou
 		ResourceID:   resourceID,
 		Action:       action,
 	})
+}
+
+// auditStoreWithEvents wraps an AuditStore so every successful Record also
+// mirrors into the config_audit_events ClickHouse sink (docs/tasks/p0/32),
+// covering every recordAudit call site (tenant, API key, worker credential,
+// routing/deny/injection/pool config, worker admin, request cancel) from one
+// choke point. Old/new value JSON and config_version are populated only by
+// the separate Postgres config_audit_source writer in
+// postgres_config_store.go (insertConfigAudit), which already carries those
+// fields redacted; rows mirrored from here leave them empty since
+// AuditRecord does not carry them.
+type auditStoreWithEvents struct {
+	AuditStore
+	events ConfigAuditRecorder
+}
+
+// NewAuditStoreWithEvents wraps store so every Record call also enqueues a
+// config_audit_events row. If events is nil, store is returned unwrapped.
+func NewAuditStoreWithEvents(store AuditStore, events ConfigAuditRecorder) AuditStore {
+	if events == nil {
+		return store
+	}
+
+	return &auditStoreWithEvents{AuditStore: store, events: events}
+}
+
+func (s *auditStoreWithEvents) Record(ctx context.Context, record AuditRecord) error {
+	err := s.AuditStore.Record(ctx, record)
+	if err != nil {
+		return fmt.Errorf("record audit: %w", err)
+	}
+
+	s.events.Enqueue(ConfigAuditEvent{
+		Timestamp:  time.Now().UTC(),
+		TenantID:   record.TenantID,
+		ActorType:  record.ActorType,
+		ActorID:    record.ActorID,
+		ConfigType: record.ResourceType,
+		ResourceID: record.ResourceID,
+		Action:     record.Action,
+	})
+
+	return nil
 }

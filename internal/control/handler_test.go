@@ -672,14 +672,19 @@ func TestValidateRequestInvalidHeaderName(t *testing.T) {
 func TestValidateRequestCRInHeaderValue(t *testing.T) {
 	t.Parallel()
 
-	// CR in base64-decoded value... but we check the raw base64 string for CR/LF
-	// The spec says reject header values containing bare CR or LF
-	// The value is base64-encoded, so we'd need to check after decode
-	// For now, test that the raw value check works
-	raw := []byte(`{"method":"GET","url":"https://example.com","headers":[{"name":"X-CR","value_base64":"AAECAQ=="}]}`)
+	// "YQ0KYg==" is base64 for "a\r\nb": valid base64, but the decoded bytes
+	// contain a bare CR/LF and must be rejected at ingress.
+	raw := []byte(`{"method":"GET","url":"https://example.com","headers":[{"name":"X-CR","value_base64":"YQ0KYg=="}]}`)
 	_, err := ValidateRequest(raw, 1_048_576, 120_000)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err == nil {
+		t.Fatal("expected error for CR/LF in decoded header value")
+	}
+	var verr *ValidationError
+	if !errors.As(err, &verr) {
+		t.Fatalf("expected ValidationError, got %T", err)
+	}
+	if verr.Code != errorCodeInvalidRequest {
+		t.Fatalf("expected code %q, got %q", errorCodeInvalidRequest, verr.Code)
 	}
 }
 

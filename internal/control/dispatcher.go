@@ -53,6 +53,14 @@ type PipelineError struct {
 	Details      map[string]string
 	RetryAfterMs int64
 	TimeoutType  string
+	// RoutingMs/AssignmentMs/EgressMs/TotalMs carry whatever partial phase
+	// timing the dispatcher measured before the failure, so a failed
+	// request_events row (docs/tasks/p0/32) still reports the real elapsed
+	// time instead of zeros.
+	RoutingMs    int64
+	AssignmentMs int64
+	EgressMs     int64
+	TotalMs      int64
 }
 
 // RequestDispatcherOptions wires the Control request pipeline.
@@ -153,7 +161,7 @@ func (d *DefaultRequestDispatcher) Dispatch(ctx context.Context, in DispatchInpu
 
 func (d *DefaultRequestDispatcher) dispatch(ctx context.Context, in DispatchInput, started time.Time) (SuccessResponse, *PipelineError) {
 	if in.Request == nil || d.opts.ConfigCache == nil || d.opts.Workers == nil {
-		return SuccessResponse{}, &PipelineError{Code: ControlInternalError}
+		return SuccessResponse{}, d.withTiming(&PipelineError{Code: ControlInternalError}, 0, 0, started)
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -164,11 +172,11 @@ func (d *DefaultRequestDispatcher) dispatch(ctx context.Context, in DispatchInpu
 
 	snapshot, err := d.opts.ConfigCache.Snapshot(ctx, in.Identity.TenantID)
 	if err != nil {
-		return SuccessResponse{}, &PipelineError{Code: ControlInternalError}
+		return SuccessResponse{}, d.withTiming(&PipelineError{Code: ControlInternalError}, 0, 0, started)
 	}
 
 	if perr := d.admit(ctx, in, snapshot); perr != nil {
-		return SuccessResponse{}, perr
+		return SuccessResponse{}, d.withTiming(perr, 0, 0, started)
 	}
 
 	routeStart := d.opts.Now()
@@ -178,7 +186,7 @@ func (d *DefaultRequestDispatcher) dispatch(ctx context.Context, in DispatchInpu
 	d.opts.Metrics.ObserveRouting(routeEnd.Sub(routeStart))
 
 	if !route.OK {
-		return SuccessResponse{}, routeError(route.ErrorCode)
+		return SuccessResponse{}, d.withTiming(routeError(route.ErrorCode), routingMs, 0, started)
 	}
 
 	policy, verr := ResolveDestinationPolicy(DestinationPolicyRequest{
@@ -190,13 +198,16 @@ func (d *DefaultRequestDispatcher) dispatch(ctx context.Context, in DispatchInpu
 		UpstreamProxyTrusted:        false,
 	})
 	if verr != nil {
-		return SuccessResponse{}, validationPipelineError(verr)
+		return SuccessResponse{}, d.withTiming(validationPipelineError(verr), routingMs, 0, started)
 	}
 
 	deadline := d.deadline(in.Request)
 
 	result, assignmentMs, perr := d.executeAttempt(ctx, in, route, policy, snapshot.ConfigVersion, deadline)
 	if perr != nil {
+		perr = d.withTiming(perr, routingMs, assignmentMs, started)
+		perr.EgressMs = result.egressMs
+
 		return SuccessResponse{}, perr
 	}
 
@@ -206,6 +217,17 @@ func (d *DefaultRequestDispatcher) dispatch(ctx context.Context, in DispatchInpu
 	}
 
 	return successFromDispatch(in.RequestID, result, routingMs, assignmentMs, millisSince(started, d.opts.Now())), nil
+}
+
+// withTiming annotates perr with whatever partial phase timing the
+// dispatcher measured before the failure (docs/tasks/p0/32), so a failed
+// request_events row reports real elapsed time instead of zeros.
+func (d *DefaultRequestDispatcher) withTiming(perr *PipelineError, routingMs, assignmentMs int64, started time.Time) *PipelineError {
+	perr.RoutingMs = routingMs
+	perr.AssignmentMs = assignmentMs
+	perr.TotalMs = millisSince(started, d.opts.Now())
+
+	return perr
 }
 
 func successFromDispatch(requestID string, result dispatchResult, routingMs, assignmentMs, totalMs int64) SuccessResponse {
@@ -224,6 +246,7 @@ func successFromDispatch(requestID string, result dispatchResult, routingMs, ass
 			EgressMs:     result.egressMs,
 			TotalMs:      totalMs,
 		},
+		ResponseSizeBytes: uint64(len(result.body)),
 	}
 }
 

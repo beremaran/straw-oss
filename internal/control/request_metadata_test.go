@@ -18,6 +18,8 @@ const (
 	requestMetadataTestTargetURL       = "https://example.com/path"
 	requestMetadataTestRequestEnvelope = `{"method":"GET","url":"https://example.com/path?token=secret"}`
 	testAuthorizationHeader            = "Authorization"
+	requestMetadataTestKeyActor        = "key_actor"
+	requestMetadataTestTenantActor     = "ten_actor"
 )
 
 type recordingRequestEventSink struct {
@@ -256,9 +258,9 @@ func TestRequestHandlerQueuesSanitizedMetadata(t *testing.T) {
 		t.Fatalf("GenerateAPIKey() error = %v", err)
 	}
 	mustCreate(t, store, APIKeyRecord{
-		ID:            "key_actor",
+		ID:            requestMetadataTestKeyActor,
 		ScopeType:     ScopeTenant,
-		TenantID:      "ten_actor",
+		TenantID:      requestMetadataTestTenantActor,
 		Role:          RoleRequester,
 		Prefix:        gen.Prefix,
 		SecretHash:    HashAPIKeySecret(gen.Secret, pepper),
@@ -285,10 +287,10 @@ func TestRequestHandlerQueuesSanitizedMetadata(t *testing.T) {
 	if !ok {
 		t.Fatal("metadata recorder did not receive an event")
 	}
-	if event.APIKeyID != "key_actor" {
+	if event.APIKeyID != requestMetadataTestKeyActor {
 		t.Fatalf("APIKeyID = %q, want key_actor", event.APIKeyID)
 	}
-	if event.TenantID != "ten_actor" {
+	if event.TenantID != requestMetadataTestTenantActor {
 		t.Fatalf("TenantID = %q, want ten_actor", event.TenantID)
 	}
 	if event.TargetURL != requestMetadataTestTargetURL {
@@ -296,5 +298,136 @@ func TestRequestHandlerQueuesSanitizedMetadata(t *testing.T) {
 	}
 	if event.TargetHost != "example.com" {
 		t.Fatalf("TargetHost = %q, want example.com", event.TargetHost)
+	}
+	if event.UpstreamStatus != http.StatusOK {
+		t.Fatalf("UpstreamStatus = %d, want 200 (docs/tasks/p0/32: real dispatch outcome)", event.UpstreamStatus)
+	}
+	if event.ClientStatus != http.StatusOK {
+		t.Fatalf("ClientStatus = %d, want 200", event.ClientStatus)
+	}
+}
+
+// fakeFailingRequestDispatcher always returns a canonical PipelineError, so
+// request_events finalization (docs/tasks/p0/32) can be tested against a
+// dispatch failure instead of only the success path.
+type fakeFailingRequestDispatcher struct{}
+
+func (fakeFailingRequestDispatcher) Dispatch(context.Context, DispatchInput) (SuccessResponse, *PipelineError) {
+	return SuccessResponse{}, &PipelineError{Code: RouteNoMatch, RoutingMs: 5, TotalMs: 7}
+}
+
+// TestRequestHandlerRecordsFailureOutcome verifies a failed dispatch produces
+// a request_events row with the canonical error code/category instead of the
+// pre-dispatch synthetic 200 the writer used to emit (docs/tasks/p0/32).
+func TestRequestHandlerRecordsFailureOutcome(t *testing.T) {
+	t.Parallel()
+
+	store := NewInMemoryAPIKeyStore()
+	pepper := []byte("pepper")
+	gen, err := GenerateAPIKey()
+	if err != nil {
+		t.Fatalf("GenerateAPIKey() error = %v", err)
+	}
+	mustCreate(t, store, APIKeyRecord{
+		ID:            requestMetadataTestKeyActor,
+		ScopeType:     ScopeTenant,
+		TenantID:      requestMetadataTestTenantActor,
+		Role:          RoleRequester,
+		Prefix:        gen.Prefix,
+		SecretHash:    HashAPIKeySecret(gen.Secret, pepper),
+		Status:        APIKeyStatusActive,
+		CreatedAt:     time.Now().UTC(),
+		ConfigVersion: 1,
+	})
+
+	recorder := &captureRequestMetadataRecorder{}
+	handler := NewRequestHandler(1_048_576, 1_048_576, 120_000, NewAuthenticator(store, pepper), recorder)
+	handler.SetDispatcher(fakeFailingRequestDispatcher{})
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/requests", strings.NewReader(requestMetadataTestRequestEnvelope))
+	req.Header.Set("Authorization", "Bearer "+gen.Secret)
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	if w.Code == http.StatusOK {
+		t.Fatalf("status = %d, want a failure status", w.Code)
+	}
+
+	event, ok := recorder.last()
+	if !ok {
+		t.Fatal("metadata recorder did not receive an event")
+	}
+	if event.UpstreamStatus != 0 {
+		t.Fatalf("UpstreamStatus = %d, want 0 (no synthetic 200 on failure)", event.UpstreamStatus)
+	}
+	if event.ClientStatus == http.StatusOK {
+		t.Fatal("ClientStatus = 200, want the canonical failure status")
+	}
+	if event.ErrorCode != ErrorRegistry[RouteNoMatch].Code {
+		t.Fatalf("ErrorCode = %q, want %q", event.ErrorCode, ErrorRegistry[RouteNoMatch].Code)
+	}
+	if event.ErrorCategory != ErrorRegistry[RouteNoMatch].Category {
+		t.Fatalf("ErrorCategory = %q, want %q", event.ErrorCategory, ErrorRegistry[RouteNoMatch].Category)
+	}
+	if event.RoutingMS != 5 {
+		t.Fatalf("RoutingMS = %d, want 5 (partial timing measured before failure)", event.RoutingMS)
+	}
+	if event.TotalMS != 7 {
+		t.Fatalf("TotalMS = %d, want 7", event.TotalMS)
+	}
+}
+
+func TestApplyRequestOutcomeSuccessFillsRealFields(t *testing.T) {
+	t.Parallel()
+
+	base := RequestEvent{RequestID: "req_ok"}
+	resp := SuccessResponse{
+		Status:            http.StatusCreated,
+		Timing:            RequestTiming{RoutingMs: 1, AssignmentMs: 2, EgressMs: 3, TotalMs: 6},
+		ResponseSizeBytes: 42,
+	}
+
+	got := applyRequestOutcome(base, resp, nil)
+
+	if got.UpstreamStatus != http.StatusCreated {
+		t.Fatalf("UpstreamStatus = %d, want 201", got.UpstreamStatus)
+	}
+	if got.ClientStatus != http.StatusOK {
+		t.Fatalf("ClientStatus = %d, want 200", got.ClientStatus)
+	}
+	if got.ResponseSizeBytes != 42 {
+		t.Fatalf("ResponseSizeBytes = %d, want 42", got.ResponseSizeBytes)
+	}
+	if got.RoutingMS != 1 || got.AssignmentMS != 2 || got.EgressMS != 3 || got.TotalMS != 6 {
+		t.Fatalf("timings = %+v, want routing=1 assignment=2 egress=3 total=6", got)
+	}
+	if got.ErrorCode != "" {
+		t.Fatalf("ErrorCode = %q, want empty on success", got.ErrorCode)
+	}
+}
+
+func TestApplyRequestOutcomeFailureFillsCanonicalError(t *testing.T) {
+	t.Parallel()
+
+	base := RequestEvent{RequestID: "req_fail"}
+	perr := &PipelineError{Code: TimeoutExceeded, TimeoutType: "total_deadline_timeout", RoutingMs: 1, AssignmentMs: 2, TotalMs: 10}
+
+	got := applyRequestOutcome(base, SuccessResponse{}, perr)
+
+	if got.UpstreamStatus != 0 {
+		t.Fatalf("UpstreamStatus = %d, want 0", got.UpstreamStatus)
+	}
+	if got.ClientStatus != uint16OrMax(ErrorRegistry[TimeoutExceeded].HTTPStatus) {
+		t.Fatalf("ClientStatus = %d, want %d", got.ClientStatus, ErrorRegistry[TimeoutExceeded].HTTPStatus)
+	}
+	if got.ErrorCode != ErrorRegistry[TimeoutExceeded].Code {
+		t.Fatalf("ErrorCode = %q, want %q", got.ErrorCode, ErrorRegistry[TimeoutExceeded].Code)
+	}
+	if got.TimeoutType != "total_deadline_timeout" {
+		t.Fatalf("TimeoutType = %q, want total_deadline_timeout", got.TimeoutType)
+	}
+	if got.TotalMS != 10 {
+		t.Fatalf("TotalMS = %d, want 10", got.TotalMS)
 	}
 }

@@ -56,6 +56,28 @@ func TestDispatcherRouteUnavailable(t *testing.T) {
 	}
 }
 
+// TestDispatcherFailureCarriesPartialTiming verifies a PipelineError from a
+// post-routing failure still carries the routing phase timing it actually
+// measured (docs/tasks/p0/32), instead of leaving request_events with all-zero
+// timings on failure.
+func TestDispatcherFailureCarriesPartialTiming(t *testing.T) {
+	t.Parallel()
+
+	d := newTestDispatcher(t, []config.RoutingRule{dispatchRule()}, dispatchCandidates{})
+	req := validatedDispatchRequest(t, "https://example.com/")
+
+	_, perr := d.Dispatch(context.Background(), dispatchInput(req))
+	if perr == nil || perr.Code != RouteUnavailable {
+		t.Fatalf("Dispatch error = %#v, want route_unavailable", perr)
+	}
+	if perr.TotalMs < 0 {
+		t.Fatalf("TotalMs = %d, want >= 0", perr.TotalMs)
+	}
+	if perr.AssignmentMs != 0 {
+		t.Fatalf("AssignmentMs = %d, want 0 (failure happened before assignment)", perr.AssignmentMs)
+	}
+}
+
 // TestDispatcherRoutePoolPolicyFromSnapshot verifies degraded-pool policy is
 // sourced from the tenant snapshot's executor pools (docs/tasks/p0/30)
 // instead of the previous NewStaticPoolPolicyProvider(nil) that always

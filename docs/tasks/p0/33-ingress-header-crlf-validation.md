@@ -1,6 +1,6 @@
 # 33 - Ingress Header Value CR/LF Validation
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -42,16 +42,17 @@ value is not checked.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] After base64-decoding each header value, reject with `invalid_request` if the decoded bytes contain CR or LF;
+- [x] Read all required planning docs.
+- [x] After base64-decoding each header value, reject with `invalid_request` if the decoded bytes contain CR or LF;
       keep the existing raw-string and HTTP-token checks.
-- [ ] Update `TestValidateRequestCRInHeaderValue` to assert an actual rejection for a value whose decoded bytes
+- [x] Update `TestValidateRequestCRInHeaderValue` to assert an actual rejection for a value whose decoded bytes
       contain CR/LF (the current test asserts no error and documents the gap).
-- [ ] Update `docs/agents/testing-matrix-audit.md` so the "CR/LF header injection rejected" row maps to the ingress
-      test rather than the egress fallback.
-- [ ] Run the focused tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Update `docs/agents/testing-matrix-audit.md` so the "CR/LF header injection rejected" row maps to the ingress
+      test rather than the egress fallback. (Already mapped to `TestValidateRequestCRInHeaderValue`; no change
+      needed — the row never referenced the egress fallback.)
+- [x] Run the focused tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 
