@@ -22,6 +22,7 @@ const (
 	adminTestEgress            = errorCategoryEgress
 	adminTestTenantX           = "tenant_x"
 	adminTestPoolX             = "pool_x"
+	tenantUpdateTestName       = "Renamed"
 )
 
 // testAdmin bundles an AdminHandlers with its backing stores for direct
@@ -293,6 +294,210 @@ func TestSystemAdminCanCreateTenants(t *testing.T) {
 	ta.h.CreateTenant(w, newAdminRequest(http.MethodPost, "/tenants", adminToken, `{"name":"Real Tenant"}`))
 	if w.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want %d, body=%s", w.Code, http.StatusCreated, w.Body.String())
+	}
+}
+
+// ---- tenant lifecycle (docs/tasks/p0/29) ----
+
+func createTenantForTest(t *testing.T, ta *testAdmin, adminToken, name string) string {
+	t.Helper()
+
+	w := httptest.NewRecorder()
+	ta.h.CreateTenant(w, newAdminRequest(http.MethodPost, "/tenants", adminToken, `{"name":"`+name+`"}`))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("CreateTenant() status = %d, body=%s", w.Code, w.Body.String())
+	}
+
+	var resp tenantResponse
+
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	if err != nil {
+		t.Fatalf("unmarshal tenant response: %v", err)
+	}
+
+	return resp.ID
+}
+
+func TestListTenantsRequiresSystemAdmin(t *testing.T) {
+	t.Parallel()
+
+	ta := newTestAdmin(t)
+	adminToken := ta.seedPlatformKey(t, "key_admin", RoleSystemAdmin)
+	tenantID := createTenantForTest(t, ta, adminToken, "Tenant One")
+	tenantAdminToken := ta.seedTenantKey(t, adminTestKeyTenantAdmin, tenantID, RoleTenantAdmin)
+
+	w := httptest.NewRecorder()
+	ta.h.ListTenants(w, newAdminRequest(http.MethodGet, "/api/v1/config/tenants", tenantAdminToken, ""))
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("tenant-scoped ListTenants() status = %d, want %d", w.Code, http.StatusForbidden)
+	}
+
+	w = httptest.NewRecorder()
+	ta.h.ListTenants(w, newAdminRequest(http.MethodGet, "/api/v1/config/tenants", adminToken, ""))
+	if w.Code != http.StatusOK {
+		t.Fatalf("system_admin ListTenants() status = %d, body=%s", w.Code, w.Body.String())
+	}
+
+	var out []tenantResponse
+
+	err := json.Unmarshal(w.Body.Bytes(), &out)
+	if err != nil {
+		t.Fatalf("unmarshal list: %v", err)
+	}
+
+	if len(out) != 1 || out[0].ID != tenantID {
+		t.Fatalf("ListTenants() = %+v, want one tenant %q", out, tenantID)
+	}
+}
+
+func TestGetTenantAllowsOwnTenantRoleButNotOtherTenant(t *testing.T) {
+	t.Parallel()
+
+	ta := newTestAdmin(t)
+	adminToken := ta.seedPlatformKey(t, "key_admin", RoleSystemAdmin)
+	tenantID := createTenantForTest(t, ta, adminToken, "Tenant One")
+	ownViewerToken := ta.seedTenantKey(t, "key_own_viewer", tenantID, RoleViewer)
+	otherToken := ta.seedTenantKey(t, "key_other", adminTestTenantB, RoleViewer)
+
+	req := newAdminRequest(http.MethodGet, "/api/v1/config/tenants/"+tenantID, ownViewerToken, "")
+	req.SetPathValue("id", tenantID)
+	w := httptest.NewRecorder()
+	ta.h.GetTenant(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("own-tenant viewer GetTenant() status = %d, body=%s", w.Code, w.Body.String())
+	}
+
+	req = newAdminRequest(http.MethodGet, "/api/v1/config/tenants/"+tenantID, otherToken, "")
+	req.SetPathValue("id", tenantID)
+	w = httptest.NewRecorder()
+	ta.h.GetTenant(w, req)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("other-tenant GetTenant() status = %d, want %d", w.Code, http.StatusForbidden)
+	}
+}
+
+func TestUpdateTenantPersistsRateLimitCeilingAndForcesInvalidation(t *testing.T) {
+	t.Parallel()
+
+	ta := newTestAdmin(t)
+	adminToken := ta.seedPlatformKey(t, "key_admin", RoleSystemAdmin)
+	tenantID := createTenantForTest(t, ta, adminToken, "Tenant One")
+
+	// Prime the cache so we can observe the version bump after update.
+	before, err := ta.h.ConfigCache.Snapshot(context.Background(), tenantID)
+	if err != nil {
+		t.Fatalf("Snapshot() before update error = %v", err)
+	}
+
+	body := `{"name":"` + tenantUpdateTestName + `","status":"active","rate_limit_ceiling":{"window_seconds":60,"max_requests":6000},"expected_config_version":0}`
+	req := newAdminRequest(http.MethodPut, "/api/v1/config/tenants/"+tenantID, adminToken, body)
+	req.SetPathValue("id", tenantID)
+	w := httptest.NewRecorder()
+	ta.h.UpdateTenant(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("UpdateTenant() status = %d, body=%s", w.Code, w.Body.String())
+	}
+
+	var resp tenantResponse
+
+	err = json.Unmarshal(w.Body.Bytes(), &resp)
+	if err != nil {
+		t.Fatalf("unmarshal update response: %v", err)
+	}
+
+	if resp.Name != tenantUpdateTestName || resp.RateLimitCeiling == nil || resp.RateLimitCeiling.MaxRequests != 6000 {
+		t.Fatalf("UpdateTenant() response = %+v, want renamed with ceiling", resp)
+	}
+
+	after, err := ta.h.ConfigCache.Snapshot(context.Background(), tenantID)
+	if err != nil {
+		t.Fatalf("Snapshot() after update error = %v", err)
+	}
+	if after.ConfigVersion <= before.ConfigVersion {
+		t.Fatalf("tenant config version = %d, want > %d (invalidation forced)", after.ConfigVersion, before.ConfigVersion)
+	}
+
+	// A rate-limit write above the ceiling is now rejected end to end.
+	tenantAdminToken := ta.seedTenantKey(t, "key_tenant_admin_ceiling", tenantID, RoleTenantAdmin)
+	rlBody := `{"limits":[{"dimension":"tenant","key":"*","window_seconds":60,"max_requests":7000,"fail_policy":"open"}],"expected_config_version":0}`
+	rlReq := newAdminRequest(http.MethodPut, "/rate-limits", tenantAdminToken, rlBody)
+	rlW := httptest.NewRecorder()
+	ta.h.PutRateLimits(rlW, rlReq)
+	if rlW.Code != http.StatusBadRequest {
+		t.Fatalf("PutRateLimits() above ceiling status = %d, body=%s, want %d", rlW.Code, rlW.Body.String(), http.StatusBadRequest)
+	}
+}
+
+func TestUpdateTenantRejectsVersionConflict(t *testing.T) {
+	t.Parallel()
+
+	ta := newTestAdmin(t)
+	adminToken := ta.seedPlatformKey(t, "key_admin", RoleSystemAdmin)
+	tenantID := createTenantForTest(t, ta, adminToken, "Tenant One")
+
+	body := `{"name":"` + tenantUpdateTestName + `","status":"active","expected_config_version":5}`
+	req := newAdminRequest(http.MethodPut, "/api/v1/config/tenants/"+tenantID, adminToken, body)
+	req.SetPathValue("id", tenantID)
+	w := httptest.NewRecorder()
+	ta.h.UpdateTenant(w, req)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("UpdateTenant() version conflict status = %d, want %d", w.Code, http.StatusConflict)
+	}
+}
+
+func TestSoftDeleteTenantThenKeyRejectedWithTenantNotFound(t *testing.T) {
+	t.Parallel()
+
+	ta := newTestAdmin(t)
+	adminToken := ta.seedPlatformKey(t, "key_admin", RoleSystemAdmin)
+	tenantID := createTenantForTest(t, ta, adminToken, "Tenant One")
+	tenantToken := ta.seedTenantKey(t, "key_tenant_requester", tenantID, RoleRequester)
+
+	req := newAdminRequest(http.MethodDelete, "/api/v1/config/tenants/"+tenantID, adminToken, "")
+	req.SetPathValue("id", tenantID)
+	w := httptest.NewRecorder()
+	ta.h.SoftDeleteTenant(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("SoftDeleteTenant() status = %d, body=%s", w.Code, w.Body.String())
+	}
+
+	auth := NewAuthenticator(ta.apiKeys, ta.pepper).SetTenantStore(ta.tenants)
+	_, err := auth.Authenticate(context.Background(), "Bearer "+tenantToken)
+	if !errors.Is(err, ErrTenantNotFound) {
+		t.Fatalf("Authenticate() after soft delete error = %v, want ErrTenantNotFound", err)
+	}
+
+	// A second soft delete on the same tenant reports not found.
+	req2 := newAdminRequest(http.MethodDelete, "/api/v1/config/tenants/"+tenantID, adminToken, "")
+	req2.SetPathValue("id", tenantID)
+	w2 := httptest.NewRecorder()
+	ta.h.SoftDeleteTenant(w2, req2)
+	if w2.Code != http.StatusNotFound {
+		t.Fatalf("second SoftDeleteTenant() status = %d, want %d", w2.Code, http.StatusNotFound)
+	}
+}
+
+func TestSuspendedTenantKeyRejectedWithTenantNotFound(t *testing.T) {
+	t.Parallel()
+
+	ta := newTestAdmin(t)
+	adminToken := ta.seedPlatformKey(t, "key_admin", RoleSystemAdmin)
+	tenantID := createTenantForTest(t, ta, adminToken, "Tenant One")
+	tenantToken := ta.seedTenantKey(t, "key_tenant_requester_susp", tenantID, RoleRequester)
+
+	body := `{"name":"Tenant One","status":"suspended","expected_config_version":0}`
+	req := newAdminRequest(http.MethodPut, "/api/v1/config/tenants/"+tenantID, adminToken, body)
+	req.SetPathValue("id", tenantID)
+	w := httptest.NewRecorder()
+	ta.h.UpdateTenant(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("UpdateTenant() to suspended status = %d, body=%s", w.Code, w.Body.String())
+	}
+
+	auth := NewAuthenticator(ta.apiKeys, ta.pepper).SetTenantStore(ta.tenants)
+	_, err := auth.Authenticate(context.Background(), "Bearer "+tenantToken)
+	if !errors.Is(err, ErrTenantNotFound) {
+		t.Fatalf("Authenticate() for suspended tenant error = %v, want ErrTenantNotFound", err)
 	}
 }
 

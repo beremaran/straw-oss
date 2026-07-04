@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"errors"
+	"sort"
 	"sync"
 	"time"
 )
@@ -13,39 +14,62 @@ type TenantStatus string
 const (
 	// TenantStatusActive marks a live tenant record.
 	TenantStatusActive TenantStatus = "active"
-	// TenantStatusDeleted marks a deleted tenant record.
+	// TenantStatusSuspended marks a tenant whose keys are rejected but whose
+	// record and config are retained.
+	TenantStatusSuspended TenantStatus = "suspended"
+	// TenantStatusDeleted marks a soft-deleted tenant record.
 	TenantStatusDeleted TenantStatus = "deleted"
 )
 
-// Tenant is the minimal P0 tenant record needed to support platform key
-// bootstrap and RBAC tests for this task. The full tenant config resource
-// schema (rate_limit_ceiling, timeouts, metadata storage policy, ...) is
-// defined in docs/planning/26-config-management-api-surface.md and is
-// populated by later tasks; this task only needs enough of a tenant
-// boundary to prove that tenant-scoped keys cannot create tenants and that
-// system_admin can.
+// Tenant is the P0 tenant resource
+// (docs/planning/26-config-management-api-surface.md Tenant schema, P0
+// subset: name, status, rate_limit_ceiling, config_version).
 type Tenant struct {
 	ID        string
 	Name      string
 	Status    TenantStatus
 	CreatedAt time.Time
+	UpdatedAt time.Time
+	DeletedAt *time.Time
 	// RateLimitCeiling bounds tenant-managed rate-limit values
 	// (docs/planning/26); nil means unbounded. Settable only by
 	// system_admin.
 	RateLimitCeiling *RateLimitCeiling
+	// ConfigVersion is this tenant record's own optimistic-concurrency
+	// version, checked against expected_config_version on PUT
+	// (docs/planning/26 "Shared Config API Contract"). It is distinct from
+	// the tenant_config_versions snapshot version used for cache
+	// invalidation.
+	ConfigVersion uint64
 }
 
 var (
-	// ErrTenantNotFound is returned when a tenant ID cannot be found.
+	// ErrTenantNotFound is returned when a tenant ID cannot be found, or is
+	// already soft-deleted for writes that require a live tenant.
 	ErrTenantNotFound = errors.New("tenant not found")
 	// ErrTenantAlreadyExists is returned when inserting a duplicate tenant.
 	ErrTenantAlreadyExists = errors.New("tenant already exists")
+	// ErrTenantVersionConflict is returned when a tenant update's
+	// expected_config_version does not match the tenant's current
+	// config_version.
+	ErrTenantVersionConflict = errors.New("tenant config version conflict")
 )
 
 // TenantStore persists tenant boundary records.
 type TenantStore interface {
 	Create(ctx context.Context, tenant Tenant) error
 	Get(ctx context.Context, id string) (Tenant, error)
+	// List returns live and soft-deleted tenants, newest first, per the
+	// shared config-list pagination contract.
+	List(ctx context.Context, limit, offset int) ([]Tenant, error)
+	// Update replaces the tenant's name, status, and rate_limit_ceiling
+	// under optimistic concurrency. Returns ErrTenantNotFound for a
+	// missing or already-deleted tenant, ErrTenantVersionConflict on a
+	// version mismatch.
+	Update(ctx context.Context, tenant Tenant, expectedVersion uint64) (Tenant, error)
+	// SoftDelete marks a tenant deleted. Returns ErrTenantNotFound if the
+	// tenant is missing or already deleted.
+	SoftDelete(ctx context.Context, id string) (Tenant, error)
 }
 
 // InMemoryTenantStore is the P0 store implementation.
@@ -84,4 +108,77 @@ func (s *InMemoryTenantStore) Get(_ context.Context, id string) (Tenant, error) 
 	}
 
 	return t, nil
+}
+
+// List returns tenants ordered by CreatedAt descending, then ID ascending.
+func (s *InMemoryTenantStore) List(_ context.Context, limit, offset int) ([]Tenant, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	out := make([]Tenant, 0, len(s.tenants))
+	for _, t := range s.tenants {
+		out = append(out, t)
+	}
+
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].CreatedAt.Equal(out[j].CreatedAt) {
+			return out[i].ID < out[j].ID
+		}
+
+		return out[i].CreatedAt.After(out[j].CreatedAt)
+	})
+
+	if offset >= len(out) {
+		return []Tenant{}, nil
+	}
+
+	end := min(offset+limit, len(out))
+
+	return out[offset:end], nil
+}
+
+// Update replaces name/status/rate_limit_ceiling under optimistic concurrency.
+func (s *InMemoryTenantStore) Update(_ context.Context, tenant Tenant, expectedVersion uint64) (Tenant, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	current, ok := s.tenants[tenant.ID]
+	if !ok || current.Status == TenantStatusDeleted {
+		return Tenant{}, ErrTenantNotFound
+	}
+
+	if current.ConfigVersion != expectedVersion {
+		return Tenant{}, ErrTenantVersionConflict
+	}
+
+	updated := current
+	updated.Name = tenant.Name
+	updated.Status = tenant.Status
+	updated.RateLimitCeiling = tenant.RateLimitCeiling
+	updated.ConfigVersion = current.ConfigVersion + 1
+	updated.UpdatedAt = time.Now().UTC()
+
+	s.tenants[tenant.ID] = updated
+
+	return updated, nil
+}
+
+// SoftDelete marks a tenant deleted.
+func (s *InMemoryTenantStore) SoftDelete(_ context.Context, id string) (Tenant, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	current, ok := s.tenants[id]
+	if !ok || current.Status == TenantStatusDeleted {
+		return Tenant{}, ErrTenantNotFound
+	}
+
+	now := time.Now().UTC()
+	current.Status = TenantStatusDeleted
+	current.DeletedAt = &now
+	current.UpdatedAt = now
+	current.ConfigVersion++
+	s.tenants[id] = current
+
+	return current, nil
 }

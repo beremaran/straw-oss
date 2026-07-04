@@ -75,6 +75,8 @@ func writeAuthOrRBACError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, ErrAuthFailure):
 		WriteError(w, http.StatusUnauthorized, ErrorResponseFromCode(AuthFailure, "", nil))
+	case errors.Is(err, ErrTenantNotFound):
+		WriteError(w, http.StatusUnauthorized, ErrorResponseFromCode(TenantNotFound, "", nil))
 	case errors.Is(err, ErrInsufficientPermissions):
 		WriteError(w, http.StatusForbidden, ErrorResponseFromCode(InsufficientPermissions, "", nil))
 	default:
@@ -103,18 +105,58 @@ func decodeJSONBody(r *http.Request, dst any) error {
 	return nil
 }
 
-// ---- Tenant lifecycle (minimal: enough to prove system_admin-only
-// creation; the full tenant resource schema is out of this task's scope) ----
+// ---- Tenant lifecycle (docs/planning/26 tenant endpoint table) ----
 
 type tenantCreateRequest struct {
 	Name string `json:"name"`
 }
 
+// tenantRateLimitCeilingJSON is the wire shape of Tenant.RateLimitCeiling.
+type tenantRateLimitCeilingJSON struct {
+	WindowSeconds uint32 `json:"window_seconds"`
+	MaxRequests   uint32 `json:"max_requests"`
+}
+
+type tenantUpdateRequest struct {
+	Name                  string                      `json:"name"`
+	Status                string                      `json:"status"`
+	RateLimitCeiling      *tenantRateLimitCeilingJSON `json:"rate_limit_ceiling"`
+	ExpectedConfigVersion uint64                      `json:"expected_config_version"`
+}
+
 type tenantResponse struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Status    string `json:"status"`
-	CreatedAt string `json:"created_at"`
+	ID               string                      `json:"id"`
+	Name             string                      `json:"name"`
+	Status           string                      `json:"status"`
+	RateLimitCeiling *tenantRateLimitCeilingJSON `json:"rate_limit_ceiling"`
+	CreatedAt        string                      `json:"created_at"`
+	ConfigVersion    uint64                      `json:"config_version"`
+}
+
+func toTenantResponse(t Tenant) tenantResponse {
+	resp := tenantResponse{
+		ID:            t.ID,
+		Name:          t.Name,
+		Status:        string(t.Status),
+		CreatedAt:     t.CreatedAt.Format(time.RFC3339),
+		ConfigVersion: t.ConfigVersion,
+	}
+
+	if t.RateLimitCeiling != nil {
+		resp.RateLimitCeiling = &tenantRateLimitCeilingJSON{
+			WindowSeconds: t.RateLimitCeiling.WindowSeconds,
+			MaxRequests:   t.RateLimitCeiling.MaxRequests,
+		}
+	}
+
+	return resp
+}
+
+// validTenantUpdateStatuses excludes "deleted": soft delete is a dedicated
+// endpoint (DELETE /tenants/{id}), not a status value PUT may set directly.
+var validTenantUpdateStatuses = map[string]bool{
+	string(TenantStatusActive):    true,
+	string(TenantStatusSuspended): true,
 }
 
 // CreateTenant handles POST /tenants. Only system_admin may create tenant
@@ -162,12 +204,174 @@ func (h *AdminHandlers) CreateTenant(w http.ResponseWriter, r *http.Request) {
 
 	recordAudit(r.Context(), h.Audit, identity, "tenant", id, "create")
 
-	writeJSON(w, http.StatusCreated, tenantResponse{
-		ID:        tenant.ID,
-		Name:      tenant.Name,
-		Status:    string(tenant.Status),
-		CreatedAt: tenant.CreatedAt.Format(time.RFC3339),
-	})
+	writeJSON(w, http.StatusCreated, toTenantResponse(tenant))
+}
+
+// ListTenants handles GET /api/v1/config/tenants. system_admin only.
+func (h *AdminHandlers) ListTenants(w http.ResponseWriter, r *http.Request) {
+	identity, err := h.authenticate(r)
+	if err != nil {
+		writeAuthOrRBACError(w, err)
+
+		return
+	}
+
+	err = RequireRole(identity, RoleSystemAdmin)
+	if err != nil {
+		writeAuthOrRBACError(w, err)
+
+		return
+	}
+
+	limit, offset := parsePagination(r)
+
+	tenants, err := h.Tenants.List(r.Context(), limit, offset)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
+
+		return
+	}
+
+	out := make([]tenantResponse, 0, len(tenants))
+	for _, t := range tenants {
+		out = append(out, toTenantResponse(t))
+	}
+
+	writeJSON(w, http.StatusOK, out)
+}
+
+// GetTenant handles GET /api/v1/config/tenants/{id}. Visible to system_admin
+// or any role belonging to the tenant itself (docs/planning/26: "system_admin,
+// tenant roles").
+func (h *AdminHandlers) GetTenant(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	identity, err := h.authenticate(r)
+	if err != nil {
+		writeAuthOrRBACError(w, err)
+
+		return
+	}
+
+	allowed := RequireRole(identity, RoleSystemAdmin) == nil
+	if !allowed {
+		allowed = RequireOwnTenant(identity, id) == nil
+	}
+
+	if !allowed {
+		writeAuthOrRBACError(w, ErrInsufficientPermissions)
+
+		return
+	}
+
+	tenant, err := h.Tenants.Get(r.Context(), id)
+	if err != nil {
+		WriteError(w, http.StatusNotFound, ErrorResponseFromCode(TenantNotFound, "", nil))
+
+		return
+	}
+
+	writeJSON(w, http.StatusOK, toTenantResponse(tenant))
+}
+
+// UpdateTenant handles PUT /api/v1/config/tenants/{id}. system_admin only.
+func (h *AdminHandlers) UpdateTenant(w http.ResponseWriter, r *http.Request) {
+	identity, err := h.authenticate(r)
+	if err != nil {
+		writeAuthOrRBACError(w, err)
+
+		return
+	}
+
+	err = RequireRole(identity, RoleSystemAdmin)
+	if err != nil {
+		writeAuthOrRBACError(w, err)
+
+		return
+	}
+
+	var req tenantUpdateRequest
+
+	err = decodeJSONBody(r, &req)
+	if err != nil || req.Name == "" || !validTenantUpdateStatuses[req.Status] {
+		WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", map[string]string{
+			errorDetailReasonKey: "name is required and status must be active or suspended",
+		}))
+
+		return
+	}
+
+	id := r.PathValue("id")
+
+	var ceiling *RateLimitCeiling
+	if req.RateLimitCeiling != nil {
+		ceiling = &RateLimitCeiling{
+			WindowSeconds: req.RateLimitCeiling.WindowSeconds,
+			MaxRequests:   req.RateLimitCeiling.MaxRequests,
+		}
+	}
+
+	tenant := Tenant{ID: id, Name: req.Name, Status: TenantStatus(req.Status), RateLimitCeiling: ceiling}
+
+	updated, err := h.Tenants.Update(r.Context(), tenant, req.ExpectedConfigVersion)
+	if err != nil {
+		h.writeTenantResourceError(r, w, id, err)
+
+		return
+	}
+
+	_, err = h.bumpTenantVersion(r.Context(), id, nil)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
+
+		return
+	}
+
+	h.ConfigCache.PublishInvalidation(r.Context(), id, updated.ConfigVersion)
+	recordAudit(r.Context(), h.Audit, identity, "tenant", id, configActionUpdate)
+
+	writeJSON(w, http.StatusOK, toTenantResponse(updated))
+}
+
+// SoftDeleteTenant handles DELETE /api/v1/config/tenants/{id}. system_admin
+// only. Soft delete forces config-cache/auth invalidation before returning
+// success, matching the API-key/worker-credential revocation pattern
+// (docs/planning/25).
+func (h *AdminHandlers) SoftDeleteTenant(w http.ResponseWriter, r *http.Request) {
+	identity, err := h.authenticate(r)
+	if err != nil {
+		writeAuthOrRBACError(w, err)
+
+		return
+	}
+
+	err = RequireRole(identity, RoleSystemAdmin)
+	if err != nil {
+		writeAuthOrRBACError(w, err)
+
+		return
+	}
+
+	id := r.PathValue("id")
+
+	deleted, err := h.Tenants.SoftDelete(r.Context(), id)
+	if err != nil {
+		h.writeTenantResourceError(r, w, id, err)
+
+		return
+	}
+
+	_, err = h.bumpTenantVersion(r.Context(), id, nil)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
+
+		return
+	}
+
+	h.ConfigCache.PublishInvalidation(r.Context(), id, deleted.ConfigVersion)
+	recordAudit(r.Context(), h.Audit, identity, "tenant", id, configActionDelete)
+
+	writeJSON(w, http.StatusOK, toTenantResponse(deleted))
 }
 
 // ---- Platform API key lifecycle (system_admin only, after bootstrap) ----
@@ -821,6 +1025,27 @@ func (h *AdminHandlers) writeRateLimitError(w http.ResponseWriter, err error) {
 		WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", map[string]string{
 			errorDetailReasonKey: "rate limit exceeds tenant rate_limit_ceiling",
 		}))
+	default:
+		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
+	}
+}
+
+// writeTenantResourceError maps a TenantStore write error to its HTTP
+// response, including details.current_config_version on a version conflict
+// (docs/planning/26 "Shared Config API Contract").
+func (h *AdminHandlers) writeTenantResourceError(r *http.Request, w http.ResponseWriter, id string, err error) {
+	switch {
+	case errors.Is(err, ErrTenantVersionConflict):
+		WriteError(w, http.StatusConflict, ErrorResponseFromCode(Conflict, "", conflictDetails(r.Context(), func(ctx context.Context) (uint64, error) {
+			got, getErr := h.Tenants.Get(ctx, id)
+			if getErr != nil {
+				return 0, fmt.Errorf("get tenant: %w", getErr)
+			}
+
+			return got.ConfigVersion, nil
+		})))
+	case errors.Is(err, ErrTenantNotFound):
+		WriteError(w, http.StatusNotFound, ErrorResponseFromCode(TenantNotFound, "", nil))
 	default:
 		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
 	}

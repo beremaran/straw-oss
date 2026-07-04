@@ -186,6 +186,92 @@ func TestAuthenticateRejectsRevokedKey(t *testing.T) {
 	}
 }
 
+// ---- tenant status enforcement (docs/tasks/p0/29) ----
+
+func TestAuthenticateRejectsSuspendedTenant(t *testing.T) {
+	t.Parallel()
+
+	store := NewInMemoryAPIKeyStore()
+	tenants := NewInMemoryTenantStore()
+	pepper := []byte("pepper")
+	gen, _ := GenerateAPIKey()
+	mustCreate(t, store, APIKeyRecord{
+		ID: authTestKey1, ScopeType: ScopeTenant, TenantID: authTestTenantA, Role: RoleRequester,
+		Prefix: gen.Prefix, SecretHash: HashAPIKeySecret(gen.Secret, pepper), Status: APIKeyStatusActive, CreatedAt: time.Now(),
+	})
+
+	err := tenants.Create(context.Background(), Tenant{ID: authTestTenantA, Status: TenantStatusSuspended})
+	if err != nil {
+		t.Fatalf("Create() tenant error = %v", err)
+	}
+
+	auth := NewAuthenticator(store, pepper).SetTenantStore(tenants)
+
+	_, err = auth.Authenticate(context.Background(), "Bearer "+gen.Secret)
+	if !errors.Is(err, ErrTenantNotFound) {
+		t.Fatalf("Authenticate() error = %v, want ErrTenantNotFound", err)
+	}
+}
+
+func TestAuthenticateRejectsDeletedTenant(t *testing.T) {
+	t.Parallel()
+
+	store := NewInMemoryAPIKeyStore()
+	tenants := NewInMemoryTenantStore()
+	pepper := []byte("pepper")
+	gen, _ := GenerateAPIKey()
+	mustCreate(t, store, APIKeyRecord{
+		ID: authTestKey1, ScopeType: ScopeTenant, TenantID: authTestTenantA, Role: RoleRequester,
+		Prefix: gen.Prefix, SecretHash: HashAPIKeySecret(gen.Secret, pepper), Status: APIKeyStatusActive, CreatedAt: time.Now(),
+	})
+
+	err := tenants.Create(context.Background(), Tenant{ID: authTestTenantA, Status: TenantStatusActive})
+	if err != nil {
+		t.Fatalf("Create() tenant error = %v", err)
+	}
+
+	_, err = tenants.SoftDelete(context.Background(), authTestTenantA)
+	if err != nil {
+		t.Fatalf("SoftDelete() error = %v", err)
+	}
+
+	auth := NewAuthenticator(store, pepper).SetTenantStore(tenants)
+
+	_, err = auth.Authenticate(context.Background(), "Bearer "+gen.Secret)
+	if !errors.Is(err, ErrTenantNotFound) {
+		t.Fatalf("Authenticate() error = %v, want ErrTenantNotFound", err)
+	}
+}
+
+func TestAuthenticateAllowsActiveTenantWhenTenantStoreWired(t *testing.T) {
+	t.Parallel()
+
+	store := NewInMemoryAPIKeyStore()
+	tenants := NewInMemoryTenantStore()
+	pepper := []byte("pepper")
+	gen, _ := GenerateAPIKey()
+	mustCreate(t, store, APIKeyRecord{
+		ID: authTestKey1, ScopeType: ScopeTenant, TenantID: authTestTenantA, Role: RoleRequester,
+		Prefix: gen.Prefix, SecretHash: HashAPIKeySecret(gen.Secret, pepper), Status: APIKeyStatusActive, CreatedAt: time.Now(),
+	})
+
+	err := tenants.Create(context.Background(), Tenant{ID: authTestTenantA, Status: TenantStatusActive})
+	if err != nil {
+		t.Fatalf("Create() tenant error = %v", err)
+	}
+
+	auth := NewAuthenticator(store, pepper).SetTenantStore(tenants)
+
+	identity, err := auth.Authenticate(context.Background(), "Bearer "+gen.Secret)
+	if err != nil {
+		t.Fatalf("Authenticate() error = %v", err)
+	}
+
+	if identity.TenantID != authTestTenantA {
+		t.Fatalf("TenantID = %q, want %q", identity.TenantID, authTestTenantA)
+	}
+}
+
 // ---- RBAC ----
 
 func TestCanExecuteDataPlane(t *testing.T) {

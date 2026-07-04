@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"errors"
 	"os"
 	"testing"
 	"time"
@@ -19,12 +20,13 @@ import (
 // so the suite is idempotent across reruns; because of that shared-state reset
 // the tests are intentionally not run in parallel.
 const (
-	pgTestTenantA      = "11111111-1111-1111-1111-111111111111"
-	pgTestTenantB      = "22222222-2222-2222-2222-222222222222"
-	pgTestActorType    = "api_key"
-	pgTestActionAdd    = "create"
-	pgTestPepper       = "test-pepper"
-	pgTestExecutorType = "egress"
+	pgTestTenantA       = "11111111-1111-1111-1111-111111111111"
+	pgTestTenantB       = "22222222-2222-2222-2222-222222222222"
+	pgTestActorType     = "api_key"
+	pgTestActionAdd     = "create"
+	pgTestPepper        = "test-pepper"
+	pgTestExecutorType  = "egress"
+	pgTestTenantRenamed = "Renamed"
 )
 
 func newIdentityTestPool(t *testing.T) *pgxpool.Pool {
@@ -117,6 +119,131 @@ func TestPostgresTenantStoreDuplicateRejected(t *testing.T) {
 	err = store.Create(context.Background(), tenant)
 	if err == nil {
 		t.Fatal("expected error for duplicate tenant")
+	}
+}
+
+func TestPostgresTenantStoreUpdatePersistsNameAndCeiling(t *testing.T) {
+	pool := newIdentityTestPool(t)
+	store := NewPostgresTenantStore(pool)
+	ctx := context.Background()
+
+	tenant := Tenant{ID: pgTestTenantA, Name: "Original", Status: TenantStatusActive}
+
+	err := store.Create(ctx, tenant)
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	updated, err := store.Update(ctx, Tenant{
+		ID: pgTestTenantA, Name: pgTestTenantRenamed, Status: TenantStatusSuspended,
+		RateLimitCeiling: &RateLimitCeiling{WindowSeconds: 60, MaxRequests: 6000},
+	}, 0)
+	if err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+
+	if updated.Name != pgTestTenantRenamed || updated.Status != TenantStatusSuspended {
+		t.Fatalf("got name=%q status=%q, want name=Renamed status=suspended", updated.Name, updated.Status)
+	}
+
+	if updated.RateLimitCeiling == nil || updated.RateLimitCeiling.WindowSeconds != 60 || updated.RateLimitCeiling.MaxRequests != 6000 {
+		t.Fatalf("rate_limit_ceiling = %+v, want {60 6000}", updated.RateLimitCeiling)
+	}
+
+	if updated.ConfigVersion != 1 {
+		t.Fatalf("config_version = %d, want 1", updated.ConfigVersion)
+	}
+
+	got, err := store.Get(ctx, pgTestTenantA)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+
+	if got.Name != pgTestTenantRenamed || got.RateLimitCeiling == nil {
+		t.Fatalf("reloaded tenant = %+v, want persisted rename and ceiling", got)
+	}
+}
+
+func TestPostgresTenantStoreUpdateVersionConflict(t *testing.T) {
+	pool := newIdentityTestPool(t)
+	store := NewPostgresTenantStore(pool)
+	ctx := context.Background()
+
+	err := store.Create(ctx, Tenant{ID: pgTestTenantA, Name: "T", Status: TenantStatusActive})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	_, err = store.Update(ctx, Tenant{ID: pgTestTenantA, Name: "T2", Status: TenantStatusActive}, 5)
+	if !errors.Is(err, ErrTenantVersionConflict) {
+		t.Fatalf("Update() error = %v, want ErrTenantVersionConflict", err)
+	}
+}
+
+func TestPostgresTenantStoreUpdateMissingTenantNotFound(t *testing.T) {
+	pool := newIdentityTestPool(t)
+	store := NewPostgresTenantStore(pool)
+
+	_, err := store.Update(context.Background(), Tenant{ID: pgTestTenantA, Name: "T", Status: TenantStatusActive}, 0)
+	if !errors.Is(err, ErrTenantNotFound) {
+		t.Fatalf("Update() error = %v, want ErrTenantNotFound", err)
+	}
+}
+
+func TestPostgresTenantStoreSoftDeleteThenUpdateNotFound(t *testing.T) {
+	pool := newIdentityTestPool(t)
+	store := NewPostgresTenantStore(pool)
+	ctx := context.Background()
+
+	err := store.Create(ctx, Tenant{ID: pgTestTenantA, Name: "T", Status: TenantStatusActive})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	deleted, err := store.SoftDelete(ctx, pgTestTenantA)
+	if err != nil {
+		t.Fatalf("SoftDelete() error = %v", err)
+	}
+
+	if deleted.Status != TenantStatusDeleted || deleted.DeletedAt == nil {
+		t.Fatalf("deleted tenant = %+v, want status=deleted and deleted_at set", deleted)
+	}
+
+	_, err = store.SoftDelete(ctx, pgTestTenantA)
+	if !errors.Is(err, ErrTenantNotFound) {
+		t.Fatalf("second SoftDelete() error = %v, want ErrTenantNotFound", err)
+	}
+
+	_, err = store.Update(ctx, Tenant{ID: pgTestTenantA, Name: "T", Status: TenantStatusActive}, 1)
+	if !errors.Is(err, ErrTenantNotFound) {
+		t.Fatalf("Update() on deleted tenant error = %v, want ErrTenantNotFound", err)
+	}
+}
+
+func TestPostgresTenantStoreListOrdersByCreatedAtDesc(t *testing.T) {
+	pool := newIdentityTestPool(t)
+	store := NewPostgresTenantStore(pool)
+	ctx := context.Background()
+
+	err := store.Create(ctx, Tenant{ID: pgTestTenantA, Name: "A", Status: TenantStatusActive})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	time.Sleep(10 * time.Millisecond)
+
+	err = store.Create(ctx, Tenant{ID: pgTestTenantB, Name: "B", Status: TenantStatusActive})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	got, err := store.List(ctx, 50, 0)
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+
+	if len(got) != 2 || got[0].ID != pgTestTenantB || got[1].ID != pgTestTenantA {
+		t.Fatalf("List() = %+v, want [B, A]", got)
 	}
 }
 
