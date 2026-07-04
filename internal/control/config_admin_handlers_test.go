@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -500,4 +501,141 @@ func (p *recordingInvalidationPublisher) PublishTenantInvalidation(_ context.Con
 	p.version = version
 
 	return nil
+}
+
+func TestListChangesRBACAndContent(t *testing.T) {
+	t.Parallel()
+
+	ta := newTestAdmin(t)
+	tenantAdmin := ta.seedTenantKey(t, "key_changes_admin", adminTestTenantA, RoleTenantAdmin)
+	viewer := ta.seedTenantKey(t, "key_changes_viewer", adminTestTenantA, RoleViewer)
+	requester := ta.seedTenantKey(t, "key_changes_requester", adminTestTenantA, RoleRequester)
+
+	// A routing rule write records an audit row for this tenant.
+	_, created := createRoutingRule(t, ta, tenantAdmin, `{"id":"route_changes_1","target_pool_id":"`+configTestPoolA+`"}`)
+	if created.ID != "route_changes_1" {
+		t.Fatalf("create failed: %+v", created)
+	}
+
+	// requester lacks tenant_admin/operator/viewer and is forbidden.
+	w := httptest.NewRecorder()
+	ta.h.ListChanges(w, newAdminRequest(http.MethodGet, "/api/v1/config/changes", requester, ""))
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("requester status = %d, want 403", w.Code)
+	}
+
+	// viewer is allowed and sees the recorded change with no secret material.
+	w = httptest.NewRecorder()
+	ta.h.ListChanges(w, newAdminRequest(http.MethodGet, "/api/v1/config/changes", viewer, ""))
+	if w.Code != http.StatusOK {
+		t.Fatalf("viewer status = %d, want 200, body=%s", w.Code, w.Body.String())
+	}
+
+	var changes []configChangeResponse
+
+	err := json.Unmarshal(w.Body.Bytes(), &changes)
+	if err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if len(changes) != 1 {
+		t.Fatalf("changes = %+v, want 1 recorded change", changes)
+	}
+
+	if changes[0].ResourceType != resourceTypeRoutingRule || changes[0].ResourceID != "route_changes_1" || changes[0].Action != configActionUpsert {
+		t.Fatalf("change = %+v, want routing_rule/route_changes_1/%s", changes[0], configActionUpsert)
+	}
+
+	if !strings.Contains(w.Body.String(), `"actor_id"`) || strings.Contains(strings.ToLower(w.Body.String()), "secret") {
+		t.Fatalf("response body unexpectedly references secret material: %s", w.Body.String())
+	}
+}
+
+func TestListChangesTenantIsolation(t *testing.T) {
+	t.Parallel()
+
+	ta := newTestAdmin(t)
+	adminA := ta.seedTenantKey(t, "key_changes_iso_a", adminTestTenantA, RoleTenantAdmin)
+	adminB := ta.seedTenantKey(t, "key_changes_iso_b", adminTestTenantB, RoleTenantAdmin)
+
+	_, created := createRoutingRule(t, ta, adminA, `{"id":"route_changes_iso","target_pool_id":"`+configTestPoolA+`"}`)
+	if created.ID != "route_changes_iso" {
+		t.Fatalf("create for tenant A failed: %+v", created)
+	}
+
+	w := httptest.NewRecorder()
+	ta.h.ListChanges(w, newAdminRequest(http.MethodGet, "/api/v1/config/changes", adminB, ""))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+
+	var changes []configChangeResponse
+
+	err := json.Unmarshal(w.Body.Bytes(), &changes)
+	if err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if len(changes) != 0 {
+		t.Fatalf("tenant B changes = %+v, want none (isolation)", changes)
+	}
+}
+
+func TestListChangesPaginationDefaultsAndBounds(t *testing.T) {
+	t.Parallel()
+
+	ta := newTestAdmin(t)
+	tenantAdmin := ta.seedTenantKey(t, "key_changes_page_admin", adminTestTenantA, RoleTenantAdmin)
+
+	for i := range 3 {
+		id := "route_page_" + string(rune('a'+i))
+		_, created := createRoutingRule(t, ta, tenantAdmin, `{"id":"`+id+`","target_pool_id":"`+configTestPoolA+`"}`)
+		if created.ID != id {
+			t.Fatalf("create %s failed", id)
+		}
+	}
+
+	w := httptest.NewRecorder()
+	ta.h.ListChanges(w, newAdminRequest(http.MethodGet, "/api/v1/config/changes?limit=2&offset=0", tenantAdmin, ""))
+
+	var page []configChangeResponse
+
+	err := json.Unmarshal(w.Body.Bytes(), &page)
+	if err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if len(page) != 2 {
+		t.Fatalf("page len = %d, want 2 (limit applied)", len(page))
+	}
+
+	// Requesting beyond bounds and with a limit over the max still respects
+	// the shared contract (default 50 / max 200) instead of erroring.
+	w = httptest.NewRecorder()
+	ta.h.ListChanges(w, newAdminRequest(http.MethodGet, "/api/v1/config/changes?limit=1000&offset=0", tenantAdmin, ""))
+
+	var all []configChangeResponse
+
+	err = json.Unmarshal(w.Body.Bytes(), &all)
+	if err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if len(all) != 3 {
+		t.Fatalf("all = %+v, want 3 (over-max limit clamped, not rejected)", all)
+	}
+
+	w = httptest.NewRecorder()
+	ta.h.ListChanges(w, newAdminRequest(http.MethodGet, "/api/v1/config/changes?offset=100", tenantAdmin, ""))
+
+	var beyond []configChangeResponse
+
+	err = json.Unmarshal(w.Body.Bytes(), &beyond)
+	if err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if len(beyond) != 0 {
+		t.Fatalf("beyond = %+v, want none", beyond)
+	}
 }

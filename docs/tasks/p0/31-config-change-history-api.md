@@ -1,6 +1,6 @@
 # 31 - Config Change History API
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -41,16 +41,16 @@ read-only exposure task.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Add a paginated audit list method scoped to a tenant with the shared list ordering/limits.
-- [ ] Add the `ListChanges` handler with RBAC `tenant_admin`/`operator`/`viewer` (per the `docs/planning/26` row) and
+- [x] Read all required planning docs.
+- [x] Add a paginated audit list method scoped to a tenant with the shared list ordering/limits.
+- [x] Add the `ListChanges` handler with RBAC `tenant_admin`/`operator`/`viewer` (per the `docs/planning/26` row) and
       tenant scoping so it never returns another tenant's rows.
-- [ ] Confirm the response carries no secret material (the stored rows are already redacted; assert it in a test).
-- [ ] Register the route.
-- [ ] Add tests for: pagination defaults and bounds; tenant isolation; role access; absence of secret values.
-- [ ] Run the focused tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Confirm the response carries no secret material (the stored rows are already redacted; assert it in a test).
+- [x] Register the route.
+- [x] Add tests for: pagination defaults and bounds; tenant isolation; role access; absence of secret values.
+- [x] Run the focused tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

@@ -8,6 +8,7 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/beremaran/straw/v2/internal/config"
 )
@@ -270,7 +271,7 @@ func (h *AdminHandlers) upsertRoutingRule(w http.ResponseWriter, r *http.Request
 	}
 
 	h.ConfigCache.PublishInvalidation(r.Context(), identity.TenantID, tenantVersion)
-	recordAudit(r.Context(), h.Audit, identity, "routing_rule", record.ID, configActionUpsert)
+	recordAudit(r.Context(), h.Audit, identity, resourceTypeRoutingRule, record.ID, configActionUpsert)
 
 	writeJSON(w, http.StatusOK, toRoutingRuleResponse(record))
 }
@@ -298,7 +299,7 @@ func (h *AdminHandlers) DeleteRoutingRule(w http.ResponseWriter, r *http.Request
 	}
 
 	h.ConfigCache.PublishInvalidation(r.Context(), identity.TenantID, tenantVersion)
-	recordAudit(r.Context(), h.Audit, identity, "routing_rule", id, configActionDelete)
+	recordAudit(r.Context(), h.Audit, identity, resourceTypeRoutingRule, id, configActionDelete)
 
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -992,6 +993,58 @@ func (h *AdminHandlers) ListFingerprintProfiles(w http.ResponseWriter, r *http.R
 		out = append(out, fingerprintProfileResponse{
 			Name: rec.Name, ScopeType: rec.ScopeType, SupportedByWorker: rec.SupportedByWorker,
 			Enabled: rec.Enabled, ConfigVersion: rec.ConfigVersion,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, out)
+}
+
+// ---- config change history ----
+
+type configChangeResponse struct {
+	ID           int64  `json:"id"`
+	ActorType    string `json:"actor_type"`
+	ActorID      string `json:"actor_id"`
+	ResourceType string `json:"resource_type"`
+	ResourceID   string `json:"resource_id"`
+	Action       string `json:"action"`
+	CreatedAt    string `json:"created_at"`
+}
+
+// ListChanges handles GET /api/v1/config/changes. Rows are already redacted
+// at write time (docs/tasks/p0/19), so this is a read-only exposure of the
+// config_audit_source table with no secret material to strip.
+func (h *AdminHandlers) ListChanges(w http.ResponseWriter, r *http.Request) {
+	identity, ok := h.authorizeConfig(w, r, RoleTenantAdmin, RoleOperator, RoleViewer)
+	if !ok {
+		return
+	}
+
+	if h.Audit == nil {
+		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
+
+		return
+	}
+
+	limit, offset := parsePagination(r)
+
+	records, err := h.Audit.ListTenantPage(r.Context(), identity.TenantID, limit, offset)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
+
+		return
+	}
+
+	out := make([]configChangeResponse, 0, len(records))
+	for _, rec := range records {
+		out = append(out, configChangeResponse{
+			ID:           rec.ID,
+			ActorType:    rec.ActorType,
+			ActorID:      rec.ActorID,
+			ResourceType: rec.ResourceType,
+			ResourceID:   rec.ResourceID,
+			Action:       rec.Action,
+			CreatedAt:    rec.CreatedAt.Format(time.RFC3339),
 		})
 	}
 
