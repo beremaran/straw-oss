@@ -191,6 +191,19 @@ func TestLoadEgress(t *testing.T) {
 			}`,
 			wantErr: configTestUnknownField,
 		},
+		{
+			name: "invalid health port",
+			config: `{
+				"config_version": "v1",
+				"egress": {
+					"worker_id": "egress-local-001",
+					"credential_id": "wcred_test",
+					"private_key_ed25519_env": "STRAW_WORKER_PRIVATE_KEY_ED25519_BASE64",
+					"health_port": 70000
+				}
+			}`,
+			wantErr: "health_port must be between 1 and 65535",
+		},
 	}
 
 	for _, tt := range tests {
@@ -198,10 +211,14 @@ func TestLoadEgress(t *testing.T) {
 			t.Parallel()
 
 			path := writeConfig(t, tt.config)
-			_, err := LoadEgress(path)
+			cfg, err := LoadEgress(path)
 			if tt.wantErr == "" {
 				if err != nil {
 					t.Fatalf("LoadEgress() error = %v", err)
+				}
+
+				if cfg.HealthPort != defaultEgressHealthPort {
+					t.Fatalf("HealthPort = %d, want default %d", cfg.HealthPort, defaultEgressHealthPort)
 				}
 
 				return
