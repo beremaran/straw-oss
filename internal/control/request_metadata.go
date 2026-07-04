@@ -6,10 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -67,18 +67,7 @@ type RequestMetadataRecorder interface {
 // asynchronously. If the sink is unavailable, the writer keeps the queue
 // bounded and retries later; transport never waits on the sink.
 type RequestMetadataWriter struct {
-	sink          RequestEventSink
-	maxEntries    int
-	batchSize     int
-	flushInterval time.Duration
-
-	mu      sync.Mutex
-	queue   []RequestEvent
-	metrics *Metrics
-
-	stopOnce sync.Once
-	stopCh   chan struct{}
-	doneCh   chan struct{}
+	q *asyncEventQueue[RequestEvent]
 }
 
 // RequestEventSink writes request metadata batches to ClickHouse.
@@ -88,36 +77,12 @@ type RequestEventSink interface {
 
 // NewRequestMetadataWriter creates an async buffered writer.
 func NewRequestMetadataWriter(sink RequestEventSink, maxEntries, batchSize int, flushInterval time.Duration) *RequestMetadataWriter {
-	if maxEntries <= 0 {
-		maxEntries = 1
-	}
-
-	if batchSize <= 0 {
-		batchSize = 1
-	}
-
-	if batchSize > maxEntries {
-		batchSize = maxEntries
-	}
-
-	if flushInterval <= 0 {
-		flushInterval = time.Second
-	}
-
-	w := &RequestMetadataWriter{
-		sink:          sink,
-		maxEntries:    maxEntries,
-		batchSize:     batchSize,
-		flushInterval: flushInterval,
-		stopCh:        make(chan struct{}),
-		doneCh:        make(chan struct{}),
-	}
-
+	var write func(context.Context, []RequestEvent) error
 	if sink != nil {
-		go w.run()
+		write = sink.WriteRequestEvents
 	}
 
-	return w
+	return &RequestMetadataWriter{q: newAsyncEventQueue(write, maxEntries, batchSize, flushInterval)}
 }
 
 // SetMetrics attaches the Prometheus metrics recorder used for
@@ -129,7 +94,7 @@ func (w *RequestMetadataWriter) SetMetrics(m *Metrics) {
 		return
 	}
 
-	w.metrics = m
+	w.q.SetMetrics(m)
 }
 
 // QueueDepth returns the current buffered event count, for the
@@ -139,129 +104,39 @@ func (w *RequestMetadataWriter) QueueDepth() int {
 		return 0
 	}
 
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	return len(w.queue)
+	return w.q.QueueDepth()
 }
 
 // Enqueue adds an accepted request to the bounded queue.
 func (w *RequestMetadataWriter) Enqueue(event RequestEvent) {
-	if w == nil || w.sink == nil {
+	if w == nil {
 		return
 	}
 
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	if len(w.queue) >= w.maxEntries {
-		copy(w.queue, w.queue[1:])
-		w.queue[len(w.queue)-1] = RequestEvent{}
-		w.queue = w.queue[:len(w.queue)-1]
-	}
-
-	w.queue = append(w.queue, event)
+	w.q.Enqueue(event)
 }
 
 // Flush writes queued events in batches.
 func (w *RequestMetadataWriter) Flush(ctx context.Context) error {
-	if w == nil || w.sink == nil {
+	if w == nil {
 		return nil
 	}
 
-	for {
-		batch := w.nextBatch()
-		if len(batch) == 0 {
-			return nil
-		}
-
-		err := w.sink.WriteRequestEvents(ctx, batch)
-		if err != nil {
-			w.requeueFront(batch)
-			w.metrics.IncClickHouseWriteError()
-
-			return fmt.Errorf("write request metadata batch: %w", err)
-		}
+	err := w.q.Flush(ctx)
+	if err != nil {
+		return fmt.Errorf("write request metadata batch: %w", err)
 	}
+
+	return nil
 }
 
 // Close stops the background flush loop and drains the queue once.
 func (w *RequestMetadataWriter) Close() {
-	if w == nil || w.sink == nil {
+	if w == nil {
 		return
 	}
 
-	w.stopOnce.Do(func() {
-		close(w.stopCh)
-	})
-
-	<-w.doneCh
-}
-
-func (w *RequestMetadataWriter) run() {
-	defer close(w.doneCh)
-
-	ticker := time.NewTicker(w.flushInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			_ = w.Flush(context.Background())
-		case <-w.stopCh:
-			_ = w.Flush(context.Background())
-
-			return
-		}
-	}
-}
-
-func (w *RequestMetadataWriter) nextBatch() []RequestEvent {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	if len(w.queue) == 0 {
-		return nil
-	}
-
-	if len(w.queue) < w.batchSize {
-		batch := append([]RequestEvent(nil), w.queue...)
-		w.queue = w.queue[:0]
-
-		return batch
-	}
-
-	batch := append([]RequestEvent(nil), w.queue[:w.batchSize]...)
-	w.queue = append([]RequestEvent(nil), w.queue[w.batchSize:]...)
-
-	return batch
-}
-
-func (w *RequestMetadataWriter) requeueFront(batch []RequestEvent) {
-	if len(batch) == 0 {
-		return
-	}
-
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	if len(batch) >= w.maxEntries {
-		w.queue = append([]RequestEvent(nil), batch[:w.maxEntries]...)
-
-		return
-	}
-
-	space := w.maxEntries - len(batch)
-	merged := make([]RequestEvent, 0, w.maxEntries)
-	merged = append(merged, batch...)
-
-	if len(w.queue) > space {
-		merged = append(merged, w.queue[:space]...)
-	} else {
-		merged = append(merged, w.queue...)
-	}
-
-	w.queue = merged
+	w.q.Close()
 }
 
 // buildRequestEvent creates the canonical request metadata record from the
@@ -281,8 +156,6 @@ func buildRequestEvent(requestID string, identity Identity, request *ValidatedRe
 		TargetHost:       "",
 		TargetURL:        "",
 		Attempt:          1,
-		UpstreamStatus:   http.StatusOK,
-		ClientStatus:     http.StatusOK,
 		CaptureDecision:  requestMetadataNone,
 		RequestSizeBytes: requestSize,
 	}
@@ -301,6 +174,71 @@ func buildRequestEvent(requestID string, identity Identity, request *ValidatedRe
 	}
 
 	return event
+}
+
+// applyRequestOutcome finalizes a pre-built RequestEvent with the real
+// dispatch result (docs/tasks/p0/32): on success it fills the actual
+// upstream status, sizes, and per-phase timings; on failure it fills the
+// canonical error_code/error_category/timeout_type instead of a synthetic
+// 200, using whatever partial timing the dispatcher measured before it
+// failed.
+func applyRequestOutcome(event RequestEvent, resp SuccessResponse, perr *PipelineError) RequestEvent {
+	if perr == nil {
+		event.UpstreamStatus = uint16OrMax(resp.Status)
+		event.ClientStatus = http.StatusOK
+		event.ResponseSizeBytes = resp.ResponseSizeBytes
+		event.RoutingMS = uint32OrMax(resp.Timing.RoutingMs)
+		event.AssignmentMS = uint32OrMax(resp.Timing.AssignmentMs)
+		event.EgressMS = uint32OrMax(resp.Timing.EgressMs)
+		event.TotalMS = uint32OrMax(resp.Timing.TotalMs)
+
+		return event
+	}
+
+	status := statusInternalServerError
+	if entry, ok := ErrorRegistry[perr.Code]; ok {
+		status = entry.HTTPStatus
+		event.ErrorCode = entry.Code
+		event.ErrorCategory = entry.Category
+	}
+
+	event.ClientStatus = uint16OrMax(status)
+	event.TimeoutType = perr.TimeoutType
+	event.RoutingMS = uint32OrMax(perr.RoutingMs)
+	event.AssignmentMS = uint32OrMax(perr.AssignmentMs)
+	event.EgressMS = uint32OrMax(perr.EgressMs)
+	event.TotalMS = uint32OrMax(perr.TotalMs)
+
+	return event
+}
+
+// uint16OrMax converts an int to uint16, clamping to [0, MaxUint16] instead
+// of wrapping. HTTP status codes are always well within range; the clamp
+// only guards against a negative or malformed value.
+func uint16OrMax(v int) uint16 {
+	if v < 0 {
+		return 0
+	}
+
+	if v > math.MaxUint16 {
+		return math.MaxUint16
+	}
+
+	return uint16(v)
+}
+
+// uint32OrMax converts an int64 millisecond duration to uint32, clamping to
+// [0, MaxUint32] instead of wrapping.
+func uint32OrMax(v int64) uint32 {
+	if v < 0 {
+		return 0
+	}
+
+	if v > math.MaxUint32 {
+		return math.MaxUint32
+	}
+
+	return uint32(v)
 }
 
 func sanitizeTargetURL(u *url.URL) string {
@@ -381,8 +319,29 @@ func NewHTTPClickHouseSink(endpoint, database, user, pass string, client *http.C
 	}
 }
 
-// WriteRequestEvents posts JSONEachRow records to ClickHouse.
+// WriteRequestEvents posts JSONEachRow records to ClickHouse's request_events
+// table.
 func (s *HTTPClickHouseSink) WriteRequestEvents(ctx context.Context, events []RequestEvent) error {
+	return insertClickHouseRows(ctx, s, s.table, events)
+}
+
+// WriteWorkerEvents posts JSONEachRow records to ClickHouse's worker_events
+// table (docs/tasks/p0/32).
+func (s *HTTPClickHouseSink) WriteWorkerEvents(ctx context.Context, events []WorkerEvent) error {
+	return insertClickHouseRows(ctx, s, workerEventsTable, events)
+}
+
+// WriteConfigAuditEvents posts JSONEachRow records to ClickHouse's
+// config_audit_events table (docs/tasks/p0/32).
+func (s *HTTPClickHouseSink) WriteConfigAuditEvents(ctx context.Context, events []ConfigAuditEvent) error {
+	return insertClickHouseRows(ctx, s, configAuditEventsTable, events)
+}
+
+// insertClickHouseRows encodes rows as newline-delimited JSON and posts them
+// to ClickHouse's HTTP insert endpoint for the given table. It is shared by
+// every ClickHouse event sink so the request shape (query params, auth,
+// status handling) is defined once.
+func insertClickHouseRows[T any](ctx context.Context, s *HTTPClickHouseSink, table string, events []T) error {
 	if s == nil || len(events) == 0 {
 		return nil
 	}
@@ -404,7 +363,7 @@ func (s *HTTPClickHouseSink) WriteRequestEvents(ctx context.Context, events []Re
 
 	query := req.URL.Query()
 	query.Set("database", s.database)
-	query.Set("query", "INSERT INTO "+s.table+" FORMAT JSONEachRow")
+	query.Set("query", "INSERT INTO "+table+" FORMAT JSONEachRow")
 	req.URL.RawQuery = query.Encode()
 	req.Header.Set("Content-Type", "application/json")
 
@@ -414,7 +373,7 @@ func (s *HTTPClickHouseSink) WriteRequestEvents(ctx context.Context, events []Re
 
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("post clickhouse request events: %w", err)
+		return fmt.Errorf("post clickhouse rows: %w", err)
 	}
 	defer func() {
 		_ = resp.Body.Close()

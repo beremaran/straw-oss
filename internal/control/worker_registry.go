@@ -173,6 +173,7 @@ type WorkerRegistry struct {
 	timings WorkerTimings
 	creds   WorkerCredentialStore
 	workers map[string]*workerEntry
+	events  WorkerEventRecorder
 }
 
 // NewWorkerRegistry builds a registry. now may be nil (defaults to
@@ -188,6 +189,16 @@ func NewWorkerRegistry(creds WorkerCredentialStore, timings WorkerTimings, now f
 		creds:   creds,
 		workers: make(map[string]*workerEntry),
 	}
+}
+
+// SetEventRecorder wires the worker_events ClickHouse sink (docs/tasks/p0/32).
+// Optional: nil (the default) disables worker_events emission without
+// affecting registration/heartbeat/admin behavior.
+func (r *WorkerRegistry) SetEventRecorder(rec WorkerEventRecorder) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.events = rec
 }
 
 // Register validates a RegisterRequest against the referenced worker
@@ -218,8 +229,37 @@ func (r *WorkerRegistry) Register(ctx context.Context, req *strawpb.RegisterRequ
 		return RegisterOutcome{}, err
 	}
 
-	now := r.now()
-	session := &runtimeSession{
+	session := newRuntimeSession(sessionID, cred, req, r.now())
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	e := r.entry(req.GetWorkerId())
+	if e.current != nil {
+		// Duplicate registration: the prior session is superseded and
+		// receives no new assignments (docs/planning/11 "Duplicate Sessions").
+		e.superseded = e.current
+		e.superseded.draining = true
+	}
+
+	e.current = session
+
+	r.emitWorkerEvent(WorkerEvent{
+		WorkerID:     req.GetWorkerId(),
+		SessionID:    sessionID,
+		ExecutorType: session.executorType,
+		EventType:    workerEventRegister,
+		Health:       workerHealthLabel(session.health),
+		Draining:     drainingFlag(session.draining),
+	})
+
+	return RegisterOutcome{OK: true, SessionID: sessionID}, nil
+}
+
+// newRuntimeSession builds the ephemeral session state for a successful
+// registration.
+func newRuntimeSession(sessionID string, cred WorkerCredential, req *strawpb.RegisterRequest, now time.Time) *runtimeSession {
+	return &runtimeSession{
 		sessionID:      sessionID,
 		executorType:   req.GetExecutorType(),
 		credentialID:   req.GetCredentialId(),
@@ -235,21 +275,6 @@ func (r *WorkerRegistry) Register(ctx context.Context, req *strawpb.RegisterRequ
 		draining:       req.GetInitialDraining(),
 		registeredAt:   now,
 	}
-
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	e := r.entry(req.GetWorkerId())
-	if e.current != nil {
-		// Duplicate registration: the prior session is superseded and
-		// receives no new assignments (docs/planning/11 "Duplicate Sessions").
-		e.superseded = e.current
-		e.superseded.draining = true
-	}
-
-	e.current = session
-
-	return RegisterOutcome{OK: true, SessionID: sessionID}, nil
 }
 
 // Heartbeat records a heartbeat. A heartbeat for the current session updates
@@ -294,6 +319,18 @@ func (r *WorkerRegistry) Heartbeat(hb *strawpb.HeartbeatRequest) (bool, error) {
 	}
 
 	s.draining = hb.GetDraining()
+
+	r.emitWorkerEvent(WorkerEvent{
+		WorkerID:          hb.GetWorkerId(),
+		SessionID:         s.sessionID,
+		ExecutorType:      s.executorType,
+		EventType:         workerEventHeartbeat,
+		Health:            workerHealthLabel(s.health),
+		ActiveRequests:    s.activeRequests,
+		MaxConcurrency:    s.maxConcurrency,
+		AvailableCapacity: s.availableCap,
+		Draining:          drainingFlag(s.draining),
+	})
 
 	return true, nil
 }
@@ -624,7 +661,15 @@ func (r *WorkerRegistry) SetGlobalAdmin(workerID string, state AdminState) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	r.entry(workerID).globalAdmin = state
+	e := r.entry(workerID)
+	e.globalAdmin = state
+
+	eventType := workerEventEnable
+	if state == AdminDisabled {
+		eventType = workerEventDisable
+	}
+
+	r.emitTransitionEvent(workerID, "", eventType, e)
 }
 
 // SetGlobalDrain sets the durable platform drain flag for a worker.
@@ -632,7 +677,15 @@ func (r *WorkerRegistry) SetGlobalDrain(workerID string, draining bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	r.entry(workerID).globalDrain = draining
+	e := r.entry(workerID)
+	e.globalDrain = draining
+
+	eventType := workerEventUndrain
+	if draining {
+		eventType = workerEventDrain
+	}
+
+	r.emitTransitionEvent(workerID, "", eventType, e)
 }
 
 // SetTenantAdmin sets the durable per-tenant admin override for a worker.
@@ -640,7 +693,15 @@ func (r *WorkerRegistry) SetTenantAdmin(workerID, tenantID string, state AdminSt
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	r.entry(workerID).tenantAdmin[tenantID] = state
+	e := r.entry(workerID)
+	e.tenantAdmin[tenantID] = state
+
+	eventType := workerEventTenantEnable
+	if state == AdminDisabled {
+		eventType = workerEventTenantDisable
+	}
+
+	r.emitTransitionEvent(workerID, tenantID, eventType, e)
 }
 
 // SetTenantDrain sets the per-tenant drain flag for a worker.
@@ -648,7 +709,15 @@ func (r *WorkerRegistry) SetTenantDrain(workerID, tenantID string, draining bool
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	r.entry(workerID).tenantDrain[tenantID] = draining
+	e := r.entry(workerID)
+	e.tenantDrain[tenantID] = draining
+
+	eventType := workerEventTenantUndrain
+	if draining {
+		eventType = workerEventTenantDrain
+	}
+
+	r.emitTransitionEvent(workerID, tenantID, eventType, e)
 }
 
 // KnownWorker reports whether the registry has any state for workerID.
@@ -748,6 +817,37 @@ func (r *WorkerRegistry) ListWorkersForTenant(tenantID string) []WorkerView {
 	}
 
 	return out
+}
+
+// emitWorkerEvent enqueues a worker_events row if a recorder is wired. Must
+// be called while holding r.mu (recorder.Enqueue uses its own lock, so this
+// never deadlocks against the registry mutex).
+func (r *WorkerRegistry) emitWorkerEvent(event WorkerEvent) {
+	if r.events == nil {
+		return
+	}
+
+	event.Timestamp = r.now().UTC()
+	r.events.Enqueue(event)
+}
+
+// emitTransitionEvent builds a worker_events row for an admin state
+// transition, filling health/capacity fields from the current session when
+// one exists (a worker can be disabled/drained before it ever registers).
+func (r *WorkerRegistry) emitTransitionEvent(workerID, tenantID, eventType string, e *workerEntry) {
+	event := WorkerEvent{TenantID: tenantID, WorkerID: workerID, EventType: eventType}
+
+	if e.current != nil {
+		event.SessionID = e.current.sessionID
+		event.ExecutorType = e.current.executorType
+		event.Health = workerHealthLabel(e.current.health)
+		event.ActiveRequests = e.current.activeRequests
+		event.MaxConcurrency = e.current.maxConcurrency
+		event.AvailableCapacity = e.current.availableCap
+		event.Draining = drainingFlag(e.current.draining)
+	}
+
+	r.emitWorkerEvent(event)
 }
 
 func (r *WorkerRegistry) runtimeState(e *workerEntry, now time.Time) WorkerRuntimeState {

@@ -277,12 +277,12 @@ func TestHeartbeatHealthStates(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.want.string(), func(t *testing.T) {
 			h := newRegHarness(t, defaultCred())
-			sess := h.mustRegister(t, h.signedRegister("worker-1"))
-			hb := &strawpb.HeartbeatRequest{WorkerId: "worker-1", SessionId: sess, Health: tc.health}
+			sess := h.mustRegister(t, h.signedRegister(workerRegTestWorker1))
+			hb := &strawpb.HeartbeatRequest{WorkerId: workerRegTestWorker1, SessionId: sess, Health: tc.health}
 			if ok, _ := h.reg.Heartbeat(hb); !ok {
 				t.Fatal("heartbeat not accepted")
 			}
-			if got := h.reg.RuntimeState("worker-1"); got != tc.want {
+			if got := h.reg.RuntimeState(workerRegTestWorker1); got != tc.want {
 				t.Fatalf("state = %s, want %s", got, tc.want)
 			}
 		})

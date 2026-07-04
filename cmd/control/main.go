@@ -126,14 +126,14 @@ func runControl(controlConfig config.ControlConfig, natsConn *natsx.Connection) 
 
 	configCache := wireConfigInvalidation(ctx, configStore, redisClient)
 
-	metadataWriter := wireClickHouse(controlConfig.Database.ClickHouse)
-	if metadataWriter != nil {
-		defer metadataWriter.Close()
-	}
+	chWriters := wireClickHouseWriters(controlConfig.Database.ClickHouse)
+	defer chWriters.Close()
 
-	metricsReg, metrics := wireMetrics(workerRegistry, metadataWriter)
+	workerRegistry.SetEventRecorder(chWriters.workerEvents)
 
-	mux := buildControlMux(controlConfig, apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore, configCache, redisClient, natsConn, metadataWriter, metrics)
+	metricsReg, metrics := wireMetrics(workerRegistry, chWriters)
+
+	mux := buildControlMux(controlConfig, apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore, configCache, redisClient, natsConn, chWriters, metrics)
 
 	err = control.SetupWorkerDiscoverySubscriptions(natsConn, workerRegistry)
 	if err != nil {
@@ -146,16 +146,16 @@ func runControl(controlConfig config.ControlConfig, natsConn *natsx.Connection) 
 // wireMetrics builds the Prometheus registry and the P0 metric series
 // (docs/planning/23-observability.md) and registers the pull-based worker
 // and ClickHouse-queue-depth collectors, which read live state from
-// workerRegistry and metadataWriter at scrape time rather than being pushed.
-func wireMetrics(workerRegistry *control.WorkerRegistry, metadataWriter *control.RequestMetadataWriter) (*prometheus.Registry, *control.Metrics) {
+// workerRegistry and chWriters at scrape time rather than being pushed.
+func wireMetrics(workerRegistry *control.WorkerRegistry, chWriters *clickHouseWriters) (*prometheus.Registry, *control.Metrics) {
 	reg := prometheus.NewRegistry()
 	metrics := control.NewMetrics(reg)
 
 	control.RegisterWorkerCollector(reg, workerRegistry)
 
-	if metadataWriter != nil {
-		metadataWriter.SetMetrics(metrics)
-		control.RegisterClickHouseQueueDepth(reg, metadataWriter)
+	if chWriters.requestMetadata != nil {
+		chWriters.SetMetrics(metrics)
+		control.RegisterClickHouseQueueDepth(reg, chWriters)
 	}
 
 	return reg, metrics
@@ -261,16 +261,47 @@ func wireConfigInvalidation(ctx context.Context, configStore *control.PostgresCo
 	return configCache
 }
 
-// wireClickHouse builds the async request-metadata writer backed by the live
-// ClickHouse HTTP interface (docs/planning/22). It returns nil when no
-// endpoint is configured, in which case Control records no telemetry. A
-// ClickHouse outage never blocks the transport: the writer keeps a bounded
-// queue and drops oldest events per docs/planning/29.
-func wireClickHouse(cfg config.ClickHouseConfig) *control.RequestMetadataWriter {
-	if cfg.Endpoint == "" {
-		log.Printf("control: no clickhouse endpoint configured; request telemetry disabled")
+// clickHouseWriters holds the three async ClickHouse event writers
+// (docs/tasks/p0/32): request_events, worker_events, and config_audit_events.
+// All three share one HTTP sink and the same queue/batch/flush tuning; any
+// field is nil when no ClickHouse endpoint is configured, in which case
+// Control records no telemetry for that table.
+type clickHouseWriters struct {
+	requestMetadata *control.RequestMetadataWriter
+	workerEvents    *control.WorkerEventWriter
+	configAudit     *control.ConfigAuditEventWriter
+}
 
-		return nil
+// SetMetrics attaches the shared Prometheus metrics recorder to every writer.
+func (w *clickHouseWriters) SetMetrics(m *control.Metrics) {
+	w.requestMetadata.SetMetrics(m)
+	w.workerEvents.SetMetrics(m)
+	w.configAudit.SetMetrics(m)
+}
+
+// QueueDepth sums the buffered event count across all three writers for the
+// single straw_clickhouse_write_queue_depth gauge (docs/planning/23).
+func (w *clickHouseWriters) QueueDepth() int {
+	return w.requestMetadata.QueueDepth() + w.workerEvents.QueueDepth() + w.configAudit.QueueDepth()
+}
+
+// Close stops every writer's background flush loop and drains its queue.
+func (w *clickHouseWriters) Close() {
+	w.requestMetadata.Close()
+	w.workerEvents.Close()
+	w.configAudit.Close()
+}
+
+// wireClickHouseWriters builds the async event writers backed by the live
+// ClickHouse HTTP interface (docs/planning/22). Writers are left nil when no
+// endpoint is configured, in which case Control records no telemetry. A
+// ClickHouse outage never blocks the transport: each writer keeps its own
+// bounded queue and drops oldest events per docs/planning/29.
+func wireClickHouseWriters(cfg config.ClickHouseConfig) *clickHouseWriters {
+	if cfg.Endpoint == "" {
+		log.Printf("control: no clickhouse endpoint configured; telemetry disabled")
+
+		return &clickHouseWriters{}
 	}
 
 	sink := control.NewHTTPClickHouseSink(
@@ -281,9 +312,15 @@ func wireClickHouse(cfg config.ClickHouseConfig) *control.RequestMetadataWriter 
 		&http.Client{Timeout: clickHouseWriteTimeout},
 	)
 
-	log.Printf("control: request telemetry writing to clickhouse at %s (db=%s)", cfg.Endpoint, cfg.Database)
+	log.Printf("control: telemetry writing to clickhouse at %s (db=%s)", cfg.Endpoint, cfg.Database)
 
-	return control.NewRequestMetadataWriter(sink, cfg.MaxQueueEntries, cfg.BatchSize, time.Duration(cfg.FlushIntervalMS)*time.Millisecond)
+	flushInterval := time.Duration(cfg.FlushIntervalMS) * time.Millisecond
+
+	return &clickHouseWriters{
+		requestMetadata: control.NewRequestMetadataWriter(sink, cfg.MaxQueueEntries, cfg.BatchSize, flushInterval),
+		workerEvents:    control.NewWorkerEventWriter(sink, cfg.MaxQueueEntries, cfg.BatchSize, flushInterval),
+		configAudit:     control.NewConfigAuditEventWriter(sink, cfg.MaxQueueEntries, cfg.BatchSize, flushInterval),
+	}
 }
 
 // openPostgres connects to Postgres and applies the embedded migrations. The
@@ -424,21 +461,21 @@ func rehydrateWorkerAdminState(ctx context.Context, configStore *control.Postgre
 
 // buildControlMux assembles the HTTP handler with the Postgres-backed identity
 // and config stores.
-func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool, configStore *control.PostgresConfigStore, configCache *control.ConfigCache, redisClient *redis.Client, natsConn *natsx.Connection, metadataWriter *control.RequestMetadataWriter, metrics *control.Metrics) *http.ServeMux {
+func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool, configStore *control.PostgresConfigStore, configCache *control.ConfigCache, redisClient *redis.Client, natsConn *natsx.Connection, chWriters *clickHouseWriters, metrics *control.Metrics) *http.ServeMux {
 	inflight := control.NewInFlightRegistry()
 	tenantStore := control.NewPostgresTenantStore(pool)
-	adminHandlers := buildAdminHandlers(apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore, configCache, redisClient, inflight, tenantStore)
+	adminHandlers := buildAdminHandlers(apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore, configCache, redisClient, inflight, tenantStore, chWriters.configAudit)
 
 	authenticator := control.NewAuthenticator(apiKeyStore, pepper).SetTenantStore(tenantStore)
 
 	var requestHandler *control.RequestHandler
-	if metadataWriter != nil {
+	if chWriters.requestMetadata != nil {
 		requestHandler = control.NewRequestHandler(
 			controlConfig.Request.MaxInlineRequestBodyBytes,
 			controlConfig.Request.MaxInlineResponseBodyBytes,
 			controlConfig.Request.MaxTimeoutMs,
 			authenticator,
-			metadataWriter,
+			chWriters.requestMetadata,
 		)
 	} else {
 		requestHandler = control.NewRequestHandler(
@@ -481,8 +518,16 @@ func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.API
 // (docs/tasks/p0/21). The rate limiter, quota admission, and sticky store are
 // constructed against the live Redis client but not yet consumed on the
 // request path; that wiring is docs/tasks/p0/24.
-func buildAdminHandlers(apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool, configStore *control.PostgresConfigStore, configCache *control.ConfigCache, redisClient *redis.Client, inflight *control.InFlightRegistry, tenantStore control.TenantStore) *control.AdminHandlers {
+func buildAdminHandlers(apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool, configStore *control.PostgresConfigStore, configCache *control.ConfigCache, redisClient *redis.Client, inflight *control.InFlightRegistry, tenantStore control.TenantStore, configAuditEvents *control.ConfigAuditEventWriter) *control.AdminHandlers {
 	rateLimiter := control.NewRateLimiter(redisClient, control.DefaultRateLimitGuardrails(), nil)
+
+	// A plain interface-typed nil check on configAuditEvents would miss a
+	// typed nil *ConfigAuditEventWriter (no clickhouse endpoint configured),
+	// so only pass a non-nil pointer through as the ConfigAuditRecorder.
+	var auditEvents control.ConfigAuditRecorder
+	if configAuditEvents != nil {
+		auditEvents = configAuditEvents
+	}
 
 	return &control.AdminHandlers{
 		Authenticator: control.NewAuthenticator(apiKeyStore, pepper).SetTenantStore(tenantStore),
@@ -491,7 +536,7 @@ func buildAdminHandlers(apiKeyStore control.APIKeyStore, pepper []byte, workerRe
 		Tenants:       tenantStore,
 		Quotas:        control.NewPostgresQuotaStore(pool),
 		RateLimits:    control.NewPostgresRateLimitConfigStore(pool),
-		Audit:         control.NewPostgresAuditStore(pool),
+		Audit:         control.NewAuditStoreWithEvents(control.NewPostgresAuditStore(pool), auditEvents),
 		ConfigCache:   configCache,
 		Workers:       workerRegistry,
 		ConfigWrites:  configStore,
