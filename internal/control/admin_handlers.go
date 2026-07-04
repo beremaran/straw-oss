@@ -31,7 +31,11 @@ type AdminHandlers struct {
 	// runtime-only (single-Control) behavior for unit tests; the binary wires
 	// the Postgres store so disables survive restarts and reach snapshots.
 	WorkerAdmin WorkerAdminStore
-	Pepper      []byte
+	// InFlight registers dispatched requests so CancelRequest
+	// (docs/tasks/p0/27) can reach a running dispatch. Optional: nil makes
+	// CancelRequest respond control_internal_error instead of panicking.
+	InFlight *InFlightRegistry
+	Pepper   []byte
 
 	// Config admin API surface (docs/tasks/p0/20): routing rules, deny rules,
 	// injection policies, and read-only fingerprint profiles. The binary

@@ -1,6 +1,6 @@
 # 27 - Admin Request Cancellation Pipeline
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -48,25 +48,25 @@ cancellation are already implemented in `dispatcher.go` `readResponse`; this tas
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Add an in-flight registry: on dispatch start, store `request_id -> (tenant_id, cancelFunc)`; deregister when
+- [x] Read all required planning docs.
+- [x] Add an in-flight registry: on dispatch start, store `request_id -> (tenant_id, cancelFunc)`; deregister when
       the request completes or errors (defer-based).
-- [ ] Add `CancelRequest` handler: authenticate, look up the request, apply `AuthorizeAdminCancel` against the stored
+- [x] Add `CancelRequest` handler: authenticate, look up the request, apply `AuthorizeAdminCancel` against the stored
       tenant. A tenant-scoped caller cancelling a foreign or unknown request receives `insufficient_permissions`
       without confirming existence; `system_admin` may cancel any request.
-- [ ] Trigger cancellation so the running dispatch cancels its context, publishes a `CancelFrame` on the
+- [x] Trigger cancellation so the running dispatch cancels its context, publishes a `CancelFrame` on the
       request-scoped `c2e` subject, and returns the canonical `cancelled` outcome to the original REST caller.
-- [ ] Register `POST /api/v1/admin/requests/{request_id}/cancel` in `serveAdminRoutes`.
-- [ ] Update `docs/agents/testing-matrix-audit.md` so the "admin cancel" Cancellation/Worker-admin rows map to the
+- [x] Register `POST /api/v1/admin/requests/{request_id}/cancel` in `serveAdminRoutes`.
+- [x] Update `docs/agents/testing-matrix-audit.md` so the "admin cancel" Cancellation/Worker-admin rows map to the
       real endpoint test, not only `AuthorizeAdminCancel`.
-- [ ] Add tests for: platform `system_admin` cancels any request; tenant `tenant_admin` and `operator` keys cancel an
+- [x] Add tests for: platform `system_admin` cancels any request; tenant `tenant_admin` and `operator` keys cancel an
       own-tenant request (the full `docs/planning/26` role column: `system_admin`, `tenant_admin`, `operator`); tenant
       admin cancelling a foreign request gets `insufficient_permissions` with no existence disclosure; unknown
       `request_id` behaves identically for tenant scope; a cancelled in-flight request terminates the REST call with
       `cancelled` and a `CancelFrame` reaches the executor.
-- [ ] Run the focused tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Run the focused tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

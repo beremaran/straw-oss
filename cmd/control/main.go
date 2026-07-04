@@ -403,7 +403,8 @@ func rehydrateWorkerAdminState(ctx context.Context, configStore *control.Postgre
 // buildControlMux assembles the HTTP handler with the Postgres-backed identity
 // and config stores.
 func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool, configStore *control.PostgresConfigStore, configCache *control.ConfigCache, redisClient *redis.Client, natsConn *natsx.Connection, metadataWriter *control.RequestMetadataWriter) *http.ServeMux {
-	adminHandlers := buildAdminHandlers(apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore, configCache, redisClient)
+	inflight := control.NewInFlightRegistry()
+	adminHandlers := buildAdminHandlers(apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore, configCache, redisClient, inflight)
 
 	authenticator := control.NewAuthenticator(apiKeyStore, pepper)
 
@@ -435,6 +436,7 @@ func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.API
 		MaxInlineResponseBodyBytes: controlConfig.Request.MaxInlineResponseBodyBytes,
 		MaxFrameDataBytes:          controlConfig.Transport.MaxFrameDataBytes,
 		MaxTimeoutMs:               controlConfig.Request.MaxTimeoutMs,
+		InFlight:                   inflight,
 	}))
 
 	mux := http.NewServeMux()
@@ -449,7 +451,7 @@ func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.API
 // (docs/tasks/p0/21). The rate limiter, quota admission, and sticky store are
 // constructed against the live Redis client but not yet consumed on the
 // request path; that wiring is docs/tasks/p0/24.
-func buildAdminHandlers(apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool, configStore *control.PostgresConfigStore, configCache *control.ConfigCache, redisClient *redis.Client) *control.AdminHandlers {
+func buildAdminHandlers(apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool, configStore *control.PostgresConfigStore, configCache *control.ConfigCache, redisClient *redis.Client, inflight *control.InFlightRegistry) *control.AdminHandlers {
 	rateLimiter := control.NewRateLimiter(redisClient, control.DefaultRateLimitGuardrails(), nil)
 
 	return &control.AdminHandlers{
@@ -464,6 +466,7 @@ func buildAdminHandlers(apiKeyStore control.APIKeyStore, pepper []byte, workerRe
 		Workers:       workerRegistry,
 		ConfigWrites:  configStore,
 		WorkerAdmin:   configStore,
+		InFlight:      inflight,
 		Pepper:        pepper,
 
 		RoutingRules:        configStore,
@@ -516,6 +519,7 @@ func serveAdminRoutes(mux *http.ServeMux, h *control.AdminHandlers) {
 	mux.HandleFunc("POST /api/v1/admin/workers/{worker_id}/tenant-enable", h.TenantEnableWorker)
 	mux.HandleFunc("POST /api/v1/admin/workers/{worker_id}/tenant-drain", h.TenantDrainWorker)
 	mux.HandleFunc("POST /api/v1/admin/workers/{worker_id}/tenant-undrain", h.TenantUndrainWorker)
+	mux.HandleFunc("POST /api/v1/admin/requests/{request_id}/cancel", h.CancelRequest)
 }
 
 func serveControlHTTP(ctx context.Context, controlConfig config.ControlConfig, mux *http.ServeMux, ready *atomic.Bool) error {
