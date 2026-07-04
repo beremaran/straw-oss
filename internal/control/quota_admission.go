@@ -21,6 +21,8 @@ const (
 
 	quotaRequestCountOnSuccess   = "count_on_success"
 	quotaRequestCountOnAdmission = "count_on_admission"
+
+	quotaFailPolicyClosed = "closed"
 )
 
 // QuotaDecision is the outcome of one quota admission check
@@ -39,8 +41,9 @@ type QuotaDecision struct {
 // Redis fixed-window counters (docs/planning/20). Every key it writes
 // carries a TTL tied to the monthly period boundary.
 type QuotaAdmission struct {
-	client redis.Cmdable
-	now    func() time.Time
+	client  redis.Cmdable
+	now     func() time.Time
+	metrics *Metrics
 }
 
 // NewQuotaAdmission builds a QuotaAdmission. now may be nil (defaults to
@@ -51,6 +54,16 @@ func NewQuotaAdmission(client redis.Cmdable, now func() time.Time) *QuotaAdmissi
 	}
 
 	return &QuotaAdmission{client: client, now: now}
+}
+
+// SetMetrics attaches the Prometheus metrics recorder used for
+// straw_quota_rejections_total (docs/planning/23).
+func (q *QuotaAdmission) SetMetrics(m *Metrics) {
+	if q == nil {
+		return
+	}
+
+	q.metrics = m
 }
 
 func monthlyPeriodKey(t time.Time) string {
@@ -152,7 +165,12 @@ func (q *QuotaAdmission) CheckAdmission(ctx context.Context, cfg QuotaConfig) Qu
 
 	reason, _ := values[1].(string)
 
-	return QuotaDecision{Allowed: toInt64(values[0]) == 1, Reason: reason}
+	allowed := toInt64(values[0]) == 1
+	if !allowed {
+		q.metrics.IncQuotaRejection(cfg.TenantID)
+	}
+
+	return QuotaDecision{Allowed: allowed, Reason: reason}
 }
 
 // RecordSuccess increments the request-count counter for
@@ -223,7 +241,12 @@ func (q *QuotaAdmission) Usage(ctx context.Context, tenantID string) (int64, int
 }
 
 func (q *QuotaAdmission) failureDecision(cfg QuotaConfig) QuotaDecision {
-	return QuotaDecision{Allowed: cfg.RedisFailPolicy != "closed", RedisFailure: true}
+	allowed := cfg.RedisFailPolicy != quotaFailPolicyClosed
+	if !allowed {
+		q.metrics.IncQuotaRejection(cfg.TenantID)
+	}
+
+	return QuotaDecision{Allowed: allowed, RedisFailure: true}
 }
 
 func getInt64(ctx context.Context, client redis.Cmdable, key string) (int64, error) {

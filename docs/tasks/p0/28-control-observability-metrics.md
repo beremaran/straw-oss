@@ -1,6 +1,6 @@
 # 28 - Control Observability Metrics
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -46,23 +46,23 @@ of the `docs/planning/23` P0 metrics are implemented. No task owned this surface
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Add the `prometheus/client_golang` dependency and a metrics registry constructed at startup.
-- [ ] Define the P0 metrics from `docs/planning/23`: `straw_requests_total`, `straw_request_duration_seconds`,
+- [x] Read all required planning docs.
+- [x] Add the `prometheus/client_golang` dependency and a metrics registry constructed at startup.
+- [x] Define the P0 metrics from `docs/planning/23`: `straw_requests_total`, `straw_request_duration_seconds`,
       `straw_routing_duration_seconds`, `straw_assignment_duration_seconds`, `straw_active_requests`,
       `straw_worker_sessions`, `straw_workers_available`, `straw_worker_heartbeat_age_seconds`,
       `straw_nats_request_duration_seconds`, `straw_nats_errors_total`, `straw_clickhouse_write_queue_depth`,
       `straw_clickhouse_write_errors_total`, `straw_rate_limit_rejections_total`, `straw_quota_rejections_total`.
-- [ ] Instrument the dispatch pipeline (request totals/durations, routing/assignment durations, active requests,
+- [x] Instrument the dispatch pipeline (request totals/durations, routing/assignment durations, active requests,
       NATS request duration/errors), the rate limiter and quota admission (rejections), the worker registry (session
       counts, availability, heartbeat age), and the ClickHouse writer (queue depth, write errors).
-- [ ] Bound label cardinality to `tenant_id`, `target_host`, `route_id`, `error_code` per `docs/planning/23`; never
+- [x] Bound label cardinality to `tenant_id`, `target_host`, `route_id`, `error_code` per `docs/planning/23`; never
       label full URLs.
-- [ ] Serve the Prometheus handler at `/metrics` on the metrics port.
-- [ ] Add tests that scrape the registry and assert the named series exist and move under simulated load.
-- [ ] Run the focused tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Serve the Prometheus handler at `/metrics` on the metrics port.
+- [x] Add tests that scrape the registry and assert the named series exist and move under simulated load.
+- [x] Run the focused tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

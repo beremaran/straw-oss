@@ -72,8 +72,9 @@ type RequestMetadataWriter struct {
 	batchSize     int
 	flushInterval time.Duration
 
-	mu    sync.Mutex
-	queue []RequestEvent
+	mu      sync.Mutex
+	queue   []RequestEvent
+	metrics *Metrics
 
 	stopOnce sync.Once
 	stopCh   chan struct{}
@@ -119,6 +120,31 @@ func NewRequestMetadataWriter(sink RequestEventSink, maxEntries, batchSize int, 
 	return w
 }
 
+// SetMetrics attaches the Prometheus metrics recorder used for
+// straw_clickhouse_write_errors_total (docs/planning/23). It is not
+// concurrency-safe with Flush/Enqueue and must be called before the writer
+// is shared across goroutines (i.e. immediately after construction).
+func (w *RequestMetadataWriter) SetMetrics(m *Metrics) {
+	if w == nil {
+		return
+	}
+
+	w.metrics = m
+}
+
+// QueueDepth returns the current buffered event count, for the
+// straw_clickhouse_write_queue_depth gauge (docs/planning/23).
+func (w *RequestMetadataWriter) QueueDepth() int {
+	if w == nil {
+		return 0
+	}
+
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	return len(w.queue)
+}
+
 // Enqueue adds an accepted request to the bounded queue.
 func (w *RequestMetadataWriter) Enqueue(event RequestEvent) {
 	if w == nil || w.sink == nil {
@@ -152,6 +178,7 @@ func (w *RequestMetadataWriter) Flush(ctx context.Context) error {
 		err := w.sink.WriteRequestEvents(ctx, batch)
 		if err != nil {
 			w.requeueFront(batch)
+			w.metrics.IncClickHouseWriteError()
 
 			return fmt.Errorf("write request metadata batch: %w", err)
 		}

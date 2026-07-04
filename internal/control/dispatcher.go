@@ -78,6 +78,9 @@ type RequestDispatcherOptions struct {
 	// admin cancellation without affecting client-disconnect/deadline
 	// cancellation, which is driven directly by ctx.
 	InFlight *InFlightRegistry
+	// Metrics records the P0 Prometheus series (docs/planning/23). Optional:
+	// nil disables instrumentation.
+	Metrics *Metrics
 }
 
 // DefaultRequestDispatcher is the P0 Control dispatch pipeline.
@@ -127,10 +130,28 @@ func NewDefaultRequestDispatcher(opts RequestDispatcherOptions) *DefaultRequestD
 }
 
 // Dispatch runs admission, routing, assignment, streaming, and response
-// buffering for one REST request.
+// buffering for one REST request, recording the straw_active_requests,
+// straw_requests_total, and straw_request_duration_seconds metrics
+// (docs/planning/23) around the attempt.
 func (d *DefaultRequestDispatcher) Dispatch(ctx context.Context, in DispatchInput) (SuccessResponse, *PipelineError) {
 	started := d.opts.Now()
 
+	d.opts.Metrics.IncActiveRequests()
+	defer d.opts.Metrics.DecActiveRequests()
+
+	resp, perr := d.dispatch(ctx, in, started)
+
+	var code ErrorCode
+	if perr != nil {
+		code = perr.Code
+	}
+
+	d.opts.Metrics.ObserveRequest(in.Identity.TenantID, errorCodeLabel(code), d.opts.Now().Sub(started))
+
+	return resp, perr
+}
+
+func (d *DefaultRequestDispatcher) dispatch(ctx context.Context, in DispatchInput, started time.Time) (SuccessResponse, *PipelineError) {
 	if in.Request == nil || d.opts.ConfigCache == nil || d.opts.Workers == nil {
 		return SuccessResponse{}, &PipelineError{Code: ControlInternalError}
 	}
@@ -152,7 +173,9 @@ func (d *DefaultRequestDispatcher) Dispatch(ctx context.Context, in DispatchInpu
 
 	routeStart := d.opts.Now()
 	route := d.route(in, snapshot)
-	routingMs := millisSince(routeStart, d.opts.Now())
+	routeEnd := d.opts.Now()
+	routingMs := millisSince(routeStart, routeEnd)
+	d.opts.Metrics.ObserveRouting(routeEnd.Sub(routeStart))
 
 	if !route.OK {
 		return SuccessResponse{}, routeError(route.ErrorCode)
@@ -253,7 +276,17 @@ func (d *DefaultRequestDispatcher) route(in DispatchInput, snapshot config.Tenan
 	})
 }
 
+// executeAttempt runs one assignment-and-stream attempt, recording the
+// straw_assignment_duration_seconds histogram (docs/planning/23) over the
+// full attempt regardless of outcome.
 func (d *DefaultRequestDispatcher) executeAttempt(ctx context.Context, in DispatchInput, route RouteOutcome, policy *DestinationPolicyResult, configVersion uint64, deadline time.Time) (dispatchResult, int64, *PipelineError) {
+	result, assignmentMs, perr := d.executeAttemptUnmeasured(ctx, in, route, policy, configVersion, deadline)
+	d.opts.Metrics.ObserveAssignment(time.Duration(assignmentMs) * time.Millisecond)
+
+	return result, assignmentMs, perr
+}
+
+func (d *DefaultRequestDispatcher) executeAttemptUnmeasured(ctx context.Context, in DispatchInput, route RouteOutcome, policy *DestinationPolicyResult, configVersion uint64, deadline time.Time) (dispatchResult, int64, *PipelineError) {
 	assignmentStarted := d.opts.Now()
 
 	if d.opts.NATS == nil {
@@ -329,7 +362,10 @@ func (d *DefaultRequestDispatcher) requestAssign(subject string, in DispatchInpu
 		return nil, &PipelineError{Code: AssignmentTimeout, TimeoutType: timeoutTypeTotalDeadline}
 	}
 
+	natsStarted := d.opts.Now()
 	msg, err := d.opts.NATS.Request(subject, raw, timeout)
+	d.opts.Metrics.ObserveNATSRequest(d.opts.Now().Sub(natsStarted))
+
 	if err != nil {
 		if errors.Is(err, nats.ErrTimeout) {
 			timeoutType := timeoutTypeAssignment
@@ -337,14 +373,20 @@ func (d *DefaultRequestDispatcher) requestAssign(subject string, in DispatchInpu
 				timeoutType = timeoutTypeTotalDeadline
 			}
 
+			d.opts.Metrics.IncNATSError(errorCodeLabel(AssignmentTimeout))
+
 			return nil, &PipelineError{Code: AssignmentTimeout, TimeoutType: timeoutType}
 		}
+
+		d.opts.Metrics.IncNATSError(errorCodeLabel(TransportUnavailable))
 
 		return nil, &PipelineError{Code: TransportUnavailable}
 	}
 
 	reply, err := natsx.UnmarshalEnvelope(msg.Data)
 	if err != nil || reply.GetAssignAck() == nil {
+		d.opts.Metrics.IncNATSError(errorCodeLabel(ProtocolError))
+
 		return nil, &PipelineError{Code: ProtocolError}
 	}
 

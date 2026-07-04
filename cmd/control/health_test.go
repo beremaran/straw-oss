@@ -2,10 +2,16 @@ package main
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/beremaran/straw/v2/internal/control"
 )
 
 // TestHealthzAlwaysOK proves /healthz reports liveness regardless of readiness.
@@ -13,7 +19,7 @@ func TestHealthzAlwaysOK(t *testing.T) {
 	t.Parallel()
 
 	ready := &atomic.Bool{}
-	mux := newMetricsMux(ready)
+	mux := newMetricsMux(ready, prometheus.NewRegistry())
 
 	for _, r := range []bool{true, false} {
 		ready.Store(r)
@@ -33,7 +39,7 @@ func TestReadyzReflectsReadiness(t *testing.T) {
 	t.Parallel()
 
 	ready := &atomic.Bool{}
-	mux := newMetricsMux(ready)
+	mux := newMetricsMux(ready, prometheus.NewRegistry())
 
 	ready.Store(true)
 	rec := httptest.NewRecorder()
@@ -47,5 +53,38 @@ func TestReadyzReflectsReadiness(t *testing.T) {
 	mux.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/readyz", nil))
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("/readyz draining code = %d, want 503", rec.Code)
+	}
+}
+
+// TestMetricsServesRegisteredSeries proves /metrics on the metrics port
+// (docs/planning/23-observability.md) returns 200 with the registered P0
+// series exposed in Prometheus text format.
+func TestMetricsServesRegisteredSeries(t *testing.T) {
+	t.Parallel()
+
+	reg := prometheus.NewRegistry()
+	metrics := control.NewMetrics(reg)
+	// straw_active_requests has no labels, so it is always present; verify
+	// via a metric with no dynamic labels rather than one of the
+	// tenant/error_code-vectored series, which (correctly, per Prometheus
+	// client behavior) carry no series until first observed.
+	metrics.IncActiveRequests()
+
+	mux := newMetricsMux(&atomic.Bool{}, reg)
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/metrics", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("/metrics code = %d, want 200", rec.Code)
+	}
+
+	body, err := io.ReadAll(rec.Body)
+	if err != nil {
+		t.Fatalf("read /metrics body: %v", err)
+	}
+
+	if !strings.Contains(string(body), "straw_active_requests 1") {
+		t.Fatalf("/metrics body missing straw_active_requests 1:\n%s", body)
 	}
 }
