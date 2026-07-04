@@ -6,7 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -20,6 +20,7 @@ import (
 
 	"github.com/beremaran/straw/v2/internal/config"
 	"github.com/beremaran/straw/v2/internal/control"
+	"github.com/beremaran/straw/v2/internal/logging"
 	"github.com/beremaran/straw/v2/internal/natsx"
 	"github.com/beremaran/straw/v2/internal/postgresx"
 	"github.com/beremaran/straw/v2/internal/redisx"
@@ -39,9 +40,12 @@ const (
 var errHealthcheckNotReady = errors.New("healthcheck probe returned non-2xx status")
 
 func main() {
+	slog.SetDefault(logging.New("control"))
+
 	err := run()
 	if err != nil {
-		log.Fatalf("control: %v", err)
+		slog.Error("control failed", "error", err)
+		os.Exit(1)
 	}
 }
 
@@ -92,7 +96,7 @@ func runControl(controlConfig config.ControlConfig, natsConn *natsx.Connection) 
 		if natsConn != nil {
 			drainErr := natsConn.Drain()
 			if drainErr != nil {
-				log.Printf("control: drain nats connection: %v", drainErr)
+				slog.Warn("drain nats connection failed", "error", drainErr)
 			}
 		}
 	}()
@@ -202,7 +206,7 @@ func openStores(controlConfig config.ControlConfig) (*pgxpool.Pool, *redis.Clien
 	cleanup := func() {
 		closeErr := redisClient.Close()
 		if closeErr != nil {
-			log.Printf("control: close redis client: %v", closeErr)
+			slog.Warn("close redis client failed", "error", closeErr)
 		}
 
 		pool.Close()
@@ -233,11 +237,11 @@ func serveMetricsHTTP(ctx context.Context, controlConfig config.ControlConfig, r
 	go func() {
 		serveErr := server.ListenAndServe()
 		if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
-			log.Printf("control: metrics server: %v", serveErr)
+			slog.Error("metrics server failed", "error", serveErr)
 		}
 	}()
 
-	log.Printf("control: metrics listening on %s", addr)
+	slog.Info("metrics listening", "addr", addr)
 
 	return func() {
 		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), controlShutdownTimeout)
@@ -245,7 +249,7 @@ func serveMetricsHTTP(ctx context.Context, controlConfig config.ControlConfig, r
 
 		shutdownErr := server.Shutdown(shutdownCtx)
 		if shutdownErr != nil {
-			log.Printf("control: shutdown metrics server: %v", shutdownErr)
+			slog.Error("shutdown metrics server failed", "error", shutdownErr)
 		}
 	}
 }
@@ -262,7 +266,7 @@ func setupAPIKeyStore(pool *pgxpool.Pool, pepper []byte) (control.APIKeyStore, e
 	}
 
 	if created {
-		log.Printf("control: bootstrapped first platform system_admin API key from %s", control.BootstrapSystemAdminEnvVar)
+		slog.Info("bootstrapped first platform system_admin API key", "source_env", control.BootstrapSystemAdminEnvVar)
 	}
 
 	return apiKeyStore, nil
@@ -319,7 +323,7 @@ func (w *clickHouseWriters) Close() {
 // bounded queue and drops oldest events per docs/planning/29.
 func wireClickHouseWriters(cfg config.ClickHouseConfig) *clickHouseWriters {
 	if cfg.Endpoint == "" {
-		log.Printf("control: no clickhouse endpoint configured; telemetry disabled")
+		slog.Info("no clickhouse endpoint configured; telemetry disabled")
 
 		return &clickHouseWriters{}
 	}
@@ -332,7 +336,7 @@ func wireClickHouseWriters(cfg config.ClickHouseConfig) *clickHouseWriters {
 		&http.Client{Timeout: clickHouseWriteTimeout},
 	)
 
-	log.Printf("control: telemetry writing to clickhouse at %s (db=%s)", cfg.Endpoint, cfg.Database)
+	slog.Info("telemetry writing to clickhouse", "endpoint", cfg.Endpoint, "database", cfg.Database)
 
 	flushInterval := time.Duration(cfg.FlushIntervalMS) * time.Millisecond
 
@@ -402,7 +406,7 @@ func openRedis(redisCfg config.RedisConfig) (*redis.Client, error) {
 
 	pingErr := client.Ping(pingCtx).Err()
 	if pingErr != nil {
-		log.Printf("control: redis unreachable at startup: %v (continuing with Redis-backed features degraded)", pingErr)
+		slog.Warn("redis unreachable at startup; continuing with redis-backed features degraded", "error", pingErr)
 	}
 
 	return client, nil
@@ -422,7 +426,7 @@ func runInvalidationSubscriber(ctx context.Context, client *redis.Client, cache 
 
 		err := subscriber.Run(ctx)
 		if err != nil && ctx.Err() == nil {
-			log.Printf("control: config invalidation subscriber: %v (retrying)", err)
+			slog.Warn("config invalidation subscriber failed; retrying", "error", err)
 
 			select {
 			case <-ctx.Done():
@@ -647,7 +651,7 @@ func serveWorkerAdminRoutes(mux *http.ServeMux, h *control.AdminHandlers) {
 
 func serveControlHTTP(ctx context.Context, controlConfig config.ControlConfig, mux *http.ServeMux, ready *atomic.Bool) error {
 	addr := fmt.Sprintf("%s:%d", controlConfig.Server.Host, controlConfig.Server.APIPort)
-	log.Printf("control: listening on %s", addr)
+	slog.Info("listening", "addr", addr)
 
 	server := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: readHeaderTimeout}
 	serveErr := make(chan error, 1)
@@ -704,7 +708,7 @@ func bootstrapWorkerCredential(store control.WorkerCredentialStore) error {
 	}
 
 	if created {
-		log.Printf("control: bootstrapped dev worker credential from %s", control.DevWorkerIDEnvVar)
+		slog.Info("bootstrapped dev worker credential", "source_env", control.DevWorkerIDEnvVar)
 	}
 
 	return nil

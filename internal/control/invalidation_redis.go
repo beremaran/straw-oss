@@ -3,7 +3,7 @@ package control
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strconv"
 	"strings"
 
@@ -97,7 +97,7 @@ func (s *RedisInvalidationSubscriber) applyMessage(msg *redis.Message) {
 
 	version, err := strconv.ParseUint(msg.Payload, 10, 64)
 	if err != nil {
-		log.Printf("control: invalid config invalidation payload for tenant %s: %v", tenantID, err)
+		slog.Warn("invalid config invalidation payload", "tenant_id", tenantID, "error", err)
 
 		return
 	}
