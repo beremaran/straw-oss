@@ -517,6 +517,56 @@ func (r *WorkerRegistry) RuntimeState(workerID string) WorkerRuntimeState {
 	return r.runtimeState(e, r.now())
 }
 
+// WorkerRegistryStats is a point-in-time aggregate snapshot for the
+// Prometheus worker gauges (docs/planning/23-observability.md). It carries
+// no per-worker labels, since worker_id is not one of the P0 allowed metric
+// labels.
+type WorkerRegistryStats struct {
+	// Sessions counts workers with a current (registered) session.
+	Sessions int
+	// Available counts sessions currently eligible for new assignments
+	// (runtime state ready or degraded).
+	Available int
+	// MaxHeartbeatAgeSeconds is the staleness of the oldest current
+	// heartbeat among sessions that have heartbeated at least once, or 0
+	// when none have.
+	MaxHeartbeatAgeSeconds float64
+}
+
+// Stats computes the aggregate worker session/availability/heartbeat-age
+// snapshot used by the Prometheus worker collector.
+func (r *WorkerRegistry) Stats() WorkerRegistryStats {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	now := r.now()
+
+	var stats WorkerRegistryStats
+
+	for _, e := range r.workers {
+		s := e.current
+		if s == nil {
+			continue
+		}
+
+		stats.Sessions++
+
+		state := runtimeStateForSession(r.timings, e.cooldownUntil, s, now)
+		if state == RuntimeReady || state == RuntimeDegraded {
+			stats.Available++
+		}
+
+		if s.hasHeartbeat {
+			age := now.Sub(s.lastHeartbeat).Seconds()
+			if age > stats.MaxHeartbeatAgeSeconds {
+				stats.MaxHeartbeatAgeSeconds = age
+			}
+		}
+	}
+
+	return stats
+}
+
 func runtimeStateForSession(timings WorkerTimings, cooldownUntil time.Time, s *runtimeSession, now time.Time) WorkerRuntimeState {
 	staleness := now.Sub(s.lastSeen())
 	if staleness > timings.DeadTimeout {

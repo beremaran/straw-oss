@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/redis/go-redis/v9"
 
 	"github.com/beremaran/straw/v2/internal/config"
@@ -130,14 +131,34 @@ func runControl(controlConfig config.ControlConfig, natsConn *natsx.Connection) 
 		defer metadataWriter.Close()
 	}
 
-	mux := buildControlMux(controlConfig, apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore, configCache, redisClient, natsConn, metadataWriter)
+	metricsReg, metrics := wireMetrics(workerRegistry, metadataWriter)
+
+	mux := buildControlMux(controlConfig, apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore, configCache, redisClient, natsConn, metadataWriter, metrics)
 
 	err = control.SetupWorkerDiscoverySubscriptions(natsConn, workerRegistry)
 	if err != nil {
 		return fmt.Errorf("setup worker discovery: %w", err)
 	}
 
-	return serveControl(ctx, controlConfig, mux)
+	return serveControl(ctx, controlConfig, mux, metricsReg)
+}
+
+// wireMetrics builds the Prometheus registry and the P0 metric series
+// (docs/planning/23-observability.md) and registers the pull-based worker
+// and ClickHouse-queue-depth collectors, which read live state from
+// workerRegistry and metadataWriter at scrape time rather than being pushed.
+func wireMetrics(workerRegistry *control.WorkerRegistry, metadataWriter *control.RequestMetadataWriter) (*prometheus.Registry, *control.Metrics) {
+	reg := prometheus.NewRegistry()
+	metrics := control.NewMetrics(reg)
+
+	control.RegisterWorkerCollector(reg, workerRegistry)
+
+	if metadataWriter != nil {
+		metadataWriter.SetMetrics(metrics)
+		control.RegisterClickHouseQueueDepth(reg, metadataWriter)
+	}
+
+	return reg, metrics
 }
 
 // openStores opens the required Postgres pool and the Redis client and returns
@@ -172,21 +193,22 @@ func openStores(controlConfig config.ControlConfig) (*pgxpool.Pool, *redis.Clien
 
 // serveControl starts the metrics/readiness server and the API server, marking
 // readiness true until ctx cancellation begins drain.
-func serveControl(ctx context.Context, controlConfig config.ControlConfig, mux *http.ServeMux) error {
+func serveControl(ctx context.Context, controlConfig config.ControlConfig, mux *http.ServeMux, metricsReg *prometheus.Registry) error {
 	ready := &atomic.Bool{}
 	ready.Store(true)
 
-	stopMetrics := serveMetricsHTTP(ctx, controlConfig, ready)
+	stopMetrics := serveMetricsHTTP(ctx, controlConfig, ready, metricsReg)
 	defer stopMetrics()
 
 	return serveControlHTTP(ctx, controlConfig, mux, ready)
 }
 
-// serveMetricsHTTP starts the liveness/readiness server on the metrics port
-// (docs/planning/28) and returns a stop function that shuts it down.
-func serveMetricsHTTP(ctx context.Context, controlConfig config.ControlConfig, ready *atomic.Bool) func() {
+// serveMetricsHTTP starts the liveness/readiness/metrics server on the
+// metrics port (docs/planning/28) and returns a stop function that shuts it
+// down.
+func serveMetricsHTTP(ctx context.Context, controlConfig config.ControlConfig, ready *atomic.Bool, metricsReg *prometheus.Registry) func() {
 	addr := fmt.Sprintf("%s:%d", controlConfig.Server.Host, controlConfig.Server.MetricsPort)
-	server := &http.Server{Addr: addr, Handler: newMetricsMux(ready), ReadHeaderTimeout: readHeaderTimeout}
+	server := &http.Server{Addr: addr, Handler: newMetricsMux(ready, metricsReg), ReadHeaderTimeout: readHeaderTimeout}
 
 	go func() {
 		serveErr := server.ListenAndServe()
@@ -402,7 +424,7 @@ func rehydrateWorkerAdminState(ctx context.Context, configStore *control.Postgre
 
 // buildControlMux assembles the HTTP handler with the Postgres-backed identity
 // and config stores.
-func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool, configStore *control.PostgresConfigStore, configCache *control.ConfigCache, redisClient *redis.Client, natsConn *natsx.Connection, metadataWriter *control.RequestMetadataWriter) *http.ServeMux {
+func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool, configStore *control.PostgresConfigStore, configCache *control.ConfigCache, redisClient *redis.Client, natsConn *natsx.Connection, metadataWriter *control.RequestMetadataWriter, metrics *control.Metrics) *http.ServeMux {
 	inflight := control.NewInFlightRegistry()
 	adminHandlers := buildAdminHandlers(apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore, configCache, redisClient, inflight)
 
@@ -426,17 +448,24 @@ func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.API
 		)
 	}
 
+	rateLimitAdmission := control.NewRateLimitAdmission(control.NewRateLimiter(redisClient, control.DefaultRateLimitGuardrails(), nil))
+	rateLimitAdmission.SetMetrics(metrics)
+
+	quotaAdmission := control.NewQuotaAdmission(redisClient, nil)
+	quotaAdmission.SetMetrics(metrics)
+
 	requestHandler.SetDispatcher(control.NewDefaultRequestDispatcher(control.RequestDispatcherOptions{
 		ConfigCache:                configCache,
 		Workers:                    workerRegistry,
 		Sticky:                     control.NewRedisStickyStore(redisClient),
 		NATS:                       natsConn,
-		RateLimitAdmission:         control.NewRateLimitAdmission(control.NewRateLimiter(redisClient, control.DefaultRateLimitGuardrails(), nil)),
-		QuotaAdmission:             control.NewQuotaAdmission(redisClient, nil),
+		RateLimitAdmission:         rateLimitAdmission,
+		QuotaAdmission:             quotaAdmission,
 		MaxInlineResponseBodyBytes: controlConfig.Request.MaxInlineResponseBodyBytes,
 		MaxFrameDataBytes:          controlConfig.Transport.MaxFrameDataBytes,
 		MaxTimeoutMs:               controlConfig.Request.MaxTimeoutMs,
 		InFlight:                   inflight,
+		Metrics:                    metrics,
 	}))
 
 	mux := http.NewServeMux()

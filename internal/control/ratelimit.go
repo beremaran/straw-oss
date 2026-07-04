@@ -356,11 +356,22 @@ type RateLimitRequest struct {
 // against one request.
 type RateLimitAdmission struct {
 	limiter *RateLimiter
+	metrics *Metrics
 }
 
 // NewRateLimitAdmission builds a RateLimitAdmission over limiter.
 func NewRateLimitAdmission(limiter *RateLimiter) *RateLimitAdmission {
 	return &RateLimitAdmission{limiter: limiter}
+}
+
+// SetMetrics attaches the Prometheus metrics recorder used for
+// straw_rate_limit_rejections_total (docs/planning/23).
+func (a *RateLimitAdmission) SetMetrics(m *Metrics) {
+	if a == nil {
+		return
+	}
+
+	a.metrics = m
 }
 
 // Check evaluates every rule in cfg applicable to req and returns the most
@@ -390,6 +401,10 @@ func (a *RateLimitAdmission) Check(ctx context.Context, cfg RateLimitConfig, req
 		if !decision.Allowed && (worst.Allowed || decision.RetryAfterMs > worst.RetryAfterMs) {
 			worst = decision
 		}
+	}
+
+	if !worst.Allowed {
+		a.metrics.IncRateLimitRejection(req.TenantID)
 	}
 
 	return worst
