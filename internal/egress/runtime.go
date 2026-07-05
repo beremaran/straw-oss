@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -16,6 +17,9 @@ const (
 	defaultHeartbeatInterval = 5 * time.Second
 	registerTimeout          = 5 * time.Second
 	heartbeatTimeout         = 5 * time.Second
+	registerBackoffMin       = 1 * time.Second
+	registerBackoffMax       = 30 * time.Second
+	registerBackoffFactor    = 2
 )
 
 // Register sends a worker registration request over NATS and returns the
@@ -107,11 +111,14 @@ func Heartbeat(ctx context.Context, conn *natsx.Connection, id Identity, session
 }
 
 // Run keeps the worker registered and heartbeating, and runs the live
-// assignment execution loop, until ctx is canceled. On shutdown it sends a
-// draining heartbeat before telling the assignment loop to stop accepting
-// new work and drain in-flight requests (docs/planning/29 "Worker Graceful
-// Shutdown"). If ready is non-nil, it is set true once registration succeeds
-// and false again once draining begins, so an egress /readyz endpoint
+// assignment execution loop, until ctx is canceled. Registration retries
+// with bounded backoff while Control is unreachable, and a heartbeat NACK
+// (e.g. a Control restart wiping its in-memory registry) drains the dead
+// session and re-registers. On shutdown it sends a draining heartbeat before
+// telling the assignment loop to stop accepting new work and drain in-flight
+// requests (docs/planning/29 "Worker Graceful Shutdown"). If ready is
+// non-nil, it is set true once registration succeeds and false again once
+// the session is lost or draining begins, so an egress /readyz endpoint
 // (docs/planning/23) can reflect the run loop's live state.
 func Run(ctx context.Context, conn *natsx.Connection, id Identity, caps Capabilities, executor *Executor, heartbeatInterval time.Duration, ready *atomic.Bool) error {
 	if heartbeatInterval <= 0 {
@@ -120,53 +127,104 @@ func Run(ctx context.Context, conn *natsx.Connection, id Identity, caps Capabili
 
 	setReady(ready, false)
 
-	sessionID, err := Register(ctx, conn, id, caps)
-	if err != nil {
-		return err
-	}
+	for {
+		sessionID, err := registerWithRetry(ctx, conn, id, caps, registerBackoffMin, registerBackoffMax)
+		if err != nil {
+			return err
+		}
 
-	setReady(ready, true)
+		setReady(ready, true)
 
-	worker, err := NewWorker(conn, id, executor, sessionID, caps.MaxConcurrency)
-	if err != nil {
+		sessionLost, err := runSession(ctx, conn, id, caps, executor, sessionID, heartbeatInterval, ready)
+
 		setReady(ready, false)
 
-		return err
+		if err != nil {
+			return err
+		}
+
+		if !sessionLost {
+			return nil
+		}
+
+		slog.Warn("control rejected worker session, re-registering", "worker_id", id.WorkerID, "session_id", sessionID)
+	}
+}
+
+// registerWithRetry retries Register with bounded exponential backoff until
+// it succeeds or ctx is canceled. Every attempt rebuilds and re-signs the
+// request, so retries carry fresh nonces and issued-at timestamps and pass
+// Control's replay protection.
+// ponytail: retries every failure (including rejections) and has no jitter —
+// P0 runs a handful of workers; classify permanent rejections as fatal and
+// add jitter if a fleet ever makes retry storms matter.
+func registerWithRetry(ctx context.Context, conn *natsx.Connection, id Identity, caps Capabilities, backoffMin, backoffMax time.Duration) (string, error) {
+	backoff := backoffMin
+
+	for {
+		sessionID, err := Register(ctx, conn, id, caps)
+		if err == nil {
+			return sessionID, nil
+		}
+
+		if ctx.Err() != nil {
+			return "", fmt.Errorf("register: %w", ctx.Err())
+		}
+
+		slog.Warn("registration failed, retrying", "worker_id", id.WorkerID, "backoff", backoff.String(), "error", err)
+
+		select {
+		case <-ctx.Done():
+			return "", fmt.Errorf("register: %w", ctx.Err())
+		case <-time.After(backoff):
+		}
+
+		backoff = min(backoff*registerBackoffFactor, backoffMax)
+	}
+}
+
+// runSession serves one registered session until ctx is canceled (graceful
+// shutdown, returns false) or Control rejects a heartbeat for it (returns
+// true so Run re-registers). Either way the assignment loop stops accepting
+// new work and drains in-flight requests before returning.
+func runSession(ctx context.Context, conn *natsx.Connection, id Identity, caps Capabilities, executor *Executor, sessionID string, heartbeatInterval time.Duration, ready *atomic.Bool) (bool, error) {
+	worker, err := NewWorker(conn, id, executor, sessionID, caps.MaxConcurrency)
+	if err != nil {
+		return false, err
 	}
 
 	stop := make(chan struct{})
-
 	stopServing := sync.OnceFunc(func() { close(stop) })
-	defer stopServing()
 
 	serveDone := make(chan error, 1)
 
 	go func() { serveDone <- worker.Serve(stop) }()
 
-	active := worker.ActiveRequests()
-
-	err = Heartbeat(ctx, conn, id, sessionID, strawpb.WorkerHealth_WORKER_HEALTH_READY, active, capacityFromConcurrency(active, caps.MaxConcurrency), caps.MaxConcurrency, false)
-	if err != nil {
-		setReady(ready, false)
-
+	defer func() {
 		stopServing()
 		<-serveDone
+	}()
 
-		return err
-	}
-
-	runHeartbeatLoop(ctx, conn, id, sessionID, caps, worker, heartbeatInterval, ready)
-
-	stopServing()
-	<-serveDone
-
-	return nil
+	return runHeartbeatLoop(ctx, conn, id, sessionID, caps, worker, heartbeatInterval, ready), nil
 }
 
-// runHeartbeatLoop sends periodic heartbeats until ctx is canceled, then
-// sends a final draining heartbeat (docs/planning/29 "Worker Graceful
-// Shutdown" step 1) and clears ready.
-func runHeartbeatLoop(ctx context.Context, conn *natsx.Connection, id Identity, sessionID string, caps Capabilities, worker *Worker, heartbeatInterval time.Duration, ready *atomic.Bool) {
+// runHeartbeatLoop sends an immediate heartbeat and then periodic ones until
+// ctx is canceled, then sends a final draining heartbeat (docs/planning/29
+// "Worker Graceful Shutdown" step 1) and clears ready. It returns true as
+// soon as Control rejects a heartbeat, meaning the session is no longer
+// recognized and the worker must re-register; transport errors are ignored
+// and the next tick retries.
+func runHeartbeatLoop(ctx context.Context, conn *natsx.Connection, id Identity, sessionID string, caps Capabilities, worker *Worker, heartbeatInterval time.Duration, ready *atomic.Bool) bool {
+	sendHeartbeat := func(hbCtx context.Context, draining bool) error {
+		active := worker.ActiveRequests()
+
+		return Heartbeat(hbCtx, conn, id, sessionID, strawpb.WorkerHealth_WORKER_HEALTH_READY, active, capacityFromConcurrency(active, caps.MaxConcurrency), caps.MaxConcurrency, draining)
+	}
+
+	if errors.Is(sendHeartbeat(ctx, false), errHeartbeatRejected) {
+		return true
+	}
+
 	ticker := time.NewTicker(heartbeatInterval)
 	defer ticker.Stop()
 
@@ -175,13 +233,13 @@ func runHeartbeatLoop(ctx context.Context, conn *natsx.Connection, id Identity, 
 		case <-ctx.Done():
 			setReady(ready, false)
 
-			active := worker.ActiveRequests()
-			_ = Heartbeat(context.WithoutCancel(ctx), conn, id, sessionID, strawpb.WorkerHealth_WORKER_HEALTH_READY, active, capacityFromConcurrency(active, caps.MaxConcurrency), caps.MaxConcurrency, true)
+			_ = sendHeartbeat(context.WithoutCancel(ctx), true)
 
-			return
+			return false
 		case <-ticker.C:
-			active := worker.ActiveRequests()
-			_ = Heartbeat(ctx, conn, id, sessionID, strawpb.WorkerHealth_WORKER_HEALTH_READY, active, capacityFromConcurrency(active, caps.MaxConcurrency), caps.MaxConcurrency, false)
+			if errors.Is(sendHeartbeat(ctx, false), errHeartbeatRejected) {
+				return true
+			}
 		}
 	}
 }
