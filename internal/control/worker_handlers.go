@@ -143,6 +143,8 @@ func (h *AdminHandlers) globalWorkerAction(w http.ResponseWriter, r *http.Reques
 	workerID := r.PathValue("worker_id")
 	registryApply(workerID)
 
+	var skipPostgres bool
+
 	if durable != nil && (h.ConfigWrites != nil || h.WorkerAdmin != nil) {
 		audited, err := durable(r.Context(), workerID, configActor(identity))
 		if err != nil {
@@ -151,14 +153,10 @@ func (h *AdminHandlers) globalWorkerAction(w http.ResponseWriter, r *http.Reques
 			return
 		}
 
-		if audited {
-			writeJSON(w, http.StatusOK, h.workerStateResponse(identity, workerID))
-
-			return
-		}
+		skipPostgres = audited
 	}
 
-	recordAudit(r.Context(), h.Audit, identity, "worker", workerID, action)
+	recordAudit(r.Context(), h.Audit, identity, "worker", workerID, action, 0, "", nil, nil, skipPostgres)
 	writeJSON(w, http.StatusOK, h.workerStateResponse(identity, workerID))
 }
 
@@ -204,6 +202,8 @@ func (h *AdminHandlers) tenantWorkerAction(w http.ResponseWriter, r *http.Reques
 	workerID := r.PathValue("worker_id")
 	registryApply(workerID, identity.TenantID)
 
+	var skipPostgres bool
+
 	if durable != nil && (h.ConfigWrites != nil || h.WorkerAdmin != nil) {
 		audited, err := durable(r.Context(), identity.TenantID, workerID, configActor(identity))
 		if err != nil {
@@ -212,21 +212,18 @@ func (h *AdminHandlers) tenantWorkerAction(w http.ResponseWriter, r *http.Reques
 			return
 		}
 
-		if audited {
-			writeJSON(w, http.StatusOK, h.workerStateResponse(identity, workerID))
+		skipPostgres = audited
+		if !audited {
+			_, err = h.bumpTenantVersion(r.Context(), identity.TenantID, nil)
+			if err != nil {
+				WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
 
-			return
-		}
-
-		_, err = h.bumpTenantVersion(r.Context(), identity.TenantID, nil)
-		if err != nil {
-			WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
-
-			return
+				return
+			}
 		}
 	}
 
-	recordAudit(r.Context(), h.Audit, identity, "worker", workerID, action)
+	recordAudit(r.Context(), h.Audit, identity, "worker", workerID, action, 0, "", nil, nil, skipPostgres)
 	writeJSON(w, http.StatusOK, h.workerStateResponse(identity, workerID))
 }
 

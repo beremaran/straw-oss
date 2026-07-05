@@ -248,6 +248,13 @@ func (h *AdminHandlers) upsertRoutingRule(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	var oldRule *config.RoutingRule
+
+	existing, err := h.RoutingRules.GetRoutingRule(r.Context(), identity.TenantID, req.ID)
+	if err == nil {
+		oldRule = &existing.RoutingRule
+	}
+
 	rule := config.RoutingRule{
 		ID:                      req.ID,
 		Priority:                req.Priority,
@@ -273,7 +280,7 @@ func (h *AdminHandlers) upsertRoutingRule(w http.ResponseWriter, r *http.Request
 	}
 
 	h.ConfigCache.PublishInvalidation(r.Context(), identity.TenantID, tenantVersion)
-	recordAudit(r.Context(), h.Audit, identity, resourceTypeRoutingRule, record.ID, configActionUpsert)
+	recordAudit(r.Context(), h.Audit, identity, resourceTypeRoutingRule, record.ID, configActionUpsert, tenantVersion, "", oldRule, rule, h.ConfigWrites != nil)
 
 	writeJSON(w, http.StatusOK, toRoutingRuleResponse(record))
 }
@@ -293,6 +300,13 @@ func (h *AdminHandlers) DeleteRoutingRule(w http.ResponseWriter, r *http.Request
 
 	id := r.PathValue("id")
 
+	var oldRule *config.RoutingRule
+
+	existing, err := h.RoutingRules.GetRoutingRule(r.Context(), identity.TenantID, id)
+	if err == nil {
+		oldRule = &existing.RoutingRule
+	}
+
 	tenantVersion, err := h.RoutingRules.DeleteRoutingRule(r.Context(), identity.TenantID, id, configActor(identity))
 	if err != nil {
 		h.writeConfigResourceError(r, w, err, nil)
@@ -301,7 +315,7 @@ func (h *AdminHandlers) DeleteRoutingRule(w http.ResponseWriter, r *http.Request
 	}
 
 	h.ConfigCache.PublishInvalidation(r.Context(), identity.TenantID, tenantVersion)
-	recordAudit(r.Context(), h.Audit, identity, resourceTypeRoutingRule, id, configActionDelete)
+	recordAudit(r.Context(), h.Audit, identity, resourceTypeRoutingRule, id, configActionDelete, tenantVersion, "", oldRule, nil, h.ConfigWrites != nil)
 
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -474,6 +488,13 @@ func (h *AdminHandlers) upsertExecutorPool(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	var oldPool *config.ExecutorPool
+
+	existing, err := h.ExecutorPools.GetExecutorPool(r.Context(), identity.TenantID, req.ID)
+	if err == nil {
+		oldPool = &existing.ExecutorPool
+	}
+
 	pool := config.ExecutorPool{
 		ID:                   req.ID,
 		ExecutorType:         defaultExecutorType(req.ExecutorType),
@@ -500,7 +521,7 @@ func (h *AdminHandlers) upsertExecutorPool(w http.ResponseWriter, r *http.Reques
 	}
 
 	h.ConfigCache.PublishInvalidation(r.Context(), identity.TenantID, tenantVersion)
-	recordAudit(r.Context(), h.Audit, identity, "executor_pool", record.ID, configActionUpsert)
+	recordAudit(r.Context(), h.Audit, identity, "executor_pool", record.ID, configActionUpsert, tenantVersion, "", oldPool, pool, h.ConfigWrites != nil)
 
 	writeJSON(w, http.StatusOK, toExecutorPoolResponse(record))
 }
@@ -520,6 +541,13 @@ func (h *AdminHandlers) DeleteExecutorPool(w http.ResponseWriter, r *http.Reques
 
 	id := r.PathValue("id")
 
+	var oldPool *config.ExecutorPool
+
+	existing, err := h.ExecutorPools.GetExecutorPool(r.Context(), identity.TenantID, id)
+	if err == nil {
+		oldPool = &existing.ExecutorPool
+	}
+
 	tenantVersion, err := h.ExecutorPools.DeleteExecutorPool(r.Context(), identity.TenantID, id, configActor(identity))
 	if err != nil {
 		h.writeConfigResourceError(r, w, err, nil)
@@ -528,7 +556,7 @@ func (h *AdminHandlers) DeleteExecutorPool(w http.ResponseWriter, r *http.Reques
 	}
 
 	h.ConfigCache.PublishInvalidation(r.Context(), identity.TenantID, tenantVersion)
-	recordAudit(r.Context(), h.Audit, identity, "executor_pool", id, configActionDelete)
+	recordAudit(r.Context(), h.Audit, identity, "executor_pool", id, configActionDelete, tenantVersion, "", oldPool, nil, h.ConfigWrites != nil)
 
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -741,6 +769,13 @@ func (h *AdminHandlers) upsertDenyRule(w http.ResponseWriter, r *http.Request, i
 		return
 	}
 
+	var oldRule *config.DenyRule
+
+	existing, err := h.DenyRules.GetDenyRule(r.Context(), identity.TenantID, id)
+	if err == nil {
+		oldRule = &existing.DenyRule
+	}
+
 	rule, err := normalizeDenyRule(req.Type, req.Value, req.Reason)
 	if err != nil {
 		WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", map[string]string{errorDetailReasonKey: err.Error()}))
@@ -767,7 +802,7 @@ func (h *AdminHandlers) upsertDenyRule(w http.ResponseWriter, r *http.Request, i
 	}
 
 	h.ConfigCache.PublishInvalidation(r.Context(), identity.TenantID, tenantVersion)
-	recordAudit(r.Context(), h.Audit, identity, "deny_rule", record.ID, configActionUpsert)
+	recordAudit(r.Context(), h.Audit, identity, "deny_rule", record.ID, configActionUpsert, tenantVersion, "", oldRule, rule, h.ConfigWrites != nil)
 
 	writeJSON(w, http.StatusOK, toDenyRuleResponse(record))
 }
@@ -787,6 +822,13 @@ func (h *AdminHandlers) DeleteDenyRule(w http.ResponseWriter, r *http.Request) {
 
 	id := r.PathValue("id")
 
+	var oldRule *config.DenyRule
+
+	existing, err := h.DenyRules.GetDenyRule(r.Context(), identity.TenantID, id)
+	if err == nil {
+		oldRule = &existing.DenyRule
+	}
+
 	tenantVersion, err := h.DenyRules.DeleteDenyRule(r.Context(), identity.TenantID, id, configActor(identity))
 	if err != nil {
 		h.writeConfigResourceError(r, w, err, nil)
@@ -795,7 +837,7 @@ func (h *AdminHandlers) DeleteDenyRule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.ConfigCache.PublishInvalidation(r.Context(), identity.TenantID, tenantVersion)
-	recordAudit(r.Context(), h.Audit, identity, "deny_rule", id, configActionDelete)
+	recordAudit(r.Context(), h.Audit, identity, "deny_rule", id, configActionDelete, tenantVersion, "", oldRule, nil, h.ConfigWrites != nil)
 
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -967,6 +1009,13 @@ func (h *AdminHandlers) upsertInjectionPolicy(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	var oldPolicy *config.InjectionPolicy
+
+	existing, err := h.InjectionPolicies.GetInjectionPolicy(r.Context(), identity.TenantID, id)
+	if err == nil {
+		oldPolicy = &existing.InjectionPolicy
+	}
+
 	pol := config.InjectionPolicy{ID: id, Enabled: boolOrDefault(req.Enabled, true), Operations: ops}
 
 	record, tenantVersion, err := h.InjectionPolicies.UpsertInjectionPolicy(r.Context(), identity.TenantID, pol, req.ExpectedConfigVersion, configActor(identity))
@@ -984,7 +1033,7 @@ func (h *AdminHandlers) upsertInjectionPolicy(w http.ResponseWriter, r *http.Req
 	}
 
 	h.ConfigCache.PublishInvalidation(r.Context(), identity.TenantID, tenantVersion)
-	recordAudit(r.Context(), h.Audit, identity, "injection_policy", record.ID, configActionUpsert)
+	recordAudit(r.Context(), h.Audit, identity, "injection_policy", record.ID, configActionUpsert, tenantVersion, "", oldPolicy, pol, h.ConfigWrites != nil)
 
 	writeJSON(w, http.StatusOK, toInjectionPolicyResponse(record))
 }
@@ -1004,6 +1053,13 @@ func (h *AdminHandlers) DeleteInjectionPolicy(w http.ResponseWriter, r *http.Req
 
 	id := r.PathValue("id")
 
+	var oldPolicy *config.InjectionPolicy
+
+	existing, err := h.InjectionPolicies.GetInjectionPolicy(r.Context(), identity.TenantID, id)
+	if err == nil {
+		oldPolicy = &existing.InjectionPolicy
+	}
+
 	tenantVersion, err := h.InjectionPolicies.DeleteInjectionPolicy(r.Context(), identity.TenantID, id, configActor(identity))
 	if err != nil {
 		h.writeConfigResourceError(r, w, err, nil)
@@ -1012,7 +1068,7 @@ func (h *AdminHandlers) DeleteInjectionPolicy(w http.ResponseWriter, r *http.Req
 	}
 
 	h.ConfigCache.PublishInvalidation(r.Context(), identity.TenantID, tenantVersion)
-	recordAudit(r.Context(), h.Audit, identity, "injection_policy", id, configActionDelete)
+	recordAudit(r.Context(), h.Audit, identity, "injection_policy", id, configActionDelete, tenantVersion, "", oldPolicy, nil, h.ConfigWrites != nil)
 
 	w.WriteHeader(http.StatusNoContent)
 }

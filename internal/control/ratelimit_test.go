@@ -55,7 +55,7 @@ func TestRateLimiterDimensionsAreIndependent(t *testing.T) {
 
 	dims := []RateLimitRule{
 		{Dimension: RateLimitDimTenant, Key: "*", WindowSeconds: 60, MaxRequests: 1, FailPolicy: RateLimitFailOpen},
-		{Dimension: RateLimitDimAPIKey, Key: "key_1", WindowSeconds: 60, MaxRequests: 1, FailPolicy: RateLimitFailOpen},
+		{Dimension: RateLimitDimAPIKey, Key: authTestKey1, WindowSeconds: 60, MaxRequests: 1, FailPolicy: RateLimitFailOpen},
 		{Dimension: RateLimitDimTargetHost, Key: testExampleHost, WindowSeconds: 60, MaxRequests: 1, FailPolicy: RateLimitFailOpen},
 		{Dimension: RateLimitDimIPType, Key: ipTypeDatacenter, WindowSeconds: 60, MaxRequests: 1, FailPolicy: RateLimitFailOpen},
 	}

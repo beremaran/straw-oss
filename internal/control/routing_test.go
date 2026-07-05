@@ -218,7 +218,7 @@ func TestRoutingStickyFailure(t *testing.T) {
 	h.reg.SetGlobalAdmin("w1", AdminDisabled)
 	_ = sess
 
-	out := h.router.Evaluate(RouteRequest{TenantID: "ten_a", StickySessionID: "sticky-1"})
+	out := h.router.Evaluate(RouteRequest{TenantID: routingTestTenantA, StickySessionID: "sticky-1"})
 	if out.OK || out.ErrorCode != RouteErrStickyUnavailable {
 		t.Fatalf("Evaluate (pinned target gone, no fallback) = %+v, want sticky_session_unavailable", out)
 	}

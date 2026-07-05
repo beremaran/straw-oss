@@ -20,6 +20,10 @@ func NewPostgresAuditStore(pool *pgxpool.Pool) AuditStore {
 
 // Record appends an audit record.
 func (s *postgresAuditStore) Record(ctx context.Context, record AuditRecord) error {
+	if record.SkipPostgres {
+		return nil
+	}
+
 	now := time.Now().UTC()
 
 	if record.CreatedAt.IsZero() {
@@ -28,8 +32,8 @@ func (s *postgresAuditStore) Record(ctx context.Context, record AuditRecord) err
 
 	_, err := s.pool.Exec(ctx,
 		`INSERT INTO config_audit_source
-		 (tenant_id, actor_type, actor_id, resource_type, resource_id, action, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		 (tenant_id, actor_type, actor_id, resource_type, resource_id, action, created_at, old_value_json, new_value_json)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
 		nullString(record.TenantID),
 		record.ActorType,
 		record.ActorID,
@@ -37,6 +41,8 @@ func (s *postgresAuditStore) Record(ctx context.Context, record AuditRecord) err
 		record.ResourceID,
 		record.Action,
 		record.CreatedAt,
+		nullString(record.OldValueJSON),
+		nullString(record.NewValueJSON),
 	)
 	if err != nil {
 		return fmt.Errorf("postgres audit record: %w", err)

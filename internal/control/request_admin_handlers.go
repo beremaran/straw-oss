@@ -43,7 +43,7 @@ func (h *AdminHandlers) CancelRequest(w http.ResponseWriter, r *http.Request) {
 	err = h.InFlight.Cancel(identity, requestID)
 	switch {
 	case err == nil:
-		recordAudit(r.Context(), h.Audit, identity, "request", requestID, "cancel")
+		recordAudit(r.Context(), h.Audit, identity, "request", requestID, "cancel", 0, "", nil, nil, false)
 		writeJSON(w, http.StatusOK, cancelRequestResponse{RequestID: requestID, Status: "cancelling"})
 	case errors.Is(err, ErrInsufficientPermissions):
 		WriteError(w, http.StatusForbidden, ErrorResponseFromCode(InsufficientPermissions, requestID, nil))
