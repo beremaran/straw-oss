@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/redis/go-redis/v9"
+
 	strawpb "github.com/beremaran/straw/v2/api/proto/straw/v1"
 )
 
@@ -634,3 +636,99 @@ func TestRegisterNonceStoreOutageFailsOpenWhenConfigured(t *testing.T) {
 }
 
 var errRegNonceStoreDown = errors.New("nonce store unreachable")
+
+func TestRedisWorkerRuntimeTTLAndRestartReconstruction(t *testing.T) {
+	client := newTestRedisClient(t)
+	store := NewRedisWorkerRuntimeStore(client)
+	h := newRegHarness(t, defaultCred())
+	h.reg.SetRuntimeStore(store)
+
+	sess := h.mustRegister(t, h.signedRegister(workerRegTestWorker1))
+	ok, err := h.reg.Heartbeat(&strawpb.HeartbeatRequest{
+		WorkerId: workerRegTestWorker1, SessionId: sess,
+		Health:         strawpb.WorkerHealth_WORKER_HEALTH_DEGRADED,
+		ActiveRequests: 2, MaxConcurrency: 10, AvailableCapacity: 8,
+	})
+	if err != nil || !ok {
+		t.Fatalf("Heartbeat() = (%v, %v), want accepted nil", ok, err)
+	}
+
+	ttl := client.TTL(t.Context(), workerRuntimeKey(workerRegTestWorker1)).Val()
+	if ttl <= 0 {
+		t.Fatalf("worker runtime TTL = %s, want positive TTL", ttl)
+	}
+
+	fresh := NewWorkerRegistry(h.creds, DefaultWorkerTimings(), h.clock.Now)
+	fresh.SetRuntimeStore(store)
+
+	if got := fresh.RuntimeState(workerRegTestWorker1); got != RuntimeDegraded {
+		t.Fatalf("fresh RuntimeState() = %s, want degraded", got)
+	}
+
+	candidates := fresh.CandidatesForPool(workerRegTestTenantA, workerRegTestPool1)
+	if len(candidates) != 1 {
+		t.Fatalf("fresh CandidatesForPool len = %d, want 1: %+v", len(candidates), candidates)
+	}
+	if candidates[0].SessionID != sess || candidates[0].ActiveRequests != 2 || candidates[0].AvailableCap != 8 {
+		t.Fatalf("fresh candidate = %+v, want restored session/load", candidates[0])
+	}
+}
+
+func TestRedisWorkerRuntimePreservesDuplicateAndCooldown(t *testing.T) {
+	client := newTestRedisClient(t)
+	store := NewRedisWorkerRuntimeStore(client)
+	h := newRegHarness(t, defaultCred())
+	h.reg.SetRuntimeStore(store)
+
+	first := h.mustRegister(t, h.signedRegister(workerRegTestWorker1))
+	second := h.mustRegister(t, h.signedRegister(workerRegTestWorker1))
+
+	ok, err := h.reg.Heartbeat(readyHeartbeat(workerRegTestWorker1, second))
+	if err != nil || !ok {
+		t.Fatalf("Heartbeat() = (%v, %v), want accepted nil", ok, err)
+	}
+	for range 3 {
+		h.reg.RecordFailure(workerRegTestWorker1)
+	}
+
+	fresh := NewWorkerRegistry(h.creds, DefaultWorkerTimings(), h.clock.Now)
+	fresh.SetRuntimeStore(store)
+
+	if ok, _ := fresh.Heartbeat(readyHeartbeat(workerRegTestWorker1, first)); !ok {
+		t.Fatal("fresh registry did not recognize superseded session heartbeat")
+	}
+	if got := fresh.RuntimeState(workerRegTestWorker1); got != RuntimeCooldown {
+		t.Fatalf("fresh RuntimeState() = %s, want cooldown", got)
+	}
+	if fresh.EligibleForTenant(workerRegTestWorker1, workerRegTestTenantA) {
+		t.Fatal("fresh registry made cooldown worker eligible")
+	}
+}
+
+func TestWorkerRuntimeRedisOutageUsesLocalSnapshotThenFailsSafe(t *testing.T) {
+	unreachable := redis.NewClient(&redis.Options{Addr: testUnreachableRedisAddr, DialTimeout: 100 * time.Millisecond, MaxRetries: -1})
+	t.Cleanup(func() { _ = unreachable.Close() })
+
+	store := NewRedisWorkerRuntimeStore(unreachable)
+	h := newRegHarness(t, defaultCred())
+	h.reg.SetRuntimeStore(store)
+
+	sess := h.mustRegister(t, h.signedRegister(workerRegTestWorker1))
+
+	ok, err := h.reg.Heartbeat(readyHeartbeat(workerRegTestWorker1, sess))
+	if err != nil || !ok {
+		t.Fatalf("Heartbeat() = (%v, %v), want accepted nil", ok, err)
+	}
+	if !h.reg.EligibleForTenant(workerRegTestWorker1, workerRegTestTenantA) {
+		t.Fatal("existing registry lost its local worker snapshot during Redis outage")
+	}
+
+	fresh := NewWorkerRegistry(h.creds, DefaultWorkerTimings(), h.clock.Now)
+	fresh.SetRuntimeStore(store)
+	if got := fresh.RuntimeState(workerRegTestWorker1); got != RuntimeUnregistered {
+		t.Fatalf("fresh RuntimeState() = %s, want unregistered with no local snapshot", got)
+	}
+	if candidates := fresh.CandidatesForPool(workerRegTestTenantA, workerRegTestPool1); len(candidates) != 0 {
+		t.Fatalf("fresh CandidatesForPool() = %+v, want fail-safe empty", candidates)
+	}
+}

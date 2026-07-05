@@ -38,7 +38,8 @@ the worker never learns, and it stays invisible until manually restarted.
 
 - Control-side outage hardening, cooldowns, and in-flight loss semantics (owned by
   `docs/tasks/p1/17-worker-loss-and-nats-outage-hardening.md`).
-- Persistent worker state in Control (no owning task; raise it if this task proves it necessary).
+- Redis-backed worker session/heartbeat/load and cooldown runtime state is owned by
+  `docs/tasks/p0/45-redis-backed-worker-runtime-state.md`.
 
 ## Expected Files
 
