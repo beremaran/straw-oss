@@ -1,6 +1,6 @@
 # 44 - Config Audit Event Enrichment
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -43,14 +43,14 @@ P1 rollback (`docs/tasks/p1/07-config-rollback-api.md`), which restores values f
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Extend `AuditRecord` and the `auditStoreWithEvents` wrapper.
-- [ ] Thread `config_version` and old/new values through every config write path that records an audit entry
+- [x] Read all required planning docs.
+- [x] Extend `AuditRecord` and the `auditStoreWithEvents` wrapper.
+- [x] Thread `config_version` and old/new values through every config write path that records an audit entry
       (routing, deny, injection, fingerprint, pools, tenants, API keys, worker credentials).
-- [ ] Implement and apply secret redaction before serialization.
-- [ ] Add the tests listed in Expected Files.
-- [ ] Run focused tests, then `make check`.
-- [ ] Write a handoff note.
+- [x] Implement and apply secret redaction before serialization.
+- [x] Add the tests listed in Expected Files.
+- [x] Run focused tests, then `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

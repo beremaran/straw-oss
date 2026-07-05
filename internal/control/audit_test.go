@@ -2,8 +2,11 @@ package control
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/beremaran/straw/v2/internal/config"
 )
 
 func TestAuditStoreWithEventsMirrorsRecordToConfigAuditEvents(t *testing.T) {
@@ -73,7 +76,7 @@ func TestRecordAuditMirrorsToConfigAuditEvents(t *testing.T) {
 	recorder := &captureConfigAuditRecorder{}
 	store := NewAuditStoreWithEvents(NewInMemoryAuditStore(), recorder)
 
-	recordAudit(context.Background(), store, Identity{TenantID: "ten_b", APIKeyID: "key_2"}, "worker", routingTestWorker1, "disable")
+	recordAudit(context.Background(), store, Identity{TenantID: "ten_b", APIKeyID: "key_2"}, "worker", routingTestWorker1, "disable", 0, "", nil, nil, false)
 
 	events := recorder.all()
 	if len(events) != 1 {
@@ -81,6 +84,82 @@ func TestRecordAuditMirrorsToConfigAuditEvents(t *testing.T) {
 	}
 	if events[0].ConfigType != "worker" || events[0].ResourceID != routingTestWorker1 || events[0].Action != "disable" {
 		t.Fatalf("event = %+v, want config_type=worker resource_id=worker-1 action=disable", events[0])
+	}
+}
+
+func TestRecordAuditEnrichmentAndRedaction(t *testing.T) {
+	t.Parallel()
+
+	recorder := &captureConfigAuditRecorder{}
+	inner := NewInMemoryAuditStore()
+	store := NewAuditStoreWithEvents(inner, recorder)
+
+	// An injection policy with sensitive header operation.
+	policy := config.InjectionPolicy{
+		ID:      "inject_1",
+		Enabled: true,
+		Operations: []config.InjectionOperation{
+			{
+				Op:          "set",
+				HeaderName:  "Authorization",
+				ValueBase64: "c2VjcmV0X2tleV8xMjM0NQ==", // secret value
+			},
+		},
+	}
+
+	recordAudit(context.Background(), store, Identity{TenantID: adminTestTenantA, APIKeyID: authTestKey1}, "injection_policy", "inject_1", "update", 7, "operations", nil, policy, false)
+
+	events := recorder.all()
+	if len(events) != 1 {
+		t.Fatalf("events len = %d, want 1", len(events))
+	}
+	ev := events[0]
+	if ev.ConfigVersion != 7 {
+		t.Fatalf("config_version = %d, want 7", ev.ConfigVersion)
+	}
+	if ev.FieldPath != "operations" {
+		t.Fatalf("field_path = %q, want operations", ev.FieldPath)
+	}
+	if ev.OldValueJSON != "" {
+		t.Fatalf("old_value_json = %q, want empty", ev.OldValueJSON)
+	}
+	// The secret ValueBase64 must be redacted!
+	if ev.NewValueJSON == "" {
+		t.Fatal("new_value_json is empty")
+	}
+	if !strings.Contains(ev.NewValueJSON, `"[redacted]"`) {
+		t.Fatalf("newValueJSON = %s, expected redacted ValueBase64", ev.NewValueJSON)
+	}
+	if strings.Contains(ev.NewValueJSON, "c2VjcmV0X2tleV8xMjM0NQ==") {
+		t.Fatalf("newValueJSON contains plaintext secret")
+	}
+}
+
+func TestRecordAuditSkipPostgres(t *testing.T) {
+	t.Parallel()
+
+	recorder := &captureConfigAuditRecorder{}
+	inner := NewInMemoryAuditStore()
+	store := NewAuditStoreWithEvents(inner, recorder)
+
+	recordAudit(context.Background(), store, Identity{TenantID: adminTestTenantA, APIKeyID: authTestKey1}, "routing_rule", "rule_1", "upsert", 3, "", nil, nil, true)
+
+	// It must NOT write to inner store (Postgres double-write prevention).
+	records, err := inner.ListTenant(context.Background(), adminTestTenantA)
+	if err != nil {
+		t.Fatalf("ListTenant() error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("inner records len = %d, want 0 (SkipPostgres is true)", len(records))
+	}
+
+	// But ClickHouse event must still be written!
+	events := recorder.all()
+	if len(events) != 1 {
+		t.Fatalf("events len = %d, want 1", len(events))
+	}
+	if events[0].ConfigVersion != 3 {
+		t.Fatalf("config_version = %d, want 3", events[0].ConfigVersion)
 	}
 }
 

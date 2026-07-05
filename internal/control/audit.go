@@ -2,10 +2,13 @@ package control
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/beremaran/straw/v2/internal/config"
 )
 
 // AuditRecord mirrors the `config_audit_source` table. actor_id is always
@@ -14,14 +17,19 @@ import (
 // material or hashes into audit records.
 // AuditRecord mirrors the config audit table.
 type AuditRecord struct {
-	ID           int64
-	TenantID     string // empty for platform-scoped actions
-	ActorType    string
-	ActorID      string
-	ResourceType string
-	ResourceID   string
-	Action       string
-	CreatedAt    time.Time
+	ID            int64
+	TenantID      string // empty for platform-scoped actions
+	ActorType     string
+	ActorID       string
+	ResourceType  string
+	ResourceID    string
+	Action        string
+	CreatedAt     time.Time
+	ConfigVersion uint64
+	FieldPath     string
+	OldValueJSON  string
+	NewValueJSON  string
+	SkipPostgres  bool
 }
 
 // AuditStore persists config audit records.
@@ -50,6 +58,10 @@ func NewInMemoryAuditStore() *InMemoryAuditStore {
 
 // Record appends an audit record.
 func (s *InMemoryAuditStore) Record(_ context.Context, record AuditRecord) error {
+	if record.SkipPostgres {
+		return nil
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -114,19 +126,62 @@ func (s *InMemoryAuditStore) ListTenantPage(_ context.Context, tenantID string, 
 
 // recordAudit is a small helper used by admin handlers so every mutation
 // site records actor, resource, and action consistently.
-func recordAudit(ctx context.Context, store AuditStore, identity Identity, resourceType, resourceID, action string) {
+func recordAudit(
+	ctx context.Context,
+	store AuditStore,
+	identity Identity,
+	resourceType, resourceID, action string,
+	configVersion uint64,
+	fieldPath string,
+	oldVal, newVal any,
+	skipPostgres bool,
+) {
 	if store == nil {
 		return
 	}
 
+	oldJSON, _ := redactAndMarshal(oldVal)
+	newJSON, _ := redactAndMarshal(newVal)
+
 	_ = store.Record(ctx, AuditRecord{
-		TenantID:     identity.TenantID,
-		ActorType:    configActorTypeAPIKey,
-		ActorID:      identity.APIKeyID,
-		ResourceType: resourceType,
-		ResourceID:   resourceID,
-		Action:       action,
+		TenantID:      identity.TenantID,
+		ActorType:     configActorTypeAPIKey,
+		ActorID:       identity.APIKeyID,
+		ResourceType:  resourceType,
+		ResourceID:    resourceID,
+		Action:        action,
+		ConfigVersion: configVersion,
+		FieldPath:     fieldPath,
+		OldValueJSON:  oldJSON,
+		NewValueJSON:  newJSON,
+		SkipPostgres:  skipPostgres,
 	})
+}
+
+// redactAndMarshal converts the object to its redacted JSON representation.
+// It classifies and redacts secret fields like value_base64 in injection policies.
+func redactAndMarshal(v any) (string, error) {
+	if v == nil {
+		return "", nil
+	}
+
+	switch val := v.(type) {
+	case config.InjectionPolicy:
+		val = redactInjectionPolicy(val)
+		v = val
+	case *config.InjectionPolicy:
+		if val != nil {
+			clone := redactInjectionPolicy(*val)
+			v = &clone
+		}
+	}
+
+	b, err := json.Marshal(v)
+	if err != nil {
+		return "", fmt.Errorf("json marshal: %w", err)
+	}
+
+	return string(b), nil
 }
 
 // auditStoreWithEvents wraps an AuditStore so every successful Record also
@@ -160,13 +215,17 @@ func (s *auditStoreWithEvents) Record(ctx context.Context, record AuditRecord) e
 	}
 
 	s.events.Enqueue(ConfigAuditEvent{
-		Timestamp:  time.Now().UTC(),
-		TenantID:   record.TenantID,
-		ActorType:  record.ActorType,
-		ActorID:    record.ActorID,
-		ConfigType: record.ResourceType,
-		ResourceID: record.ResourceID,
-		Action:     record.Action,
+		Timestamp:     time.Now().UTC(),
+		TenantID:      record.TenantID,
+		ActorType:     record.ActorType,
+		ActorID:       record.ActorID,
+		ConfigType:    record.ResourceType,
+		ResourceID:    record.ResourceID,
+		Action:        record.Action,
+		ConfigVersion: record.ConfigVersion,
+		FieldPath:     record.FieldPath,
+		OldValueJSON:  record.OldValueJSON,
+		NewValueJSON:  record.NewValueJSON,
 	})
 
 	return nil
