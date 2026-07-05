@@ -37,6 +37,31 @@ Start with:
 - If a given task is too big of a shirt-size, ask user if it's OK to split into vertical slice, and ask it with the
   proposed split.
 
+## Gap Ownership (no unowned deferrals)
+
+The 2026-07-05 P0 audit found that "flagged but unowned" gaps are how work silently disappears: handoffs for tasks
+20, 22, 24, 30, and 32 each honestly wrote "no owning task exists" — and every one of those gaps then sat invisible
+until a full audit rediscovered them. The rule that prevents this:
+
+- **A deferral without an owning task file does not exist as far as the boards are concerned.** If you must defer
+  behavior and no task owns it, you have two valid moves: create the owning task with
+  `.llm-docs/skills/write-straw-task` in the same run, or stop and ask the user. Writing "no owning task" in a
+  handoff and moving on is not a valid third option.
+- A task must not be marked `done` on its board while its handoff contains an unowned deferral.
+- Deferring to the task you are completing ("owned by this task if pursued") is an unowned deferral.
+- When a later task closes a gap an earlier task/handoff documented as open, update the earlier doc's note in the
+  same run — stale "known limitation" notes cost audit time.
+- Scope notes like "do not add P1 fields" never cover fields the planning doc marks P0; when in doubt whether a
+  field/endpoint is in-phase, the planning doc wins and ambiguity is a stop condition.
+
+## Repo-Local Skills
+
+- `.llm-docs/skills/straw-task-runner`: complete exactly one task from the boards.
+- `.llm-docs/skills/write-straw-task`: author a new task file (any phase) that meets this repo's task standard.
+- `.llm-docs/skills/verify-straw-task`: audit a task (or a whole board) for real, wired, verified completeness.
+- `.llm-docs/skills/dig-straw-task-handoffs`: sweep completed handoffs for unowned/undone work and task it.
+- `.llm-docs/skills/update-straw-documentation`: write public-facing docs under `docs/public/`.
+
 Reusable prompt:
 
 ```text

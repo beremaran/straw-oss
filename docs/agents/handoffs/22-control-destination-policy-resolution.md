@@ -121,7 +121,8 @@ Result: all `TestResolveDestinationPolicy_*` tests pass (21 cases); `make check`
   `docs/tasks/p0/24-control-request-dispatch-pipeline.md` (this task's own Out of Scope
   list).
 - IDNA/punycode hostname support: no owning task exists; needs a new task if required
-  (see "Decisions and flagged gaps" above).
+  (see "Decisions and flagged gaps" above). **[Update 2026-07-05: now owned by
+  `docs/tasks/p1/21-idna-hostname-support.md`.]**
 - Reconciling `internal/egress/executor.go`'s `AllowedCidrs` precedence with this
   resolver's override semantics, and wiring `DeniedHostSuffixes`/`DeniedCnameSuffixes`
   enforcement: owned by `docs/tasks/p0/26-egress-destination-policy-precedence.md`.

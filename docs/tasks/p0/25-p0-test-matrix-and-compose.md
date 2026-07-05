@@ -44,12 +44,12 @@ Close the P0 test matrix and provide a local docker-compose environment for the 
 - [x] Run `make check`.
 - [x] Write a handoff note.
 
-## Known limitation (flagged, no owning task)
+## Known limitation (resolved by later tasks)
 
-The `egress` compose service connects to NATS but **cannot complete registration**: `cmd/egress/main.go` generates a
-random ed25519 keypair on every boot, and registration requires a pre-seeded worker credential whose public key
-matches. No P0 task owns persisting the egress identity key or seeding its credential, so a turnkey request flow
-*through the compose stack* is not wired. The automated vertical-slice proof is the in-process Go test
+At completion time the `egress` compose service could not finish registration: `cmd/egress/main.go` generated a
+random ed25519 keypair on every boot. This gap was later closed by task 35 (persistent worker identity key,
+`loadWorkerPrivateKey`) and task 40 (registration retry), and the 2026-07-05 live end-to-end verification drove a
+real request through the compose stack. The automated in-process vertical-slice proof remains
 `TestDispatcherControlNATSEgressRoundTrip`. See `deploy/docker/README.md`.
 
 ## Tests

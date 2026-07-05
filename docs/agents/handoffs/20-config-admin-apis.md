@@ -110,7 +110,8 @@ removed after):
   4 DB-backed types/2 actions and does not persist `reason`. Extending the schema to the full
   Section 26 taxonomy (plus a `reason` column) is real follow-on work with no owning task file
   today — flagging per the Stop Conditions rather than silently narrowing or widening the
-  contract.
+  contract. **[Update 2026-07-05: now owned by
+  `docs/tasks/p0/43-deny-rule-taxonomy-alignment.md`.]**
 - No InMemory/fake/stub is used by the running binary — grepped the diff for
   `InMemory|stub|fake|synthetic|TODO`; the one hit is a code comment documenting that the
   InMemory doubles in `config_resource_store.go` are handler-test-only.

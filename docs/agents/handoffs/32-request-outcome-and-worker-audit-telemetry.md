@@ -77,7 +77,8 @@ Result: all packages pass; `golangci-lint run --max-issues-per-linter 0 --max-sa
   `writeTenantConfig` call sites into methods on `*PostgresConfigStore` carrying an event recorder, which felt
   like scope creep beyond "receive rows on the corresponding transitions/writes." No existing task file owns
   this specific enrichment; if the old/new-value fidelity in `config_audit_events` matters for P1 telemetry
-  consumers, it needs a new task.
+  consumers, it needs a new task. **[Update 2026-07-05: now owned by
+  `docs/tasks/p0/44-config-audit-event-enrichment.md`.]**
 - `log_events` ingestion remains unbuilt, per the existing deferral to `docs/tasks/p1/20-log-events-ingestion.md`
   (unchanged by this task; task 32's Out of Scope section already named it).
 - Telemetry read APIs/dashboards and payload capture remain out of scope (P1/P2), per the task's Stop Conditions.
