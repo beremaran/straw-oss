@@ -321,6 +321,46 @@ func createTenantForTest(t *testing.T, ta *testAdmin, adminToken, name string) s
 	return resp.ID
 }
 
+// TestCreateTenantKeyForTenant covers the bootstrap path that was previously
+// missing: a platform system_admin minting a tenant's FIRST key, plus the
+// tenant_admin own/foreign-tenant boundary.
+func TestCreateTenantKeyForTenant(t *testing.T) {
+	t.Parallel()
+
+	ta := newTestAdmin(t)
+	adminToken := ta.seedPlatformKey(t, "key_admin", RoleSystemAdmin)
+	tenantID := createTenantForTest(t, ta, adminToken, "Tenant One")
+
+	// system_admin mints the tenant's first requester key.
+	w := httptest.NewRecorder()
+	req := newAdminRequest(http.MethodPost, "/api/v1/config/tenants/"+tenantID+"/api-keys", adminToken, `{"role":"requester"}`)
+	req.SetPathValue("id", tenantID)
+	ta.h.CreateTenantKeyForTenant(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("system_admin CreateTenantKeyForTenant() status = %d, body=%s", w.Code, w.Body.String())
+	}
+
+	var created apiKeyCreateResponse
+
+	err := json.Unmarshal(w.Body.Bytes(), &created)
+	if err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if created.TenantID == nil || *created.TenantID != tenantID || created.Role != string(RoleRequester) || created.Secret == "" {
+		t.Fatalf("created key = %+v, want tenant %s requester with secret", created, tenantID)
+	}
+
+	// A tenant_admin scoped to a different tenant cannot mint keys here.
+	foreignToken := ta.seedTenantKey(t, "key_foreign_admin", adminTestTenantB, RoleTenantAdmin)
+	w = httptest.NewRecorder()
+	req = newAdminRequest(http.MethodPost, "/api/v1/config/tenants/"+tenantID+"/api-keys", foreignToken, `{"role":"requester"}`)
+	req.SetPathValue("id", tenantID)
+	ta.h.CreateTenantKeyForTenant(w, req)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("foreign tenant_admin status = %d, want 403; body=%s", w.Code, w.Body.String())
+	}
+}
+
 func TestListTenantsRequiresSystemAdmin(t *testing.T) {
 	t.Parallel()
 

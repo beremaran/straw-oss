@@ -74,3 +74,87 @@ func TestBootstrapFromEnvNoopWhenUnset(t *testing.T) {
 		t.Fatalf("BootstrapFromEnv() with empty key: created=%v id=%q, want false/empty", created, id)
 	}
 }
+
+func TestBootstrapDevTenantIdempotent(t *testing.T) {
+	t.Parallel()
+
+	store := NewInMemoryTenantStore()
+	const id = "00000000-0000-4000-8000-0000000000de"
+
+	created, err := BootstrapDevTenant(context.Background(), store, id)
+	if err != nil || !created {
+		t.Fatalf("first seed: created=%v err=%v", created, err)
+	}
+
+	created, err = BootstrapDevTenant(context.Background(), store, id)
+	if err != nil || created {
+		t.Fatalf("second seed should be a no-op: created=%v err=%v", created, err)
+	}
+
+	tenant, err := store.Get(context.Background(), id)
+	if err != nil || tenant.Status != TenantStatusActive {
+		t.Fatalf("dev tenant = %+v err=%v, want active", tenant, err)
+	}
+}
+
+func TestBootstrapDevRoutingRuleIdempotent(t *testing.T) {
+	t.Parallel()
+
+	store := NewInMemoryRoutingRuleStore()
+	const tenantID, poolID = "ten_dev", "pool_dev"
+
+	created, err := BootstrapDevRoutingRule(context.Background(), store, tenantID, poolID)
+	if err != nil || !created {
+		t.Fatalf("first seed: created=%v err=%v", created, err)
+	}
+
+	// On restart the rule already exists; the expectedVersion=0 upsert must be
+	// treated as an idempotent no-op, not a fatal version conflict.
+	created, err = BootstrapDevRoutingRule(context.Background(), store, tenantID, poolID)
+	if err != nil || created {
+		t.Fatalf("second seed should be a no-op: created=%v err=%v", created, err)
+	}
+}
+
+func TestBootstrapWorkerCredentialScopesToDevTenantAndPool(t *testing.T) {
+	t.Parallel()
+
+	store := NewInMemoryWorkerCredentialStore()
+	const credID, tenantID, poolID = "cred_dev", "ten_dev", "pool_dev"
+
+	created, err := BootstrapWorkerCredentialFromEnv(context.Background(), store, credID, "pubkey",
+		[]string{tenantID}, []AllowedPool{{TenantID: tenantID, PoolID: poolID}})
+	if err != nil || !created {
+		t.Fatalf("seed: created=%v err=%v", created, err)
+	}
+
+	cred, err := store.Get(context.Background(), credID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if len(cred.TenantScope) != 1 || cred.TenantScope[0] != tenantID {
+		t.Fatalf("TenantScope = %v, want [%s]", cred.TenantScope, tenantID)
+	}
+	if len(cred.AllowedPools) != 1 || cred.AllowedPools[0].TenantID != tenantID || cred.AllowedPools[0].PoolID != poolID {
+		t.Fatalf("AllowedPools = %+v, want [{%s %s}]", cred.AllowedPools, tenantID, poolID)
+	}
+}
+
+func TestBootstrapWorkerCredentialDefaultsScopeWhenEmpty(t *testing.T) {
+	t.Parallel()
+
+	store := NewInMemoryWorkerCredentialStore()
+
+	_, err := BootstrapWorkerCredentialFromEnv(context.Background(), store, "cred_x", "pubkey", nil, nil)
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	cred, err := store.Get(context.Background(), "cred_x")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if len(cred.TenantScope) != 1 || cred.TenantScope[0] != devWorkerTenantScope {
+		t.Fatalf("TenantScope = %v, want fallback [%s]", cred.TenantScope, devWorkerTenantScope)
+	}
+}

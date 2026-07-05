@@ -122,12 +122,12 @@ func runControl(controlConfig config.ControlConfig, natsConn *natsx.Connection) 
 	workerRegistry := control.NewWorkerRegistry(workerCreds, control.DefaultWorkerTimings(), nil)
 	wireWorkerRegistrationReplayProtection(workerRegistry, controlConfig.Worker, redisClient)
 
-	err = bootstrapWorkerCredential(workerCreds)
+	configStore := control.NewPostgresConfigStore(pool)
+
+	err = bootstrapDevProvisioning(context.Background(), control.NewPostgresTenantStore(pool), workerCreds, configStore)
 	if err != nil {
 		return err
 	}
-
-	configStore := control.NewPostgresConfigStore(pool)
 
 	err = rehydrateWorkerAdminState(context.Background(), configStore, workerRegistry)
 	if err != nil {
@@ -600,6 +600,7 @@ func serveIdentityRoutes(mux *http.ServeMux, h *control.AdminHandlers) {
 	mux.HandleFunc("GET /api/v1/config/platform-api-keys", h.ListPlatformAPIKeys)
 	mux.HandleFunc("POST /api/v1/config/platform-api-keys/{id}/revoke", h.RevokePlatformAPIKey)
 	mux.HandleFunc("POST /api/v1/config/api-keys", h.CreateTenantAPIKey)
+	mux.HandleFunc("POST /api/v1/config/tenants/{id}/api-keys", h.CreateTenantKeyForTenant)
 	mux.HandleFunc("GET /api/v1/config/api-keys", h.ListTenantAPIKeys)
 	mux.HandleFunc("POST /api/v1/config/api-keys/{id}/revoke", h.RevokeTenantAPIKey)
 	mux.HandleFunc("POST /api/v1/config/worker-credentials", h.CreateWorkerCredential)
@@ -692,16 +693,48 @@ func bootstrapAPIKey(store control.APIKeyStore, pepper []byte) (bool, error) {
 	return created, nil
 }
 
-// bootstrapWorkerCredential seeds a dev worker credential from
-// STRAW_BOOTSTRAP_WORKER_CREDENTIAL_ID/STRAW_BOOTSTRAP_WORKER_PUBLIC_KEY_ED25519_BASE64
-// so the docker-compose egress worker can register out of the box (see
-// deploy/docker/README.md). A no-op when either variable is unset.
-func bootstrapWorkerCredential(store control.WorkerCredentialStore) error {
+// bootstrapDevProvisioning seeds the dev vertical slice so the docker-compose
+// egress worker can both register and serve a live dispatch round-trip out of
+// the box (see deploy/docker/README.md). When STRAW_BOOTSTRAP_DEV_TENANT_ID and
+// STRAW_BOOTSTRAP_DEV_POOL_ID are set it seeds a dev tenant + routing rule and
+// scopes the worker credential to that (tenant, pool); otherwise it falls back
+// to the placeholder "dev" scope and only seeds the credential. Each step is a
+// no-op once its resource exists. Dev-only: production provisions all of this
+// through the admin API.
+func bootstrapDevProvisioning(ctx context.Context, tenants control.TenantStore, creds control.WorkerCredentialStore, configStore *control.PostgresConfigStore) error {
+	devTenantID := os.Getenv(control.DevTenantIDEnvVar)
+	devPoolID := os.Getenv(control.DevPoolIDEnvVar)
+
+	var scope []string
+
+	var pools []control.AllowedPool
+
+	if devTenantID != "" && devPoolID != "" {
+		tenantCreated, err := control.BootstrapDevTenant(ctx, tenants, devTenantID)
+		if err != nil {
+			return fmt.Errorf("bootstrap dev tenant: %w", err)
+		}
+
+		ruleCreated, err := control.BootstrapDevRoutingRule(ctx, configStore, devTenantID, devPoolID)
+		if err != nil {
+			return fmt.Errorf("bootstrap dev routing rule: %w", err)
+		}
+
+		if tenantCreated || ruleCreated {
+			slog.Info("bootstrapped dev routing path", "tenant_id", devTenantID, "pool_id", devPoolID)
+		}
+
+		scope = []string{devTenantID}
+		pools = []control.AllowedPool{{TenantID: devTenantID, PoolID: devPoolID}}
+	}
+
 	created, err := control.BootstrapWorkerCredentialFromEnv(
-		context.Background(),
-		store,
+		ctx,
+		creds,
 		os.Getenv(control.DevWorkerIDEnvVar),
 		os.Getenv(control.DevWorkerPublicEd25519EnvVar),
+		scope,
+		pools,
 	)
 	if err != nil {
 		return fmt.Errorf("bootstrap worker credential: %w", err)

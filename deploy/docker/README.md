@@ -58,10 +58,35 @@ Registration also requires a nonce and issued-at timestamp within the configured
 replay protection (`docs/planning/27-security-controls.md`); this needs no extra compose configuration since Redis
 is already part of the stack.
 
-The automated proof of the end-to-end REST -> Control -> NATS -> Egress -> upstream path is the in-process Go test
-`TestDispatcherControlNATSEgressRoundTrip` (run with `go test ./internal/control/`), which controls both the worker
-key and the registered credential. See `docs/agents/testing-matrix-audit.md`.
+## Live dispatch round-trip
 
-To exercise the request API against the running Control (routing/admission/validation, without a live egress worker),
-bootstrap an admin key by setting `STRAW_BOOTSTRAP_SYSTEM_ADMIN_KEY` before `docker compose up`, then call the admin
-and `POST /api/v1/requests` endpoints on port 8080.
+`docker-compose.yml` also seeds a complete dev routing path so a real REST -> Control -> NATS -> Egress -> upstream
+request works out of the box: `STRAW_BOOTSTRAP_DEV_TENANT_ID` and `STRAW_BOOTSTRAP_DEV_POOL_ID` on the `control`
+service make Control seed a dev tenant, an enabled routing rule targeting the dev pool, and scope the dev worker
+credential to that (tenant, pool) (`bootstrapDevProvisioning`, `cmd/control/main.go`). `egress.json` declares the
+matching membership via `egress.allowed_pools`, which the worker sends as pool refs at registration. All of this is
+dev-only seeding; production provisions tenants, routing, pools, and credentials through the admin API.
+
+To drive it end to end:
+
+```sh
+# 1. Start with an admin bootstrap key.
+STRAW_BOOTSTRAP_SYSTEM_ADMIN_KEY=<your-dev-admin-key> docker compose up -d --build
+
+# 2. Mint the dev tenant's first requester key (system_admin can bootstrap any tenant's first key).
+curl -s -H "Authorization: Bearer <your-dev-admin-key>" -H 'Content-Type: application/json' \
+  -d '{"role":"requester"}' \
+  http://localhost:8080/api/v1/config/tenants/22222222-2222-4222-8222-222222222222/api-keys
+
+# 3. Execute a request with the returned secret; the response envelope carries the real upstream status/body.
+curl -s -H "Authorization: Bearer <requester-secret>" -H 'Content-Type: application/json' \
+  -d '{"method":"GET","url":"https://example.com/","timeout_ms":15000}' \
+  http://localhost:8080/api/v1/requests
+```
+
+Request metadata lands asynchronously in ClickHouse (`straw.request_events`, ~1s flush):
+`curl -s http://localhost:8123/ --data-binary 'SELECT * FROM straw.request_events FORMAT Vertical'`.
+
+The in-process proof of the same path is `TestDispatcherControlNATSEgressRoundTrip`
+(`go test ./internal/control/`), which controls both the worker key and the registered credential. See
+`docs/agents/testing-matrix-audit.md`.

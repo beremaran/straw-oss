@@ -6,6 +6,12 @@
     "private_key_ed25519_env": "STRAW_WORKER_PRIVATE_KEY_ED25519_BASE64",
     "heartbeat_interval_ms": 5000,
     "health_port": 8090,
+    "allowed_pools": [
+      {
+        "tenant_id": "22222222-2222-4222-8222-222222222222",
+        "pool_id": "dev-pool"
+      }
+    ],
     "nats": {
       "servers": ["nats://nats:4222"]
     }
