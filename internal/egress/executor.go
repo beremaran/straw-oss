@@ -122,7 +122,12 @@ func NewP0Transport(dialContext func(context.Context, string, string) (net.Conn,
 
 // Execute performs one outbound request from a Control-resolved RequestStart
 // and returns the e2c stream frames for the attempt.
-func (e *Executor) Execute(ctx context.Context, start *strawpb.RequestStart, body []byte, attempt uint32) []*strawpb.StreamFrame {
+//
+// send, when non-nil, is called with the OutboundStartFrame before DNS/connect
+// so Control can stamp the egress phase start in real time (docs/planning/09
+// step 19); a frame passed to send is excluded from the returned batch. With a
+// nil send every frame, OutboundStart included, is returned in the batch.
+func (e *Executor) Execute(ctx context.Context, start *strawpb.RequestStart, body []byte, attempt uint32, send func(*strawpb.StreamFrame)) []*strawpb.StreamFrame {
 	frames := newFrameBuilder(attempt)
 
 	target, failure := parseTarget(start)
@@ -130,7 +135,7 @@ func (e *Executor) Execute(ctx context.Context, start *strawpb.RequestStart, bod
 		return []*strawpb.StreamFrame{frames.error(failure)}
 	}
 
-	emit := []*strawpb.StreamFrame{frames.outboundStart(target.host, target.port)}
+	emit := emitOrBatch(frames.outboundStart(target.host, target.port), send)
 
 	failure = validateStart(start)
 	if failure != nil {
@@ -746,6 +751,18 @@ func (b *frameBuilder) outboundStart(host string, port uint32) *strawpb.StreamFr
 			WorkerTimestampMs: time.Now().UnixMilli(),
 		}},
 	}
+}
+
+// emitOrBatch delivers frame through send when one is provided, otherwise
+// returns it as the start of the batched frame slice.
+func emitOrBatch(frame *strawpb.StreamFrame, send func(*strawpb.StreamFrame)) []*strawpb.StreamFrame {
+	if send != nil {
+		send(frame)
+
+		return nil
+	}
+
+	return []*strawpb.StreamFrame{frame}
 }
 
 func responseStatus(status int) (uint32, *executionError) {

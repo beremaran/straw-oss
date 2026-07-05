@@ -185,11 +185,15 @@ func TestWorkerShutdownDrainsInFlightRequestBeforeReturning(t *testing.T) {
 	t.Parallel()
 
 	release := make(chan struct{})
+	releaseOnce := sync.OnceFunc(func() { close(release) })
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		<-release
 		w.WriteHeader(http.StatusOK)
 	}))
 	t.Cleanup(server.Close)
+	// Release the handler even when an assertion fails, or server.Close
+	// deadlocks on the blocked in-flight request.
+	t.Cleanup(releaseOnce)
 
 	target := rewriteHost(t, server.URL, "drain.test")
 	executor := NewExecutor(ExecutorOptions{Resolver: staticResolver{"drain.test": loopbackIP(t, server.URL)}})
@@ -226,15 +230,26 @@ func TestWorkerShutdownDrainsInFlightRequestBeforeReturning(t *testing.T) {
 		t.Fatal("cancel() did not return")
 	}
 
-	// The in-flight request must not be aborted just because the worker
-	// began shutting down: it only completes once the handler is released.
+	// OutboundStart is published before connect (docs/planning/09 step 19),
+	// so it arrives while the handler is still blocked. The in-flight request
+	// must not be aborted just because the worker began shutting down: no
+	// terminal frame may arrive until the handler is released.
+	select {
+	case frame := <-h.e2cChan(t, "req_drain"):
+		if frame.GetOutboundStart() == nil {
+			t.Fatalf("unexpected frame before handler released: %#v", frame)
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("OutboundStart not published before connect")
+	}
+
 	select {
 	case frame := <-h.e2cChan(t, "req_drain"):
 		t.Fatalf("request completed before handler released: %#v", frame)
 	case <-time.After(100 * time.Millisecond):
 	}
 
-	close(release)
+	releaseOnce()
 
 	frames := h.collectTerminal(t, "req_drain")
 	if got := frames[len(frames)-1].GetEnd(); got == nil || !got.GetSuccess() {
