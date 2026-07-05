@@ -116,7 +116,9 @@ this task. Torn the stack back down (`docker compose down`) after the check.
   limited live verification of the NATS-path metrics (`straw_nats_request_duration_seconds`,
   `straw_nats_errors_total`, `straw_assignment_duration_seconds`, `straw_worker_sessions`,
   `straw_workers_available`, `straw_worker_heartbeat_age_seconds` moving from real traffic) to the unit-test level;
-  no P0 task currently owns fixing that provisioning gap.
+  no P0 task currently owns fixing that provisioning gap. **[Update 2026-07-05: resolved — task 35
+  added the persistent worker identity key, task 40 added registration retry, and the 2026-07-05 live end-to-end
+  verification drove a real request through the compose stack.]**
 
 ## Blockers
 

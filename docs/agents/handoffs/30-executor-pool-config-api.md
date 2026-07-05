@@ -134,7 +134,8 @@ config instead of an empty `nil` list every pool would have hit anyway.
   infrastructure consumes). No task file currently owns closing this gap —
   flagging it here rather than silently deferring it, per the Completion
   Audit's unowned-deferral rule. Recommend a new task if this should be
-  closed.
+  closed. **[Update 2026-07-05: now owned by
+  `docs/tasks/p0/42-executor-pool-capability-fields.md`.]**
 
 ## Blockers
 

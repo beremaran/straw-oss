@@ -54,7 +54,8 @@ Result:
   ed25519 keypair on every boot, so the `egress` container cannot complete registration against Control without a
   pre-seeded worker credential whose public key matches. This is a pre-existing gap that **no P0 task file owns**
   (integration tasks 16-24 covered NATS/Postgres/Redis/dispatch, not egress identity persistence). Flagged to the
-  user. The end-to-end REST -> Control -> NATS -> Egress -> upstream path is proven by the in-process Go test
+  user. **[Update 2026-07-05: resolved — task 35 (persistent identity key) and task 40 (registration retry) closed
+  this, and the 2026-07-05 live end-to-end verification drove a real request through the compose stack.]** The end-to-end REST -> Control -> NATS -> Egress -> upstream path is proven by the in-process Go test
   `TestDispatcherControlNATSEgressRoundTrip`, which controls both the worker key and the registered credential.
 - ClickHouse binary wiring is complete (`wireClickHouse` constructs `HTTPClickHouseSink` + `RequestMetadataWriter`
   against the live endpoint). The write path's row-shape/outage/drop behavior is unit-tested; asserting rows land in

@@ -483,9 +483,9 @@ func (h *AdminHandlers) DeleteExecutorPool(w http.ResponseWriter, r *http.Reques
 
 // denyRuleTypes/denyRuleActions mirror the CHECK constraints on the deny_rules
 // table (migrations/postgres/0001_init.sql). docs/planning/26 documents a
-// broader P1-leaning type/action taxonomy (host_suffix, cname_suffix,
-// metadata_ip, private_range, allow_override); this handoff flags that gap
-// rather than silently narrowing or widening it without a schema change.
+// broader P0 type/action taxonomy (host_suffix, cname_suffix, metadata_ip,
+// private_range, allow_override); closing that gap is owned by
+// docs/tasks/p0/43-deny-rule-taxonomy-alignment.md.
 var (
 	denyRuleTypes   = map[string]bool{denyRuleTypeHost: true, denyRuleTypeCIDR: true, denyRuleTypeCName: true, denyRuleTypeIP: true}
 	denyRuleActions = map[string]bool{denyRuleActionDeny: true, denyRuleActionAllow: true}

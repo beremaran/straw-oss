@@ -539,9 +539,9 @@ func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.API
 
 // buildAdminHandlers constructs the AdminHandlers with the Postgres-backed
 // stores and the Redis-backed runtime admission components
-// (docs/tasks/p0/21). The rate limiter, quota admission, and sticky store are
-// constructed against the live Redis client but not yet consumed on the
-// request path; that wiring is docs/tasks/p0/24.
+// (docs/tasks/p0/21). These are the admin-surface instances; the request path
+// consumes its own rate limiter/quota/sticky instances wired into the
+// dispatcher (docs/tasks/p0/24).
 func buildAdminHandlers(apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool, configStore *control.PostgresConfigStore, configCache *control.ConfigCache, redisClient *redis.Client, inflight *control.InFlightRegistry, tenantStore control.TenantStore, configAuditEvents *control.ConfigAuditEventWriter) *control.AdminHandlers {
 	rateLimiter := control.NewRateLimiter(redisClient, control.DefaultRateLimitGuardrails(), nil)
 

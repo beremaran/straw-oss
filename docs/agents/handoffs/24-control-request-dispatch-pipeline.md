@@ -39,8 +39,9 @@ Result: all tests pass, 0 linter issues.
 - `docs/tasks/p0/24-control-request-dispatch-pipeline.md`: fallback/replay before the
   `RequestStart` boundary is not implemented. Current dispatcher surfaces the pre-start assignment
   failure directly. P0 conservative replay boundary (docs/planning/09 §5) allows retry on another
-  eligible session; implementing multi-attempt dispatch would require significant rework and is
-  owned by this task if pursued.
+  eligible session; implementing multi-attempt dispatch would require significant rework.
+  **[Update 2026-07-05: owned by `docs/tasks/p1/17-worker-loss-and-nats-outage-hardening.md`,
+  which carries the pre-connect fallback decision and the replay-boundary acceptance criteria.]**
 - `docs/tasks/p0/24-control-request-dispatch-pipeline.md`: `CreditFrame` replenishment on the
   c2e channel is not sent. For P0, the egress executor publishes the full response in one shot
   (single `DataFrame`), and the initial download credit (8 MiB) exceeds the inline response body
