@@ -279,9 +279,14 @@ func (w *Worker) runRequest(reqCtx context.Context, cancel context.CancelFunc, r
 	}
 
 	resultCh := make(chan []*strawpb.StreamFrame, 1)
+	downloadCredit := newResponseCreditGate(req.GetInitialDownloadCreditBytes())
 
 	go func() {
 		resultCh <- w.executor.Execute(reqCtx, start, body, req.GetAttempt(), func(frame *strawpb.StreamFrame) {
+			if data := frame.GetData(); data != nil && !downloadCredit.take(reqCtx, uint64FromInt(len(data.GetData()))) {
+				return
+			}
+
 			// Publish OutboundStart before DNS/connect (docs/planning/09
 			// step 19) so Control measures the real egress phase instead of
 			// receiving it batched with the terminal frame.
@@ -289,7 +294,7 @@ func (w *Worker) runRequest(reqCtx context.Context, cancel context.CancelFunc, r
 		})
 	}()
 
-	result, canceled, reason := waitForResult(resultCh, frames, validator, cancel)
+	result, canceled, reason := waitForResult(resultCh, frames, validator, cancel, downloadCredit)
 	if canceled {
 		result = applyCancellation(result, reason)
 	}
@@ -361,10 +366,8 @@ func (s *requestBodyState) accept(validator *natsx.StreamValidator, frame *straw
 		s.body = append(s.body, p.Data.GetData()...)
 		s.received += uint64(len(p.Data.GetData()))
 	case *strawpb.StreamFrame_Credit:
-		// Download credit grant for e2c response bytes. P0 executes the
-		// whole response in one pass (Executor.Execute) rather than
-		// chunking by credit; response buffering per credit is Control's
-		// responsibility (docs/tasks/p0/24).
+		// Download credit grants are consumed after RequestStart while the
+		// executor streams response DataFrames.
 	default:
 		return false
 	}
@@ -375,7 +378,7 @@ func (s *requestBodyState) accept(validator *natsx.StreamValidator, frame *straw
 // waitForResult waits for the outbound execution to finish while still
 // accepting c2e frames, most importantly a CancelFrame, which cancels
 // execCtx so Executor.Execute aborts promptly.
-func waitForResult(resultCh <-chan []*strawpb.StreamFrame, frames <-chan *strawpb.StreamFrame, validator *natsx.StreamValidator, cancel context.CancelFunc) ([]*strawpb.StreamFrame, bool, string) {
+func waitForResult(resultCh <-chan []*strawpb.StreamFrame, frames <-chan *strawpb.StreamFrame, validator *natsx.StreamValidator, cancel context.CancelFunc, downloadCredit *responseCreditGate) ([]*strawpb.StreamFrame, bool, string) {
 	for {
 		select {
 		case result := <-resultCh:
@@ -389,6 +392,12 @@ func waitForResult(resultCh <-chan []*strawpb.StreamFrame, frames <-chan *strawp
 				continue
 			}
 
+			if credit := frame.GetCredit(); credit != nil {
+				downloadCredit.grant(credit.GetDownloadCreditBytes())
+
+				continue
+			}
+
 			cancelFrame, isCancel := frame.GetPayload().(*strawpb.StreamFrame_Cancel)
 			if !isCancel {
 				continue
@@ -399,6 +408,46 @@ func waitForResult(resultCh <-chan []*strawpb.StreamFrame, frames <-chan *strawp
 			return <-resultCh, true, cancelFrame.Cancel.GetReason()
 		}
 	}
+}
+
+type responseCreditGate struct {
+	credit uint64
+	grants chan uint64
+}
+
+func newResponseCreditGate(initial uint64) *responseCreditGate {
+	if initial == 0 {
+		return nil
+	}
+
+	return &responseCreditGate{credit: initial, grants: make(chan uint64, streamFrameChannelBuffer)}
+}
+
+func (g *responseCreditGate) grant(bytes uint64) {
+	if g == nil || bytes == 0 {
+		return
+	}
+
+	g.grants <- bytes
+}
+
+func (g *responseCreditGate) take(ctx context.Context, bytes uint64) bool {
+	if g == nil || bytes == 0 {
+		return true
+	}
+
+	for g.credit < bytes {
+		select {
+		case <-ctx.Done():
+			return false
+		case grant := <-g.grants:
+			g.credit += grant
+		}
+	}
+
+	g.credit -= bytes
+
+	return true
 }
 
 // applyCancellation replaces the terminal frame of a Cancel-aborted execution

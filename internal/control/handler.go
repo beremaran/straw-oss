@@ -186,7 +186,7 @@ func asValidationError(err error, target **ValidationError) bool {
 }
 
 func writeSuccessResponse(w http.ResponseWriter, response SuccessResponse) {
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(headerCanonicalContentType, "application/json")
 	w.WriteHeader(http.StatusOK)
 
 	err := json.NewEncoder(w).Encode(response)

@@ -40,7 +40,7 @@ request pipeline used by REST.
 - [x] Parse HTTP proxy requests into the internal decoded request model.
 - [x] Strip `Proxy-Authorization`, `X-Straw-*`, hop-by-hop headers, and invalid internal routing headers.
 - [x] Reject CONNECT on this listener unless task 05 owns the request.
-- [x] Send proxy responses without the REST JSON envelope. Full unbuffered raw streaming/backpressure remains owned by
+- [x] Send proxy responses without the REST JSON envelope. Full unbuffered raw streaming/backpressure was completed by
       `docs/tasks/p1/03-raw-streaming-response-path.md`.
 - [x] Add tests for auth, header stripping, routing input, malformed requests, and raw upstream response passthrough.
 - [x] Run focused proxy ingress tests.

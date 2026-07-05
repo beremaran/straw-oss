@@ -39,7 +39,7 @@ Every in-phase field/endpoint/behavior from the task's cited planning-doc sectio
 | Remaining headers preserve order and duplicates. | implemented | `cmd/control/main.go:284`, `internal/control/proxy_handler.go:157`, `internal/control/proxy_handler_test.go:216` |
 | `Proxy-Authorization`, `X-Straw-*`, hop-by-hop, `Connection`-named, `Host`, `Content-Length`, and `Transfer-Encoding` are stripped. | implemented | `internal/control/proxy_handler.go:276`, `internal/control/proxy_handler.go:281`, `internal/control/proxy_handler_test.go:108` |
 | Proxy request mapping sets `routing.ingress_type=http_proxy`. | implemented | `internal/control/proxy_handler.go:151`; route matching and worker capability gating are owned by `docs/tasks/p1/04-routing-ingress-type-and-worker-capability.md`. |
-| Proxy responses do not use the REST JSON success envelope. | implemented | `internal/control/proxy_handler.go:331`, `internal/control/proxy_handler_test.go:14`; unbuffered streaming/backpressure is owned by `docs/tasks/p1/03-raw-streaming-response-path.md`. |
+| Proxy responses do not use the REST JSON success envelope. | implemented | `internal/control/proxy_handler.go:331`, `internal/control/proxy_handler_test.go:14`; unbuffered streaming/backpressure was completed by `docs/tasks/p1/03-raw-streaming-response-path.md`. |
 | `route_no_match` renders HTTP `421` for decoded proxy modes. | implemented | `internal/control/proxy_handler.go:320`, `internal/control/proxy_handler_test.go:240` |
 | Redaction/security rules prevent proxy auth/internal headers from reaching metadata/logs/upstream. | implemented | Stripping happens before `DispatchInput` at `internal/control/proxy_handler.go:136`; metadata redaction already covers proxy auth in `internal/control/request_metadata.go`. |
 
@@ -65,7 +65,7 @@ Result: passed.
 
 ## Remaining Work
 
-- Full unbuffered proxy response streaming, backpressure, post-header error handling, and proxy-client cancellation are owned by `docs/tasks/p1/03-raw-streaming-response-path.md`.
+- Full unbuffered proxy response streaming, backpressure, post-header error handling, and proxy-client cancellation were completed by `docs/tasks/p1/03-raw-streaming-response-path.md`.
 - Routing `ingress_type` matching and worker capability gating are owned by `docs/tasks/p1/04-routing-ingress-type-and-worker-capability.md`.
 - Raw CONNECT remains owned by `docs/tasks/p1/05-raw-connect-tunnel.md`.
 

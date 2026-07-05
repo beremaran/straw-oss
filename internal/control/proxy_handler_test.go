@@ -17,7 +17,7 @@ func TestProxyHandlerMapsRequestAndWritesRawResponse(t *testing.T) {
 	h, token, dispatcher := newTestProxyHandler(t)
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "http://example.com/path?q=1", nil)
 	req.Header.Set("Proxy-Authorization", "Bearer "+token)
-	req.Header.Set("Accept", "text/plain")
+	req.Header.Set("Accept", mediaTypeTextPlain)
 	w := httptest.NewRecorder()
 
 	h.ServeHTTP(w, req)
@@ -28,7 +28,7 @@ func TestProxyHandlerMapsRequestAndWritesRawResponse(t *testing.T) {
 	if got := w.Body.String(); got != "missing" {
 		t.Fatalf("body = %q, want missing", got)
 	}
-	if got := w.Header().Get("Content-Type"); got != "text/plain" {
+	if got := w.Header().Get(headerCanonicalContentType); got != mediaTypeTextPlain {
 		t.Fatalf("Content-Type = %q, want text/plain", got)
 	}
 
@@ -44,6 +44,86 @@ func TestProxyHandlerMapsRequestAndWritesRawResponse(t *testing.T) {
 	}
 	if !in.Request.Replayable {
 		t.Fatal("GET proxy request should be replayable")
+	}
+}
+
+func TestProxyHandlerUsesRawDispatcherWithoutJSONEnvelope(t *testing.T) {
+	t.Parallel()
+
+	h, token, _ := newTestProxyHandler(t)
+	dispatcher := &rawProxyDispatcher{
+		status: http.StatusInternalServerError,
+		headers: http.Header{
+			headerCanonicalContentType: []string{mediaTypeTextPlain},
+		},
+		chunks: [][]byte{[]byte("up"), []byte("stream")},
+	}
+	h.SetDispatcher(dispatcher)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "http://example.com/path", nil)
+	req.Header.Set("Proxy-Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusInternalServerError)
+	}
+	if got := w.Body.String(); got != "upstream" {
+		t.Fatalf("body = %q, want upstream", got)
+	}
+	if strings.Contains(w.Body.String(), "request_id") {
+		t.Fatal("raw proxy response was wrapped in JSON envelope")
+	}
+	if dispatcher.calls != 1 {
+		t.Fatalf("raw dispatcher calls = %d, want 1", dispatcher.calls)
+	}
+}
+
+func TestProxyHandlerDoesNotRenderSecondErrorAfterPartialRawResponse(t *testing.T) {
+	t.Parallel()
+
+	h, token, _ := newTestProxyHandler(t)
+	h.SetDispatcher(&rawProxyDispatcher{
+		status: http.StatusOK,
+		chunks: [][]byte{[]byte("partial")},
+		err:    &PipelineError{Code: UpstreamReset},
+	})
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "http://example.com/path", nil)
+	req.Header.Set("Proxy-Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+	if got := w.Body.String(); got != "partial" {
+		t.Fatalf("body = %q, want only partial upstream bytes", got)
+	}
+}
+
+func TestProxyHandlerClientCancellationReachesRawDispatcher(t *testing.T) {
+	t.Parallel()
+
+	h, token, _ := newTestProxyHandler(t)
+	dispatcher := &blockingRawProxyDispatcher{started: make(chan struct{}), done: make(chan struct{})}
+	h.SetDispatcher(dispatcher)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "http://example.com/path", nil)
+	req.Header.Set("Proxy-Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+
+	go h.ServeHTTP(w, req)
+	<-dispatcher.started
+	cancel()
+
+	select {
+	case <-dispatcher.done:
+	case <-time.After(time.Second):
+		t.Fatal("raw dispatcher did not observe client cancellation")
 	}
 }
 
@@ -112,7 +192,7 @@ func TestProxyHandlerStripsProxyAndInternalHeaders(t *testing.T) {
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "http://example.com/", strings.NewReader("hi"))
 	req.Header.Set("Proxy-Authorization", "Bearer "+token)
 	req.Header.Set("Authorization", "Bearer upstream")
-	req.Header.Set("Connection", "X-Hop")
+	req.Header.Set(headerCanonicalConnection, "X-Hop")
 	req.Header.Set("X-Hop", "drop")
 	req.Header.Set("X-Straw-Route", "drop")
 	req.Header.Set("Proxy-Connection", "keep-alive")
@@ -126,7 +206,7 @@ func TestProxyHandlerStripsProxyAndInternalHeaders(t *testing.T) {
 	}
 
 	got := decodedProxyHeaders(dispatcher.last.Request.Headers)
-	for _, name := range []string{"Proxy-Authorization", "Connection", "X-Hop", "X-Straw-Route", "Proxy-Connection", "Transfer-Encoding", "Host", "Content-Length"} {
+	for _, name := range []string{"Proxy-Authorization", headerCanonicalConnection, "X-Hop", "X-Straw-Route", "Proxy-Connection", "Transfer-Encoding", "Host", headerCanonicalContentLength} {
 		if _, ok := got[name]; ok {
 			t.Fatalf("header %q was forwarded: %#v", name, got)
 		}
@@ -307,8 +387,8 @@ func (d *captureProxyDispatcher) Dispatch(_ context.Context, in DispatchInput) (
 		RequestID: in.RequestID,
 		Status:    http.StatusNotFound,
 		Headers: []HeaderPair{{
-			Name:  "Content-Type",
-			Value: base64.StdEncoding.EncodeToString([]byte("text/plain")),
+			Name:  headerCanonicalContentType,
+			Value: base64.StdEncoding.EncodeToString([]byte(mediaTypeTextPlain)),
 		}},
 		Body: ResponseBody{
 			Mode:       handlerTestInlineBase64,
@@ -316,6 +396,64 @@ func (d *captureProxyDispatcher) Dispatch(_ context.Context, in DispatchInput) (
 		},
 		ResponseSizeBytes: 7,
 	}, nil
+}
+
+type rawProxyDispatcher struct {
+	last    DispatchInput
+	calls   int
+	status  int
+	headers http.Header
+	chunks  [][]byte
+	err     *PipelineError
+}
+
+func (d *rawProxyDispatcher) Dispatch(_ context.Context, in DispatchInput) (SuccessResponse, *PipelineError) {
+	d.last = in
+
+	return SuccessResponse{}, &PipelineError{Code: ControlInternalError}
+}
+
+func (d *rawProxyDispatcher) DispatchRaw(_ context.Context, in DispatchInput, w http.ResponseWriter) (SuccessResponse, *PipelineError, bool) {
+	d.calls++
+	d.last = in
+
+	for name, values := range d.headers {
+		for _, value := range values {
+			w.Header().Add(name, value)
+		}
+	}
+
+	status := d.status
+	if status == 0 {
+		status = http.StatusOK
+	}
+	w.WriteHeader(status)
+
+	var size uint64
+	for _, chunk := range d.chunks {
+		n, _ := w.Write(chunk)
+		size += uint64FromInt(n)
+	}
+
+	return SuccessResponse{RequestID: in.RequestID, Status: status, ResponseSizeBytes: size}, d.err, true
+}
+
+type blockingRawProxyDispatcher struct {
+	started chan struct{}
+	done    chan struct{}
+}
+
+func (d *blockingRawProxyDispatcher) Dispatch(context.Context, DispatchInput) (SuccessResponse, *PipelineError) {
+	return SuccessResponse{}, &PipelineError{Code: ControlInternalError}
+}
+
+func (d *blockingRawProxyDispatcher) DispatchRaw(ctx context.Context, in DispatchInput, w http.ResponseWriter) (SuccessResponse, *PipelineError, bool) {
+	w.WriteHeader(http.StatusOK)
+	close(d.started)
+	<-ctx.Done()
+	close(d.done)
+
+	return SuccessResponse{RequestID: in.RequestID, Status: http.StatusOK}, &PipelineError{Code: Cancelled}, true
 }
 
 func decodedProxyHeaders(headers []HeaderPair) map[string]string {

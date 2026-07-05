@@ -252,7 +252,7 @@ func ErrorResponseFromCodeWithRetry(code ErrorCode, requestID string, extraDetai
 
 // WriteError writes an ErrorResponse as JSON with the given HTTP status.
 func WriteError(w http.ResponseWriter, status int, err ErrorResponse) {
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(headerCanonicalContentType, "application/json")
 	w.WriteHeader(status)
 	encodeErr := json.NewEncoder(w).Encode(err)
 	_ = encodeErr

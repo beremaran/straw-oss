@@ -71,7 +71,19 @@ func (h *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, perr := h.dispatcher.Dispatch(r.Context(), DispatchInput{RequestID: requestID, Identity: identity, Request: validated})
+	in := DispatchInput{RequestID: requestID, Identity: identity, Request: validated}
+	if raw, ok := h.dispatcher.(RawResponseDispatcher); ok {
+		resp, perr, wroteHeader := raw.DispatchRaw(r.Context(), in, w)
+		h.recordOutcome(event, resp, perr)
+
+		if perr != nil && !wroteHeader {
+			h.writeProxyPipelineError(w, requestID, perr)
+		}
+
+		return
+	}
+
+	resp, perr := h.dispatcher.Dispatch(r.Context(), in)
 	h.recordOutcome(event, resp, perr)
 
 	if perr != nil {
@@ -168,7 +180,7 @@ func proxyHeaders(ctx context.Context, headers http.Header) ([]HeaderPair, error
 func proxyHeadersFromMap(headers http.Header) ([]HeaderPair, error) {
 	connectionHeaders := map[string]bool{}
 
-	for _, value := range headers.Values("Connection") {
+	for _, value := range headers.Values(http.CanonicalHeaderKey(headerNameConnection)) {
 		for token := range strings.SplitSeq(value, ",") {
 			name := strings.TrimSpace(token)
 			if name != "" {
@@ -258,7 +270,7 @@ func rawProxyConnectionHeaders(rawHeaders []rawProxyHeader) map[string]bool {
 	connectionHeaders := map[string]bool{}
 
 	for _, h := range rawHeaders {
-		if !strings.EqualFold(h.name, "Connection") {
+		if !strings.EqualFold(h.name, headerNameConnection) {
 			continue
 		}
 
@@ -279,8 +291,8 @@ func stripProxyRequestHeader(name string, connectionHeaders map[string]bool) boo
 	}
 
 	switch strings.ToLower(name) {
-	case "host", headerNameProxyAuthorization, "proxy-connection", "content-length", "transfer-encoding",
-		"connection", "keep-alive", "te", "trailer", "upgrade":
+	case "host", headerNameProxyAuthorization, "proxy-connection", headerNameContentLength, headerNameTransferEncoding,
+		headerNameConnection, "keep-alive", "te", "trailer", "upgrade":
 		return true
 	default:
 		return false

@@ -372,7 +372,7 @@ func insertClickHouseRows[T any](ctx context.Context, s *HTTPClickHouseSink, tab
 	query.Set("date_time_input_format", "best_effort")
 	query.Set("query", "INSERT INTO "+table+" FORMAT JSONEachRow")
 	req.URL.RawQuery = query.Encode()
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(headerCanonicalContentType, "application/json")
 
 	if s.user != "" {
 		req.SetBasicAuth(s.user, s.pass)

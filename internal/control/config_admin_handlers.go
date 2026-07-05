@@ -51,9 +51,9 @@ const (
 
 var alwaysDeniedInjectionHeaders = map[string]bool{
 	denyRuleTypeHost:             true,
-	"content-length":             true,
-	"transfer-encoding":          true,
-	"connection":                 true,
+	headerNameContentLength:      true,
+	headerNameTransferEncoding:   true,
+	headerNameConnection:         true,
 	headerNameProxyAuthorization: true,
 }
 

@@ -1,6 +1,7 @@
 package control
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -193,7 +194,7 @@ func TestDispatcherControlNATSEgressRoundTrip(t *testing.T) {
 	req := validatedDispatchRequest(t, rewriteDispatchHost(t, d.upstreamURL, "dispatch.test"))
 	req.Method = http.MethodPost
 	req.BodyData = []byte("request body")
-	req.Headers = []HeaderPair{{Name: "Content-Type", Value: base64.StdEncoding.EncodeToString([]byte("text/plain"))}}
+	req.Headers = []HeaderPair{{Name: headerCanonicalContentType, Value: base64.StdEncoding.EncodeToString([]byte(mediaTypeTextPlain))}}
 
 	resp, perr := d.Dispatch(context.Background(), dispatchInput(req))
 	if perr != nil {
@@ -241,6 +242,221 @@ func TestDispatcherEgressPhaseTiming(t *testing.T) {
 	}
 	if timing.RoutingMs+timing.AssignmentMs+timing.EgressMs > timing.TotalMs {
 		t.Fatalf("phase sum %d+%d+%d exceeds TotalMs %d", timing.RoutingMs, timing.AssignmentMs, timing.EgressMs, timing.TotalMs)
+	}
+}
+
+func TestDispatcherRawResponseStreamsPastInlineLimit(t *testing.T) {
+	t.Parallel()
+
+	body := strings.Repeat("x", (1<<20)+16384)
+	d, stop := newLiveDispatchHarness(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set(headerCanonicalContentType, mediaTypeTextPlain)
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte(body))
+	}))
+	defer stop()
+
+	req := validatedDispatchRequest(t, rewriteDispatchHost(t, d.upstreamURL, "dispatch.test"))
+	w := httptest.NewRecorder()
+
+	resp, perr, wroteHeader := d.DispatchRaw(context.Background(), dispatchInput(req), w)
+	if perr != nil {
+		t.Fatalf("DispatchRaw error = %#v", perr)
+	}
+	if !wroteHeader {
+		t.Fatal("DispatchRaw wroteHeader = false, want true")
+	}
+	if w.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadGateway)
+	}
+	if got := w.Body.Len(); got != len(body) {
+		t.Fatalf("body len = %d, want %d", got, len(body))
+	}
+	if resp.ResponseSizeBytes != uint64(len(body)) {
+		t.Fatalf("response size = %d, want %d", resp.ResponseSizeBytes, len(body))
+	}
+}
+
+func TestRawResponseHeaderAndTrailerFiltering(t *testing.T) {
+	t.Parallel()
+
+	w := httptest.NewRecorder()
+	writeRawResponseStart(w, http.StatusAccepted, []*strawpb.Header{
+		{Name: headerCanonicalContentType, Value: []byte(mediaTypeTextPlain)},
+		{Name: headerCanonicalContentLength, Value: []byte("10")},
+		{Name: "X-Straw-Debug", Value: []byte("drop")},
+	})
+	_, _ = w.Write([]byte("ok"))
+	writeRawTrailers(w, []*strawpb.Header{
+		{Name: "X-Trailer", Value: []byte("yes")},
+		{Name: headerCanonicalConnection, Value: []byte("drop")},
+	})
+
+	res := w.Result()
+	defer func() { _ = res.Body.Close() }()
+
+	if res.StatusCode != http.StatusAccepted {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusAccepted)
+	}
+	if got := res.Header.Get(headerCanonicalContentType); got != mediaTypeTextPlain {
+		t.Fatalf("Content-Type = %q, want text/plain", got)
+	}
+	for _, name := range []string{headerCanonicalContentLength, "X-Straw-Debug", headerCanonicalConnection} {
+		if got := res.Header.Get(name); got != "" {
+			t.Fatalf("%s = %q, want stripped", name, got)
+		}
+	}
+	if got := res.Trailer.Get("X-Trailer"); got != "yes" {
+		t.Fatalf("X-Trailer = %q, want yes", got)
+	}
+}
+
+func TestDispatcherRawCancellationPublishesCancelFrame(t *testing.T) {
+	t.Parallel()
+
+	natsServer := testutil.NewFakeNATSServer(t, 2_000_000)
+	controlConn := dispatchConnect(t, natsServer.URL())
+	workerConn := dispatchConnect(t, natsServer.URL())
+	cancelReason := make(chan string, 1)
+
+	assignSubject, err := natsx.AssignmentSubject(dispatchTestWorker, dispatchTestSess)
+	if err != nil {
+		t.Fatalf("AssignmentSubject: %v", err)
+	}
+
+	_, err = workerConn.Subscribe(assignSubject, func(msg *nats.Msg) {
+		env, decodeErr := natsx.UnmarshalEnvelope(msg.Data)
+		if decodeErr != nil {
+			return
+		}
+
+		c2eSubj, _ := natsx.StreamSubject(env.GetRequestId(), dispatchTestWorker, dispatchTestSess, natsx.DirectionControlToExecutor)
+		_, _ = workerConn.Subscribe(c2eSubj, func(msg *nats.Msg) {
+			frame := decodeDispatchFrame(msg.Data)
+			if cancel := frame.GetCancel(); cancel != nil {
+				cancelReason <- cancel.GetReason()
+			}
+		})
+		_ = workerConn.Flush()
+
+		ack := &strawpb.Envelope{
+			RequestId:     env.GetRequestId(),
+			TenantId:      env.GetTenantId(),
+			ProtocolMajor: ProtocolMajor,
+			Attempt:       env.GetAttempt(),
+			Payload:       &strawpb.Envelope_AssignAck{AssignAck: &strawpb.AssignAck{Code: strawpb.AssignAckCode_ASSIGN_ACK_ACCEPTED}},
+		}
+		raw, _ := natsx.MarshalEnvelope(ack)
+		_ = msg.Respond(raw)
+
+		e2cSubj, _ := natsx.StreamSubject(env.GetRequestId(), dispatchTestWorker, dispatchTestSess, natsx.DirectionExecutorToControl)
+		publishDispatchFrames(workerConn, env, e2cSubj,
+			&strawpb.StreamFrame{StreamSeq: 1, Attempt: defaultRequestAttempt, Payload: &strawpb.StreamFrame_ResponseStart{ResponseStart: &strawpb.ResponseStart{Status: http.StatusOK}}},
+			&strawpb.StreamFrame{StreamSeq: 2, Attempt: defaultRequestAttempt, Payload: &strawpb.StreamFrame_Data{Data: &strawpb.DataFrame{Data: []byte("partial")}}},
+		)
+	})
+	if err != nil {
+		t.Fatalf("Subscribe assignment: %v", err)
+	}
+	_ = workerConn.Flush()
+
+	snapshot := dispatchSnapshot([]config.RoutingRule{dispatchRule()})
+	d := newTestDispatcherWithSnapshot(t, snapshot, dispatchCandidates{dispatchCandidate()})
+	d.opts.NATS = controlConn
+
+	ctx, cancel := context.WithCancel(context.Background())
+	req := validatedDispatchRequest(t, "https://example.com/")
+	w := httptest.NewRecorder()
+
+	done := make(chan *PipelineError, 1)
+	go func() {
+		_, perr, _ := d.DispatchRaw(ctx, dispatchInput(req), w)
+		done <- perr
+	}()
+
+	for !bytes.Contains(w.Body.Bytes(), []byte("partial")) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	cancel()
+
+	perr := <-done
+	if perr == nil || perr.Code != Cancelled {
+		t.Fatalf("DispatchRaw error = %#v, want cancelled", perr)
+	}
+
+	select {
+	case got := <-cancelReason:
+		if got != "client_cancelled" {
+			t.Fatalf("cancel reason = %q, want client_cancelled", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("worker did not receive CancelFrame")
+	}
+}
+
+func TestDispatcherRawPostHeaderErrorKeepsPartialResponse(t *testing.T) {
+	t.Parallel()
+
+	natsServer := testutil.NewFakeNATSServer(t, 2_000_000)
+	controlConn := dispatchConnect(t, natsServer.URL())
+	workerConn := dispatchConnect(t, natsServer.URL())
+
+	assignSubject, err := natsx.AssignmentSubject(dispatchTestWorker, dispatchTestSess)
+	if err != nil {
+		t.Fatalf("AssignmentSubject: %v", err)
+	}
+
+	_, err = workerConn.Subscribe(assignSubject, func(msg *nats.Msg) {
+		env, decodeErr := natsx.UnmarshalEnvelope(msg.Data)
+		if decodeErr != nil {
+			return
+		}
+
+		c2eSubj, _ := natsx.StreamSubject(env.GetRequestId(), dispatchTestWorker, dispatchTestSess, natsx.DirectionControlToExecutor)
+		_, _ = workerConn.Subscribe(c2eSubj, func(*nats.Msg) {})
+		_ = workerConn.Flush()
+
+		ack := &strawpb.Envelope{
+			RequestId:     env.GetRequestId(),
+			TenantId:      env.GetTenantId(),
+			ProtocolMajor: ProtocolMajor,
+			Attempt:       env.GetAttempt(),
+			Payload:       &strawpb.Envelope_AssignAck{AssignAck: &strawpb.AssignAck{Code: strawpb.AssignAckCode_ASSIGN_ACK_ACCEPTED}},
+		}
+		raw, _ := natsx.MarshalEnvelope(ack)
+		_ = msg.Respond(raw)
+
+		e2cSubj, _ := natsx.StreamSubject(env.GetRequestId(), dispatchTestWorker, dispatchTestSess, natsx.DirectionExecutorToControl)
+		publishDispatchFrames(workerConn, env, e2cSubj,
+			&strawpb.StreamFrame{StreamSeq: 1, Attempt: defaultRequestAttempt, Payload: &strawpb.StreamFrame_ResponseStart{ResponseStart: &strawpb.ResponseStart{Status: http.StatusOK}}},
+			&strawpb.StreamFrame{StreamSeq: 2, Attempt: defaultRequestAttempt, Payload: &strawpb.StreamFrame_Data{Data: &strawpb.DataFrame{Data: []byte("partial")}}},
+			&strawpb.StreamFrame{StreamSeq: 3, Attempt: defaultRequestAttempt, Payload: &strawpb.StreamFrame_Error{Error: &strawpb.ErrorFrame{Code: strawpb.ErrorCode_ERROR_CODE_UPSTREAM_RESET}}},
+		)
+	})
+	if err != nil {
+		t.Fatalf("Subscribe assignment: %v", err)
+	}
+	_ = workerConn.Flush()
+
+	snapshot := dispatchSnapshot([]config.RoutingRule{dispatchRule()})
+	d := newTestDispatcherWithSnapshot(t, snapshot, dispatchCandidates{dispatchCandidate()})
+	d.opts.NATS = controlConn
+
+	req := validatedDispatchRequest(t, "https://example.com/")
+	w := httptest.NewRecorder()
+
+	_, perr, wroteHeader := d.DispatchRaw(context.Background(), dispatchInput(req), w)
+	if perr == nil || perr.Code != UpstreamReset {
+		t.Fatalf("DispatchRaw error = %#v, want upstream_reset", perr)
+	}
+	if !wroteHeader {
+		t.Fatal("DispatchRaw wroteHeader = false, want true")
+	}
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want upstream status 200", w.Code)
+	}
+	if got := w.Body.String(); got != "partial" {
+		t.Fatalf("body = %q, want partial", got)
 	}
 }
 
@@ -406,6 +622,22 @@ func dispatchConnect(t *testing.T, url string) *natsx.Connection {
 	t.Cleanup(func() { conn.Close() })
 
 	return conn
+}
+
+func publishDispatchFrames(conn *natsx.Connection, env *strawpb.Envelope, subject string, frames ...*strawpb.StreamFrame) {
+	for _, frame := range frames {
+		out := &strawpb.Envelope{
+			RequestId:      env.GetRequestId(),
+			TenantId:       env.GetTenantId(),
+			DeadlineUnixMs: env.GetDeadlineUnixMs(),
+			ProtocolMajor:  ProtocolMajor,
+			Attempt:        env.GetAttempt(),
+			Payload:        &strawpb.Envelope_StreamFrame{StreamFrame: frame},
+		}
+		raw, _ := natsx.MarshalEnvelope(out)
+		_ = conn.Publish(subject, raw)
+	}
+	_ = conn.Flush()
 }
 
 func rewriteDispatchHost(t *testing.T, raw, host string) string {
