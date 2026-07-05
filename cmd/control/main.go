@@ -120,6 +120,7 @@ func runControl(controlConfig config.ControlConfig, natsConn *natsx.Connection) 
 
 	workerCreds := control.NewPostgresWorkerCredentialStore(pool)
 	workerRegistry := control.NewWorkerRegistry(workerCreds, control.DefaultWorkerTimings(), nil)
+	workerRegistry.SetRuntimeStore(control.NewRedisWorkerRuntimeStore(redisClient))
 	wireWorkerRegistrationReplayProtection(workerRegistry, controlConfig.Worker, redisClient)
 
 	configStore := control.NewPostgresConfigStore(pool)

@@ -201,16 +201,25 @@ type workerEntry struct {
 	cooldownUntil time.Time
 }
 
+// WorkerRuntimeStore stores ephemeral worker runtime state outside the
+// Control process. Redis is the production P0 implementation; nil means the
+// registry uses only its bounded local snapshot for tests.
+type WorkerRuntimeStore interface {
+	save(workerID string, e *workerEntry, ttl time.Duration) error
+	loadAll() (map[string]*workerEntry, error)
+}
+
 // WorkerRegistry tracks worker registration, heartbeat-derived runtime state,
-// duplicate/stale session handling, cooldown, and admin overrides. It is the
-// P0 in-process store; runtime state is never made durable
-// (docs/planning/11). Redis-backed state with TTLs is future work.
+// duplicate/stale session handling, cooldown, and admin overrides. Runtime
+// state can be backed by Redis with TTLs while admin overrides remain durable
+// config rehydrated from Postgres.
 type WorkerRegistry struct {
 	mu        sync.Mutex
 	now       func() time.Time
 	timings   WorkerTimings
 	creds     WorkerCredentialStore
 	workers   map[string]*workerEntry
+	runtime   WorkerRuntimeStore
 	events    WorkerEventRecorder
 	nonces    WorkerNonceStore
 	regPolicy WorkerRegistrationPolicy
@@ -232,6 +241,18 @@ func NewWorkerRegistry(creds WorkerCredentialStore, timings WorkerTimings, now f
 		workers:   make(map[string]*workerEntry),
 		regPolicy: DefaultWorkerRegistrationPolicy(),
 	}
+}
+
+// SetRuntimeStore wires the Redis-backed worker session/heartbeat/load and
+// cooldown state store (docs/planning/21). Redis outage degrades to the
+// registry's local snapshot; a fresh registry with no snapshot fails safe by
+// seeing no available workers.
+func (r *WorkerRegistry) SetRuntimeStore(store WorkerRuntimeStore) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.runtime = store
+	r.refreshRuntimeLocked()
 }
 
 // SetEventRecorder wires the worker_events ClickHouse sink (docs/tasks/p0/32).
@@ -317,6 +338,7 @@ func (r *WorkerRegistry) Register(ctx context.Context, req *strawpb.RegisterRequ
 	}
 
 	e.current = session
+	r.persistRuntimeLocked(req.GetWorkerId(), e)
 
 	r.emitWorkerEvent(WorkerEvent{
 		WorkerID:     req.GetWorkerId(),
@@ -363,6 +385,8 @@ func (r *WorkerRegistry) Heartbeat(hb *strawpb.HeartbeatRequest) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	r.refreshRuntimeLocked()
+
 	e, ok := r.workers[hb.GetWorkerId()]
 	if !ok || e.current == nil {
 		return false, nil
@@ -393,6 +417,7 @@ func (r *WorkerRegistry) Heartbeat(hb *strawpb.HeartbeatRequest) (bool, error) {
 	}
 
 	s.draining = hb.GetDraining()
+	r.persistRuntimeLocked(hb.GetWorkerId(), e)
 
 	r.emitWorkerEvent(WorkerEvent{
 		WorkerID:          hb.GetWorkerId(),
@@ -416,6 +441,8 @@ func (r *WorkerRegistry) RecordFailure(workerID string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	r.refreshRuntimeLocked()
+
 	e, ok := r.workers[workerID]
 	if !ok {
 		return
@@ -438,6 +465,8 @@ func (r *WorkerRegistry) RecordFailure(workerID string) {
 		e.cooldownUntil = now.Add(r.timings.CooldownDuration)
 		e.failures = nil
 	}
+
+	r.persistRuntimeLocked(workerID, e)
 }
 
 // EligibleForTenant reports whether the worker may receive new assignments
@@ -448,6 +477,8 @@ func (r *WorkerRegistry) RecordFailure(workerID string) {
 func (r *WorkerRegistry) EligibleForTenant(workerID, tenantID string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
+	r.refreshRuntimeLocked()
 
 	e, ok := r.workers[workerID]
 	if !ok || e.current == nil {
@@ -489,6 +520,8 @@ type PoolCandidate struct {
 func (r *WorkerRegistry) CandidatesForPool(tenantID, poolID string) []PoolCandidate {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
+	r.refreshRuntimeLocked()
 
 	now := r.now()
 	out := make([]PoolCandidate, 0)
@@ -628,6 +661,8 @@ func (r *WorkerRegistry) RuntimeState(workerID string) WorkerRuntimeState {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	r.refreshRuntimeLocked()
+
 	e, ok := r.workers[workerID]
 	if !ok {
 		return RuntimeUnregistered
@@ -657,6 +692,8 @@ type WorkerRegistryStats struct {
 func (r *WorkerRegistry) Stats() WorkerRegistryStats {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
+	r.refreshRuntimeLocked()
 
 	now := r.now()
 
@@ -840,6 +877,8 @@ func (r *WorkerRegistry) ListWorkersPlatform() []WorkerView {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	r.refreshRuntimeLocked()
+
 	now := r.now()
 
 	out := make([]WorkerView, 0, len(r.workers))
@@ -875,6 +914,8 @@ func (r *WorkerRegistry) ListWorkersPlatform() []WorkerView {
 func (r *WorkerRegistry) ListWorkersForTenant(tenantID string) []WorkerView {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
+	r.refreshRuntimeLocked()
 
 	now := r.now()
 	out := make([]WorkerView, 0)
@@ -974,6 +1015,37 @@ func (r *WorkerRegistry) runtimeState(e *workerEntry, now time.Time) WorkerRunti
 	}
 
 	return runtimeStateForSession(r.timings, e.cooldownUntil, s, now)
+}
+
+func (r *WorkerRegistry) refreshRuntimeLocked() {
+	if r.runtime == nil {
+		return
+	}
+
+	loaded, err := r.runtime.loadAll()
+	if err != nil {
+		return
+	}
+
+	for workerID, runtimeEntry := range loaded {
+		e := r.entry(workerID)
+		e.current = runtimeEntry.current
+		e.superseded = runtimeEntry.superseded
+		e.failures = runtimeEntry.failures
+		e.cooldownUntil = runtimeEntry.cooldownUntil
+	}
+}
+
+func (r *WorkerRegistry) persistRuntimeLocked(workerID string, e *workerEntry) {
+	if r.runtime == nil {
+		return
+	}
+
+	_ = r.runtime.save(workerID, e, r.runtimeTTL())
+}
+
+func (r *WorkerRegistry) runtimeTTL() time.Duration {
+	return max(r.timings.DeadTimeout, r.timings.CooldownDuration, r.timings.CooldownWindow) + time.Second
 }
 
 func (r *WorkerRegistry) entry(workerID string) *workerEntry {
