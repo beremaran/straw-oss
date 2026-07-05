@@ -28,16 +28,18 @@ import (
 
 const deniedInjectionHeaderPrefix = "x-straw-"
 
-// Deny-rule types/actions, matching the deny_rules CHECK constraints
-// (migrations/postgres/0001_init.sql).
+// Deny-rule types/actions, matching the docs/planning/26 P0 taxonomy and the
+// deny_rules CHECK constraints (migrations/postgres/0006_deny_rule_taxonomy.sql).
 const (
-	denyRuleTypeHost  = "host"
-	denyRuleTypeCIDR  = "cidr"
-	denyRuleTypeCName = "cname"
-	denyRuleTypeIP    = "ip"
+	denyRuleTypeHost         = "host"
+	denyRuleTypeHostSuffix   = "host_suffix"
+	denyRuleTypeCIDR         = "cidr"
+	denyRuleTypeCNAMESuffix  = "cname_suffix"
+	denyRuleTypeMetadataIP   = "metadata_ip"
+	denyRuleTypePrivateRange = "private_range"
 
-	denyRuleActionDeny  = "deny"
-	denyRuleActionAllow = "allow"
+	denyRuleActionDeny          = "deny"
+	denyRuleActionAllowOverride = "allow_override"
 )
 
 // Injection operation verbs (docs/planning/26 Injection Policy schema).
@@ -533,14 +535,26 @@ func (h *AdminHandlers) DeleteExecutorPool(w http.ResponseWriter, r *http.Reques
 
 // ---- deny rules ----
 
-// denyRuleTypes/denyRuleActions mirror the CHECK constraints on the deny_rules
-// table (migrations/postgres/0001_init.sql). docs/planning/26 documents a
-// broader P0 type/action taxonomy (host_suffix, cname_suffix, metadata_ip,
-// private_range, allow_override); closing that gap is owned by
-// docs/tasks/p0/43-deny-rule-taxonomy-alignment.md.
+// denyRuleTypes/denyRuleActions mirror the docs/planning/26 P0 taxonomy and
+// the CHECK constraints on the deny_rules table
+// (migrations/postgres/0006_deny_rule_taxonomy.sql).
 var (
-	denyRuleTypes   = map[string]bool{denyRuleTypeHost: true, denyRuleTypeCIDR: true, denyRuleTypeCName: true, denyRuleTypeIP: true}
-	denyRuleActions = map[string]bool{denyRuleActionDeny: true, denyRuleActionAllow: true}
+	denyRuleTypes = map[string]bool{
+		denyRuleTypeHost: true, denyRuleTypeHostSuffix: true, denyRuleTypeCIDR: true,
+		denyRuleTypeCNAMESuffix: true, denyRuleTypeMetadataIP: true, denyRuleTypePrivateRange: true,
+	}
+	denyRuleActions = map[string]bool{denyRuleActionDeny: true, denyRuleActionAllowOverride: true}
+
+	// denyRuleCIDRTypes are the types whose value is a CIDR/IP literal and
+	// compile into DestinationPolicy's denied_cidrs/allowed_cidrs sets
+	// (destination_policy.go compileDenyRules) exactly like a plain "cidr"
+	// rule — metadata_ip and private_range only differ from "cidr" in the
+	// admin-facing type label, not in how they are enforced.
+	denyRuleCIDRTypes = map[string]bool{denyRuleTypeCIDR: true, denyRuleTypeMetadataIP: true, denyRuleTypePrivateRange: true}
+
+	// denyRuleHostTypes are the types whose value is a hostname; host_suffix
+	// additionally matches subdomains (destination_policy.go hostMatchesSuffix).
+	denyRuleHostTypes = map[string]bool{denyRuleTypeHost: true, denyRuleTypeHostSuffix: true}
 )
 
 type denyRuleRequest struct {
@@ -548,6 +562,7 @@ type denyRuleRequest struct {
 	Type                  string `json:"type"`
 	Value                 string `json:"value"`
 	Action                string `json:"action"`
+	Reason                string `json:"reason"`
 	ExpectedConfigVersion uint64 `json:"expected_config_version"`
 }
 
@@ -558,6 +573,7 @@ type denyRuleResponse struct {
 	Type          string `json:"type"`
 	Value         string `json:"value"`
 	Action        string `json:"action"`
+	Reason        string `json:"reason"`
 	ConfigVersion uint64 `json:"config_version"`
 }
 
@@ -569,17 +585,16 @@ func toDenyRuleResponse(r DenyRuleRecord) denyRuleResponse {
 		Type:          r.RuleType,
 		Value:         denyRuleValue(r.DenyRule),
 		Action:        r.Action,
+		Reason:        r.Reason,
 		ConfigVersion: r.ConfigVersion,
 	}
 }
 
 func denyRuleValue(r config.DenyRule) string {
-	switch r.RuleType {
-	case denyRuleTypeCIDR:
+	switch {
+	case denyRuleCIDRTypes[r.RuleType]:
 		return r.NormalizedCIDR
-	case denyRuleTypeIP:
-		return r.NormalizedIP
-	case denyRuleTypeCName:
+	case r.RuleType == denyRuleTypeCNAMESuffix:
 		return r.NormalizedName
 	default:
 		return r.NormalizedHost
@@ -589,7 +604,7 @@ func denyRuleValue(r config.DenyRule) string {
 // normalizeDenyRule validates and normalizes a deny-rule value per its type
 // (docs/planning/27 "Destination Deny Normalization and CIDR Defaults":
 // lowercase hostnames, trailing-dot trimming, valid CIDR/IP literals).
-func normalizeDenyRule(ruleType, value string) (config.DenyRule, error) {
+func normalizeDenyRule(ruleType, value, reason string) (config.DenyRule, error) {
 	if !denyRuleTypes[ruleType] {
 		return config.DenyRule{}, errInvalidDenyRuleType
 	}
@@ -598,14 +613,14 @@ func normalizeDenyRule(ruleType, value string) (config.DenyRule, error) {
 		return config.DenyRule{}, errInvalidDenyRuleValue
 	}
 
-	rule := config.DenyRule{RuleType: ruleType, RawPattern: value}
+	rule := config.DenyRule{RuleType: ruleType, RawPattern: value, Reason: reason}
 
-	switch ruleType {
-	case denyRuleTypeHost:
-		rule.NormalizedHost = normalizeHostname(value)
-	case denyRuleTypeCName:
+	switch {
+	case ruleType == denyRuleTypeCNAMESuffix:
 		rule.NormalizedName = normalizeHostname(value)
-	case denyRuleTypeCIDR:
+	case denyRuleHostTypes[ruleType]:
+		rule.NormalizedHost = normalizeHostname(value)
+	case denyRuleCIDRTypes[ruleType]:
 		prefix, err := netip.ParsePrefix(value)
 		if err != nil {
 			addr, addrErr := netip.ParseAddr(value)
@@ -617,13 +632,6 @@ func normalizeDenyRule(ruleType, value string) (config.DenyRule, error) {
 		}
 
 		rule.NormalizedCIDR = prefix.String()
-	case denyRuleTypeIP:
-		addr, err := netip.ParseAddr(value)
-		if err != nil {
-			return config.DenyRule{}, errInvalidDenyRuleValue
-		}
-
-		rule.NormalizedIP = addr.String()
 	}
 
 	return rule, nil
@@ -686,7 +694,7 @@ func (h *AdminHandlers) CreateDenyRule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !denyRuleActions[req.Action] {
-		WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", map[string]string{errorDetailReasonKey: "action must be deny or allow"}))
+		WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", map[string]string{errorDetailReasonKey: "action must be deny or allow_override"}))
 
 		return
 	}
@@ -718,7 +726,7 @@ func (h *AdminHandlers) UpdateDenyRule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !denyRuleActions[req.Action] {
-		WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", map[string]string{errorDetailReasonKey: "action must be deny or allow"}))
+		WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", map[string]string{errorDetailReasonKey: "action must be deny or allow_override"}))
 
 		return
 	}
@@ -733,7 +741,7 @@ func (h *AdminHandlers) upsertDenyRule(w http.ResponseWriter, r *http.Request, i
 		return
 	}
 
-	rule, err := normalizeDenyRule(req.Type, req.Value)
+	rule, err := normalizeDenyRule(req.Type, req.Value, req.Reason)
 	if err != nil {
 		WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", map[string]string{errorDetailReasonKey: err.Error()}))
 

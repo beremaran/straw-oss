@@ -1,6 +1,6 @@
 # 43 - Deny Rule Taxonomy Alignment
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -46,16 +46,16 @@ is primarily about the config schema/API expressiveness and the compile step, no
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Write the migration (idempotent; existing rules keep their effective behavior — prove with a test).
-- [ ] Extend handler validation to the full type/action set plus `reason`; return them in reads.
-- [ ] Extend the destination-policy compile step so every type maps to an enforced `DestinationPolicyResult` field;
+- [x] Read all required planning docs.
+- [x] Write the migration (idempotent; existing rules keep their effective behavior — prove with a test).
+- [x] Extend handler validation to the full type/action set plus `reason`; return them in reads.
+- [x] Extend the destination-policy compile step so every type maps to an enforced `DestinationPolicyResult` field;
       `metadata_ip` and `private_range` should reuse the existing resolved-IP booleans/CIDR sets rather than new
       egress code.
-- [ ] Define and test `allow_override` precedence Control-side consistent with the egress `allowed_cidrs` override
+- [x] Define and test `allow_override` precedence Control-side consistent with the egress `allowed_cidrs` override
       already implemented by task 26.
-- [ ] Run focused tests, then `make check`.
-- [ ] Write a handoff note.
+- [x] Run focused tests, then `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

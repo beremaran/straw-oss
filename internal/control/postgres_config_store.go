@@ -530,11 +530,11 @@ func (s *PostgresConfigStore) UpsertDenyRule(ctx context.Context, tenantID strin
 			ctx,
 			`INSERT INTO deny_rules
 			  (tenant_id, id, rule_type, action, enabled, raw_pattern,
-			   normalized_host, normalized_cidr, normalized_ip, normalized_cname,
+			   normalized_host, normalized_cidr, normalized_ip, normalized_cname, reason,
 			   created_at, updated_at, config_version, deleted_at)
 			 VALUES ($1, $2, $3, $4, $5, $6,
-			         nullif($7, ''), nullif($8, '')::cidr, nullif($9, '')::inet, nullif($10, ''),
-			         now(), now(), $11, NULL)
+			         nullif($7, ''), nullif($8, '')::cidr, nullif($9, '')::inet, nullif($10, ''), nullif($11, ''),
+			         now(), now(), $12, NULL)
 			 ON CONFLICT (tenant_id, id) DO UPDATE SET
 			   rule_type = EXCLUDED.rule_type,
 			   action = EXCLUDED.action,
@@ -544,12 +544,13 @@ func (s *PostgresConfigStore) UpsertDenyRule(ctx context.Context, tenantID strin
 			   normalized_cidr = EXCLUDED.normalized_cidr,
 			   normalized_ip = EXCLUDED.normalized_ip,
 			   normalized_cname = EXCLUDED.normalized_cname,
+			   reason = EXCLUDED.reason,
 			   updated_at = now(),
-			   config_version = $11,
+			   config_version = $12,
 			   deleted_at = NULL
 			 RETURNING created_at`,
 			tenantID, rule.ID, rule.RuleType, rule.Action, rule.Enabled, rule.RawPattern,
-			rule.NormalizedHost, rule.NormalizedCIDR, rule.NormalizedIP, rule.NormalizedName, nextVersionParam,
+			rule.NormalizedHost, rule.NormalizedCIDR, rule.NormalizedIP, rule.NormalizedName, rule.Reason, nextVersionParam,
 		).Scan(&createdAt)
 		if execErr != nil {
 			return fmt.Errorf("upsert deny rule: %w", execErr)

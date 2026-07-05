@@ -66,12 +66,15 @@ type ExecutorPool struct {
 	AllowedRegions       []string
 }
 
-// DenyRule is one host/CIDR/CNAME deny or allow override (docs/planning/21).
+// DenyRule is one deny/allow_override rule over the docs/planning/26 P0
+// taxonomy (cidr, host, host_suffix, cname_suffix, metadata_ip,
+// private_range).
 type DenyRule struct {
 	ID             string
 	RuleType       string
 	Action         string
 	Enabled        bool
+	Reason         string
 	RawPattern     string
 	NormalizedHost string
 	NormalizedCIDR string

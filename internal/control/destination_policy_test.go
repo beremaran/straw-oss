@@ -85,7 +85,7 @@ func TestResolveDestinationPolicy_HostAllowOverride(t *testing.T) {
 		FingerprintProfiles: fingerprintSnapshot(),
 		DenyRules: []config.DenyRule{
 			{RuleType: denyRuleTypeHost, Action: denyRuleActionDeny, Enabled: true, NormalizedHost: "shared.example.com"},
-			{RuleType: denyRuleTypeHost, Action: denyRuleActionAllow, Enabled: true, NormalizedHost: "shared.example.com"},
+			{RuleType: denyRuleTypeHost, Action: denyRuleActionAllowOverride, Enabled: true, NormalizedHost: "shared.example.com"},
 		},
 	}
 
@@ -127,7 +127,7 @@ func TestResolveDestinationPolicy_CIDRAllowOverridesPrivateDefault(t *testing.T)
 	snap := config.TenantSnapshot{
 		FingerprintProfiles: fingerprintSnapshot(),
 		DenyRules: []config.DenyRule{
-			{RuleType: denyRuleTypeCIDR, Action: denyRuleActionAllow, Enabled: true, NormalizedCIDR: "10.0.0.0/8"},
+			{RuleType: denyRuleTypeCIDR, Action: denyRuleActionAllowOverride, Enabled: true, NormalizedCIDR: "10.0.0.0/8"},
 		},
 	}
 
@@ -160,7 +160,7 @@ func TestResolveDestinationPolicy_CNameRuleCompiledNotEvaluated(t *testing.T) {
 	snap := config.TenantSnapshot{
 		FingerprintProfiles: fingerprintSnapshot(),
 		DenyRules: []config.DenyRule{
-			{RuleType: denyRuleTypeCName, Action: denyRuleActionDeny, Enabled: true, NormalizedName: "internal.svc.cluster.local"},
+			{RuleType: denyRuleTypeCNAMESuffix, Action: denyRuleActionDeny, Enabled: true, NormalizedName: testCNAMESuffix},
 		},
 	}
 
@@ -174,8 +174,102 @@ func TestResolveDestinationPolicy_CNameRuleCompiledNotEvaluated(t *testing.T) {
 		t.Fatalf("unexpected error: %+v", verr)
 	}
 
-	if len(result.Policy.DeniedCnameSuffixes) != 1 || result.Policy.DeniedCnameSuffixes[0] != "internal.svc.cluster.local" {
+	if len(result.Policy.DeniedCnameSuffixes) != 1 || result.Policy.DeniedCnameSuffixes[0] != testCNAMESuffix {
 		t.Fatalf("denied cname suffixes = %v", result.Policy.DeniedCnameSuffixes)
+	}
+}
+
+func TestResolveDestinationPolicy_HostSuffixDeniesSubdomain(t *testing.T) {
+	snap := config.TenantSnapshot{
+		FingerprintProfiles: fingerprintSnapshot(),
+		DenyRules: []config.DenyRule{
+			{RuleType: denyRuleTypeHostSuffix, Action: denyRuleActionDeny, Enabled: true, NormalizedHost: "blocked.example.net"},
+		},
+	}
+
+	req := DestinationPolicyRequest{Snapshot: snap, TargetURL: mustURL(t, "https://api.blocked.example.net/"), MaxInjectedHeaderBytes: 1024}
+
+	_, verr := ResolveDestinationPolicy(req)
+	if verr == nil || verr.Code != errorCodeDestinationDenied {
+		t.Fatalf("verr = %+v, want destination_denied for a subdomain of a denied host_suffix", verr)
+	}
+}
+
+func TestResolveDestinationPolicy_HostSuffixAllowOverrideCancelsBundleEntry(t *testing.T) {
+	snap := config.TenantSnapshot{
+		FingerprintProfiles: fingerprintSnapshot(),
+		DenyRules: []config.DenyRule{
+			{RuleType: denyRuleTypeHostSuffix, Action: denyRuleActionDeny, Enabled: true, NormalizedHost: "shared.example.net"},
+			{RuleType: denyRuleTypeHostSuffix, Action: denyRuleActionAllowOverride, Enabled: true, NormalizedHost: "shared.example.net"},
+		},
+	}
+
+	req := DestinationPolicyRequest{Snapshot: snap, TargetURL: mustURL(t, "https://api.shared.example.net/"), MaxInjectedHeaderBytes: 1024}
+
+	result, verr := ResolveDestinationPolicy(req)
+	if verr != nil {
+		t.Fatalf("unexpected error: %+v", verr)
+	}
+
+	if len(result.Policy.DeniedHostSuffixes) != 0 {
+		t.Fatalf("denied host suffixes = %v, want none: allow_override must cancel the overridden entry so Egress doesn't re-deny the host Control just approved", result.Policy.DeniedHostSuffixes)
+	}
+}
+
+func TestResolveDestinationPolicy_CnameSuffixAllowOverrideCancelsBundleEntry(t *testing.T) {
+	snap := config.TenantSnapshot{
+		FingerprintProfiles: fingerprintSnapshot(),
+		DenyRules: []config.DenyRule{
+			{RuleType: denyRuleTypeCNAMESuffix, Action: denyRuleActionDeny, Enabled: true, NormalizedName: testCNAMESuffix},
+			{RuleType: denyRuleTypeCNAMESuffix, Action: denyRuleActionAllowOverride, Enabled: true, NormalizedName: testCNAMESuffix},
+		},
+	}
+
+	req := DestinationPolicyRequest{Snapshot: snap, TargetURL: mustURL(t, "https://public.example.com/"), MaxInjectedHeaderBytes: 1024}
+
+	result, verr := ResolveDestinationPolicy(req)
+	if verr != nil {
+		t.Fatalf("unexpected error: %+v", verr)
+	}
+
+	if len(result.Policy.DeniedCnameSuffixes) != 0 {
+		t.Fatalf("denied cname suffixes = %v, want none after allow_override cancellation", result.Policy.DeniedCnameSuffixes)
+	}
+}
+
+func TestResolveDestinationPolicy_MetadataIPTypeCompilesToDeniedCidrs(t *testing.T) {
+	snap := config.TenantSnapshot{
+		FingerprintProfiles: fingerprintSnapshot(),
+		DenyRules: []config.DenyRule{
+			{RuleType: denyRuleTypeMetadataIP, Action: denyRuleActionDeny, Enabled: true, NormalizedCIDR: "169.254.169.254/32"},
+		},
+	}
+
+	req := DestinationPolicyRequest{Snapshot: snap, TargetURL: mustURL(t, "http://169.254.169.254/"), MaxInjectedHeaderBytes: 1024}
+
+	_, verr := ResolveDestinationPolicy(req)
+	if verr == nil || verr.Code != errorCodeDestinationDenied {
+		t.Fatalf("verr = %+v, want destination_denied", verr)
+	}
+}
+
+func TestResolveDestinationPolicy_PrivateRangeAllowOverrideCompilesToAllowedCidrs(t *testing.T) {
+	snap := config.TenantSnapshot{
+		FingerprintProfiles: fingerprintSnapshot(),
+		DenyRules: []config.DenyRule{
+			{RuleType: denyRuleTypePrivateRange, Action: denyRuleActionAllowOverride, Enabled: true, NormalizedCIDR: testPrivateRange},
+		},
+	}
+
+	req := DestinationPolicyRequest{Snapshot: snap, TargetURL: mustURL(t, "http://172.16.5.5/"), MaxInjectedHeaderBytes: 1024}
+
+	result, verr := ResolveDestinationPolicy(req)
+	if verr != nil {
+		t.Fatalf("unexpected error: %+v", verr)
+	}
+
+	if len(result.Policy.AllowedCidrs) != 1 || result.Policy.AllowedCidrs[0] != testPrivateRange {
+		t.Fatalf("allowed cidrs = %v, want [%s]", result.Policy.AllowedCidrs, testPrivateRange)
 	}
 }
 

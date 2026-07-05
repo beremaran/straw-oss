@@ -346,7 +346,8 @@ func readDenyRules(ctx context.Context, tx pgx.Tx, tenantID string, snap *config
 	rows, err := tx.Query(ctx,
 		`SELECT id, rule_type, action, enabled, raw_pattern,
 		        COALESCE(normalized_host, ''), COALESCE(normalized_cidr::text, ''),
-		        COALESCE(normalized_ip::text, ''), COALESCE(normalized_cname, '')
+		        COALESCE(normalized_ip::text, ''), COALESCE(normalized_cname, ''),
+		        COALESCE(reason, '')
 		 FROM deny_rules
 		 WHERE tenant_id = $1 AND deleted_at IS NULL
 		 ORDER BY id`,
@@ -362,7 +363,8 @@ func readDenyRules(ctx context.Context, tx pgx.Tx, tenantID string, snap *config
 		var rule config.DenyRule
 
 		err := rows.Scan(&rule.ID, &rule.RuleType, &rule.Action, &rule.Enabled, &rule.RawPattern,
-			&rule.NormalizedHost, &rule.NormalizedCIDR, &rule.NormalizedIP, &rule.NormalizedName)
+			&rule.NormalizedHost, &rule.NormalizedCIDR, &rule.NormalizedIP, &rule.NormalizedName,
+			&rule.Reason)
 		if err != nil {
 			return fmt.Errorf("scan deny rule: %w", err)
 		}
