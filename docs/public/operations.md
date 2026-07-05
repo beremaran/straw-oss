@@ -90,7 +90,7 @@ Both Control and Egress output structured logs to `stdout` in JSON format.
 
 ## 5. Current Operational Limits & Fallbacks
 
-Platform operators should be aware of the following P0 system limits and failure behaviors:
+Platform operators should be aware of the following current system limits and failure behaviors:
 
 1. **REST Ingress Limits**:
    - Ingress request and response bodies must fit entirely in memory.

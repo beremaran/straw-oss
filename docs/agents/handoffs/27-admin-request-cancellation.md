@@ -66,7 +66,8 @@ Result: all new tests pass; `make check` (gofmt + `go test ./...` + `golangci-li
 - None owned by this task. The registry is intentionally in-process/runtime-only for single-Control P0 (task's
   "Out of Scope" section, consistent with the task 13 worker-runtime-state deferral) — it does not survive a
   Control restart and is not shared across Control instances. Multi-Control coordination and durable cancellation
-  state are out of scope for P0 and have no owning P0 task; if needed later they'd be a new P1/P2 task.
+  state are out of scope for P0 and now owned by
+  `docs/tasks/p1/23-multi-control-durable-cancellation-state.md`.
 
 ## Blockers
 

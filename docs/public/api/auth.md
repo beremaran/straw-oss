@@ -9,7 +9,7 @@ Straw uses a token-based authentication model to identify clients, operators, an
 API calls to Straw's Control plane must include a Bearer token in the `Authorization` HTTP header:
 
 ```http
-Authorization: Bearer sk_live_...
+Authorization: Bearer sk_example_...
 ```
 
 To prevent token enumeration attacks:
@@ -48,14 +48,14 @@ The following table summarizes the roles defined in Straw and their associated e
 | | `requester` | `POST /requests` | Tenant Data-plane Client. Dedicated role scoped strictly to executing egress proxy requests. *Cannot read or write config or admin endpoints.* |
 
 > [!NOTE]
-> P0 conservatively denies data-plane request execution to `operator` keys. Data-plane requests are restricted only to keys with `requester` or `tenant_admin` roles.
+> Data-plane requests are restricted to keys with `requester` or `tenant_admin` roles. `operator` keys cannot call `POST /api/v1/requests`.
 
 ---
 
 ## API Key Secret Generation & Hashing
 
 When creating API keys:
-1. The client receives a generated raw secret string (e.g. starting with `sk_live_`).
+1. The client receives a generated raw secret string.
 2. Straw computes a SHA-256 hash of the token combined with a system-configured pepper (`STRAW_API_KEY_PEPPER`).
-3. Only the hash and a short visible prefix (e.g. `sk_live_abcd`) are stored in the database.
+3. Only the hash and a short visible prefix are stored in the database.
 4. If a token is compromised, a tenant administrator can immediately call the corresponding `/revoke` endpoint.
