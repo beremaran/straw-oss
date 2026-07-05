@@ -1,6 +1,6 @@
 # 42 - Executor Pool Capability Fields
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -46,17 +46,17 @@ owner. Workers already report `country`, `region`, and `ip_type` capabilities (w
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Add the migration (idempotent; existing rows get empty arrays = unrestricted, so behavior is unchanged until a
+- [x] Read all required planning docs.
+- [x] Add the migration (idempotent; existing rows get empty arrays = unrestricted, so behavior is unchanged until a
       pool opts in).
-- [ ] Persist and list the fields in the Postgres pool store and snapshot read.
-- [ ] Accept and validate the fields in pool create/update handlers; return them in reads. Reject unknown IP types
+- [x] Persist and list the fields in the Postgres pool store and snapshot read.
+- [x] Accept and validate the fields in pool create/update handlers; return them in reads. Reject unknown IP types
       (valid set per `docs/planning/26`: e.g. `datacenter`, `residential`, `mobile` — confirm against the doc).
-- [ ] Enforce eligibility: a worker whose reported capability is outside a non-empty pool restriction is not assignable
+- [x] Enforce eligibility: a worker whose reported capability is outside a non-empty pool restriction is not assignable
       for that pool.
-- [ ] Add the tests listed in Expected Files.
-- [ ] Run focused tests, then `make check`.
-- [ ] Write a handoff note.
+- [x] Add the tests listed in Expected Files.
+- [x] Run focused tests, then `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

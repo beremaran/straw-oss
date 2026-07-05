@@ -227,7 +227,7 @@ func TestRegisterRevokedCredential(t *testing.T) {
 func TestRegisterCapabilityOutOfScope(t *testing.T) {
 	t.Parallel()
 	cred := defaultCred()
-	cred.AllowedCapabilities = WorkerCapabilities{Tags: []string{"datacenter"}}
+	cred.AllowedCapabilities = WorkerCapabilities{Tags: []string{ipTypeDatacenter}}
 	h := newRegHarness(t, cred)
 	req := h.signedRegister("worker-1", func(r *strawpb.RegisterRequest) {
 		r.Tags = []string{"residential"}

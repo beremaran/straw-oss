@@ -307,7 +307,14 @@ func (d *DefaultRequestDispatcher) route(in DispatchInput, snapshot config.Tenan
 func poolPoliciesFromSnapshot(tenantID string, pools []config.ExecutorPool) []PoolPolicy {
 	out := make([]PoolPolicy, 0, len(pools))
 	for _, p := range pools {
-		out = append(out, PoolPolicy{TenantID: tenantID, PoolID: p.ID, AllowDegradedWorkers: p.AllowDegradedWorkers})
+		out = append(out, PoolPolicy{
+			TenantID:             tenantID,
+			PoolID:               p.ID,
+			AllowDegradedWorkers: p.AllowDegradedWorkers,
+			AllowedCountries:     p.AllowedCountries,
+			AllowedRegions:       p.AllowedRegions,
+			AllowedIPTypes:       p.AllowedIPTypes,
+		})
 	}
 
 	return out

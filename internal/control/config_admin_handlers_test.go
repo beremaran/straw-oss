@@ -209,13 +209,27 @@ func TestExecutorPoolCRUDAndRBAC(t *testing.T) {
 		t.Fatalf("operator create status = %d, want 403", w.Code)
 	}
 
-	// tenant_admin creates with a client-supplied stable ID.
-	w, created := createExecutorPool(t, ta, tenantAdmin, `{"id":"pool_crud_1","allow_degraded_workers":true}`)
+	// An invalid allowed_ip_types value is rejected.
+	w, _ = createExecutorPool(t, ta, tenantAdmin, `{"id":"pool_crud_bad_iptype","allowed_ip_types":["not_a_type"]}`)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("invalid ip type create status = %d, want 400, body=%s", w.Code, w.Body.String())
+	}
+
+	// tenant_admin creates with a client-supplied stable ID and the P0
+	// capability restriction fields (docs/planning/26, docs/tasks/p0/42).
+	w, created := createExecutorPool(t, ta, tenantAdmin,
+		`{"id":"pool_crud_1","allow_degraded_workers":true,`+
+			`"allowed_ip_types":["`+ipTypeDatacenter+`"],"allowed_countries":["US"],"allowed_regions":["us-west-1"]}`)
 	if w.Code != http.StatusOK {
 		t.Fatalf("create status = %d, want 200, body=%s", w.Code, w.Body.String())
 	}
 	if created.ID != "pool_crud_1" || created.ConfigVersion != 1 || !created.Enabled || !created.AllowDegradedWorkers {
 		t.Fatalf("created = %+v, want id=pool_crud_1 version=1 enabled=true allow_degraded_workers=true", created)
+	}
+	if len(created.AllowedIPTypes) != 1 || created.AllowedIPTypes[0] != ipTypeDatacenter ||
+		len(created.AllowedCountries) != 1 || created.AllowedCountries[0] != "US" ||
+		len(created.AllowedRegions) != 1 || created.AllowedRegions[0] != "us-west-1" {
+		t.Fatalf("created capability fields = %+v, want datacenter/US/us-west-1", created)
 	}
 
 	// Viewer and operator can list/read.

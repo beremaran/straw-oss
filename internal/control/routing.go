@@ -34,10 +34,17 @@ type RoutingRule struct {
 
 // PoolPolicy is the per-pool routing policy (docs/planning/10: "health is
 // ready or degraded with pool policy allow_degraded_workers=true").
+// AllowedCountries/AllowedRegions/AllowedIPTypes are the pool's P0 capability
+// restrictions (docs/planning/26): a non-empty list requires every one of a
+// candidate's claimed capability values to be in the list; empty means
+// unrestricted.
 type PoolPolicy struct {
 	TenantID             string
 	PoolID               string
 	AllowDegradedWorkers bool
+	AllowedCountries     []string
+	AllowedRegions       []string
+	AllowedIPTypes       []string
 }
 
 // RouteRequest is the evaluated request context: client hints plus
@@ -287,6 +294,10 @@ func (rt *Router) eligibleCandidates(req RouteRequest, rule RoutingRule, policy 
 			continue
 		}
 
+		if !poolAllows(c, policy) {
+			continue
+		}
+
 		if c.AvailableCap == 0 && c.MaxConcurrency > 0 && c.ActiveRequests >= c.MaxConcurrency {
 			continue
 		}
@@ -304,6 +315,21 @@ func capabilitySatisfies(c PoolCandidate, req RouteRequest) bool {
 		req.Region == "" || len(c.Regions) == 0 || containsString(c.Regions, req.Region),
 		req.IPType == "" || len(c.IPTypes) == 0 || containsString(c.IPTypes, req.IPType),
 		req.IngressType == "" || len(c.IngressModes) == 0 || containsString(c.IngressModes, req.IngressType),
+	}
+
+	return allTrue(checks)
+}
+
+// poolAllows reports whether a candidate's claimed capabilities fall within
+// the pool's restrictions (docs/planning/26 allowed_ip_types/allowed_countries/
+// allowed_regions): a non-empty restriction requires every value the
+// candidate claims for that dimension to be in the allowed list; an empty
+// restriction is unrestricted regardless of what the candidate claims.
+func poolAllows(c PoolCandidate, policy PoolPolicy) bool {
+	checks := []bool{
+		len(policy.AllowedCountries) == 0 || subset(c.Countries, policy.AllowedCountries),
+		len(policy.AllowedRegions) == 0 || subset(c.Regions, policy.AllowedRegions),
+		len(policy.AllowedIPTypes) == 0 || subset(c.IPTypes, policy.AllowedIPTypes),
 	}
 
 	return allTrue(checks)

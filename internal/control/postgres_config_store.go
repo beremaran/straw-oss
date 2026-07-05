@@ -418,9 +418,9 @@ func (s *PostgresConfigStore) DeleteRoutingRule(ctx context.Context, tenantID, i
 // stable (tenant_id, id), clearing any prior soft delete. See
 // UpsertRoutingRule for expectedVersion/return semantics.
 func (s *PostgresConfigStore) UpsertExecutorPool(ctx context.Context, tenantID string, pool config.ExecutorPool, expectedVersion uint64, actor ConfigActor) (ExecutorPoolRecord, uint64, error) {
-	tagsJSON, err := json.Marshal(nonNilStrings(pool.Tags))
+	tagsJSON, ipTypesJSON, countriesJSON, regionsJSON, err := marshalPoolCapabilityFields(pool)
 	if err != nil {
-		return ExecutorPoolRecord{}, 0, fmt.Errorf("marshal pool tags: %w", err)
+		return ExecutorPoolRecord{}, 0, err
 	}
 
 	var record ExecutorPoolRecord
@@ -442,19 +442,23 @@ func (s *PostgresConfigStore) UpsertExecutorPool(ctx context.Context, tenantID s
 			ctx,
 			`INSERT INTO executor_pools
 			  (tenant_id, id, executor_type, tags_jsonb, enabled, allow_degraded_workers,
+			   allowed_ip_types_jsonb, allowed_countries_jsonb, allowed_regions_jsonb,
 			   created_at, updated_at, config_version, deleted_at)
-			 VALUES ($1, $2, $3, $4, $5, $6, now(), now(), $7, NULL)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now(), now(), $10, NULL)
 			 ON CONFLICT (tenant_id, id) DO UPDATE SET
 			   executor_type = EXCLUDED.executor_type,
 			   tags_jsonb = EXCLUDED.tags_jsonb,
 			   enabled = EXCLUDED.enabled,
 			   allow_degraded_workers = EXCLUDED.allow_degraded_workers,
+			   allowed_ip_types_jsonb = EXCLUDED.allowed_ip_types_jsonb,
+			   allowed_countries_jsonb = EXCLUDED.allowed_countries_jsonb,
+			   allowed_regions_jsonb = EXCLUDED.allowed_regions_jsonb,
 			   updated_at = now(),
-			   config_version = $7,
+			   config_version = $10,
 			   deleted_at = NULL
 			 RETURNING created_at`,
 			tenantID, pool.ID, defaultExecutorType(pool.ExecutorType), tagsJSON, pool.Enabled,
-			pool.AllowDegradedWorkers, nextVersionParam,
+			pool.AllowDegradedWorkers, ipTypesJSON, countriesJSON, regionsJSON, nextVersionParam,
 		).Scan(&createdAt)
 		if execErr != nil {
 			return fmt.Errorf("upsert executor pool: %w", execErr)
@@ -469,6 +473,32 @@ func (s *PostgresConfigStore) UpsertExecutorPool(ctx context.Context, tenantID s
 	}
 
 	return record, tenantVersion, nil
+}
+
+// marshalPoolCapabilityFields marshals an executor pool's tag/capability-
+// restriction list fields to jsonb for UpsertExecutorPool.
+func marshalPoolCapabilityFields(pool config.ExecutorPool) ([]byte, []byte, []byte, []byte, error) {
+	tagsJSON, err := json.Marshal(nonNilStrings(pool.Tags))
+	if err != nil {
+		return nil, nil, nil, nil, fmt.Errorf("marshal pool tags: %w", err)
+	}
+
+	ipTypesJSON, err := json.Marshal(nonNilStrings(pool.AllowedIPTypes))
+	if err != nil {
+		return nil, nil, nil, nil, fmt.Errorf("marshal pool allowed ip types: %w", err)
+	}
+
+	countriesJSON, err := json.Marshal(nonNilStrings(pool.AllowedCountries))
+	if err != nil {
+		return nil, nil, nil, nil, fmt.Errorf("marshal pool allowed countries: %w", err)
+	}
+
+	regionsJSON, err := json.Marshal(nonNilStrings(pool.AllowedRegions))
+	if err != nil {
+		return nil, nil, nil, nil, fmt.Errorf("marshal pool allowed regions: %w", err)
+	}
+
+	return tagsJSON, ipTypesJSON, countriesJSON, regionsJSON, nil
 }
 
 // DeleteExecutorPool soft-deletes an executor pool.

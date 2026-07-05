@@ -312,6 +312,9 @@ type executorPoolRequest struct {
 	Tags                  []string `json:"tags"`
 	Enabled               *bool    `json:"enabled"`
 	AllowDegradedWorkers  bool     `json:"allow_degraded_workers"`
+	AllowedIPTypes        []string `json:"allowed_ip_types"`
+	AllowedCountries      []string `json:"allowed_countries"`
+	AllowedRegions        []string `json:"allowed_regions"`
 	ExpectedConfigVersion uint64   `json:"expected_config_version"`
 }
 
@@ -322,6 +325,9 @@ type executorPoolResponse struct {
 	Tags                 []string `json:"tags"`
 	Enabled              bool     `json:"enabled"`
 	AllowDegradedWorkers bool     `json:"allow_degraded_workers"`
+	AllowedIPTypes       []string `json:"allowed_ip_types"`
+	AllowedCountries     []string `json:"allowed_countries"`
+	AllowedRegions       []string `json:"allowed_regions"`
 	ConfigVersion        uint64   `json:"config_version"`
 }
 
@@ -333,8 +339,43 @@ func toExecutorPoolResponse(r ExecutorPoolRecord) executorPoolResponse {
 		Tags:                 nonNilStrings(r.Tags),
 		Enabled:              r.Enabled,
 		AllowDegradedWorkers: r.AllowDegradedWorkers,
+		AllowedIPTypes:       nonNilStrings(r.AllowedIPTypes),
+		AllowedCountries:     nonNilStrings(r.AllowedCountries),
+		AllowedRegions:       nonNilStrings(r.AllowedRegions),
 		ConfigVersion:        r.ConfigVersion,
 	}
+}
+
+// ipTypeDatacenter etc. are the P0 worker ip_type capability values
+// (docs/planning/10 "ip_type": "datacenter | residential | mobile | isp |
+// unknown"), also the only values an executor pool may restrict
+// allowed_ip_types to.
+const (
+	ipTypeDatacenter  = "datacenter"
+	ipTypeResidential = "residential"
+	ipTypeMobile      = "mobile"
+	ipTypeISP         = "isp"
+	ipTypeUnknown     = "unknown"
+)
+
+var validIPTypes = map[string]bool{
+	ipTypeDatacenter:  true,
+	ipTypeResidential: true,
+	ipTypeMobile:      true,
+	ipTypeISP:         true,
+	ipTypeUnknown:     true,
+}
+
+func invalidIPTypes(ipTypes []string) []string {
+	var bad []string
+
+	for _, t := range ipTypes {
+		if !validIPTypes[t] {
+			bad = append(bad, t)
+		}
+	}
+
+	return bad
 }
 
 // ListExecutorPools handles GET /api/v1/config/executor-pools.
@@ -423,12 +464,23 @@ func (h *AdminHandlers) upsertExecutorPool(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	if bad := invalidIPTypes(req.AllowedIPTypes); len(bad) > 0 {
+		WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", map[string]string{
+			errorDetailReasonKey: fmt.Sprintf("invalid allowed_ip_types: %v", bad),
+		}))
+
+		return
+	}
+
 	pool := config.ExecutorPool{
 		ID:                   req.ID,
 		ExecutorType:         defaultExecutorType(req.ExecutorType),
 		Tags:                 req.Tags,
 		Enabled:              boolOrDefault(req.Enabled, true),
 		AllowDegradedWorkers: req.AllowDegradedWorkers,
+		AllowedIPTypes:       req.AllowedIPTypes,
+		AllowedCountries:     req.AllowedCountries,
+		AllowedRegions:       req.AllowedRegions,
 	}
 
 	record, tenantVersion, err := h.ExecutorPools.UpsertExecutorPool(r.Context(), identity.TenantID, pool, req.ExpectedConfigVersion, configActor(identity))
