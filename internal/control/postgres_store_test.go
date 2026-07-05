@@ -36,6 +36,7 @@ const (
 	pgTestPepper        = "test-pepper"
 	pgTestExecutorType  = "egress"
 	pgTestTenantRenamed = "Renamed"
+	pgTestPublicKey     = "YWJjZA=="
 )
 
 // checkTestDatabaseDSN rejects any DSN whose database name does not end in
@@ -504,7 +505,7 @@ func TestPostgresWorkerCredentialStoreSingleTenant(t *testing.T) {
 		ID:                     "00000000-0000-0000-0000-000000000020",
 		Status:                 WorkerCredentialStatusActive,
 		ExecutorType:           pgTestExecutorType,
-		PublicKeyEd25519Base64: "YWJjZA==",
+		PublicKeyEd25519Base64: pgTestPublicKey,
 		TenantScope:            []string{pgTestTenantA},
 		AllowedPools:           []AllowedPool{{TenantID: pgTestTenantA, PoolID: "pool_1"}},
 	}
@@ -543,7 +544,7 @@ func TestPostgresWorkerCredentialStoreRevocation(t *testing.T) {
 		ID:                     "00000000-0000-0000-0000-000000000021",
 		Status:                 WorkerCredentialStatusActive,
 		ExecutorType:           pgTestExecutorType,
-		PublicKeyEd25519Base64: "YWJjZA==",
+		PublicKeyEd25519Base64: pgTestPublicKey,
 		TenantScope:            []string{pgTestTenantA},
 	}
 
@@ -569,6 +570,44 @@ func TestPostgresWorkerCredentialStoreRevocation(t *testing.T) {
 
 	if len(list) != 0 {
 		t.Fatalf("ListTenant() = %d credentials after revoke, want 0", len(list))
+	}
+}
+
+func TestPostgresWorkerCredentialStoreRevokeMissingNotFound(t *testing.T) {
+	pool := newIdentityTestPool(t)
+	store := NewPostgresWorkerCredentialStore(pool)
+
+	// Revoking a credential that was never created must map to
+	// ErrWorkerCredentialNotFound (so the handler returns 404, not 500),
+	// mirroring Get's ErrNoRows handling.
+	_, err := store.Revoke(context.Background(), "00000000-0000-0000-0000-000000000099", time.Now().UTC())
+	if !errors.Is(err, ErrWorkerCredentialNotFound) {
+		t.Fatalf("Revoke(missing) error = %v, want ErrWorkerCredentialNotFound", err)
+	}
+
+	// An already-revoked credential (UPDATE ... WHERE status='active' matches
+	// zero rows) must also surface as not found rather than an opaque wrap.
+	cred := WorkerCredential{
+		ID:                     "00000000-0000-0000-0000-000000000022",
+		Status:                 WorkerCredentialStatusActive,
+		ExecutorType:           pgTestExecutorType,
+		PublicKeyEd25519Base64: pgTestPublicKey,
+		TenantScope:            []string{pgTestTenantA},
+	}
+
+	err = store.Create(context.Background(), cred)
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	_, err = store.Revoke(context.Background(), cred.ID, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("first Revoke() error = %v", err)
+	}
+
+	_, err = store.Revoke(context.Background(), cred.ID, time.Now().UTC())
+	if !errors.Is(err, ErrWorkerCredentialNotFound) {
+		t.Fatalf("second Revoke() error = %v, want ErrWorkerCredentialNotFound", err)
 	}
 }
 

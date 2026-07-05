@@ -879,7 +879,7 @@ func redactInjectionPolicy(pol config.InjectionPolicy) config.InjectionPolicy {
 
 	for i, op := range pol.Operations {
 		if op.ValueBase64 != "" {
-			op.ValueBase64 = "[redacted]"
+			op.ValueBase64 = requestMetadataRedacted
 		}
 
 		out.Operations[i] = op

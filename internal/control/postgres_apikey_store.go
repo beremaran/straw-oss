@@ -2,9 +2,11 @@ package control
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -137,6 +139,10 @@ func (s *postgresAPIKeyStore) Revoke(ctx context.Context, id string, revokedAt t
 		&r.ConfigVersion,
 	)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return APIKeyRecord{}, ErrAPIKeyNotFound
+		}
+
 		return APIKeyRecord{}, fmt.Errorf("postgres api key revoke: %w", err)
 	}
 
