@@ -1,6 +1,6 @@
 # 40 - Egress Registration Retry and Recovery
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -48,22 +48,23 @@ the worker never learns, and it stays invisible until manually restarted.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Wrap registration in a bounded-backoff retry loop (respecting ctx cancellation); `/readyz` stays false until
+- [x] Read all required planning docs.
+- [x] Wrap registration in a bounded-backoff retry loop (respecting ctx cancellation); `/readyz` stays false until
       a registration succeeds. Every attempt must be freshly signed (new nonce + issued-at) so replay protection
       (task 35) does not reject retries.
-- [ ] Decide the stale-session recovery mechanism and record the decision in the handoff. The cheapest correct
+- [x] Decide the stale-session recovery mechanism and record the decision in the handoff. The cheapest correct
       option is preferred — e.g. Control replying to a stale-session heartbeat with a NACK the worker treats as
       "re-register", or the worker re-registering when heartbeats fail for a full unavailable window. If the chosen
       mechanism needs protocol additions beyond P0, implement only the retry loop here and record the stale-session
       half as a scope extension of `docs/tasks/p1/17-worker-loss-and-nats-outage-hardening.md` — do not leave it
-      unowned.
-- [ ] Add tests: registration succeeds after transient no-responder errors; retries stop on ctx cancel; retried
+      unowned. (Chosen: heartbeat NACK — Control already replies `Ok:false, unknown_worker_session`; the worker now
+      treats any heartbeat rejection as session-lost and re-registers. No protocol additions needed.)
+- [x] Add tests: registration succeeds after transient no-responder errors; retries stop on ctx cancel; retried
       attempts carry fresh nonces.
-- [ ] Verify live in compose: `docker compose restart control egress` (control coming up slower) must converge to a
+- [x] Verify live in compose: `docker compose restart control egress` (control coming up slower) must converge to a
       registered worker with no manual intervention, and a subsequent `POST /api/v1/requests` must round-trip.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 
