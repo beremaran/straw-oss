@@ -31,6 +31,11 @@ Result:
   pub/sub invalidation implementation exist. Owned by `docs/tasks/p0/19-postgres-config-stores-and-snapshot.md`
   and `docs/tasks/p0/21-redis-wiring-and-config-invalidation.md`.
 
+  > RESOLVED 2026-07-05 (P0 audit): closed by tasks 19 and 21 (both done). Real Redis publisher wired at
+  > `cmd/control/main.go:280` (`control.NewRedisInvalidationPublisher`, defined `internal/control/invalidation_redis.go:30`);
+  > Postgres `SnapshotStore` delivered by `internal/control/postgres_config_store.go:106` and wired via
+  > `control.NewPostgresConfigStore(pool)` at `cmd/control/main.go:125`/`280`.
+
 ## Blockers
 
 - None.
