@@ -25,6 +25,13 @@ const (
 const (
 	headerNameAuthorization      = "authorization"
 	headerNameProxyAuthorization = "proxy-authorization"
+	headerNameContentLength      = "content-length"
+	headerNameTransferEncoding   = "transfer-encoding"
+	headerNameConnection         = "connection"
+	headerCanonicalContentType   = "Content-Type"
+	headerCanonicalContentLength = "Content-Length"
+	headerCanonicalConnection    = "Connection"
+	mediaTypeTextPlain           = "text/plain"
 	requestBodyExceedsLimit      = "request body exceeds limit"
 )
 

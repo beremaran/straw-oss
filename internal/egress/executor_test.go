@@ -1,6 +1,7 @@
 package egress
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -88,25 +89,74 @@ func TestExecutorSendsOutboundStartBeforeConnect(t *testing.T) {
 	target := rewriteHost(t, server.URL, unitTestHost)
 	exec := NewExecutor(ExecutorOptions{Resolver: staticResolver{unitTestHost: loopbackIP(t, server.URL)}})
 	frames := exec.Execute(context.Background(), requestStart(target, directPolicy(true)), nil, 1, func(frame *strawpb.StreamFrame) {
-		select {
-		case <-upstreamHit:
-			t.Error("OutboundStart sent after upstream was contacted")
-		default:
+		if frame.GetOutboundStart() != nil {
+			select {
+			case <-upstreamHit:
+				t.Error("OutboundStart sent after upstream was contacted")
+			default:
+			}
 		}
 
 		sent = append(sent, frame)
 	})
 
-	if len(sent) != 1 || sent[0].GetOutboundStart() == nil {
-		t.Fatalf("sent = %#v, want exactly one OutboundStart", sent)
+	if len(sent) == 0 || sent[0].GetOutboundStart() == nil {
+		t.Fatalf("sent = %#v, want first callback frame to be OutboundStart", sent)
 	}
 	for _, frame := range frames {
 		if frame.GetOutboundStart() != nil {
 			t.Fatalf("returned batch still contains OutboundStart: %#v", frame)
 		}
 	}
-	if last := frames[len(frames)-1].GetEnd(); last == nil || !last.GetSuccess() {
+	if len(frames) != 1 {
+		t.Fatalf("returned frames = %#v, want terminal frame only", frames)
+	}
+	if last := frames[0].GetEnd(); last == nil || !last.GetSuccess() {
 		t.Fatalf("terminal frame = %#v, want successful EndFrame", frames[len(frames)-1])
+	}
+}
+
+func TestExecutorStreamsResponseFramesBeforeUpstreamCompletes(t *testing.T) {
+	t.Parallel()
+
+	release := make(chan struct{})
+	firstData := make(chan struct{})
+	body := bytes.Repeat([]byte("x"), responseFrameDataBytes+1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(body)
+		w.(http.Flusher).Flush()
+		<-release
+	}))
+	t.Cleanup(server.Close)
+
+	target := rewriteHost(t, server.URL, unitTestHost)
+	exec := NewExecutor(ExecutorOptions{Resolver: staticResolver{unitTestHost: loopbackIP(t, server.URL)}})
+	done := make(chan []*strawpb.StreamFrame, 1)
+
+	go func() {
+		done <- exec.Execute(context.Background(), requestStart(target, directPolicy(true)), nil, 1, func(frame *strawpb.StreamFrame) {
+			if frame.GetData() != nil {
+				select {
+				case <-firstData:
+				default:
+					close(firstData)
+				}
+			}
+		})
+	}()
+
+	select {
+	case <-firstData:
+	case <-time.After(time.Second):
+		t.Fatal("executor did not send response data before upstream handler completed")
+	}
+
+	close(release)
+
+	frames := <-done
+	if len(frames) != 1 || frames[0].GetEnd() == nil {
+		t.Fatalf("returned frames = %#v, want terminal EndFrame only", frames)
 	}
 }
 

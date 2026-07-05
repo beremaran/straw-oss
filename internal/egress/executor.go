@@ -42,6 +42,7 @@ const (
 	opRemove                = "remove"
 	defaultHTTPPort         = "80"
 	defaultHTTPSPort        = "443"
+	responseFrameDataBytes  = 32 << 10
 )
 
 // Resolver is the DNS boundary Egress uses before validating resolved IPs.
@@ -174,18 +175,42 @@ func (e *Executor) Execute(ctx context.Context, start *strawpb.RequestStart, bod
 		return append(emit, frames.error(failure))
 	}
 
-	emit = append(emit, frames.responseStart(status, responseHeaders(resp.Header)))
+	emit = emitOrAppend(emit, frames.responseStart(status, responseHeaders(resp.Header)), send)
 
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return append(emit, frames.error(mapHTTPError(reqCtx, err)))
-	}
-
-	if len(data) > 0 {
-		emit = append(emit, frames.data(0, data))
+	emit, failure = streamResponseBody(reqCtx, resp, frames, emit, send)
+	if failure != nil {
+		return append(emit, frames.error(failure))
 	}
 
 	return append(emit, frames.end())
+}
+
+func streamResponseBody(ctx context.Context, resp *http.Response, frames *frameBuilder, emit []*strawpb.StreamFrame, send func(*strawpb.StreamFrame)) ([]*strawpb.StreamFrame, *executionError) {
+	buf := make([]byte, responseFrameDataBytes)
+	offset := uint64(0)
+
+	for {
+		n, err := resp.Body.Read(buf)
+		if n > 0 {
+			chunk := append([]byte(nil), buf[:n]...)
+			emit = emitOrAppend(emit, frames.data(offset, chunk), send)
+			offset += uint64FromInt(n)
+		}
+
+		if errors.Is(err, io.EOF) {
+			break
+		}
+
+		if err != nil {
+			return emit, mapHTTPError(ctx, err)
+		}
+	}
+
+	if len(resp.Trailer) > 0 {
+		emit = emitOrAppend(emit, frames.trailers(responseHeaders(resp.Trailer)), send)
+	}
+
+	return emit, nil
 }
 
 func (e *Executor) httpClient(policy *strawpb.DestinationPolicy) (*http.Transport, *http.Client) {
@@ -765,6 +790,16 @@ func emitOrBatch(frame *strawpb.StreamFrame, send func(*strawpb.StreamFrame)) []
 	return []*strawpb.StreamFrame{frame}
 }
 
+func emitOrAppend(frames []*strawpb.StreamFrame, frame *strawpb.StreamFrame, send func(*strawpb.StreamFrame)) []*strawpb.StreamFrame {
+	if send != nil {
+		send(frame)
+
+		return frames
+	}
+
+	return append(frames, frame)
+}
+
 func responseStatus(status int) (uint32, *executionError) {
 	if status < 0 || status > 999 {
 		return 0, executorFailure(strawpb.ErrorCode_ERROR_CODE_EXECUTOR_INTERNAL_ERROR, executorInternalFact)
@@ -796,6 +831,16 @@ func (b *frameBuilder) data(offset uint64, data []byte) *strawpb.StreamFrame {
 	}
 }
 
+func (b *frameBuilder) trailers(headers []*strawpb.Header) *strawpb.StreamFrame {
+	b.seq++
+
+	return &strawpb.StreamFrame{
+		StreamSeq: b.seq,
+		Attempt:   b.attempt,
+		Payload:   &strawpb.StreamFrame_Trailers{Trailers: &strawpb.TrailersFrame{Headers: headers}},
+	}
+}
+
 func (b *frameBuilder) end() *strawpb.StreamFrame {
 	b.seq++
 
@@ -822,4 +867,17 @@ func (b *frameBuilder) error(failure *executionError) *strawpb.StreamFrame {
 		Attempt:   b.attempt,
 		Payload:   &strawpb.StreamFrame_Error{Error: errFrame},
 	}
+}
+
+func uint64FromInt(v int) uint64 {
+	if v <= 0 {
+		return 0
+	}
+
+	out, err := strconv.ParseUint(strconv.Itoa(v), 10, 64)
+	if err != nil {
+		return 0
+	}
+
+	return out
 }
