@@ -14,7 +14,8 @@ Task: `docs/tasks/p0/35-worker-registration-replay-and-identity-key.md`
   `docs/planning/24-static-configuration.md`: recorded the field additions and the new
   `control.worker.registration_*` config keys; noted (pre-existing, not caused by this task) that
   `egress.worker_id`/`egress.credential_id`/the new `egress.private_key_ed25519_env` are flat keys, not nested under
-  `egress.credential` as the doc's canonical table shows — unowned reconciliation.
+  `egress.credential` as the doc's canonical table shows. That reconciliation is now owned by
+  `docs/tasks/p1/22-egress-credential-config-schema-reconciliation.md`.
 - `internal/egress/registration.go`: `BuildRegisterRequest` now returns `(*RegisterRequest, error)`, populating a
   16-byte `crypto/rand` nonce and `time.Now().UnixMilli()` issued-at. Updated the one caller
   (`internal/egress/runtime.go`) and its test.
@@ -79,10 +80,11 @@ credential_id. Compose was torn down afterward (`docker compose down`, no `-v`).
 
 ## Remaining Work
 
-- None for this task's scope. Two adjacent, unowned gaps noted above for future reconciliation (not blocking, not
-  faked/stubbed by this task): the `egress.credential.*` nested-vs-flat config doc mismatch, and
-  `postgresWorkerCredentialStore.Revoke` not mapping `pgx.ErrNoRows` (pre-existing, unrelated to this task's
-  acceptance criteria).
+- None for this task's scope. Two adjacent gaps were noted above for reconciliation (not blocking, not faked/stubbed
+  by this task): the `egress.credential.*` nested-vs-flat config doc mismatch is now owned by
+  `docs/tasks/p1/22-egress-credential-config-schema-reconciliation.md`, and
+  `postgresWorkerCredentialStore.Revoke` not mapping `pgx.ErrNoRows` was pre-existing and unrelated to this task's
+  acceptance criteria.
 - 2026-07-05: P0-audit gap closed — `postgresWorkerCredentialStore.Revoke` now maps `pgx.ErrNoRows` to
   `ErrWorkerCredentialNotFound` (`internal/control/postgres_worker_credential_store.go:135-137`), so the handler
   returns 404 instead of 500 for missing/already-revoked credentials. Same latent bug fixed in the sibling

@@ -20,7 +20,9 @@ Task: `docs/tasks/p0/07-auth-rbac-api-keys.md`
   `snapshot_store.go`: store interfaces plus process-local (`InMemory*`) implementations, mirroring the columns in
   `migrations/postgres/0001_init.sql`. No Postgres/Redis driver dependency exists in this repo yet (task 04/05 only
   shipped schema + interfaces), so this task follows the same pattern established by `config_cache.go` rather than
-  introducing a new dependency. A Postgres-backed implementation is future work.
+  introducing a new dependency. **[Update 2026-07-06: resolved by
+  `docs/tasks/p0/18-postgres-foundation-and-identity-stores.md`, which wired Postgres-backed tenant, API key, worker
+  credential, and audit stores.]**
 - Added `internal/control/audit.go`: `AuditStore` interface + in-memory implementation, and `recordAudit`, called from
   every mutating admin handler with `actor_type=api_key`, `actor_id=<key ID>`.
 - Added `internal/control/bootstrap.go`: `BootstrapFromEnv` seeds the first platform `system_admin` key from an

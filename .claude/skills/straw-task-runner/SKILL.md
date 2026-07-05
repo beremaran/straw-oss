@@ -78,9 +78,6 @@ entirely by in-memory fakes. Do not repeat that.
   that sat invisible until a full re-audit. Unowned deferrals are how work silently disappears.
 - Deferring to the task you are currently completing ("owned by this task if pursued") counts as unowned — the task
   is about to be marked done, so nothing will ever pursue it.
-- Out of Scope can still hide a deferral. Before marking done, grep the task file, handoff, and diff for
-  `no owning task`, `no owner`, `future work`, and `if needed later`; every hit must be resolved, explicitly
-  not-a-gap, or name an owning task file.
 - A task must not be marked done on its board while its handoff contains an unowned deferral.
 - If your work closes a gap that an earlier task file or handoff documents as open (a "Known limitation" or
   Remaining Work entry), update that earlier note in the same run so it does not go stale.

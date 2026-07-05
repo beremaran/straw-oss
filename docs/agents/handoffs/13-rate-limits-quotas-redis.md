@@ -108,9 +108,8 @@ Every key above is written with an explicit TTL; none are permanent.
 - Worker runtime state (heartbeat/load) was **not** moved into Redis. `WorkerRegistry`
   (`internal/control/worker_registry.go`, task 08) remains the P0 in-process store; its existing
   availability/dead timeouts already implement doc 29's "use local snapshot for short TTL, then
-  fail safe" for worker availability. Moving it to Redis would change task 08's architecture and
-  is out of this task's scope; the existing code comment there (`Redis-backed state with TTLs is
-  future work`) still stands.
+  fail safe" for worker availability. Moving worker session/heartbeat/load and cooldown state to Redis is now owned
+  by `docs/tasks/p0/45-redis-backed-worker-runtime-state.md`.
 - Redis eviction-priority guidance from `docs/planning/21` ("quota/rate counters and worker
   availability must not be evicted before best-effort cache data") is a Redis server/`redis.conf`
   concern (logical DBs, `maxmemory-policy` per key prefix), not something enforced in Go code; not
