@@ -1,6 +1,6 @@
 # 39 - Test Suite Live-Database Guard
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -43,19 +43,19 @@ Both failure modes are silent. The docs currently even suggest the compose DSN a
 
 ## Steps
 
-- [ ] Read the required planning docs.
-- [ ] Pick the guard mechanism. Preferred: the harness refuses to run unless the target database is provably a
+- [x] Read the required planning docs.
+- [x] Pick the guard mechanism. Preferred: the harness refuses to run unless the target database is provably a
       test database — e.g. the DSN's database name ends in `_test`, or a `straw_test_marker` table exists.
       A live-data heuristic (refuse when unexpected rows exist) is acceptable only as a supplement, not the
       primary guard.
-- [ ] Make the harness fail with a clear, actionable error (not skip) when the guard rejects the DSN, so a
+- [x] Make the harness fail with a clear, actionable error (not skip) when the guard rejects the DSN, so a
       misconfigured CI run is loud instead of silently green-with-skips.
-- [ ] Provide the sanctioned local path: a `straw_test` database in compose (created via the Postgres image's
+- [x] Provide the sanctioned local path: a `straw_test` database in compose (created via the Postgres image's
       init mechanism or documented `createdb`), and update every doc that previously suggested the live DSN.
-- [ ] Verify: point the harness at the compose `straw` database and confirm it refuses; point it at the test
+- [x] Verify: point the harness at the compose `straw` database and confirm it refuses; point it at the test
       database and confirm the full suite runs with zero skips.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

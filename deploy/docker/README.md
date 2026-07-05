@@ -90,3 +90,20 @@ Request metadata lands asynchronously in ClickHouse (`straw.request_events`, ~1s
 The in-process proof of the same path is `TestDispatcherControlNATSEgressRoundTrip`
 (`go test ./internal/control/`), which controls both the worker key and the registered credential. See
 `docs/agents/testing-matrix-audit.md`.
+
+## Running the Postgres-backed tests
+
+The Postgres test harness truncates identity tables between tests, so it refuses to run against any
+database whose name does not end in `_test`. Never point `STRAW_TEST_POSTGRES_DSN` at the compose
+stack's live `straw` database — use the dedicated `straw_test` database:
+
+```sh
+STRAW_TEST_POSTGRES_DSN='postgres://postgres:postgres@localhost:5432/straw_test?sslmode=disable' go test ./...
+```
+
+`straw_test` is created automatically by `deploy/docker/postgres-init.sql` when the `postgres_data`
+volume is first initialized. On a volume that predates the init script, create it once manually:
+
+```sh
+docker compose exec postgres createdb -U postgres straw_test
+```

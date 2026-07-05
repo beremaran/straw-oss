@@ -3,7 +3,9 @@ package control
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -19,6 +21,13 @@ import (
 // target database may be empty. Each test truncates the identity tables first,
 // so the suite is idempotent across reruns; because of that shared-state reset
 // the tests are intentionally not run in parallel.
+//
+// Because the harness truncates tables, it refuses to run against a database
+// that is not explicitly designated for tests: the DSN's database name must
+// end in _test (e.g. straw_test). This guard exists because a run pointed at
+// the compose stack's live straw database once wiped its seeded state and
+// leaked test fixtures into it. See deploy/docker/README.md for the
+// sanctioned local test-database setup.
 const (
 	pgTestTenantA       = "11111111-1111-1111-1111-111111111111"
 	pgTestTenantB       = "22222222-2222-2222-2222-222222222222"
@@ -29,12 +38,37 @@ const (
 	pgTestTenantRenamed = "Renamed"
 )
 
+// checkTestDatabaseDSN rejects any DSN whose database name does not end in
+// _test. The harness truncates identity tables, so it must never run against
+// a database that is in real use. Failing (not skipping) keeps a
+// misconfigured CI run loud instead of silently green-with-skips.
+func checkTestDatabaseDSN(dsn string) error {
+	cfg, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		return fmt.Errorf("parse STRAW_TEST_POSTGRES_DSN: %w", err)
+	}
+
+	db := cfg.ConnConfig.Database
+	if !strings.HasSuffix(db, "_test") {
+		return fmt.Errorf(
+			"STRAW_TEST_POSTGRES_DSN targets database %q; the harness truncates tables, so it only runs against a database whose name ends in _test (e.g. straw_test) — see deploy/docker/README.md for setup",
+			db)
+	}
+
+	return nil
+}
+
 func newIdentityTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 
 	dsn := os.Getenv("STRAW_TEST_POSTGRES_DSN")
 	if dsn == "" {
 		t.Skip("STRAW_TEST_POSTGRES_DSN not set")
+	}
+
+	guardErr := checkTestDatabaseDSN(dsn)
+	if guardErr != nil {
+		t.Fatalf("refusing to run Postgres-backed tests: %v", guardErr)
 	}
 
 	pool, err := pgxpool.New(context.Background(), dsn)
