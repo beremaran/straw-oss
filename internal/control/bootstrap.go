@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/beremaran/straw/v2/internal/config"
 )
 
 const resourceIDBytes = 16
@@ -113,7 +115,7 @@ const (
 // registration does not check tenant scope (only routing/eligibility does),
 // so this is sufficient to let a worker register against the seeded
 // credential without requiring a real provisioned tenant.
-func BootstrapWorkerCredentialFromEnv(ctx context.Context, store WorkerCredentialStore, credentialID, publicKeyBase64 string) (bool, error) {
+func BootstrapWorkerCredentialFromEnv(ctx context.Context, store WorkerCredentialStore, credentialID, publicKeyBase64 string, tenantScope []string, allowedPools []AllowedPool) (bool, error) {
 	if credentialID == "" || publicKeyBase64 == "" {
 		return false, nil
 	}
@@ -127,13 +129,18 @@ func BootstrapWorkerCredentialFromEnv(ctx context.Context, store WorkerCredentia
 		return false, fmt.Errorf("get worker credential: %w", err)
 	}
 
+	if len(tenantScope) == 0 {
+		tenantScope = []string{devWorkerTenantScope}
+	}
+
 	now := time.Now().UTC()
 	record := WorkerCredential{
 		ID:                     credentialID,
 		Status:                 WorkerCredentialStatusActive,
 		ExecutorType:           devWorkerExecutorEgress,
 		PublicKeyEd25519Base64: publicKeyBase64,
-		TenantScope:            []string{devWorkerTenantScope},
+		TenantScope:            tenantScope,
+		AllowedPools:           allowedPools,
 		CreatedAt:              now,
 		UpdatedAt:              now,
 	}
@@ -141,6 +148,82 @@ func BootstrapWorkerCredentialFromEnv(ctx context.Context, store WorkerCredentia
 	err = store.Create(ctx, record)
 	if err != nil {
 		return false, fmt.Errorf("create bootstrap worker credential: %w", err)
+	}
+
+	return true, nil
+}
+
+// DevTenantIDEnvVar and DevPoolIDEnvVar are the environment variables Control
+// reads to seed a complete, coherent dev routing path so the docker-compose
+// egress worker can serve a real dispatch round-trip out of the box. When both
+// are set, Control seeds a dev tenant (fixed id) and a routing rule targeting
+// the dev pool, and scopes the bootstrapped worker credential to that tenant +
+// pool. Dev-only: production provisions tenants, routing, and worker
+// credentials through the admin API. See deploy/docker/README.md.
+const (
+	DevTenantIDEnvVar = "STRAW_BOOTSTRAP_DEV_TENANT_ID"
+	DevPoolIDEnvVar   = "STRAW_BOOTSTRAP_DEV_POOL_ID"
+	devTenantName     = "dev"
+	devRoutingRuleID  = "dev-default-route"
+)
+
+// BootstrapDevTenant seeds a dev tenant with a fixed id if it does not already
+// exist. Idempotent-safe on every startup, mirroring the other bootstrappers.
+func BootstrapDevTenant(ctx context.Context, store TenantStore, tenantID string) (bool, error) {
+	if tenantID == "" {
+		return false, nil
+	}
+
+	_, err := store.Get(ctx, tenantID)
+	if err == nil {
+		return false, nil
+	}
+
+	if !errors.Is(err, ErrTenantNotFound) {
+		return false, fmt.Errorf("get dev tenant: %w", err)
+	}
+
+	err = store.Create(ctx, Tenant{
+		ID:        tenantID,
+		Name:      devTenantName,
+		Status:    TenantStatusActive,
+		CreatedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		return false, fmt.Errorf("create dev tenant: %w", err)
+	}
+
+	return true, nil
+}
+
+// devRoutingRuleUpserter is the subset of PostgresConfigStore used to seed the
+// dev routing rule.
+type devRoutingRuleUpserter interface {
+	UpsertRoutingRule(ctx context.Context, tenantID string, rule config.RoutingRule, expectedVersion uint64, actor ConfigActor) (RoutingRuleRecord, uint64, error)
+}
+
+// BootstrapDevRoutingRule seeds a single enabled routing rule for the dev
+// tenant that targets the dev pool, so every request for that tenant routes to
+// the dev worker. It is idempotent: on restart the rule already exists at a
+// non-zero version, so the expectedVersion=0 upsert returns
+// ErrConfigResourceVersionConflict, which we treat as "already seeded".
+func BootstrapDevRoutingRule(ctx context.Context, store devRoutingRuleUpserter, tenantID, poolID string) (bool, error) {
+	if tenantID == "" || poolID == "" {
+		return false, nil
+	}
+
+	_, _, err := store.UpsertRoutingRule(ctx, tenantID, config.RoutingRule{
+		ID:           devRoutingRuleID,
+		Priority:     1,
+		Enabled:      true,
+		TargetPoolID: poolID,
+	}, 0, ConfigActor{ActorType: "system", ActorID: "bootstrap"})
+	if err != nil {
+		if errors.Is(err, ErrConfigResourceVersionConflict) {
+			return false, nil
+		}
+
+		return false, fmt.Errorf("seed dev routing rule: %w", err)
 	}
 
 	return true, nil

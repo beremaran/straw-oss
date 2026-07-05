@@ -82,6 +82,12 @@ services:
       # /worker-credentials call. See deploy/docker/README.md.
       STRAW_BOOTSTRAP_WORKER_CREDENTIAL_ID: "11111111-1111-4111-8111-111111111111"
       STRAW_BOOTSTRAP_WORKER_PUBLIC_KEY_ED25519_BASE64: "pRt97w+OVIQlr+uYeiECfFepc3WjylxQw/edkmcfprQ="
+      # Dev-only tenant + pool seed: Control creates this tenant and a routing
+      # rule targeting the pool, and scopes the dev worker credential to it, so
+      # a live REST->NATS->egress dispatch round-trips out of the box. Matches
+      # egress.json's allowed_pools. See deploy/docker/README.md.
+      STRAW_BOOTSTRAP_DEV_TENANT_ID: "22222222-2222-4222-8222-222222222222"
+      STRAW_BOOTSTRAP_DEV_POOL_ID: "dev-pool"
     depends_on:
       postgres:
         condition: service_healthy

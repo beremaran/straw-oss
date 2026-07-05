@@ -192,6 +192,19 @@ func TestLoadEgress(t *testing.T) {
 			wantErr: configTestUnknownField,
 		},
 		{
+			name: "allowed pool missing pool id",
+			config: `{
+				"config_version": "v1",
+				"egress": {
+					"worker_id": "egress-local-001",
+					"credential_id": "wcred_test",
+					"private_key_ed25519_env": "STRAW_WORKER_PRIVATE_KEY_ED25519_BASE64",
+					"allowed_pools": [{"tenant_id": "ten_x"}]
+				}
+			}`,
+			wantErr: "allowed_pools entries require both tenant_id and pool_id",
+		},
+		{
 			name: "invalid health port",
 			config: `{
 				"config_version": "v1",
@@ -227,6 +240,29 @@ func TestLoadEgress(t *testing.T) {
 				t.Fatalf("LoadEgress() error = %v, want substring %q", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestLoadEgressParsesAllowedPools(t *testing.T) {
+	t.Parallel()
+
+	path := writeConfig(t, `{
+		"config_version": "v1",
+		"egress": {
+			"worker_id": "egress-local-001",
+			"credential_id": "wcred_test",
+			"private_key_ed25519_env": "STRAW_WORKER_PRIVATE_KEY_ED25519_BASE64",
+			"allowed_pools": [{"tenant_id": "ten_x", "pool_id": "pool_y"}]
+		}
+	}`)
+
+	cfg, err := LoadEgress(path)
+	if err != nil {
+		t.Fatalf("LoadEgress() error = %v", err)
+	}
+
+	if len(cfg.AllowedPools) != 1 || cfg.AllowedPools[0].TenantID != "ten_x" || cfg.AllowedPools[0].PoolID != "pool_y" {
+		t.Fatalf("AllowedPools = %+v, want [{ten_x pool_y}]", cfg.AllowedPools)
 	}
 }
 

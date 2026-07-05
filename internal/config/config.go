@@ -28,6 +28,7 @@ var (
 	errInvalidServerAPIPort     = errors.New("server.api_port must be between 1 and 65535")
 	errInvalidServerMetricsPort = errors.New("server.metrics_port must be between 1 and 65535")
 	errInvalidEgressHealthPort  = errors.New("health_port must be between 1 and 65535")
+	errEgressPoolRefIncomplete  = errors.New("allowed_pools entries require both tenant_id and pool_id")
 )
 
 // File is the top-level JSON envelope for config files.
@@ -150,6 +151,17 @@ type EgressConfig struct {
 	// "P0 should prefer direct local /healthz and /readyz" for egress).
 	HealthPort int        `json:"health_port"`
 	NATS       NATSConfig `json:"nats"`
+	// AllowedPools are the (tenant, pool) memberships the worker declares at
+	// registration. Control only routes a request to a worker whose declared
+	// pools include the request's target pool (worker_registry.CandidatesForPool),
+	// so a worker with no pools is never a dispatch candidate.
+	AllowedPools []EgressPoolRef `json:"allowed_pools,omitempty"`
+}
+
+// EgressPoolRef is one (tenant, pool) membership an egress worker declares.
+type EgressPoolRef struct {
+	TenantID string `json:"tenant_id"`
+	PoolID   string `json:"pool_id"`
 }
 
 // LoadControl reads and validates a control config file.
@@ -428,7 +440,22 @@ func (e *EgressConfig) validate() error {
 		return fmt.Errorf("%w: %d", errInvalidEgressHealthPort, e.HealthPort)
 	}
 
+	err := validateEgressPoolRefs(e.AllowedPools)
+	if err != nil {
+		return err
+	}
+
 	e.NATS.applyDefaults()
+
+	return nil
+}
+
+func validateEgressPoolRefs(refs []EgressPoolRef) error {
+	for _, p := range refs {
+		if p.TenantID == "" || p.PoolID == "" {
+			return errEgressPoolRefIncomplete
+		}
+	}
 
 	return nil
 }

@@ -363,6 +363,11 @@ func insertClickHouseRows[T any](ctx context.Context, s *HTTPClickHouseSink, tab
 
 	query := req.URL.Query()
 	query.Set("database", s.database)
+	// RequestEvent.Timestamp (and the other event rows) serialize as RFC3339
+	// (e.g. 2026-07-04T16:44:11.812Z), which ClickHouse's default DateTime64
+	// parser rejects. best_effort accepts the ISO-8601 'T'/'Z' form so inserts
+	// don't 400 and get silently dropped by the async writer's outage policy.
+	query.Set("date_time_input_format", "best_effort")
 	query.Set("query", "INSERT INTO "+table+" FORMAT JSONEachRow")
 	req.URL.RawQuery = query.Encode()
 	req.Header.Set("Content-Type", "application/json")

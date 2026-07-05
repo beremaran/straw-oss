@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -429,5 +430,43 @@ func TestApplyRequestOutcomeFailureFillsCanonicalError(t *testing.T) {
 	}
 	if got.TotalMS != 10 {
 		t.Fatalf("TotalMS = %d, want 10", got.TotalMS)
+	}
+}
+
+// TestHTTPClickHouseSinkRequestFormat pins the exact HTTP request the live
+// sink sends. It regression-guards the DateTime64 parse failure that silently
+// dropped all telemetry: RequestEvent.Timestamp serializes as RFC3339, which
+// ClickHouse rejects unless date_time_input_format=best_effort is set. The
+// prior tests all used an in-memory sink, so this real-transport path was
+// never exercised.
+func TestHTTPClickHouseSinkRequestFormat(t *testing.T) {
+	var gotQuery url.Values
+	var gotBody string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.Query()
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	sink := NewHTTPClickHouseSink(srv.URL, "straw", "", "", srv.Client())
+	ts := time.Date(2026, 7, 4, 16, 44, 11, int(812*time.Millisecond), time.UTC)
+	err := sink.WriteRequestEvents(context.Background(), []RequestEvent{{
+		Timestamp: ts, RequestID: "req_ch", TenantID: "t1", ClientStatus: 404, ErrorCode: errorCodeRouteNoMatch,
+	}})
+	if err != nil {
+		t.Fatalf("WriteRequestEvents() error = %v", err)
+	}
+
+	if got := gotQuery.Get("date_time_input_format"); got != "best_effort" {
+		t.Fatalf("date_time_input_format = %q, want best_effort (RFC3339 timestamps 400 without it)", got)
+	}
+	if got := gotQuery.Get("query"); got != "INSERT INTO request_events FORMAT JSONEachRow" {
+		t.Fatalf("query = %q", got)
+	}
+	if !strings.Contains(gotBody, `"timestamp":"2026-07-04T16:44:11`) {
+		t.Fatalf("body timestamp not RFC3339 as expected: %s", gotBody)
 	}
 }

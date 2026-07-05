@@ -550,7 +550,49 @@ func (h *AdminHandlers) CreateTenantAPIKey(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	h.createTenantAPIKey(w, r, identity, role)
+	h.createTenantAPIKey(w, r, identity, identity.TenantID, role)
+}
+
+// CreateTenantKeyForTenant handles POST /api/v1/config/tenants/{id}/api-keys.
+// Unlike CreateTenantAPIKey (own-tenant, tenant_admin only), this lets a
+// platform system_admin mint a tenant's FIRST key — the bootstrap path that
+// was previously missing, forcing direct DB inserts. tenant_admin may still
+// use it for their own tenant. Mirrors the sysadmin-or-own-tenant pattern of
+// GET /api/v1/config/tenants/{id}.
+func (h *AdminHandlers) CreateTenantKeyForTenant(w http.ResponseWriter, r *http.Request) {
+	identity, err := h.authenticate(r)
+	if err != nil {
+		writeAuthOrRBACError(w, err)
+
+		return
+	}
+
+	tenantID := r.PathValue("id")
+
+	allowed := RequireRole(identity, RoleSystemAdmin) == nil
+	if !allowed {
+		allowed = RequireRole(identity, RoleTenantAdmin) == nil && RequireOwnTenant(identity, tenantID) == nil
+	}
+
+	if !allowed {
+		writeAuthOrRBACError(w, ErrInsufficientPermissions)
+
+		return
+	}
+
+	role, ok := decodeAndValidateTenantKeyRole(w, r)
+	if !ok {
+		return
+	}
+
+	_, err = h.Tenants.Get(r.Context(), tenantID)
+	if err != nil {
+		WriteError(w, http.StatusNotFound, ErrorResponseFromCode(TenantNotFound, "", nil))
+
+		return
+	}
+
+	h.createTenantAPIKey(w, r, identity, tenantID, role)
 }
 
 // ListTenantAPIKeys handles GET /api-keys, scoped to the caller's tenant.
@@ -1160,7 +1202,7 @@ func (h *AdminHandlers) createPlatformAPIKey(w http.ResponseWriter, r *http.Requ
 	})
 }
 
-func (h *AdminHandlers) createTenantAPIKey(w http.ResponseWriter, r *http.Request, identity Identity, role Role) {
+func (h *AdminHandlers) createTenantAPIKey(w http.ResponseWriter, r *http.Request, identity Identity, tenantID string, role Role) {
 	generated, err := GenerateAPIKey()
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
@@ -1175,7 +1217,7 @@ func (h *AdminHandlers) createTenantAPIKey(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	saved, err := h.bumpTenantVersion(r.Context(), identity.TenantID, nil)
+	saved, err := h.bumpTenantVersion(r.Context(), tenantID, nil)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
 
@@ -1185,7 +1227,7 @@ func (h *AdminHandlers) createTenantAPIKey(w http.ResponseWriter, r *http.Reques
 	record := APIKeyRecord{
 		ID:            id,
 		ScopeType:     ScopeTenant,
-		TenantID:      identity.TenantID,
+		TenantID:      tenantID,
 		Role:          role,
 		Prefix:        generated.Prefix,
 		SecretHash:    HashAPIKeySecret(generated.Secret, h.Pepper),
@@ -1200,7 +1242,7 @@ func (h *AdminHandlers) createTenantAPIKey(w http.ResponseWriter, r *http.Reques
 
 	recordAudit(r.Context(), h.Audit, identity, "tenant_api_key", id, "create")
 
-	tid := identity.TenantID
+	tid := tenantID
 	writeJSON(w, http.StatusCreated, apiKeyCreateResponse{
 		ID:            record.ID,
 		ScopeType:     string(record.ScopeType),

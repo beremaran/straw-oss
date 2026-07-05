@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	strawpb "github.com/beremaran/straw/v2/api/proto/straw/v1"
 	"github.com/beremaran/straw/v2/internal/config"
 	"github.com/beremaran/straw/v2/internal/egress"
 	"github.com/beremaran/straw/v2/internal/logging"
@@ -206,9 +207,15 @@ func runWorker(ctx context.Context, natsConn *natsx.Connection, cfg config.Egres
 		PrivateKey:   priv,
 	}
 
+	pools := make([]*strawpb.RegisterRequest_PoolRef, 0, len(cfg.AllowedPools))
+	for _, p := range cfg.AllowedPools {
+		pools = append(pools, &strawpb.RegisterRequest_PoolRef{TenantId: p.TenantID, PoolId: p.PoolID})
+	}
+
 	caps := egress.Capabilities{
 		SoftwareVersion: "dev",
 		MaxConcurrency:  defaultConcurrency,
+		AllowedPools:    pools,
 	}
 
 	heartbeatInterval := time.Duration(cfg.HeartbeatIntervalMs) * time.Millisecond
