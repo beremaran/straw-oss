@@ -111,6 +111,36 @@ func TestDispatcherRoutePoolPolicyFromSnapshot(t *testing.T) {
 	}
 }
 
+// TestDispatcherRoutePoolCapabilityRestriction verifies a pool's
+// allowed_countries restriction (docs/planning/26, docs/tasks/p0/42) excludes
+// a candidate whose claimed country is outside the restriction and admits a
+// matching candidate.
+func TestDispatcherRoutePoolCapabilityRestriction(t *testing.T) {
+	t.Parallel()
+
+	outside := dispatchCandidate()
+	outside.Countries = []string{"FR"}
+
+	matching := dispatchCandidate()
+	matching.WorkerID = "worker_dispatch_match"
+	matching.SessionID = "session_dispatch_match"
+	matching.AssignSubject = "straw.v1.executor." + matching.WorkerID + "." + matching.SessionID + ".assign"
+	matching.Countries = []string{"US"}
+
+	snapshot := dispatchSnapshot([]config.RoutingRule{dispatchRule()})
+	snapshot.ExecutorPools = []config.ExecutorPool{
+		{ID: dispatchTestPool, Enabled: true, AllowedCountries: []string{"US"}},
+	}
+
+	d := newTestDispatcherWithSnapshot(t, snapshot, dispatchCandidates{outside, matching})
+	req := validatedDispatchRequest(t, "https://example.com/")
+
+	outcome := d.route(dispatchInput(req), snapshot)
+	if !outcome.OK || outcome.WorkerID != matching.WorkerID {
+		t.Fatalf("route outcome = %+v, want OK with worker %s (outside-restriction candidate excluded)", outcome, matching.WorkerID)
+	}
+}
+
 func TestDispatcherRateLimitRetryAfter(t *testing.T) {
 	client := newTestRedisClient(t)
 

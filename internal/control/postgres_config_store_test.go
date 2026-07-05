@@ -30,6 +30,9 @@ func TestPostgresConfigStoreSnapshotAssembly(t *testing.T) {
 		Tags:                 []string{"fast", "au"},
 		Enabled:              true,
 		AllowDegradedWorkers: true,
+		AllowedIPTypes:       []string{ipTypeDatacenter},
+		AllowedCountries:     []string{"AU"},
+		AllowedRegions:       []string{"au-east-1"},
 	}, 0, actor)
 	if err != nil {
 		t.Fatalf("UpsertExecutorPool() error = %v", err)
@@ -140,6 +143,11 @@ func TestPostgresConfigStoreSnapshotAssembly(t *testing.T) {
 	}
 	if len(snap.ExecutorPools) != 1 || snap.ExecutorPools[0].ID != pgConfigPoolA || !snap.ExecutorPools[0].AllowDegradedWorkers {
 		t.Fatalf("executor pools = %+v, want %s with allow_degraded_workers=true", snap.ExecutorPools, pgConfigPoolA)
+	}
+	if gotPool := snap.ExecutorPools[0]; len(gotPool.AllowedIPTypes) != 1 || gotPool.AllowedIPTypes[0] != ipTypeDatacenter ||
+		len(gotPool.AllowedCountries) != 1 || gotPool.AllowedCountries[0] != "AU" ||
+		len(gotPool.AllowedRegions) != 1 || gotPool.AllowedRegions[0] != "au-east-1" {
+		t.Fatalf("executor pool capability fields = %+v, want datacenter/AU/au-east-1", gotPool)
 	}
 	if len(snap.DenyRules) != 1 || snap.DenyRules[0].NormalizedHost != pgConfigBlockedHost {
 		t.Fatalf("deny rules = %+v, want %s", snap.DenyRules, pgConfigBlockedHost)

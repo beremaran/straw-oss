@@ -156,9 +156,12 @@ func unmarshalMatchConditions(matchJSON []byte) (config.MatchConditions, error) 
 // ErrConfigResourceNotFound.
 func (s *PostgresConfigStore) GetExecutorPool(ctx context.Context, tenantID, id string) (ExecutorPoolRecord, error) {
 	var (
-		record   ExecutorPoolRecord
-		tagsJSON []byte
-		version  int64
+		record        ExecutorPoolRecord
+		tagsJSON      []byte
+		ipTypesJSON   []byte
+		countriesJSON []byte
+		regionsJSON   []byte
+		version       int64
 	)
 
 	record.TenantID = tenantID
@@ -166,20 +169,20 @@ func (s *PostgresConfigStore) GetExecutorPool(ctx context.Context, tenantID, id 
 
 	err := s.pool.QueryRow(
 		ctx,
-		`SELECT executor_type, tags_jsonb, enabled, allow_degraded_workers, created_at, config_version
+		`SELECT executor_type, tags_jsonb, enabled, allow_degraded_workers,
+		        allowed_ip_types_jsonb, allowed_countries_jsonb, allowed_regions_jsonb,
+		        created_at, config_version
 		 FROM executor_pools WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
 		tenantID, id,
 	).Scan(&record.ExecutorType, &tagsJSON, &record.Enabled, &record.AllowDegradedWorkers,
-		&record.CreatedAt, &version)
+		&ipTypesJSON, &countriesJSON, &regionsJSON, &record.CreatedAt, &version)
 	if err != nil {
 		return ExecutorPoolRecord{}, mapConfigResourceNotFound(err)
 	}
 
-	if len(tagsJSON) > 0 {
-		err = json.Unmarshal(tagsJSON, &record.Tags)
-		if err != nil {
-			return ExecutorPoolRecord{}, fmt.Errorf("unmarshal pool tags: %w", err)
-		}
+	err = unmarshalPoolCapabilityFields(&record.ExecutorPool, tagsJSON, ipTypesJSON, countriesJSON, regionsJSON)
+	if err != nil {
+		return ExecutorPoolRecord{}, err
 	}
 
 	record.ConfigVersion, err = dbUint64(version, "executor pool config version")
@@ -190,11 +193,41 @@ func (s *PostgresConfigStore) GetExecutorPool(ctx context.Context, tenantID, id 
 	return record, nil
 }
 
+// unmarshalPoolCapabilityFields decodes the jsonb tag/capability-restriction
+// columns shared by GetExecutorPool, ListExecutorPools, and snapshot assembly.
+func unmarshalPoolCapabilityFields(pool *config.ExecutorPool, tagsJSON, ipTypesJSON, countriesJSON, regionsJSON []byte) error {
+	fields := []struct {
+		name string
+		json []byte
+		out  *[]string
+	}{
+		{"tags", tagsJSON, &pool.Tags},
+		{"allowed ip types", ipTypesJSON, &pool.AllowedIPTypes},
+		{"allowed countries", countriesJSON, &pool.AllowedCountries},
+		{"allowed regions", regionsJSON, &pool.AllowedRegions},
+	}
+
+	for _, f := range fields {
+		if len(f.json) == 0 {
+			continue
+		}
+
+		err := json.Unmarshal(f.json, f.out)
+		if err != nil {
+			return fmt.Errorf("unmarshal pool %s: %w", f.name, err)
+		}
+	}
+
+	return nil
+}
+
 // ListExecutorPools returns a page of live executor pools for a tenant.
 func (s *PostgresConfigStore) ListExecutorPools(ctx context.Context, tenantID string, limit, offset int) ([]ExecutorPoolRecord, error) {
 	rows, err := s.pool.Query(
 		ctx,
-		`SELECT id, executor_type, tags_jsonb, enabled, allow_degraded_workers, created_at, config_version
+		`SELECT id, executor_type, tags_jsonb, enabled, allow_degraded_workers,
+		        allowed_ip_types_jsonb, allowed_countries_jsonb, allowed_regions_jsonb,
+		        created_at, config_version
 		 FROM executor_pools
 		 WHERE tenant_id = $1 AND deleted_at IS NULL
 		 ORDER BY created_at DESC, id ASC
@@ -211,24 +244,26 @@ func (s *PostgresConfigStore) ListExecutorPools(ctx context.Context, tenantID st
 
 	for rows.Next() {
 		var (
-			record   ExecutorPoolRecord
-			tagsJSON []byte
-			version  int64
+			record        ExecutorPoolRecord
+			tagsJSON      []byte
+			ipTypesJSON   []byte
+			countriesJSON []byte
+			regionsJSON   []byte
+			version       int64
 		)
 
 		record.TenantID = tenantID
 
 		scanErr := rows.Scan(&record.ID, &record.ExecutorType, &tagsJSON, &record.Enabled,
-			&record.AllowDegradedWorkers, &record.CreatedAt, &version)
+			&record.AllowDegradedWorkers, &ipTypesJSON, &countriesJSON, &regionsJSON,
+			&record.CreatedAt, &version)
 		if scanErr != nil {
 			return nil, fmt.Errorf("scan executor pool: %w", scanErr)
 		}
 
-		if len(tagsJSON) > 0 {
-			err = json.Unmarshal(tagsJSON, &record.Tags)
-			if err != nil {
-				return nil, fmt.Errorf("unmarshal pool tags: %w", err)
-			}
+		err = unmarshalPoolCapabilityFields(&record.ExecutorPool, tagsJSON, ipTypesJSON, countriesJSON, regionsJSON)
+		if err != nil {
+			return nil, err
 		}
 
 		record.ConfigVersion, err = dbUint64(version, "executor pool config version")

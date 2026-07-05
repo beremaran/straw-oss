@@ -303,7 +303,8 @@ func readRoutingRules(ctx context.Context, tx pgx.Tx, tenantID string, snap *con
 
 func readExecutorPools(ctx context.Context, tx pgx.Tx, tenantID string, snap *config.TenantSnapshot) error {
 	rows, err := tx.Query(ctx,
-		`SELECT id, executor_type, tags_jsonb, enabled, allow_degraded_workers
+		`SELECT id, executor_type, tags_jsonb, enabled, allow_degraded_workers,
+		        allowed_ip_types_jsonb, allowed_countries_jsonb, allowed_regions_jsonb
 		 FROM executor_pools
 		 WHERE tenant_id = $1 AND deleted_at IS NULL
 		 ORDER BY id`,
@@ -317,20 +318,22 @@ func readExecutorPools(ctx context.Context, tx pgx.Tx, tenantID string, snap *co
 
 	for rows.Next() {
 		var (
-			pool     config.ExecutorPool
-			tagsJSON []byte
+			pool          config.ExecutorPool
+			tagsJSON      []byte
+			ipTypesJSON   []byte
+			countriesJSON []byte
+			regionsJSON   []byte
 		)
 
-		err := rows.Scan(&pool.ID, &pool.ExecutorType, &tagsJSON, &pool.Enabled, &pool.AllowDegradedWorkers)
+		err := rows.Scan(&pool.ID, &pool.ExecutorType, &tagsJSON, &pool.Enabled, &pool.AllowDegradedWorkers,
+			&ipTypesJSON, &countriesJSON, &regionsJSON)
 		if err != nil {
 			return fmt.Errorf("scan executor pool: %w", err)
 		}
 
-		if len(tagsJSON) > 0 {
-			err = json.Unmarshal(tagsJSON, &pool.Tags)
-			if err != nil {
-				return fmt.Errorf("unmarshal pool tags: %w", err)
-			}
+		err = unmarshalPoolCapabilityFields(&pool, tagsJSON, ipTypesJSON, countriesJSON, regionsJSON)
+		if err != nil {
+			return err
 		}
 
 		snap.ExecutorPools = append(snap.ExecutorPools, pool)

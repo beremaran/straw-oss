@@ -52,13 +52,18 @@ type RoutingRule struct {
 // ExecutorPool is a tenant-visible pool (docs/planning/21). AllowDegradedWorkers
 // sources the degraded-pool routing policy (docs/planning/10): a pool with
 // this set to true lets Router select a degraded-health worker when no ready
-// worker is available.
+// worker is available. AllowedIPTypes/AllowedCountries/AllowedRegions restrict
+// which worker capabilities may serve this pool (docs/planning/26); an empty
+// list means unrestricted.
 type ExecutorPool struct {
 	ID                   string
 	ExecutorType         string
 	Tags                 []string
 	Enabled              bool
 	AllowDegradedWorkers bool
+	AllowedIPTypes       []string
+	AllowedCountries     []string
+	AllowedRegions       []string
 }
 
 // DenyRule is one host/CIDR/CNAME deny or allow override (docs/planning/21).
