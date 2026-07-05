@@ -159,8 +159,8 @@ func TestBuildRequestEventRecordsActorAndSanitizedTarget(t *testing.T) {
 	if ev.RequestSizeBytes != 5 {
 		t.Fatalf("RequestSizeBytes = %d, want 5", ev.RequestSizeBytes)
 	}
-	if ev.IngressType != requestMetadataIngressType {
-		t.Fatalf("IngressType = %q, want %q", ev.IngressType, requestMetadataIngressType)
+	if ev.IngressType != IngressTypeREST {
+		t.Fatalf("IngressType = %q, want %q", ev.IngressType, IngressTypeREST)
 	}
 	if ev.CaptureDecision != requestMetadataNone {
 		t.Fatalf("CaptureDecision = %q, want %q", ev.CaptureDecision, requestMetadataNone)

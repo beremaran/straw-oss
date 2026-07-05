@@ -2,14 +2,18 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -35,6 +39,7 @@ const (
 	invalidationPollPeriod  = 30 * time.Second
 	clickHouseWriteTimeout  = 5 * time.Second
 	healthcheckProbeTimeout = 2 * time.Second
+	maxProxyHeaderCapture   = 64 << 10
 )
 
 var errHealthcheckNotReady = errors.New("healthcheck probe returned non-2xx status")
@@ -144,14 +149,14 @@ func runControl(controlConfig config.ControlConfig, natsConn *natsx.Connection) 
 
 	metricsReg, metrics := wireMetrics(workerRegistry, chWriters)
 
-	mux := buildControlMux(controlConfig, apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore, configCache, redisClient, natsConn, chWriters, metrics)
+	mux, proxyHandler := buildControlMux(controlConfig, apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore, configCache, redisClient, natsConn, chWriters, metrics)
 
 	err = control.SetupWorkerDiscoverySubscriptions(natsConn, workerRegistry)
 	if err != nil {
 		return fmt.Errorf("setup worker discovery: %w", err)
 	}
 
-	return serveControl(ctx, controlConfig, mux, metricsReg)
+	return serveControl(ctx, controlConfig, mux, proxyHandler, metricsReg)
 }
 
 // wireWorkerRegistrationReplayProtection wires the Redis-backed registration
@@ -218,14 +223,135 @@ func openStores(controlConfig config.ControlConfig) (*pgxpool.Pool, *redis.Clien
 
 // serveControl starts the metrics/readiness server and the API server, marking
 // readiness true until ctx cancellation begins drain.
-func serveControl(ctx context.Context, controlConfig config.ControlConfig, mux *http.ServeMux, metricsReg *prometheus.Registry) error {
+func serveControl(ctx context.Context, controlConfig config.ControlConfig, mux *http.ServeMux, proxyHandler http.Handler, metricsReg *prometheus.Registry) error {
 	ready := &atomic.Bool{}
 	ready.Store(true)
 
 	stopMetrics := serveMetricsHTTP(ctx, controlConfig, ready, metricsReg)
 	defer stopMetrics()
 
+	stopProxy := serveProxyHTTP(ctx, controlConfig, proxyHandler)
+	defer stopProxy()
+
 	return serveControlHTTP(ctx, controlConfig, mux, ready)
+}
+
+func serveProxyHTTP(ctx context.Context, controlConfig config.ControlConfig, handler http.Handler) func() {
+	if !controlConfig.Server.ProxyEnabled || handler == nil {
+		return func() {}
+	}
+
+	addr := fmt.Sprintf("%s:%d", controlConfig.Server.Host, controlConfig.Server.ProxyPort)
+
+	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", addr)
+	if err != nil {
+		slog.Error("proxy listen failed", "addr", addr, "error", err)
+
+		return func() {}
+	}
+
+	server := &http.Server{
+		Handler:           handler,
+		ReadHeaderTimeout: readHeaderTimeout,
+		ConnContext: func(ctx context.Context, c net.Conn) context.Context {
+			if capture, ok := c.(*proxyHeaderCaptureConn); ok {
+				return control.WithProxyRawHeaderSource(ctx, capture)
+			}
+
+			return ctx
+		},
+	}
+
+	go func() {
+		serveErr := server.Serve(proxyHeaderCaptureListener{Listener: listener})
+		if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+			slog.Error("proxy server failed", "error", serveErr)
+		}
+	}()
+
+	slog.Info("proxy listening", "addr", addr)
+
+	return func() {
+		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), controlShutdownTimeout)
+		defer cancel()
+
+		shutdownErr := server.Shutdown(shutdownCtx)
+		if shutdownErr != nil {
+			slog.Error("shutdown proxy server failed", "error", shutdownErr)
+		}
+	}
+}
+
+type proxyHeaderCaptureListener struct {
+	net.Listener
+}
+
+func (l proxyHeaderCaptureListener) Accept() (net.Conn, error) {
+	conn, err := l.Listener.Accept()
+	if err != nil {
+		return nil, fmt.Errorf("accept proxy connection: %w", err)
+	}
+
+	return &proxyHeaderCaptureConn{Conn: conn}, nil
+}
+
+type proxyHeaderCaptureConn struct {
+	net.Conn
+
+	mu     sync.Mutex
+	header []byte
+	done   bool
+}
+
+func (c *proxyHeaderCaptureConn) ProxyRawHeaderBlock() []byte {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return append([]byte(nil), c.header...)
+}
+
+func (c *proxyHeaderCaptureConn) Read(p []byte) (int, error) {
+	n, err := c.Conn.Read(p)
+	if n > 0 {
+		c.capture(p[:n])
+	}
+
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			return n, io.EOF
+		}
+
+		return n, fmt.Errorf("read proxy connection: %w", err)
+	}
+
+	return n, nil
+}
+
+func (c *proxyHeaderCaptureConn) capture(b []byte) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.done {
+		return
+	}
+
+	remaining := maxProxyHeaderCapture - len(c.header)
+	if remaining <= 0 {
+		c.done = true
+
+		return
+	}
+
+	if len(b) > remaining {
+		b = b[:remaining]
+		c.done = true
+	}
+
+	c.header = append(c.header, b...)
+	if end := bytes.Index(c.header, []byte("\r\n\r\n")); end >= 0 {
+		c.header = c.header[:end+4]
+		c.done = true
+	}
 }
 
 // serveMetricsHTTP starts the liveness/readiness/metrics server on the
@@ -486,7 +612,7 @@ func rehydrateWorkerAdminState(ctx context.Context, configStore *control.Postgre
 
 // buildControlMux assembles the HTTP handler with the Postgres-backed identity
 // and config stores.
-func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool, configStore *control.PostgresConfigStore, configCache *control.ConfigCache, redisClient *redis.Client, natsConn *natsx.Connection, chWriters *clickHouseWriters, metrics *control.Metrics) *http.ServeMux {
+func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool, configStore *control.PostgresConfigStore, configCache *control.ConfigCache, redisClient *redis.Client, natsConn *natsx.Connection, chWriters *clickHouseWriters, metrics *control.Metrics) (*http.ServeMux, http.Handler) {
 	inflight := control.NewInFlightRegistry()
 	tenantStore := control.NewPostgresTenantStore(pool)
 	adminHandlers := buildAdminHandlers(apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore, configCache, redisClient, inflight, tenantStore, chWriters.configAudit)
@@ -517,7 +643,7 @@ func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.API
 	quotaAdmission := control.NewQuotaAdmission(redisClient, nil)
 	quotaAdmission.SetMetrics(metrics)
 
-	requestHandler.SetDispatcher(control.NewDefaultRequestDispatcher(control.RequestDispatcherOptions{
+	dispatcher := control.NewDefaultRequestDispatcher(control.RequestDispatcherOptions{
 		ConfigCache:                configCache,
 		Workers:                    workerRegistry,
 		Sticky:                     control.NewRedisStickyStore(redisClient),
@@ -529,13 +655,31 @@ func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.API
 		MaxTimeoutMs:               controlConfig.Request.MaxTimeoutMs,
 		InFlight:                   inflight,
 		Metrics:                    metrics,
-	}))
+	})
+	requestHandler.SetDispatcher(dispatcher)
 
 	mux := http.NewServeMux()
 	mux.Handle("POST /api/v1/requests", requestHandler)
 	serveAdminRoutes(mux, adminHandlers)
 
-	return mux
+	return mux, buildProxyHandler(controlConfig, authenticator, chWriters.requestMetadata, dispatcher)
+}
+
+func buildProxyHandler(controlConfig config.ControlConfig, authenticator *control.Authenticator, metadata control.RequestMetadataRecorder, dispatcher control.RequestDispatcher) http.Handler {
+	if !controlConfig.Server.ProxyEnabled {
+		return nil
+	}
+
+	h := control.NewProxyHandler(
+		controlConfig.Request.MaxInlineRequestBodyBytes,
+		controlConfig.Request.MaxInlineResponseBodyBytes,
+		controlConfig.Request.MaxTimeoutMs,
+		authenticator,
+		metadata,
+	)
+	h.SetDispatcher(dispatcher)
+
+	return h
 }
 
 // buildAdminHandlers constructs the AdminHandlers with the Postgres-backed

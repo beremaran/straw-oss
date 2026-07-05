@@ -345,7 +345,7 @@ func dispatchCandidate() PoolCandidate {
 		WorkerID:       dispatchTestWorker,
 		SessionID:      dispatchTestSess,
 		AssignSubject:  "straw.v1.executor." + dispatchTestWorker + "." + dispatchTestSess + ".assign",
-		IngressModes:   []string{requestMetadataIngressType},
+		IngressModes:   []string{IngressTypeREST},
 		MaxConcurrency: 4,
 		AvailableCap:   4,
 	}
