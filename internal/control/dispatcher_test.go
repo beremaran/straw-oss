@@ -180,6 +180,40 @@ func TestDispatcherControlNATSEgressRoundTrip(t *testing.T) {
 	}
 }
 
+// TestDispatcherEgressPhaseTiming reproduces the 2026-07-05 live-stack gap
+// (docs/tasks/p0/41): a successful dispatch against an upstream with a real
+// delay must record egress_ms reflecting that delay, not 0, and the phase
+// timings must sum consistently toward total_ms.
+func TestDispatcherEgressPhaseTiming(t *testing.T) {
+	t.Parallel()
+
+	const upstreamDelay = 100 * time.Millisecond
+
+	d, stop := newLiveDispatchHarness(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(upstreamDelay)
+		_, _ = w.Write([]byte("delayed"))
+	}))
+	defer stop()
+
+	req := validatedDispatchRequest(t, rewriteDispatchHost(t, d.upstreamURL, "dispatch.test"))
+
+	resp, perr := d.Dispatch(context.Background(), dispatchInput(req))
+	if perr != nil {
+		t.Fatalf("Dispatch error = %#v", perr)
+	}
+
+	timing := resp.Timing
+	if timing.EgressMs < int64(upstreamDelay/time.Millisecond)/2 {
+		t.Fatalf("EgressMs = %d, want >= %d (upstream slept %v)", timing.EgressMs, int64(upstreamDelay/time.Millisecond)/2, upstreamDelay)
+	}
+	if timing.TotalMs < timing.EgressMs {
+		t.Fatalf("TotalMs = %d < EgressMs = %d", timing.TotalMs, timing.EgressMs)
+	}
+	if timing.RoutingMs+timing.AssignmentMs+timing.EgressMs > timing.TotalMs {
+		t.Fatalf("phase sum %d+%d+%d exceeds TotalMs %d", timing.RoutingMs, timing.AssignmentMs, timing.EgressMs, timing.TotalMs)
+	}
+}
+
 type liveDispatchHarness struct {
 	*DefaultRequestDispatcher
 	upstreamURL string

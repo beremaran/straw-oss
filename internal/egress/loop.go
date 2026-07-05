@@ -281,7 +281,12 @@ func (w *Worker) runRequest(reqCtx context.Context, cancel context.CancelFunc, r
 	resultCh := make(chan []*strawpb.StreamFrame, 1)
 
 	go func() {
-		resultCh <- w.executor.Execute(reqCtx, start, body, req.GetAttempt())
+		resultCh <- w.executor.Execute(reqCtx, start, body, req.GetAttempt(), func(frame *strawpb.StreamFrame) {
+			// Publish OutboundStart before DNS/connect (docs/planning/09
+			// step 19) so Control measures the real egress phase instead of
+			// receiving it batched with the terminal frame.
+			w.publish(e2cSubject, env, []*strawpb.StreamFrame{frame})
+		})
 	}()
 
 	result, canceled, reason := waitForResult(resultCh, frames, validator, cancel)

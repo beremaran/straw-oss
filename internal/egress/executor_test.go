@@ -16,6 +16,8 @@ import (
 	strawpb "github.com/beremaran/straw/v2/api/proto/straw/v1"
 )
 
+const unitTestHost = "unit.test"
+
 func TestExecutorEmitsSuccessfulHTTPFramesAndAppliesInjection(t *testing.T) {
 	t.Parallel()
 
@@ -46,14 +48,14 @@ func TestExecutorEmitsSuccessfulHTTPFramesAndAppliesInjection(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	target := rewriteHost(t, server.URL, "unit.test")
-	exec := NewExecutor(ExecutorOptions{Resolver: staticResolver{"unit.test": loopbackIP(t, server.URL)}})
-	frames := exec.Execute(context.Background(), requestStart(target, directPolicy(true)), []byte("payload"), 3)
+	target := rewriteHost(t, server.URL, unitTestHost)
+	exec := NewExecutor(ExecutorOptions{Resolver: staticResolver{unitTestHost: loopbackIP(t, server.URL)}})
+	frames := exec.Execute(context.Background(), requestStart(target, directPolicy(true)), []byte("payload"), 3, nil)
 
 	if len(frames) != 4 {
 		t.Fatalf("len(frames) = %d, want 4", len(frames))
 	}
-	if got := frames[0].GetOutboundStart(); got == nil || got.GetTargetHost() != "unit.test" || got.GetAttempt() != 3 {
+	if got := frames[0].GetOutboundStart(); got == nil || got.GetTargetHost() != unitTestHost || got.GetAttempt() != 3 {
 		t.Fatalf("outbound start = %#v", got)
 	}
 	if got := frames[1].GetResponseStart(); got == nil || got.GetStatus() != http.StatusTeapot {
@@ -64,6 +66,47 @@ func TestExecutorEmitsSuccessfulHTTPFramesAndAppliesInjection(t *testing.T) {
 	}
 	if got := frames[3].GetEnd(); got == nil || !got.GetSuccess() {
 		t.Fatalf("end = %#v", got)
+	}
+}
+
+// TestExecutorSendsOutboundStartBeforeConnect verifies the docs/planning/09
+// step 19 ordering that docs/tasks/p0/41 depends on: with a send callback the
+// OutboundStartFrame is delivered before the upstream request is made, and is
+// excluded from the returned batch.
+func TestExecutorSendsOutboundStartBeforeConnect(t *testing.T) {
+	t.Parallel()
+
+	upstreamHit := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		close(upstreamHit)
+		_, _ = w.Write([]byte("ok"))
+	}))
+	t.Cleanup(server.Close)
+
+	var sent []*strawpb.StreamFrame
+
+	target := rewriteHost(t, server.URL, unitTestHost)
+	exec := NewExecutor(ExecutorOptions{Resolver: staticResolver{unitTestHost: loopbackIP(t, server.URL)}})
+	frames := exec.Execute(context.Background(), requestStart(target, directPolicy(true)), nil, 1, func(frame *strawpb.StreamFrame) {
+		select {
+		case <-upstreamHit:
+			t.Error("OutboundStart sent after upstream was contacted")
+		default:
+		}
+
+		sent = append(sent, frame)
+	})
+
+	if len(sent) != 1 || sent[0].GetOutboundStart() == nil {
+		t.Fatalf("sent = %#v, want exactly one OutboundStart", sent)
+	}
+	for _, frame := range frames {
+		if frame.GetOutboundStart() != nil {
+			t.Fatalf("returned batch still contains OutboundStart: %#v", frame)
+		}
+	}
+	if last := frames[len(frames)-1].GetEnd(); last == nil || !last.GetSuccess() {
+		t.Fatalf("terminal frame = %#v, want successful EndFrame", frames[len(frames)-1])
 	}
 }
 
@@ -82,7 +125,7 @@ func TestExecutorRejectsResolvedDeniedIPAndRedactsDetails(t *testing.T) {
 	start := requestStart("http://metadata.test/secret?token=abc", directPolicy(false))
 	start.Headers = []*strawpb.Header{{Name: "Authorization", Value: []byte("secret")}}
 
-	frames := exec.Execute(context.Background(), start, nil, 1)
+	frames := exec.Execute(context.Background(), start, nil, 1, nil)
 
 	if dialed {
 		t.Fatal("executor dialed a denied destination")
@@ -108,7 +151,7 @@ func TestExecutorDeniesPrivateAndMetadataIPsByDefault(t *testing.T) {
 			t.Parallel()
 
 			exec := NewExecutor(ExecutorOptions{Resolver: staticResolver{"denied.test": addr}})
-			frames := exec.Execute(context.Background(), requestStart("http://denied.test", directPolicy(false)), nil, 1)
+			frames := exec.Execute(context.Background(), requestStart("http://denied.test", directPolicy(false)), nil, 1, nil)
 			if got := terminalError(t, frames).GetCode(); got != strawpb.ErrorCode_ERROR_CODE_DESTINATION_DENIED {
 				t.Fatalf("code = %v, want destination_denied", got)
 			}
@@ -141,7 +184,7 @@ func TestExecutorAllowedCIDRsOverridePrivateAndMetadataDenials(t *testing.T) {
 				},
 			})
 
-			frames := exec.Execute(context.Background(), requestStart("http://override.test", policy), nil, 1)
+			frames := exec.Execute(context.Background(), requestStart("http://override.test", policy), nil, 1, nil)
 			if !dialed {
 				t.Fatal("executor did not dial the allowed_cidrs-overridden address")
 			}
@@ -169,7 +212,7 @@ func TestExecutorIs4In6NeverOverriddenByAllowedCIDRs(t *testing.T) {
 		},
 	})
 
-	frames := exec.Execute(context.Background(), requestStart("http://mapped.test", policy), nil, 1)
+	frames := exec.Execute(context.Background(), requestStart("http://mapped.test", policy), nil, 1, nil)
 	errFrame := terminalError(t, frames)
 	if errFrame.GetCode() != strawpb.ErrorCode_ERROR_CODE_DESTINATION_DENIED {
 		t.Fatalf("code = %v, want destination_denied", errFrame.GetCode())
@@ -191,7 +234,7 @@ func TestExecutorRejectsDeniedHostSuffix(t *testing.T) {
 		},
 	})
 
-	frames := exec.Execute(context.Background(), requestStart("http://sub.blocked.example", policy), nil, 1)
+	frames := exec.Execute(context.Background(), requestStart("http://sub.blocked.example", policy), nil, 1, nil)
 	errFrame := terminalError(t, frames)
 	if errFrame.GetCode() != strawpb.ErrorCode_ERROR_CODE_DESTINATION_DENIED {
 		t.Fatalf("code = %v, want destination_denied", errFrame.GetCode())
@@ -219,7 +262,7 @@ func TestExecutorRejectsDeniedCNAMESuffix(t *testing.T) {
 		},
 	})
 
-	frames := exec.Execute(context.Background(), requestStart("http://cname.test", policy), nil, 1)
+	frames := exec.Execute(context.Background(), requestStart("http://cname.test", policy), nil, 1, nil)
 	errFrame := terminalError(t, frames)
 	if errFrame.GetCode() != strawpb.ErrorCode_ERROR_CODE_DESTINATION_DENIED {
 		t.Fatalf("code = %v, want destination_denied", errFrame.GetCode())
@@ -249,7 +292,7 @@ func TestExecutorBlocksDNSRebindingByDialingValidatedIP(t *testing.T) {
 		},
 	})
 
-	frames := exec.Execute(context.Background(), requestStart(target, directPolicy(true)), nil, 1)
+	frames := exec.Execute(context.Background(), requestStart(target, directPolicy(true)), nil, 1, nil)
 
 	if terminalErrorOrNil(frames) != nil {
 		t.Fatalf("unexpected error frame: %#v", terminalErrorOrNil(frames))
@@ -289,7 +332,7 @@ func TestExecutorRejectsUnsafeHeaderInjection(t *testing.T) {
 				},
 			})
 
-			errFrame := terminalError(t, exec.Execute(context.Background(), start, nil, 1))
+			errFrame := terminalError(t, exec.Execute(context.Background(), start, nil, 1, nil))
 			if errFrame.GetCode() != strawpb.ErrorCode_ERROR_CODE_EXECUTOR_INTERNAL_ERROR {
 				t.Fatalf("code = %v, want executor_internal_error", errFrame.GetCode())
 			}
@@ -314,7 +357,7 @@ func TestExecutorEnforcesTotalDeadline(t *testing.T) {
 	start.DeadlineUnixMs = time.Now().Add(20 * time.Millisecond).UnixMilli()
 	exec := NewExecutor(ExecutorOptions{Resolver: staticResolver{"slow.test": loopbackIP(t, server.URL)}})
 
-	errFrame := terminalError(t, exec.Execute(context.Background(), start, nil, 1))
+	errFrame := terminalError(t, exec.Execute(context.Background(), start, nil, 1, nil))
 	if errFrame.GetCode() != strawpb.ErrorCode_ERROR_CODE_TIMEOUT_EXCEEDED {
 		t.Fatalf("code = %v, want timeout_exceeded", errFrame.GetCode())
 	}
@@ -338,7 +381,7 @@ func TestExecutorDoesNotFollowRedirects(t *testing.T) {
 
 	target := rewriteHost(t, server.URL, "redirect.test")
 	exec := NewExecutor(ExecutorOptions{Resolver: staticResolver{"redirect.test": loopbackIP(t, server.URL)}})
-	frames := exec.Execute(context.Background(), requestStart(target, directPolicy(true)), nil, 1)
+	frames := exec.Execute(context.Background(), requestStart(target, directPolicy(true)), nil, 1, nil)
 
 	if got := frames[1].GetResponseStart().GetStatus(); got != http.StatusFound {
 		t.Fatalf("status = %d, want redirect passthrough %d", got, http.StatusFound)

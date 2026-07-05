@@ -1,6 +1,6 @@
 # 41 - Request Phase Timing Accuracy
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -51,16 +51,20 @@ failing test that reproduces the zero.
 
 ## Steps
 
-- [ ] Read the required planning docs.
-- [ ] Write the failing test first: a dispatcher round-trip against a test upstream with a deliberate delay
+- [x] Read the required planning docs.
+- [x] Write the failing test first: a dispatcher round-trip against a test upstream with a deliberate delay
       (e.g. 50ms) must record `egress_ms` in that ballpark, not 0. Use the injected clock if the harness has one.
-- [ ] Trace the live path to the root cause (start-time never set, overwritten, or dropped between frame handling
+      (`TestDispatcherEgressPhaseTiming`, 100ms upstream delay; reproduced `EgressMs = 0` before the fix.)
+- [x] Trace the live path to the root cause (start-time never set, overwritten, or dropped between frame handling
       and `applyRequestOutcome`) and fix it at the source — not by re-deriving `egress_ms` from `total_ms`.
-- [ ] Check `routing_ms` while in there: confirm sub-ms is the true explanation or fix it under the same test.
-- [ ] Verify live: re-run the compose round-trip from `deploy/docker/README.md` and confirm the ClickHouse row
-      carries non-zero, plausible `egress_ms`.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+      (Root cause was in egress, not Control: `Executor.Execute` batched OutboundStart with all other frames and
+      the worker published them only after the upstream call finished.)
+- [x] Check `routing_ms` while in there: confirm sub-ms is the true explanation or fix it under the same test.
+      (Legitimate: `routing_ms` wraps only the in-memory `d.route` evaluation over a cached snapshot.)
+- [x] Verify live: re-run the compose round-trip from `deploy/docker/README.md` and confirm the ClickHouse row
+      carries non-zero, plausible `egress_ms`. (egress_ms=124/total_ms=140 and egress_ms=95/total_ms=107.)
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 
