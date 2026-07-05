@@ -25,7 +25,8 @@ then forgotten. Audit against those patterns specifically.
   "not yet consumed" that was in fact live).
 - Verify against the working tree, and check `git status` first: work can be complete-but-uncommitted (task 41 was),
   which is a finding of its own.
-- If a task spec and a planning doc disagree, the planning doc wins (`docs/tasks/p0.md` Notes).
+- If a task spec and a planning doc disagree, the planning doc wins (see the task's own phase board's `## Notes`,
+  e.g. `docs/tasks/p0.md`, `p1.md`, or `p2.md`).
 
 ## Procedure
 

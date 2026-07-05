@@ -1,6 +1,6 @@
 ---
 name: straw-task-runner
-description: Complete one Straw repository task from docs/tasks, especially P0 task packs. Use when the user asks to complete the next task, work on a specific docs/tasks/p0/*.md file, continue implementation from the task board, or produce a task handoff for this repo.
+description: Complete one Straw repository task from docs/tasks (p0, p1, or p2). Use when the user asks to complete the next task, work on a specific docs/tasks/{p0,p1,p2}/*.md file, continue implementation from a phase board, or produce a task handoff for this repo.
 ---
 
 # Straw Task Runner
@@ -119,7 +119,7 @@ Stop and ask before editing further if:
 ## Good Invocation
 
 ```text
-Use /straw-task-runner to complete the next unblocked P0 task.
+Use /straw-task-runner to complete the next unblocked task.
 ```
 
 For a specific task:
