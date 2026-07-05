@@ -188,11 +188,10 @@ func redactAndMarshal(v any) (string, error) {
 // mirrors into the config_audit_events ClickHouse sink (docs/tasks/p0/32),
 // covering every recordAudit call site (tenant, API key, worker credential,
 // routing/deny/injection/pool config, worker admin, request cancel) from one
-// choke point. Old/new value JSON and config_version are populated only by
-// the separate Postgres config_audit_source writer in
-// postgres_config_store.go (insertConfigAudit), which already carries those
-// fields redacted; rows mirrored from here leave them empty since
-// AuditRecord does not carry them.
+// choke point. AuditRecord carries config_version and redacted old/new value
+// JSON (see recordAudit / redactAndMarshal), so the mirrored ClickHouse rows
+// are populated with the same enriched, redacted fields as the Postgres
+// config_audit_source records.
 type auditStoreWithEvents struct {
 	AuditStore
 	events ConfigAuditRecorder
