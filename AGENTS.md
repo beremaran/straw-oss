@@ -68,6 +68,11 @@ make check
 
 `make check` runs `gofmt` verification and `go test ./...`.
 
+Postgres-backed tests only run when `STRAW_TEST_POSTGRES_DSN` is set, and the harness refuses any
+database whose name does not end in `_test` (it truncates tables between tests). Use the dedicated
+`straw_test` database, never the compose stack's live `straw` database — see the "Running the
+Postgres-backed tests" section of `deploy/docker/README.md`.
+
 ## Stop Conditions
 
 Stop and ask before continuing if:
