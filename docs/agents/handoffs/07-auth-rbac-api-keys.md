@@ -145,6 +145,12 @@ Key new tests (in addition to auth/RBAC unit tests for generation, hashing, pref
   `AuditStore`, `SnapshotStore` (currently `InMemory*`), once a Postgres driver dependency is introduced.
 - Redis-backed `InvalidationPublisher` wiring for `ConfigCache` (currently `nil` in `cmd/control/main.go`; publish
   calls are no-ops until then).
+
+  > RESOLVED 2026-07-05 (P0 audit): closed by tasks 18/19/21 (all done). Stores are now Postgres-backed
+  > (`control.NewPostgresAPIKeyStore` at `cmd/control/main.go:261`, plus `NewPostgresWorkerCredentialStore`/
+  > `NewPostgresTenantStore`/`NewPostgresQuotaStore`/`NewPostgresAuditStore` at `cmd/control/main.go:121`/`490`/`561`/`563`),
+  > and `ConfigCache` is wired with a real Redis publisher (`control.NewRedisInvalidationPublisher(redisClient)` at
+  > `cmd/control/main.go:280`) — publish calls are no longer no-ops.
 - Full tenant resource schema (`docs/planning/26` §"Tenant") and remaining config endpoints (routing rules, executor
   pools, deny rules, injection policies, fingerprint profiles, rate limits, config audit list) — out of this task's
   scope, deferred to later tasks.

@@ -158,6 +158,12 @@ environment without Redis; only the Redis-backed behavior goes unverified in tha
 - No `PUT /tenants/{id}` endpoint exists yet to set `rate_limit_ceiling` over HTTP; add it when the
   full tenant resource schema task is picked up.
 
+> RESOLVED 2026-07-05 (P0 audit): both items closed by task 24 (done). The live dispatch pipeline now calls
+> `RateLimitAdmission.Check` and `QuotaAdmission.CheckAdmission` in `admit()` (`internal/control/dispatcher.go:254`/`267`)
+> and `Router.Evaluate` in `route()` (`internal/control/dispatcher.go:290`). `PUT /tenants/{id}` exists as
+> `AdminHandlers.UpdateTenant` and sets `rate_limit_ceiling` — see `internal/control/admin_handlers.go:279` (ceiling
+> parsed at `:298`).
+
 ## Blockers
 
 - None.

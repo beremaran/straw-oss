@@ -56,6 +56,10 @@ Result:
 - **Rate limits and quotas** (task 13): Redis-backed admission checks.
 - **Deny rules** (task 10): Destination host/CIDR/IP deny checks.
 
+> RESOLVED 2026-07-05 (P0 audit): every follow-up above is now done — see the board rows in `docs/tasks/p0.md`:
+> 07 (`p0.md:15`), 09 (`p0.md:17`), 10 (`p0.md:19`), 11 (`p0.md:20`), 13 (`p0.md:21`). The stubbed execution path is
+> now the live dispatch pipeline (task 24, `p0.md:31`) — see `internal/control/dispatcher.go`.
+
 ## Blockers
 
 - None.

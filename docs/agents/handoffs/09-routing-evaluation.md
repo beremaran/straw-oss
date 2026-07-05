@@ -40,6 +40,10 @@ the pre-existing package (237 issues repo-wide before this change) and are not p
 - No Postgres-backed routing-rule/pool-policy store yet — `StaticRuleProvider`/`StaticPoolPolicyProvider`
   are in-memory only, matching the existing P0 pattern (`InMemoryQuotaStore`, etc.). Wiring these into
   `cmd/control` and a config API surface is left to a later task.
+
+  > RESOLVED 2026-07-05 (P0 audit): closed by tasks 19/24 (both done). Routing rules/pool policies are now assembled
+  > from the Postgres-backed config snapshot, and the live dispatch pipeline calls `router.Evaluate` on the request
+  > path — see `internal/control/dispatcher.go:290` (`route()` at `:281`, invoked from the main flow at `:183`).
 - No Redis-backed `StickyStore` — in-process TTL map only, matching the P0 in-memory pattern used
   elsewhere. Key shape and TTL-refresh semantics already match the canonical Redis structure so the swap
   is mechanical.
