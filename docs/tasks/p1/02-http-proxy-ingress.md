@@ -1,6 +1,6 @@
 # 02 - HTTP Proxy Ingress
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -34,17 +34,18 @@ request pipeline used by REST.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Add a listener on port 8081 behind static config.
-- [ ] Authenticate proxy requests according to the task 01 spec.
-- [ ] Parse HTTP proxy requests into the internal decoded request model.
-- [ ] Strip `Proxy-Authorization`, `X-Straw-*`, hop-by-hop headers, and invalid internal routing headers.
-- [ ] Reject CONNECT on this listener unless task 05 owns the request.
-- [ ] Send proxy responses using the raw streaming path from task 03.
-- [ ] Add tests for auth, header stripping, routing input, malformed requests, and raw upstream response passthrough.
-- [ ] Run focused proxy ingress tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Read all required planning docs.
+- [x] Add a listener on port 8081 behind static config.
+- [x] Authenticate proxy requests according to the task 01 spec.
+- [x] Parse HTTP proxy requests into the internal decoded request model.
+- [x] Strip `Proxy-Authorization`, `X-Straw-*`, hop-by-hop headers, and invalid internal routing headers.
+- [x] Reject CONNECT on this listener unless task 05 owns the request.
+- [x] Send proxy responses without the REST JSON envelope. Full unbuffered raw streaming/backpressure remains owned by
+      `docs/tasks/p1/03-raw-streaming-response-path.md`.
+- [x] Add tests for auth, header stripping, routing input, malformed requests, and raw upstream response passthrough.
+- [x] Run focused proxy ingress tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

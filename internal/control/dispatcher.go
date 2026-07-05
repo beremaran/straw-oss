@@ -34,7 +34,7 @@ const (
 	timeoutTypeIdle               = "idle_timeout"
 )
 
-// RequestDispatcher executes a validated REST request.
+// RequestDispatcher executes a validated decoded HTTP request.
 type RequestDispatcher interface {
 	Dispatch(ctx context.Context, in DispatchInput) (SuccessResponse, *PipelineError)
 }
@@ -293,7 +293,7 @@ func (d *DefaultRequestDispatcher) route(in DispatchInput, snapshot config.Tenan
 		Country:         in.Request.Routing.Country,
 		Region:          in.Request.Routing.Region,
 		IPType:          in.Request.Routing.IPType,
-		IngressType:     requestMetadataIngressType,
+		IngressType:     IngressTypeREST,
 		TargetHost:      strings.ToLower(in.Request.URL.Hostname()),
 		StickySessionID: in.Request.StickySessionID,
 	})

@@ -357,6 +357,24 @@ func TestHandlerInvalidMethodCasing(t *testing.T) {
 	}
 }
 
+func TestValidateRequestUnknownMethodRejected(t *testing.T) {
+	t.Parallel()
+
+	raw := []byte(`{"method":"BREW","url":"https://example.com"}`)
+	_, err := ValidateRequest(raw, 1_048_576, 120_000)
+	if err == nil {
+		t.Fatal("expected error for unknown HTTP method")
+	}
+
+	var verr *ValidationError
+	if !errors.As(err, &verr) {
+		t.Fatalf("expected ValidationError, got %T", err)
+	}
+	if verr.Code != handlerTestInvalidRequestCode {
+		t.Fatalf("code = %q, want %q", verr.Code, handlerTestInvalidRequestCode)
+	}
+}
+
 func TestErrorRegistryComplete(t *testing.T) {
 	t.Parallel()
 

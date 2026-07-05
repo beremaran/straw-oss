@@ -16,6 +16,18 @@ const (
 	urlSchemeHTTPS = "https"
 )
 
+// Ingress types used in routing and telemetry.
+const (
+	IngressTypeREST      = "rest"
+	IngressTypeHTTPProxy = "http_proxy"
+)
+
+const (
+	headerNameAuthorization      = "authorization"
+	headerNameProxyAuthorization = "proxy-authorization"
+	requestBodyExceedsLimit      = "request body exceeds limit"
+)
+
 var httpTokenAllowed = func() [256]bool {
 	var allowed [256]bool
 
@@ -86,6 +98,7 @@ type ValidatedRequest struct {
 	Headers         []HeaderPair
 	BodyData        []byte
 	Routing         RoutingHints
+	IngressType     string
 	Fingerprint     string
 	TimeoutMs       uint64
 	Replayable      bool
@@ -146,6 +159,7 @@ func ValidateRequest(raw []byte, maxRequestBodyBytes, maxTimeoutMs uint64) (*Val
 		Headers:         headers,
 		BodyData:        bodyData,
 		Routing:         routing,
+		IngressType:     IngressTypeREST,
 		Fingerprint:     env.FingerprintProto,
 		TimeoutMs:       timeoutMs,
 		Replayable:      env.Replayable,
@@ -166,6 +180,10 @@ func validateMethod(method string) error {
 		return &ValidationError{Code: errorCodeUnsupportedIngressMode, Message: "CONNECT method is not supported in P0 REST transport"}
 	}
 
+	if !isKnownHTTPMethod(method) {
+		return &ValidationError{Code: errorCodeInvalidRequest, Message: "method is not a supported HTTP method"}
+	}
+
 	for _, r := range method {
 		if !isMethodChar(r) {
 			return &ValidationError{Code: errorCodeInvalidRequest, Message: "method contains invalid characters"}
@@ -173,6 +191,16 @@ func validateMethod(method string) error {
 	}
 
 	return nil
+}
+
+func isKnownHTTPMethod(method string) bool {
+	switch method {
+	case http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut, http.MethodPatch,
+		http.MethodDelete, http.MethodOptions, http.MethodTrace:
+		return true
+	default:
+		return false
+	}
 }
 
 func isMethodChar(r rune) bool {
@@ -301,7 +329,7 @@ func validateBody(body *RequestBody, maxBytes uint64) ([]byte, error) {
 	}
 
 	if uint64(len(decoded)) > maxBytes {
-		return nil, &ValidationError{Code: errorCodeBodyTooLarge, Message: "request body exceeds limit", Details: map[string]string{
+		return nil, &ValidationError{Code: errorCodeBodyTooLarge, Message: requestBodyExceedsLimit, Details: map[string]string{
 			errorDetailDirectionKey:  "request",
 			errorDetailLimitBytesKey: strconv.FormatUint(maxBytes, 10),
 		}}
