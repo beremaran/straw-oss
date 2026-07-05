@@ -83,6 +83,11 @@ credential_id. Compose was torn down afterward (`docker compose down`, no `-v`).
   faked/stubbed by this task): the `egress.credential.*` nested-vs-flat config doc mismatch, and
   `postgresWorkerCredentialStore.Revoke` not mapping `pgx.ErrNoRows` (pre-existing, unrelated to this task's
   acceptance criteria).
+- 2026-07-05: P0-audit gap closed — `postgresWorkerCredentialStore.Revoke` now maps `pgx.ErrNoRows` to
+  `ErrWorkerCredentialNotFound` (`internal/control/postgres_worker_credential_store.go:135-137`), so the handler
+  returns 404 instead of 500 for missing/already-revoked credentials. Same latent bug fixed in the sibling
+  `postgresAPIKeyStore.Revoke` (`internal/control/postgres_apikey_store.go:141-143`, maps to `ErrAPIKeyNotFound`).
+  Proven by `TestPostgresWorkerCredentialStoreRevokeMissingNotFound` in `internal/control/postgres_store_test.go`.
 
 ## Blockers
 

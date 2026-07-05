@@ -135,6 +135,60 @@ func TestRecordAuditEnrichmentAndRedaction(t *testing.T) {
 	}
 }
 
+func TestRecordAuditRedactsAPIKeySecretHash(t *testing.T) {
+	t.Parallel()
+
+	const secretHash = "peppered-secret-hash-should-never-leak"
+
+	recorder := &captureConfigAuditRecorder{}
+	inner := NewInMemoryAuditStore()
+	store := NewAuditStoreWithEvents(inner, recorder)
+
+	created := APIKeyRecord{
+		ID:         "key_1",
+		ScopeType:  ScopePlatform,
+		Role:       RoleSystemAdmin,
+		Prefix:     "sk_pfx",
+		SecretHash: secretHash,
+		Status:     APIKeyStatusActive,
+	}
+	revoked := created
+	revoked.Status = APIKeyStatusRevoked
+
+	// create: new value is the record with SecretHash populated.
+	recordAudit(context.Background(), store, Identity{TenantID: adminTestTenantA, APIKeyID: authTestKey1}, "platform_api_key", "key_1", "create", 1, "", nil, created, false)
+	// revoke: both old and new values carry SecretHash (pointer form).
+	recordAudit(context.Background(), store, Identity{TenantID: adminTestTenantA, APIKeyID: authTestKey1}, "platform_api_key", "key_1", "revoke", 2, "", &created, &revoked, false)
+
+	events := recorder.all()
+	if len(events) != 2 {
+		t.Fatalf("events len = %d, want 2", len(events))
+	}
+
+	for _, ev := range events {
+		if strings.Contains(ev.NewValueJSON, secretHash) {
+			t.Fatalf("new_value_json leaks secret hash: %s", ev.NewValueJSON)
+		}
+		if strings.Contains(ev.OldValueJSON, secretHash) {
+			t.Fatalf("old_value_json leaks secret hash: %s", ev.OldValueJSON)
+		}
+	}
+
+	// The Postgres-bound records must also be redacted.
+	records, err := inner.ListTenant(context.Background(), adminTestTenantA)
+	if err != nil {
+		t.Fatalf("ListTenant() error = %v", err)
+	}
+	if len(records) != 2 {
+		t.Fatalf("records len = %d, want 2", len(records))
+	}
+	for _, rec := range records {
+		if strings.Contains(rec.NewValueJSON, secretHash) || strings.Contains(rec.OldValueJSON, secretHash) {
+			t.Fatalf("audit record leaks secret hash: old=%s new=%s", rec.OldValueJSON, rec.NewValueJSON)
+		}
+	}
+}
+
 func TestRecordAuditSkipPostgres(t *testing.T) {
 	t.Parallel()
 

@@ -132,6 +132,10 @@ func (s *postgresWorkerCredentialStore) Revoke(ctx context.Context, id string, r
 		&record.ConfigVersion,
 	)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return WorkerCredential{}, ErrWorkerCredentialNotFound
+		}
+
 		return WorkerCredential{}, fmt.Errorf("postgres worker credential revoke: %w", err)
 	}
 

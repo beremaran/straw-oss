@@ -60,6 +60,10 @@ Result:
 ## Remaining Work
 
 - None.
+- 2026-07-05: P0-audit gap closed — `redactAndMarshal` only special-cased `config.InjectionPolicy`, so
+  `APIKeyRecord.SecretHash` (peppered hash) leaked verbatim into audit records and the ClickHouse mirror. Added
+  `APIKeyRecord`/`*APIKeyRecord` redaction cases in `internal/control/audit.go:177-185`; proven by
+  `TestRecordAuditRedactsAPIKeySecretHash` in `internal/control/audit_test.go`.
 
 ## Blockers
 

@@ -174,6 +174,15 @@ func redactAndMarshal(v any) (string, error) {
 			clone := redactInjectionPolicy(*val)
 			v = &clone
 		}
+	case APIKeyRecord:
+		val.SecretHash = requestMetadataRedacted
+		v = val
+	case *APIKeyRecord:
+		if val != nil {
+			clone := *val
+			clone.SecretHash = requestMetadataRedacted
+			v = &clone
+		}
 	}
 
 	b, err := json.Marshal(v)
