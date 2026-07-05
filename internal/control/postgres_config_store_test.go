@@ -309,3 +309,122 @@ func hasFingerprintProfile(profiles []config.FingerprintProfile, name string) bo
 
 	return false
 }
+
+func TestPostgresDenyRuleMigrationMapping(t *testing.T) {
+	pool := newIdentityTestPool(t)
+	seedTenant(t, pool, pgTestTenantA)
+	ctx := context.Background()
+
+	// Temporarily drop constraints to seed old schema values
+	_, err := pool.Exec(ctx, `
+		ALTER TABLE deny_rules DROP CONSTRAINT IF EXISTS deny_rules_rule_type_check;
+		ALTER TABLE deny_rules DROP CONSTRAINT IF EXISTS deny_rules_action_check;
+	`)
+	if err != nil {
+		t.Fatalf("failed to drop constraints: %v", err)
+	}
+
+	// Seed pre-migration shapes using raw SQL
+	_, err = pool.Exec(ctx, `
+		INSERT INTO deny_rules (tenant_id, id, rule_type, action, raw_pattern, normalized_ip, normalized_cname)
+		VALUES
+			($1, 'old_ipv4_allow', 'ip', 'allow', '10.0.0.1', '10.0.0.1'::inet, NULL),
+			($1, 'old_ipv6_deny', 'ip', 'deny', '2001:db8::1', '2001:db8::1'::inet, NULL),
+			($1, 'old_cname_deny', 'cname', 'deny', 'cname.example', NULL, 'cname.example')
+	`, pgTestTenantA)
+	if err != nil {
+		t.Fatalf("failed to seed test rules: %v", err)
+	}
+
+	// Execute migration queries manually to check their logic
+	_, err = pool.Exec(ctx, `
+		UPDATE deny_rules
+		   SET normalized_cidr = (host(normalized_ip) || '/' || CASE WHEN family(normalized_ip) = 6 THEN '128' ELSE '32' END)::cidr
+		 WHERE rule_type = 'ip' AND normalized_ip IS NOT NULL AND normalized_cidr IS NULL
+	`)
+	if err != nil {
+		t.Fatalf("failed to update normalized_cidr: %v", err)
+	}
+
+	_, err = pool.Exec(ctx, "UPDATE deny_rules SET rule_type = 'cidr' WHERE rule_type = 'ip'")
+	if err != nil {
+		t.Fatalf("failed to update rule_type ip -> cidr: %v", err)
+	}
+
+	_, err = pool.Exec(ctx, "UPDATE deny_rules SET rule_type = 'cname_suffix' WHERE rule_type = 'cname'")
+	if err != nil {
+		t.Fatalf("failed to update rule_type cname -> cname_suffix: %v", err)
+	}
+
+	_, err = pool.Exec(ctx, "UPDATE deny_rules SET action = 'allow_override' WHERE action = 'allow'")
+	if err != nil {
+		t.Fatalf("failed to update action allow -> allow_override: %v", err)
+	}
+
+	// Re-add constraints to verify they succeed on the updated data
+	_, err = pool.Exec(ctx, `
+		ALTER TABLE deny_rules ADD CONSTRAINT deny_rules_rule_type_check
+		  CHECK (rule_type IN ('cidr', 'host', 'host_suffix', 'cname_suffix', 'metadata_ip', 'private_range'));
+		ALTER TABLE deny_rules ADD CONSTRAINT deny_rules_action_check
+		  CHECK (action IN ('deny', 'allow_override'));
+	`)
+	if err != nil {
+		t.Fatalf("failed to re-add constraints: %v", err)
+	}
+
+	// Verify mappings and check results
+	type resultRow struct {
+		ID             string
+		RuleType       string
+		Action         string
+		NormalizedCIDR string
+	}
+
+	rows, err := pool.Query(ctx, `
+		SELECT id, rule_type, action, COALESCE(normalized_cidr::text, '')
+		FROM deny_rules
+		WHERE tenant_id = $1
+		ORDER BY id
+	`, pgTestTenantA)
+	if err != nil {
+		t.Fatalf("failed to query results: %v", err)
+	}
+	defer rows.Close()
+
+	results := make(map[string]resultRow)
+	for rows.Next() {
+		var r resultRow
+		err = rows.Scan(&r.ID, &r.RuleType, &r.Action, &r.NormalizedCIDR)
+		if err != nil {
+			t.Fatalf("scan row: %v", err)
+		}
+		results[r.ID] = r
+	}
+
+	// Verify old_ipv4_allow -> cidr + allow_override + /32
+	ipv4, ok := results["old_ipv4_allow"]
+	if !ok {
+		t.Fatal("missing old_ipv4_allow")
+	}
+	if ipv4.RuleType != denyRuleTypeCIDR || ipv4.Action != "allow_override" || ipv4.NormalizedCIDR != "10.0.0.1/32" {
+		t.Errorf("ipv4 mapped wrong: %+v", ipv4)
+	}
+
+	// Verify old_ipv6_deny -> cidr + deny + /128
+	ipv6, ok := results["old_ipv6_deny"]
+	if !ok {
+		t.Fatal("missing old_ipv6_deny")
+	}
+	if ipv6.RuleType != denyRuleTypeCIDR || ipv6.Action != "deny" || ipv6.NormalizedCIDR != "2001:db8::1/128" {
+		t.Errorf("ipv6 mapped wrong: %+v", ipv6)
+	}
+
+	// Verify old_cname_deny -> cname_suffix + deny
+	cname, ok := results["old_cname_deny"]
+	if !ok {
+		t.Fatal("missing old_cname_deny")
+	}
+	if cname.RuleType != "cname_suffix" || cname.Action != "deny" {
+		t.Errorf("cname mapped wrong: %+v", cname)
+	}
+}

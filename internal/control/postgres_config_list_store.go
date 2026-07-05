@@ -294,12 +294,12 @@ func (s *PostgresConfigStore) GetDenyRule(ctx context.Context, tenantID, id stri
 		`SELECT rule_type, action, enabled, raw_pattern,
 		        COALESCE(normalized_host, ''), COALESCE(normalized_cidr::text, ''),
 		        COALESCE(normalized_ip::text, ''), COALESCE(normalized_cname, ''),
-		        created_at, config_version
+		        COALESCE(reason, ''), created_at, config_version
 		 FROM deny_rules WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
 		tenantID, id,
 	).Scan(&record.RuleType, &record.Action, &record.Enabled, &record.RawPattern,
 		&record.NormalizedHost, &record.NormalizedCIDR, &record.NormalizedIP, &record.NormalizedName,
-		&record.CreatedAt, &version)
+		&record.Reason, &record.CreatedAt, &version)
 	if err != nil {
 		return DenyRuleRecord{}, mapConfigResourceNotFound(err)
 	}
@@ -319,7 +319,7 @@ func (s *PostgresConfigStore) ListDenyRules(ctx context.Context, tenantID string
 		`SELECT id, rule_type, action, enabled, raw_pattern,
 		        COALESCE(normalized_host, ''), COALESCE(normalized_cidr::text, ''),
 		        COALESCE(normalized_ip::text, ''), COALESCE(normalized_cname, ''),
-		        created_at, config_version
+		        COALESCE(reason, ''), created_at, config_version
 		 FROM deny_rules
 		 WHERE tenant_id = $1 AND deleted_at IS NULL
 		 ORDER BY created_at DESC, id ASC
@@ -344,7 +344,7 @@ func (s *PostgresConfigStore) ListDenyRules(ctx context.Context, tenantID string
 
 		scanErr := rows.Scan(&record.ID, &record.RuleType, &record.Action, &record.Enabled, &record.RawPattern,
 			&record.NormalizedHost, &record.NormalizedCIDR, &record.NormalizedIP, &record.NormalizedName,
-			&record.CreatedAt, &version)
+			&record.Reason, &record.CreatedAt, &version)
 		if scanErr != nil {
 			return nil, fmt.Errorf("scan deny rule: %w", scanErr)
 		}

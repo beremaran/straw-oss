@@ -282,7 +282,7 @@ func newLiveDispatchHarness(t *testing.T, upstreamHandler http.Handler) (*liveDi
 
 	snapshot := dispatchSnapshot([]config.RoutingRule{dispatchRule()})
 	snapshot.DenyRules = []config.DenyRule{
-		{RuleType: denyRuleTypeCIDR, Action: denyRuleActionAllow, Enabled: true, NormalizedCIDR: loopbackDispatchCIDR(t, upstream.URL)},
+		{RuleType: denyRuleTypeCIDR, Action: denyRuleActionAllowOverride, Enabled: true, NormalizedCIDR: loopbackDispatchCIDR(t, upstream.URL)},
 	}
 
 	d := newTestDispatcherWithSnapshot(t, snapshot, dispatchCandidates{dispatchCandidate()})

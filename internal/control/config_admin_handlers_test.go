@@ -10,7 +10,9 @@ import (
 )
 
 const (
-	configTestPoolA = "pool_a"
+	configTestPoolA  = "pool_a"
+	testCNAMESuffix  = "internal.svc.cluster.local"
+	testPrivateRange = "172.16.0.0/12"
 )
 
 func createRoutingRule(t *testing.T, ta *testAdmin, token, body string) (*httptest.ResponseRecorder, routingRuleResponse) {
@@ -403,6 +405,97 @@ func TestDenyRuleValidationAndRoleRestriction(t *testing.T) {
 	}
 	if created.Value != "blocked.example" {
 		t.Fatalf("normalized value = %q, want blocked.example", created.Value)
+	}
+}
+
+// TestDenyRuleTaxonomyCRUD is docs/tasks/p0/43's CRUD-round-trip-per-type
+// coverage: every docs/planning/26 P0 type/action accepted with a reason, and
+// the old narrower cname/ip/allow values rejected with a clear error.
+func TestDenyRuleTaxonomyCRUD(t *testing.T) {
+	t.Parallel()
+
+	ta := newTestAdmin(t)
+	tenantAdmin := ta.seedTenantKey(t, "key_deny_taxonomy", adminTestTenantA, RoleTenantAdmin)
+
+	cases := []struct {
+		name  string
+		body  string
+		value string
+	}{
+		{name: denyRuleTypeCIDR, body: `{"type":"cidr","value":"10.1.0.0/16","action":"deny","reason":"tenant private range"}`, value: "10.1.0.0/16"},
+		{name: "host", body: `{"type":"host","value":"blocked.example.com","action":"deny","reason":"exact host"}`, value: "blocked.example.com"},
+		{name: "host_suffix", body: `{"type":"host_suffix","value":"blocked.example.org","action":"deny","reason":"whole domain"}`, value: "blocked.example.org"},
+		{name: "cname_suffix", body: `{"type":"cname_suffix","value":"` + testCNAMESuffix + `","action":"deny","reason":"internal cname"}`, value: testCNAMESuffix},
+		{name: "metadata_ip", body: `{"type":"metadata_ip","value":"169.254.169.254/32","action":"deny","reason":"cloud metadata"}`, value: "169.254.169.254/32"},
+		{name: "private_range", body: `{"type":"private_range","value":"` + testPrivateRange + `","action":"allow_override","reason":"tenant needs internal reach"}`, value: testPrivateRange},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			ta.h.CreateDenyRule(w, newAdminRequest(http.MethodPost, "/api/v1/config/deny-rules", tenantAdmin, tc.body))
+
+			if w.Code != http.StatusOK {
+				t.Fatalf("create status = %d, want 200, body=%s", w.Code, w.Body.String())
+			}
+
+			var created denyRuleResponse
+
+			err := json.Unmarshal(w.Body.Bytes(), &created)
+			if err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+
+			if created.Value != tc.value {
+				t.Fatalf("value = %q, want %q", created.Value, tc.value)
+			}
+
+			if created.Reason == "" {
+				t.Fatal("reason round-trip is empty, want the submitted reason")
+			}
+
+			w = httptest.NewRecorder()
+			ta.h.ListDenyRules(w, newAdminRequest(http.MethodGet, "/api/v1/config/deny-rules", tenantAdmin, ""))
+
+			var page []denyRuleResponse
+
+			err = json.Unmarshal(w.Body.Bytes(), &page)
+			if err != nil {
+				t.Fatalf("unmarshal list: %v", err)
+			}
+
+			found := false
+
+			for _, r := range page {
+				if r.ID == created.ID {
+					found = true
+
+					if r.Type != tc.name || r.Value != tc.value || r.Reason != created.Reason {
+						t.Fatalf("listed rule = %+v, want type=%s value=%s reason=%s", r, tc.name, tc.value, created.Reason)
+					}
+				}
+			}
+
+			if !found {
+				t.Fatalf("created rule %s not found in list", created.ID)
+			}
+		})
+	}
+
+	// The old narrower taxonomy values are rejected with a clear error.
+	rejected := []string{
+		`{"type":"cname","value":"internal.svc.cluster.local","action":"deny"}`,
+		`{"type":"ip","value":"169.254.169.254","action":"deny"}`,
+		`{"type":"host","value":"blocked.example.com","action":"allow"}`,
+	}
+
+	for _, body := range rejected {
+		w := httptest.NewRecorder()
+		ta.h.CreateDenyRule(w, newAdminRequest(http.MethodPost, "/api/v1/config/deny-rules", tenantAdmin, body))
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("old-taxonomy body %s status = %d, want 400, body=%s", body, w.Code, w.Body.String())
+		}
 	}
 }
 

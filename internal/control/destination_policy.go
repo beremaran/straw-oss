@@ -31,12 +31,8 @@ import (
 // reach a legitimate internationalized domain in P0. No existing task file
 // owns adding IDNA support; a new task should be filed if this is needed.
 //
-// Known gap: internal/egress/executor.go (task 11) does not yet read
-// DestinationPolicy.DeniedHostSuffixes or DeniedCnameSuffixes, so those bundle
-// fields (populated here) are not yet enforced downstream. That is a
-// pre-existing Egress gap outside this task's file scope
-// (internal/control only); no task file currently owns wiring it, so it is
-// reported here rather than silently deferred.
+// internal/egress/executor.go (task 26) enforces DeniedHostSuffixes and
+// DeniedCnameSuffixes downstream; this resolver only compiles them.
 
 const defaultFingerprintProfileName = "default"
 
@@ -229,31 +225,46 @@ func isASCIIHostname(hostname string) bool {
 }
 
 // compileDenyRules partitions the tenant's deny rules into the bundle fields
-// Egress consumes. cname-type rules can only be evaluated post-resolution
-// (Control performs no DNS), so they are compiled into denied_cname_suffixes
-// for Egress rather than evaluated here (docs/planning/16 "Egress performs
-// final resolved-IP validation").
+// Egress consumes. cidr/metadata_ip/private_range all compile into the same
+// denied/allowed CIDR sets (docs/tasks/p0/43: they differ from "cidr" only in
+// admin-facing label, not enforcement). host/host_suffix and cname_suffix
+// compile into suffix lists; an allow_override rule for the same normalized
+// value cancels the matching deny entry out of the compiled list, since
+// Egress's suffix lists (unlike allowed_cidrs) have no separate override
+// concept (docs/planning/16 "Egress performs final resolved-IP validation" —
+// cname can only be evaluated post-resolution, so cname_suffix rules are
+// never evaluated Control-side the way host/host_suffix are in
+// evaluateHostDeny).
 func compileDenyRules(rules []config.DenyRule) ([]string, []string, []string, []string) {
-	var deniedCidrs, allowedCidrs, deniedHostSuffixes, deniedCNAMESuffixes []string
+	var deniedCidrs, allowedCidrs []string
+
+	var deniedHostVals, allowedHostVals, deniedCnameVals, allowedCnameVals []string
 
 	for _, r := range rules {
 		if !r.Enabled {
 			continue
 		}
 
-		switch r.RuleType {
-		case denyRuleTypeCIDR, denyRuleTypeIP:
+		switch {
+		case denyRuleCIDRTypes[r.RuleType]:
 			deniedCidrs, allowedCidrs = compileCIDRDenyRule(r, deniedCidrs, allowedCidrs)
-		case denyRuleTypeHost:
-			if r.Action == denyRuleActionDeny {
-				deniedHostSuffixes = append(deniedHostSuffixes, r.NormalizedHost)
+		case denyRuleHostTypes[r.RuleType]:
+			if r.Action == denyRuleActionAllowOverride {
+				allowedHostVals = append(allowedHostVals, r.NormalizedHost)
+			} else {
+				deniedHostVals = append(deniedHostVals, r.NormalizedHost)
 			}
-		case denyRuleTypeCName:
-			if r.Action == denyRuleActionDeny {
-				deniedCNAMESuffixes = append(deniedCNAMESuffixes, r.NormalizedName)
+		case r.RuleType == denyRuleTypeCNAMESuffix:
+			if r.Action == denyRuleActionAllowOverride {
+				allowedCnameVals = append(allowedCnameVals, r.NormalizedName)
+			} else {
+				deniedCnameVals = append(deniedCnameVals, r.NormalizedName)
 			}
 		}
 	}
+
+	deniedHostSuffixes := subtractOverrides(deniedHostVals, allowedHostVals)
+	deniedCNAMESuffixes := subtractOverrides(deniedCnameVals, allowedCnameVals)
 
 	sort.Strings(deniedCidrs)
 	sort.Strings(allowedCidrs)
@@ -263,46 +274,59 @@ func compileDenyRules(rules []config.DenyRule) ([]string, []string, []string, []
 	return deniedCidrs, allowedCidrs, deniedHostSuffixes, deniedCNAMESuffixes
 }
 
+// subtractOverrides removes any denied value also present in allowed,
+// implementing allow_override precedence for the flat suffix lists Egress
+// enforces (no per-request evaluation available for host_suffix/cname_suffix
+// there, unlike allowed_cidrs).
+func subtractOverrides(denied, allowed []string) []string {
+	if len(allowed) == 0 {
+		return denied
+	}
+
+	allowedSet := make(map[string]bool, len(allowed))
+	for _, v := range allowed {
+		allowedSet[v] = true
+	}
+
+	out := make([]string, 0, len(denied))
+
+	for _, v := range denied {
+		if !allowedSet[v] {
+			out = append(out, v)
+		}
+	}
+
+	return out
+}
+
 func compileCIDRDenyRule(r config.DenyRule, deniedCidrs, allowedCidrs []string) ([]string, []string) {
 	value := denyRuleValue(r)
 	if value == "" {
 		return deniedCidrs, allowedCidrs
 	}
 
-	cidr := value
-	if r.RuleType == denyRuleTypeIP {
-		cidr = ipToCIDR(value)
+	if r.Action == denyRuleActionAllowOverride {
+		return deniedCidrs, append(allowedCidrs, value)
 	}
 
-	if r.Action == denyRuleActionAllow {
-		return deniedCidrs, append(allowedCidrs, cidr)
-	}
-
-	return append(deniedCidrs, cidr), allowedCidrs
+	return append(deniedCidrs, value), allowedCidrs
 }
 
-func ipToCIDR(ip string) string {
-	addr, err := netip.ParseAddr(ip)
-	if err != nil {
-		return ip
-	}
-
-	return netip.PrefixFrom(addr, addr.BitLen()).String()
-}
-
-// evaluateHostDeny rejects the request when host exactly matches an enabled
-// host-type deny rule that has no matching enabled host-type allow override
-// (docs/planning/27 "Destination Deny Normalization").
+// evaluateHostDeny rejects the request when host matches an enabled
+// host/host_suffix deny rule that has no matching enabled allow_override rule
+// (docs/planning/27 "Destination Deny Normalization"). host matches exactly;
+// host_suffix additionally matches subdomains, mirroring Egress's
+// hostMatchesSuffix (internal/egress/executor.go).
 func evaluateHostDeny(host string, rules []config.DenyRule) *ValidationError {
 	denied := false
 	allowed := false
 
 	for _, r := range rules {
-		if !r.Enabled || r.RuleType != denyRuleTypeHost || r.NormalizedHost != host {
+		if !r.Enabled || !denyRuleHostTypes[r.RuleType] || !hostMatchesDenyRule(host, r) {
 			continue
 		}
 
-		if r.Action == denyRuleActionAllow {
+		if r.Action == denyRuleActionAllowOverride {
 			allowed = true
 		} else {
 			denied = true
@@ -316,6 +340,29 @@ func evaluateHostDeny(host string, rules []config.DenyRule) *ValidationError {
 	return nil
 }
 
+func hostMatchesDenyRule(host string, r config.DenyRule) bool {
+	if r.RuleType == denyRuleTypeHostSuffix {
+		return hostMatchesSuffix(host, r.NormalizedHost)
+	}
+
+	return host == r.NormalizedHost
+}
+
+// hostMatchesSuffix mirrors internal/egress/executor.go's hostMatchesSuffix
+// exactly, so host_suffix rules pre-checked here agree with Egress's
+// downstream DeniedHostSuffixes enforcement.
+func hostMatchesSuffix(host, suffix string) bool {
+	if suffix == "" {
+		return false
+	}
+
+	if host == suffix {
+		return true
+	}
+
+	return strings.HasSuffix(host, "."+suffix)
+}
+
 // evaluateLiteralIPDeny is Control's fail-fast pre-dispatch check for
 // IP-literal targets: private/link-local/multicast/metadata/default-denied
 // ranges are denied unless the tenant has an explicit allow-type deny rule
@@ -323,17 +370,9 @@ func evaluateHostDeny(host string, rules []config.DenyRule) *ValidationError {
 // (docs/planning/27 "denied by default unless a tenant admin explicitly
 // allows them"). This is a pre-dispatch optimization only — Egress still
 // performs the authoritative resolved-IP check after DNS resolution
-// (docs/planning/16 "Dial target invariant").
-//
-// Known gap: internal/egress/executor.go's validateCIDRPolicy/deniedByDefault
-// (task 11) treats AllowedCidrs as a restrict-to-allowlist gate that is
-// additionally still subject to the private/loopback/link-local/metadata
-// checks, not a true override — so an address this function allows via an
-// explicit tenant allow rule can still be rejected by Egress today. No task
-// file currently owns reconciling that Egress precedence with this resolver's
-// override semantics; flagging rather than silently deferring, since fixing
-// internal/egress/executor.go is out of this task's file scope
-// (internal/control only).
+// (docs/planning/16 "Dial target invariant"). internal/egress/executor.go's
+// validateResolvedIP (task 26) checks AllowedCidrs first, before denied_cidrs
+// or any default-deny predicate, matching this override precedence exactly.
 func evaluateLiteralIPDeny(addr netip.Addr, deniedCidrs, allowedCidrs []string) *ValidationError {
 	if addr.Is4In6() {
 		return destinationDeniedError()
