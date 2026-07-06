@@ -1,6 +1,7 @@
 package egress
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -69,6 +70,50 @@ func TestExecutorEmitsSuccessfulHTTPFramesAndAppliesInjection(t *testing.T) {
 	}
 }
 
+func TestExecutorOpenTunnelUsesDestinationPolicyDial(t *testing.T) {
+	t.Parallel()
+
+	client, server := net.Pipe()
+	defer func() { _ = client.Close() }()
+	defer func() { _ = server.Close() }()
+
+	exec := NewExecutor(ExecutorOptions{
+		Resolver: staticResolver{"tunnel.test": netip.MustParseAddr("203.0.113.10")},
+		DialContext: func(_ context.Context, _, address string) (net.Conn, error) {
+			if address != "203.0.113.10:443" {
+				t.Fatalf("dial address = %q, want 203.0.113.10:443", address)
+			}
+
+			return client, nil
+		},
+	})
+
+	conn, target, failure := exec.openTunnel(context.Background(), tunnelStart("connect://tunnel.test:443", &strawpb.DestinationPolicy{
+		AllowedCidrs:   []string{"203.0.113.10/32"},
+		RedirectPolicy: strawpb.RedirectPolicy_REDIRECT_POLICY_NO_FOLLOW,
+		ResolutionMode: strawpb.DestinationResolutionMode_DESTINATION_RESOLUTION_DIRECT_LOCAL,
+	}))
+	if failure != nil {
+		t.Fatalf("openTunnel() failure = %v", failure)
+	}
+	defer func() { _ = conn.Close() }()
+
+	if target.host != "tunnel.test" || target.port != 443 {
+		t.Fatalf("target = %+v, want tunnel.test:443", target)
+	}
+}
+
+func TestExecutorOpenTunnelAppliesDeniedIPPolicy(t *testing.T) {
+	t.Parallel()
+
+	exec := NewExecutor(ExecutorOptions{Resolver: staticResolver{"blocked.test": netip.MustParseAddr("127.0.0.1")}})
+
+	_, _, failure := exec.openTunnel(context.Background(), tunnelStart("connect://blocked.test:443", directPolicy(false)))
+	if failure == nil || failure.code != strawpb.ErrorCode_ERROR_CODE_DESTINATION_DENIED {
+		t.Fatalf("openTunnel() failure = %v, want destination denied", failure)
+	}
+}
+
 // TestExecutorSendsOutboundStartBeforeConnect verifies the docs/planning/09
 // step 19 ordering that docs/tasks/p0/41 depends on: with a send callback the
 // OutboundStartFrame is delivered before the upstream request is made, and is
@@ -88,25 +133,74 @@ func TestExecutorSendsOutboundStartBeforeConnect(t *testing.T) {
 	target := rewriteHost(t, server.URL, unitTestHost)
 	exec := NewExecutor(ExecutorOptions{Resolver: staticResolver{unitTestHost: loopbackIP(t, server.URL)}})
 	frames := exec.Execute(context.Background(), requestStart(target, directPolicy(true)), nil, 1, func(frame *strawpb.StreamFrame) {
-		select {
-		case <-upstreamHit:
-			t.Error("OutboundStart sent after upstream was contacted")
-		default:
+		if frame.GetOutboundStart() != nil {
+			select {
+			case <-upstreamHit:
+				t.Error("OutboundStart sent after upstream was contacted")
+			default:
+			}
 		}
 
 		sent = append(sent, frame)
 	})
 
-	if len(sent) != 1 || sent[0].GetOutboundStart() == nil {
-		t.Fatalf("sent = %#v, want exactly one OutboundStart", sent)
+	if len(sent) == 0 || sent[0].GetOutboundStart() == nil {
+		t.Fatalf("sent = %#v, want first callback frame to be OutboundStart", sent)
 	}
 	for _, frame := range frames {
 		if frame.GetOutboundStart() != nil {
 			t.Fatalf("returned batch still contains OutboundStart: %#v", frame)
 		}
 	}
-	if last := frames[len(frames)-1].GetEnd(); last == nil || !last.GetSuccess() {
+	if len(frames) != 1 {
+		t.Fatalf("returned frames = %#v, want terminal frame only", frames)
+	}
+	if last := frames[0].GetEnd(); last == nil || !last.GetSuccess() {
 		t.Fatalf("terminal frame = %#v, want successful EndFrame", frames[len(frames)-1])
+	}
+}
+
+func TestExecutorStreamsResponseFramesBeforeUpstreamCompletes(t *testing.T) {
+	t.Parallel()
+
+	release := make(chan struct{})
+	firstData := make(chan struct{})
+	body := bytes.Repeat([]byte("x"), responseFrameDataBytes+1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(body)
+		w.(http.Flusher).Flush()
+		<-release
+	}))
+	t.Cleanup(server.Close)
+
+	target := rewriteHost(t, server.URL, unitTestHost)
+	exec := NewExecutor(ExecutorOptions{Resolver: staticResolver{unitTestHost: loopbackIP(t, server.URL)}})
+	done := make(chan []*strawpb.StreamFrame, 1)
+
+	go func() {
+		done <- exec.Execute(context.Background(), requestStart(target, directPolicy(true)), nil, 1, func(frame *strawpb.StreamFrame) {
+			if frame.GetData() != nil {
+				select {
+				case <-firstData:
+				default:
+					close(firstData)
+				}
+			}
+		})
+	}()
+
+	select {
+	case <-firstData:
+	case <-time.After(time.Second):
+		t.Fatal("executor did not send response data before upstream handler completed")
+	}
+
+	close(release)
+
+	frames := <-done
+	if len(frames) != 1 || frames[0].GetEnd() == nil {
+		t.Fatalf("returned frames = %#v, want terminal EndFrame only", frames)
 	}
 }
 
@@ -443,6 +537,17 @@ func requestStart(rawURL string, policy *strawpb.DestinationPolicy) *strawpb.Req
 			{Op: opAppend, HeaderName: "X-Append", Value: []byte("two")},
 			{Op: opRemove, HeaderName: "X-Remove"},
 		},
+		DestinationPolicy: policy,
+	}
+}
+
+func tunnelStart(rawURL string, policy *strawpb.DestinationPolicy) *strawpb.RequestStart {
+	return &strawpb.RequestStart{
+		Mode:              strawpb.RequestMode_REQUEST_MODE_RAW_TUNNEL,
+		Method:            http.MethodConnect,
+		Url:               rawURL,
+		DeadlineUnixMs:    time.Now().Add(5 * time.Second).UnixMilli(),
+		RedirectPolicy:    strawpb.RedirectPolicy_REDIRECT_POLICY_NO_FOLLOW,
 		DestinationPolicy: policy,
 	}
 }

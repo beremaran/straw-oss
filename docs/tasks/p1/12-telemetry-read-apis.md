@@ -1,6 +1,6 @@
 # 12 - Telemetry Read APIs
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -31,16 +31,16 @@ Implement tenant-safe telemetry read APIs over ClickHouse metadata.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Implement `GET /api/v1/telemetry/requests`.
-- [ ] Implement `GET /api/v1/telemetry/requests/{request_id}`.
-- [ ] Implement `GET /api/v1/telemetry/workers`.
-- [ ] Implement `GET /api/v1/telemetry/audit`.
-- [ ] Enforce tenant scoping, RBAC, query limits, pagination, and public-safe field omission/aliasing.
-- [ ] Add tests for tenant isolation, query bounds, role access, missing records, and topology redaction.
-- [ ] Run focused telemetry API tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Read all required planning docs.
+- [x] Implement `GET /api/v1/telemetry/requests`.
+- [x] Implement `GET /api/v1/telemetry/requests/{request_id}`.
+- [x] Implement `GET /api/v1/telemetry/workers`.
+- [x] Implement `GET /api/v1/telemetry/audit`.
+- [x] Enforce tenant scoping, RBAC, query limits, pagination, and public-safe field omission/aliasing.
+- [x] Add tests for tenant isolation, query bounds, role access, missing records, and topology redaction.
+- [x] Run focused telemetry API tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

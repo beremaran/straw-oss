@@ -58,6 +58,37 @@ func TestLoadControl(t *testing.T) {
 			wantErr: "server.api_port must be between 1 and 65535",
 		},
 		{
+			name: "valid proxy listener",
+			config: `{
+				"config_version": "v1",
+				"control": {
+					"server": {
+						"host": "127.0.0.1",
+						"api_port": 8080,
+						"metrics_port": 9090,
+						"proxy_enabled": true,
+						"proxy_port": 8081
+					}
+				}
+			}`,
+		},
+		{
+			name: "invalid enabled proxy port",
+			config: `{
+					"config_version": "v1",
+					"control": {
+						"server": {
+							"host": "127.0.0.1",
+							"api_port": 8080,
+							"metrics_port": 9090,
+							"proxy_enabled": true,
+							"proxy_port": 8082
+						}
+					}
+				}`,
+			wantErr: "server.proxy_port must be 8081 when proxy_enabled is true",
+		},
+		{
 			name: configTestUnknownField,
 			config: `{
 				"config_version": "v1",
@@ -91,6 +122,54 @@ func TestLoadControl(t *testing.T) {
 				t.Fatalf("LoadControl() error = %v, want substring %q", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestLoadControlDefaultsProxyPort(t *testing.T) {
+	t.Parallel()
+
+	path := writeConfig(t, `{
+		"config_version": "v1",
+		"control": {
+			"server": {
+				"host": "127.0.0.1",
+				"api_port": 8080,
+				"metrics_port": 9090,
+				"proxy_enabled": true
+			}
+		}
+	}`)
+
+	cfg, err := LoadControl(path)
+	if err != nil {
+		t.Fatalf("LoadControl() error = %v", err)
+	}
+	if cfg.Server.ProxyPort != 8081 {
+		t.Fatalf("proxy_port = %d, want 8081", cfg.Server.ProxyPort)
+	}
+}
+
+func TestLoadControlDefaultsConnectPort(t *testing.T) {
+	t.Parallel()
+
+	path := writeConfig(t, `{
+		"config_version": "v1",
+		"control": {
+			"server": {
+				"host": "127.0.0.1",
+				"api_port": 8080,
+				"metrics_port": 9090,
+				"connect_enabled": true
+			}
+		}
+	}`)
+
+	cfg, err := LoadControl(path)
+	if err != nil {
+		t.Fatalf("LoadControl() error = %v", err)
+	}
+	if cfg.Server.ConnectPort != 8082 {
+		t.Fatalf("connect_port = %d, want 8082", cfg.Server.ConnectPort)
 	}
 }
 

@@ -181,6 +181,68 @@ func TestWorkerCreditExhaustionAbortsWithoutPublishing(t *testing.T) {
 	waitForCondition(t, 2*time.Second, func() bool { return h.worker.ActiveRequests() == 0 })
 }
 
+func TestWorkerDownloadCreditGatesResponseData(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ab"))
+	}))
+	t.Cleanup(server.Close)
+
+	target := rewriteHost(t, server.URL, "download-credit.test")
+	executor := NewExecutor(ExecutorOptions{Resolver: staticResolver{"download-credit.test": loopbackIP(t, server.URL)}})
+	h := newLoopHarness(t, executor, 4)
+
+	ack := h.assign(t, "req_download_credit", &strawpb.AssignRequest{
+		Mode:                       strawpb.RequestMode_REQUEST_MODE_DECODED_HTTP,
+		DeadlineUnixMs:             time.Now().Add(5 * time.Second).UnixMilli(),
+		Attempt:                    1,
+		InitialUploadCreditBytes:   1 << 20,
+		InitialDownloadCreditBytes: 1,
+	})
+	if ack.GetCode() != strawpb.AssignAckCode_ASSIGN_ACK_ACCEPTED {
+		t.Fatalf("assign ack code = %v, want accepted", ack.GetCode())
+	}
+
+	h.sendC2E(t, "req_download_credit", &strawpb.StreamFrame{
+		StreamSeq: 1,
+		Attempt:   1,
+		Payload:   &strawpb.StreamFrame_RequestStart{RequestStart: requestStart(target, directPolicy(true))},
+	})
+
+	ch := h.e2cChan(t, "req_download_credit")
+	for i := range 2 {
+		frame := <-ch
+		if frame.GetOutboundStart() == nil && frame.GetResponseStart() == nil {
+			t.Fatalf("frame %d = %#v, want outbound/response start before data", i, frame)
+		}
+	}
+
+	select {
+	case frame := <-ch:
+		t.Fatalf("unexpected response frame before download credit was replenished: %#v", frame)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	h.sendC2E(t, "req_download_credit", &strawpb.StreamFrame{
+		StreamSeq: 2,
+		Attempt:   1,
+		Payload:   &strawpb.StreamFrame_Credit{Credit: &strawpb.CreditFrame{DownloadCreditBytes: 1}},
+	})
+
+	frames := h.collectTerminal(t, "req_download_credit")
+	if len(frames) != 2 {
+		t.Fatalf("remaining frame count = %d, want data and end: %#v", len(frames), frames)
+	}
+	if got := string(frames[0].GetData().GetData()); got != "ab" {
+		t.Fatalf("data = %q, want ab", got)
+	}
+	if frames[1].GetEnd() == nil {
+		t.Fatalf("terminal frame = %#v, want EndFrame", frames[1])
+	}
+}
+
 func TestWorkerShutdownDrainsInFlightRequestBeforeReturning(t *testing.T) {
 	t.Parallel()
 

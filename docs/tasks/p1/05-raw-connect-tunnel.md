@@ -1,6 +1,6 @@
 # 05 - Raw CONNECT Tunnel
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -36,17 +36,17 @@ validation.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Specify and implement tunnel idle timeout and bandwidth accounting before accepting CONNECT traffic.
-- [ ] Add the port 8082 CONNECT listener behind static config.
-- [ ] Authenticate and authorize CONNECT requests.
-- [ ] Normalize and validate CONNECT target host/port with the Section 27 deny rules.
-- [ ] Carry tunnel bytes as request/response `DataFrame`s using the existing c2e/e2c credit protocol.
-- [ ] Reject CONNECT on REST and non-CONNECT methods on the raw CONNECT listener.
-- [ ] Add tests for denial normalization, credit/backpressure, idle timeout, cancellation, and REST rejection.
-- [ ] Run focused CONNECT tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Read all required planning docs.
+- [x] Specify and implement tunnel idle timeout and bandwidth accounting before accepting CONNECT traffic.
+- [x] Add the port 8082 CONNECT listener behind static config.
+- [x] Authenticate and authorize CONNECT requests.
+- [x] Normalize and validate CONNECT target host/port with the Section 27 deny rules.
+- [x] Carry tunnel bytes as request/response `DataFrame`s using the existing c2e/e2c credit protocol.
+- [x] Reject CONNECT on REST and non-CONNECT methods on the raw CONNECT listener.
+- [x] Add tests for denial normalization, credit/backpressure, idle timeout, cancellation, and REST rejection.
+- [x] Run focused CONNECT tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

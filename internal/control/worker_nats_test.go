@@ -73,7 +73,7 @@ func TestWorkerDiscoveryOverNATSDuplicateSessionAndTimeouts(t *testing.T) {
 		AllowedPools:          []*strawpb.RegisterRequest_PoolRef{{TenantId: workerNATSTestTenant, PoolId: routingTestPool1}},
 		SoftwareVersion:       workerTestVersion,
 		MaxConcurrency:        4,
-		SupportedIngressModes: []string{requestMetadataIngressType},
+		SupportedIngressModes: []string{IngressTypeREST},
 	}
 
 	sess1, err := egress.Register(context.Background(), workerConn, id, caps)

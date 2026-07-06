@@ -32,8 +32,8 @@ func (s *postgresAuditStore) Record(ctx context.Context, record AuditRecord) err
 
 	_, err := s.pool.Exec(ctx,
 		`INSERT INTO config_audit_source
-		 (tenant_id, actor_type, actor_id, resource_type, resource_id, action, created_at, old_value_json, new_value_json)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		 (tenant_id, actor_type, actor_id, resource_type, resource_id, action, created_at, config_version, old_value_json, new_value_json)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, NULLIF($8, 0), $9, $10)`,
 		nullString(record.TenantID),
 		record.ActorType,
 		record.ActorID,
@@ -41,6 +41,7 @@ func (s *postgresAuditStore) Record(ctx context.Context, record AuditRecord) err
 		record.ResourceID,
 		record.Action,
 		record.CreatedAt,
+		record.ConfigVersion,
 		nullString(record.OldValueJSON),
 		nullString(record.NewValueJSON),
 	)

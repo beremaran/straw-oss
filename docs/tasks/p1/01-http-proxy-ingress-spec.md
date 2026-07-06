@@ -1,6 +1,6 @@
 # 01 - HTTP Proxy Ingress Spec
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -33,15 +33,15 @@ request parsing, response streaming, and backpressure.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Define how API keys are carried on proxy requests and ensure `Proxy-Authorization` is never forwarded upstream.
-- [ ] Define how proxy client requests map into the existing decoded internal request model.
-- [ ] Define public error rendering on a raw proxy socket without the REST JSON success envelope.
-- [ ] Define Control-to-client response streaming and backpressure behavior for proxy responses.
-- [ ] Define trailer handling and what is dropped or metadata-captured when the client protocol cannot carry trailers.
-- [ ] Add the minimum test matrix rows needed before implementation starts.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Read all required planning docs.
+- [x] Define how API keys are carried on proxy requests and ensure `Proxy-Authorization` is never forwarded upstream.
+- [x] Define how proxy client requests map into the existing decoded internal request model.
+- [x] Define public error rendering on a raw proxy socket without the REST JSON success envelope.
+- [x] Define Control-to-client response streaming and backpressure behavior for proxy responses.
+- [x] Define trailer handling and what is dropped or metadata-captured when the client protocol cannot carry trailers.
+- [x] Add the minimum test matrix rows needed before implementation starts.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

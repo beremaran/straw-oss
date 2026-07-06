@@ -156,13 +156,14 @@ func nextConfigVersionParam(expected uint64) (uint64, int64, error) {
 // auditEntry is the redacted row appended to config_audit_source alongside a
 // config write. NewValue/OldValue must already have secret fields redacted.
 type auditEntry struct {
-	tenantID     string // "" → NULL (platform-scoped)
-	actor        ConfigActor
-	resourceType string
-	resourceID   string
-	action       string
-	newValue     any
-	oldValue     any
+	tenantID      string // "" → NULL (platform-scoped)
+	actor         ConfigActor
+	resourceType  string
+	resourceID    string
+	action        string
+	configVersion uint64
+	newValue      any
+	oldValue      any
 }
 
 // writeTenantConfig runs write inside a transaction that also increments the
@@ -186,6 +187,7 @@ func writeTenantConfig(ctx context.Context, pool *pgxpool.Pool, tenantID string,
 		}
 
 		version = v
+		entry.configVersion = v
 
 		return insertConfigAudit(ctx, tx, entry)
 	})
@@ -260,8 +262,8 @@ func insertConfigAudit(ctx context.Context, tx pgx.Tx, entry auditEntry) error {
 		ctx,
 		`INSERT INTO config_audit_source
 		  (tenant_id, actor_type, actor_id, resource_type, resource_id, action,
-		   request_id, old_value_json, new_value_json, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())`,
+		   request_id, config_version, old_value_json, new_value_json, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, NULLIF($8, 0), $9, $10, now())`,
 		nullString(entry.tenantID),
 		entry.actor.ActorType,
 		entry.actor.ActorID,
@@ -269,6 +271,7 @@ func insertConfigAudit(ctx context.Context, tx pgx.Tx, entry auditEntry) error {
 		entry.resourceID,
 		entry.action,
 		nullString(entry.actor.RequestID),
+		entry.configVersion,
 		oldJSON,
 		newJSON,
 	)

@@ -14,7 +14,6 @@ import (
 )
 
 const (
-	requestMetadataIngressType  = "rest"
 	requestMetadataNone         = "none"
 	requestMetadataRedacted     = "[redacted]"
 	requestMetadataDefaultTable = "request_events"
@@ -152,7 +151,7 @@ func buildRequestEvent(requestID string, identity Identity, request *ValidatedRe
 		RequestID:        requestID,
 		TenantID:         identity.TenantID,
 		APIKeyID:         identity.APIKeyID,
-		IngressType:      requestMetadataIngressType,
+		IngressType:      IngressTypeREST,
 		TargetHost:       "",
 		TargetURL:        "",
 		Attempt:          1,
@@ -162,6 +161,9 @@ func buildRequestEvent(requestID string, identity Identity, request *ValidatedRe
 
 	if request != nil {
 		event.Method = request.Method
+		if request.IngressType != "" {
+			event.IngressType = request.IngressType
+		}
 	}
 
 	if request != nil && request.URL != nil {
@@ -273,7 +275,7 @@ func isSensitiveHeaderName(name string) bool {
 	}
 
 	switch lower {
-	case "authorization", "proxy-authorization", "cookie", "set-cookie", "x-api-key":
+	case headerNameAuthorization, headerNameProxyAuthorization, "cookie", "set-cookie", "x-api-key":
 		return true
 	}
 
@@ -370,7 +372,7 @@ func insertClickHouseRows[T any](ctx context.Context, s *HTTPClickHouseSink, tab
 	query.Set("date_time_input_format", "best_effort")
 	query.Set("query", "INSERT INTO "+table+" FORMAT JSONEachRow")
 	req.URL.RawQuery = query.Encode()
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(headerCanonicalContentType, "application/json")
 
 	if s.user != "" {
 		req.SetBasicAuth(s.user, s.pass)
