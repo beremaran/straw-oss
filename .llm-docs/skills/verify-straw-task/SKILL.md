@@ -88,3 +88,7 @@ don't harden the process will be re-run from scratch next quarter.
   (e.g. `ConfigAuditEvent` had the fields; `audit.go` enqueued them empty).
 - "E2E test exists" may mean an in-process fake-transport round-trip, not a compose-stack test. Name which one.
 - Out of Scope lines get over-read; check the planning doc's phase table yourself for skipped in-phase surface.
+- A deferral that names only a phase ("is a P1 concern", "rollback (P1)") without a task file path is UNOWNED.
+  Two 2026-07-06 sweep finds hid this way: credit replenishment (handoff 24 → now `p1/24`) and tenant fields
+  (handoff 29 → now `p0/45`, where the "P1" label itself was wrong per `docs/planning/26`). Phase labels in
+  handoffs are claims to verify against the planning doc, not ownership.

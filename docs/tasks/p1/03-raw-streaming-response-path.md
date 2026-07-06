@@ -17,6 +17,7 @@ endpoint.
 
 - Task 01 completed.
 - Task 02 completed.
+- Task 24 completed (egress chunked send + c2e credit replenishment; this task's backpressure step builds on it).
 
 ## Out of Scope
 
