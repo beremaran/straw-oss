@@ -185,6 +185,35 @@ func (e *Executor) Execute(ctx context.Context, start *strawpb.RequestStart, bod
 	return append(emit, frames.end())
 }
 
+// openTunnel validates and opens one raw CONNECT upstream connection using
+// the same destination-policy resolver/dialer path as decoded HTTP.
+func (e *Executor) openTunnel(ctx context.Context, start *strawpb.RequestStart) (net.Conn, target, *executionError) {
+	target, failure := parseTarget(start)
+	if failure != nil {
+		return nil, target, failure
+	}
+
+	failure = validateTunnelStart(start)
+	if failure != nil {
+		return nil, target, failure
+	}
+
+	failure = validateHostSuffixPolicy(target.host, start.GetDestinationPolicy())
+	if failure != nil {
+		return nil, target, failure
+	}
+
+	reqCtx, cancel := e.deadlineContext(ctx, start.GetDeadlineUnixMs())
+	defer cancel()
+
+	conn, err := e.dialValidated(reqCtx, "tcp", net.JoinHostPort(target.host, strconv.FormatUint(uint64(target.port), 10)), start.GetDestinationPolicy())
+	if err != nil {
+		return nil, target, mapHTTPError(reqCtx, err)
+	}
+
+	return conn, target, nil
+}
+
 func streamResponseBody(ctx context.Context, resp *http.Response, frames *frameBuilder, emit []*strawpb.StreamFrame, send func(*strawpb.StreamFrame)) ([]*strawpb.StreamFrame, *executionError) {
 	buf := make([]byte, responseFrameDataBytes)
 	offset := uint64(0)
@@ -367,6 +396,35 @@ func validateStart(start *strawpb.RequestStart) *executionError {
 	}
 
 	if strings.EqualFold(start.GetMethod(), http.MethodConnect) {
+		return executorFailure(strawpb.ErrorCode_ERROR_CODE_EXECUTOR_INTERNAL_ERROR, invalidRequestStartFact)
+	}
+
+	return nil
+}
+
+func validateTunnelStart(start *strawpb.RequestStart) *executionError {
+	err := start.Validate()
+	if err != nil {
+		return executorFailure(strawpb.ErrorCode_ERROR_CODE_EXECUTOR_INTERNAL_ERROR, invalidRequestStartFact)
+	}
+
+	if start.GetMode() != strawpb.RequestMode_REQUEST_MODE_RAW_TUNNEL {
+		return executorFailure(strawpb.ErrorCode_ERROR_CODE_EXECUTOR_INTERNAL_ERROR, invalidRequestStartFact)
+	}
+
+	if !strings.EqualFold(start.GetMethod(), http.MethodConnect) {
+		return executorFailure(strawpb.ErrorCode_ERROR_CODE_EXECUTOR_INTERNAL_ERROR, invalidRequestStartFact)
+	}
+
+	if start.GetRedirectPolicy() != strawpb.RedirectPolicy_REDIRECT_POLICY_NO_FOLLOW {
+		return executorFailure(strawpb.ErrorCode_ERROR_CODE_EXECUTOR_INTERNAL_ERROR, invalidRequestStartFact)
+	}
+
+	if start.GetDestinationPolicy().GetResolutionMode() != strawpb.DestinationResolutionMode_DESTINATION_RESOLUTION_DIRECT_LOCAL {
+		return executorFailure(strawpb.ErrorCode_ERROR_CODE_DESTINATION_DENIED, unsupportedModeFact)
+	}
+
+	if start.GetFingerprintInstruction() != "" || len(start.GetInjectionOperations()) != 0 || len(start.GetHeaders()) != 0 {
 		return executorFailure(strawpb.ErrorCode_ERROR_CODE_EXECUTOR_INTERNAL_ERROR, invalidRequestStartFact)
 	}
 

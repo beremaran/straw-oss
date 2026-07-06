@@ -149,14 +149,14 @@ func runControl(controlConfig config.ControlConfig, natsConn *natsx.Connection) 
 
 	metricsReg, metrics := wireMetrics(workerRegistry, chWriters)
 
-	mux, proxyHandler := buildControlMux(controlConfig, apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore, configCache, redisClient, natsConn, chWriters, metrics)
+	mux, proxyHandler, connectHandler := buildControlMux(controlConfig, apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore, configCache, redisClient, natsConn, chWriters, metrics)
 
 	err = control.SetupWorkerDiscoverySubscriptions(natsConn, workerRegistry)
 	if err != nil {
 		return fmt.Errorf("setup worker discovery: %w", err)
 	}
 
-	return serveControl(ctx, controlConfig, mux, proxyHandler, metricsReg)
+	return serveControl(ctx, controlConfig, mux, proxyHandler, connectHandler, metricsReg)
 }
 
 // wireWorkerRegistrationReplayProtection wires the Redis-backed registration
@@ -223,7 +223,7 @@ func openStores(controlConfig config.ControlConfig) (*pgxpool.Pool, *redis.Clien
 
 // serveControl starts the metrics/readiness server and the API server, marking
 // readiness true until ctx cancellation begins drain.
-func serveControl(ctx context.Context, controlConfig config.ControlConfig, mux *http.ServeMux, proxyHandler http.Handler, metricsReg *prometheus.Registry) error {
+func serveControl(ctx context.Context, controlConfig config.ControlConfig, mux *http.ServeMux, proxyHandler http.Handler, connectHandler http.Handler, metricsReg *prometheus.Registry) error {
 	ready := &atomic.Bool{}
 	ready.Store(true)
 
@@ -233,7 +233,43 @@ func serveControl(ctx context.Context, controlConfig config.ControlConfig, mux *
 	stopProxy := serveProxyHTTP(ctx, controlConfig, proxyHandler)
 	defer stopProxy()
 
+	stopConnect := serveConnectHTTP(ctx, controlConfig, connectHandler)
+	defer stopConnect()
+
 	return serveControlHTTP(ctx, controlConfig, mux, ready)
+}
+
+func serveConnectHTTP(ctx context.Context, controlConfig config.ControlConfig, handler http.Handler) func() {
+	if !controlConfig.Server.ConnectEnabled || handler == nil {
+		return func() {}
+	}
+
+	addr := fmt.Sprintf("%s:%d", controlConfig.Server.Host, controlConfig.Server.ConnectPort)
+
+	server := &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: readHeaderTimeout,
+	}
+
+	go func() {
+		serveErr := server.ListenAndServe()
+		if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+			slog.Error("connect server failed", "error", serveErr)
+		}
+	}()
+
+	slog.Info("connect proxy listening", "addr", addr)
+
+	return func() {
+		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), controlShutdownTimeout)
+		defer cancel()
+
+		shutdownErr := server.Shutdown(shutdownCtx)
+		if shutdownErr != nil {
+			slog.Error("shutdown connect server failed", "error", shutdownErr)
+		}
+	}
 }
 
 func serveProxyHTTP(ctx context.Context, controlConfig config.ControlConfig, handler http.Handler) func() {
@@ -612,7 +648,7 @@ func rehydrateWorkerAdminState(ctx context.Context, configStore *control.Postgre
 
 // buildControlMux assembles the HTTP handler with the Postgres-backed identity
 // and config stores.
-func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool, configStore *control.PostgresConfigStore, configCache *control.ConfigCache, redisClient *redis.Client, natsConn *natsx.Connection, chWriters *clickHouseWriters, metrics *control.Metrics) (*http.ServeMux, http.Handler) {
+func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool, configStore *control.PostgresConfigStore, configCache *control.ConfigCache, redisClient *redis.Client, natsConn *natsx.Connection, chWriters *clickHouseWriters, metrics *control.Metrics) (*http.ServeMux, http.Handler, http.Handler) {
 	inflight := control.NewInFlightRegistry()
 	tenantStore := control.NewPostgresTenantStore(pool)
 	adminHandlers := buildAdminHandlers(apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore, configCache, redisClient, inflight, tenantStore, chWriters.configAudit)
@@ -662,7 +698,7 @@ func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.API
 	mux.Handle("POST /api/v1/requests", requestHandler)
 	serveAdminRoutes(mux, adminHandlers)
 
-	return mux, buildProxyHandler(controlConfig, authenticator, chWriters.requestMetadata, dispatcher)
+	return mux, buildProxyHandler(controlConfig, authenticator, chWriters.requestMetadata, dispatcher), buildConnectHandler(controlConfig, authenticator, dispatcher)
 }
 
 func buildProxyHandler(controlConfig config.ControlConfig, authenticator *control.Authenticator, metadata control.RequestMetadataRecorder, dispatcher control.RequestDispatcher) http.Handler {
@@ -677,6 +713,17 @@ func buildProxyHandler(controlConfig config.ControlConfig, authenticator *contro
 		authenticator,
 		metadata,
 	)
+	h.SetDispatcher(dispatcher)
+
+	return h
+}
+
+func buildConnectHandler(controlConfig config.ControlConfig, authenticator *control.Authenticator, dispatcher control.RequestDispatcher) http.Handler {
+	if !controlConfig.Server.ConnectEnabled {
+		return nil
+	}
+
+	h := control.NewConnectHandler(authenticator)
 	h.SetDispatcher(dispatcher)
 
 	return h

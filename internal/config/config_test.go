@@ -149,6 +149,30 @@ func TestLoadControlDefaultsProxyPort(t *testing.T) {
 	}
 }
 
+func TestLoadControlDefaultsConnectPort(t *testing.T) {
+	t.Parallel()
+
+	path := writeConfig(t, `{
+		"config_version": "v1",
+		"control": {
+			"server": {
+				"host": "127.0.0.1",
+				"api_port": 8080,
+				"metrics_port": 9090,
+				"connect_enabled": true
+			}
+		}
+	}`)
+
+	cfg, err := LoadControl(path)
+	if err != nil {
+		t.Fatalf("LoadControl() error = %v", err)
+	}
+	if cfg.Server.ConnectPort != 8082 {
+		t.Fatalf("connect_port = %d, want 8082", cfg.Server.ConnectPort)
+	}
+}
+
 func TestLoadControlRedisDefaults(t *testing.T) {
 	t.Parallel()
 

@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"net/http"
 	"strconv"
@@ -43,6 +44,11 @@ type RequestDispatcher interface {
 // to an HTTP client without the REST JSON envelope.
 type RawResponseDispatcher interface {
 	DispatchRaw(ctx context.Context, in DispatchInput, w http.ResponseWriter) (SuccessResponse, *PipelineError, bool)
+}
+
+// TunnelDispatcher carries raw CONNECT tunnel bytes over the request stream.
+type TunnelDispatcher interface {
+	DispatchTunnel(ctx context.Context, in DispatchInput, rw io.ReadWriter) (SuccessResponse, *PipelineError)
 }
 
 // DispatchInput is the authenticated, validated request context.
@@ -608,7 +614,7 @@ func (d *DefaultRequestDispatcher) requestAssign(subject string, in DispatchInpu
 // CancelFrame should use).
 func (d *DefaultRequestDispatcher) sendRequestStart(subject string, in DispatchInput, route RouteOutcome, policy *DestinationPolicyResult, configVersion uint64, deadline time.Time) (uint64, error) {
 	start := &strawpb.RequestStart{
-		Mode:                   strawpb.RequestMode_REQUEST_MODE_DECODED_HTTP,
+		Mode:                   requestMode(in.Request),
 		Method:                 in.Request.Method,
 		Url:                    in.Request.URL.String(),
 		Headers:                headersToProto(in.Request.Headers),
@@ -969,9 +975,9 @@ func egressMillis(start, end time.Time) int64 {
 
 func (d *DefaultRequestDispatcher) assignRequest(in DispatchInput, route RouteOutcome, configVersion uint64, deadline time.Time) *strawpb.AssignRequest {
 	return &strawpb.AssignRequest{
-		Mode:                       strawpb.RequestMode_REQUEST_MODE_DECODED_HTTP,
+		Mode:                       requestMode(in.Request),
 		DeadlineUnixMs:             deadline.UnixMilli(),
-		ExpectedUploadBytes:        int64(len(in.Request.BodyData)),
+		ExpectedUploadBytes:        expectedUploadBytes(in.Request),
 		SelectedRouteId:            route.RuleID,
 		SelectedPoolId:             route.PoolID,
 		SelectedExecutorId:         route.WorkerID,
@@ -983,6 +989,22 @@ func (d *DefaultRequestDispatcher) assignRequest(in DispatchInput, route RouteOu
 		MaxInflightUploadBytes:     d.opts.MaxInflightUploadBytes,
 		MaxInflightDownloadBytes:   d.opts.MaxInflightDownloadBytes,
 	}
+}
+
+func requestMode(req *ValidatedRequest) strawpb.RequestMode {
+	if req != nil && req.IngressType == IngressTypeConnect {
+		return strawpb.RequestMode_REQUEST_MODE_RAW_TUNNEL
+	}
+
+	return strawpb.RequestMode_REQUEST_MODE_DECODED_HTTP
+}
+
+func expectedUploadBytes(req *ValidatedRequest) int64 {
+	if req != nil && req.IngressType == IngressTypeConnect {
+		return 0
+	}
+
+	return int64(len(req.BodyData))
 }
 
 func (d *DefaultRequestDispatcher) deadline(req *ValidatedRequest) time.Time {

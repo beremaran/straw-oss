@@ -24,6 +24,15 @@ func TestEvaluateAssignmentPrecedence(t *testing.T) {
 	}
 }
 
+func TestEvaluateAssignmentAcceptsRawTunnelMode(t *testing.T) {
+	t.Parallel()
+
+	req := &strawpb.AssignRequest{Mode: strawpb.RequestMode_REQUEST_MODE_RAW_TUNNEL}
+	if got := EvaluateAssignment(req, Capacity{SupportedModes: []strawpb.RequestMode{strawpb.RequestMode_REQUEST_MODE_RAW_TUNNEL}}); got != strawpb.AssignAckCode_ASSIGN_ACK_ACCEPTED {
+		t.Fatalf("raw tunnel decision = %v, want accepted", got)
+	}
+}
+
 func TestFakeExecutorScriptsLifecycleFrames(t *testing.T) {
 	t.Parallel()
 
