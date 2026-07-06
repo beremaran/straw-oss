@@ -1,6 +1,6 @@
 # 25 - CNAME Chain Inspection for Deny Rules
 
-Status: not started
+Status: completed
 
 ## Objective
 
@@ -51,17 +51,17 @@ stop condition and this task's decision gate.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Stop and ask before adding any DNS dependency (e.g. `miekg/dns`); proceed only with explicit approval, or
+- [x] Read all required planning docs.
+- [x] Stop and ask before adding any DNS dependency (e.g. `miekg/dns`); proceed only with explicit approval, or
       with a stdlib-only approach if one is found.
-- [ ] Extend the `Resolver` interface to return the CNAME chain (all hops, normalized: lowercase, trailing dot
+- [x] Extend the `Resolver` interface to return the CNAME chain (all hops, normalized: lowercase, trailing dot
       stripped) and implement it in the default resolver (`cmd/egress` binary path).
-- [ ] Match `denied_cname_suffixes` against every hop with the existing exact/dot-boundary suffix rules.
-- [ ] Update the `internal/egress/executor.go:52-58` limitation comment and the handoff-26 "CNAME Chain Depth"
+- [x] Match `denied_cname_suffixes` against every hop with the existing exact/dot-boundary suffix rules.
+- [x] Update the `internal/egress/executor.go:52-58` limitation comment and the handoff-26 "CNAME Chain Depth"
       section to name this task / the new behavior.
-- [ ] Add the tests listed in Expected Files.
-- [ ] Run focused tests, then `make check`.
-- [ ] Write a handoff note.
+- [x] Add the tests listed in Expected Files.
+- [x] Run focused tests, then `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

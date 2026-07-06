@@ -199,8 +199,13 @@ func buildRequestEvent(requestID string, identity Identity, request *ValidatedRe
 
 	if request != nil {
 		event.Method = request.Method
+
 		if request.IngressType != "" {
 			event.IngressType = request.IngressType
+		}
+
+		if request.CaptureDecision != "" {
+			event.CaptureDecision = request.CaptureDecision
 		}
 	}
 

@@ -1,6 +1,6 @@
 # 14 - HTTP/2 Semantics Spec
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -30,18 +30,18 @@ Specify HTTP/2 semantics before any outbound or ingress HTTP/2 implementation be
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Specify one `request_id` per HTTP/2 stream.
-- [ ] Specify cancellation mapping.
-- [ ] Specify HTTP/2 flow control interaction with NATS credit.
-- [ ] Specify pseudo-header normalization.
-- [ ] Specify trailer behavior.
-- [ ] Specify connection-level error fanout.
-- [ ] Specify MITM ALPN behavior.
-- [ ] Specify HTTP/1.1 to HTTP/2 downgrade rules.
-- [ ] Add required HTTP/2 test rows.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Read all required planning docs.
+- [x] Specify one `request_id` per HTTP/2 stream.
+- [x] Specify cancellation mapping.
+- [x] Specify HTTP/2 flow control interaction with NATS credit.
+- [x] Specify pseudo-header normalization.
+- [x] Specify trailer behavior.
+- [x] Specify connection-level error fanout.
+- [x] Specify MITM ALPN behavior.
+- [x] Specify HTTP/1.1 to HTTP/2 downgrade rules.
+- [x] Add required HTTP/2 test rows.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

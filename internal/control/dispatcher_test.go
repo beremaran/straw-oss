@@ -717,8 +717,8 @@ func (r dispatchResolver) LookupIPAddr(_ context.Context, host string) ([]net.IP
 	return []net.IPAddr{{IP: net.ParseIP(addr.String())}}, nil
 }
 
-func (r dispatchResolver) LookupCNAME(_ context.Context, host string) (string, error) {
-	return host, nil
+func (r dispatchResolver) LookupCNAME(_ context.Context, host string) ([]string, error) {
+	return []string{host}, nil
 }
 
 func dispatchConnect(t *testing.T, url string) *natsx.Connection {

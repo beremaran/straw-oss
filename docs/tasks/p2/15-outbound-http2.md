@@ -1,6 +1,6 @@
 # 15 - Outbound HTTP/2
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -29,16 +29,16 @@ Implement outbound HTTP/2 behind an explicit tested feature flag after task 14 d
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Add explicit default-off feature flag/config for outbound HTTP/2.
-- [ ] Implement outbound HTTP/2 according to task 14.
-- [ ] Preserve downgrade behavior from the task 14 spec.
-- [ ] Preserve destination policy and dial-target invariants.
-- [ ] Keep HTTP/1.1 behavior unchanged when disabled.
-- [ ] Add tests for disabled default, enabled path, downgrade, cancellation, trailers, and policy enforcement.
-- [ ] Run focused outbound HTTP/2 tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Read all required planning docs.
+- [x] Add explicit default-off feature flag/config for outbound HTTP/2.
+- [x] Implement outbound HTTP/2 according to task 14.
+- [x] Preserve downgrade behavior from the task 14 spec.
+- [x] Preserve destination policy and dial-target invariants.
+- [x] Keep HTTP/1.1 behavior unchanged when disabled.
+- [x] Add tests for disabled default, enabled path, downgrade, cancellation, trailers, and policy enforcement.
+- [x] Run focused outbound HTTP/2 tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

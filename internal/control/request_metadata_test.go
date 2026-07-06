@@ -21,6 +21,7 @@ const (
 	requestMetadataTestTargetURL       = "https://example.com/path"
 	requestMetadataTestRequestEnvelope = `{"method":"GET","url":"https://example.com/path?token=secret"}`
 	testAuthorizationHeader            = "Authorization"
+	testSetCookieHeader                = "Set-Cookie"
 	requestMetadataTestKeyActor        = "key_actor"
 	requestMetadataTestTenantActor     = "ten_actor"
 	requestMetadataTestLogFirst        = "first"
@@ -184,7 +185,7 @@ func TestRedactSensitiveHeaderValue(t *testing.T) {
 		{name: testAuthorizationHeader, value: "Bearer secret", want: requestMetadataRedacted},
 		{name: "Cookie", value: "session=secret", want: requestMetadataRedacted},
 		{name: "Proxy-Authorization", value: "Basic secret", want: requestMetadataRedacted},
-		{name: "Set-Cookie", value: "session=secret", want: requestMetadataRedacted},
+		{name: testSetCookieHeader, value: "session=secret", want: requestMetadataRedacted},
 		{name: "X-Api-Key", value: "secret", want: requestMetadataRedacted},
 		{name: "X-Straw-Injection-Secret", value: "secret", want: requestMetadataRedacted},
 		{name: "X-Trace-ID", value: "trace-123", want: "trace-123"},
@@ -214,7 +215,7 @@ func TestBuildRequestEventRecordsActorAndSanitizedTarget(t *testing.T) {
 		Method:     http.MethodPost,
 		URL:        u,
 		BodyData:   []byte("hello"),
-		Headers:    []HeaderPair{{Name: "Authorization", Value: "Bearer secret"}},
+		Headers:    []HeaderPair{{Name: testAuthorizationHeader, Value: "Bearer secret"}},
 		Replayable: true,
 	}, TenantPolicy{MetadataQueryStorage: MetadataStorageDrop, MetadataPathStorage: MetadataStorageStore})
 

@@ -663,7 +663,7 @@ func (d *DefaultRequestDispatcher) sendRequestStart(subject string, in DispatchI
 		SelectedPoolId:         route.PoolID,
 		DeadlineUnixMs:         deadline.UnixMilli(),
 		Replayable:             in.Request.Replayable,
-		PayloadCaptureDecision: defaultPayloadCaptureDecision,
+		PayloadCaptureDecision: in.Request.CaptureDecision,
 		FingerprintInstruction: wireFingerprint(policy.FingerprintProfile),
 		InjectionOperations:    policy.InjectionOperations,
 		RedirectPolicy:         strawpb.RedirectPolicy_REDIRECT_POLICY_NO_FOLLOW,

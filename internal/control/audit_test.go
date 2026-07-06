@@ -106,7 +106,7 @@ func TestRecordAuditEnrichmentAndRedaction(t *testing.T) {
 		Operations: []config.InjectionOperation{
 			{
 				Op:          "set",
-				HeaderName:  "Authorization",
+				HeaderName:  testAuthorizationHeader,
 				ValueBase64: "c2VjcmV0X2tleV8xMjM0NQ==", // secret value
 			},
 		},
