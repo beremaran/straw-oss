@@ -42,6 +42,9 @@ CHECK, migrating any `'disabled'` rows to `'suspended'`.
 ## Out of Scope
 
 - Do not add P1 tenant metadata-storage-policy fields beyond what P0 rate-limit/ceiling behavior needs.
+  *(Correction 2026-07-06: `default_timeout_ms`, `max_timeout_ms`, `metadata_query_storage`, and
+  `metadata_path_storage` are P0 per `docs/planning/26` "P0 Config Resource Schemas"; they are owned by
+  `docs/tasks/p0/46-tenant-p0-schema-fields.md`.)*
 - Do not implement config rollback (P1).
 - Do not move worker runtime state or add multi-Control coordination.
 

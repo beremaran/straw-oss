@@ -28,8 +28,8 @@ import (
 // normalized. Proper IDNA support requires golang.org/x/net/idna, which is not
 // currently a real dependency of this module. Rejecting non-ASCII hostnames is
 // fail-closed and prevents Unicode-homoglyph SSRF bypass, but a tenant cannot
-// reach a legitimate internationalized domain in P0. No existing task file
-// owns adding IDNA support; a new task should be filed if this is needed.
+// reach a legitimate internationalized domain in P0. IDNA support is owned by
+// docs/tasks/p1/21-idna-hostname-support.md.
 //
 // internal/egress/executor.go (task 26) enforces DeniedHostSuffixes and
 // DeniedCnameSuffixes downstream; this resolver only compiles them.

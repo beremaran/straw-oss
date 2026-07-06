@@ -19,6 +19,8 @@ validation.
 
 - Task 02 completed.
 - Task 04 completed.
+- Task 24 completed (the "existing c2e/e2c credit protocol" this task relies on is only real once egress chunks
+  by credit and Control replenishes).
 
 ## Out of Scope
 
