@@ -142,6 +142,33 @@ func TestDispatcherRoutePoolCapabilityRestriction(t *testing.T) {
 	}
 }
 
+func TestDispatcherRoutesUsingRequestIngressType(t *testing.T) {
+	t.Parallel()
+
+	snapshot := dispatchSnapshot([]config.RoutingRule{
+		{
+			ID: "rule_proxy", Priority: 1, Enabled: true, TargetPoolID: dispatchTestPool,
+			Match: config.MatchConditions{IngressType: IngressTypeHTTPProxy},
+		},
+		{
+			ID: "rule_rest", Priority: 2, Enabled: true, TargetPoolID: dispatchTestPool,
+			Match: config.MatchConditions{IngressType: IngressTypeREST},
+		},
+	})
+
+	proxyCandidate := dispatchCandidate()
+	proxyCandidate.IngressModes = []string{IngressTypeHTTPProxy}
+
+	d := newTestDispatcherWithSnapshot(t, snapshot, dispatchCandidates{proxyCandidate})
+	req := validatedDispatchRequest(t, "https://example.com/")
+	req.IngressType = IngressTypeHTTPProxy
+
+	outcome := d.route(dispatchInput(req), snapshot)
+	if !outcome.OK || outcome.RuleID != "rule_proxy" || outcome.WorkerID != proxyCandidate.WorkerID {
+		t.Fatalf("route outcome = %+v, want http_proxy rule and candidate", outcome)
+	}
+}
+
 func TestDispatcherRateLimitRetryAfter(t *testing.T) {
 	client := newTestRedisClient(t)
 

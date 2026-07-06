@@ -36,18 +36,25 @@ func (s *postgresWorkerCredentialStore) Create(ctx context.Context, record Worke
 		return fmt.Errorf("worker credential create marshal allowed pools: %w", err)
 	}
 
+	allowedCapabilitiesJSON, err := json.Marshal(record.AllowedCapabilities)
+	if err != nil {
+		return fmt.Errorf("worker credential create marshal allowed capabilities: %w", err)
+	}
+
 	_, err = s.pool.Exec(ctx,
 		`INSERT INTO worker_credentials (credential_id, status, executor_type,
 		                                  public_key_ed25519_base64, tenant_scope_jsonb,
-		                                  allowed_pools_jsonb, created_at, updated_at,
+		                                  allowed_pools_jsonb, allowed_capabilities_jsonb,
+		                                  created_at, updated_at,
 		                                  config_version)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
 		record.ID,
 		string(record.Status),
 		record.ExecutorType,
 		record.PublicKeyEd25519Base64,
 		tenantScopeJSON,
 		allowedPoolsJSON,
+		allowedCapabilitiesJSON,
 		now,
 		now,
 		record.ConfigVersion,
@@ -62,14 +69,14 @@ func (s *postgresWorkerCredentialStore) Create(ctx context.Context, record Worke
 // Get fetches a worker credential by ID.
 func (s *postgresWorkerCredentialStore) Get(ctx context.Context, id string) (WorkerCredential, error) {
 	var (
-		record                            WorkerCredential
-		tenantScopeJSON, allowedPoolsJSON []byte
-		createdAt, updatedAt              time.Time
+		record                                             WorkerCredential
+		tenantScopeJSON, allowedPoolsJSON, allowedCapsJSON []byte
+		createdAt, updatedAt                               time.Time
 	)
 
 	err := s.pool.QueryRow(ctx,
 		`SELECT status, executor_type, public_key_ed25519_base64,
-		        tenant_scope_jsonb, allowed_pools_jsonb,
+		        tenant_scope_jsonb, allowed_pools_jsonb, allowed_capabilities_jsonb,
 		        created_at, updated_at, config_version
 		 FROM worker_credentials WHERE credential_id = $1`,
 		id,
@@ -79,6 +86,7 @@ func (s *postgresWorkerCredentialStore) Get(ctx context.Context, id string) (Wor
 		&record.PublicKeyEd25519Base64,
 		&tenantScopeJSON,
 		&allowedPoolsJSON,
+		&allowedCapsJSON,
 		&createdAt,
 		&updatedAt,
 		&record.ConfigVersion,
@@ -95,13 +103,7 @@ func (s *postgresWorkerCredentialStore) Get(ctx context.Context, id string) (Wor
 	record.CreatedAt = createdAt
 	record.UpdatedAt = updatedAt
 
-	if len(tenantScopeJSON) > 0 {
-		_ = json.Unmarshal(tenantScopeJSON, &record.TenantScope)
-	}
-
-	if len(allowedPoolsJSON) > 0 {
-		_ = json.Unmarshal(allowedPoolsJSON, &record.AllowedPools)
-	}
+	decodeWorkerCredentialJSON(&record, tenantScopeJSON, allowedPoolsJSON, allowedCapsJSON)
 
 	return record, nil
 }
@@ -109,8 +111,8 @@ func (s *postgresWorkerCredentialStore) Get(ctx context.Context, id string) (Wor
 // Revoke marks a worker credential as revoked.
 func (s *postgresWorkerCredentialStore) Revoke(ctx context.Context, id string, revokedAt time.Time) (WorkerCredential, error) {
 	var (
-		record                            WorkerCredential
-		tenantScopeJSON, allowedPoolsJSON []byte
+		record                                             WorkerCredential
+		tenantScopeJSON, allowedPoolsJSON, allowedCapsJSON []byte
 	)
 
 	err := s.pool.QueryRow(ctx,
@@ -118,7 +120,7 @@ func (s *postgresWorkerCredentialStore) Revoke(ctx context.Context, id string, r
 		 SET status = 'revoked', updated_at = $2
 		 WHERE credential_id = $1 AND status = 'active'
 		 RETURNING executor_type, public_key_ed25519_base64,
-		           tenant_scope_jsonb, allowed_pools_jsonb,
+		           tenant_scope_jsonb, allowed_pools_jsonb, allowed_capabilities_jsonb,
 		           created_at, updated_at, config_version`,
 		id,
 		revokedAt,
@@ -127,6 +129,7 @@ func (s *postgresWorkerCredentialStore) Revoke(ctx context.Context, id string, r
 		&record.PublicKeyEd25519Base64,
 		&tenantScopeJSON,
 		&allowedPoolsJSON,
+		&allowedCapsJSON,
 		&record.CreatedAt,
 		&record.UpdatedAt,
 		&record.ConfigVersion,
@@ -142,13 +145,7 @@ func (s *postgresWorkerCredentialStore) Revoke(ctx context.Context, id string, r
 	record.ID = id
 	record.Status = WorkerCredentialStatusRevoked
 
-	if len(tenantScopeJSON) > 0 {
-		_ = json.Unmarshal(tenantScopeJSON, &record.TenantScope)
-	}
-
-	if len(allowedPoolsJSON) > 0 {
-		_ = json.Unmarshal(allowedPoolsJSON, &record.AllowedPools)
-	}
+	decodeWorkerCredentialJSON(&record, tenantScopeJSON, allowedPoolsJSON, allowedCapsJSON)
 
 	return record, nil
 }
@@ -157,7 +154,7 @@ func (s *postgresWorkerCredentialStore) Revoke(ctx context.Context, id string, r
 func (s *postgresWorkerCredentialStore) ListTenant(ctx context.Context, tenantID string) ([]WorkerCredential, error) {
 	rows, err := s.pool.Query(ctx,
 		`SELECT credential_id, status, executor_type, public_key_ed25519_base64,
-		        tenant_scope_jsonb, allowed_pools_jsonb,
+		        tenant_scope_jsonb, allowed_pools_jsonb, allowed_capabilities_jsonb,
 		        created_at, updated_at, config_version
 		 FROM worker_credentials
 		 WHERE status = 'active'`,
@@ -172,9 +169,9 @@ func (s *postgresWorkerCredentialStore) ListTenant(ctx context.Context, tenantID
 
 	for rows.Next() {
 		var (
-			record                            WorkerCredential
-			tenantScopeJSON, allowedPoolsJSON []byte
-			createdAt, updatedAt              time.Time
+			record                                             WorkerCredential
+			tenantScopeJSON, allowedPoolsJSON, allowedCapsJSON []byte
+			createdAt, updatedAt                               time.Time
 		)
 
 		err := rows.Scan(
@@ -184,6 +181,7 @@ func (s *postgresWorkerCredentialStore) ListTenant(ctx context.Context, tenantID
 			&record.PublicKeyEd25519Base64,
 			&tenantScopeJSON,
 			&allowedPoolsJSON,
+			&allowedCapsJSON,
 			&createdAt,
 			&updatedAt,
 			&record.ConfigVersion,
@@ -195,13 +193,7 @@ func (s *postgresWorkerCredentialStore) ListTenant(ctx context.Context, tenantID
 		record.CreatedAt = createdAt
 		record.UpdatedAt = updatedAt
 
-		if len(tenantScopeJSON) > 0 {
-			_ = json.Unmarshal(tenantScopeJSON, &record.TenantScope)
-		}
-
-		if len(allowedPoolsJSON) > 0 {
-			_ = json.Unmarshal(allowedPoolsJSON, &record.AllowedPools)
-		}
+		decodeWorkerCredentialJSON(&record, tenantScopeJSON, allowedPoolsJSON, allowedCapsJSON)
 
 		// P0: single-tenant credentials only — check tenant scope
 		if slices.Contains(record.TenantScope, tenantID) {
@@ -215,4 +207,18 @@ func (s *postgresWorkerCredentialStore) ListTenant(ctx context.Context, tenantID
 	}
 
 	return out, nil
+}
+
+func decodeWorkerCredentialJSON(record *WorkerCredential, tenantScopeJSON, allowedPoolsJSON, allowedCapsJSON []byte) {
+	if len(tenantScopeJSON) > 0 {
+		_ = json.Unmarshal(tenantScopeJSON, &record.TenantScope)
+	}
+
+	if len(allowedPoolsJSON) > 0 {
+		_ = json.Unmarshal(allowedPoolsJSON, &record.AllowedPools)
+	}
+
+	if len(allowedCapsJSON) > 0 {
+		_ = json.Unmarshal(allowedCapsJSON, &record.AllowedCapabilities)
+	}
 }

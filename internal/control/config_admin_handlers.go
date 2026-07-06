@@ -248,6 +248,14 @@ func (h *AdminHandlers) upsertRoutingRule(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	if req.MatchConditions.IngressType != "" && !validIngressTypes[req.MatchConditions.IngressType] {
+		WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", map[string]string{
+			errorDetailReasonKey: "invalid match_conditions.ingress_type",
+		}))
+
+		return
+	}
+
 	var oldRule *config.RoutingRule
 
 	existing, err := h.RoutingRules.GetRoutingRule(r.Context(), identity.TenantID, req.ID)
@@ -380,6 +388,25 @@ var validIPTypes = map[string]bool{
 	ipTypeMobile:      true,
 	ipTypeISP:         true,
 	ipTypeUnknown:     true,
+}
+
+var validIngressTypes = map[string]bool{
+	IngressTypeREST:      true,
+	IngressTypeHTTPProxy: true,
+	IngressTypeConnect:   true,
+	IngressTypeMITM:      true,
+}
+
+func invalidIngressModes(modes []string) []string {
+	var bad []string
+
+	for _, mode := range modes {
+		if !validIngressTypes[mode] {
+			bad = append(bad, mode)
+		}
+	}
+
+	return bad
 }
 
 func invalidIPTypes(ipTypes []string) []string {

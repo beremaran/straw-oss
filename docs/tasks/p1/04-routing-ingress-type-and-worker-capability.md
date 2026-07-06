@@ -1,6 +1,6 @@
 # 04 - Routing Ingress Type and Worker Capability
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -30,16 +30,16 @@ be routed only to compatible workers.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Add `ingress_type` to route match evaluation for `rest`, `http_proxy`, `connect`, and `mitm`.
-- [ ] Load worker credential `supported_ingress_modes` from durable config.
-- [ ] Include advertised worker ingress modes in registration/heartbeat-derived capability state.
-- [ ] Reject routes to workers that do not support the request ingress mode.
-- [ ] Preserve REST behavior as the default P0 mode.
-- [ ] Add tests for each ingress mode, unsupported workers, missing capability defaults, and tenant isolation.
-- [ ] Run focused routing/capability tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Read all required planning docs.
+- [x] Add `ingress_type` to route match evaluation for `rest`, `http_proxy`, `connect`, and `mitm`.
+- [x] Load worker credential `supported_ingress_modes` from durable config.
+- [x] Include advertised worker ingress modes in registration/heartbeat-derived capability state.
+- [x] Reject routes to workers that do not support the request ingress mode.
+- [x] Preserve REST behavior as the default P0 mode.
+- [x] Add tests for each ingress mode, unsupported workers, missing capability defaults, and tenant isolation.
+- [x] Run focused routing/capability tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

@@ -888,7 +888,7 @@ func TestWorkerCredentialCreateForcesCallerTenantScope(t *testing.T) {
 	ta := newTestAdmin(t)
 	tenantAdminToken := ta.seedTenantKey(t, adminTestKeyAAdmin, adminTestTenantA, RoleTenantAdmin)
 
-	body := `{"executor_type":"egress","allowed_pools":[{"tenant_id":"ten_a","pool_id":"pool_x"}],"public_key_ed25519_base64":"YWJjZA=="}`
+	body := `{"executor_type":"egress","allowed_pools":[{"tenant_id":"ten_a","pool_id":"pool_x"}],"allowed_capabilities":{"supported_ingress_modes":["rest","http_proxy"]},"public_key_ed25519_base64":"YWJjZA=="}`
 	w := httptest.NewRecorder()
 	ta.h.CreateWorkerCredential(w, newAdminRequest(http.MethodPost, "/api/v1/config/worker-credentials", tenantAdminToken, body))
 	if w.Code != http.StatusCreated {
@@ -901,6 +901,23 @@ func TestWorkerCredentialCreateForcesCallerTenantScope(t *testing.T) {
 	}
 	if len(created.TenantScope) != 1 || created.TenantScope[0] != adminTestTenantA {
 		t.Fatalf("tenant_scope = %v, want [ten_a]", created.TenantScope)
+	}
+	if got := created.AllowedCapabilities.SupportedIngressModes; len(got) != 2 || got[0] != IngressTypeREST || got[1] != IngressTypeHTTPProxy {
+		t.Fatalf("supported_ingress_modes = %v, want [rest http_proxy]", got)
+	}
+}
+
+func TestWorkerCredentialCreateRejectsUnknownIngressMode(t *testing.T) {
+	t.Parallel()
+
+	ta := newTestAdmin(t)
+	tenantAdminToken := ta.seedTenantKey(t, adminTestKeyAAdmin, adminTestTenantA, RoleTenantAdmin)
+
+	body := `{"executor_type":"egress","allowed_capabilities":{"supported_ingress_modes":["ftp"]},"public_key_ed25519_base64":"YWJjZA=="}`
+	w := httptest.NewRecorder()
+	ta.h.CreateWorkerCredential(w, newAdminRequest(http.MethodPost, "/api/v1/config/worker-credentials", tenantAdminToken, body))
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d, body=%s", w.Code, http.StatusBadRequest, w.Body.String())
 	}
 }
 

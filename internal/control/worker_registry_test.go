@@ -244,6 +244,23 @@ func TestRegisterCapabilityOutOfScope(t *testing.T) {
 	}
 }
 
+func TestRegisterIngressCapabilityOutOfScope(t *testing.T) {
+	t.Parallel()
+	cred := defaultCred()
+	cred.AllowedCapabilities = WorkerCapabilities{SupportedIngressModes: []string{IngressTypeREST}}
+	h := newRegHarness(t, cred)
+	req := h.signedRegister("worker-1", func(r *strawpb.RegisterRequest) {
+		r.SupportedIngressModes = []string{IngressTypeConnect}
+	})
+	out, err := h.reg.Register(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Register error: %v", err)
+	}
+	if out.OK || out.Reason != RejectCapabilityScope {
+		t.Fatalf("outcome = %+v, want reject capability_out_of_scope", out)
+	}
+}
+
 func TestRegisterDuplicateSessionReplacement(t *testing.T) {
 	t.Parallel()
 	h := newRegHarness(t, defaultCred())

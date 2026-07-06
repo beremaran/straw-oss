@@ -396,7 +396,7 @@ func (d *DefaultRequestDispatcher) route(in DispatchInput, snapshot config.Tenan
 		Country:         in.Request.Routing.Country,
 		Region:          in.Request.Routing.Region,
 		IPType:          in.Request.Routing.IPType,
-		IngressType:     IngressTypeREST,
+		IngressType:     in.Request.IngressType,
 		TargetHost:      strings.ToLower(in.Request.URL.Hostname()),
 		StickySessionID: in.Request.StickySessionID,
 	})

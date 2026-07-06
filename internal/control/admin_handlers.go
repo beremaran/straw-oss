@@ -685,19 +685,21 @@ func (h *AdminHandlers) RevokeTenantAPIKey(w http.ResponseWriter, r *http.Reques
 // single-tenant scope) ----
 
 type workerCredentialCreateRequest struct {
-	ExecutorType           string        `json:"executor_type"`
-	AllowedPools           []AllowedPool `json:"allowed_pools"`
-	PublicKeyEd25519Base64 string        `json:"public_key_ed25519_base64"`
+	ExecutorType           string             `json:"executor_type"`
+	AllowedPools           []AllowedPool      `json:"allowed_pools"`
+	AllowedCapabilities    WorkerCapabilities `json:"allowed_capabilities"`
+	PublicKeyEd25519Base64 string             `json:"public_key_ed25519_base64"`
 }
 
 type workerCredentialResponse struct {
-	ID                     string        `json:"id"`
-	TenantScope            []string      `json:"tenant_scope"`
-	ExecutorType           string        `json:"executor_type"`
-	AllowedPools           []AllowedPool `json:"allowed_pools"`
-	PublicKeyEd25519Base64 string        `json:"public_key_ed25519_base64"`
-	Status                 string        `json:"status"`
-	ConfigVersion          uint64        `json:"config_version"`
+	ID                     string             `json:"id"`
+	TenantScope            []string           `json:"tenant_scope"`
+	ExecutorType           string             `json:"executor_type"`
+	AllowedPools           []AllowedPool      `json:"allowed_pools"`
+	AllowedCapabilities    WorkerCapabilities `json:"allowed_capabilities"`
+	PublicKeyEd25519Base64 string             `json:"public_key_ed25519_base64"`
+	Status                 string             `json:"status"`
+	ConfigVersion          uint64             `json:"config_version"`
 }
 
 func toWorkerCredentialResponse(c WorkerCredential) workerCredentialResponse {
@@ -706,6 +708,7 @@ func toWorkerCredentialResponse(c WorkerCredential) workerCredentialResponse {
 		TenantScope:            c.TenantScope,
 		ExecutorType:           c.ExecutorType,
 		AllowedPools:           c.AllowedPools,
+		AllowedCapabilities:    c.AllowedCapabilities,
 		PublicKeyEd25519Base64: c.PublicKeyEd25519Base64,
 		Status:                 string(c.Status),
 		ConfigVersion:          c.ConfigVersion,
@@ -1346,6 +1349,7 @@ func (h *AdminHandlers) createWorkerCredential(w http.ResponseWriter, r *http.Re
 		PublicKeyEd25519Base64: req.PublicKeyEd25519Base64,
 		TenantScope:            []string{identity.TenantID}, // forced single-tenant scope in P0
 		AllowedPools:           req.AllowedPools,
+		AllowedCapabilities:    req.AllowedCapabilities,
 		CreatedAt:              time.Now().UTC(),
 		UpdatedAt:              time.Now().UTC(),
 		ConfigVersion:          1,
@@ -1391,6 +1395,14 @@ func validateWorkerCredentialRequest(w http.ResponseWriter, req workerCredential
 
 			return workerCredentialCreateRequest{}, false
 		}
+	}
+
+	if bad := invalidIngressModes(req.AllowedCapabilities.SupportedIngressModes); len(bad) > 0 {
+		WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", map[string]string{
+			errorDetailReasonKey: fmt.Sprintf("invalid supported_ingress_modes: %v", bad),
+		}))
+
+		return workerCredentialCreateRequest{}, false
 	}
 
 	return req, true
