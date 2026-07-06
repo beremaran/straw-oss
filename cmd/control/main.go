@@ -710,6 +710,7 @@ func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.API
 	requestHandler.SetDispatcher(dispatcher)
 
 	mux := http.NewServeMux()
+	serveAdminUIRoutes(mux)
 	mux.Handle("POST /api/v1/requests", requestHandler)
 	serveAdminRoutes(mux, adminHandlers)
 

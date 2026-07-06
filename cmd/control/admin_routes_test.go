@@ -9,6 +9,8 @@ import (
 	"github.com/beremaran/straw/v2/internal/control"
 )
 
+const routeConfigTenants = "/api/v1/config/tenants"
+
 // TestServeAdminRoutesCanonicalConfigPaths proves the identity and limits
 // config endpoints are registered only under the canonical /api/v1/config
 // base path (docs/planning/26), not the old bare root paths
@@ -20,8 +22,8 @@ func TestServeAdminRoutesCanonicalConfigPaths(t *testing.T) {
 	serveAdminRoutes(mux, &control.AdminHandlers{})
 
 	canonical := []struct{ method, path string }{
-		{http.MethodPost, "/api/v1/config/tenants"},
-		{http.MethodGet, "/api/v1/config/tenants"},
+		{http.MethodPost, routeConfigTenants},
+		{http.MethodGet, routeConfigTenants},
 		{http.MethodPost, "/api/v1/config/platform-api-keys"},
 		{http.MethodGet, "/api/v1/config/platform-api-keys"},
 		{http.MethodPost, "/api/v1/config/platform-api-keys/key_1/revoke"},
