@@ -195,6 +195,32 @@ func TestStreamHandlerDoesNotApplyInlineResponseBodyLimit(t *testing.T) {
 	}
 }
 
+func TestStreamHandlerEnforcesRequestBodyLimit(t *testing.T) {
+	t.Parallel()
+
+	h, token := newTestHandler(t)
+	largeData := strings.Repeat("A", 1_400_000)
+	payload := `{"method":"POST","url":"https://example.com","body":{"mode":"inline_base64","data_base64":"` + largeData + `"}}`
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/requests:stream", strings.NewReader(payload))
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+
+	h.ServeStreamHTTP(w, req)
+
+	if w.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusRequestEntityTooLarge)
+	}
+
+	var errResp ErrorResponse
+	err := json.Unmarshal(w.Body.Bytes(), &errResp)
+	if err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if errResp.Code != handlerTestBodyTooLargeCode {
+		t.Fatalf("code = %q, want %q", errResp.Code, handlerTestBodyTooLargeCode)
+	}
+}
+
 func TestStreamHandlerAuthAndRBAC(t *testing.T) {
 	t.Parallel()
 

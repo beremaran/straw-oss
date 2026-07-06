@@ -66,7 +66,7 @@ Filled from the independent verifier's report.
 | Runtime workers list. | implemented | `internal/cli/cli.go:340`, `internal/cli/cli.go:351` |
 | Runtime worker global and tenant actions. | implemented | `internal/cli/cli.go:342`, `internal/cli/cli.go:368`, `internal/cli/cli.go:659` |
 | Runtime request cancel. | implemented | `internal/cli/cli.go:344`, `internal/cli/cli.go:390` |
-| REST streaming variant `/api/v1/requests:stream`. | out of scope | Server endpoint owned by `docs/tasks/p1/06-rest-streaming-endpoint.md`; CLI stream client support after task 06 is owned by `docs/tasks/p1/28-sdk-cli-rest-streaming-client.md`. |
+| REST streaming variant `/api/v1/requests:stream`. | out of scope | Server endpoint completed by `docs/tasks/p1/06-rest-streaming-endpoint.md`; CLI stream client support is owned by `docs/tasks/p1/28-sdk-cli-rest-streaming-client.md`. |
 | Telemetry read APIs. | out of scope | Owned by `docs/tasks/p1/11-telemetry-schema-and-query-limits-spec.md` and `docs/tasks/p1/12-telemetry-read-apis.md`. |
 | MITM CA distribution and payload-capture APIs. | out of scope | P2 scope owned by `docs/tasks/p2/01-mitm-leaf-certificate-design.md` and `docs/tasks/p2/09-payload-capture-policy.md`. |
 
