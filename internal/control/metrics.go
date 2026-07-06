@@ -249,6 +249,32 @@ func RegisterWorkerCollector(reg prometheus.Registerer, source workerStatsSource
 	}))
 }
 
+// RegisterEgressMetricsCollector registers P1 Control-aggregated Egress
+// metrics. The gauges are aggregate-only: no worker_id, tenant_id, request_id,
+// or URL labels, keeping cardinality bounded by the metric names themselves.
+func RegisterEgressMetricsCollector(reg prometheus.Registerer, source workerStatsSource) {
+	reg.MustRegister(prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "straw_egress_active_requests",
+		Help: "Active requests currently reported by Egress worker heartbeats.",
+	}, func() float64 {
+		return float64(source.Stats().ActiveRequests)
+	}))
+
+	reg.MustRegister(prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "straw_egress_max_concurrency",
+		Help: "Aggregate max concurrency currently reported by Egress workers.",
+	}, func() float64 {
+		return float64(source.Stats().MaxConcurrency)
+	}))
+
+	reg.MustRegister(prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "straw_egress_available_capacity",
+		Help: "Aggregate available capacity currently reported by Egress worker heartbeats.",
+	}, func() float64 {
+		return float64(source.Stats().AvailableCapacity)
+	}))
+}
+
 // RegisterClickHouseQueueDepth registers the
 // straw_clickhouse_write_queue_depth gauge, computed at scrape time from
 // source's buffered event count.

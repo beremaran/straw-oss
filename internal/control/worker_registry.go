@@ -685,6 +685,15 @@ type WorkerRegistryStats struct {
 	// heartbeat among sessions that have heartbeated at least once, or 0
 	// when none have.
 	MaxHeartbeatAgeSeconds float64
+	// ActiveRequests is the aggregate active request count reported by
+	// current worker heartbeats.
+	ActiveRequests uint64
+	// MaxConcurrency is the aggregate max concurrency reported by current
+	// worker registration/heartbeat state.
+	MaxConcurrency uint64
+	// AvailableCapacity is the aggregate available capacity reported by
+	// current worker heartbeats.
+	AvailableCapacity uint64
 }
 
 // Stats computes the aggregate worker session/availability/heartbeat-age
@@ -718,6 +727,10 @@ func (r *WorkerRegistry) Stats() WorkerRegistryStats {
 				stats.MaxHeartbeatAgeSeconds = age
 			}
 		}
+
+		stats.ActiveRequests += uint64(s.activeRequests)
+		stats.MaxConcurrency += uint64(s.maxConcurrency)
+		stats.AvailableCapacity += uint64(s.availableCap)
 	}
 
 	return stats

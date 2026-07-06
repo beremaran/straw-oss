@@ -70,13 +70,14 @@ type ControlWorkerConfig struct {
 
 // ControlServerConfig configures the control HTTP server.
 type ControlServerConfig struct {
-	Host           string `json:"host"`
-	APIPort        int    `json:"api_port"`
-	MetricsPort    int    `json:"metrics_port"`
-	ProxyEnabled   bool   `json:"proxy_enabled,omitempty"`
-	ProxyPort      int    `json:"proxy_port,omitempty"`
-	ConnectEnabled bool   `json:"connect_enabled,omitempty"`
-	ConnectPort    int    `json:"connect_port,omitempty"`
+	Host                 string `json:"host"`
+	APIPort              int    `json:"api_port"`
+	MetricsPort          int    `json:"metrics_port"`
+	EgressMetricsEnabled bool   `json:"egress_metrics_enabled,omitempty"`
+	ProxyEnabled         bool   `json:"proxy_enabled,omitempty"`
+	ProxyPort            int    `json:"proxy_port,omitempty"`
+	ConnectEnabled       bool   `json:"connect_enabled,omitempty"`
+	ConnectPort          int    `json:"connect_port,omitempty"`
 }
 
 // ControlRequestConfig configures request body and timeout limits.

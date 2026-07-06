@@ -354,3 +354,80 @@ func TestRegisterWorkerCollectorReflectsRegistryState(t *testing.T) {
 		t.Fatalf("worker_heartbeat_age_seconds after 5s advance = %v, want 5", got)
 	}
 }
+
+func TestRegisterEgressMetricsCollectorUsesAggregateUnlabeledGauges(t *testing.T) {
+	t.Parallel()
+
+	h := newRegHarness(t, defaultCred())
+	sessionID := h.mustRegister(t, h.signedRegister(workerRegTestWorker1))
+
+	ok, err := h.reg.Heartbeat(&strawpb.HeartbeatRequest{
+		WorkerId:          workerRegTestWorker1,
+		SessionId:         sessionID,
+		Health:            strawpb.WorkerHealth_WORKER_HEALTH_READY,
+		ActiveRequests:    2,
+		MaxConcurrency:    7,
+		AvailableCapacity: 5,
+	})
+	if err != nil || !ok {
+		t.Fatalf("Heartbeat() = (%v, %v), want (true, nil)", ok, err)
+	}
+
+	reg := prometheus.NewRegistry()
+	RegisterEgressMetricsCollector(reg, h.reg)
+
+	assertUnlabeledGauge(t, reg, "straw_egress_active_requests", 2)
+	assertUnlabeledGauge(t, reg, "straw_egress_max_concurrency", 7)
+	assertUnlabeledGauge(t, reg, "straw_egress_available_capacity", 5)
+}
+
+func TestEgressMetricsCollectorUsesLocalSnapshotOnRuntimeStoreOutage(t *testing.T) {
+	t.Parallel()
+
+	h := newRegHarness(t, defaultCred())
+	sessionID := h.mustRegister(t, h.signedRegister(workerRegTestWorker1))
+
+	ok, err := h.reg.Heartbeat(&strawpb.HeartbeatRequest{
+		WorkerId:          workerRegTestWorker1,
+		SessionId:         sessionID,
+		Health:            strawpb.WorkerHealth_WORKER_HEALTH_READY,
+		ActiveRequests:    3,
+		MaxConcurrency:    8,
+		AvailableCapacity: 5,
+	})
+	if err != nil || !ok {
+		t.Fatalf("Heartbeat() = (%v, %v), want (true, nil)", ok, err)
+	}
+
+	h.reg.SetRuntimeStore(failingRuntimeStore{})
+
+	reg := prometheus.NewRegistry()
+	RegisterEgressMetricsCollector(reg, h.reg)
+
+	assertUnlabeledGauge(t, reg, "straw_egress_active_requests", 3)
+	assertUnlabeledGauge(t, reg, "straw_egress_max_concurrency", 8)
+	assertUnlabeledGauge(t, reg, "straw_egress_available_capacity", 5)
+}
+
+type failingRuntimeStore struct{}
+
+func (failingRuntimeStore) save(string, *workerEntry, time.Duration) error {
+	return errFailingSink
+}
+
+func (failingRuntimeStore) loadAll() (map[string]*workerEntry, error) {
+	return nil, errFailingSink
+}
+
+func assertUnlabeledGauge(t *testing.T, reg *prometheus.Registry, name string, want float64) {
+	t.Helper()
+
+	metric := gatherFamily(t, reg, name).GetMetric()[0]
+	if labels := metric.GetLabel(); len(labels) != 0 {
+		t.Fatalf("%s labels = %v, want none", name, labels)
+	}
+
+	if got := metric.GetGauge().GetValue(); got != want {
+		t.Fatalf("%s = %v, want %v", name, got, want)
+	}
+}

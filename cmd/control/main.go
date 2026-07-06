@@ -145,7 +145,7 @@ func runControl(controlConfig config.ControlConfig, natsConn *natsx.Connection) 
 	chWriters := wireTelemetry(controlConfig.Database.ClickHouse, workerRegistry)
 	defer chWriters.Close()
 
-	metricsReg, metrics := wireMetrics(workerRegistry, chWriters)
+	metricsReg, metrics := wireMetrics(controlConfig, workerRegistry, chWriters)
 
 	mux, proxyHandler, connectHandler := buildControlMux(controlConfig, apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore, configCache, redisClient, natsConn, chWriters, metrics)
 
@@ -175,11 +175,15 @@ func wireWorkerRegistrationReplayProtection(workerRegistry *control.WorkerRegist
 // (docs/planning/23-observability.md) and registers the pull-based worker
 // and ClickHouse-queue-depth collectors, which read live state from
 // workerRegistry and chWriters at scrape time rather than being pushed.
-func wireMetrics(workerRegistry *control.WorkerRegistry, chWriters *clickHouseWriters) (*prometheus.Registry, *control.Metrics) {
+func wireMetrics(controlConfig config.ControlConfig, workerRegistry *control.WorkerRegistry, chWriters *clickHouseWriters) (*prometheus.Registry, *control.Metrics) {
 	reg := prometheus.NewRegistry()
 	metrics := control.NewMetrics(reg)
 
 	control.RegisterWorkerCollector(reg, workerRegistry)
+
+	if controlConfig.Server.EgressMetricsEnabled {
+		control.RegisterEgressMetricsCollector(reg, workerRegistry)
+	}
 
 	if chWriters.requestMetadata != nil {
 		chWriters.SetMetrics(metrics)

@@ -52,6 +52,14 @@ The following metrics are exported:
 - `straw_workers_available` (Gauge): Number of registered workers currently eligible for new request assignments.
 - `straw_worker_heartbeat_age_seconds` (Gauge): Heartbeat age of the stalest active worker.
 
+### Egress Metrics
+Enabled only when Control config `server.egress_metrics_enabled` is `true`. These metrics are aggregated by Control
+from worker heartbeats and are exposed only on Control's `/metrics`; Egress does not expose a Prometheus endpoint.
+If Control cannot refresh Redis-backed worker runtime state during a scrape, it reports from its local snapshot.
+- `straw_egress_active_requests` (Gauge): Aggregate active requests reported by Egress workers.
+- `straw_egress_max_concurrency` (Gauge): Aggregate max concurrency reported by Egress workers.
+- `straw_egress_available_capacity` (Gauge): Aggregate available capacity reported by Egress workers.
+
 ### Telemetry Pipeline Metrics
 - `straw_clickhouse_write_queue_depth` (Gauge): Count of telemetry events buffered in memory waiting for a ClickHouse flush.
 - `straw_clickhouse_write_errors_total` (Counter): Count of failed ClickHouse batch insert operations.

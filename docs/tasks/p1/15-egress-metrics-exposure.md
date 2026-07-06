@@ -1,6 +1,6 @@
 # 15 - Egress Metrics Exposure
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -31,18 +31,18 @@ Implement Control-aggregated Egress metrics behind an explicit enablement flag.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Implement only Control-aggregated Egress metrics over the existing service boundary.
-- [ ] Gate the feature behind an explicit enablement flag.
-- [ ] Enforce metric cardinality bounds.
-- [ ] Verify no worker-local metrics endpoint or worker metrics port is exposed.
-- [ ] Define outage behavior when Control cannot aggregate worker metrics.
-- [ ] Update deployment port mapping only for shipped endpoints.
-- [ ] Add tests for cardinality, flag disabled/enabled behavior, no worker-local endpoint/port exposure, and outage
+- [x] Read all required planning docs.
+- [x] Implement only Control-aggregated Egress metrics over the existing service boundary.
+- [x] Gate the feature behind an explicit enablement flag.
+- [x] Enforce metric cardinality bounds.
+- [x] Verify no worker-local metrics endpoint or worker metrics port is exposed.
+- [x] Define outage behavior when Control cannot aggregate worker metrics.
+- [x] Update deployment port mapping only for shipped endpoints.
+- [x] Add tests for cardinality, flag disabled/enabled behavior, no worker-local endpoint/port exposure, and outage
       behavior.
-- [ ] Run focused metrics tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Run focused metrics tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 
