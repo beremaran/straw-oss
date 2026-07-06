@@ -29,7 +29,7 @@ Every in-phase field/endpoint/behavior from the task's cited planning-doc sectio
 |---------------|--------|------------------------|
 | P0 REST JSON transport remains non-streaming. | already existed / preserved | `internal/control/handler.go` still uses `Dispatch`; proxy-only raw path is in `internal/control/proxy_handler.go:74`. |
 | P1 proxy ingress may stream raw upstream responses. | implemented | `internal/control/proxy_handler.go:74`, `internal/control/dispatcher.go:727`. |
-| `/api/v1/requests:stream` remains unimplemented. | out of scope | Owned by `docs/tasks/p1/06-rest-streaming-endpoint.md`. |
+| `/api/v1/requests:stream` REST binary framing. | implemented by later task | Closed by `docs/tasks/p1/06-rest-streaming-endpoint.md`; see `docs/agents/handoffs/p1-06-rest-streaming-endpoint.md`. |
 | Core NATS stream frames carry `ResponseStart`, `DataFrame`, `TrailersFrame`, `EndFrame`, `ErrorFrame`, and `CancelFrame`. | implemented | `internal/control/dispatcher.go:790`, `internal/egress/executor.go:178`, `internal/egress/executor.go:188`. |
 | Byte-credit backpressure applies to response/download bytes. | implemented | `internal/control/dispatcher.go:841`, `internal/egress/loop.go:281`, `internal/egress/loop.go:434`. |
 | Origin 3xx/4xx/5xx statuses pass through as upstream responses. | implemented | `internal/control/dispatcher.go:794`, `internal/control/dispatcher_test.go:248`. |

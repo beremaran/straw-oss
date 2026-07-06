@@ -39,7 +39,7 @@ Every in-phase field/endpoint/behavior from the task's cited planning-doc sectio
 | `body_too_large` details use `direction` and `limit_bytes` strings when returned by Control. | implemented | SDK preserves arbitrary string `details`: `sdk/types.go:73` |
 | Origin 3xx/4xx/5xx passthrough as successful upstream responses. | implemented | `sdk/client_test.go:118` |
 | Context cancellation. | implemented | `sdk/client.go:61`, `sdk/client_test.go:142` |
-| `/api/v1/requests:stream`. | out of scope | Server endpoint owned by `docs/tasks/p1/06-rest-streaming-endpoint.md`; SDK/CLI client support after task 06 is owned by `docs/tasks/p1/28-sdk-cli-rest-streaming-client.md`. |
+| `/api/v1/requests:stream`. | out of scope | Server endpoint completed by `docs/tasks/p1/06-rest-streaming-endpoint.md`; SDK/CLI client support is owned by `docs/tasks/p1/28-sdk-cli-rest-streaming-client.md`. |
 | P2 BodyRef/MITM API surface. | out of scope | Excluded by `sdk/types.go:24`, `sdk/doc.go:3`; guarded by `TestRequestExposesNoP2OnlyBodyRefSurface`. |
 
 ## Verification
@@ -65,8 +65,8 @@ Result:
 
 ## Remaining Work
 
-- None for this task. The server endpoint is owned by `docs/tasks/p1/06-rest-streaming-endpoint.md`; SDK/CLI client
-  support after task 06 is owned by `docs/tasks/p1/28-sdk-cli-rest-streaming-client.md`.
+- None for this task. The server endpoint is complete; SDK/CLI stream client support is owned by
+  `docs/tasks/p1/28-sdk-cli-rest-streaming-client.md`.
 
 ## Blockers
 

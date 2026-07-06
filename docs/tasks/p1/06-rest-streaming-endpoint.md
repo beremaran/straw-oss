@@ -1,6 +1,6 @@
 # 06 - REST Streaming Endpoint
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -31,20 +31,20 @@ Implement `POST /api/v1/requests:stream` using the resolved P1 binary frame form
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Implement the binary frame format from Section 7: 1 byte frame type, 4 byte big-endian payload length, then
+- [x] Read all required planning docs.
+- [x] Implement the binary frame format from Section 7: 1 byte frame type, 4 byte big-endian payload length, then
       payload bytes.
-- [ ] Emit `Content-Type: application/vnd.straw.request-stream.v1+binary`.
-- [ ] Reuse the raw streaming response path where possible.
-- [ ] Emit frame type 1 metadata before any frame type 2 body bytes.
-- [ ] Emit frame type 3 trailers, frame type 4 end, and frame type 5 error according to Section 7.
-- [ ] Handle upstream errors after partial body and client cancellation.
-- [ ] Enforce request-body limit and trailer behavior from the decision; do not apply inline response-body buffering
+- [x] Emit `Content-Type: application/vnd.straw.request-stream.v1+binary`.
+- [x] Reuse the raw streaming response path where possible.
+- [x] Emit frame type 1 metadata before any frame type 2 body bytes.
+- [x] Emit frame type 3 trailers, frame type 4 end, and frame type 5 error according to Section 7.
+- [x] Handle upstream errors after partial body and client cancellation.
+- [x] Enforce request-body limit and trailer behavior from the decision; do not apply inline response-body buffering
       limits to streamed response bytes.
-- [ ] Add tests for metadata ordering, partial upstream error, cancellation, body limits, trailers, and auth/RBAC.
-- [ ] Run focused REST streaming tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Add tests for metadata ordering, partial upstream error, cancellation, body limits, trailers, and auth/RBAC.
+- [x] Run focused REST streaming tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 
