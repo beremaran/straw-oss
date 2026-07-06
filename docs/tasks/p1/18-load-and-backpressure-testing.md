@@ -1,6 +1,6 @@
 # 18 - Load and Backpressure Testing
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -15,7 +15,7 @@ under load (the flag `docs/agents/handoffs/25-p0-test-matrix-and-compose.md` lef
 - `docs/planning/30-testing-matrix.md`
 - `docs/planning/20-rate-limits-and-quotas.md`
 - `docs/planning/12-nats-protocol.md`
-- `docs/planning/22-canonical-clickhouse-schema.md` (request_metadata table asserted under load)
+- `docs/planning/22-canonical-clickhouse-schema.md` (canonical `request_events` request-metadata table asserted under load)
 
 ## Prerequisites
 
@@ -34,18 +34,18 @@ under load (the flag `docs/agents/handoffs/25-p0-test-matrix-and-compose.md` lef
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Define the local load harness inputs, limits, and reproducible run command.
-- [ ] Validate Control routing/coordination p50 and p99 SLOs excluding outbound latency.
-- [ ] Validate active request limits and worker capacity behavior.
-- [ ] Validate upload/download credit backpressure and memory guardrails.
-- [ ] Validate Redis failure policies for rate limits and quotas under load.
-- [ ] Assert request-metadata rows land in a live ClickHouse table during a load run (row count matches completed
+- [x] Read all required planning docs.
+- [x] Define the local load harness inputs, limits, and reproducible run command.
+- [x] Validate Control routing/coordination p50 and p99 SLOs excluding outbound latency.
+- [x] Validate active request limits and worker capacity behavior.
+- [x] Validate upload/download credit backpressure and memory guardrails.
+- [x] Validate Redis failure policies for rate limits and quotas under load.
+- [x] Assert request-metadata rows land in a live ClickHouse table during a load run (row count matches completed
       requests within the async-writer flush window), in the opt-in local mode.
-- [ ] Add CI-safe smoke mode and optional heavier local mode.
-- [ ] Run focused load smoke tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Add CI-safe smoke mode and optional heavier local mode.
+- [x] Run focused load smoke tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

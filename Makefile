@@ -1,4 +1,4 @@
-.PHONY: check commit fmt-check test postgres-migrations-check lint
+.PHONY: check commit fmt-check test postgres-migrations-check lint load-smoke
 
 test:
 	go test ./...
@@ -9,6 +9,12 @@ fmt-check:
 
 lint:
 	golangci-lint run --max-issues-per-linter 0 --max-same-issues 0
+
+load-smoke:
+	go test ./internal/loadtest
+	go test ./internal/control -run 'TestDispatcher(ControlNATSEgressRoundTrip|EgressPhaseTiming|RateLimitRetryAfter)|TestRateLimiter(MemoryGuardrailFallback|RedisFailurePolicy)|TestQuotaAdmissionRedisFailurePolicy'
+	go test ./internal/egress -run 'Test(EvaluateAssignmentPrecedence|WorkerRejectsAssignmentAtCapacity|WorkerCreditExhaustionAbortsWithoutPublishing|WorkerDownloadCreditGatesResponseData)'
+	go test ./internal/natsx -run 'TestStreamValidator'
 
 check: fmt-check test lint
 
