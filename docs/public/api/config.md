@@ -111,8 +111,8 @@ DELETE requests on routing rules, pools, deny rules, and injection policies perf
     "scope_type": "tenant",
     "tenant_id": "22222222-2222-4222-8222-222222222222",
     "role": "requester",
-    "prefix": "sk_live_1sAZ",
-    "secret": "sk_live_REDACTED-MyXWZK6vpME",
+    "prefix": "sk_example_req",
+    "secret": "sk_example_requester_secret_returned_once",
     "created_at": "2026-07-05T14:11:23Z",
     "config_version": 1
   }
@@ -147,6 +147,11 @@ Used to register and authorize Egress worker instances.
   ```
 - **Response Body**: Returns the created credential object with status `"active"` (`200 OK`).
 
+### List Worker Credentials
+- **Endpoint**: `GET /api/v1/config/worker-credentials`
+- **Role**: `tenant_admin`
+- **Response Body**: Returns worker credentials scoped to the caller's tenant. The response includes `id`, `tenant_scope`, `executor_type`, `allowed_pools`, `public_key_ed25519_base64`, `status`, and `config_version`.
+
 ### Revoke Worker Credential
 - **Endpoint**: `POST /api/v1/config/worker-credentials/{id}/revoke`
 - **Role**: `tenant_admin`
@@ -175,6 +180,17 @@ Groups of Egress workers mapped to specific routing rules.
   }
   ```
 - **Response Body**: Returns created pool object (`200 OK`).
+
+### List Executor Pools
+- **Endpoint**: `GET /api/v1/config/executor-pools`
+- **Role**: `tenant_admin`, `operator`, or `viewer`
+- **Response Body**: Returns the caller tenant's live executor pools.
+
+### Update Executor Pool
+- **Endpoint**: `PUT /api/v1/config/executor-pools/{id}`
+- **Role**: `tenant_admin`
+- **Request Body**: Same fields as create. The path supplies `id`; include `expected_config_version` for collision protection.
+- **Response Body**: Returns updated pool object (`200 OK`).
 
 ### Delete Executor Pool
 - **Endpoint**: `DELETE /api/v1/config/executor-pools/{id}`
@@ -211,6 +227,22 @@ Decides how outgoing client requests match against target Egress worker pools.
   ```
 - **Response Body**: Returns created routing rule (`200 OK`).
 
+### List Routing Rules
+- **Endpoint**: `GET /api/v1/config/routing-rules`
+- **Role**: `tenant_admin`, `operator`, or `viewer`
+- **Response Body**: Returns the caller tenant's live routing rules.
+
+### Update Routing Rule
+- **Endpoint**: `PUT /api/v1/config/routing-rules/{id}`
+- **Role**: `tenant_admin` or `operator`
+- **Request Body**: Same fields as create. The path supplies `id`; `target_pool_id` is required.
+- **Response Body**: Returns updated routing rule (`200 OK`).
+
+### Delete Routing Rule
+- **Endpoint**: `DELETE /api/v1/config/routing-rules/{id}`
+- **Role**: `tenant_admin` or `operator`
+- **Response Status**: `204 No Content`
+
 ---
 
 ## 6. Deny Rules
@@ -231,6 +263,22 @@ Enforces destination IP/Host block-lists.
   }
   ```
 - **Response Body**: Returns created rule (`200 OK`).
+
+### List Deny Rules
+- **Endpoint**: `GET /api/v1/config/deny-rules`
+- **Role**: `tenant_admin`, `operator`, or `viewer`
+- **Response Body**: Returns the caller tenant's live deny rules.
+
+### Update Deny Rule
+- **Endpoint**: `PUT /api/v1/config/deny-rules/{id}`
+- **Role**: `tenant_admin`
+- **Request Body**: Same fields as create. The path supplies `id`.
+- **Response Body**: Returns updated deny rule (`200 OK`).
+
+### Delete Deny Rule
+- **Endpoint**: `DELETE /api/v1/config/deny-rules/{id}`
+- **Role**: `tenant_admin`
+- **Response Status**: `204 No Content`
 
 ---
 
@@ -255,6 +303,22 @@ Modifies HTTP request headers prior to forwarding them to the destination.
   }
   ```
 - **Response Body**: Returns created policy (`200 OK`).
+
+### List Injection Policies
+- **Endpoint**: `GET /api/v1/config/injection-policies`
+- **Role**: `tenant_admin`, `operator`, or `viewer`
+- **Response Body**: Returns the caller tenant's live injection policies.
+
+### Update Injection Policy
+- **Endpoint**: `PUT /api/v1/config/injection-policies/{id}`
+- **Role**: `tenant_admin` or `operator`
+- **Request Body**: Same fields as create. The path supplies `id`.
+- **Response Body**: Returns updated injection policy (`200 OK`).
+
+### Delete Injection Policy
+- **Endpoint**: `DELETE /api/v1/config/injection-policies/{id}`
+- **Role**: `tenant_admin` or `operator`
+- **Response Status**: `204 No Content`
 
 > [!CAUTION]
 > Operators can only inject non-sensitive headers. Injecting or appending credentials like `Authorization` or `Cookie` strictly requires the `tenant_admin` role. Custom values for headers like `Host`, `Connection`, and `X-Straw-*` are strictly blocked.
@@ -326,7 +390,7 @@ Modifies HTTP request headers prior to forwarding them to the destination.
 
 ## 9. Fingerprint Profiles (Read-Only)
 
-In P0, fingerprint profiles are built-in presets that are seeded in the database.
+Fingerprint profiles are built-in presets seeded in the database. The public API exposes a read-only list; there is no write endpoint.
 
 ### List Profiles
 - **Endpoint**: `GET /api/v1/config/fingerprint-profiles`

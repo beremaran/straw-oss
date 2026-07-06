@@ -24,7 +24,7 @@ To start the stack, define a bootstrap admin API key in the environment and run:
 
 ```bash
 # 1. Define the system administrator key and boot up the cluster
-STRAW_BOOTSTRAP_SYSTEM_ADMIN_KEY=dev-admin-key docker compose up -d --build
+STRAW_BOOTSTRAP_SYSTEM_ADMIN_KEY=sk_example_admin_local docker compose up -d --build
 ```
 
 You can verify that the Control plane is healthy by querying its readiness endpoint:
@@ -40,12 +40,12 @@ Once the stack is up, the Egress worker automatically registers itself with the 
 
 ## Step 2: Mint a Tenant API Key
 
-A default development tenant `22222222-2222-4222-8222-222222222222` is automatically bootstrapped at startup. We will use the system admin key (`dev-admin-key`) to generate a tenant-scoped `requester` API key.
+A default development tenant `22222222-2222-4222-8222-222222222222` is automatically bootstrapped at startup. Use the system admin key you supplied at startup to generate a tenant-scoped `requester` API key.
 
 Execute the following `curl` command:
 
 ```bash
-curl -s -H "Authorization: Bearer dev-admin-key" \
+curl -s -H "Authorization: Bearer sk_example_admin_local" \
   -H 'Content-Type: application/json' \
   -d '{"role":"requester"}' \
   http://localhost:8080/api/v1/config/tenants/22222222-2222-4222-8222-222222222222/api-keys
@@ -59,8 +59,8 @@ You will receive a response containing the new API key secret:
   "scope_type": "tenant",
   "tenant_id": "22222222-2222-4222-8222-222222222222",
   "role": "requester",
-  "prefix": "sk_live_1sAZ",
-  "secret": "sk_live_REDACTED-MyXWZK6vpME",
+  "prefix": "sk_example_req",
+  "secret": "sk_example_requester_secret_returned_once",
   "created_at": "2026-07-05T14:11:23Z",
   "config_version": 7
 }
@@ -78,7 +78,7 @@ Now that you have a tenant-scoped API key, you can send an HTTP request to the f
 Send a `GET` request to `https://example.com/`:
 
 ```bash
-curl -s -H "Authorization: Bearer sk_live_REDACTED-MyXWZK6vpME" \
+curl -s -H "Authorization: Bearer sk_example_requester_secret_returned_once" \
   -H 'Content-Type: application/json' \
   -d '{"method":"GET","url":"https://example.com/","timeout_ms":15000}' \
   http://localhost:8080/api/v1/requests
