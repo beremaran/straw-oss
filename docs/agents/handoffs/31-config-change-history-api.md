@@ -57,7 +57,8 @@ the handler-level in-memory tests.
 
 - The ClickHouse `config_audit_events` mirror is explicitly out of scope here and owned by
   `docs/tasks/p0/32-request-outcome-and-worker-audit-telemetry.md` (per this task's own Out of Scope section).
-- Config rollback (P1) and any mutation on this endpoint remain unbuilt by design.
+- Config rollback (P1) and any mutation on this endpoint remain unbuilt by design (owned by
+  `docs/tasks/p1/07-config-rollback-api.md`).
 
 ## Blockers
 

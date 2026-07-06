@@ -14,7 +14,8 @@ Task: `docs/tasks/p0/35-worker-registration-replay-and-identity-key.md`
   `docs/planning/24-static-configuration.md`: recorded the field additions and the new
   `control.worker.registration_*` config keys; noted (pre-existing, not caused by this task) that
   `egress.worker_id`/`egress.credential_id`/the new `egress.private_key_ed25519_env` are flat keys, not nested under
-  `egress.credential` as the doc's canonical table shows — unowned reconciliation.
+  `egress.credential` as the doc's canonical table shows — reconciliation now owned by
+  `docs/tasks/p1/22-egress-credential-config-schema-reconciliation.md` (2026-07-06 update).
 - `internal/egress/registration.go`: `BuildRegisterRequest` now returns `(*RegisterRequest, error)`, populating a
   16-byte `crypto/rand` nonce and `time.Now().UnixMilli()` issued-at. Updated the one caller
   (`internal/egress/runtime.go`) and its test.
@@ -88,6 +89,8 @@ credential_id. Compose was torn down afterward (`docker compose down`, no `-v`).
   returns 404 instead of 500 for missing/already-revoked credentials. Same latent bug fixed in the sibling
   `postgresAPIKeyStore.Revoke` (`internal/control/postgres_apikey_store.go:141-143`, maps to `ErrAPIKeyNotFound`).
   Proven by `TestPostgresWorkerCredentialStoreRevokeMissingNotFound` in `internal/control/postgres_store_test.go`.
+- 2026-07-06: the remaining gap (`egress.credential.*` nested-vs-flat doc mismatch) is no longer unowned — it is
+  owned by `docs/tasks/p1/22-egress-credential-config-schema-reconciliation.md` on the P1 board.
 
 ## Blockers
 

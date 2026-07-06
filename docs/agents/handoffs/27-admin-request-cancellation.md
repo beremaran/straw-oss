@@ -67,6 +67,8 @@ Result: all new tests pass; `make check` (gofmt + `go test ./...` + `golangci-li
   "Out of Scope" section, consistent with the task 13 worker-runtime-state deferral) — it does not survive a
   Control restart and is not shared across Control instances. Multi-Control coordination and durable cancellation
   state are out of scope for P0 and have no owning P0 task; if needed later they'd be a new P1/P2 task.
+  2026-07-06 update: this gap is now owned by `docs/tasks/p1/23-multi-control-durable-cancellation-state.md`
+  on the P1 board (registered 2026-07-05, gated on a committed multi-Control-replica decision).
 
 ## Blockers
 
