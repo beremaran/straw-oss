@@ -1,0 +1,20 @@
+{
+  "config_version": "v1",
+  "egress": {
+    "worker_id": "egress-prod-1",
+    "credential_id": "replace-with-worker-credential-id",
+    "private_key_ed25519_env": "STRAW_WORKER_PRIVATE_KEY_ED25519_BASE64",
+    "heartbeat_interval_ms": 5000,
+    "health_port": 8090,
+    "allowed_pools": [
+      {
+        "tenant_id": "replace-with-tenant-id",
+        "pool_id": "default"
+      }
+    ],
+    "nats": {
+      "servers": ["nats://nats:4222"],
+      "max_payload_bytes": 2000000
+    }
+  }
+}

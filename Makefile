@@ -1,4 +1,4 @@
-.PHONY: check commit fmt-check test postgres-migrations-check lint load-smoke
+.PHONY: check commit fmt-check test postgres-migrations-check lint load-smoke production-deploy-check
 
 test:
 	go test ./...
@@ -15,6 +15,9 @@ load-smoke:
 	go test ./internal/control -run 'TestDispatcher(ControlNATSEgressRoundTrip|EgressPhaseTiming|RateLimitRetryAfter)|TestRateLimiter(MemoryGuardrailFallback|RedisFailurePolicy)|TestQuotaAdmissionRedisFailurePolicy'
 	go test ./internal/egress -run 'Test(EvaluateAssignmentPrecedence|WorkerRejectsAssignmentAtCapacity|WorkerCreditExhaustionAbortsWithoutPublishing|WorkerDownloadCreditGatesResponseData)'
 	go test ./internal/natsx -run 'TestStreamValidator'
+
+production-deploy-check:
+	./deploy/production/check-compose.sh
 
 check: fmt-check test lint
 
