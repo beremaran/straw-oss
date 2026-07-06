@@ -130,6 +130,90 @@ func TestRoutingHardClientHints(t *testing.T) {
 	}
 }
 
+func TestRoutingIngressTypeMatchAndCapability(t *testing.T) {
+	t.Parallel()
+	h := newRouteHarness(t, []RoutingRule{
+		{
+			ID: "r_proxy", TenantID: routingTestTenantA, Priority: 1, Enabled: true, TargetPoolID: routingTestPool1,
+			Match: MatchConditions{IngressType: IngressTypeHTTPProxy},
+		},
+		{
+			ID: "r_rest", TenantID: routingTestTenantA, Priority: 2, Enabled: true, TargetPoolID: routingTestPool2,
+			Match: MatchConditions{IngressType: IngressTypeREST},
+		},
+	}, nil)
+	h.registerReady(t, "proxy-worker", routingTestTenantA, routingTestPool1, func(r *strawpb.RegisterRequest) {
+		r.SupportedIngressModes = []string{IngressTypeHTTPProxy}
+	})
+	h.registerReady(t, "rest-worker", routingTestTenantA, routingTestPool2, func(r *strawpb.RegisterRequest) {
+		r.SupportedIngressModes = []string{IngressTypeREST}
+	})
+
+	out := h.router.Evaluate(RouteRequest{TenantID: routingTestTenantA, IngressType: IngressTypeHTTPProxy})
+	if !out.OK || out.RuleID != "r_proxy" || out.WorkerID != "proxy-worker" {
+		t.Fatalf("Evaluate(http_proxy) = %+v, want proxy-worker", out)
+	}
+
+	out = h.router.Evaluate(RouteRequest{TenantID: routingTestTenantA, IngressType: IngressTypeREST})
+	if !out.OK || out.RuleID != "r_rest" || out.WorkerID != "rest-worker" {
+		t.Fatalf("Evaluate(rest) = %+v, want rest-worker", out)
+	}
+}
+
+func TestRoutingMatchesEveryDocumentedIngressType(t *testing.T) {
+	t.Parallel()
+
+	for _, mode := range []string{IngressTypeREST, IngressTypeHTTPProxy, IngressTypeConnect, IngressTypeMITM} {
+		h := newRouteHarness(t, []RoutingRule{
+			{
+				ID: "r_" + mode, TenantID: routingTestTenantA, Priority: 1, Enabled: true, TargetPoolID: routingTestPool1,
+				Match: MatchConditions{IngressType: mode},
+			},
+		}, nil)
+		h.registerReady(t, "worker-"+mode, routingTestTenantA, routingTestPool1, func(r *strawpb.RegisterRequest) {
+			r.SupportedIngressModes = []string{mode}
+		})
+
+		out := h.router.Evaluate(RouteRequest{TenantID: routingTestTenantA, IngressType: mode})
+		if !out.OK || out.RuleID != "r_"+mode || out.WorkerID != "worker-"+mode {
+			t.Fatalf("Evaluate(%s) = %+v, want matching route and worker", mode, out)
+		}
+	}
+}
+
+func TestRoutingIngressCapabilityDefaultAndUnsupported(t *testing.T) {
+	t.Parallel()
+	h := newRouteHarness(t, []RoutingRule{
+		{ID: "r1", TenantID: routingTestTenantA, Priority: 1, Enabled: true, TargetPoolID: routingTestPool1},
+	}, nil)
+	h.registerReady(t, "old-worker", routingTestTenantA, routingTestPool1)
+	h.registerReady(t, "connect-worker", routingTestTenantA, routingTestPool1, func(r *strawpb.RegisterRequest) {
+		r.SupportedIngressModes = []string{IngressTypeConnect}
+	})
+
+	out := h.router.Evaluate(RouteRequest{TenantID: routingTestTenantA, IngressType: IngressTypeMITM})
+	if !out.OK || out.WorkerID != "old-worker" {
+		t.Fatalf("Evaluate(mitm) = %+v, want old worker with empty ingress capability default", out)
+	}
+
+	out = h.router.Evaluate(RouteRequest{TenantID: routingTestTenantA, IngressType: IngressTypeConnect})
+	if !out.OK {
+		t.Fatalf("Evaluate(connect) = %+v, want routable", out)
+	}
+
+	blocked := newRouteHarness(t, []RoutingRule{
+		{ID: "r1", TenantID: routingTestTenantA, Priority: 1, Enabled: true, TargetPoolID: routingTestPool1},
+	}, nil)
+	blocked.registerReady(t, "rest-worker", routingTestTenantA, routingTestPool1, func(r *strawpb.RegisterRequest) {
+		r.SupportedIngressModes = []string{IngressTypeREST}
+	})
+
+	out = blocked.router.Evaluate(RouteRequest{TenantID: routingTestTenantA, IngressType: IngressTypeConnect})
+	if out.OK || out.ErrorCode != RouteErrUnavailable {
+		t.Fatalf("Evaluate(connect with rest-only worker) = %+v, want route_unavailable", out)
+	}
+}
+
 func TestRoutingDegradedPoolPolicy(t *testing.T) {
 	t.Parallel()
 	h := newRouteHarness(t, []RoutingRule{

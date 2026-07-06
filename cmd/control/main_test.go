@@ -46,3 +46,37 @@ func TestOpenRedisUnreachableStillReturnsClient(t *testing.T) {
 		t.Fatal("client.Ping() error = nil, want error against an unreachable address")
 	}
 }
+
+func TestBuildProxyHandlerOnlyWhenEnabled(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.ControlConfig{
+		Server: config.ControlServerConfig{Host: "127.0.0.1", APIPort: 8080, MetricsPort: 9090},
+	}
+	if got := buildProxyHandler(cfg, nil, nil, nil); got != nil {
+		t.Fatal("buildProxyHandler disabled = non-nil, want nil")
+	}
+
+	cfg.Server.ProxyEnabled = true
+	cfg.Server.ProxyPort = 8081
+	if got := buildProxyHandler(cfg, nil, nil, nil); got == nil {
+		t.Fatal("buildProxyHandler enabled = nil, want handler")
+	}
+}
+
+func TestBuildConnectHandlerOnlyWhenEnabled(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.ControlConfig{
+		Server: config.ControlServerConfig{Host: "127.0.0.1", APIPort: 8080, MetricsPort: 9090},
+	}
+	if got := buildConnectHandler(cfg, nil, nil); got != nil {
+		t.Fatal("buildConnectHandler disabled = non-nil, want nil")
+	}
+
+	cfg.Server.ConnectEnabled = true
+	cfg.Server.ConnectPort = 8082
+	if got := buildConnectHandler(cfg, nil, nil); got == nil {
+		t.Fatal("buildConnectHandler enabled = nil, want handler")
+	}
+}

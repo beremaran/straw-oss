@@ -1,6 +1,6 @@
 # 03 - Raw Streaming Response Path
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -32,17 +32,17 @@ endpoint.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Implement a raw response writer that maps upstream status, headers, body frames, and trailers to a client socket.
-- [ ] Preserve upstream 3xx/4xx/5xx statuses as normal upstream responses.
-- [ ] Apply NATS credit/backpressure so Control does not buffer unbounded response bodies.
-- [ ] Handle upstream errors after partial response according to the task 01 spec.
-- [ ] Handle client cancellation and propagate cancel frames to the request pipeline.
-- [ ] Add tests for status passthrough, large streaming bodies, client cancellation, upstream error after partial body,
+- [x] Read all required planning docs.
+- [x] Implement a raw response writer that maps upstream status, headers, body frames, and trailers to a client socket.
+- [x] Preserve upstream 3xx/4xx/5xx statuses as normal upstream responses.
+- [x] Apply NATS credit/backpressure so Control does not buffer unbounded response bodies.
+- [x] Handle upstream errors after partial response according to the task 01 spec.
+- [x] Handle client cancellation and propagate cancel frames to the request pipeline.
+- [x] Add tests for status passthrough, large streaming bodies, client cancellation, upstream error after partial body,
       and trailer handling.
-- [ ] Run focused raw streaming tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Run focused raw streaming tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

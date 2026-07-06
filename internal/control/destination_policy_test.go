@@ -338,7 +338,7 @@ func TestResolveDestinationPolicy_InjectionDeniedHeaderRejected(t *testing.T) {
 		FingerprintProfiles: fingerprintSnapshot(),
 		InjectionPolicies: []config.InjectionPolicy{
 			{ID: "p1", Enabled: true, Operations: []config.InjectionOperation{
-				{Op: injectionOpSet, HeaderName: "Content-Length", ValueBase64: b64("0")},
+				{Op: injectionOpSet, HeaderName: headerCanonicalContentLength, ValueBase64: b64("0")},
 			}},
 		},
 	}

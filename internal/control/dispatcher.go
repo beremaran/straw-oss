@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"net/http"
 	"strconv"
@@ -34,9 +35,20 @@ const (
 	timeoutTypeIdle               = "idle_timeout"
 )
 
-// RequestDispatcher executes a validated REST request.
+// RequestDispatcher executes a validated decoded HTTP request.
 type RequestDispatcher interface {
 	Dispatch(ctx context.Context, in DispatchInput) (SuccessResponse, *PipelineError)
+}
+
+// RawResponseDispatcher streams a decoded request's upstream response directly
+// to an HTTP client without the REST JSON envelope.
+type RawResponseDispatcher interface {
+	DispatchRaw(ctx context.Context, in DispatchInput, w http.ResponseWriter) (SuccessResponse, *PipelineError, bool)
+}
+
+// TunnelDispatcher carries raw CONNECT tunnel bytes over the request stream.
+type TunnelDispatcher interface {
+	DispatchTunnel(ctx context.Context, in DispatchInput, rw io.ReadWriter) (SuccessResponse, *PipelineError)
 }
 
 // DispatchInput is the authenticated, validated request context.
@@ -159,6 +171,28 @@ func (d *DefaultRequestDispatcher) Dispatch(ctx context.Context, in DispatchInpu
 	return resp, perr
 }
 
+// DispatchRaw runs the same Control pipeline as Dispatch, but writes upstream
+// response headers and DataFrames to w as they arrive. It returns whether any
+// upstream response header has been written, so callers do not try to render a
+// second HTTP error after a partial raw response.
+func (d *DefaultRequestDispatcher) DispatchRaw(ctx context.Context, in DispatchInput, w http.ResponseWriter) (SuccessResponse, *PipelineError, bool) {
+	started := d.opts.Now()
+
+	d.opts.Metrics.IncActiveRequests()
+	defer d.opts.Metrics.DecActiveRequests()
+
+	resp, perr, wroteHeader := d.dispatchRaw(ctx, in, w, started)
+
+	var code ErrorCode
+	if perr != nil {
+		code = perr.Code
+	}
+
+	d.opts.Metrics.ObserveRequest(in.Identity.TenantID, errorCodeLabel(code), d.opts.Now().Sub(started))
+
+	return resp, perr, wroteHeader
+}
+
 func (d *DefaultRequestDispatcher) dispatch(ctx context.Context, in DispatchInput, started time.Time) (SuccessResponse, *PipelineError) {
 	if in.Request == nil || d.opts.ConfigCache == nil || d.opts.Workers == nil {
 		return SuccessResponse{}, d.withTiming(&PipelineError{Code: ControlInternalError}, 0, 0, started)
@@ -219,6 +253,66 @@ func (d *DefaultRequestDispatcher) dispatch(ctx context.Context, in DispatchInpu
 	return successFromDispatch(in.RequestID, result, routingMs, assignmentMs, millisSince(started, d.opts.Now())), nil
 }
 
+func (d *DefaultRequestDispatcher) dispatchRaw(ctx context.Context, in DispatchInput, w http.ResponseWriter, started time.Time) (SuccessResponse, *PipelineError, bool) {
+	if in.Request == nil || d.opts.ConfigCache == nil || d.opts.Workers == nil {
+		return SuccessResponse{}, d.withTiming(&PipelineError{Code: ControlInternalError}, 0, 0, started), false
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	d.opts.InFlight.Register(in.RequestID, in.Identity.TenantID, cancel)
+	defer d.opts.InFlight.Deregister(in.RequestID)
+
+	snapshot, err := d.opts.ConfigCache.Snapshot(ctx, in.Identity.TenantID)
+	if err != nil {
+		return SuccessResponse{}, d.withTiming(&PipelineError{Code: ControlInternalError}, 0, 0, started), false
+	}
+
+	if perr := d.admit(ctx, in, snapshot); perr != nil {
+		return SuccessResponse{}, d.withTiming(perr, 0, 0, started), false
+	}
+
+	routeStart := d.opts.Now()
+	route := d.route(in, snapshot)
+	routeEnd := d.opts.Now()
+	routingMs := millisSince(routeStart, routeEnd)
+	d.opts.Metrics.ObserveRouting(routeEnd.Sub(routeStart))
+
+	if !route.OK {
+		return SuccessResponse{}, d.withTiming(routeError(route.ErrorCode), routingMs, 0, started), false
+	}
+
+	policy, verr := ResolveDestinationPolicy(DestinationPolicyRequest{
+		Snapshot:                    snapshot,
+		TargetURL:                   in.Request.URL,
+		RequestedFingerprintProfile: in.Request.Fingerprint,
+		MaxInjectedHeaderBytes:      d.opts.MaxFrameDataBytes,
+		UpstreamProxyEnabled:        false,
+		UpstreamProxyTrusted:        false,
+	})
+	if verr != nil {
+		return SuccessResponse{}, d.withTiming(validationPipelineError(verr), routingMs, 0, started), false
+	}
+
+	deadline := d.deadline(in.Request)
+
+	result, assignmentMs, perr, wroteHeader := d.executeRawAttempt(ctx, in, route, policy, snapshot.ConfigVersion, deadline, w)
+	if perr != nil {
+		perr = d.withTiming(perr, routingMs, assignmentMs, started)
+		perr.EgressMs = result.egressMs
+
+		return rawSuccessFromDispatch(in.RequestID, result, routingMs, assignmentMs, millisSince(started, d.opts.Now())), perr, wroteHeader
+	}
+
+	if d.opts.QuotaAdmission != nil {
+		_ = d.opts.QuotaAdmission.RecordSuccess(ctx, quotaFromSnapshot(in.Identity.TenantID, snapshot.Quota))
+		_ = d.opts.QuotaAdmission.AddBandwidth(ctx, in.Identity.TenantID, int64(len(in.Request.BodyData))+int64FromUint64(result.size))
+	}
+
+	return rawSuccessFromDispatch(in.RequestID, result, routingMs, assignmentMs, millisSince(started, d.opts.Now())), nil, wroteHeader
+}
+
 // withTiming annotates perr with whatever partial phase timing the
 // dispatcher measured before the failure (docs/tasks/p0/32), so a failed
 // request_events row reports real elapsed time instead of zeros.
@@ -247,6 +341,21 @@ func successFromDispatch(requestID string, result dispatchResult, routingMs, ass
 			TotalMs:      totalMs,
 		},
 		ResponseSizeBytes: uint64(len(result.body)),
+	}
+}
+
+func rawSuccessFromDispatch(requestID string, result dispatchResult, routingMs, assignmentMs, totalMs int64) SuccessResponse {
+	return SuccessResponse{
+		RequestID: requestID,
+		Status:    int(result.status),
+		Headers:   headersFromProto(result.headers),
+		Timing: RequestTiming{
+			RoutingMs:    routingMs,
+			AssignmentMs: assignmentMs,
+			EgressMs:     result.egressMs,
+			TotalMs:      totalMs,
+		},
+		ResponseSizeBytes: result.size,
 	}
 }
 
@@ -293,7 +402,7 @@ func (d *DefaultRequestDispatcher) route(in DispatchInput, snapshot config.Tenan
 		Country:         in.Request.Routing.Country,
 		Region:          in.Request.Routing.Region,
 		IPType:          in.Request.Routing.IPType,
-		IngressType:     requestMetadataIngressType,
+		IngressType:     in.Request.IngressType,
 		TargetHost:      strings.ToLower(in.Request.URL.Hostname()),
 		StickySessionID: in.Request.StickySessionID,
 	})
@@ -386,6 +495,69 @@ func (d *DefaultRequestDispatcher) executeAttemptUnmeasured(ctx context.Context,
 	return result, assignmentMs, perr
 }
 
+func (d *DefaultRequestDispatcher) executeRawAttempt(ctx context.Context, in DispatchInput, route RouteOutcome, policy *DestinationPolicyResult, configVersion uint64, deadline time.Time, w http.ResponseWriter) (dispatchResult, int64, *PipelineError, bool) {
+	result, assignmentMs, perr, wroteHeader := d.executeRawAttemptUnmeasured(ctx, in, route, policy, configVersion, deadline, w)
+	d.opts.Metrics.ObserveAssignment(time.Duration(assignmentMs) * time.Millisecond)
+
+	return result, assignmentMs, perr, wroteHeader
+}
+
+func (d *DefaultRequestDispatcher) executeRawAttemptUnmeasured(ctx context.Context, in DispatchInput, route RouteOutcome, policy *DestinationPolicyResult, configVersion uint64, deadline time.Time, w http.ResponseWriter) (dispatchResult, int64, *PipelineError, bool) {
+	assignmentStarted := d.opts.Now()
+
+	if d.opts.NATS == nil {
+		return dispatchResult{}, 0, &PipelineError{Code: TransportUnavailable}, false
+	}
+
+	c2eSubject, err := natsx.StreamSubject(in.RequestID, route.WorkerID, route.SessionID, natsx.DirectionControlToExecutor)
+	if err != nil {
+		return dispatchResult{}, 0, &PipelineError{Code: ControlInternalError}, false
+	}
+
+	e2cSubject, err := natsx.StreamSubject(in.RequestID, route.WorkerID, route.SessionID, natsx.DirectionExecutorToControl)
+	if err != nil {
+		return dispatchResult{}, 0, &PipelineError{Code: ControlInternalError}, false
+	}
+
+	frames := make(chan *strawpb.StreamFrame, defaultRequestFrameBuffer)
+
+	sub, err := d.opts.NATS.Subscribe(e2cSubject, func(msg *nats.Msg) {
+		frames <- decodeDispatchFrame(msg.Data)
+	})
+	if err != nil {
+		return dispatchResult{}, 0, &PipelineError{Code: TransportUnavailable}, false
+	}
+
+	defer func() { _ = sub.Unsubscribe() }()
+
+	err = d.opts.NATS.Flush()
+	if err != nil {
+		return dispatchResult{}, 0, &PipelineError{Code: TransportUnavailable}, false
+	}
+
+	assign := d.assignRequest(in, route, configVersion, deadline)
+
+	ack, perr := d.requestAssign(route.AssignSubject, in, assign, deadline)
+	if perr != nil {
+		return dispatchResult{}, millisSince(assignmentStarted, d.opts.Now()), perr, false
+	}
+
+	if ack.GetCode() != strawpb.AssignAckCode_ASSIGN_ACK_ACCEPTED {
+		return dispatchResult{}, millisSince(assignmentStarted, d.opts.Now()), assignRejectError(ack.GetCode()), false
+	}
+
+	assignmentMs := millisSince(assignmentStarted, d.opts.Now())
+
+	nextSeq, err := d.sendRequestStart(c2eSubject, in, route, policy, configVersion, deadline)
+	if err != nil {
+		return dispatchResult{}, assignmentMs, &PipelineError{Code: TransportUnavailable}, false
+	}
+
+	result, perr, wroteHeader := d.streamRawResponse(ctx, frames, route, deadline, c2eSubject, in, nextSeq, w)
+
+	return result, assignmentMs, perr, wroteHeader
+}
+
 func (d *DefaultRequestDispatcher) requestAssign(subject string, in DispatchInput, assign *strawpb.AssignRequest, deadline time.Time) (*strawpb.AssignAck, *PipelineError) {
 	env := &strawpb.Envelope{
 		RequestId:      in.RequestID,
@@ -442,7 +614,7 @@ func (d *DefaultRequestDispatcher) requestAssign(subject string, in DispatchInpu
 // CancelFrame should use).
 func (d *DefaultRequestDispatcher) sendRequestStart(subject string, in DispatchInput, route RouteOutcome, policy *DestinationPolicyResult, configVersion uint64, deadline time.Time) (uint64, error) {
 	start := &strawpb.RequestStart{
-		Mode:                   strawpb.RequestMode_REQUEST_MODE_DECODED_HTTP,
+		Mode:                   requestMode(in.Request),
 		Method:                 in.Request.Method,
 		Url:                    in.Request.URL.String(),
 		Headers:                headersToProto(in.Request.Headers),
@@ -558,6 +730,126 @@ func (d *DefaultRequestDispatcher) readResponse(ctx context.Context, frames <-ch
 	}
 }
 
+func (d *DefaultRequestDispatcher) streamRawResponse(ctx context.Context, frames <-chan *strawpb.StreamFrame, route RouteOutcome, deadline time.Time, c2eSubject string, in DispatchInput, c2eSeq uint64, w http.ResponseWriter) (dispatchResult, *PipelineError, bool) {
+	validator := natsx.NewStreamValidator(defaultRequestAttempt, d.opts.InitialDownloadCreditBytes, d.opts.FrameIdleTimeout, d.opts.Now)
+	state := rawResponseStreamState{
+		dispatcher: d,
+		route:      route,
+		deadline:   deadline,
+		c2eSubject: c2eSubject,
+		in:         in,
+		c2eSeq:     c2eSeq,
+		w:          w,
+		result:     dispatchResult{status: http.StatusOK},
+	}
+
+	ticker := time.NewTicker(responseFrameCheckInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			d.sendCancel(c2eSubject, in, deadline, state.c2eSeq, "client_cancelled")
+
+			return state.result, &PipelineError{Code: Cancelled}, state.wroteHeader
+		case <-time.After(time.Until(deadline)):
+			d.sendCancel(c2eSubject, in, deadline, state.c2eSeq, "deadline_exceeded")
+
+			return state.result, &PipelineError{Code: TimeoutExceeded, TimeoutType: timeoutTypeTotalDeadline}, state.wroteHeader
+		case <-ticker.C:
+			if validator.IdleExpired() {
+				d.sendCancel(c2eSubject, in, deadline, state.c2eSeq, "idle_timeout")
+
+				return state.result, &PipelineError{Code: TimeoutExceeded, TimeoutType: timeoutTypeIdle}, state.wroteHeader
+			}
+		case frame := <-frames:
+			done, perr := state.acceptValidated(frame, validator)
+			if done || perr != nil {
+				return state.result, perr, state.wroteHeader
+			}
+		}
+	}
+}
+
+type rawResponseStreamState struct {
+	dispatcher  *DefaultRequestDispatcher
+	route       RouteOutcome
+	deadline    time.Time
+	c2eSubject  string
+	in          DispatchInput
+	c2eSeq      uint64
+	w           http.ResponseWriter
+	result      dispatchResult
+	egressStart time.Time
+	wroteHeader bool
+}
+
+func (s *rawResponseStreamState) acceptValidated(frame *strawpb.StreamFrame, validator *natsx.StreamValidator) (bool, *PipelineError) {
+	ok, done, perr := acceptedResponseFrame(validator.Accept(frame))
+	if !ok || done {
+		return true, perr
+	}
+
+	return s.accept(frame, validator)
+}
+
+func (s *rawResponseStreamState) accept(frame *strawpb.StreamFrame, validator *natsx.StreamValidator) (bool, *PipelineError) {
+	switch p := frame.GetPayload().(type) {
+	case *strawpb.StreamFrame_OutboundStart:
+		s.egressStart = s.dispatcher.opts.Now()
+	case *strawpb.StreamFrame_ResponseStart:
+		s.result.status = p.ResponseStart.GetStatus()
+		s.result.headers = p.ResponseStart.GetHeaders()
+		writeRawResponseStart(s.w, s.result.status, s.result.headers)
+
+		s.wroteHeader = true
+	case *strawpb.StreamFrame_Data:
+		return false, s.writeData(p.Data, validator)
+	case *strawpb.StreamFrame_Trailers:
+		if s.wroteHeader {
+			writeRawTrailers(s.w, p.Trailers.GetHeaders())
+		}
+	case *strawpb.StreamFrame_Error:
+		return true, s.dispatcher.executorError(s.route, p.Error)
+	case *strawpb.StreamFrame_Cancelled:
+		return true, &PipelineError{Code: Cancelled}
+	case *strawpb.StreamFrame_End:
+		s.result.egressMs = egressMillis(s.egressStart, s.dispatcher.opts.Now())
+
+		return true, nil
+	default:
+		routeFailure(s.dispatcher.opts.Workers, s.route.WorkerID)
+
+		return true, &PipelineError{Code: ProtocolError}
+	}
+
+	return false, nil
+}
+
+func (s *rawResponseStreamState) writeData(data *strawpb.DataFrame, validator *natsx.StreamValidator) *PipelineError {
+	if !s.wroteHeader {
+		routeFailure(s.dispatcher.opts.Workers, s.route.WorkerID)
+
+		return &PipelineError{Code: ProtocolError}
+	}
+
+	n, err := s.w.Write(data.GetData())
+	if err != nil {
+		s.dispatcher.sendCancel(s.c2eSubject, s.in, s.deadline, s.c2eSeq, "client_disconnect")
+
+		return &PipelineError{Code: Cancelled}
+	}
+
+	written := uint64FromInt(n)
+	s.result.size += written
+
+	flushRawResponse(s.w)
+	s.c2eSeq = s.dispatcher.sendDownloadCredit(s.c2eSubject, s.in, s.deadline, s.c2eSeq, written)
+	validator.GrantCredit(written)
+
+	return nil
+}
+
 // sendCancel publishes a best-effort CancelFrame to the c2e subject.
 // Cancellation is best-effort per docs/planning/09; errors are silently
 // dropped.
@@ -571,6 +863,20 @@ func (d *DefaultRequestDispatcher) sendCancel(c2eSubject string, in DispatchInpu
 		Attempt:   defaultRequestAttempt,
 		Payload:   &strawpb.StreamFrame_Cancel{Cancel: &strawpb.CancelFrame{Reason: reason}},
 	})
+}
+
+func (d *DefaultRequestDispatcher) sendDownloadCredit(c2eSubject string, in DispatchInput, deadline time.Time, seq, bytes uint64) uint64 {
+	if bytes == 0 || d.opts.NATS == nil {
+		return seq
+	}
+
+	_ = d.publishFrame(c2eSubject, in, deadline, &strawpb.StreamFrame{
+		StreamSeq: seq,
+		Attempt:   defaultRequestAttempt,
+		Payload:   &strawpb.StreamFrame_Credit{Credit: &strawpb.CreditFrame{DownloadCreditBytes: bytes}},
+	})
+
+	return seq + 1
 }
 
 func (d *DefaultRequestDispatcher) acceptResponseFrame(validator *natsx.StreamValidator, frame *strawpb.StreamFrame, route RouteOutcome, result *dispatchResult, egressStarted *time.Time) (bool, *PipelineError) {
@@ -669,9 +975,9 @@ func egressMillis(start, end time.Time) int64 {
 
 func (d *DefaultRequestDispatcher) assignRequest(in DispatchInput, route RouteOutcome, configVersion uint64, deadline time.Time) *strawpb.AssignRequest {
 	return &strawpb.AssignRequest{
-		Mode:                       strawpb.RequestMode_REQUEST_MODE_DECODED_HTTP,
+		Mode:                       requestMode(in.Request),
 		DeadlineUnixMs:             deadline.UnixMilli(),
-		ExpectedUploadBytes:        int64(len(in.Request.BodyData)),
+		ExpectedUploadBytes:        expectedUploadBytes(in.Request),
 		SelectedRouteId:            route.RuleID,
 		SelectedPoolId:             route.PoolID,
 		SelectedExecutorId:         route.WorkerID,
@@ -683,6 +989,22 @@ func (d *DefaultRequestDispatcher) assignRequest(in DispatchInput, route RouteOu
 		MaxInflightUploadBytes:     d.opts.MaxInflightUploadBytes,
 		MaxInflightDownloadBytes:   d.opts.MaxInflightDownloadBytes,
 	}
+}
+
+func requestMode(req *ValidatedRequest) strawpb.RequestMode {
+	if req != nil && req.IngressType == IngressTypeConnect {
+		return strawpb.RequestMode_REQUEST_MODE_RAW_TUNNEL
+	}
+
+	return strawpb.RequestMode_REQUEST_MODE_DECODED_HTTP
+}
+
+func expectedUploadBytes(req *ValidatedRequest) int64 {
+	if req != nil && req.IngressType == IngressTypeConnect {
+		return 0
+	}
+
+	return int64(len(req.BodyData))
 }
 
 func (d *DefaultRequestDispatcher) deadline(req *ValidatedRequest) time.Time {
@@ -702,6 +1024,7 @@ type dispatchResult struct {
 	status   uint32
 	headers  []*strawpb.Header
 	body     []byte
+	size     uint64
 	egressMs int64
 }
 
@@ -895,6 +1218,50 @@ func headersFromProto(headers []*strawpb.Header) []HeaderPair {
 	return out
 }
 
+func writeRawResponseStart(w http.ResponseWriter, status uint32, headers []*strawpb.Header) {
+	for _, h := range headers {
+		if !rawResponseHeaderAllowed(h.GetName()) {
+			continue
+		}
+
+		w.Header().Add(h.GetName(), string(h.GetValue()))
+	}
+
+	w.WriteHeader(int(status))
+	flushRawResponse(w)
+}
+
+func writeRawTrailers(w http.ResponseWriter, trailers []*strawpb.Header) {
+	for _, h := range trailers {
+		if !rawResponseHeaderAllowed(h.GetName()) {
+			continue
+		}
+
+		w.Header().Add(http.TrailerPrefix+h.GetName(), string(h.GetValue()))
+	}
+
+	flushRawResponse(w)
+}
+
+func rawResponseHeaderAllowed(name string) bool {
+	if !isValidHTTPToken(name) || strings.HasPrefix(strings.ToLower(name), "x-straw-") {
+		return false
+	}
+
+	switch strings.ToLower(name) {
+	case headerNameTransferEncoding, headerNameContentLength, headerNameConnection, headerNameProxyAuthorization:
+		return false
+	default:
+		return true
+	}
+}
+
+func flushRawResponse(w http.ResponseWriter) {
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
 func decodeDispatchFrame(raw []byte) *strawpb.StreamFrame {
 	env, err := natsx.UnmarshalEnvelope(raw)
 	if err != nil {
@@ -913,4 +1280,25 @@ func routeFailure(candidates CandidateSource, workerID string) {
 
 func millisSince(start, end time.Time) int64 {
 	return end.Sub(start).Milliseconds()
+}
+
+func int64FromUint64(v uint64) int64 {
+	if v > math.MaxInt64 {
+		return math.MaxInt64
+	}
+
+	return int64(v)
+}
+
+func uint64FromInt(v int) uint64 {
+	if v <= 0 {
+		return 0
+	}
+
+	out, err := strconv.ParseUint(strconv.Itoa(v), 10, 64)
+	if err != nil {
+		return 0
+	}
+
+	return out
 }

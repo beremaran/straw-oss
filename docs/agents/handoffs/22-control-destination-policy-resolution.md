@@ -65,9 +65,9 @@ Task: `docs/tasks/p0/22-control-destination-policy-resolution.md`
   time, so I proceeded with the documented safe default: hostnames containing any
   non-ASCII byte are rejected outright (`invalid_request`) rather than partially
   normalized. This is fail-closed and prevents Unicode-homoglyph SSRF bypass, but a
-  tenant cannot reach a legitimate internationalized domain in P0. **No existing task
-  file owns adding IDNA support** — if this is needed, please file a new task; I did not
-  invent one to attach it to.
+  tenant cannot reach a legitimate internationalized domain in P0. **Update
+  2026-07-06:** IDNA support is now owned by
+  `docs/tasks/p1/21-idna-hostname-support.md`.
 - **Known Egress gap (not fixed here — out of this task's file scope,
   `internal/control` only):** `internal/egress/executor.go`'s
   `validateCIDRPolicy`/`deniedByDefault` (task 11) treats `DestinationPolicy.AllowedCidrs`
@@ -120,9 +120,8 @@ Result: all `TestResolveDestinationPolicy_*` tests pass (21 cases); `make check`
   construction is explicitly deferred to
   `docs/tasks/p0/24-control-request-dispatch-pipeline.md` (this task's own Out of Scope
   list).
-- IDNA/punycode hostname support: no owning task exists; needs a new task if required
-  (see "Decisions and flagged gaps" above). **[Update 2026-07-05: now owned by
-  `docs/tasks/p1/21-idna-hostname-support.md`.]**
+- IDNA/punycode hostname support: owned by
+  `docs/tasks/p1/21-idna-hostname-support.md`.
 - Reconciling `internal/egress/executor.go`'s `AllowedCidrs` precedence with this
   resolver's override semantics, and wiring `DeniedHostSuffixes`/`DeniedCnameSuffixes`
   enforcement: owned by `docs/tasks/p0/26-egress-destination-policy-precedence.md`.

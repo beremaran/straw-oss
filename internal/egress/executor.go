@@ -42,6 +42,7 @@ const (
 	opRemove                = "remove"
 	defaultHTTPPort         = "80"
 	defaultHTTPSPort        = "443"
+	responseFrameDataBytes  = 32 << 10
 )
 
 // Resolver is the DNS boundary Egress uses before validating resolved IPs.
@@ -174,18 +175,71 @@ func (e *Executor) Execute(ctx context.Context, start *strawpb.RequestStart, bod
 		return append(emit, frames.error(failure))
 	}
 
-	emit = append(emit, frames.responseStart(status, responseHeaders(resp.Header)))
+	emit = emitOrAppend(emit, frames.responseStart(status, responseHeaders(resp.Header)), send)
 
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return append(emit, frames.error(mapHTTPError(reqCtx, err)))
-	}
-
-	if len(data) > 0 {
-		emit = append(emit, frames.data(0, data))
+	emit, failure = streamResponseBody(reqCtx, resp, frames, emit, send)
+	if failure != nil {
+		return append(emit, frames.error(failure))
 	}
 
 	return append(emit, frames.end())
+}
+
+// openTunnel validates and opens one raw CONNECT upstream connection using
+// the same destination-policy resolver/dialer path as decoded HTTP.
+func (e *Executor) openTunnel(ctx context.Context, start *strawpb.RequestStart) (net.Conn, target, *executionError) {
+	target, failure := parseTarget(start)
+	if failure != nil {
+		return nil, target, failure
+	}
+
+	failure = validateTunnelStart(start)
+	if failure != nil {
+		return nil, target, failure
+	}
+
+	failure = validateHostSuffixPolicy(target.host, start.GetDestinationPolicy())
+	if failure != nil {
+		return nil, target, failure
+	}
+
+	reqCtx, cancel := e.deadlineContext(ctx, start.GetDeadlineUnixMs())
+	defer cancel()
+
+	conn, err := e.dialValidated(reqCtx, "tcp", net.JoinHostPort(target.host, strconv.FormatUint(uint64(target.port), 10)), start.GetDestinationPolicy())
+	if err != nil {
+		return nil, target, mapHTTPError(reqCtx, err)
+	}
+
+	return conn, target, nil
+}
+
+func streamResponseBody(ctx context.Context, resp *http.Response, frames *frameBuilder, emit []*strawpb.StreamFrame, send func(*strawpb.StreamFrame)) ([]*strawpb.StreamFrame, *executionError) {
+	buf := make([]byte, responseFrameDataBytes)
+	offset := uint64(0)
+
+	for {
+		n, err := resp.Body.Read(buf)
+		if n > 0 {
+			chunk := append([]byte(nil), buf[:n]...)
+			emit = emitOrAppend(emit, frames.data(offset, chunk), send)
+			offset += uint64FromInt(n)
+		}
+
+		if errors.Is(err, io.EOF) {
+			break
+		}
+
+		if err != nil {
+			return emit, mapHTTPError(ctx, err)
+		}
+	}
+
+	if len(resp.Trailer) > 0 {
+		emit = emitOrAppend(emit, frames.trailers(responseHeaders(resp.Trailer)), send)
+	}
+
+	return emit, nil
 }
 
 func (e *Executor) httpClient(policy *strawpb.DestinationPolicy) (*http.Transport, *http.Client) {
@@ -342,6 +396,35 @@ func validateStart(start *strawpb.RequestStart) *executionError {
 	}
 
 	if strings.EqualFold(start.GetMethod(), http.MethodConnect) {
+		return executorFailure(strawpb.ErrorCode_ERROR_CODE_EXECUTOR_INTERNAL_ERROR, invalidRequestStartFact)
+	}
+
+	return nil
+}
+
+func validateTunnelStart(start *strawpb.RequestStart) *executionError {
+	err := start.Validate()
+	if err != nil {
+		return executorFailure(strawpb.ErrorCode_ERROR_CODE_EXECUTOR_INTERNAL_ERROR, invalidRequestStartFact)
+	}
+
+	if start.GetMode() != strawpb.RequestMode_REQUEST_MODE_RAW_TUNNEL {
+		return executorFailure(strawpb.ErrorCode_ERROR_CODE_EXECUTOR_INTERNAL_ERROR, invalidRequestStartFact)
+	}
+
+	if !strings.EqualFold(start.GetMethod(), http.MethodConnect) {
+		return executorFailure(strawpb.ErrorCode_ERROR_CODE_EXECUTOR_INTERNAL_ERROR, invalidRequestStartFact)
+	}
+
+	if start.GetRedirectPolicy() != strawpb.RedirectPolicy_REDIRECT_POLICY_NO_FOLLOW {
+		return executorFailure(strawpb.ErrorCode_ERROR_CODE_EXECUTOR_INTERNAL_ERROR, invalidRequestStartFact)
+	}
+
+	if start.GetDestinationPolicy().GetResolutionMode() != strawpb.DestinationResolutionMode_DESTINATION_RESOLUTION_DIRECT_LOCAL {
+		return executorFailure(strawpb.ErrorCode_ERROR_CODE_DESTINATION_DENIED, unsupportedModeFact)
+	}
+
+	if start.GetFingerprintInstruction() != "" || len(start.GetInjectionOperations()) != 0 || len(start.GetHeaders()) != 0 {
 		return executorFailure(strawpb.ErrorCode_ERROR_CODE_EXECUTOR_INTERNAL_ERROR, invalidRequestStartFact)
 	}
 
@@ -765,6 +848,16 @@ func emitOrBatch(frame *strawpb.StreamFrame, send func(*strawpb.StreamFrame)) []
 	return []*strawpb.StreamFrame{frame}
 }
 
+func emitOrAppend(frames []*strawpb.StreamFrame, frame *strawpb.StreamFrame, send func(*strawpb.StreamFrame)) []*strawpb.StreamFrame {
+	if send != nil {
+		send(frame)
+
+		return frames
+	}
+
+	return append(frames, frame)
+}
+
 func responseStatus(status int) (uint32, *executionError) {
 	if status < 0 || status > 999 {
 		return 0, executorFailure(strawpb.ErrorCode_ERROR_CODE_EXECUTOR_INTERNAL_ERROR, executorInternalFact)
@@ -796,6 +889,16 @@ func (b *frameBuilder) data(offset uint64, data []byte) *strawpb.StreamFrame {
 	}
 }
 
+func (b *frameBuilder) trailers(headers []*strawpb.Header) *strawpb.StreamFrame {
+	b.seq++
+
+	return &strawpb.StreamFrame{
+		StreamSeq: b.seq,
+		Attempt:   b.attempt,
+		Payload:   &strawpb.StreamFrame_Trailers{Trailers: &strawpb.TrailersFrame{Headers: headers}},
+	}
+}
+
 func (b *frameBuilder) end() *strawpb.StreamFrame {
 	b.seq++
 
@@ -822,4 +925,17 @@ func (b *frameBuilder) error(failure *executionError) *strawpb.StreamFrame {
 		Attempt:   b.attempt,
 		Payload:   &strawpb.StreamFrame_Error{Error: errFrame},
 	}
+}
+
+func uint64FromInt(v int) uint64 {
+	if v <= 0 {
+		return 0
+	}
+
+	out, err := strconv.ParseUint(strconv.Itoa(v), 10, 64)
+	if err != nil {
+		return 0
+	}
+
+	return out
 }

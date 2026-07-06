@@ -80,10 +80,11 @@ credential_id. Compose was torn down afterward (`docker compose down`, no `-v`).
 
 ## Remaining Work
 
-- None for this task's scope. Two adjacent, unowned gaps noted above for future reconciliation (not blocking, not
-  faked/stubbed by this task): the `egress.credential.*` nested-vs-flat config doc mismatch, and
-  `postgresWorkerCredentialStore.Revoke` not mapping `pgx.ErrNoRows` (pre-existing, unrelated to this task's
-  acceptance criteria).
+- None for this task's scope. Two adjacent gaps were noted above for reconciliation (not blocking, not faked/stubbed
+  by this task): the `egress.credential.*` nested-vs-flat config doc mismatch is now owned by
+  `docs/tasks/p1/22-egress-credential-config-schema-reconciliation.md`, and
+  `postgresWorkerCredentialStore.Revoke` not mapping `pgx.ErrNoRows` was pre-existing and unrelated to this task's
+  acceptance criteria.
 - 2026-07-05: P0-audit gap closed — `postgresWorkerCredentialStore.Revoke` now maps `pgx.ErrNoRows` to
   `ErrWorkerCredentialNotFound` (`internal/control/postgres_worker_credential_store.go:135-137`), so the handler
   returns 404 instead of 500 for missing/already-revoked credentials. Same latent bug fixed in the sibling

@@ -1,6 +1,6 @@
 # 10 - CLI
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -29,16 +29,16 @@ Add a minimal CLI over the Go SDK and P0/P1 config/admin endpoints.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Specify the CLI command set before implementation.
-- [ ] Implement request submission through the Go SDK.
-- [ ] Implement read/write config commands for available config endpoints.
-- [ ] Implement worker/admin read and action commands where P0/P1 APIs exist.
-- [ ] Render canonical errors without leaking secrets.
-- [ ] Add tests for command parsing, API-key loading, request command, config commands, and error output.
-- [ ] Run focused CLI tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Read all required planning docs.
+- [x] Specify the CLI command set before implementation.
+- [x] Implement request submission through the Go SDK.
+- [x] Implement read/write config commands for available config endpoints.
+- [x] Implement worker/admin read and action commands where P0/P1 APIs exist.
+- [x] Render canonical errors without leaking secrets.
+- [x] Add tests for command parsing, API-key loading, request command, config commands, and error output.
+- [x] Run focused CLI tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

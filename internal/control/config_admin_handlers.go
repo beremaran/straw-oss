@@ -50,11 +50,11 @@ const (
 )
 
 var alwaysDeniedInjectionHeaders = map[string]bool{
-	denyRuleTypeHost:      true,
-	"content-length":      true,
-	"transfer-encoding":   true,
-	"connection":          true,
-	"proxy-authorization": true,
+	denyRuleTypeHost:             true,
+	headerNameContentLength:      true,
+	headerNameTransferEncoding:   true,
+	headerNameConnection:         true,
+	headerNameProxyAuthorization: true,
 }
 
 var sensitiveInjectionHeaders = map[string]bool{
@@ -248,6 +248,14 @@ func (h *AdminHandlers) upsertRoutingRule(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	if req.MatchConditions.IngressType != "" && !validIngressTypes[req.MatchConditions.IngressType] {
+		WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", map[string]string{
+			errorDetailReasonKey: "invalid match_conditions.ingress_type",
+		}))
+
+		return
+	}
+
 	var oldRule *config.RoutingRule
 
 	existing, err := h.RoutingRules.GetRoutingRule(r.Context(), identity.TenantID, req.ID)
@@ -380,6 +388,25 @@ var validIPTypes = map[string]bool{
 	ipTypeMobile:      true,
 	ipTypeISP:         true,
 	ipTypeUnknown:     true,
+}
+
+var validIngressTypes = map[string]bool{
+	IngressTypeREST:      true,
+	IngressTypeHTTPProxy: true,
+	IngressTypeConnect:   true,
+	IngressTypeMITM:      true,
+}
+
+func invalidIngressModes(modes []string) []string {
+	var bad []string
+
+	for _, mode := range modes {
+		if !validIngressTypes[mode] {
+			bad = append(bad, mode)
+		}
+	}
+
+	return bad
 }
 
 func invalidIPTypes(ipTypes []string) []string {
@@ -1165,6 +1192,64 @@ func (h *AdminHandlers) ListChanges(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, out)
+}
+
+// RollbackConfig handles POST /api/v1/config/rollback.
+func (h *AdminHandlers) RollbackConfig(w http.ResponseWriter, r *http.Request) {
+	identity, ok := h.authorizeConfig(w, r, RoleTenantAdmin)
+	if !ok {
+		return
+	}
+
+	if h.ConfigWrites == nil {
+		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
+
+		return
+	}
+
+	var req ConfigRollbackRequest
+
+	err := decodeJSONBody(r, &req)
+	if err != nil || req.Reason == "" {
+		WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", nil))
+
+		return
+	}
+
+	tenantVersion, err := h.ConfigWrites.RollbackConfig(r.Context(), identity.TenantID, req, configActor(identity))
+	if err != nil {
+		h.writeRollbackError(r, w, identity, err)
+
+		return
+	}
+
+	h.ConfigCache.PublishInvalidation(r.Context(), identity.TenantID, tenantVersion)
+	recordAudit(r.Context(), h.Audit, identity, resourceTypeConfigRollback, strconv.FormatUint(req.TargetConfigVersion, 10), configActionRollback, tenantVersion, "", nil, req, h.ConfigWrites != nil)
+
+	writeJSON(w, http.StatusOK, map[string]uint64{"config_version": tenantVersion})
+}
+
+func (h *AdminHandlers) writeRollbackError(r *http.Request, w http.ResponseWriter, identity Identity, err error) {
+	switch {
+	case errors.Is(err, ErrVersionConflict):
+		WriteError(w, http.StatusConflict, ErrorResponseFromCode(Conflict, "", conflictDetails(r.Context(), h.currentTenantConfigVersion(identity.TenantID))))
+	case errors.Is(err, ErrConfigRollbackTargetNotFound):
+		WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", map[string]string{errorDetailReasonKey: "target_config_version must be lower than current config version"}))
+	case errors.Is(err, ErrConfigRollbackSecretRedacted):
+		WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", map[string]string{errorDetailReasonKey: "target rollback crosses redacted secret config; reapply secret fields through normal endpoints"}))
+	default:
+		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
+	}
+}
+
+func (h *AdminHandlers) currentTenantConfigVersion(tenantID string) func(context.Context) (uint64, error) {
+	return func(ctx context.Context) (uint64, error) {
+		if h.ConfigCache == nil || h.ConfigCache.store == nil {
+			return 0, ErrVersionConflict
+		}
+
+		return h.ConfigCache.store.CurrentTenantConfigVersion(ctx, tenantID)
+	}
 }
 
 // ---- shared helpers ----

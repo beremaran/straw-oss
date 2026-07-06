@@ -27,6 +27,8 @@ var (
 	errInvalidConfigVersion     = errors.New("invalid config_version")
 	errInvalidServerAPIPort     = errors.New("server.api_port must be between 1 and 65535")
 	errInvalidServerMetricsPort = errors.New("server.metrics_port must be between 1 and 65535")
+	errInvalidServerProxyPort   = errors.New("server.proxy_port must be 8081 when proxy_enabled is true")
+	errInvalidServerConnectPort = errors.New("server.connect_port must be 8082 when connect_enabled is true")
 	errInvalidEgressHealthPort  = errors.New("health_port must be between 1 and 65535")
 	errEgressPoolRefIncomplete  = errors.New("allowed_pools entries require both tenant_id and pool_id")
 )
@@ -68,9 +70,13 @@ type ControlWorkerConfig struct {
 
 // ControlServerConfig configures the control HTTP server.
 type ControlServerConfig struct {
-	Host        string `json:"host"`
-	APIPort     int    `json:"api_port"`
-	MetricsPort int    `json:"metrics_port"`
+	Host           string `json:"host"`
+	APIPort        int    `json:"api_port"`
+	MetricsPort    int    `json:"metrics_port"`
+	ProxyEnabled   bool   `json:"proxy_enabled,omitempty"`
+	ProxyPort      int    `json:"proxy_port,omitempty"`
+	ConnectEnabled bool   `json:"connect_enabled,omitempty"`
+	ConnectPort    int    `json:"connect_port,omitempty"`
 }
 
 // ControlRequestConfig configures request body and timeout limits.
@@ -271,6 +277,8 @@ func (f File) validateVersion() error {
 }
 
 func (c *ControlConfig) validate() error {
+	c.Server.applyDefaults()
+
 	err := c.Server.validate()
 	if err != nil {
 		return err
@@ -301,6 +309,16 @@ func (c *ControlConfig) applyDefaults() {
 	c.Worker.applyDefaults()
 	c.NATS.applyDefaults()
 	c.Database.applyDefaults()
+}
+
+func (s *ControlServerConfig) applyDefaults() {
+	if s.ProxyEnabled && s.ProxyPort == 0 {
+		s.ProxyPort = 8081
+	}
+
+	if s.ConnectEnabled && s.ConnectPort == 0 {
+		s.ConnectPort = 8082
+	}
 }
 
 func (w *ControlWorkerConfig) applyDefaults() {
@@ -410,6 +428,14 @@ func (s ControlServerConfig) validate() error {
 
 	if s.MetricsPort < 1 || s.MetricsPort > 65535 {
 		return fmt.Errorf("%w: %d", errInvalidServerMetricsPort, s.MetricsPort)
+	}
+
+	if s.ProxyEnabled && s.ProxyPort != 8081 {
+		return fmt.Errorf("%w: %d", errInvalidServerProxyPort, s.ProxyPort)
+	}
+
+	if s.ConnectEnabled && s.ConnectPort != 8082 {
+		return fmt.Errorf("%w: %d", errInvalidServerConnectPort, s.ConnectPort)
 	}
 
 	return nil
