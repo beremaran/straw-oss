@@ -608,6 +608,66 @@ func TestConfigWritesPublishInvalidation(t *testing.T) {
 	}
 }
 
+func TestRollbackConfigUsesTransactionalWriter(t *testing.T) {
+	t.Parallel()
+
+	ta := newTestAdmin(t)
+	writes := &recordingConfigWrites{}
+	ta.h.ConfigWrites = writes
+	published := &recordingInvalidationPublisher{}
+	ta.h.ConfigCache = NewConfigCache(NewInMemorySnapshotStore(), published)
+
+	tenantAdmin := ta.seedTenantKey(t, "key_rollback_admin", adminTestTenantA, RoleTenantAdmin)
+	viewer := ta.seedTenantKey(t, "key_rollback_viewer", adminTestTenantA, RoleViewer)
+
+	w := httptest.NewRecorder()
+	ta.h.RollbackConfig(w, newAdminRequest(http.MethodPost, "/api/v1/config/rollback", viewer,
+		`{"expected_config_version":4,"target_config_version":2,"reason":"restore"}`))
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("viewer rollback status = %d, want 403", w.Code)
+	}
+
+	w = httptest.NewRecorder()
+	ta.h.RollbackConfig(w, newAdminRequest(http.MethodPost, "/api/v1/config/rollback", tenantAdmin,
+		`{"expected_config_version":4,"target_config_version":2,"reason":"restore"}`))
+	if w.Code != http.StatusOK {
+		t.Fatalf("rollback status = %d, want 200, body=%s", w.Code, w.Body.String())
+	}
+	if !writes.rollbackCalled || writes.rollbackTenant != adminTestTenantA {
+		t.Fatalf("rollback write = called:%v tenant:%q", writes.rollbackCalled, writes.rollbackTenant)
+	}
+	if writes.rollbackRequest.TargetConfigVersion != 2 || writes.rollbackActor.ActorID != "key_rollback_admin" {
+		t.Fatalf("rollback request=%+v actor=%+v", writes.rollbackRequest, writes.rollbackActor)
+	}
+	if !published.called || published.tenantID != adminTestTenantA || published.version != 5 {
+		t.Fatalf("published = %+v, want tenant %s version 5", published, adminTestTenantA)
+	}
+}
+
+func TestRollbackConfigVersionConflict(t *testing.T) {
+	t.Parallel()
+
+	ta := newTestAdmin(t)
+	ta.h.ConfigWrites = &recordingConfigWrites{rollbackErr: ErrVersionConflict}
+	tenantAdmin := ta.seedTenantKey(t, "key_rollback_conflict", adminTestTenantA, RoleTenantAdmin)
+
+	w := httptest.NewRecorder()
+	ta.h.RollbackConfig(w, newAdminRequest(http.MethodPost, "/api/v1/config/rollback", tenantAdmin,
+		`{"expected_config_version":4,"target_config_version":2,"reason":"restore"}`))
+	if w.Code != http.StatusConflict {
+		t.Fatalf("rollback conflict status = %d, want 409, body=%s", w.Code, w.Body.String())
+	}
+
+	var resp ErrorResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	if err != nil {
+		t.Fatalf("unmarshal conflict response: %v", err)
+	}
+	if resp.Code != errorCodeConflict {
+		t.Fatalf("rollback conflict code = %q, want %q", resp.Code, errorCodeConflict)
+	}
+}
+
 type recordingInvalidationPublisher struct {
 	called   bool
 	tenantID string

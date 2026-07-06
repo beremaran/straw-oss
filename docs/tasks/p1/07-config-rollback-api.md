@@ -1,6 +1,6 @@
 # 07 - Config Rollback API
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -30,16 +30,16 @@ without restoring redacted secrets.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Implement the rollback request schema with `expected_config_version`, `target_config_version`, and `reason`.
-- [ ] Reconstruct rollback-safe fields from `config_audit_source`.
-- [ ] Reject rollback when secret fields would be required but redacted.
-- [ ] Write rollback as a new config version in one transaction with audit source rows.
-- [ ] Publish config invalidation after commit.
-- [ ] Add tests for successful rollback, conflict, secret-redaction rejection, audit rows, and cache invalidation.
-- [ ] Run focused rollback tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Read all required planning docs.
+- [x] Implement the rollback request schema with `expected_config_version`, `target_config_version`, and `reason`.
+- [x] Reconstruct rollback-safe fields from `config_audit_source`.
+- [x] Reject rollback when secret fields would be required but redacted.
+- [x] Write rollback as a new config version in one transaction with audit source rows.
+- [x] Publish config invalidation after commit.
+- [x] Add tests for successful rollback, conflict, secret-redaction rejection, audit rows, and cache invalidation.
+- [x] Run focused rollback tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

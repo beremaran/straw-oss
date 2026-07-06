@@ -35,6 +35,7 @@ func TestServeAdminRoutesCanonicalConfigPaths(t *testing.T) {
 		{http.MethodPut, "/api/v1/config/tenants/ten_1/quotas"},
 		{http.MethodGet, "/api/v1/config/rate-limits"},
 		{http.MethodPut, "/api/v1/config/rate-limits"},
+		{http.MethodPost, "/api/v1/config/rollback"},
 	}
 	for _, tc := range canonical {
 		req := httptest.NewRequestWithContext(context.Background(), tc.method, tc.path, nil)
@@ -59,6 +60,7 @@ func TestServeAdminRoutesCanonicalConfigPaths(t *testing.T) {
 		{http.MethodPut, "/tenants/ten_1/quotas"},
 		{http.MethodGet, "/rate-limits"},
 		{http.MethodPut, "/rate-limits"},
+		{http.MethodPost, "/rollback"},
 	}
 	for _, tc := range bare {
 		req := httptest.NewRequestWithContext(context.Background(), tc.method, tc.path, nil)

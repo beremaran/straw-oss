@@ -64,6 +64,7 @@ type AdminHandlers struct {
 type ConfigWriteStore interface {
 	PutQuotaConfig(ctx context.Context, quota QuotaConfig, expectedVersion uint64, actor ConfigActor) (QuotaConfig, error)
 	PutRateLimitConfig(ctx context.Context, cfg RateLimitConfig, expectedVersion uint64, ceiling *RateLimitCeiling, actor ConfigActor) (RateLimitConfig, error)
+	RollbackConfig(ctx context.Context, tenantID string, req ConfigRollbackRequest, actor ConfigActor) (uint64, error)
 	SetGlobalWorkerAdminConfig(ctx context.Context, workerID string, disabled bool, reason string, actor ConfigActor) error
 	SetTenantWorkerOverrideConfig(ctx context.Context, tenantID, workerID string, disabled bool, reason string, actor ConfigActor) error
 }
