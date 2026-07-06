@@ -58,10 +58,9 @@ Result:
   this, and the 2026-07-05 live end-to-end verification drove a real request through the compose stack.]** The end-to-end REST -> Control -> NATS -> Egress -> upstream path is proven by the in-process Go test
   `TestDispatcherControlNATSEgressRoundTrip`, which controls both the worker key and the registered credential.
 - ClickHouse binary wiring is complete (`wireClickHouse` constructs `HTTPClickHouseSink` + `RequestMetadataWriter`
-  against the live endpoint). The write path's row-shape/outage/drop behavior is unit-tested; asserting rows land in
-  a live ClickHouse table under load is not automated (belongs with P1 telemetry read/verification work).
-  [Update 2026-07-06 sweep: now owned by `docs/tasks/p1/18-load-and-backpressure-testing.md`, whose objective and
-  acceptance criteria were extended to assert live ClickHouse rows under load.]
+  against the live endpoint). The write path's row-shape/outage/drop behavior is unit-tested.
+  [Update 2026-07-06: resolved by `docs/tasks/p1/18-load-and-backpressure-testing.md`; the `straw-load` local mode
+  asserted 20 completed requests produced 20 canonical `request_events` request-metadata rows in live ClickHouse.]
 - `buf lint` / `buf breaking` are tool-gated (the `buf` CLI is not installed locally); protobuf compile + enum
   behavior are covered by `go test` (`api/proto/straw/v1`).
 - The "Load" matrix row (p50/p99 latency, load benchmarks) has no automated `go test` row in P0 by design; recorded
