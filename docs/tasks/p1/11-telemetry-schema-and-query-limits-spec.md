@@ -1,6 +1,6 @@
 # 11 - Telemetry Schema and Query Limits Spec
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -29,15 +29,15 @@ read APIs.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Specify request metadata list/detail schemas.
-- [ ] Specify worker and audit telemetry schemas.
-- [ ] Define filters, pagination, sorting, and maximum query windows.
-- [ ] Define ClickHouse query limits and timeout behavior.
-- [ ] Define tenant-facing omissions or stable aliases for internal topology fields.
-- [ ] Add P1 telemetry test rows to the testing matrix or to the spec.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Read all required planning docs.
+- [x] Specify request metadata list/detail schemas.
+- [x] Specify worker and audit telemetry schemas.
+- [x] Define filters, pagination, sorting, and maximum query windows.
+- [x] Define ClickHouse query limits and timeout behavior.
+- [x] Define tenant-facing omissions or stable aliases for internal topology fields.
+- [x] Add P1 telemetry test rows to the testing matrix or to the spec.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

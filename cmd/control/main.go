@@ -454,6 +454,7 @@ func wireConfigInvalidation(ctx context.Context, configStore *control.PostgresCo
 // field is nil when no ClickHouse endpoint is configured, in which case
 // Control records no telemetry for that table.
 type clickHouseWriters struct {
+	sink            *control.HTTPClickHouseSink
 	requestMetadata *control.RequestMetadataWriter
 	workerEvents    *control.WorkerEventWriter
 	configAudit     *control.ConfigAuditEventWriter
@@ -461,6 +462,10 @@ type clickHouseWriters struct {
 
 // SetMetrics attaches the shared Prometheus metrics recorder to every writer.
 func (w *clickHouseWriters) SetMetrics(m *control.Metrics) {
+	if w == nil || w.requestMetadata == nil {
+		return
+	}
+
 	w.requestMetadata.SetMetrics(m)
 	w.workerEvents.SetMetrics(m)
 	w.configAudit.SetMetrics(m)
@@ -469,11 +474,19 @@ func (w *clickHouseWriters) SetMetrics(m *control.Metrics) {
 // QueueDepth sums the buffered event count across all three writers for the
 // single straw_clickhouse_write_queue_depth gauge (docs/planning/23).
 func (w *clickHouseWriters) QueueDepth() int {
+	if w == nil || w.requestMetadata == nil {
+		return 0
+	}
+
 	return w.requestMetadata.QueueDepth() + w.workerEvents.QueueDepth() + w.configAudit.QueueDepth()
 }
 
 // Close stops every writer's background flush loop and drains its queue.
 func (w *clickHouseWriters) Close() {
+	if w == nil || w.requestMetadata == nil {
+		return
+	}
+
 	w.requestMetadata.Close()
 	w.workerEvents.Close()
 	w.configAudit.Close()
@@ -504,6 +517,7 @@ func wireClickHouseWriters(cfg config.ClickHouseConfig) *clickHouseWriters {
 	flushInterval := time.Duration(cfg.FlushIntervalMS) * time.Millisecond
 
 	return &clickHouseWriters{
+		sink:            sink,
 		requestMetadata: control.NewRequestMetadataWriter(sink, cfg.MaxQueueEntries, cfg.BatchSize, flushInterval),
 		workerEvents:    control.NewWorkerEventWriter(sink, cfg.MaxQueueEntries, cfg.BatchSize, flushInterval),
 		configAudit:     control.NewConfigAuditEventWriter(sink, cfg.MaxQueueEntries, cfg.BatchSize, flushInterval),
@@ -698,7 +712,21 @@ func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.API
 	mux.Handle("POST /api/v1/requests", requestHandler)
 	serveAdminRoutes(mux, adminHandlers)
 
+	if chWriters.sink != nil {
+		serveTelemetryRoutes(mux, &control.TelemetryHandlers{
+			Authenticator: authenticator,
+			Store:         control.NewHTTPClickHouseTelemetryStore(chWriters.sink),
+		})
+	}
+
 	return mux, buildProxyHandler(controlConfig, authenticator, chWriters.requestMetadata, dispatcher), buildConnectHandler(controlConfig, authenticator, dispatcher)
+}
+
+func serveTelemetryRoutes(mux *http.ServeMux, h *control.TelemetryHandlers) {
+	mux.HandleFunc("GET /api/v1/telemetry/requests", h.Requests)
+	mux.HandleFunc("GET /api/v1/telemetry/requests/{request_id}", h.RequestDetail)
+	mux.HandleFunc("GET /api/v1/telemetry/workers", h.Workers)
+	mux.HandleFunc("GET /api/v1/telemetry/audit", h.Audit)
 }
 
 func buildProxyHandler(controlConfig config.ControlConfig, authenticator *control.Authenticator, metadata control.RequestMetadataRecorder, dispatcher control.RequestDispatcher) http.Handler {
