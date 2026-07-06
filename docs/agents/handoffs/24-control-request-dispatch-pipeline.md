@@ -43,12 +43,11 @@ Result: all tests pass, 0 linter issues.
   **[Update 2026-07-05: owned by `docs/tasks/p1/17-worker-loss-and-nats-outage-hardening.md`,
   which carries the pre-connect fallback decision and the replay-boundary acceptance criteria.]**
 - `docs/tasks/p0/24-control-request-dispatch-pipeline.md`: `CreditFrame` replenishment on the
-  c2e channel is not sent. For P0, the egress executor publishes the full response in one shot
-  (single `DataFrame`), and the initial download credit (8 MiB) exceeds the inline response body
-  limit (1 MiB by default), so credit is never exhausted in practice. Real streaming credit
-  replenishment is a P1 concern.
-  **[Update 2026-07-06: owned by `docs/tasks/p1/24-streaming-credit-replenishment.md`, which covers both the
-  egress chunked credit-bounded send and Control's c2e `CreditFrame` replenishment.]**
+  c2e channel was not sent in the original P0 slice, and the egress executor originally published
+  the full response in one shot.
+  **[Update 2026-07-06: closed by `docs/tasks/p1/24-streaming-credit-replenishment.md`; Egress now gates response
+  `DataFrame`s on download credit and Control replenishes c2e `CreditFrame`s as decoded/raw response bytes are
+  consumed.]**
 
 ## Blockers
 

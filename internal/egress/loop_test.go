@@ -219,6 +219,11 @@ func TestWorkerDownloadCreditGatesResponseData(t *testing.T) {
 		}
 	}
 
+	first := <-ch
+	if got := string(first.GetData().GetData()); got != "a" {
+		t.Fatalf("first data = %q, want a", got)
+	}
+
 	select {
 	case frame := <-ch:
 		t.Fatalf("unexpected response frame before download credit was replenished: %#v", frame)
@@ -235,8 +240,8 @@ func TestWorkerDownloadCreditGatesResponseData(t *testing.T) {
 	if len(frames) != 2 {
 		t.Fatalf("remaining frame count = %d, want data and end: %#v", len(frames), frames)
 	}
-	if got := string(frames[0].GetData().GetData()); got != "ab" {
-		t.Fatalf("data = %q, want ab", got)
+	if got := string(frames[0].GetData().GetData()); got != "b" {
+		t.Fatalf("data = %q, want b", got)
 	}
 	if frames[1].GetEnd() == nil {
 		t.Fatalf("terminal frame = %#v, want EndFrame", frames[1])

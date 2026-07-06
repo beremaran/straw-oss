@@ -293,10 +293,35 @@ func (w *Worker) runRequest(reqCtx context.Context, cancel context.CancelFunc, r
 	downloadCredit := newResponseCreditGate(req.GetInitialDownloadCreditBytes())
 
 	go func() {
+		seq := uint64(0)
+
 		resultCh <- w.executor.Execute(reqCtx, start, body, req.GetAttempt(), func(frame *strawpb.StreamFrame) {
-			if data := frame.GetData(); data != nil && !downloadCredit.take(reqCtx, uint64FromInt(len(data.GetData()))) {
+			if data := frame.GetData(); data != nil {
+				offset := data.GetOffset()
+
+				remaining := data.GetData()
+				for len(remaining) > 0 {
+					n, ok := downloadCredit.takeAvailable(reqCtx, min(len(remaining), responseFrameDataBytes))
+					if !ok {
+						return
+					}
+
+					seq++
+					chunk := remaining[:n]
+					w.publish(e2cSubject, env, []*strawpb.StreamFrame{{
+						StreamSeq: seq,
+						Attempt:   frame.GetAttempt(),
+						Payload:   &strawpb.StreamFrame_Data{Data: &strawpb.DataFrame{Offset: offset, Data: append([]byte(nil), chunk...)}},
+					}})
+					offset += uint64FromInt(len(chunk))
+					remaining = remaining[n:]
+				}
+
 				return
 			}
+
+			seq++
+			frame.StreamSeq = seq
 
 			// Publish OutboundStart before DNS/connect (docs/planning/09
 			// step 19) so Control measures the real egress phase instead of
@@ -677,6 +702,31 @@ func (g *responseCreditGate) take(ctx context.Context, bytes uint64) bool {
 	g.credit -= bytes
 
 	return true
+}
+
+func (g *responseCreditGate) takeAvailable(ctx context.Context, limit int) (int, bool) {
+	if g == nil {
+		return limit, true
+	}
+
+	for g.credit == 0 {
+		select {
+		case <-ctx.Done():
+			return 0, false
+		case grant := <-g.grants:
+			g.credit += grant
+		}
+	}
+
+	if g.credit < uint64FromInt(limit) {
+		g.credit--
+
+		return 1, true
+	}
+
+	g.credit -= uint64FromInt(limit)
+
+	return limit, true
 }
 
 // applyCancellation replaces the terminal frame of a Cancel-aborted execution

@@ -1035,6 +1035,54 @@ func TestDispatcherWorkerLossAfterPartialResponseSynthesizesWorkerDisconnected(t
 	}
 }
 
+func TestDispatcherReplenishesDownloadCreditForDecodedResponse(t *testing.T) {
+	t.Parallel()
+
+	natsServer := testutil.NewFakeNATSServer(t, 2_000_000)
+	controlConn := dispatchConnect(t, natsServer.URL())
+	c2eSub, err := controlConn.SubscribeSync("c2e")
+	if err != nil {
+		t.Fatalf("SubscribeSync c2e: %v", err)
+	}
+	err = controlConn.Flush()
+	if err != nil {
+		t.Fatalf("Flush c2e subscription: %v", err)
+	}
+
+	d := newTestDispatcher(t, []config.RoutingRule{dispatchRule()}, dispatchCandidates{})
+	d.opts.NATS = controlConn
+	d.opts.InitialDownloadCreditBytes = 2
+	d.opts.MaxInflightDownloadBytes = 1
+
+	frames := make(chan *strawpb.StreamFrame, 5)
+	frames <- &strawpb.StreamFrame{StreamSeq: 1, Attempt: defaultRequestAttempt, Payload: &strawpb.StreamFrame_OutboundStart{OutboundStart: &strawpb.OutboundStartFrame{}}}
+	frames <- &strawpb.StreamFrame{StreamSeq: 2, Attempt: defaultRequestAttempt, Payload: &strawpb.StreamFrame_ResponseStart{ResponseStart: &strawpb.ResponseStart{Status: http.StatusOK}}}
+	frames <- &strawpb.StreamFrame{StreamSeq: 3, Attempt: defaultRequestAttempt, Payload: &strawpb.StreamFrame_Data{Data: &strawpb.DataFrame{Offset: 0, Data: []byte("a")}}}
+	frames <- &strawpb.StreamFrame{StreamSeq: 4, Attempt: defaultRequestAttempt, Payload: &strawpb.StreamFrame_Data{Data: &strawpb.DataFrame{Offset: 1, Data: []byte("b")}}}
+	frames <- &strawpb.StreamFrame{StreamSeq: 5, Attempt: defaultRequestAttempt, Payload: &strawpb.StreamFrame_End{End: &strawpb.EndFrame{Success: true}}}
+
+	result, perr := d.readResponse(context.Background(), frames, dispatchRoute(), time.Now().Add(time.Second), "c2e", dispatchInput(validatedDispatchRequest(t, "https://example.com/")), 2)
+	if perr != nil {
+		t.Fatalf("readResponse error = %#v", perr)
+	}
+	if string(result.body) != "ab" {
+		t.Fatalf("body = %q, want ab", result.body)
+	}
+
+	msg, err := c2eSub.NextMsg(time.Second)
+	if err != nil {
+		t.Fatalf("NextMsg credit: %v", err)
+	}
+	env, err := natsx.UnmarshalEnvelope(msg.Data)
+	if err != nil {
+		t.Fatalf("UnmarshalEnvelope credit: %v", err)
+	}
+	credit := env.GetStreamFrame().GetCredit()
+	if credit == nil || credit.GetDownloadCreditBytes() != 1 {
+		t.Fatalf("credit frame = %#v, want 1 download byte", env.GetStreamFrame())
+	}
+}
+
 func TestDispatcherInFlightNATSDisconnectSynthesizesTransportUnavailable(t *testing.T) {
 	t.Parallel()
 

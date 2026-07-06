@@ -734,8 +734,8 @@ func (d *DefaultRequestDispatcher) publishFrame(subject string, in DispatchInput
 	return nil
 }
 
-func (d *DefaultRequestDispatcher) readResponse(ctx context.Context, frames <-chan *strawpb.StreamFrame, route RouteOutcome, deadline time.Time, c2eSubject string, in DispatchInput, cancelSeq uint64) (dispatchResult, *PipelineError) {
-	validator := natsx.NewStreamValidator(defaultRequestAttempt, d.opts.InitialDownloadCreditBytes, d.opts.FrameIdleTimeout, d.opts.Now)
+func (d *DefaultRequestDispatcher) readResponse(ctx context.Context, frames <-chan *strawpb.StreamFrame, route RouteOutcome, deadline time.Time, c2eSubject string, in DispatchInput, c2eSeq uint64) (dispatchResult, *PipelineError) {
+	validator := natsx.NewStreamValidator(defaultRequestAttempt, d.initialDownloadCredit(), d.opts.FrameIdleTimeout, d.opts.Now)
 	result := dispatchResult{status: http.StatusOK}
 	egressStarted := time.Time{}
 
@@ -745,15 +745,15 @@ func (d *DefaultRequestDispatcher) readResponse(ctx context.Context, frames <-ch
 	for {
 		select {
 		case <-ctx.Done():
-			d.sendCancel(c2eSubject, in, deadline, cancelSeq, "client_cancelled")
+			d.sendCancel(c2eSubject, in, deadline, c2eSeq, "client_cancelled")
 
 			return dispatchResult{}, &PipelineError{Code: Cancelled}
 		case <-time.After(time.Until(deadline)):
-			d.sendCancel(c2eSubject, in, deadline, cancelSeq, "deadline_exceeded")
+			d.sendCancel(c2eSubject, in, deadline, c2eSeq, "deadline_exceeded")
 
 			return dispatchResult{}, &PipelineError{Code: TimeoutExceeded, TimeoutType: timeoutTypeTotalDeadline}
 		case <-ticker.C:
-			if perr := d.responseStreamTick(validator, route, c2eSubject, in, deadline, cancelSeq); perr != nil {
+			if perr := d.responseStreamTick(validator, route, c2eSubject, in, deadline, c2eSeq); perr != nil {
 				return dispatchResult{}, perr
 			}
 		case frame, ok := <-frames:
@@ -761,7 +761,7 @@ func (d *DefaultRequestDispatcher) readResponse(ctx context.Context, frames <-ch
 				return dispatchResult{}, d.streamLost(route, WorkerDisconnected)
 			}
 
-			done, perr := d.acceptResponseFrame(validator, frame, route, &result, &egressStarted)
+			done, perr := d.acceptResponseFrame(validator, frame, route, &result, &egressStarted, c2eSubject, in, deadline, &c2eSeq)
 			if perr != nil {
 				return dispatchResult{}, perr
 			}
@@ -774,7 +774,7 @@ func (d *DefaultRequestDispatcher) readResponse(ctx context.Context, frames <-ch
 }
 
 func (d *DefaultRequestDispatcher) streamRawResponse(ctx context.Context, frames <-chan *strawpb.StreamFrame, route RouteOutcome, deadline time.Time, c2eSubject string, in DispatchInput, c2eSeq uint64, w http.ResponseWriter) (dispatchResult, *PipelineError, bool) {
-	validator := natsx.NewStreamValidator(defaultRequestAttempt, d.opts.InitialDownloadCreditBytes, d.opts.FrameIdleTimeout, d.opts.Now)
+	validator := natsx.NewStreamValidator(defaultRequestAttempt, d.initialDownloadCredit(), d.opts.FrameIdleTimeout, d.opts.Now)
 	state := rawResponseStreamState{
 		dispatcher: d,
 		route:      route,
@@ -920,24 +920,29 @@ func (d *DefaultRequestDispatcher) sendDownloadCredit(c2eSubject string, in Disp
 		Attempt:   defaultRequestAttempt,
 		Payload:   &strawpb.StreamFrame_Credit{Credit: &strawpb.CreditFrame{DownloadCreditBytes: bytes}},
 	})
+	_ = d.opts.NATS.Flush()
 
 	return seq + 1
 }
 
-func (d *DefaultRequestDispatcher) acceptResponseFrame(validator *natsx.StreamValidator, frame *strawpb.StreamFrame, route RouteOutcome, result *dispatchResult, egressStarted *time.Time) (bool, *PipelineError) {
+func (d *DefaultRequestDispatcher) initialDownloadCredit() uint64 {
+	return min(d.opts.InitialDownloadCreditBytes, d.opts.MaxInflightDownloadBytes)
+}
+
+func (d *DefaultRequestDispatcher) acceptResponseFrame(validator *natsx.StreamValidator, frame *strawpb.StreamFrame, route RouteOutcome, result *dispatchResult, egressStarted *time.Time, c2eSubject string, in DispatchInput, deadline time.Time, c2eSeq *uint64) (bool, *PipelineError) {
 	ok, done, perr := acceptedResponseFrame(validator.Accept(frame))
 	if !ok || done {
 		return done, perr
 	}
 
-	if handled, perr := d.acceptResponseProgress(frame, result, egressStarted); handled {
+	if handled, perr := d.acceptResponseProgress(frame, result, egressStarted, validator, c2eSubject, in, deadline, c2eSeq); handled {
 		return false, perr
 	}
 
 	return d.acceptResponseTerminal(frame, route, result, egressStarted)
 }
 
-func (d *DefaultRequestDispatcher) acceptResponseProgress(frame *strawpb.StreamFrame, result *dispatchResult, egressStarted *time.Time) (bool, *PipelineError) {
+func (d *DefaultRequestDispatcher) acceptResponseProgress(frame *strawpb.StreamFrame, result *dispatchResult, egressStarted *time.Time, validator *natsx.StreamValidator, c2eSubject string, in DispatchInput, deadline time.Time, c2eSeq *uint64) (bool, *PipelineError) {
 	switch p := frame.GetPayload().(type) {
 	case *strawpb.StreamFrame_OutboundStart:
 		*egressStarted = d.opts.Now()
@@ -945,7 +950,7 @@ func (d *DefaultRequestDispatcher) acceptResponseProgress(frame *strawpb.StreamF
 		result.status = p.ResponseStart.GetStatus()
 		result.headers = p.ResponseStart.GetHeaders()
 	case *strawpb.StreamFrame_Data:
-		_, perr := d.acceptResponseData(p.Data, result)
+		_, perr := d.acceptResponseData(p.Data, result, validator, c2eSubject, in, deadline, c2eSeq)
 
 		return true, perr
 	default:
@@ -986,9 +991,13 @@ func acceptedResponseFrame(outcome natsx.FrameOutcome) (bool, bool, *PipelineErr
 	return true, false, nil
 }
 
-func (d *DefaultRequestDispatcher) acceptResponseData(data *strawpb.DataFrame, result *dispatchResult) (bool, *PipelineError) {
+func (d *DefaultRequestDispatcher) acceptResponseData(data *strawpb.DataFrame, result *dispatchResult, validator *natsx.StreamValidator, c2eSubject string, in DispatchInput, deadline time.Time, c2eSeq *uint64) (bool, *PipelineError) {
 	result.body = append(result.body, data.GetData()...)
 	if len(result.body) <= responseBodyLimit(d.opts.MaxInlineResponseBodyBytes) {
+		bytes := uint64FromInt(len(data.GetData()))
+		*c2eSeq = d.sendDownloadCredit(c2eSubject, in, deadline, *c2eSeq, bytes)
+		validator.GrantCredit(bytes)
+
 		return false, nil
 	}
 

@@ -1,6 +1,6 @@
 # 24 - Streaming Credit Replenishment
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -11,13 +11,11 @@ download credit with `CreditFrame`s on the c2e subject as it consumes buffered b
 
 ## Context (gap being closed)
 
-`docs/agents/handoffs/24-control-request-dispatch-pipeline.md` flagged: "`CreditFrame` replenishment on the c2e
-channel is not sent ... the egress executor publishes the full response in one shot (single `DataFrame`) ... Real
-streaming credit replenishment is a P1 concern" — with no owning task named. Verified in current code
+`docs/agents/handoffs/24-control-request-dispatch-pipeline.md` flagged that the original P0 slice did not send
+c2e `CreditFrame` replenishment and did not credit-govern response streaming. Verified before this task
 (2026-07-06 sweep):
 
-- `internal/egress/loop.go:363-367` — received `CreditFrame`s are deliberately ignored; the comment says P0
-  executes the whole response in one pass rather than chunking by credit.
+- `internal/egress/loop.go:363-367` — received `CreditFrame`s were deliberately ignored in the P0 slice.
 - `internal/control/dispatcher.go` — grants only the initial download credit via `AssignRequest`
   (`InitialDownloadCreditBytes`, line ~681); no replenishment `CreditFrame` is ever published.
 
@@ -54,14 +52,14 @@ the egress-side chunked send or Control's replenishment — this task does, and 
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Implement credit-bounded chunked sending in the egress executor loop (`cmd/egress` binary path).
-- [ ] Implement download-credit replenishment publication in the Control dispatcher (`cmd/control` binary path).
-- [ ] Enforce `DataFrame` sequencing and the terminal-frames-do-not-consume-credit rule on both sides.
-- [ ] Update the stale `loop.go` comment and the handoff-24 flag to point here / reflect the new behavior.
-- [ ] Add the tests listed in Expected Files.
-- [ ] Run focused tests, then `make check`.
-- [ ] Write a handoff note.
+- [x] Read all required planning docs.
+- [x] Implement credit-bounded chunked sending in the egress executor loop (`cmd/egress` binary path).
+- [x] Implement download-credit replenishment publication in the Control dispatcher (`cmd/control` binary path).
+- [x] Enforce `DataFrame` sequencing and the terminal-frames-do-not-consume-credit rule on both sides.
+- [x] Update the stale `loop.go` comment and the handoff-24 flag to point here / reflect the new behavior.
+- [x] Add the tests listed in Expected Files.
+- [x] Run focused tests, then `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 
@@ -73,7 +71,7 @@ the egress-side chunked send or Control's replenishment — this task does, and 
 - A response body larger than initial download credit completes: egress sends multiple `DataFrame`s, blocks at zero
   credit, and resumes only after Control's `CreditFrame` (proven by tests on both sides plus one round-trip test).
 - Control never lets un-replenished buffered bytes exceed `max_inflight_download_bytes` (proven by test).
-- The "one shot" comment at `internal/egress/loop.go:363-367` is gone (grep for "one pass" comes back empty), and
+- The stale single-response-frame comment at `internal/egress/loop.go:363-367` is gone, and
   handoff 24's CreditFrame bullet names this task as owner.
 
 ## Handoff Notes
