@@ -1,6 +1,6 @@
 # 19 - Production Deployment Templates
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -32,17 +32,17 @@ Add production deployment templates and operator docs for the P0/P1 service set.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Choose the production template target explicitly (Kubernetes, Swarm, or Compose) before implementation.
-- [ ] Add service definitions for Control, Egress, NATS, Postgres, Redis, ClickHouse, and observability components.
-- [ ] Add secret, TLS, backup, retention, sizing, and network-isolation configuration hooks.
-- [ ] Map ports 8081 and 8082 only when the corresponding ingress tasks have shipped.
-- [ ] Document operator responsibilities for backups, retention, NATS HA, TLS, secrets, network isolation, and
+- [x] Read all required planning docs.
+- [x] Choose the production template target explicitly (Kubernetes, Swarm, or Compose) before implementation.
+- [x] Add service definitions for Control, Egress, NATS, Postgres, Redis, ClickHouse, and observability components.
+- [x] Add secret, TLS, backup, retention, sizing, and network-isolation configuration hooks.
+- [x] Map ports 8081 and 8082 only when the corresponding ingress tasks have shipped.
+- [x] Document operator responsibilities for backups, retention, NATS HA, TLS, secrets, network isolation, and
       observability.
-- [ ] Add template lint/render checks.
-- [ ] Run focused deployment template checks.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Add template lint/render checks.
+- [x] Run focused deployment template checks.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 
