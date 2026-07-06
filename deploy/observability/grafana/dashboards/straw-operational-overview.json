@@ -347,22 +347,22 @@
       },
       "targets": [
         {
-          "expr": "up{job=\"postgres\"}",
+          "expr": "probe_success{job=\"backend-outage-probes\",backend=\"postgres:5432\"}",
           "legendFormat": "Postgres unavailable: config writes fail; uncached tenants fail",
           "refId": "A"
         },
         {
-          "expr": "up{job=\"redis\"}",
+          "expr": "probe_success{job=\"backend-outage-probes\",backend=\"redis:6379\"}",
           "legendFormat": "Redis unavailable: limits/sticky/worker availability degrade by fail policy",
           "refId": "B"
         },
         {
-          "expr": "up{job=\"nats\"}",
+          "expr": "probe_success{job=\"backend-outage-probes\",backend=\"nats:4222\"}",
           "legendFormat": "NATS unavailable: new dispatch returns transport_unavailable",
           "refId": "C"
         },
         {
-          "expr": "up{job=\"clickhouse\"}",
+          "expr": "probe_success{job=\"backend-outage-probes\",backend=\"clickhouse:8123\"}",
           "legendFormat": "ClickHouse unavailable: request transport continues; telemetry drops oldest",
           "refId": "D"
         },

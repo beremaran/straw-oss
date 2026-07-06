@@ -55,3 +55,50 @@ func TestStrawOperationalDashboardCoversPlanningSignals(t *testing.T) {
 		}
 	}
 }
+
+func TestGrafanaProvisioningMatchesComposeMounts(t *testing.T) {
+	dashboardProvider, err := os.ReadFile("grafana/provisioning/dashboards/straw.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	datasource, err := os.ReadFile("grafana/provisioning/datasources/prometheus.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	compose, err := os.ReadFile("../../docker-compose.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	prometheusConfig, err := os.ReadFile("prometheus.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	blackboxConfig, err := os.ReadFile("blackbox.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, want := range []string{
+		"/etc/grafana/provisioning/dashboards/straw",
+		"Prometheus",
+		"http://prometheus:9090",
+		"profiles: [\"observability\"]",
+		"./deploy/observability/grafana/dashboards:/etc/grafana/provisioning/dashboards/straw:ro",
+		"./deploy/observability/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro",
+		"./deploy/observability/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro",
+		"./deploy/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro",
+		"./deploy/observability/blackbox.yml:/etc/blackbox_exporter/config.yml:ro",
+		"control:9090",
+		"blackbox:9115",
+		"backend-outage-probes",
+		"tcp_connect",
+	} {
+		if !strings.Contains(string(dashboardProvider)+string(datasource)+string(compose)+string(prometheusConfig)+string(blackboxConfig), want) {
+			t.Fatalf("observability deployment config missing %q", want)
+		}
+	}
+}
