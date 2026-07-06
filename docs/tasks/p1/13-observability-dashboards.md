@@ -1,6 +1,6 @@
 # 13 - Observability Dashboards
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -28,16 +28,16 @@ Add operational dashboards for the documented metrics, health, outage, and SLO s
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Inventory the metrics, health checks, and SLOs dashboards must show.
-- [ ] Add Control service, Egress worker, request lifecycle, NATS, Redis, Postgres, and ClickHouse dashboard views.
-- [ ] Add outage panels matching Section 29 failure modes.
-- [ ] Add alerts or documented thresholds for the Section 23 SLOs.
-- [ ] Ensure dashboards do not expose secrets or tenant-private topology.
-- [ ] Add render/lint checks or snapshot tests for dashboard assets.
-- [ ] Run focused dashboard checks.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Read all required planning docs.
+- [x] Inventory the metrics, health checks, and SLOs dashboards must show.
+- [x] Add Control service, Egress worker, request lifecycle, NATS, Redis, Postgres, and ClickHouse dashboard views.
+- [x] Add outage panels matching Section 29 failure modes.
+- [x] Add alerts or documented thresholds for the Section 23 SLOs.
+- [x] Ensure dashboards do not expose secrets or tenant-private topology.
+- [x] Add render/lint checks or snapshot tests for dashboard assets.
+- [x] Run focused dashboard checks.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 
