@@ -53,6 +53,7 @@ type ControlConfig struct {
 	Worker    ControlWorkerConfig    `json:"worker"`
 	NATS      NATSConfig             `json:"nats"`
 	Database  DatabaseConfig         `json:"database"`
+	HTTP2     ControlHTTP2Config     `json:"http2"`
 }
 
 // ControlWorkerConfig configures worker registration replay protection
@@ -173,6 +174,7 @@ type EgressConfig struct {
 	// `egress.capabilities.*`). Claims must be within the worker credential's
 	// allowed_capabilities scope or Control rejects the registration.
 	Capabilities EgressCapabilities `json:"capabilities,omitzero"`
+	HTTP2        EgressHTTP2Config  `json:"http2"`
 }
 
 // EgressCapabilities mirrors the `egress.capabilities.*` static config keys
@@ -196,6 +198,23 @@ type EgressUpstreamConnectionPoolConfig struct {
 	MaxIdleConnsPerTenantHost int  `json:"max_idle_conns_per_tenant_host"`
 	IdleTimeoutMS             int  `json:"idle_timeout_ms"`
 	MaxLifetimeMS             int  `json:"max_lifetime_ms"`
+}
+
+// ControlHTTP2Config configures Control HTTP/2 ALPN.
+type ControlHTTP2Config struct {
+	Enabled bool `json:"enabled"`
+}
+
+// EgressHTTP2Config configures egress HTTP/2 support.
+type EgressHTTP2Config struct {
+	Enabled            bool `json:"enabled"`
+	FallbackCacheTTLMS int  `json:"fallback_cache_ttl_ms"`
+}
+
+func (h *EgressHTTP2Config) applyDefaults() {
+	if h.FallbackCacheTTLMS == 0 {
+		h.FallbackCacheTTLMS = 300_000 // 5 minutes
+	}
 }
 
 // UnmarshalJSON recognizes the retired nested credential object only so
@@ -537,6 +556,7 @@ func (e *EgressConfig) validate() error {
 
 	e.Capabilities.applyDefaults()
 	e.NATS.applyDefaults()
+	e.HTTP2.applyDefaults()
 
 	return nil
 }

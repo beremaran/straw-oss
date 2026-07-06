@@ -3,6 +3,7 @@ package egress
 import (
 	"bytes"
 	"context"
+	"crypto/x509"
 	"errors"
 	"io"
 	"net"
@@ -17,8 +18,12 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/net/http2"
+
 	strawpb "github.com/beremaran/straw/v2/api/proto/straw/v1"
 )
+
+const xProtoHeader = "X-Proto"
 
 const unitTestHost = "unit.test"
 
@@ -350,7 +355,35 @@ func TestExecutorRejectsDeniedCNAMESuffix(t *testing.T) {
 	exec := NewExecutor(ExecutorOptions{
 		Resolver: cnameResolver{
 			staticResolver: staticResolver{"cname.test": netip.MustParseAddr("127.0.0.1")},
-			cname:          "edge.denied-cdn.example.",
+			cnames:         []string{"edge.denied-cdn.example."},
+		},
+		DialContext: func(context.Context, string, string) (net.Conn, error) {
+			t.Fatal("executor dialed a denied-cname-suffix target")
+
+			return nil, errors.New("unexpected dial")
+		},
+	})
+
+	frames := exec.Execute(context.Background(), requestStart("http://cname.test", policy), nil, 1, nil)
+	errFrame := terminalError(t, frames)
+	if errFrame.GetCode() != strawpb.ErrorCode_ERROR_CODE_DESTINATION_DENIED {
+		t.Fatalf("code = %v, want destination_denied", errFrame.GetCode())
+	}
+	if got := errFrame.GetDetails()["fact"]; got != "cname_denied_suffix" {
+		t.Fatalf("fact = %q, want cname_denied_suffix", got)
+	}
+}
+
+func TestExecutorRejectsDeniedCNAMESuffixIntermediate(t *testing.T) {
+	t.Parallel()
+
+	policy := directPolicy(true)
+	policy.DeniedCnameSuffixes = []string{"denied-intermediate.example"}
+
+	exec := NewExecutor(ExecutorOptions{
+		Resolver: cnameResolver{
+			staticResolver: staticResolver{"cname.test": netip.MustParseAddr("127.0.0.1")},
+			cnames:         []string{"hop1.denied-intermediate.example.", "clean-target.example."},
 		},
 		DialContext: func(context.Context, string, string) (net.Conn, error) {
 			t.Fatal("executor dialed a denied-cname-suffix target")
@@ -935,8 +968,8 @@ func (r staticResolver) LookupIPAddr(context.Context, string) ([]net.IPAddr, err
 	return out, nil
 }
 
-func (r staticResolver) LookupCNAME(_ context.Context, host string) (string, error) {
-	return host, nil
+func (r staticResolver) LookupCNAME(_ context.Context, host string) ([]string, error) {
+	return []string{host}, nil
 }
 
 // cnameResolver wraps staticResolver's IP lookups and returns a fixed
@@ -944,11 +977,11 @@ func (r staticResolver) LookupCNAME(_ context.Context, host string) (string, err
 // tests.
 type cnameResolver struct {
 	staticResolver
-	cname string
+	cnames []string
 }
 
-func (r cnameResolver) LookupCNAME(context.Context, string) (string, error) {
-	return r.cname, nil
+func (r cnameResolver) LookupCNAME(context.Context, string) ([]string, error) {
+	return r.cnames, nil
 }
 
 type hostResolver map[string]netip.Addr
@@ -962,8 +995,8 @@ func (r hostResolver) LookupIPAddr(_ context.Context, host string) ([]net.IPAddr
 	return []net.IPAddr{{IP: net.ParseIP(addr.String())}}, nil
 }
 
-func (r hostResolver) LookupCNAME(_ context.Context, host string) (string, error) {
-	return host, nil
+func (r hostResolver) LookupCNAME(_ context.Context, host string) ([]string, error) {
+	return []string{host}, nil
 }
 
 type sequenceResolver struct {
@@ -985,8 +1018,8 @@ func (r *sequenceResolver) LookupIPAddr(_ context.Context, host string) ([]net.I
 	return []net.IPAddr{{IP: net.ParseIP(r.ips[idx].String())}}, nil
 }
 
-func (r *sequenceResolver) LookupCNAME(_ context.Context, host string) (string, error) {
-	return host, nil
+func (r *sequenceResolver) LookupCNAME(_ context.Context, host string) ([]string, error) {
+	return []string{host}, nil
 }
 
 func requestStart(rawURL string, policy *strawpb.DestinationPolicy) *strawpb.RequestStart {
@@ -1077,4 +1110,198 @@ func loopbackIP(t *testing.T, raw string) netip.Addr {
 	}
 
 	return addr
+}
+
+func TestExecutorHTTP2Negotiation(t *testing.T) {
+	t.Parallel()
+
+	ts := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set(xProtoHeader, r.Proto)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("hello"))
+	}))
+	ts.EnableHTTP2 = true
+	ts.StartTLS()
+	t.Cleanup(ts.Close)
+
+	certPool := x509.NewCertPool()
+	certPool.AddCert(ts.Certificate())
+
+	target := rewriteHost(t, ts.URL, "http2.test")
+	exec := NewExecutor(ExecutorOptions{
+		Resolver:           staticResolver{"http2.test": loopbackIP(t, ts.URL)},
+		HTTP2Enabled:       true,
+		RootCAs:            certPool,
+		InsecureSkipVerify: true,
+	})
+
+	frames := exec.Execute(context.Background(), requestStart(target, directPolicy(true)), nil, 1, nil)
+	if len(frames) < 3 {
+		t.Fatalf("len(frames) = %d, want at least 3", len(frames))
+	}
+	respStart := frames[1].GetResponseStart()
+	if respStart == nil {
+		t.Fatalf("expected response start frame, got nil")
+	}
+
+	proto := ""
+	for _, h := range respStart.GetHeaders() {
+		if h.GetName() == xProtoHeader {
+			proto = string(h.GetValue())
+		}
+	}
+	if proto != "HTTP/2.0" {
+		t.Fatalf("expected HTTP/2.0, got %q", proto)
+	}
+}
+
+func TestExecutorHTTP2FallbackToHTTP11(t *testing.T) {
+	t.Parallel()
+
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set(xProtoHeader, r.Proto)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("hello"))
+	}))
+	t.Cleanup(ts.Close)
+
+	certPool := x509.NewCertPool()
+	certPool.AddCert(ts.Certificate())
+
+	target := rewriteHost(t, ts.URL, "fallback.test")
+	exec := NewExecutor(ExecutorOptions{
+		Resolver:           staticResolver{"fallback.test": loopbackIP(t, ts.URL)},
+		HTTP2Enabled:       true,
+		RootCAs:            certPool,
+		InsecureSkipVerify: true,
+	})
+
+	frames := exec.Execute(context.Background(), requestStart(target, directPolicy(true)), nil, 1, nil)
+	if len(frames) < 3 {
+		t.Fatalf("len(frames) = %d, want at least 3", len(frames))
+	}
+	respStart := frames[1].GetResponseStart()
+	if respStart == nil {
+		t.Fatalf("expected response start frame, got nil")
+	}
+
+	proto := ""
+	for _, h := range respStart.GetHeaders() {
+		if h.GetName() == xProtoHeader {
+			proto = string(h.GetValue())
+		}
+	}
+	if proto != "HTTP/1.1" {
+		t.Fatalf("expected HTTP/1.1, got %q", proto)
+	}
+
+	if !exec.isHTTP11Only("fallback.test") {
+		t.Fatalf("expected fallback.test to be cached as HTTP/1.1-only")
+	}
+}
+
+func TestExecutorHTTP2HTTP11RequiredRetry(t *testing.T) {
+	t.Parallel()
+
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set(xProtoHeader, r.Proto)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("retry-ok"))
+	}))
+	t.Cleanup(ts.Close)
+
+	certPool := x509.NewCertPool()
+	certPool.AddCert(ts.Certificate())
+
+	target := rewriteHost(t, ts.URL, "retry.test")
+
+	var attempts atomic.Int32
+	exec := NewExecutor(ExecutorOptions{
+		Resolver:           staticResolver{"retry.test": loopbackIP(t, ts.URL)},
+		HTTP2Enabled:       true,
+		RootCAs:            certPool,
+		InsecureSkipVerify: true,
+		DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+			attempt := attempts.Add(1)
+			if attempt == 1 {
+				return nil, http2.StreamError{
+					StreamID: 1,
+					Code:     http2.ErrCodeHTTP11Required,
+				}
+			}
+
+			return (&net.Dialer{}).DialContext(ctx, network, address)
+		},
+	})
+
+	policy := directPolicy(true)
+	reqStart := requestStart(target, policy)
+	reqStart.Replayable = true
+
+	frames := exec.Execute(context.Background(), reqStart, nil, 1, nil)
+	if len(frames) < 3 {
+		t.Fatalf("len(frames) = %d, want at least 3", len(frames))
+	}
+	respStart := frames[1].GetResponseStart()
+	if respStart == nil {
+		t.Fatalf("expected response start frame, got nil")
+	}
+
+	proto := ""
+	for _, h := range respStart.GetHeaders() {
+		if h.GetName() == xProtoHeader {
+			proto = string(h.GetValue())
+		}
+	}
+	if proto != "HTTP/1.1" {
+		t.Fatalf("expected HTTP/1.1 on second attempt, got %q", proto)
+	}
+
+	if attempts.Load() != 2 {
+		t.Fatalf("expected 2 dial attempts, got %d", attempts.Load())
+	}
+}
+
+func TestExecutorHTTP2HTTP11RequiredNotReplayable(t *testing.T) {
+	t.Parallel()
+
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(ts.Close)
+
+	certPool := x509.NewCertPool()
+	certPool.AddCert(ts.Certificate())
+
+	target := rewriteHost(t, ts.URL, "noreplay.test")
+
+	var attempts atomic.Int32
+	exec := NewExecutor(ExecutorOptions{
+		Resolver:           staticResolver{"noreplay.test": loopbackIP(t, ts.URL)},
+		HTTP2Enabled:       true,
+		RootCAs:            certPool,
+		InsecureSkipVerify: true,
+		DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
+			attempts.Add(1)
+
+			return nil, http2.StreamError{
+				StreamID: 1,
+				Code:     http2.ErrCodeHTTP11Required,
+			}
+		},
+	})
+
+	policy := directPolicy(true)
+	reqStart := requestStart(target, policy)
+	reqStart.Replayable = false
+
+	frames := exec.Execute(context.Background(), reqStart, nil, 1, nil)
+	errFrame := terminalError(t, frames)
+	if errFrame.GetCode() != strawpb.ErrorCode_ERROR_CODE_UPSTREAM_RESET || errFrame.GetDetails()["fact"] != "http_1_1_required" {
+		t.Fatalf("unexpected error frame: %+v", errFrame)
+	}
+
+	if attempts.Load() != 1 {
+		t.Fatalf("expected 1 dial attempt, got %d", attempts.Load())
+	}
 }

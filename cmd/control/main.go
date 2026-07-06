@@ -4,6 +4,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"errors"
 	"flag"
 	"fmt"
@@ -271,6 +272,9 @@ func serveConnectHTTP(ctx context.Context, controlConfig config.ControlConfig, h
 		Handler:           handler,
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
+	if !controlConfig.HTTP2.Enabled {
+		server.TLSNextProto = make(map[string]func(*http.Server, *tls.Conn, http.Handler))
+	}
 
 	go func() {
 		serveErr := server.ListenAndServe()
@@ -316,6 +320,9 @@ func serveProxyHTTP(ctx context.Context, controlConfig config.ControlConfig, han
 
 			return ctx
 		},
+	}
+	if !controlConfig.HTTP2.Enabled {
+		server.TLSNextProto = make(map[string]func(*http.Server, *tls.Conn, http.Handler))
 	}
 
 	go func() {
@@ -927,6 +934,10 @@ func serveControlHTTP(ctx context.Context, controlConfig config.ControlConfig, m
 	slog.Info("listening", "addr", addr)
 
 	server := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: readHeaderTimeout}
+	if !controlConfig.HTTP2.Enabled {
+		server.TLSNextProto = make(map[string]func(*http.Server, *tls.Conn, http.Handler))
+	}
+
 	serveErr := make(chan error, 1)
 
 	go func() {

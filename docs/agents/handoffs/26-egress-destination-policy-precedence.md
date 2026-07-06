@@ -56,12 +56,8 @@ loopback/link-local/multicast deployment-level booleans (deny unless allowed)` -
 
 ## CNAME Chain Depth
 
-Only the final canonical name is inspected, via `net.Resolver.LookupCNAME`, which follows the entire CNAME chain
-internally but only returns the final target — Go's stdlib resolver does not expose intermediate hops through any
-public API. A `denied_cname_suffixes` entry matching an intermediate (non-final) CNAME hop is not detected. If deeper
-chain inspection is needed, it requires a resolver capable of returning the raw CNAME record chain (e.g. a custom
-`miekg/dns`-based resolver), which is a new dependency and out of this task's scope.
-[Update 2026-07-06: now owned by `docs/tasks/p1/25-cname-chain-inspection.md`, created by the handoff sweep.]
+Initially, only the final canonical name was inspected.
+[Update 2026-07-07: resolved by docs/tasks/p1/25-cname-chain-inspection.md. We now recursively query intermediate CNAME hops using standard UDP DNS queries with dnsmessage, verifying every intermediate hop in the chain against denied_cname_suffixes without adding external Go dependencies.]
 
 ## Remaining Work
 

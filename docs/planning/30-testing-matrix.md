@@ -47,3 +47,6 @@ P1 upstream connection pooling is specified in `docs/planning/b-upstream-connect
 ships, tests must prove the disabled default, exact pool-key reuse boundaries, tenant isolation, DNS rebinding/SSRF
 validation before reuse, no second resolution by the HTTP/TLS library, eviction/shutdown behavior, and stale-connection
 fallback.
+
+P2 HTTP/2 semantics are specified in `docs/planning/c-http2-semantics.md`. Before implementation ships, tests must prove the disabled default, multiplexing, stream cancellation mapping, error mapping, flow control backpressure, pseudo-header mapping/rejection, trailers, connection-level error handling, ALPN negotiation, protocol translation, and HTTP/1.1 fallback/downgrade rules.
+

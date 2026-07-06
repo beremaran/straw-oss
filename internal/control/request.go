@@ -118,6 +118,7 @@ type ValidatedRequest struct {
 	TimeoutMs       uint64
 	Replayable      bool
 	StickySessionID string
+	CaptureDecision string
 }
 
 // ValidateRequest parses and validates a RequestEnvelope against config limits.
@@ -129,7 +130,8 @@ func ValidateRequest(raw []byte, maxRequestBodyBytes, maxTimeoutMs uint64) (*Val
 func ValidateRequestWithCapturePolicy(raw []byte, maxRequestBodyBytes, maxTimeoutMs uint64, capturePolicy PayloadCapturePolicy) (*ValidatedRequest, error) {
 	var env RequestEnvelope
 
-	dec := json.NewDecoder(strings.NewReader(string(raw)))
+	dec := json.NewDecoder(bytes.NewReader(raw))
+
 	dec.DisallowUnknownFields()
 
 	err := dec.Decode(&env)
@@ -137,27 +139,7 @@ func ValidateRequestWithCapturePolicy(raw []byte, maxRequestBodyBytes, maxTimeou
 		return nil, fmt.Errorf("invalid request JSON: %w", err)
 	}
 
-	err = validateMethod(env.Method)
-	if err != nil {
-		return nil, err
-	}
-
-	parsedURL, err := validateURL(env.URL)
-	if err != nil {
-		return nil, err
-	}
-
-	headers, err := validateHeaders(env.Headers)
-	if err != nil {
-		return nil, err
-	}
-
-	bodyData, err := validateBody(env.Body, maxRequestBodyBytes)
-	if err != nil {
-		return nil, err
-	}
-
-	timeoutMs, err := validateTimeout(env.TimeoutMs, maxTimeoutMs)
+	parsedURL, headers, bodyData, timeoutMs, err := validateRequestComponents(env, maxRequestBodyBytes, maxTimeoutMs)
 	if err != nil {
 		return nil, err
 	}
@@ -165,6 +147,11 @@ func ValidateRequestWithCapturePolicy(raw []byte, maxRequestBodyBytes, maxTimeou
 	err = validateCaptureHint(env.CaptureHint, capturePolicy)
 	if err != nil {
 		return nil, err
+	}
+
+	decision := env.CaptureHint
+	if decision == "" {
+		decision = string(CaptureDecisionNone)
 	}
 
 	routing := RoutingHints{}
@@ -184,7 +171,37 @@ func ValidateRequestWithCapturePolicy(raw []byte, maxRequestBodyBytes, maxTimeou
 		TimeoutMs:       timeoutMs,
 		Replayable:      env.Replayable,
 		StickySessionID: routing.StickySessionID,
+		CaptureDecision: decision,
 	}, nil
+}
+
+func validateRequestComponents(env RequestEnvelope, maxRequestBodyBytes, maxTimeoutMs uint64) (*url.URL, []HeaderPair, []byte, uint64, error) {
+	err := validateMethod(env.Method)
+	if err != nil {
+		return nil, nil, nil, 0, err
+	}
+
+	parsedURL, err := validateURL(env.URL)
+	if err != nil {
+		return nil, nil, nil, 0, err
+	}
+
+	headers, err := validateHeaders(env.Headers)
+	if err != nil {
+		return nil, nil, nil, 0, err
+	}
+
+	bodyData, err := validateBody(env.Body, maxRequestBodyBytes)
+	if err != nil {
+		return nil, nil, nil, 0, err
+	}
+
+	timeoutMs, err := validateTimeout(env.TimeoutMs, maxTimeoutMs)
+	if err != nil {
+		return nil, nil, nil, 0, err
+	}
+
+	return parsedURL, headers, bodyData, timeoutMs, nil
 }
 
 func validateMethod(method string) error {

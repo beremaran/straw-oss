@@ -1,9 +1,11 @@
 package egress
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +13,7 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"os"
 	"slices"
 	"sort"
 	"strconv"
@@ -19,10 +22,16 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/net/dns/dnsmessage"
+	"golang.org/x/net/http2"
+
 	strawpb "github.com/beremaran/straw/v2/api/proto/straw/v1"
 )
 
 const (
+	schemeHTTPS             = "https"
+	defaultFallbackCacheTTL = 5 * time.Minute
+
 	injectionFactFailed     = "header_injection_failed"
 	invalidRequestStartFact = "invalid_request_start"
 	invalidDestinationFact  = "invalid_destination_policy"
@@ -52,27 +61,32 @@ const (
 type Resolver interface {
 	LookupIPAddr(ctx context.Context, host string) ([]net.IPAddr, error)
 
-	// LookupCNAME returns the canonical name for host, per net.Resolver's
-	// LookupCNAME semantics: it follows the full CNAME chain and returns the
-	// final name (trailing dot included), or host itself if there is no
-	// CNAME. Go's standard resolver does not expose intermediate hops, so
-	// only the final canonical name is available for denied_cname_suffixes
-	// enforcement (single-hop/final-name inspection, not the full chain).
-	LookupCNAME(ctx context.Context, host string) (string, error)
+	// LookupCNAME returns all CNAME hops for host (each lowercase, trailing dot
+	// stripped), or a slice containing only host if there are no CNAMEs.
+	LookupCNAME(ctx context.Context, host string) ([]string, error)
 }
 
 // ExecutorOptions configures the P0 outbound executor.
 type ExecutorOptions struct {
-	Resolver    Resolver
-	DialContext func(context.Context, string, string) (net.Conn, error)
-	Pool        UpstreamConnectionPoolOptions
+	Resolver           Resolver
+	DialContext        func(context.Context, string, string) (net.Conn, error)
+	Pool               UpstreamConnectionPoolOptions
+	HTTP2Enabled       bool
+	FallbackCacheTTL   time.Duration
+	RootCAs            *x509.CertPool
+	InsecureSkipVerify bool
 }
 
 // Executor performs P0 decoded HTTP/HTTPS outbound execution.
 type Executor struct {
-	resolver    Resolver
-	dialContext func(context.Context, string, string) (net.Conn, error)
-	pool        *upstreamConnectionPool
+	resolver           Resolver
+	dialContext        func(context.Context, string, string) (net.Conn, error)
+	pool               *upstreamConnectionPool
+	http2Enabled       bool
+	fallbackCacheTTL   time.Duration
+	http11Cache        sync.Map
+	rootCAs            *x509.CertPool
+	insecureSkipVerify bool
 }
 
 // UpstreamConnectionPoolOptions configures optional direct-local HTTP
@@ -95,13 +109,209 @@ func (defaultResolver) LookupIPAddr(ctx context.Context, host string) ([]net.IPA
 	return ips, nil
 }
 
-func (defaultResolver) LookupCNAME(ctx context.Context, host string) (string, error) {
-	cname, err := net.DefaultResolver.LookupCNAME(ctx, host)
+func (defaultResolver) LookupCNAME(ctx context.Context, host string) ([]string, error) {
+	return lookupCNAMEChain(ctx, host)
+}
+
+const (
+	dnsQueryID    = 1234
+	dnsMaxUDPSize = 512
+	dnsMinParts   = 2
+	dnsTimeout    = 500 * time.Millisecond
+)
+
+func getNameservers() []string {
+	var servers []string
+
+	f, err := os.Open("/etc/resolv.conf")
 	if err != nil {
-		return "", fmt.Errorf("lookup CNAME %q: %w", host, err)
+		return nil
 	}
 
-	return cname, nil
+	defer func() {
+		_ = f.Close()
+	}()
+
+	scanner := bufio.NewScanner(f)
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if strings.HasPrefix(line, "nameserver") {
+			parts := strings.Fields(line)
+			if len(parts) >= dnsMinParts {
+				servers = append(servers, parts[1])
+			}
+		}
+	}
+
+	return servers
+}
+
+func buildDNSQuery(host string) ([]byte, error) {
+	if !strings.HasSuffix(host, ".") {
+		host += "."
+	}
+
+	name, err := dnsmessage.NewName(host)
+	if err != nil {
+		return nil, fmt.Errorf("new name: %w", err)
+	}
+
+	msg := dnsmessage.Message{
+		Header: dnsmessage.Header{
+			ID:                 dnsQueryID,
+			Response:           false,
+			OpCode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   true,
+			RecursionAvailable: false,
+			RCode:              dnsmessage.RCodeSuccess,
+		},
+		Questions: []dnsmessage.Question{
+			{
+				Name:  name,
+				Type:  dnsmessage.TypeCNAME,
+				Class: dnsmessage.ClassINET,
+			},
+		},
+	}
+
+	packed, err := msg.Pack()
+	if err != nil {
+		return nil, fmt.Errorf("pack message: %w", err)
+	}
+
+	return packed, nil
+}
+
+func sendUDPQuery(ctx context.Context, server string, packed []byte) ([]byte, error) {
+	addr := server
+	if !strings.Contains(addr, ":") {
+		addr += ":53"
+	}
+
+	var d net.Dialer
+
+	conn, err := d.DialContext(ctx, "udp", addr)
+	if err != nil {
+		return nil, fmt.Errorf("dial DNS server: %w", err)
+	}
+
+	defer func() {
+		_ = conn.Close()
+	}()
+
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = conn.SetDeadline(deadline)
+	}
+
+	_, err = conn.Write(packed)
+	if err != nil {
+		return nil, fmt.Errorf("conn write: %w", err)
+	}
+
+	resp := make([]byte, dnsMaxUDPSize)
+
+	n, err := conn.Read(resp)
+	if err != nil {
+		return nil, fmt.Errorf("conn read: %w", err)
+	}
+
+	return resp[:n], nil
+}
+
+func parseCNAMEAnswers(resp []byte) ([]string, error) {
+	var respMsg dnsmessage.Message
+
+	err := respMsg.Unpack(resp)
+	if err != nil {
+		return nil, fmt.Errorf("unpack message: %w", err)
+	}
+
+	var cnames []string
+
+	for _, ans := range respMsg.Answers {
+		if ans.Header.Type == dnsmessage.TypeCNAME {
+			cnameBody, ok := ans.Body.(*dnsmessage.CNAMEResource)
+			if ok {
+				cnames = append(cnames, strings.TrimSuffix(strings.ToLower(cnameBody.CNAME.String()), "."))
+			}
+		}
+	}
+
+	return cnames, nil
+}
+
+func queryCNAME(ctx context.Context, server, host string) ([]string, error) {
+	packed, err := buildDNSQuery(host)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := sendUDPQuery(ctx, server, packed)
+	if err != nil {
+		return nil, err
+	}
+
+	cnames, err := parseCNAMEAnswers(resp)
+	if err != nil {
+		return nil, err
+	}
+
+	return cnames, nil
+}
+
+func lookupCNAMEChain(ctx context.Context, host string) ([]string, error) {
+	servers := getNameservers()
+	servers = append(servers, "8.8.8.8", "1.1.1.1")
+
+	var chain []string
+
+	visited := make(map[string]bool)
+
+	current := strings.TrimSuffix(strings.ToLower(host), ".")
+
+	for !visited[current] {
+		visited[current] = true
+
+		var (
+			nextHop  string
+			queryErr error
+		)
+
+		for _, server := range servers {
+			subCtx, cancel := context.WithTimeout(ctx, dnsTimeout)
+			cnames, err := queryCNAME(subCtx, server, current)
+
+			cancel()
+
+			if err == nil {
+				if len(cnames) > 0 {
+					nextHop = cnames[0]
+
+					break
+				}
+
+				break
+			}
+
+			queryErr = err
+		}
+
+		if nextHop == "" {
+			if queryErr != nil && len(chain) == 0 {
+				return nil, queryErr
+			}
+
+			break
+		}
+
+		chain = append(chain, nextHop)
+		current = nextHop
+	}
+
+	return chain, nil
 }
 
 // NewExecutor builds an executor with P0 transport defaults.
@@ -116,7 +326,18 @@ func NewExecutor(opts ExecutorOptions) *Executor {
 		dialContext = (&net.Dialer{}).DialContext
 	}
 
-	return &Executor{resolver: resolver, dialContext: dialContext, pool: newUpstreamConnectionPool(opts.Pool, dialContext)}
+	exec := &Executor{
+		resolver:           resolver,
+		dialContext:        dialContext,
+		http2Enabled:       opts.HTTP2Enabled,
+		fallbackCacheTTL:   opts.FallbackCacheTTL,
+		rootCAs:            opts.RootCAs,
+		insecureSkipVerify: opts.InsecureSkipVerify,
+	}
+
+	exec.pool = newUpstreamConnectionPool(opts.Pool, dialContext, exec)
+
+	return exec
 }
 
 // NewP0Transport returns the official P0 HTTP transport defaults: no HTTP/2
@@ -197,20 +418,11 @@ func (e *Executor) ExecuteWithTenant(ctx context.Context, tenantID string, start
 		return append(emit, frames.error(timeoutFailure()))
 	}
 
-	req, failure := buildHTTPRequest(reqCtx, start, body)
+	resp, failure := e.doRequestWithRetry(reqCtx, tenantID, target, start, body)
 	if failure != nil {
 		return append(emit, frames.error(failure))
 	}
 
-	tr, client, pooled := e.httpClient(reqCtx, tenantID, target, start)
-	if !pooled {
-		defer tr.CloseIdleConnections()
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return append(emit, frames.error(mapHTTPError(reqCtx, err)))
-	}
 	defer func() { _ = resp.Body.Close() }()
 
 	status, failure := responseStatus(resp.StatusCode)
@@ -226,6 +438,75 @@ func (e *Executor) ExecuteWithTenant(ctx context.Context, tenantID string, start
 	}
 
 	return append(emit, frames.end())
+}
+
+func (e *Executor) doRequestWithRetry(ctx context.Context, tenantID string, target target, start *strawpb.RequestStart, body []byte) (*http.Response, *executionError) {
+	isReplayable := start.GetReplayable()
+
+	for attemptIdx := range 2 {
+		resp, retry, execErr := e.attemptRequest(ctx, tenantID, target, start, body, attemptIdx, isReplayable)
+		if execErr != nil {
+			return nil, execErr
+		}
+
+		if !retry {
+			return resp, nil
+		}
+	}
+
+	return nil, executorFailure(strawpb.ErrorCode_ERROR_CODE_EXECUTOR_INTERNAL_ERROR, "max_attempts_exceeded")
+}
+
+func (e *Executor) attemptRequest(ctx context.Context, tenantID string, target target, start *strawpb.RequestStart, body []byte, attemptIdx int, isReplayable bool) (*http.Response, bool, *executionError) {
+	tr, client, pooled, key, hasKey := e.httpClient(ctx, tenantID, target, start)
+
+	req, buildFailure := buildHTTPRequest(ctx, start, body)
+	if buildFailure != nil {
+		if !pooled {
+			tr.CloseIdleConnections()
+		}
+
+		return nil, false, buildFailure
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		retry, execErr := e.handleDoError(ctx, err, target.host, attemptIdx, isReplayable, pooled, tr, hasKey, key)
+
+		return nil, retry, execErr
+	}
+
+	if !pooled {
+		defer tr.CloseIdleConnections()
+	}
+
+	return resp, false, nil
+}
+
+func (e *Executor) handleDoError(ctx context.Context, err error, host string, attemptIdx int, isReplayable bool, pooled bool, tr *http.Transport, hasKey bool, key upstreamPoolKey) (bool, *executionError) {
+	if hasKey && e.pool != nil {
+		e.pool.evict(key)
+	}
+
+	execErr := mapHTTPError(ctx, err)
+
+	if execErr.fact == "http_1_1_required" {
+		e.cacheHTTP11Only(host)
+
+		if isReplayable && attemptIdx == 0 {
+			if !pooled {
+				tr.CloseIdleConnections()
+			}
+
+			return true, nil
+		}
+	}
+
+	if !pooled {
+		tr.CloseIdleConnections()
+	}
+
+	return false, execErr
 }
 
 // openTunnel validates and opens one raw CONNECT upstream connection using
@@ -285,7 +566,7 @@ func streamResponseBody(ctx context.Context, resp *http.Response, frames *frameB
 	return emit, nil
 }
 
-func (e *Executor) httpClient(ctx context.Context, tenantID string, target target, start *strawpb.RequestStart) (*http.Transport, *http.Client, bool) {
+func (e *Executor) httpClient(ctx context.Context, tenantID string, target target, start *strawpb.RequestStart) (*http.Transport, *http.Client, bool, upstreamPoolKey, bool) {
 	if e.pool != nil && e.pool.enabled {
 		key, failure := e.poolKey(ctx, tenantID, target, start)
 		if failure == nil {
@@ -296,11 +577,17 @@ func (e *Executor) httpClient(ctx context.Context, tenantID string, target targe
 				CheckRedirect: func(*http.Request, []*http.Request) error {
 					return http.ErrUseLastResponse
 				},
-			}, true
+			}, true, key, true
 		}
 	}
 
 	tr := NewP0Transport(func(ctx context.Context, network, address string) (net.Conn, error) {
+		return e.dialValidated(ctx, network, address, start.GetDestinationPolicy())
+	})
+
+	useHTTP2 := e.http2Enabled && schemeFromURL(start.GetUrl()) == schemeHTTPS && !e.isHTTP11Only(target.host)
+
+	e.configureHTTP2(tr, useHTTP2, target.host, nil, func(ctx context.Context, network, address string) (net.Conn, error) {
 		return e.dialValidated(ctx, network, address, start.GetDestinationPolicy())
 	})
 
@@ -309,7 +596,103 @@ func (e *Executor) httpClient(ctx context.Context, tenantID string, target targe
 		CheckRedirect: func(*http.Request, []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
-	}, false
+	}, false, upstreamPoolKey{}, false
+}
+
+func (e *Executor) isHTTP11Only(host string) bool {
+	if val, ok := e.http11Cache.Load(host); ok {
+		if expire, ok := val.(time.Time); ok {
+			if time.Now().Before(expire) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func (e *Executor) cacheHTTP11Only(host string) {
+	ttl := defaultFallbackCacheTTL
+	if e.fallbackCacheTTL > 0 {
+		ttl = e.fallbackCacheTTL
+	}
+
+	e.http11Cache.Store(host, time.Now().Add(ttl))
+}
+
+func (e *Executor) configureHTTP2(tr *http.Transport, useHTTP2 bool, host string, onFallback func(), dialContext func(context.Context, string, string) (net.Conn, error)) {
+	e.setupTLSClientConfig(tr, host)
+
+	if !useHTTP2 {
+		tr.ForceAttemptHTTP2 = false
+		tr.TLSNextProto = map[string]func(string, *tls.Conn) http.RoundTripper{}
+
+		return
+	}
+
+	tr.ForceAttemptHTTP2 = true
+	tr.TLSNextProto = nil
+	tr.DialTLSContext = e.makeDialTLSContext(host, onFallback, dialContext)
+}
+
+func (e *Executor) setupTLSClientConfig(tr *http.Transport, host string) {
+	if tr.TLSClientConfig == nil {
+		tr.TLSClientConfig = &tls.Config{
+			ServerName: host,
+			RootCAs:    e.rootCAs,
+		}
+
+		if e.insecureSkipVerify {
+			tr.TLSClientConfig.InsecureSkipVerify = true
+		}
+	} else {
+		tr.TLSClientConfig.ServerName = host
+		tr.TLSClientConfig.RootCAs = e.rootCAs
+
+		if e.insecureSkipVerify {
+			tr.TLSClientConfig.InsecureSkipVerify = true
+		}
+	}
+}
+
+func (e *Executor) makeDialTLSContext(host string, onFallback func(), dialContext func(context.Context, string, string) (net.Conn, error)) func(context.Context, string, string) (net.Conn, error) {
+	return func(ctx context.Context, network, addr string) (net.Conn, error) {
+		rawConn, err := dialContext(ctx, network, addr)
+		if err != nil {
+			return nil, err
+		}
+
+		tlsConfig := &tls.Config{
+			ServerName: host,
+			NextProtos: []string{"h2", "http/1.1"},
+			RootCAs:    e.rootCAs,
+		}
+
+		if e.insecureSkipVerify {
+			tlsConfig.InsecureSkipVerify = true
+		}
+
+		tlsConn := tls.Client(rawConn, tlsConfig)
+
+		err = tlsConn.HandshakeContext(ctx)
+		if err != nil {
+			_ = rawConn.Close()
+
+			return nil, fmt.Errorf("tls handshake failed: %w", err)
+		}
+
+		negotiated := tlsConn.ConnectionState().NegotiatedProtocol
+
+		if negotiated == "http/1.1" || negotiated == "" {
+			e.cacheHTTP11Only(host)
+
+			if onFallback != nil {
+				onFallback()
+			}
+		}
+
+		return tlsConn, nil
+	}
 }
 
 func (e *Executor) poolKey(ctx context.Context, tenantID string, target target, start *strawpb.RequestStart) (upstreamPoolKey, *executionError) {
@@ -317,6 +700,8 @@ func (e *Executor) poolKey(ctx context.Context, tenantID string, target target, 
 	if failure != nil {
 		return upstreamPoolKey{}, failure
 	}
+
+	useHTTP2 := e.http2Enabled && schemeFromURL(start.GetUrl()) == schemeHTTPS && !e.isHTTP11Only(target.host)
 
 	key := upstreamPoolKey{
 		tenantID:           tenantID,
@@ -326,6 +711,7 @@ func (e *Executor) poolKey(ctx context.Context, tenantID string, target target, 
 		port:               target.port,
 		dialIP:             ips[0].String(),
 		fingerprintProfile: start.GetFingerprintInstruction(),
+		useHTTP2:           useHTTP2,
 	}
 
 	if e.pool != nil {
@@ -477,6 +863,7 @@ type upstreamPoolKey struct {
 	port               uint32
 	dialIP             string
 	fingerprintProfile string
+	useHTTP2           bool
 }
 
 type upstreamConnectionPool struct {
@@ -487,6 +874,7 @@ type upstreamConnectionPool struct {
 	maxLifetime time.Duration
 	mu          sync.Mutex
 	transports  map[upstreamPoolKey]pooledTransport
+	executor    *Executor
 }
 
 type pooledTransport struct {
@@ -494,7 +882,7 @@ type pooledTransport struct {
 	tr        *http.Transport
 }
 
-func newUpstreamConnectionPool(opts UpstreamConnectionPoolOptions, dialContext func(context.Context, string, string) (net.Conn, error)) *upstreamConnectionPool {
+func newUpstreamConnectionPool(opts UpstreamConnectionPoolOptions, dialContext func(context.Context, string, string) (net.Conn, error), executor *Executor) *upstreamConnectionPool {
 	if !opts.Enabled {
 		return nil
 	}
@@ -518,6 +906,7 @@ func newUpstreamConnectionPool(opts UpstreamConnectionPoolOptions, dialContext f
 		idleTimeout: opts.IdleTimeout,
 		maxLifetime: opts.MaxLifetime,
 		transports:  map[upstreamPoolKey]pooledTransport{},
+		executor:    executor,
 	}
 }
 
@@ -537,9 +926,30 @@ func (p *upstreamConnectionPool) transport(key upstreamPoolKey) *http.Transport 
 	tr := NewPooledTransport(func(ctx context.Context, network, _ string) (net.Conn, error) {
 		return p.dialContext(ctx, network, net.JoinHostPort(key.dialIP, strconv.FormatUint(uint64(key.port), 10)))
 	}, p.maxIdle, p.idleTimeout)
+
+	p.executor.configureHTTP2(tr, key.useHTTP2, key.host, func() {
+		p.evict(key)
+	}, func(ctx context.Context, network, _ string) (net.Conn, error) {
+		return p.dialContext(ctx, network, net.JoinHostPort(key.dialIP, strconv.FormatUint(uint64(key.port), 10)))
+	})
+
 	p.transports[key] = pooledTransport{createdAt: now, tr: tr}
 
 	return tr
+}
+
+func (p *upstreamConnectionPool) evict(key upstreamPoolKey) {
+	if p == nil {
+		return
+	}
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if pooled, ok := p.transports[key]; ok {
+		pooled.tr.CloseIdleConnections()
+		delete(p.transports, key)
+	}
 }
 
 func (p *upstreamConnectionPool) discardStale(current upstreamPoolKey, validIPs []netip.Addr) {
@@ -581,7 +991,8 @@ func (k upstreamPoolKey) samePoolExceptIP(other upstreamPoolKey) bool {
 		k.scheme == other.scheme &&
 		k.host == other.host &&
 		k.port == other.port &&
-		k.fingerprintProfile == other.fingerprintProfile
+		k.fingerprintProfile == other.fingerprintProfile &&
+		k.useHTTP2 == other.useHTTP2
 }
 
 func validateStart(start *strawpb.RequestStart) *executionError {
@@ -813,6 +1224,14 @@ func mapHTTPError(ctx context.Context, err error) *executionError {
 		return executorFailure(strawpb.ErrorCode_ERROR_CODE_CANCELLED, requestCancelledFact)
 	}
 
+	return mapHTTPErrorOther(err)
+}
+
+func mapHTTPErrorOther(err error) *executionError {
+	if h2Err, ok := mapHTTP2Error(err); ok {
+		return h2Err
+	}
+
 	if errors.Is(err, syscall.ECONNREFUSED) {
 		return executorFailure(strawpb.ErrorCode_ERROR_CODE_UPSTREAM_CONNECTION_REFUSED, tcpRefusedFact)
 	}
@@ -826,6 +1245,52 @@ func mapHTTPError(ctx context.Context, err error) *executionError {
 	}
 
 	return executorFailure(strawpb.ErrorCode_ERROR_CODE_EXECUTOR_INTERNAL_ERROR, executorInternalFact)
+}
+
+func mapHTTP2Error(err error) (*executionError, bool) {
+	var streamErr http2.StreamError
+	if errors.As(err, &streamErr) {
+		return mapHTTP2StreamError(streamErr.Code), true
+	}
+
+	s := strings.ToLower(err.Error())
+	if strings.Contains(s, "http2") && strings.Contains(s, "stream") {
+		if strings.Contains(s, "refused_stream") {
+			return executorFailure(strawpb.ErrorCode_ERROR_CODE_UPSTREAM_RESET, "upstream_reset"), true
+		}
+
+		if strings.Contains(s, "http_1_1_required") {
+			return executorFailure(strawpb.ErrorCode_ERROR_CODE_UPSTREAM_RESET, "http_1_1_required"), true
+		}
+	}
+
+	return nil, false
+}
+
+func mapHTTP2StreamError(code http2.ErrCode) *executionError {
+	switch code {
+	case http2.ErrCodeConnect:
+		return executorFailure(strawpb.ErrorCode_ERROR_CODE_UPSTREAM_CONNECTION_REFUSED, "upstream_connection_refused")
+	case http2.ErrCodeInadequateSecurity:
+		return executorFailure(strawpb.ErrorCode_ERROR_CODE_UPSTREAM_TLS_FAILURE, "upstream_tls_failure")
+	case http2.ErrCodeEnhanceYourCalm:
+		return executorFailure(strawpb.ErrorCode_ERROR_CODE_UPSTREAM_RESET, "enhance_your_calm")
+	case http2.ErrCodeHTTP11Required:
+		return executorFailure(strawpb.ErrorCode_ERROR_CODE_UPSTREAM_RESET, "http_1_1_required")
+	case http2.ErrCodeNo,
+		http2.ErrCodeProtocol,
+		http2.ErrCodeInternal,
+		http2.ErrCodeFlowControl,
+		http2.ErrCodeSettingsTimeout,
+		http2.ErrCodeStreamClosed,
+		http2.ErrCodeFrameSize,
+		http2.ErrCodeRefusedStream,
+		http2.ErrCodeCancel,
+		http2.ErrCodeCompression:
+		return executorFailure(strawpb.ErrorCode_ERROR_CODE_UPSTREAM_RESET, "upstream_reset")
+	default:
+		return executorFailure(strawpb.ErrorCode_ERROR_CODE_UPSTREAM_RESET, "upstream_reset")
+	}
 }
 
 func looksLikeTLSError(err error) bool {
@@ -896,24 +1361,22 @@ func validateHostSuffixPolicy(host string, policy *strawpb.DestinationPolicy) *e
 	return nil
 }
 
-// validateCNAMESuffixPolicy rejects a request whose resolved canonical name
-// matches a denied_cname_suffixes entry. Go's net.Resolver only exposes the
-// final name after following the whole CNAME chain (see the Resolver
-// interface doc comment), so this checks that final name rather than every
-// intermediate hop.
+// validateCNAMESuffixPolicy rejects a request whose CNAME chain (any hop)
+// matches a denied_cname_suffixes entry.
 func validateCNAMESuffixPolicy(ctx context.Context, resolver Resolver, host string, policy *strawpb.DestinationPolicy) *executionError {
 	suffixes := policy.GetDeniedCnameSuffixes()
 	if len(suffixes) == 0 {
 		return nil
 	}
 
-	cname, lookupErr := resolver.LookupCNAME(ctx, host)
+	cnames, lookupErr := resolver.LookupCNAME(ctx, host)
 	if lookupErr == nil {
-		cname = strings.TrimSuffix(strings.ToLower(cname), ".")
 		normalizedHost := strings.TrimSuffix(strings.ToLower(host), ".")
-
-		if cname != "" && cname != normalizedHost && matchesAnySuffix(cname, suffixes) {
-			return executorFailure(strawpb.ErrorCode_ERROR_CODE_DESTINATION_DENIED, cnameDeniedSuffixFact)
+		for _, cname := range cnames {
+			cn := strings.TrimSuffix(strings.ToLower(cname), ".")
+			if cn != "" && cn != normalizedHost && matchesAnySuffix(cn, suffixes) {
+				return executorFailure(strawpb.ErrorCode_ERROR_CODE_DESTINATION_DENIED, cnameDeniedSuffixFact)
+			}
 		}
 	}
 

@@ -243,12 +243,16 @@ func runWorker(ctx context.Context, natsConn *natsx.Connection, cfg config.Egres
 	heartbeatInterval := time.Duration(cfg.HeartbeatIntervalMs) * time.Millisecond
 
 	pool := cfg.UpstreamConnectionPool
-	executor := egress.NewExecutor(egress.ExecutorOptions{Pool: egress.UpstreamConnectionPoolOptions{
-		Enabled:                   pool.Enabled,
-		MaxIdleConnsPerTenantHost: pool.MaxIdleConnsPerTenantHost,
-		IdleTimeout:               time.Duration(pool.IdleTimeoutMS) * time.Millisecond,
-		MaxLifetime:               time.Duration(pool.MaxLifetimeMS) * time.Millisecond,
-	}})
+	executor := egress.NewExecutor(egress.ExecutorOptions{
+		HTTP2Enabled:     cfg.HTTP2.Enabled,
+		FallbackCacheTTL: time.Duration(cfg.HTTP2.FallbackCacheTTLMS) * time.Millisecond,
+		Pool: egress.UpstreamConnectionPoolOptions{
+			Enabled:                   pool.Enabled,
+			MaxIdleConnsPerTenantHost: pool.MaxIdleConnsPerTenantHost,
+			IdleTimeout:               time.Duration(pool.IdleTimeoutMS) * time.Millisecond,
+			MaxLifetime:               time.Duration(pool.MaxLifetimeMS) * time.Millisecond,
+		},
+	})
 
 	ready := &atomic.Bool{}
 

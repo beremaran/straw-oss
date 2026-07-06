@@ -495,6 +495,61 @@ func TestLoadEgressCredentialKeysAreFlat(t *testing.T) {
 	}
 }
 
+func TestLoadEgressHTTP2Defaults(t *testing.T) {
+	t.Parallel()
+
+	path := writeConfig(t, `{
+		"config_version": "v1",
+		"egress": {
+			"worker_id": "egress-local-001",
+			"credential_id": "wcred_test",
+			"private_key_ed25519_env": "STRAW_WORKER_PRIVATE_KEY_ED25519_BASE64",
+			"http2": {
+				"enabled": true
+			}
+		}
+	}`)
+
+	cfg, err := LoadEgress(path)
+	if err != nil {
+		t.Fatalf("LoadEgress() error = %v", err)
+	}
+
+	if !cfg.HTTP2.Enabled {
+		t.Fatalf("HTTP2.Enabled = false, want true")
+	}
+	if cfg.HTTP2.FallbackCacheTTLMS != 300_000 {
+		t.Fatalf("HTTP2.FallbackCacheTTLMS = %d, want 300000", cfg.HTTP2.FallbackCacheTTLMS)
+	}
+}
+
+func TestLoadControlHTTP2(t *testing.T) {
+	t.Parallel()
+
+	path := writeConfig(t, `{
+		"config_version": "v1",
+		"control": {
+			"server": {
+				"host": "127.0.0.1",
+				"api_port": 8080,
+				"metrics_port": 9090
+			},
+			"http2": {
+				"enabled": true
+			}
+		}
+	}`)
+
+	cfg, err := LoadControl(path)
+	if err != nil {
+		t.Fatalf("LoadControl() error = %v", err)
+	}
+
+	if !cfg.HTTP2.Enabled {
+		t.Fatalf("HTTP2.Enabled = false, want true")
+	}
+}
+
 func writeConfig(t *testing.T, contents string) string {
 	t.Helper()
 

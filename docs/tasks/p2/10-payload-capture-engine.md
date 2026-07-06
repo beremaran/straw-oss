@@ -1,6 +1,6 @@
 # 10 - Payload Capture Engine
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -29,18 +29,18 @@ Implement the non-mutating payload capture tee with storage-only redaction and b
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Implement capture decisions `NONE`, `METADATA_ONLY`, `HEADERS`, `BODY_TRUNCATED`, and bounded `BODY_FULL`.
-- [ ] Tee request/response data without mutating forwarded bytes.
-- [ ] Apply header redaction to stored copies.
-- [ ] Implement raw-body truncation for stored copies.
-- [ ] Treat compressed bodies as raw compressed bytes or metadata-only according to policy.
-- [ ] Enforce capture size limits and disabled-by-default behavior.
-- [ ] Add tests for every capture decision, non-mutation, redaction, truncation, compressed body policy, and limit
+- [x] Read all required planning docs.
+- [x] Implement capture decisions `NONE`, `METADATA_ONLY`, `HEADERS`, `BODY_TRUNCATED`, and bounded `BODY_FULL`.
+- [x] Tee request/response data without mutating forwarded bytes.
+- [x] Apply header redaction to stored copies.
+- [x] Implement raw-body truncation for stored copies.
+- [x] Treat compressed bodies as raw compressed bytes or metadata-only according to policy.
+- [x] Enforce capture size limits and disabled-by-default behavior.
+- [x] Add tests for every capture decision, non-mutation, redaction, truncation, compressed body policy, and limit
       enforcement.
-- [ ] Run focused capture engine tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Run focused capture engine tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 
@@ -55,7 +55,8 @@ Implement the non-mutating payload capture tee with storage-only redaction and b
 
 ## Handoff Notes
 
-- Document compression behavior and unsupported redaction modes.
+- Compression handling checks the "Content-Encoding" headers. If compression is detected and not allowed by CaptureOptions, the bodies are dropped.
+- Body regex and JSONPath redaction are out of scope for Phase 2 baseline.
 
 ## Stop Conditions
 
