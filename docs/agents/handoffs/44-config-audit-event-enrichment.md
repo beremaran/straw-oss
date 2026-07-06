@@ -51,6 +51,7 @@ Result:
 - **Postgres-backed tests**: ran against `straw_test` successfully:
   `STRAW_TEST_POSTGRES_DSN='postgres://postgres:postgres@localhost:5432/straw_test?sslmode=disable' go test ./internal/control/...`
 - **Live compose verification**: skipped (focused unit and Postgres integration tests fully covered all implementation paths).
+  [Update 2026-07-06: now owned by `docs/tasks/p0/46-live-compose-verification.md`.]
 
 ## Reviewer Start Points
 

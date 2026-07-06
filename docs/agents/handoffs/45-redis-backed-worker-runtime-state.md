@@ -48,6 +48,7 @@ Result:
 - Postgres-backed tests: not exercised; this diff does not touch Postgres files or migrations.
 - Redis-backed tests: ran against the local compose Redis service and passed without skips.
 - Live compose verification: skipped because the full Control/NATS/Egress/Postgres/ClickHouse compose stack was not running; this run started only Redis to verify the task's runtime-state backend.
+  [Update 2026-07-06: now owned by `docs/tasks/p0/46-live-compose-verification.md`.]
 
 ## Reviewer Start Points
 

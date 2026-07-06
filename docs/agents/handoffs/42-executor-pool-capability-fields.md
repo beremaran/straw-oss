@@ -79,6 +79,7 @@ Result: clean (`gofmt`, `golangci-lint --max-issues-per-linter 0 --max-same-issu
   it should be done as a deliberate, user-approved step (restart `control` after `docker compose` picks up the
   new migration via its embedded startup migrator, then create a restricted pool and confirm a non-matching
   worker is excluded).
+  [Update 2026-07-06: the user approved that step; now owned by `docs/tasks/p0/46-live-compose-verification.md`.]
 
 ## Reviewer Start Points
 
@@ -94,3 +95,4 @@ Result: clean (`gofmt`, `golangci-lint --max-issues-per-linter 0 --max-same-issu
 
 - None functionally, but the work is currently uncommitted in the working tree (per this run's scope — commit is
   a separate, explicit user action).
+  [Update 2026-07-06 sweep: stale — the work has since been committed; the working tree is clean.]

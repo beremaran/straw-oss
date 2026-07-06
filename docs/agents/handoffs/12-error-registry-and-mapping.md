@@ -78,6 +78,9 @@ Result: PASS.
   `upstream_status` fields (`docs/planning/14` lists both as optional/omitted-when-not-applicable).
   Add `retry_after_ms` when rate-limit/quota task 13 needs to populate 429 responses, and
   `upstream_status` if/when a Straw error must echo an upstream code; both should use `omitempty`.
+  [Update 2026-07-06 sweep: `retry_after_ms` landed with task 13 (`internal/control/errors.go:16`,
+  populated on rate-limit denials via `internal/control/dispatcher.go:371`). `upstream_status` remains
+  conditional ("if/when") and is not a gap.]
 
 ## Blockers
 

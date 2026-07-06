@@ -84,6 +84,10 @@ entirely by in-memory fakes. Do not repeat that.
 - A task must not be marked done on its board while its handoff contains an unowned deferral.
 - If your work closes a gap that an earlier task file or handoff documents as open (a "Known limitation" or
   Remaining Work entry), update that earlier note in the same run so it does not go stale.
+- That includes soft flags outside Remaining Work: earlier handoffs' Notes/Deviations bullets ("not added",
+  "in-process only", "add X when task N needs it"). The 2026-07-06 sweep found three such notes (handoffs 08, 09,
+  12) closed by later code but never updated — grep past handoffs for the surface you just built, not only their
+  Remaining Work sections.
 - Phase-scope discipline cuts both ways: an Out of Scope line like "do not add P1 fields" never excuses skipping
   fields or endpoints the named planning doc marks P0. The coverage table (workflow steps 5/11) is the artifact
   that proves you checked.

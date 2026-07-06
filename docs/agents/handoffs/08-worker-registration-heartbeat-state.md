@@ -98,6 +98,9 @@ which defaults to `time.Now`.
   controls. Documented in `registration_sign.go`.
 - Capability-scope authoring via `POST /worker-credentials` (task 07 surface)
   is not added; `AllowedCapabilities` defaults to unrestricted.
+  [Update 2026-07-06 sweep: resolved — `POST /worker-credentials` accepts and validates
+  `allowed_capabilities` (`internal/control/admin_handlers.go:1363,1407`), landed with
+  `docs/tasks/p1/08-multi-tenant-worker-credentials.md`.]
 
 ## Blockers
 

@@ -5,7 +5,8 @@ Status: not started
 ## Objective
 
 Add load and backpressure tests that validate routing SLOs, active request limits, worker capacity behavior, and NATS
-credit flow under pressure.
+credit flow under pressure, including asserting that request-metadata rows actually land in a live ClickHouse table
+under load (the flag `docs/agents/handoffs/25-p0-test-matrix-and-compose.md` left unowned — this task is the owner).
 
 ## Required Planning Docs
 
@@ -14,6 +15,7 @@ credit flow under pressure.
 - `docs/planning/30-testing-matrix.md`
 - `docs/planning/20-rate-limits-and-quotas.md`
 - `docs/planning/12-nats-protocol.md`
+- `docs/planning/22-canonical-clickhouse-schema.md` (request_metadata table asserted under load)
 
 ## Prerequisites
 
@@ -38,6 +40,8 @@ credit flow under pressure.
 - [ ] Validate active request limits and worker capacity behavior.
 - [ ] Validate upload/download credit backpressure and memory guardrails.
 - [ ] Validate Redis failure policies for rate limits and quotas under load.
+- [ ] Assert request-metadata rows land in a live ClickHouse table during a load run (row count matches completed
+      requests within the async-writer flush window), in the opt-in local mode.
 - [ ] Add CI-safe smoke mode and optional heavier local mode.
 - [ ] Run focused load smoke tests.
 - [ ] Run `make check`.
@@ -52,6 +56,8 @@ credit flow under pressure.
 
 - A reproducible load harness exists with CI-safe and local modes.
 - SLOs and memory/backpressure guardrails are checked.
+- The local mode proves rows land in live ClickHouse under load, closing the handoff-25 flag (whose note names this
+  task).
 - Results do not overclaim production capacity.
 
 ## Handoff Notes
