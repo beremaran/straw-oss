@@ -345,6 +345,49 @@ func TestLoadEgressParsesAllowedPools(t *testing.T) {
 	}
 }
 
+func TestLoadEgressCredentialKeysAreFlat(t *testing.T) {
+	t.Parallel()
+
+	path := writeConfig(t, `{
+		"config_version": "v1",
+		"egress": {
+			"worker_id": "egress-local-001",
+			"credential_id": "wcred_test",
+			"private_key_ed25519_env": "STRAW_WORKER_PRIVATE_KEY_ED25519_BASE64"
+		}
+	}`)
+
+	cfg, err := LoadEgress(path)
+	if err != nil {
+		t.Fatalf("LoadEgress() error = %v", err)
+	}
+	if cfg.WorkerID != "egress-local-001" {
+		t.Fatalf("WorkerID = %q, want egress-local-001", cfg.WorkerID)
+	}
+	if cfg.CredentialID != "wcred_test" {
+		t.Fatalf("CredentialID = %q, want wcred_test", cfg.CredentialID)
+	}
+	if cfg.PrivateKeyEd25519Env != "STRAW_WORKER_PRIVATE_KEY_ED25519_BASE64" {
+		t.Fatalf("PrivateKeyEd25519Env = %q, want STRAW_WORKER_PRIVATE_KEY_ED25519_BASE64", cfg.PrivateKeyEd25519Env)
+	}
+
+	path = writeConfig(t, `{
+		"config_version": "v1",
+		"egress": {
+			"worker_id": "egress-local-001",
+			"credential": {
+				"credential_id_env": "STRAW_WORKER_CREDENTIAL_ID",
+				"private_key_env": "STRAW_WORKER_PRIVATE_KEY"
+			}
+		}
+	}`)
+
+	_, err = LoadEgress(path)
+	if err == nil || !strings.Contains(err.Error(), "credential_id is required") {
+		t.Fatalf("LoadEgress() error = %v, want substring %q", err, "credential_id is required")
+	}
+}
+
 func writeConfig(t *testing.T, contents string) string {
 	t.Helper()
 

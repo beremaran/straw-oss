@@ -74,9 +74,8 @@ these full paths.
 | `egress.nats.reconnect_wait_ms`                         | `2000`     | 24                                 |
 | `egress.nats.ping_interval_ms`                          | `30000`    | 24                                 |
 | `egress.nats.max_ping_failures`                         | `3`        | 24                                 |
-| `egress.credential.credential_id_env`                   | —          | 24                                 |
-| `egress.credential.private_key_env`                     | —          | 24                                 |
-| `egress.private_key_ed25519_env`                        | —          | 24, 27 (implemented flat key, see note below the tables) |
+| `egress.credential_id`                                  | —          | 24                                 |
+| `egress.private_key_ed25519_env`                        | —          | 24, 27                             |
 | `egress.capabilities.pool_ids`                          | —          | 24                                 |
 | `egress.capabilities.tags`                              | `[]`       | 24                                 |
 | `egress.capabilities.countries`                         | `[]`       | 24                                 |
@@ -106,10 +105,8 @@ these full paths.
 | `egress.observability.health.host`                       | `0.0.0.0`  | 24                                 |
 | `egress.observability.health.port`                       | `9090`     | 24                                 |
 
-`egress.worker_id` and `egress.credential_id` are implemented as flat top-level keys (not nested under
-`egress.credential`), a pre-existing gap predating task 35. `egress.private_key_ed25519_env` (added by task 35) is
-likewise flat, alongside them, rather than `egress.credential.private_key_env`, for consistency with the fields it
-sits next to. Reconciling the nested `egress.credential.*` shape into the implemented flat shape is owned by
+`egress.worker_id`, `egress.credential_id`, and `egress.private_key_ed25519_env` are the canonical flat worker
+identity and credential keys under `egress`; the old nested `egress.credential.*` shape was reconciled by
 `docs/tasks/p1/22-egress-credential-config-schema-reconciliation.md`.
 
 ### Control Config Example
@@ -228,10 +225,6 @@ egress:
     reconnect_wait_ms: 2000
     ping_interval_ms: 30000
     max_ping_failures: 3
-
-  credential:
-    credential_id_env: "STRAW_WORKER_CREDENTIAL_ID"
-    private_key_env: "STRAW_WORKER_PRIVATE_KEY"
 
   capabilities:
     pool_ids: [ "default" ]

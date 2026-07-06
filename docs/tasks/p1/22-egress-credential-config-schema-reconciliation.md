@@ -1,6 +1,6 @@
 # 22 - Egress Credential Config Schema Reconciliation (flat vs nested)
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -12,7 +12,7 @@ canonical form round-trips and the non-canonical `egress.credential.*` nested fo
 ## Context (gap being closed)
 
 The P0 audit and the task-35 handoff (`docs/agents/handoffs/35-worker-registration-replay-and-identity-key.md`,
-"Remaining Work") flagged a config-schema/doc mismatch and explicitly recorded it as having **no owning task**. This
+"Remaining Work") flagged a config-schema/doc mismatch and explicitly recorded it as a previously unowned gap. This
 task is the owner.
 
 Current-code evidence:
@@ -28,7 +28,7 @@ Current-code evidence:
   - the Egress Config Example shows the flat keys (lines ~219-221) **and** a separate nested `credential:` block
     (lines ~231-233);
   - the note at lines ~109-112 already concedes the flat shape is what is implemented and states the reconciliation
-    "has no owning task."
+    was previously unowned.
 
 Decision (reconciliation direction — do not re-litigate): **the flat shape is canonical; correct the planning doc to
 the flat shape.** Rationale: task 35 deliberately chose flat keys "for consistency with the fields it sits next to,"
@@ -59,7 +59,7 @@ instead, that is a stop-and-ask condition, not a silent reversal.
 ## Expected Files
 
 - Modify: `docs/planning/24-static-configuration.md` (remove the nested `egress.credential.*` table rows and the
-  nested `credential:` example block; delete the "has no owning task" reconciliation note or replace it with a
+  nested `credential:` example block; delete the previously-unowned reconciliation note or replace it with a
   one-line statement that the flat shape is canonical and cite this task).
 - Verify/keep: `internal/config/config.go` (already flat — confirm no change needed; only touch if you find the code
   drifted from the flat canonical shape).
@@ -68,19 +68,19 @@ instead, that is a stop-and-ask condition, not a silent reversal.
 
 ## Steps
 
-- [ ] Read the required planning doc sections listed above.
-- [ ] Confirm the flat shape is fully consistent across `internal/config/config.go`, `deploy/docker/egress.json`, and
+- [x] Read the required planning doc sections listed above.
+- [x] Confirm the flat shape is fully consistent across `internal/config/config.go`, `deploy/docker/egress.json`, and
       the compose stack; record any drift.
-- [ ] Edit `docs/planning/24-static-configuration.md`: delete the nested `egress.credential.credential_id_env` /
+- [x] Edit `docs/planning/24-static-configuration.md`: delete the nested `egress.credential.credential_id_env` /
       `egress.credential.private_key_env` table rows and the nested `credential:` block in the Egress Config Example;
-      remove or rewrite the "no owning task" note (lines ~109-112) to state the flat shape is canonical.
-- [ ] In `internal/config/config_test.go`, add a test that (a) a config using the flat `worker_id` / `credential_id`
+      remove or rewrite the previously-unowned note (lines ~109-112) to state the flat shape is canonical.
+- [x] In `internal/config/config_test.go`, add a test that (a) a config using the flat `worker_id` / `credential_id`
       / `private_key_ed25519_env` keys loads and validates and the loaded struct fields round-trip, and (b) a config
       that puts the credential fields under a nested `egress.credential.*` object (and omits the flat keys) fails
       `LoadEgress` validation with the existing "missing required field" error rather than silently loading empty
       credentials.
-- [ ] Run focused config tests (`go test ./internal/config`), then `make check`.
-- [ ] Write a handoff note recording the reconciliation direction and confirming the flag/note removal.
+- [x] Run focused config tests (`go test ./internal/config`), then `make check`.
+- [x] Write a handoff note recording the reconciliation direction and confirming the flag/note removal.
 
 ## Tests
 
@@ -91,7 +91,7 @@ instead, that is a stop-and-ask condition, not a silent reversal.
 
 - `grep -n "egress.credential" docs/planning/24-static-configuration.md` returns no key-table row and no example
   block presenting the nested credential shape as canonical (proven by the grep).
-- The "Reconciling the nested `egress.credential.*` shape ... has no owning task" sentence no longer exists in
+- The old unowned-reconciliation sentence no longer exists in
   `docs/planning/24-static-configuration.md`; any surviving mention names this task (`p1/22`) as owner.
 - A `config_test.go` case loads the flat-key egress config and asserts `WorkerID`, `CredentialID`, and
   `PrivateKeyEd25519Env` are populated (round-trip proven by test).
@@ -104,11 +104,11 @@ instead, that is a stop-and-ask condition, not a silent reversal.
 
 - Record that the flat shape was chosen as canonical and why (task-35 precedent + running fixture + validated loader),
   so a future reader does not re-open the direction question.
-- Confirm the task-35 handoff's "no owning task" flag for this gap is now closed by this task.
+- Confirm the task-35 handoff's previously-unowned flag for this gap is now closed by this task.
 
 ## Stop Conditions
 
 - Stop and ask if you find a concrete correctness or security reason the nested `egress.credential.*` shape must be
   canonical instead of flat (this reverses the decided direction).
 - Stop if reconciling would require touching credential secret-handling behavior rather than key shape.
-- Stop if a deferral would have no owning task file.
+- Stop if a deferral would lack an owning task file.
