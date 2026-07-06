@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/nats-io/nats.go"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/redis/go-redis/v9"
 
 	strawpb "github.com/beremaran/straw/v2/api/proto/straw/v1"
@@ -31,6 +32,7 @@ const (
 	dispatchTestWorker = "worker_dispatch"
 	dispatchTestSess   = "session_dispatch"
 	dispatchTestPool   = "pool_dispatch"
+	dispatchPartial    = "partial"
 )
 
 func TestDispatcherRouteNoMatch(t *testing.T) {
@@ -379,7 +381,7 @@ func TestDispatcherRawCancellationPublishesCancelFrame(t *testing.T) {
 		e2cSubj, _ := natsx.StreamSubject(env.GetRequestId(), dispatchTestWorker, dispatchTestSess, natsx.DirectionExecutorToControl)
 		publishDispatchFrames(workerConn, env, e2cSubj,
 			&strawpb.StreamFrame{StreamSeq: 1, Attempt: defaultRequestAttempt, Payload: &strawpb.StreamFrame_ResponseStart{ResponseStart: &strawpb.ResponseStart{Status: http.StatusOK}}},
-			&strawpb.StreamFrame{StreamSeq: 2, Attempt: defaultRequestAttempt, Payload: &strawpb.StreamFrame_Data{Data: &strawpb.DataFrame{Data: []byte("partial")}}},
+			&strawpb.StreamFrame{StreamSeq: 2, Attempt: defaultRequestAttempt, Payload: &strawpb.StreamFrame_Data{Data: &strawpb.DataFrame{Data: []byte(dispatchPartial)}}},
 		)
 	})
 	if err != nil {
@@ -401,7 +403,7 @@ func TestDispatcherRawCancellationPublishesCancelFrame(t *testing.T) {
 		done <- perr
 	}()
 
-	for !bytes.Contains(w.Body.Bytes(), []byte("partial")) {
+	for !bytes.Contains(w.Body.Bytes(), []byte(dispatchPartial)) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	cancel()
@@ -456,7 +458,7 @@ func TestDispatcherRawPostHeaderErrorKeepsPartialResponse(t *testing.T) {
 		e2cSubj, _ := natsx.StreamSubject(env.GetRequestId(), dispatchTestWorker, dispatchTestSess, natsx.DirectionExecutorToControl)
 		publishDispatchFrames(workerConn, env, e2cSubj,
 			&strawpb.StreamFrame{StreamSeq: 1, Attempt: defaultRequestAttempt, Payload: &strawpb.StreamFrame_ResponseStart{ResponseStart: &strawpb.ResponseStart{Status: http.StatusOK}}},
-			&strawpb.StreamFrame{StreamSeq: 2, Attempt: defaultRequestAttempt, Payload: &strawpb.StreamFrame_Data{Data: &strawpb.DataFrame{Data: []byte("partial")}}},
+			&strawpb.StreamFrame{StreamSeq: 2, Attempt: defaultRequestAttempt, Payload: &strawpb.StreamFrame_Data{Data: &strawpb.DataFrame{Data: []byte(dispatchPartial)}}},
 			&strawpb.StreamFrame{StreamSeq: 3, Attempt: defaultRequestAttempt, Payload: &strawpb.StreamFrame_Error{Error: &strawpb.ErrorFrame{Code: strawpb.ErrorCode_ERROR_CODE_UPSTREAM_RESET}}},
 		)
 	})
@@ -482,7 +484,7 @@ func TestDispatcherRawPostHeaderErrorKeepsPartialResponse(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want upstream status 200", w.Code)
 	}
-	if got := w.Body.String(); got != "partial" {
+	if got := w.Body.String(); got != dispatchPartial {
 		t.Fatalf("body = %q, want partial", got)
 	}
 }
@@ -536,13 +538,13 @@ func newLiveDispatchHarness(t *testing.T, upstreamHandler http.Handler) (*liveDi
 	return &liveDispatchHarness{DefaultRequestDispatcher: d, upstreamURL: upstream.URL}, stop
 }
 
-func newTestDispatcher(t *testing.T, rules []config.RoutingRule, candidates dispatchCandidates) *DefaultRequestDispatcher {
+func newTestDispatcher(t *testing.T, rules []config.RoutingRule, candidates CandidateSource) *DefaultRequestDispatcher {
 	t.Helper()
 
 	return newTestDispatcherWithSnapshot(t, dispatchSnapshot(rules), candidates)
 }
 
-func newTestDispatcherWithSnapshot(t *testing.T, snapshot config.TenantSnapshot, candidates dispatchCandidates) *DefaultRequestDispatcher {
+func newTestDispatcherWithSnapshot(t *testing.T, snapshot config.TenantSnapshot, candidates CandidateSource) *DefaultRequestDispatcher {
 	t.Helper()
 
 	store := NewInMemorySnapshotStore()
@@ -624,12 +626,47 @@ func (c dispatchCandidates) CandidatesForPool(_, poolID string) []PoolCandidate 
 	return append([]PoolCandidate(nil), c...)
 }
 
+type recordingDispatchCandidates struct {
+	dispatchCandidates
+	count int
+}
+
+func (c *recordingDispatchCandidates) RecordFailure(workerID string) {
+	if workerID == dispatchTestWorker {
+		c.count++
+	}
+}
+
+func dispatchRoute() RouteOutcome {
+	candidate := dispatchCandidate()
+
+	return RouteOutcome{
+		OK:            true,
+		RuleID:        "rule_dispatch",
+		PoolID:        dispatchTestPool,
+		WorkerID:      dispatchTestWorker,
+		SessionID:     dispatchTestSess,
+		AssignSubject: candidate.AssignSubject,
+	}
+}
+
 func dispatchInput(req *ValidatedRequest) DispatchInput {
 	return DispatchInput{
 		RequestID: "req_dispatch",
 		Identity:  Identity{APIKeyID: dispatchTestKey, ScopeType: ScopeTenant, TenantID: dispatchTestTenant, Role: RoleRequester},
 		Request:   req,
 	}
+}
+
+func respBodyBytes(t *testing.T, resp SuccessResponse) []byte {
+	t.Helper()
+
+	body, err := base64.StdEncoding.DecodeString(resp.Body.DataBase64)
+	if err != nil {
+		t.Fatalf("decode response body: %v", err)
+	}
+
+	return body
 }
 
 func validatedDispatchRequest(t *testing.T, rawURL string) *ValidatedRequest {
@@ -774,6 +811,94 @@ func TestDispatcherAssignmentTimeout(t *testing.T) {
 	}
 }
 
+func TestDispatcherAssignmentNATSOutageSynthesizesTransportUnavailableAndMetric(t *testing.T) {
+	t.Parallel()
+
+	natsServer := testutil.NewFakeNATSServer(t, 2_000_000)
+	controlConn := dispatchConnect(t, natsServer.URL())
+	controlConn.Close()
+
+	reg := prometheus.NewRegistry()
+	d := newTestDispatcher(t, []config.RoutingRule{dispatchRule()}, dispatchCandidates{dispatchCandidate()})
+	d.opts.NATS = controlConn
+	d.opts.Metrics = NewMetrics(reg)
+
+	req := validatedDispatchRequest(t, "https://example.com/")
+	in := dispatchInput(req)
+	_, perr := d.requestAssign(dispatchCandidate().AssignSubject, in, d.assignRequest(in, dispatchRoute(), 1, time.Now().Add(time.Second)), time.Now().Add(time.Second))
+	if perr == nil || perr.Code != TransportUnavailable {
+		t.Fatalf("requestAssign error = %#v, want transport_unavailable", perr)
+	}
+	errMF := gatherFamily(t, reg, "straw_nats_errors_total")
+	if got := counterValue(errMF, map[string]string{metricLabelErrorCode: errorCodeTransportUnavailable}); got != 1 {
+		t.Fatalf("nats_errors_total = %v, want 1", got)
+	}
+}
+
+func TestDispatcherWorkerLossBeforeRequestStartFallsBackToAlternateWorker(t *testing.T) {
+	t.Parallel()
+
+	natsServer := testutil.NewFakeNATSServer(t, 2_000_000)
+	controlConn := dispatchConnect(t, natsServer.URL())
+	workerConn := dispatchConnect(t, natsServer.URL())
+
+	alternate := dispatchCandidate()
+	alternate.WorkerID = "worker_dispatch_alt"
+	alternate.SessionID = "session_dispatch_alt"
+	alternate.AssignSubject = "straw.v1.executor." + alternate.WorkerID + "." + alternate.SessionID + ".assign"
+
+	// The first selected worker has no assignment subscriber, which is the
+	// observable Core NATS shape for worker loss before RequestStart.
+	_, err := workerConn.Subscribe(alternate.AssignSubject, func(msg *nats.Msg) {
+		env, decodeErr := natsx.UnmarshalEnvelope(msg.Data)
+		if decodeErr != nil {
+			return
+		}
+
+		c2eSubj, _ := natsx.StreamSubject(env.GetRequestId(), alternate.WorkerID, alternate.SessionID, natsx.DirectionControlToExecutor)
+		_, _ = workerConn.Subscribe(c2eSubj, func(*nats.Msg) {})
+		_ = workerConn.Flush()
+
+		ack := &strawpb.Envelope{
+			RequestId:     env.GetRequestId(),
+			TenantId:      env.GetTenantId(),
+			ProtocolMajor: ProtocolMajor,
+			Attempt:       env.GetAttempt(),
+			Payload:       &strawpb.Envelope_AssignAck{AssignAck: &strawpb.AssignAck{Code: strawpb.AssignAckCode_ASSIGN_ACK_ACCEPTED}},
+		}
+		raw, _ := natsx.MarshalEnvelope(ack)
+		_ = msg.Respond(raw)
+
+		e2cSubj, _ := natsx.StreamSubject(env.GetRequestId(), alternate.WorkerID, alternate.SessionID, natsx.DirectionExecutorToControl)
+		publishDispatchFrames(workerConn, env, e2cSubj,
+			&strawpb.StreamFrame{StreamSeq: 1, Attempt: defaultRequestAttempt, Payload: &strawpb.StreamFrame_ResponseStart{ResponseStart: &strawpb.ResponseStart{Status: http.StatusAccepted}}},
+			&strawpb.StreamFrame{StreamSeq: 2, Attempt: defaultRequestAttempt, Payload: &strawpb.StreamFrame_Data{Data: &strawpb.DataFrame{Data: []byte("fallback")}}},
+			&strawpb.StreamFrame{StreamSeq: 3, Attempt: defaultRequestAttempt, Payload: &strawpb.StreamFrame_End{End: &strawpb.EndFrame{}}},
+		)
+	})
+	if err != nil {
+		t.Fatalf("Subscribe alternate assignment: %v", err)
+	}
+	_ = workerConn.Flush()
+
+	failures := &recordingDispatchCandidates{dispatchCandidates: dispatchCandidates{dispatchCandidate(), alternate}}
+	d := newTestDispatcher(t, []config.RoutingRule{dispatchRule()}, failures)
+	d.opts.NATS = controlConn
+	d.opts.AssignmentAckTimeout = 100 * time.Millisecond
+
+	req := validatedDispatchRequest(t, "https://example.com/")
+	resp, perr := d.Dispatch(context.Background(), dispatchInput(req))
+	if perr != nil {
+		t.Fatalf("Dispatch error = %#v, want fallback success", perr)
+	}
+	if resp.Status != http.StatusAccepted || string(respBodyBytes(t, resp)) != "fallback" {
+		t.Fatalf("fallback response = status %d body %q, want 202 fallback", resp.Status, string(respBodyBytes(t, resp)))
+	}
+	if failures.count != 1 {
+		t.Fatalf("first worker failures = %d, want 1", failures.count)
+	}
+}
+
 // TestDispatcherStreamProtocolError verifies that a sequence gap in e2c frames
 // returns ProtocolError.
 func TestDispatcherStreamProtocolError(t *testing.T) {
@@ -841,6 +966,74 @@ func TestDispatcherStreamProtocolError(t *testing.T) {
 	_, perr := d.Dispatch(context.Background(), dispatchInput(req))
 	if perr == nil || perr.Code != ProtocolError {
 		t.Fatalf("Dispatch error = %#v, want protocol_error", perr)
+	}
+}
+
+func TestDispatcherWorkerLossAfterRequestStartSynthesizesWorkerDisconnected(t *testing.T) {
+	t.Parallel()
+
+	failures := &recordingDispatchCandidates{dispatchCandidates: dispatchCandidates{dispatchCandidate()}}
+	d := newTestDispatcher(t, []config.RoutingRule{dispatchRule()}, failures)
+	frames := make(chan *strawpb.StreamFrame)
+	close(frames)
+
+	_, perr := d.readResponse(context.Background(), frames, dispatchRoute(), time.Now().Add(time.Second), "c2e", dispatchInput(validatedDispatchRequest(t, "https://example.com/")), 2)
+	if perr == nil || perr.Code != WorkerDisconnected {
+		t.Fatalf("readResponse error = %#v, want worker_disconnected", perr)
+	}
+	if failures.count != 1 {
+		t.Fatalf("worker failures = %d, want 1", failures.count)
+	}
+}
+
+func TestDispatcherWorkerLossAfterPartialResponseSynthesizesWorkerDisconnected(t *testing.T) {
+	t.Parallel()
+
+	failures := &recordingDispatchCandidates{dispatchCandidates: dispatchCandidates{dispatchCandidate()}}
+	d := newTestDispatcher(t, []config.RoutingRule{dispatchRule()}, failures)
+	frames := make(chan *strawpb.StreamFrame, 3)
+	frames <- &strawpb.StreamFrame{StreamSeq: 1, Attempt: defaultRequestAttempt, Payload: &strawpb.StreamFrame_OutboundStart{OutboundStart: &strawpb.OutboundStartFrame{}}}
+	frames <- &strawpb.StreamFrame{StreamSeq: 2, Attempt: defaultRequestAttempt, Payload: &strawpb.StreamFrame_ResponseStart{ResponseStart: &strawpb.ResponseStart{Status: http.StatusOK}}}
+	frames <- &strawpb.StreamFrame{StreamSeq: 3, Attempt: defaultRequestAttempt, Payload: &strawpb.StreamFrame_Data{Data: &strawpb.DataFrame{Data: []byte(dispatchPartial)}}}
+	close(frames)
+
+	w := httptest.NewRecorder()
+	result, perr, wroteHeader := d.streamRawResponse(context.Background(), frames, dispatchRoute(), time.Now().Add(time.Second), "c2e", dispatchInput(validatedDispatchRequest(t, "https://example.com/")), 2, w)
+	if perr == nil || perr.Code != WorkerDisconnected {
+		t.Fatalf("streamRawResponse error = %#v, want worker_disconnected", perr)
+	}
+	if !wroteHeader || result.size != uint64(len(dispatchPartial)) || w.Body.String() != dispatchPartial {
+		t.Fatalf("partial raw response = wroteHeader %v size %d body %q, want partial response preserved", wroteHeader, result.size, w.Body.String())
+	}
+	if failures.count != 1 {
+		t.Fatalf("worker failures = %d, want 1", failures.count)
+	}
+}
+
+func TestDispatcherInFlightNATSDisconnectSynthesizesTransportUnavailable(t *testing.T) {
+	t.Parallel()
+
+	natsServer := testutil.NewFakeNATSServer(t, 2_000_000)
+	controlConn := dispatchConnect(t, natsServer.URL())
+	controlConn.Close()
+
+	reg := prometheus.NewRegistry()
+	failures := &recordingDispatchCandidates{dispatchCandidates: dispatchCandidates{dispatchCandidate()}}
+	d := newTestDispatcher(t, []config.RoutingRule{dispatchRule()}, failures)
+	d.opts.NATS = controlConn
+	d.opts.Metrics = NewMetrics(reg)
+	frames := make(chan *strawpb.StreamFrame)
+
+	_, perr := d.readResponse(context.Background(), frames, dispatchRoute(), time.Now().Add(time.Second), "c2e", dispatchInput(validatedDispatchRequest(t, "https://example.com/")), 2)
+	if perr == nil || perr.Code != TransportUnavailable {
+		t.Fatalf("readResponse error = %#v, want transport_unavailable", perr)
+	}
+	if failures.count != 1 {
+		t.Fatalf("worker failures = %d, want 1", failures.count)
+	}
+	errMF := gatherFamily(t, reg, "straw_nats_errors_total")
+	if got := counterValue(errMF, map[string]string{metricLabelErrorCode: errorCodeTransportUnavailable}); got != 1 {
+		t.Fatalf("nats_errors_total = %v, want 1", got)
 	}
 }
 

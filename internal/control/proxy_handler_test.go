@@ -86,7 +86,7 @@ func TestProxyHandlerDoesNotRenderSecondErrorAfterPartialRawResponse(t *testing.
 	h, token, _ := newTestProxyHandler(t)
 	h.SetDispatcher(&rawProxyDispatcher{
 		status: http.StatusOK,
-		chunks: [][]byte{[]byte("partial")},
+		chunks: [][]byte{[]byte(dispatchPartial)},
 		err:    &PipelineError{Code: UpstreamReset},
 	})
 
@@ -99,7 +99,7 @@ func TestProxyHandlerDoesNotRenderSecondErrorAfterPartialRawResponse(t *testing.
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
 	}
-	if got := w.Body.String(); got != "partial" {
+	if got := w.Body.String(); got != dispatchPartial {
 		t.Fatalf("body = %q, want only partial upstream bytes", got)
 	}
 }

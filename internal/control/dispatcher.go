@@ -237,7 +237,8 @@ func (d *DefaultRequestDispatcher) dispatch(ctx context.Context, in DispatchInpu
 
 	deadline := d.deadline(in.Request, snapshot)
 
-	result, assignmentMs, perr := d.executeAttempt(ctx, in, route, policy, snapshot.ConfigVersion, deadline)
+	result, assignmentMs, perr := d.executeAttemptOrFallback(ctx, in, route, snapshot, policy, deadline)
+
 	if perr != nil {
 		perr = d.withTiming(perr, routingMs, assignmentMs, started)
 		perr.EgressMs = result.egressMs
@@ -388,10 +389,14 @@ func (d *DefaultRequestDispatcher) admit(ctx context.Context, in DispatchInput, 
 }
 
 func (d *DefaultRequestDispatcher) route(in DispatchInput, snapshot config.TenantSnapshot) RouteOutcome {
+	return d.routeWithWorkers(in, snapshot, d.opts.Workers)
+}
+
+func (d *DefaultRequestDispatcher) routeWithWorkers(in DispatchInput, snapshot config.TenantSnapshot, workers CandidateSource) RouteOutcome {
 	router := NewRouter(
 		snapshotRules{tenantID: in.Identity.TenantID, rules: snapshot.RoutingRules},
 		NewStaticPoolPolicyProvider(poolPoliciesFromSnapshot(in.Identity.TenantID, snapshot.ExecutorPools)),
-		d.opts.Workers,
+		workers,
 		d.opts.Sticky,
 		d.opts.Now,
 	)
@@ -406,6 +411,42 @@ func (d *DefaultRequestDispatcher) route(in DispatchInput, snapshot config.Tenan
 		TargetHost:      strings.ToLower(in.Request.URL.Hostname()),
 		StickySessionID: in.Request.StickySessionID,
 	})
+}
+
+func (d *DefaultRequestDispatcher) executeAttemptOrFallback(ctx context.Context, in DispatchInput, route RouteOutcome, snapshot config.TenantSnapshot, policy *DestinationPolicyResult, deadline time.Time) (dispatchResult, int64, *PipelineError) {
+	result, assignmentMs, perr := d.executeAttempt(ctx, in, route, policy, snapshot.ConfigVersion, deadline)
+	if perr == nil || !canFallbackBeforeRequestStart(perr.Code) {
+		return result, assignmentMs, perr
+	}
+
+	routeFailure(d.opts.Workers, route.WorkerID)
+
+	fallback := d.routeWithWorkers(in, snapshot, excludeWorkers{base: d.opts.Workers, workerID: route.WorkerID})
+	if !fallback.OK {
+		return result, assignmentMs, perr
+	}
+
+	fallbackResult, fallbackAssignmentMs, fallbackErr := d.executeAttempt(ctx, in, fallback, policy, snapshot.ConfigVersion, deadline)
+
+	return fallbackResult, assignmentMs + fallbackAssignmentMs, fallbackErr
+}
+
+type excludeWorkers struct {
+	base     CandidateSource
+	workerID string
+}
+
+func (e excludeWorkers) CandidatesForPool(tenantID, poolID string) []PoolCandidate {
+	candidates := e.base.CandidatesForPool(tenantID, poolID)
+
+	out := candidates[:0]
+	for _, candidate := range candidates {
+		if candidate.WorkerID != e.workerID {
+			out = append(out, candidate)
+		}
+	}
+
+	return out
 }
 
 // poolPoliciesFromSnapshot converts a tenant snapshot's executor pools into
@@ -712,12 +753,14 @@ func (d *DefaultRequestDispatcher) readResponse(ctx context.Context, frames <-ch
 
 			return dispatchResult{}, &PipelineError{Code: TimeoutExceeded, TimeoutType: timeoutTypeTotalDeadline}
 		case <-ticker.C:
-			if validator.IdleExpired() {
-				d.sendCancel(c2eSubject, in, deadline, cancelSeq, "idle_timeout")
-
-				return dispatchResult{}, &PipelineError{Code: TimeoutExceeded, TimeoutType: timeoutTypeIdle}
+			if perr := d.responseStreamTick(validator, route, c2eSubject, in, deadline, cancelSeq); perr != nil {
+				return dispatchResult{}, perr
 			}
-		case frame := <-frames:
+		case frame, ok := <-frames:
+			if !ok {
+				return dispatchResult{}, d.streamLost(route, WorkerDisconnected)
+			}
+
 			done, perr := d.acceptResponseFrame(validator, frame, route, &result, &egressStarted)
 			if perr != nil {
 				return dispatchResult{}, perr
@@ -757,12 +800,14 @@ func (d *DefaultRequestDispatcher) streamRawResponse(ctx context.Context, frames
 
 			return state.result, &PipelineError{Code: TimeoutExceeded, TimeoutType: timeoutTypeTotalDeadline}, state.wroteHeader
 		case <-ticker.C:
-			if validator.IdleExpired() {
-				d.sendCancel(c2eSubject, in, deadline, state.c2eSeq, "idle_timeout")
-
-				return state.result, &PipelineError{Code: TimeoutExceeded, TimeoutType: timeoutTypeIdle}, state.wroteHeader
+			if perr := d.responseStreamTick(validator, route, c2eSubject, in, deadline, state.c2eSeq); perr != nil {
+				return state.result, perr, state.wroteHeader
 			}
-		case frame := <-frames:
+		case frame, ok := <-frames:
+			if !ok {
+				return state.result, d.streamLost(route, WorkerDisconnected), state.wroteHeader
+			}
+
 			done, perr := state.acceptValidated(frame, validator)
 			if done || perr != nil {
 				return state.result, perr, state.wroteHeader
@@ -965,6 +1010,34 @@ func (d *DefaultRequestDispatcher) executorError(route RouteOutcome, frame *stra
 	return errorFramePipelineError(code, frame)
 }
 
+func (d *DefaultRequestDispatcher) responseStreamTick(validator *natsx.StreamValidator, route RouteOutcome, c2eSubject string, in DispatchInput, deadline time.Time, cancelSeq uint64) *PipelineError {
+	if d.natsDisconnected() {
+		return d.streamLost(route, TransportUnavailable)
+	}
+
+	if validator.IdleExpired() {
+		d.sendCancel(c2eSubject, in, deadline, cancelSeq, "idle_timeout")
+
+		return &PipelineError{Code: TimeoutExceeded, TimeoutType: timeoutTypeIdle}
+	}
+
+	return nil
+}
+
+func (d *DefaultRequestDispatcher) streamLost(route RouteOutcome, code ErrorCode) *PipelineError {
+	routeFailure(d.opts.Workers, route.WorkerID)
+
+	if code == TransportUnavailable {
+		d.opts.Metrics.IncNATSError(errorCodeLabel(code))
+	}
+
+	return &PipelineError{Code: code}
+}
+
+func (d *DefaultRequestDispatcher) natsDisconnected() bool {
+	return d.opts.NATS != nil && !d.opts.NATS.IsConnected()
+}
+
 func egressMillis(start, end time.Time) int64 {
 	if start.IsZero() {
 		return 0
@@ -1145,6 +1218,10 @@ func assignRejectError(code strawpb.AssignAckCode) *PipelineError {
 	}
 
 	return &PipelineError{Code: RouteUnavailable}
+}
+
+func canFallbackBeforeRequestStart(code ErrorCode) bool {
+	return code == AssignmentTimeout || code == ExecutorCapacityExhausted || code == RouteUnavailable
 }
 
 func errorFramePipelineError(code strawpb.ErrorCode, frame *strawpb.ErrorFrame) *PipelineError {
