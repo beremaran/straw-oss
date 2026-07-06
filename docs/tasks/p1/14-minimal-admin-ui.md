@@ -1,6 +1,6 @@
 # 14 - Minimal Admin UI
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -30,16 +30,16 @@ Build a minimal read-mostly admin and observability UI over existing admin, conf
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Define the minimal UI routes/views before implementation.
-- [ ] Add API-key based session/config for local operator use.
-- [ ] Add read views for requests, workers, audit, tenants, routes, deny rules, and injection policies.
-- [ ] Add narrowly scoped admin actions only where existing APIs already authorize them.
-- [ ] Ensure UI hides fields tenant-facing APIs omit.
-- [ ] Add smoke tests for navigation, auth failure, worker view, request lookup, and config read views.
-- [ ] Run focused UI tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Read all required planning docs.
+- [x] Define the minimal UI routes/views before implementation.
+- [x] Add API-key based session/config for local operator use.
+- [x] Add read views for requests, workers, audit, tenants, routes, deny rules, and injection policies.
+- [x] Add narrowly scoped admin actions only where existing APIs already authorize them.
+- [x] Ensure UI hides fields tenant-facing APIs omit.
+- [x] Add smoke tests for navigation, auth failure, worker view, request lookup, and config read views.
+- [x] Run focused UI tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 
