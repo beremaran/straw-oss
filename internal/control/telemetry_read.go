@@ -398,10 +398,39 @@ func (h *TelemetryHandlers) parseFilters(w http.ResponseWriter, qv url.Values, a
 			return nil, h.invalid(w, "unsupported telemetry filter")
 		}
 
-		filters[key] = vals[0]
+		val, ok := h.normalizeFilter(w, key, vals[0])
+		if !ok {
+			return nil, false
+		}
+
+		filters[key] = val
 	}
 
 	return filters, true
+}
+
+func (h *TelemetryHandlers) normalizeFilter(w http.ResponseWriter, key, val string) (string, bool) {
+	if key == telemetryFieldDraining {
+		switch strings.ToLower(val) {
+		case "true", "1":
+			return "1", true
+		case "false", "0":
+			return "0", true
+		default:
+			return "", h.invalid(w, "draining must be boolean")
+		}
+	}
+
+	if isNumericTelemetryFilter(key) {
+		parsed, err := strconv.ParseUint(val, 10, 64)
+		if err != nil {
+			return "", h.invalid(w, "numeric telemetry filter is invalid")
+		}
+
+		return strconv.FormatUint(parsed, 10), true
+	}
+
+	return val, true
 }
 
 func (h *TelemetryHandlers) parseCursor(w http.ResponseWriter, qv url.Values, q telemetryQuery) (telemetryCursor, bool) {

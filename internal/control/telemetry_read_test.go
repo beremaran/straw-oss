@@ -84,6 +84,24 @@ func TestTelemetryRejectsTenantOverrideAndWideWindow(t *testing.T) {
 	}
 }
 
+func TestTelemetryRejectsRawNumericFilterSQL(t *testing.T) {
+	t.Parallel()
+
+	h, token, store := newTestTelemetryHandlers(t, RoleViewer)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/telemetry/requests?client_status=200%20OR%201=1", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+
+	h.Requests(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", w.Code)
+	}
+	if store.last.Filters != nil {
+		t.Fatalf("store was queried with filters = %#v", store.last.Filters)
+	}
+}
+
 func TestTelemetryRequesterOnlyGetsOwnRequestDetail(t *testing.T) {
 	t.Parallel()
 
