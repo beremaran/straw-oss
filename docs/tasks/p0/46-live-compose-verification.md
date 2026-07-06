@@ -1,6 +1,6 @@
 # 46 - Live Compose Verification of Tasks 42-45 Surfaces
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -51,21 +51,21 @@ or task it), not silent scope growth.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Bring up the full compose stack (`deploy/docker`, see its README) and confirm Control `/readyz` is ready and
+- [x] Read all required planning docs.
+- [x] Bring up the full compose stack (`deploy/docker`, see its README) and confirm Control `/readyz` is ready and
       the egress worker registers.
-- [ ] Task 42 surface: create an executor pool with `allowed_ip_types`/`allowed_countries`/`allowed_regions` via
+- [x] Task 42 surface: create an executor pool with `allowed_ip_types`/`allowed_countries`/`allowed_regions` via
       the config API; verify the row in Postgres; verify a non-matching worker is not assignable and a matching
       one is (live request through the stack).
-- [ ] Task 43 surface: create deny rules across the full Section 26 taxonomy via the API; verify Postgres rows and
+- [x] Task 43 surface: create deny rules across the full Section 26 taxonomy via the API; verify Postgres rows and
       that a live request to a denied destination is rejected with the mapped error code.
-- [ ] Task 44 surface: perform a config mutation and verify the ClickHouse `config_audit_events` row carries
+- [x] Task 44 surface: perform a config mutation and verify the ClickHouse `config_audit_events` row carries
       `field_path`, `old_value_json`, `new_value_json`, and `config_version`.
-- [ ] Task 45 surface: verify worker session/heartbeat/load state appears under the canonical Redis keys, expires
+- [x] Task 45 surface: verify worker session/heartbeat/load state appears under the canonical Redis keys, expires
       on TTL after stopping the worker, and survives a Control restart (re-registration not required for state).
-- [ ] Update the four handoffs' skipped-verification notes with the observed results.
-- [ ] Run `make check` (no code should have changed).
-- [ ] Write a handoff note.
+- [x] Update the four handoffs' skipped-verification notes with the observed results.
+- [x] Run `make check` (no code should have changed).
+- [x] Write a handoff note.
 
 ## Tests
 

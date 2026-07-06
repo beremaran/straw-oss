@@ -70,16 +70,12 @@ Result: clean (`gofmt`, `golangci-lint --max-issues-per-linter 0 --max-same-issu
   — all pass, including `TestPostgresConfigStoreSnapshotAssembly`'s new capability-field round-trip assertion.
   Migration `0005` was applied to `straw_test` and re-applied a second time to confirm idempotency (`NOTICE:
   column ... already exists, skipping`).
-- Live compose verification: skipped. The session's auto-mode permission guard blocked applying the migration to
-  the live `straw` database and blocked rebuilding/restarting the `control` binary against it, citing this repo's
-  own `AGENTS.md`/`deploy/docker/README.md` rule to never point work at the compose stack's live database. This
-  task's change is a config-schema/routing-eligibility addition with no egress-request-path behavior change when
-  a pool has no restrictions set (the existing default), so the risk of an unverified live gap is low, but a
-  live pool-restriction CRUD + assignment check has not been driven end-to-end. If this needs live verification,
-  it should be done as a deliberate, user-approved step (restart `control` after `docker compose` picks up the
-  new migration via its embedded startup migrator, then create a restricted pool and confirm a non-matching
-  worker is excluded).
-  [Update 2026-07-06: the user approved that step; now owned by `docs/tasks/p0/46-live-compose-verification.md`.]
+- Live compose verification: completed by `docs/tasks/p0/46-live-compose-verification.md` on 2026-07-06. The run
+  created `pool_task47_us` through the config API with `allowed_ip_types=["datacenter"]`,
+  `allowed_countries=["US"]`, and `allowed_regions=["us-west-1"]`; Postgres stored those JSONB values. With the
+  seeded fallback route disabled, a request through the live REST -> Control -> NATS path returned
+  `route_unavailable` for the non-matching compose worker. After registering a second live Go worker with matching
+  capabilities, the same request returned HTTP 200 from `https://example.com/`.
 
 ## Reviewer Start Points
 
