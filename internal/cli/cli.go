@@ -43,6 +43,7 @@ var (
 	errStdinRead     = errors.New("read stdin")
 	errStdoutWrite   = errors.New("write stdout")
 	errUsageTemplate = errors.New("usage")
+	errStreamFrame   = errors.New("unsupported stream frame type")
 )
 
 // Run executes the Straw CLI.
@@ -125,6 +126,7 @@ func (r runner) request(ctx context.Context, args []string) error {
 	timeoutMS := fs.Uint64("timeout-ms", 0, "request timeout in milliseconds")
 	fingerprint := fs.String("fingerprint-profile", "", "fingerprint profile")
 	captureHint := fs.String("capture-hint", "", "capture hint")
+	stream := fs.Bool("stream", false, "stream upstream response body")
 
 	var headers headerFlags
 	fs.Var(&headers, "header", "HTTP header as Name: value")
@@ -147,12 +149,82 @@ func (r runner) request(ctx context.Context, args []string) error {
 		return usageError("request needs --method and --url, or --json containing both")
 	}
 
-	resp, err := sdk.NewClient(*baseURL, *apiKey, sdk.WithHTTPClient(r.httpClient)).Do(ctx, req)
+	client := sdk.NewClient(*baseURL, *apiKey, sdk.WithHTTPClient(r.httpClient))
+	if *stream {
+		return r.requestStream(ctx, client, req)
+	}
+
+	resp, err := client.Do(ctx, req)
 	if err != nil {
 		return fmt.Errorf("submit request: %w", err)
 	}
 
 	return writeJSON(r.stdout, resp)
+}
+
+func (r runner) requestStream(ctx context.Context, client *sdk.Client, req sdk.Request) error {
+	stream, err := client.DoStream(ctx, req)
+	if err != nil {
+		return fmt.Errorf("submit stream request: %w", err)
+	}
+	defer func() {
+		_ = stream.Close()
+	}()
+
+	for {
+		frame, err := stream.Next()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+
+			return fmt.Errorf("read stream frame: %w", err)
+		}
+
+		done, err := r.writeStreamFrame(frame)
+		if err != nil {
+			return err
+		}
+
+		if done {
+			return nil
+		}
+	}
+}
+
+func (r runner) writeStreamFrame(frame *sdk.StreamFrame) (bool, error) {
+	switch frame.Type {
+	case sdk.StreamFrameMetadata:
+		return false, writeJSON(r.stderr, frame.Metadata)
+	case sdk.StreamFrameBody:
+		return false, r.writeStreamBody(frame.Body)
+	case sdk.StreamFrameTrailers:
+		return false, writeJSON(r.stderr, frame.Trailers)
+	case sdk.StreamFrameEnd:
+		return true, writeJSON(r.stderr, frame.End)
+	case sdk.StreamFrameError:
+		return false, r.writeStreamError(frame.Error)
+	default:
+		return false, fmt.Errorf("%w %d", errStreamFrame, frame.Type)
+	}
+}
+
+func (r runner) writeStreamBody(body []byte) error {
+	_, err := r.stdout.Write(body)
+	if err != nil {
+		return fmt.Errorf("%w: %w", errStdoutWrite, err)
+	}
+
+	return nil
+}
+
+func (r runner) writeStreamError(resp *sdk.ErrorResponse) error {
+	err := writeJSON(r.stderr, resp)
+	if err != nil {
+		return err
+	}
+
+	return fmt.Errorf("%w: %s", errAPIResponse, resp.Code)
 }
 
 func (r runner) config(ctx context.Context, args []string) error {
@@ -716,7 +788,7 @@ func allowedPath(patterns map[string]bool, path string) bool {
 }
 
 const usage = `Usage:
-  straw request --method GET --url https://example.com [--header 'Name: value'] [--body-file path]
+  straw request --method GET --url https://example.com [--stream] [--header 'Name: value'] [--body-file path]
   straw request --json request.json
   straw config list [--limit n] [--offset n] <resource>
   straw config get tenants <id>|quotas|rate-limits|fingerprint-profiles|changes

@@ -65,7 +65,7 @@ Result:
 
 ## Remaining Work
 
-- None for this task. The server endpoint is complete; SDK/CLI stream client support is owned by
+- None for this task. SDK stream client support is implemented by
   `docs/tasks/p1/28-sdk-cli-rest-streaming-client.md`.
 
 ## Blockers
