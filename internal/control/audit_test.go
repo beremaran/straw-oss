@@ -9,6 +9,11 @@ import (
 	"github.com/beremaran/straw/v2/internal/config"
 )
 
+const (
+	auditTestEnabledKey = "enabled"
+	auditTestRuleID     = "rule_1"
+)
+
 func TestAuditStoreWithEventsMirrorsRecordToConfigAuditEvents(t *testing.T) {
 	t.Parallel()
 
@@ -21,7 +26,7 @@ func TestAuditStoreWithEventsMirrorsRecordToConfigAuditEvents(t *testing.T) {
 		ActorType:    configActorTypeAPIKey,
 		ActorID:      authTestKey1,
 		ResourceType: resourceTypeRoutingRule,
-		ResourceID:   "rule_1",
+		ResourceID:   auditTestRuleID,
 		Action:       configActionUpsert,
 	})
 	if err != nil {
@@ -51,8 +56,8 @@ func TestAuditStoreWithEventsMirrorsRecordToConfigAuditEvents(t *testing.T) {
 	if events[0].ConfigType != resourceTypeRoutingRule {
 		t.Fatalf("config_type = %q, want %q", events[0].ConfigType, resourceTypeRoutingRule)
 	}
-	if events[0].ResourceID != "rule_1" {
-		t.Fatalf("resource_id = %q, want rule_1", events[0].ResourceID)
+	if events[0].ResourceID != auditTestRuleID {
+		t.Fatalf("resource_id = %q, want %s", events[0].ResourceID, auditTestRuleID)
 	}
 	if events[0].Action != configActionUpsert {
 		t.Fatalf("action = %q, want %q", events[0].Action, configActionUpsert)
@@ -76,7 +81,7 @@ func TestRecordAuditMirrorsToConfigAuditEvents(t *testing.T) {
 	recorder := &captureConfigAuditRecorder{}
 	store := NewAuditStoreWithEvents(NewInMemoryAuditStore(), recorder)
 
-	recordAudit(context.Background(), store, Identity{TenantID: "ten_b", APIKeyID: "key_2"}, "worker", routingTestWorker1, "disable", 0, "", nil, nil, false)
+	recordAudit(context.Background(), store, Identity{TenantID: "ten_b", APIKeyID: "key_2"}, "worker", routingTestWorker1, "disable", 0, auditFieldPathAll, nil, nil, false)
 
 	events := recorder.all()
 	if len(events) != 1 {
@@ -156,9 +161,9 @@ func TestRecordAuditRedactsAPIKeySecretHash(t *testing.T) {
 	revoked.Status = APIKeyStatusRevoked
 
 	// create: new value is the record with SecretHash populated.
-	recordAudit(context.Background(), store, Identity{TenantID: adminTestTenantA, APIKeyID: authTestKey1}, "platform_api_key", "key_1", "create", 1, "", nil, created, false)
+	recordAudit(context.Background(), store, Identity{TenantID: adminTestTenantA, APIKeyID: authTestKey1}, "platform_api_key", "key_1", "create", 1, auditFieldPathAll, nil, created, false)
 	// revoke: both old and new values carry SecretHash (pointer form).
-	recordAudit(context.Background(), store, Identity{TenantID: adminTestTenantA, APIKeyID: authTestKey1}, "platform_api_key", "key_1", "revoke", 2, "", &created, &revoked, false)
+	recordAudit(context.Background(), store, Identity{TenantID: adminTestTenantA, APIKeyID: authTestKey1}, "platform_api_key", "key_1", "revoke", 2, auditFieldPathAll, &created, &revoked, false)
 
 	events := recorder.all()
 	if len(events) != 2 {
@@ -189,6 +194,97 @@ func TestRecordAuditRedactsAPIKeySecretHash(t *testing.T) {
 	}
 }
 
+func TestRecordAuditFieldPathDerivedOnUpdate(t *testing.T) {
+	t.Parallel()
+
+	recorder := &captureConfigAuditRecorder{}
+	inner := NewInMemoryAuditStore()
+	store := NewAuditStoreWithEvents(inner, recorder)
+
+	oldRule := config.RoutingRule{
+		ID:       auditTestRuleID,
+		Enabled:  true,
+		Priority: 10,
+		Match:    config.MatchConditions{TargetHost: "*.old.example", IngressType: IngressTypeREST},
+	}
+	newRule := config.RoutingRule{
+		ID:       auditTestRuleID,
+		Enabled:  true,
+		Priority: 20,
+		Match:    config.MatchConditions{TargetHost: "*.example.com", IngressType: IngressTypeREST},
+	}
+
+	recordAudit(context.Background(), store, Identity{TenantID: adminTestTenantA, APIKeyID: authTestKey1}, "routing_rule", auditTestRuleID, "update", 7, auditFieldPathAll, oldRule, newRule, false)
+
+	const wantPath = "match_conditions.target_host,priority"
+
+	events := recorder.all()
+	if len(events) != 1 {
+		t.Fatalf("events len = %d, want 1", len(events))
+	}
+	if events[0].FieldPath != wantPath {
+		t.Fatalf("event field_path = %q, want %q", events[0].FieldPath, wantPath)
+	}
+
+	records, err := inner.ListTenant(context.Background(), adminTestTenantA)
+	if err != nil {
+		t.Fatalf("ListTenant() error = %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("records len = %d, want 1", len(records))
+	}
+	if records[0].FieldPath != wantPath {
+		t.Fatalf("record field_path = %q, want %q", records[0].FieldPath, wantPath)
+	}
+}
+
+func TestRecordAuditFieldPathSkipsMetadataChurn(t *testing.T) {
+	t.Parallel()
+
+	recorder := &captureConfigAuditRecorder{}
+	store := NewAuditStoreWithEvents(NewInMemoryAuditStore(), recorder)
+
+	oldTenant := Tenant{ID: adminTestTenantA, Name: "old", UpdatedAt: time.Unix(1, 0).UTC(), ConfigVersion: 4}
+	newTenant := oldTenant
+	newTenant.Name = "new"
+	newTenant.UpdatedAt = time.Unix(2, 0).UTC()
+	newTenant.ConfigVersion = 5
+
+	recordAudit(context.Background(), store, Identity{TenantID: adminTestTenantA, APIKeyID: authTestKey1}, "tenant", adminTestTenantA, "update", 5, auditFieldPathAll, oldTenant, newTenant, false)
+
+	events := recorder.all()
+	if len(events) != 1 {
+		t.Fatalf("events len = %d, want 1", len(events))
+	}
+	if events[0].FieldPath != "name" {
+		t.Fatalf("event field_path = %q, want name", events[0].FieldPath)
+	}
+}
+
+func TestRecordAuditFieldPathSentinelWhenNotDiffable(t *testing.T) {
+	t.Parallel()
+
+	recorder := &captureConfigAuditRecorder{}
+	store := NewAuditStoreWithEvents(NewInMemoryAuditStore(), recorder)
+
+	rule := map[string]any{auditTestEnabledKey: true}
+
+	// create: no old value, so the whole-object sentinel is kept.
+	recordAudit(context.Background(), store, Identity{TenantID: adminTestTenantA, APIKeyID: authTestKey1}, "routing_rule", auditTestRuleID, "create", 1, auditFieldPathAll, nil, rule, false)
+	// no-op update: nothing differs, so the sentinel is kept.
+	recordAudit(context.Background(), store, Identity{TenantID: adminTestTenantA, APIKeyID: authTestKey1}, "routing_rule", auditTestRuleID, "update", 2, auditFieldPathAll, rule, rule, false)
+
+	events := recorder.all()
+	if len(events) != 2 {
+		t.Fatalf("events len = %d, want 2", len(events))
+	}
+	for i, ev := range events {
+		if ev.FieldPath != auditFieldPathAll {
+			t.Fatalf("events[%d].field_path = %q, want %q", i, ev.FieldPath, auditFieldPathAll)
+		}
+	}
+}
+
 func TestRecordAuditSkipPostgres(t *testing.T) {
 	t.Parallel()
 
@@ -196,7 +292,7 @@ func TestRecordAuditSkipPostgres(t *testing.T) {
 	inner := NewInMemoryAuditStore()
 	store := NewAuditStoreWithEvents(inner, recorder)
 
-	recordAudit(context.Background(), store, Identity{TenantID: adminTestTenantA, APIKeyID: authTestKey1}, "routing_rule", "rule_1", "upsert", 3, "", nil, nil, true)
+	recordAudit(context.Background(), store, Identity{TenantID: adminTestTenantA, APIKeyID: authTestKey1}, "routing_rule", auditTestRuleID, "upsert", 3, auditFieldPathAll, nil, nil, true)
 
 	// It must NOT write to inner store (Postgres double-write prevention).
 	records, err := inner.ListTenant(context.Background(), adminTestTenantA)

@@ -288,7 +288,7 @@ func (h *AdminHandlers) upsertRoutingRule(w http.ResponseWriter, r *http.Request
 	}
 
 	h.ConfigCache.PublishInvalidation(r.Context(), identity.TenantID, tenantVersion)
-	recordAudit(r.Context(), h.Audit, identity, resourceTypeRoutingRule, record.ID, configActionUpsert, tenantVersion, "", oldRule, rule, h.ConfigWrites != nil)
+	recordAudit(r.Context(), h.Audit, identity, resourceTypeRoutingRule, record.ID, configActionUpsert, tenantVersion, auditFieldPathAll, oldRule, rule, h.ConfigWrites != nil)
 
 	writeJSON(w, http.StatusOK, toRoutingRuleResponse(record))
 }
@@ -323,7 +323,7 @@ func (h *AdminHandlers) DeleteRoutingRule(w http.ResponseWriter, r *http.Request
 	}
 
 	h.ConfigCache.PublishInvalidation(r.Context(), identity.TenantID, tenantVersion)
-	recordAudit(r.Context(), h.Audit, identity, resourceTypeRoutingRule, id, configActionDelete, tenantVersion, "", oldRule, nil, h.ConfigWrites != nil)
+	recordAudit(r.Context(), h.Audit, identity, resourceTypeRoutingRule, id, configActionDelete, tenantVersion, auditFieldPathAll, oldRule, nil, h.ConfigWrites != nil)
 
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -548,7 +548,7 @@ func (h *AdminHandlers) upsertExecutorPool(w http.ResponseWriter, r *http.Reques
 	}
 
 	h.ConfigCache.PublishInvalidation(r.Context(), identity.TenantID, tenantVersion)
-	recordAudit(r.Context(), h.Audit, identity, "executor_pool", record.ID, configActionUpsert, tenantVersion, "", oldPool, pool, h.ConfigWrites != nil)
+	recordAudit(r.Context(), h.Audit, identity, "executor_pool", record.ID, configActionUpsert, tenantVersion, auditFieldPathAll, oldPool, pool, h.ConfigWrites != nil)
 
 	writeJSON(w, http.StatusOK, toExecutorPoolResponse(record))
 }
@@ -583,7 +583,7 @@ func (h *AdminHandlers) DeleteExecutorPool(w http.ResponseWriter, r *http.Reques
 	}
 
 	h.ConfigCache.PublishInvalidation(r.Context(), identity.TenantID, tenantVersion)
-	recordAudit(r.Context(), h.Audit, identity, "executor_pool", id, configActionDelete, tenantVersion, "", oldPool, nil, h.ConfigWrites != nil)
+	recordAudit(r.Context(), h.Audit, identity, "executor_pool", id, configActionDelete, tenantVersion, auditFieldPathAll, oldPool, nil, h.ConfigWrites != nil)
 
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -658,7 +658,7 @@ func denyRuleValue(r config.DenyRule) string {
 
 // normalizeDenyRule validates and normalizes a deny-rule value per its type
 // (docs/planning/27 "Destination Deny Normalization and CIDR Defaults":
-// lowercase hostnames, trailing-dot trimming, valid CIDR/IP literals).
+// lowercase hostnames, leading/trailing-dot trimming, valid CIDR/IP literals).
 func normalizeDenyRule(ruleType, value, reason string) (config.DenyRule, error) {
 	if !denyRuleTypes[ruleType] {
 		return config.DenyRule{}, errInvalidDenyRuleType
@@ -671,20 +671,17 @@ func normalizeDenyRule(ruleType, value, reason string) (config.DenyRule, error) 
 	rule := config.DenyRule{RuleType: ruleType, RawPattern: value, Reason: reason}
 
 	switch {
-	case ruleType == denyRuleTypeCNAMESuffix:
-		normalized, err := normalizeHostname(value)
+	case ruleType == denyRuleTypeCNAMESuffix, denyRuleHostTypes[ruleType]:
+		normalized, err := normalizeHostname(strings.Trim(strings.TrimSpace(value), "."))
 		if err != nil {
 			return config.DenyRule{}, errInvalidDenyRuleValue
 		}
 
-		rule.NormalizedName = normalized
-	case denyRuleHostTypes[ruleType]:
-		normalized, err := normalizeHostname(value)
-		if err != nil {
-			return config.DenyRule{}, errInvalidDenyRuleValue
+		if ruleType == denyRuleTypeCNAMESuffix {
+			rule.NormalizedName = normalized
+		} else {
+			rule.NormalizedHost = normalized
 		}
-
-		rule.NormalizedHost = normalized
 	case denyRuleCIDRTypes[ruleType]:
 		prefix, err := netip.ParsePrefix(value)
 		if err != nil {
@@ -835,7 +832,7 @@ func (h *AdminHandlers) upsertDenyRule(w http.ResponseWriter, r *http.Request, i
 	}
 
 	h.ConfigCache.PublishInvalidation(r.Context(), identity.TenantID, tenantVersion)
-	recordAudit(r.Context(), h.Audit, identity, "deny_rule", record.ID, configActionUpsert, tenantVersion, "", oldRule, rule, h.ConfigWrites != nil)
+	recordAudit(r.Context(), h.Audit, identity, "deny_rule", record.ID, configActionUpsert, tenantVersion, auditFieldPathAll, oldRule, rule, h.ConfigWrites != nil)
 
 	writeJSON(w, http.StatusOK, toDenyRuleResponse(record))
 }
@@ -870,7 +867,7 @@ func (h *AdminHandlers) DeleteDenyRule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.ConfigCache.PublishInvalidation(r.Context(), identity.TenantID, tenantVersion)
-	recordAudit(r.Context(), h.Audit, identity, "deny_rule", id, configActionDelete, tenantVersion, "", oldRule, nil, h.ConfigWrites != nil)
+	recordAudit(r.Context(), h.Audit, identity, "deny_rule", id, configActionDelete, tenantVersion, auditFieldPathAll, oldRule, nil, h.ConfigWrites != nil)
 
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -1066,7 +1063,7 @@ func (h *AdminHandlers) upsertInjectionPolicy(w http.ResponseWriter, r *http.Req
 	}
 
 	h.ConfigCache.PublishInvalidation(r.Context(), identity.TenantID, tenantVersion)
-	recordAudit(r.Context(), h.Audit, identity, "injection_policy", record.ID, configActionUpsert, tenantVersion, "", oldPolicy, pol, h.ConfigWrites != nil)
+	recordAudit(r.Context(), h.Audit, identity, "injection_policy", record.ID, configActionUpsert, tenantVersion, auditFieldPathAll, oldPolicy, pol, h.ConfigWrites != nil)
 
 	writeJSON(w, http.StatusOK, toInjectionPolicyResponse(record))
 }
@@ -1101,7 +1098,7 @@ func (h *AdminHandlers) DeleteInjectionPolicy(w http.ResponseWriter, r *http.Req
 	}
 
 	h.ConfigCache.PublishInvalidation(r.Context(), identity.TenantID, tenantVersion)
-	recordAudit(r.Context(), h.Audit, identity, "injection_policy", id, configActionDelete, tenantVersion, "", oldPolicy, nil, h.ConfigWrites != nil)
+	recordAudit(r.Context(), h.Audit, identity, "injection_policy", id, configActionDelete, tenantVersion, auditFieldPathAll, oldPolicy, nil, h.ConfigWrites != nil)
 
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -1230,7 +1227,7 @@ func (h *AdminHandlers) RollbackConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.ConfigCache.PublishInvalidation(r.Context(), identity.TenantID, tenantVersion)
-	recordAudit(r.Context(), h.Audit, identity, resourceTypeConfigRollback, strconv.FormatUint(req.TargetConfigVersion, 10), configActionRollback, tenantVersion, "", nil, req, h.ConfigWrites != nil)
+	recordAudit(r.Context(), h.Audit, identity, resourceTypeConfigRollback, strconv.FormatUint(req.TargetConfigVersion, 10), configActionRollback, tenantVersion, auditFieldPathAll, nil, req, h.ConfigWrites != nil)
 
 	writeJSON(w, http.StatusOK, map[string]uint64{"config_version": tenantVersion})
 }

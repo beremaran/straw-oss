@@ -47,10 +47,13 @@ Result:
 
 - Postgres-backed tests: not exercised; this diff does not touch Postgres files or migrations.
 - Redis-backed tests: ran against the local compose Redis service and passed without skips.
-- Live compose verification: completed by `docs/tasks/p0/46-live-compose-verification.md` on 2026-07-06. The full
-  compose stack produced `straw:worker-runtime:<worker_id>` Redis JSON keys with session, heartbeat/load, pool, and
-  capability fields plus TTLs. After stopping workers and restarting Control, `/api/v1/admin/workers` still listed
-  the Redis-backed sessions without re-registration; the keys expired after their TTLs.
+- Live compose verification: **done 2026-07-07** by `docs/tasks/p0/46-live-compose-verification.md` (compose SHA
+  `eb0c32b2`). Observed on the full stack: the canonical Redis key `straw:worker-runtime:egress-local-1` carries
+  the worker session/heartbeat/load fields with TTL=60s; the session survived a `docker compose restart control`
+  (same `session_id`, and a live request returned 200 immediately, no re-registration); after `docker compose stop
+  egress` the key TTL counted down and expired (`-2`, gone) at ~65s of missed heartbeats, after which a live
+  request failed safe with `route_unavailable` ("Rule matched but no eligible executor"). No defect found in this
+  surface. (Originally skipped because that run started only Redis, not the full stack.)
 
 ## Reviewer Start Points
 

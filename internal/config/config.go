@@ -16,6 +16,10 @@ const Version = "v1"
 // defaultEgressHealthPort is used when egress.health_port is unset.
 const defaultEgressHealthPort = 8090
 
+// defaultIngressMode is the egress.capabilities.supported_ingress_modes
+// default from docs/planning/24-static-configuration.md.
+const defaultIngressMode = "rest"
+
 var (
 	errMissingControlSection    = errors.New("missing control section")
 	errMissingEgressSection     = errors.New("missing egress section")
@@ -164,6 +168,24 @@ type EgressConfig struct {
 	// pools include the request's target pool (worker_registry.CandidatesForPool),
 	// so a worker with no pools is never a dispatch candidate.
 	AllowedPools []EgressPoolRef `json:"allowed_pools,omitempty"`
+	// Capabilities are the capability claims the worker declares in its
+	// RegisterRequest (docs/planning/24-static-configuration.md
+	// `egress.capabilities.*`). Claims must be within the worker credential's
+	// allowed_capabilities scope or Control rejects the registration.
+	Capabilities EgressCapabilities `json:"capabilities,omitzero"`
+}
+
+// EgressCapabilities mirrors the `egress.capabilities.*` static config keys
+// from docs/planning/24-static-configuration.md. All lists default to empty;
+// SupportedIngressModes defaults to ["rest"] and MaxConcurrency falls back to
+// the binary's default when unset.
+type EgressCapabilities struct {
+	Tags                  []string `json:"tags,omitempty"`
+	Countries             []string `json:"countries,omitempty"`
+	Regions               []string `json:"regions,omitempty"`
+	IPTypes               []string `json:"ip_types,omitempty"`
+	SupportedIngressModes []string `json:"supported_ingress_modes,omitempty"`
+	MaxConcurrency        uint32   `json:"max_concurrency,omitempty"`
 }
 
 // EgressUpstreamConnectionPoolConfig configures optional direct-local upstream
@@ -513,9 +535,16 @@ func (e *EgressConfig) validate() error {
 		return err
 	}
 
+	e.Capabilities.applyDefaults()
 	e.NATS.applyDefaults()
 
 	return nil
+}
+
+func (c *EgressCapabilities) applyDefaults() {
+	if len(c.SupportedIngressModes) == 0 {
+		c.SupportedIngressModes = []string{defaultIngressMode}
+	}
 }
 
 func (p *EgressUpstreamConnectionPoolConfig) applyDefaults() {

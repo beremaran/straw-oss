@@ -199,6 +199,32 @@ func serveHealthHTTP(ctx context.Context, cfg config.EgressConfig, ready *atomic
 	}
 }
 
+// buildCapabilities maps the loaded egress static config onto the capability
+// claims sent in the worker's RegisterRequest
+// (docs/planning/24-static-configuration.md `egress.capabilities.*`).
+func buildCapabilities(cfg config.EgressConfig) egress.Capabilities {
+	pools := make([]*strawpb.RegisterRequest_PoolRef, 0, len(cfg.AllowedPools))
+	for _, p := range cfg.AllowedPools {
+		pools = append(pools, &strawpb.RegisterRequest_PoolRef{TenantId: p.TenantID, PoolId: p.PoolID})
+	}
+
+	maxConcurrency := uint32(defaultConcurrency)
+	if cfg.Capabilities.MaxConcurrency > 0 {
+		maxConcurrency = cfg.Capabilities.MaxConcurrency
+	}
+
+	return egress.Capabilities{
+		SoftwareVersion:       "dev",
+		MaxConcurrency:        maxConcurrency,
+		AllowedPools:          pools,
+		Tags:                  cfg.Capabilities.Tags,
+		Countries:             cfg.Capabilities.Countries,
+		Regions:               cfg.Capabilities.Regions,
+		IPTypes:               cfg.Capabilities.IPTypes,
+		SupportedIngressModes: cfg.Capabilities.SupportedIngressModes,
+	}
+}
+
 func runWorker(ctx context.Context, natsConn *natsx.Connection, cfg config.EgressConfig) error {
 	priv, err := loadWorkerPrivateKey(cfg)
 	if err != nil {
@@ -212,16 +238,7 @@ func runWorker(ctx context.Context, natsConn *natsx.Connection, cfg config.Egres
 		PrivateKey:   priv,
 	}
 
-	pools := make([]*strawpb.RegisterRequest_PoolRef, 0, len(cfg.AllowedPools))
-	for _, p := range cfg.AllowedPools {
-		pools = append(pools, &strawpb.RegisterRequest_PoolRef{TenantId: p.TenantID, PoolId: p.PoolID})
-	}
-
-	caps := egress.Capabilities{
-		SoftwareVersion: "dev",
-		MaxConcurrency:  defaultConcurrency,
-		AllowedPools:    pools,
-	}
+	caps := buildCapabilities(cfg)
 
 	heartbeatInterval := time.Duration(cfg.HeartbeatIntervalMs) * time.Millisecond
 

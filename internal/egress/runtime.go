@@ -17,7 +17,7 @@ const (
 	defaultHeartbeatInterval = 5 * time.Second
 	registerTimeout          = 5 * time.Second
 	heartbeatTimeout         = 5 * time.Second
-	registerBackoffMin       = 1 * time.Second
+	registerBackoffFloor     = 1 * time.Second
 	registerBackoffMax       = 30 * time.Second
 	registerBackoffFactor    = 2
 )
@@ -128,7 +128,7 @@ func Run(ctx context.Context, conn *natsx.Connection, id Identity, caps Capabili
 	setReady(ready, false)
 
 	for {
-		sessionID, err := registerWithRetry(ctx, conn, id, caps, registerBackoffMin, registerBackoffMax)
+		sessionID, err := registerWithRetry(ctx, conn, id, caps, registerBackoffFloor, registerBackoffMax)
 		if err != nil {
 			return err
 		}

@@ -64,8 +64,14 @@ is already part of the stack.
 request works out of the box: `STRAW_BOOTSTRAP_DEV_TENANT_ID` and `STRAW_BOOTSTRAP_DEV_POOL_ID` on the `control`
 service make Control seed a dev tenant, an enabled routing rule targeting the dev pool, and scope the dev worker
 credential to that (tenant, pool) (`bootstrapDevProvisioning`, `cmd/control/main.go`). `egress.json` declares the
-matching membership via `egress.allowed_pools`, which the worker sends as pool refs at registration. All of this is
-dev-only seeding; production provisions tenants, routing, pools, and credentials through the admin API.
+matching membership via `egress.allowed_pools`, which the worker sends as pool refs at registration. `egress.json`
+also declares a dev capability set via `egress.capabilities` (`ip_types: ["datacenter"]`,
+`docs/planning/24-static-configuration.md`), so an executor pool's `allowed_ip_types`/`allowed_countries`/
+`allowed_regions` restriction can actually exclude or admit the live worker — set a pool's `allowed_ip_types` to a
+disjoint value (e.g. `["residential"]`) to observe `route_unavailable`. The dev credential's `allowed_capabilities`
+scope is empty, which Control treats as unrestricted, so the declared claims pass registration without extra
+seeding. All of this is dev-only seeding; production provisions tenants, routing, pools, and credentials through
+the admin API.
 
 To drive it end to end:
 

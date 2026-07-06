@@ -8,6 +8,14 @@ Straw is a Go distributed HTTP/HTTPS proxy control plane and egress worker. P0 i
 one official Go Egress Worker, REST request transport, Core NATS assignment, Postgres config, Redis runtime state,
 ClickHouse metadata, and docker-compose for local development.
 
+Request flow: a client calls Control's REST API (`POST /api/v1/requests`, handled in
+`internal/control/proxy_handler.go`), the dispatcher (`internal/control/dispatcher.go`) admits (auth,
+quota, rate limit, destination policy), routes to a worker assignment, and sends the request over NATS
+to an Egress Worker (`internal/egress/loop.go` + `executor.go`), which performs the upstream HTTP call
+and replies over NATS. Postgres holds tenant/config/API-key state, Redis holds runtime state (worker
+registry, sticky sessions, cache invalidation), ClickHouse holds request metadata/telemetry. `sdk/` is
+the minimal Go client SDK; `cmd/straw` is the CLI.
+
 Start with:
 
 1. `docs/planning/01-purpose.md`
@@ -74,11 +82,14 @@ Use $straw-task-runner at .agents/skills/straw-task-runner to complete the next 
 
 - `cmd/control`: Control service entrypoint.
 - `cmd/egress`: Egress worker entrypoint.
+- `cmd/straw`: CLI entrypoint (`internal/cli`).
 - `internal/control`: Control implementation packages.
 - `internal/egress`: Egress worker implementation packages.
 - `internal/config`: Config loading and validation.
 - `internal/natsx`: NATS connection and subject helpers.
+- `internal/postgresx`, `internal/redisx`, `internal/logging`: Postgres/Redis/logging helpers.
 - `internal/testutil`: Shared test helpers.
+- `sdk`: Public Go client SDK.
 - `api/proto/straw/v1`: Protobuf contracts.
 - `migrations/postgres`: Postgres migrations.
 - `deploy/docker`: Docker-local deployment files.
@@ -93,7 +104,15 @@ Run before handoff:
 make check
 ```
 
-`make check` runs `gofmt` verification and `go test ./...`.
+`make check` runs `make fmt-check` (gofmt), `make test` (`go test ./...`), and `make lint`
+(`golangci-lint run --max-issues-per-linter 0 --max-same-issues 0` — the required flags are already
+baked in). Other useful commands:
+
+```sh
+go test ./internal/control -run TestName   # single test
+make postgres-migrations-check             # migration file sanity
+STRAW_TEST_POSTGRES_DSN='postgres://postgres:postgres@localhost:5432/straw_test?sslmode=disable' go test ./...  # Postgres-backed tests
+```
 
 Postgres-backed tests only run when `STRAW_TEST_POSTGRES_DSN` is set, and the harness refuses any
 database whose name does not end in `_test` (it truncates tables between tests). Use the dedicated

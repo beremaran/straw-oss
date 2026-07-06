@@ -50,10 +50,15 @@ make check
 Result:
 - **Postgres-backed tests**: ran against `straw_test` successfully:
   `STRAW_TEST_POSTGRES_DSN='postgres://postgres:postgres@localhost:5432/straw_test?sslmode=disable' go test ./internal/control/...`
-- **Live compose verification**: completed by `docs/tasks/p0/46-live-compose-verification.md` on 2026-07-06. Live
-  config mutations wrote ClickHouse `straw.config_audit_events` rows with `config_version` and redacted
-  `old_value_json`/`new_value_json`; whole-resource P0 writes carried `field_path` as the empty-string floor allowed
-  by `docs/tasks/p0/44-config-audit-event-enrichment.md`.
+- **Live compose verification**: **done 2026-07-07** by `docs/tasks/p0/46-live-compose-verification.md` (compose
+  SHA `eb0c32b2`). Observed in ClickHouse `straw.config_audit_events` on the full stack: rows carry a non-zero
+  `config_version`; a config *update* (PUT executor-pool) produced a row with both `old_value_json` (prior
+  whole-object state) and `new_value_json` (new state); API-key create rows carried
+  `"SecretHash":"[redacted]"` (redaction working). **Gap closed 2026-07-07:** `field_path` was empty on every row
+  because all `recordAudit` call sites passed `""`; now fixed by
+  `docs/tasks/p0/50-config-audit-field-path-population.md` — all call sites pass the `*` sentinel, and
+  `deriveFieldPath` in `audit.go` refines it to comma-separated dotted field paths when both old and new JSON
+  are present.
 
 ## Reviewer Start Points
 
