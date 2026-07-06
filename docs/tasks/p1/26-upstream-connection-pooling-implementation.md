@@ -1,6 +1,6 @@
 # 26 - Upstream Connection Pooling Implementation
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -49,18 +49,18 @@ pool-key and SSRF boundaries.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Add Egress static config fields and validation for `egress.upstream_connection_pool.*`.
-- [ ] Keep the disabled default identical to P0: `DisableKeepAlives=true` and outbound HTTP/2 disabled.
-- [ ] Implement enabled direct-local pooling keyed by tenant, resolution mode, scheme, original hostname, port,
+- [x] Read all required planning docs.
+- [x] Add Egress static config fields and validation for `egress.upstream_connection_pool.*`.
+- [x] Keep the disabled default identical to P0: `DisableKeepAlives=true` and outbound HTTP/2 disabled.
+- [x] Implement enabled direct-local pooling keyed by tenant, resolution mode, scheme, original hostname, port,
       validated dial IP, and fingerprint profile.
-- [ ] Revalidate DNS and destination policy before every reuse; discard pooled connections whose dial IP is absent
+- [x] Revalidate DNS and destination policy before every reuse; discard pooled connections whose dial IP is absent
       from the current validated set.
-- [ ] Ensure the HTTP/TLS library still dials only validated IPs and does not perform a second hostname resolution.
-- [ ] Implement idle timeout, max lifetime, error eviction, and worker shutdown cleanup.
-- [ ] Add the tests listed in Expected Files.
-- [ ] Run focused tests, then `make check`.
-- [ ] Write a handoff note.
+- [x] Ensure the HTTP/TLS library still dials only validated IPs and does not perform a second hostname resolution.
+- [x] Implement idle timeout, max lifetime, error eviction, and worker shutdown cleanup.
+- [x] Add the tests listed in Expected Files.
+- [x] Run focused tests, then `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

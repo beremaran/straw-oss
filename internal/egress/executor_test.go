@@ -10,7 +10,10 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"net/url"
+	"runtime"
 	"strings"
+	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -497,6 +500,430 @@ func TestP0TransportDefaults(t *testing.T) {
 	}
 }
 
+func TestExecutorUpstreamConnectionPoolReusesExactKey(t *testing.T) {
+	t.Parallel()
+
+	var newConns atomic.Int32
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("ok"))
+	}))
+	server.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+		if state == http.StateNew {
+			newConns.Add(1)
+		}
+	}
+	server.Start()
+	t.Cleanup(server.Close)
+
+	target := rewriteHost(t, server.URL, unitTestHost)
+	exec := NewExecutor(ExecutorOptions{
+		Resolver: staticResolver{unitTestHost: loopbackIP(t, server.URL)},
+		DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+			host, _, err := net.SplitHostPort(address)
+			if err != nil {
+				return nil, err
+			}
+			if host == unitTestHost {
+				return nil, errors.New("pooled dialer used original hostname")
+			}
+
+			var d net.Dialer
+
+			return d.DialContext(ctx, network, address)
+		},
+		Pool: UpstreamConnectionPoolOptions{
+			Enabled:                   true,
+			MaxIdleConnsPerTenantHost: 2,
+			IdleTimeout:               time.Second,
+			MaxLifetime:               time.Minute,
+		},
+	})
+
+	for range 2 {
+		frames := exec.ExecuteWithTenant(context.Background(), testTenantA, requestStart(target, directPolicy(true)), nil, 1, nil)
+		if terminalErrorOrNil(frames) != nil {
+			t.Fatalf("ExecuteWithTenant() frames = %#v, want success", frames)
+		}
+	}
+	if got := newConns.Load(); got != 1 {
+		t.Fatalf("new connections = %d, want one reused connection", got)
+	}
+
+	frames := exec.ExecuteWithTenant(context.Background(), "ten_b", requestStart(target, directPolicy(true)), nil, 1, nil)
+	if terminalErrorOrNil(frames) != nil {
+		t.Fatalf("ExecuteWithTenant() tenant b frames = %#v, want success", frames)
+	}
+	if got := newConns.Load(); got != 2 {
+		t.Fatalf("new connections after tenant change = %d, want 2", got)
+	}
+
+	otherHostTarget := rewriteHost(t, server.URL, "other.test")
+	exec.resolver = hostResolver{
+		unitTestHost: loopbackIP(t, server.URL),
+		"other.test": loopbackIP(t, server.URL),
+	}
+	frames = exec.ExecuteWithTenant(context.Background(), testTenantA, requestStart(otherHostTarget, directPolicy(true)), nil, 1, nil)
+	if terminalErrorOrNil(frames) != nil {
+		t.Fatalf("ExecuteWithTenant() other host frames = %#v, want success", frames)
+	}
+	if got := newConns.Load(); got != 3 {
+		t.Fatalf("new connections after host change = %d, want 3", got)
+	}
+
+	start := requestStart(target, directPolicy(true))
+	start.FingerprintInstruction = "chrome_120"
+	frames = exec.ExecuteWithTenant(context.Background(), testTenantA, start, nil, 1, nil)
+	if got := terminalError(t, frames).GetCode(); got != strawpb.ErrorCode_ERROR_CODE_UNSUPPORTED_FINGERPRINT {
+		t.Fatalf("code = %v, want unsupported_fingerprint", got)
+	}
+	if got := newConns.Load(); got != 3 {
+		t.Fatalf("new connections after unsupported fingerprint = %d, want 3", got)
+	}
+}
+
+func TestExecutorUpstreamConnectionPoolValidatesBeforeReuse(t *testing.T) {
+	t.Parallel()
+
+	var newConns atomic.Int32
+	var closedConns atomic.Int32
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("ok"))
+	}))
+	server.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+		switch state {
+		case http.StateNew:
+			newConns.Add(1)
+		case http.StateClosed:
+			closedConns.Add(1)
+		case http.StateActive, http.StateIdle, http.StateHijacked:
+		default:
+		}
+	}
+	server.Start()
+	t.Cleanup(server.Close)
+
+	resolver := &sequenceResolver{
+		host: unitTestHost,
+		ips: []netip.Addr{
+			loopbackIP(t, server.URL),
+			netip.MustParseAddr("203.0.113.77"),
+		},
+	}
+	target := rewriteHost(t, server.URL, unitTestHost)
+	exec := NewExecutor(ExecutorOptions{
+		Resolver: resolver,
+		DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+			host, _, err := net.SplitHostPort(address)
+			if err != nil {
+				return nil, err
+			}
+			if host == "203.0.113.77" {
+				return nil, syscall.ECONNREFUSED
+			}
+
+			var d net.Dialer
+
+			return d.DialContext(ctx, network, address)
+		},
+		Pool: UpstreamConnectionPoolOptions{
+			Enabled:                   true,
+			MaxIdleConnsPerTenantHost: 2,
+			IdleTimeout:               time.Second,
+			MaxLifetime:               time.Minute,
+		},
+	})
+
+	frames := exec.ExecuteWithTenant(context.Background(), testTenantA, requestStart(target, directPolicy(true)), nil, 1, nil)
+	if terminalErrorOrNil(frames) != nil {
+		t.Fatalf("first ExecuteWithTenant() frames = %#v, want success", frames)
+	}
+
+	frames = exec.ExecuteWithTenant(context.Background(), testTenantA, requestStart(target, &strawpb.DestinationPolicy{
+		AllowedCidrs:   []string{"203.0.113.77/32"},
+		RedirectPolicy: strawpb.RedirectPolicy_REDIRECT_POLICY_NO_FOLLOW,
+		ResolutionMode: strawpb.DestinationResolutionMode_DESTINATION_RESOLUTION_DIRECT_LOCAL,
+	}), nil, 1, nil)
+	if got := terminalError(t, frames).GetCode(); got != strawpb.ErrorCode_ERROR_CODE_UPSTREAM_CONNECTION_REFUSED {
+		t.Fatalf("code = %v, want fresh dial failure after stale pooled IP rejected", got)
+	}
+	if got := newConns.Load(); got != 1 {
+		t.Fatalf("new connections = %d, want stale pooled connection not reused", got)
+	}
+	if got := resolver.lookups.Load(); got != 2 {
+		t.Fatalf("DNS lookups = %d, want validation before each request", got)
+	}
+	deadline := time.Now().Add(time.Second)
+	for closedConns.Load() == 0 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if closedConns.Load() == 0 {
+		t.Fatal("stale pooled connection was not closed after DNS rebinding")
+	}
+}
+
+func TestExecutorUpstreamConnectionPoolKeyIncludesIsolationFields(t *testing.T) {
+	t.Parallel()
+
+	resolver := hostResolver{
+		unitTestHost: netip.MustParseAddr("203.0.113.10"),
+		"other.test": netip.MustParseAddr("203.0.113.11"),
+	}
+	exec := NewExecutor(ExecutorOptions{Resolver: resolver})
+	base := requestStart("http://unit.test:8080", &strawpb.DestinationPolicy{
+		AllowedCidrs:   []string{"203.0.113.0/24"},
+		RedirectPolicy: strawpb.RedirectPolicy_REDIRECT_POLICY_NO_FOLLOW,
+		ResolutionMode: strawpb.DestinationResolutionMode_DESTINATION_RESOLUTION_DIRECT_LOCAL,
+	})
+
+	baseTarget, failure := parseTarget(base)
+	if failure != nil {
+		t.Fatalf("parseTarget() failure = %v", failure)
+	}
+	baseKey, failure := exec.poolKey(context.Background(), testTenantA, baseTarget, base)
+	if failure != nil {
+		t.Fatalf("poolKey() failure = %v", failure)
+	}
+
+	tests := map[string]struct {
+		tenant string
+		start  *strawpb.RequestStart
+	}{
+		"tenant":         {tenant: "ten_b", start: base},
+		"different-host": {tenant: testTenantA, start: requestStart("http://other.test:8080", base.GetDestinationPolicy())},
+		"port":           {tenant: testTenantA, start: requestStart("http://unit.test:8081", base.GetDestinationPolicy())},
+		"scheme":         {tenant: testTenantA, start: requestStart("https://unit.test:8080", base.GetDestinationPolicy())},
+		"fingerprint": {tenant: testTenantA, start: func() *strawpb.RequestStart {
+			start := requestStart("http://unit.test:8080", base.GetDestinationPolicy())
+			start.FingerprintInstruction = "chrome_120"
+
+			return start
+		}()},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			target, failure := parseTarget(tt.start)
+			if failure != nil {
+				t.Fatalf("parseTarget() failure = %v", failure)
+			}
+
+			key, failure := exec.poolKey(context.Background(), tt.tenant, target, tt.start)
+			if failure != nil {
+				t.Fatalf("poolKey() failure = %v", failure)
+			}
+			if key == baseKey {
+				t.Fatalf("pool key for %s matched base key: %+v", name, key)
+			}
+		})
+	}
+
+	ipKey, failure := NewExecutor(ExecutorOptions{Resolver: hostResolver{unitTestHost: netip.MustParseAddr("203.0.113.12")}}).
+		poolKey(context.Background(), testTenantA, baseTarget, base)
+	if failure != nil {
+		t.Fatalf("poolKey() cross-IP failure = %v", failure)
+	}
+	if ipKey == baseKey {
+		t.Fatalf("pool key for IP change matched base key: %+v", ipKey)
+	}
+}
+
+func TestExecutorUpstreamConnectionPoolEviction(t *testing.T) {
+	t.Parallel()
+
+	goroutinesBefore := runtime.NumGoroutine()
+	var newConns atomic.Int32
+	var closedConns atomic.Int32
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/bad-protocol":
+			if h, ok := w.(http.Hijacker); ok {
+				conn, rw, err := h.Hijack()
+				if err == nil {
+					_, _ = rw.WriteString("not http\r\n\r\n")
+					_ = rw.Flush()
+					_ = conn.Close()
+				}
+			}
+		case "/short":
+			w.Header().Set("Content-Length", "10")
+			_, _ = w.Write([]byte("x"))
+			if h, ok := w.(http.Hijacker); ok {
+				conn, _, err := h.Hijack()
+				if err == nil {
+					_ = conn.Close()
+				}
+			}
+		default:
+			_, _ = w.Write([]byte("ok"))
+		}
+	}))
+	server.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+		switch state {
+		case http.StateNew:
+			newConns.Add(1)
+		case http.StateClosed:
+			closedConns.Add(1)
+		case http.StateActive, http.StateIdle, http.StateHijacked:
+		default:
+		}
+	}
+	server.Start()
+	t.Cleanup(server.Close)
+
+	target := rewriteHost(t, server.URL, unitTestHost)
+	exec := NewExecutor(ExecutorOptions{
+		Resolver: staticResolver{unitTestHost: loopbackIP(t, server.URL)},
+		Pool: UpstreamConnectionPoolOptions{
+			Enabled:                   true,
+			MaxIdleConnsPerTenantHost: 2,
+			IdleTimeout:               10 * time.Millisecond,
+			MaxLifetime:               20 * time.Millisecond,
+		},
+	})
+
+	frames := exec.ExecuteWithTenant(context.Background(), testTenantA, requestStart(target, directPolicy(true)), nil, 1, nil)
+	if terminalErrorOrNil(frames) != nil {
+		t.Fatalf("first ExecuteWithTenant() frames = %#v, want success", frames)
+	}
+
+	time.Sleep(40 * time.Millisecond)
+	frames = exec.ExecuteWithTenant(context.Background(), testTenantA, requestStart(target, directPolicy(true)), nil, 1, nil)
+	if terminalErrorOrNil(frames) != nil {
+		t.Fatalf("second ExecuteWithTenant() frames = %#v, want success", frames)
+	}
+	if got := newConns.Load(); got < 2 {
+		t.Fatalf("new connections = %d, want idle/lifetime eviction to force a fresh connection", got)
+	}
+
+	shortTarget := target + "/short"
+	frames = exec.ExecuteWithTenant(context.Background(), testTenantA, requestStart(shortTarget, directPolicy(true)), nil, 1, nil)
+	if got := terminalError(t, frames).GetCode(); got != strawpb.ErrorCode_ERROR_CODE_UPSTREAM_RESET {
+		t.Fatalf("code = %v, want upstream_reset", got)
+	}
+	before := newConns.Load()
+	frames = exec.ExecuteWithTenant(context.Background(), testTenantA, requestStart(target, directPolicy(true)), nil, 1, nil)
+	if terminalErrorOrNil(frames) != nil {
+		t.Fatalf("after body error frames = %#v, want success", frames)
+	}
+	if got := newConns.Load(); got <= before {
+		t.Fatalf("new connections after body error = %d, want fresh connection beyond %d", got, before)
+	}
+
+	badProtocolTarget := target + "/bad-protocol"
+	frames = exec.ExecuteWithTenant(context.Background(), testTenantA, requestStart(badProtocolTarget, directPolicy(true)), nil, 1, nil)
+	if terminalErrorOrNil(frames) == nil {
+		t.Fatalf("bad protocol frames = %#v, want error", frames)
+	}
+	before = newConns.Load()
+	frames = exec.ExecuteWithTenant(context.Background(), testTenantA, requestStart(target, directPolicy(true)), nil, 1, nil)
+	if terminalErrorOrNil(frames) != nil {
+		t.Fatalf("after protocol error frames = %#v, want success", frames)
+	}
+	if got := newConns.Load(); got <= before {
+		t.Fatalf("new connections after protocol error = %d, want fresh connection beyond %d", got, before)
+	}
+
+	beforeClose := closedConns.Load()
+	exec.CloseIdleConnections()
+	deadline := time.Now().Add(time.Second)
+	for closedConns.Load() <= beforeClose && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if closedConns.Load() <= beforeClose {
+		t.Fatal("CloseIdleConnections did not close any pooled connection")
+	}
+
+	deadline = time.Now().Add(time.Second)
+	for runtime.NumGoroutine() > goroutinesBefore+20 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if got := runtime.NumGoroutine(); got > goroutinesBefore+20 {
+		t.Fatalf("goroutines after pool cleanup = %d, want <= %d", got, goroutinesBefore+20)
+	}
+}
+
+func TestExecutorUpstreamConnectionPoolTLSFailureIsNotReused(t *testing.T) {
+	t.Parallel()
+
+	var newConns atomic.Int32
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("tls"))
+	}))
+	server.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+		if state == http.StateNew {
+			newConns.Add(1)
+		}
+	}
+	server.StartTLS()
+	t.Cleanup(server.Close)
+
+	target := rewriteHost(t, server.URL, unitTestHost)
+	exec := NewExecutor(ExecutorOptions{
+		Resolver: staticResolver{unitTestHost: loopbackIP(t, server.URL)},
+		Pool: UpstreamConnectionPoolOptions{
+			Enabled:                   true,
+			MaxIdleConnsPerTenantHost: 2,
+			IdleTimeout:               time.Second,
+			MaxLifetime:               time.Minute,
+		},
+	})
+
+	for range 2 {
+		frames := exec.ExecuteWithTenant(context.Background(), testTenantA, requestStart(target, directPolicy(true)), nil, 1, nil)
+		if got := terminalError(t, frames).GetCode(); got != strawpb.ErrorCode_ERROR_CODE_UPSTREAM_TLS_FAILURE {
+			t.Fatalf("code = %v, want upstream_tls_failure", got)
+		}
+	}
+	if got := newConns.Load(); got != 2 {
+		t.Fatalf("new connections = %d, want TLS-failed connection not reused", got)
+	}
+}
+
+func TestWorkerShutdownClosesExecutorPool(t *testing.T) {
+	t.Parallel()
+
+	var closedConns atomic.Int32
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("ok"))
+	}))
+	server.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+		if state == http.StateClosed {
+			closedConns.Add(1)
+		}
+	}
+	server.Start()
+	t.Cleanup(server.Close)
+
+	target := rewriteHost(t, server.URL, unitTestHost)
+	exec := NewExecutor(ExecutorOptions{
+		Resolver: staticResolver{unitTestHost: loopbackIP(t, server.URL)},
+		Pool: UpstreamConnectionPoolOptions{
+			Enabled:                   true,
+			MaxIdleConnsPerTenantHost: 2,
+			IdleTimeout:               time.Second,
+			MaxLifetime:               time.Minute,
+		},
+	})
+
+	frames := exec.ExecuteWithTenant(context.Background(), testTenantA, requestStart(target, directPolicy(true)), nil, 1, nil)
+	if terminalErrorOrNil(frames) != nil {
+		t.Fatalf("ExecuteWithTenant() frames = %#v, want success", frames)
+	}
+
+	worker := &Worker{executor: exec}
+	worker.closeExecutorIdleConnections()
+
+	deadline := time.Now().Add(time.Second)
+	for closedConns.Load() == 0 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if closedConns.Load() == 0 {
+		t.Fatal("worker shutdown cleanup did not close pooled idle connection")
+	}
+}
+
 type staticResolver map[string]netip.Addr
 
 func (r staticResolver) LookupIPAddr(context.Context, string) ([]net.IPAddr, error) {
@@ -522,6 +949,44 @@ type cnameResolver struct {
 
 func (r cnameResolver) LookupCNAME(context.Context, string) (string, error) {
 	return r.cname, nil
+}
+
+type hostResolver map[string]netip.Addr
+
+func (r hostResolver) LookupIPAddr(_ context.Context, host string) ([]net.IPAddr, error) {
+	addr, ok := r[host]
+	if !ok {
+		return nil, errors.New("host not found")
+	}
+
+	return []net.IPAddr{{IP: net.ParseIP(addr.String())}}, nil
+}
+
+func (r hostResolver) LookupCNAME(_ context.Context, host string) (string, error) {
+	return host, nil
+}
+
+type sequenceResolver struct {
+	host    string
+	ips     []netip.Addr
+	lookups atomic.Int32
+}
+
+func (r *sequenceResolver) LookupIPAddr(_ context.Context, host string) ([]net.IPAddr, error) {
+	if host != r.host {
+		return nil, errors.New("unexpected host")
+	}
+
+	idx := int(r.lookups.Add(1)) - 1
+	if idx >= len(r.ips) {
+		idx = len(r.ips) - 1
+	}
+
+	return []net.IPAddr{{IP: net.ParseIP(r.ips[idx].String())}}, nil
+}
+
+func (r *sequenceResolver) LookupCNAME(_ context.Context, host string) (string, error) {
+	return host, nil
 }
 
 func requestStart(rawURL string, policy *strawpb.DestinationPolicy) *strawpb.RequestStart {
