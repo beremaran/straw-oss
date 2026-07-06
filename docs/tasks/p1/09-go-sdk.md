@@ -1,6 +1,6 @@
 # 09 - Go SDK
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -29,16 +29,16 @@ Create the minimal Go SDK for Straw request transport and public error handling.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Implement typed client calls for `POST /api/v1/requests`.
-- [ ] Add typed `ErrorResponse` parsing using lower-snake-case categories and codes.
-- [ ] Default `replayable=true` for GET, HEAD, and OPTIONS only before submission.
-- [ ] Document that clients inspect the JSON envelope `status`, not the outer HTTP status, for upstream status.
-- [ ] Add support for `/api/v1/requests:stream` only if task 06 is complete.
-- [ ] Add tests for request encoding, error parsing, replayable defaults, upstream status handling, and cancellation.
-- [ ] Run focused SDK tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Read all required planning docs.
+- [x] Implement typed client calls for `POST /api/v1/requests`.
+- [x] Add typed `ErrorResponse` parsing using lower-snake-case categories and codes.
+- [x] Default `replayable=true` for GET, HEAD, and OPTIONS only before submission.
+- [x] Document that clients inspect the JSON envelope `status`, not the outer HTTP status, for upstream status.
+- [x] Add support for `/api/v1/requests:stream` only if task 06 is complete. Task 06 is not complete, so no stream API was added.
+- [x] Add tests for request encoding, error parsing, replayable defaults, upstream status handling, and cancellation.
+- [x] Run focused SDK tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 
