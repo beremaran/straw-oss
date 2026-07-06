@@ -53,6 +53,7 @@ Result:
 
 - Postgres-backed tests: ran against `straw_test` and all passed successfully.
 - Live compose verification: skipped because it doesn't touch execution/dispatch flow runtime, only config/CRUD/compile layers.
+  [Update 2026-07-06: now owned by `docs/tasks/p0/46-live-compose-verification.md`.]
 
 ## Reviewer Start Points
 

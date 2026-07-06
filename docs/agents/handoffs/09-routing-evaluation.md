@@ -47,6 +47,8 @@ the pre-existing package (237 issues repo-wide before this change) and are not p
 - No Redis-backed `StickyStore` — in-process TTL map only, matching the P0 in-memory pattern used
   elsewhere. Key shape and TTL-refresh semantics already match the canonical Redis structure so the swap
   is mechanical.
+  [Update 2026-07-06 sweep: resolved — `RedisStickyStore` exists (`internal/control/sticky_redis.go`),
+  added by task 13 (rate limits/quotas/sticky over Redis).]
 - Executor `AssignRequest` dispatch (actually sending the assignment over the NATS subject
   `Router.Evaluate` resolves) is task 10 (Assignment and stream lifecycle), out of scope here.
 

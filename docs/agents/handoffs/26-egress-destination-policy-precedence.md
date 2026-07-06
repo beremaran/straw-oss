@@ -61,6 +61,7 @@ internally but only returns the final target — Go's stdlib resolver does not e
 public API. A `denied_cname_suffixes` entry matching an intermediate (non-final) CNAME hop is not detected. If deeper
 chain inspection is needed, it requires a resolver capable of returning the raw CNAME record chain (e.g. a custom
 `miekg/dns`-based resolver), which is a new dependency and out of this task's scope.
+[Update 2026-07-06: now owned by `docs/tasks/p1/25-cname-chain-inspection.md`, created by the handoff sweep.]
 
 ## Remaining Work
 

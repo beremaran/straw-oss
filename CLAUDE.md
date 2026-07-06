@@ -100,6 +100,12 @@ database whose name does not end in `_test` (it truncates tables between tests).
 `straw_test` database, never the compose stack's live `straw` database — see the "Running the
 Postgres-backed tests" section of `deploy/docker/README.md`.
 
+Do not be afraid to start the compose stack. Bringing up `deploy/docker`, rebuilding/restarting `control` or
+`egress` against it, and driving real requests through it is encouraged whenever a task's behavior can be observed
+live — "looks done, isn't done" survives on unit tests alone. The only guarded action is pointing the *test
+harness* (`STRAW_TEST_POSTGRES_DSN`) at the live `straw` database; that rule is not a reason to avoid the compose
+stack itself (task 42's handoff records exactly that over-application).
+
 ## Stop Conditions
 
 Stop and ask before continuing if:
