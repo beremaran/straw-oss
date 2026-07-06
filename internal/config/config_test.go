@@ -345,6 +345,45 @@ func TestLoadEgressParsesAllowedPools(t *testing.T) {
 	}
 }
 
+func TestLoadEgressUpstreamConnectionPoolDefaultsAndValidation(t *testing.T) {
+	t.Parallel()
+
+	path := writeConfig(t, `{
+		"config_version": "v1",
+		"egress": {
+			"worker_id": "egress-local-001",
+			"credential_id": "wcred_test",
+			"private_key_ed25519_env": "STRAW_WORKER_PRIVATE_KEY_ED25519_BASE64",
+			"upstream_connection_pool": {"enabled": true}
+		}
+	}`)
+
+	cfg, err := LoadEgress(path)
+	if err != nil {
+		t.Fatalf("LoadEgress() error = %v", err)
+	}
+
+	pool := cfg.UpstreamConnectionPool
+	if !pool.Enabled || pool.MaxIdleConnsPerTenantHost != 2 || pool.IdleTimeoutMS != 30_000 || pool.MaxLifetimeMS != 300_000 {
+		t.Fatalf("UpstreamConnectionPool = %+v, want enabled defaults", pool)
+	}
+
+	path = writeConfig(t, `{
+		"config_version": "v1",
+		"egress": {
+			"worker_id": "egress-local-001",
+			"credential_id": "wcred_test",
+			"private_key_ed25519_env": "STRAW_WORKER_PRIVATE_KEY_ED25519_BASE64",
+			"upstream_connection_pool": {"enabled": true, "idle_timeout_ms": -1}
+		}
+	}`)
+
+	_, err = LoadEgress(path)
+	if err == nil || !strings.Contains(err.Error(), "upstream_connection_pool values must be positive when enabled") {
+		t.Fatalf("LoadEgress() error = %v, want upstream pool validation error", err)
+	}
+}
+
 func TestLoadEgressCredentialKeysAreFlat(t *testing.T) {
 	t.Parallel()
 

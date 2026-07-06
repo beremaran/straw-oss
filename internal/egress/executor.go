@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -43,6 +44,8 @@ const (
 	defaultHTTPPort         = "80"
 	defaultHTTPSPort        = "443"
 	responseFrameDataBytes  = 32 << 10
+	defaultPoolIdleTimeout  = 30 * time.Second
+	defaultPoolMaxLifetime  = 5 * time.Minute
 )
 
 // Resolver is the DNS boundary Egress uses before validating resolved IPs.
@@ -62,12 +65,23 @@ type Resolver interface {
 type ExecutorOptions struct {
 	Resolver    Resolver
 	DialContext func(context.Context, string, string) (net.Conn, error)
+	Pool        UpstreamConnectionPoolOptions
 }
 
 // Executor performs P0 decoded HTTP/HTTPS outbound execution.
 type Executor struct {
 	resolver    Resolver
 	dialContext func(context.Context, string, string) (net.Conn, error)
+	pool        *upstreamConnectionPool
+}
+
+// UpstreamConnectionPoolOptions configures optional direct-local HTTP
+// connection reuse. Zero values keep pooling disabled.
+type UpstreamConnectionPoolOptions struct {
+	Enabled                   bool
+	MaxIdleConnsPerTenantHost int
+	IdleTimeout               time.Duration
+	MaxLifetime               time.Duration
 }
 
 type defaultResolver struct{}
@@ -102,7 +116,7 @@ func NewExecutor(opts ExecutorOptions) *Executor {
 		dialContext = (&net.Dialer{}).DialContext
 	}
 
-	return &Executor{resolver: resolver, dialContext: dialContext}
+	return &Executor{resolver: resolver, dialContext: dialContext, pool: newUpstreamConnectionPool(opts.Pool, dialContext)}
 }
 
 // NewP0Transport returns the official P0 HTTP transport defaults: no HTTP/2
@@ -121,6 +135,27 @@ func NewP0Transport(dialContext func(context.Context, string, string) (net.Conn,
 	}
 }
 
+// NewPooledTransport returns the P1 pooled transport defaults: HTTP/2 remains
+// disabled, but HTTP/1.1 keep-alives are allowed for a bounded exact-key pool.
+func NewPooledTransport(dialContext func(context.Context, string, string) (net.Conn, error), maxIdle int, idleTimeout time.Duration) *http.Transport {
+	tr := NewP0Transport(dialContext)
+	tr.DisableKeepAlives = false
+	tr.MaxIdleConnsPerHost = maxIdle
+	tr.IdleConnTimeout = idleTimeout
+
+	return tr
+}
+
+// CloseIdleConnections closes any reusable upstream connections owned by this
+// executor.
+func (e *Executor) CloseIdleConnections() {
+	if e.pool == nil {
+		return
+	}
+
+	e.pool.closeIdleConnections()
+}
+
 // Execute performs one outbound request from a Control-resolved RequestStart
 // and returns the e2c stream frames for the attempt.
 //
@@ -129,6 +164,12 @@ func NewP0Transport(dialContext func(context.Context, string, string) (net.Conn,
 // step 19); a frame passed to send is excluded from the returned batch. With a
 // nil send every frame, OutboundStart included, is returned in the batch.
 func (e *Executor) Execute(ctx context.Context, start *strawpb.RequestStart, body []byte, attempt uint32, send func(*strawpb.StreamFrame)) []*strawpb.StreamFrame {
+	return e.ExecuteWithTenant(ctx, "", start, body, attempt, send)
+}
+
+// ExecuteWithTenant performs one outbound request with the tenant included in
+// the optional upstream connection-pool key.
+func (e *Executor) ExecuteWithTenant(ctx context.Context, tenantID string, start *strawpb.RequestStart, body []byte, attempt uint32, send func(*strawpb.StreamFrame)) []*strawpb.StreamFrame {
 	frames := newFrameBuilder(attempt)
 
 	target, failure := parseTarget(start)
@@ -161,8 +202,10 @@ func (e *Executor) Execute(ctx context.Context, start *strawpb.RequestStart, bod
 		return append(emit, frames.error(failure))
 	}
 
-	tr, client := e.httpClient(start.GetDestinationPolicy())
-	defer tr.CloseIdleConnections()
+	tr, client, pooled := e.httpClient(reqCtx, tenantID, target, start)
+	if !pooled {
+		defer tr.CloseIdleConnections()
+	}
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -242,9 +285,23 @@ func streamResponseBody(ctx context.Context, resp *http.Response, frames *frameB
 	return emit, nil
 }
 
-func (e *Executor) httpClient(policy *strawpb.DestinationPolicy) (*http.Transport, *http.Client) {
+func (e *Executor) httpClient(ctx context.Context, tenantID string, target target, start *strawpb.RequestStart) (*http.Transport, *http.Client, bool) {
+	if e.pool != nil && e.pool.enabled {
+		key, failure := e.poolKey(ctx, tenantID, target, start)
+		if failure == nil {
+			tr := e.pool.transport(key)
+
+			return tr, &http.Client{
+				Transport: tr,
+				CheckRedirect: func(*http.Request, []*http.Request) error {
+					return http.ErrUseLastResponse
+				},
+			}, true
+		}
+	}
+
 	tr := NewP0Transport(func(ctx context.Context, network, address string) (net.Conn, error) {
-		return e.dialValidated(ctx, network, address, policy)
+		return e.dialValidated(ctx, network, address, start.GetDestinationPolicy())
 	})
 
 	return tr, &http.Client{
@@ -252,7 +309,30 @@ func (e *Executor) httpClient(policy *strawpb.DestinationPolicy) (*http.Transpor
 		CheckRedirect: func(*http.Request, []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
+	}, false
+}
+
+func (e *Executor) poolKey(ctx context.Context, tenantID string, target target, start *strawpb.RequestStart) (upstreamPoolKey, *executionError) {
+	ips, failure := e.validatedIPs(ctx, target.host, start.GetDestinationPolicy())
+	if failure != nil {
+		return upstreamPoolKey{}, failure
 	}
+
+	key := upstreamPoolKey{
+		tenantID:           tenantID,
+		resolutionMode:     start.GetDestinationPolicy().GetResolutionMode(),
+		scheme:             schemeFromURL(start.GetUrl()),
+		host:               target.host,
+		port:               target.port,
+		dialIP:             ips[0].String(),
+		fingerprintProfile: start.GetFingerprintInstruction(),
+	}
+
+	if e.pool != nil {
+		e.pool.discardStale(key, ips)
+	}
+
+	return key, nil
 }
 
 func (e *Executor) deadlineContext(ctx context.Context, deadlineUnixMs int64) (context.Context, context.CancelFunc) {
@@ -274,6 +354,15 @@ func (e *Executor) dialValidated(ctx context.Context, network, address string, p
 		return nil, executorFailure(strawpb.ErrorCode_ERROR_CODE_EXECUTOR_INTERNAL_ERROR, invalidRequestStartFact)
 	}
 
+	ips, failure := e.validatedIPs(ctx, host, policy)
+	if failure != nil {
+		return nil, failure
+	}
+
+	return e.dialContext(ctx, network, net.JoinHostPort(ips[0].String(), port))
+}
+
+func (e *Executor) validatedIPs(ctx context.Context, host string, policy *strawpb.DestinationPolicy) ([]netip.Addr, *executionError) {
 	ips, err := e.resolver.LookupIPAddr(ctx, host)
 	if err != nil || len(ips) == 0 {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
@@ -283,9 +372,9 @@ func (e *Executor) dialValidated(ctx context.Context, network, address string, p
 		return nil, executorFailure(strawpb.ErrorCode_ERROR_CODE_UPSTREAM_DNS_FAILURE, dnsNoRecordsFact)
 	}
 
-	var selected netip.Addr
+	out := make([]netip.Addr, 0, len(ips))
 
-	for i, ip := range ips {
+	for _, ip := range ips {
 		addr, ok := netIPAddr(ip)
 		if !ok {
 			return nil, executorFailure(strawpb.ErrorCode_ERROR_CODE_UPSTREAM_DNS_FAILURE, dnsNoRecordsFact)
@@ -296,9 +385,7 @@ func (e *Executor) dialValidated(ctx context.Context, network, address string, p
 			return nil, failure
 		}
 
-		if i == 0 {
-			selected = addr
-		}
+		out = append(out, addr)
 	}
 
 	failure := validateCNAMESuffixPolicy(ctx, e.resolver, host, policy)
@@ -306,7 +393,7 @@ func (e *Executor) dialValidated(ctx context.Context, network, address string, p
 		return nil, failure
 	}
 
-	return e.dialContext(ctx, network, net.JoinHostPort(selected.String(), port))
+	return out, nil
 }
 
 type target struct {
@@ -371,6 +458,130 @@ func defaultPort(scheme string) string {
 	default:
 		return ""
 	}
+}
+
+func schemeFromURL(raw string) string {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+
+	return parsed.Scheme
+}
+
+type upstreamPoolKey struct {
+	tenantID           string
+	resolutionMode     strawpb.DestinationResolutionMode
+	scheme             string
+	host               string
+	port               uint32
+	dialIP             string
+	fingerprintProfile string
+}
+
+type upstreamConnectionPool struct {
+	enabled     bool
+	dialContext func(context.Context, string, string) (net.Conn, error)
+	maxIdle     int
+	idleTimeout time.Duration
+	maxLifetime time.Duration
+	mu          sync.Mutex
+	transports  map[upstreamPoolKey]pooledTransport
+}
+
+type pooledTransport struct {
+	createdAt time.Time
+	tr        *http.Transport
+}
+
+func newUpstreamConnectionPool(opts UpstreamConnectionPoolOptions, dialContext func(context.Context, string, string) (net.Conn, error)) *upstreamConnectionPool {
+	if !opts.Enabled {
+		return nil
+	}
+
+	if opts.MaxIdleConnsPerTenantHost <= 0 {
+		opts.MaxIdleConnsPerTenantHost = 2
+	}
+
+	if opts.IdleTimeout <= 0 {
+		opts.IdleTimeout = defaultPoolIdleTimeout
+	}
+
+	if opts.MaxLifetime <= 0 {
+		opts.MaxLifetime = defaultPoolMaxLifetime
+	}
+
+	return &upstreamConnectionPool{
+		enabled:     true,
+		dialContext: dialContext,
+		maxIdle:     opts.MaxIdleConnsPerTenantHost,
+		idleTimeout: opts.IdleTimeout,
+		maxLifetime: opts.MaxLifetime,
+		transports:  map[upstreamPoolKey]pooledTransport{},
+	}
+}
+
+func (p *upstreamConnectionPool) transport(key upstreamPoolKey) *http.Transport {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	now := time.Now()
+	if pooled, ok := p.transports[key]; ok {
+		if now.Sub(pooled.createdAt) < p.maxLifetime {
+			return pooled.tr
+		}
+
+		pooled.tr.CloseIdleConnections()
+	}
+
+	tr := NewPooledTransport(func(ctx context.Context, network, _ string) (net.Conn, error) {
+		return p.dialContext(ctx, network, net.JoinHostPort(key.dialIP, strconv.FormatUint(uint64(key.port), 10)))
+	}, p.maxIdle, p.idleTimeout)
+	p.transports[key] = pooledTransport{createdAt: now, tr: tr}
+
+	return tr
+}
+
+func (p *upstreamConnectionPool) discardStale(current upstreamPoolKey, validIPs []netip.Addr) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	valid := make(map[string]struct{}, len(validIPs))
+	for _, ip := range validIPs {
+		valid[ip.String()] = struct{}{}
+	}
+
+	for key, pooled := range p.transports {
+		if !key.samePoolExceptIP(current) {
+			continue
+		}
+
+		if _, ok := valid[key.dialIP]; ok {
+			continue
+		}
+
+		pooled.tr.CloseIdleConnections()
+		delete(p.transports, key)
+	}
+}
+
+func (p *upstreamConnectionPool) closeIdleConnections() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	for key, pooled := range p.transports {
+		pooled.tr.CloseIdleConnections()
+		delete(p.transports, key)
+	}
+}
+
+func (k upstreamPoolKey) samePoolExceptIP(other upstreamPoolKey) bool {
+	return k.tenantID == other.tenantID &&
+		k.resolutionMode == other.resolutionMode &&
+		k.scheme == other.scheme &&
+		k.host == other.host &&
+		k.port == other.port &&
+		k.fingerprintProfile == other.fingerprintProfile
 }
 
 func validateStart(start *strawpb.RequestStart) *executionError {

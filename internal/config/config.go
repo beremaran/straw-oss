@@ -31,6 +31,7 @@ var (
 	errInvalidServerConnectPort = errors.New("server.connect_port must be 8082 when connect_enabled is true")
 	errInvalidEgressHealthPort  = errors.New("health_port must be between 1 and 65535")
 	errEgressPoolRefIncomplete  = errors.New("allowed_pools entries require both tenant_id and pool_id")
+	errInvalidEgressPoolConfig  = errors.New("upstream_connection_pool values must be positive when enabled")
 )
 
 // File is the top-level JSON envelope for config files.
@@ -155,13 +156,24 @@ type EgressConfig struct {
 	HeartbeatIntervalMs  int    `json:"heartbeat_interval_ms"`
 	// HealthPort serves local /healthz and /readyz (docs/planning/23:
 	// "P0 should prefer direct local /healthz and /readyz" for egress).
-	HealthPort int        `json:"health_port"`
-	NATS       NATSConfig `json:"nats"`
+	HealthPort             int                                `json:"health_port"`
+	NATS                   NATSConfig                         `json:"nats"`
+	UpstreamConnectionPool EgressUpstreamConnectionPoolConfig `json:"upstream_connection_pool"`
 	// AllowedPools are the (tenant, pool) memberships the worker declares at
 	// registration. Control only routes a request to a worker whose declared
 	// pools include the request's target pool (worker_registry.CandidatesForPool),
 	// so a worker with no pools is never a dispatch candidate.
 	AllowedPools []EgressPoolRef `json:"allowed_pools,omitempty"`
+}
+
+// EgressUpstreamConnectionPoolConfig configures optional direct-local upstream
+// HTTP connection reuse. Disabled preserves P0 one-connection-per-request
+// transport behavior.
+type EgressUpstreamConnectionPoolConfig struct {
+	Enabled                   bool `json:"enabled"`
+	MaxIdleConnsPerTenantHost int  `json:"max_idle_conns_per_tenant_host"`
+	IdleTimeoutMS             int  `json:"idle_timeout_ms"`
+	MaxLifetimeMS             int  `json:"max_lifetime_ms"`
 }
 
 // UnmarshalJSON recognizes the retired nested credential object only so
@@ -489,12 +501,45 @@ func (e *EgressConfig) validate() error {
 		return fmt.Errorf("%w: %d", errInvalidEgressHealthPort, e.HealthPort)
 	}
 
-	err := validateEgressPoolRefs(e.AllowedPools)
+	e.UpstreamConnectionPool.applyDefaults()
+
+	err := e.UpstreamConnectionPool.validate()
+	if err != nil {
+		return err
+	}
+
+	err = validateEgressPoolRefs(e.AllowedPools)
 	if err != nil {
 		return err
 	}
 
 	e.NATS.applyDefaults()
+
+	return nil
+}
+
+func (p *EgressUpstreamConnectionPoolConfig) applyDefaults() {
+	if p.MaxIdleConnsPerTenantHost == 0 {
+		p.MaxIdleConnsPerTenantHost = 2
+	}
+
+	if p.IdleTimeoutMS == 0 {
+		p.IdleTimeoutMS = 30_000
+	}
+
+	if p.MaxLifetimeMS == 0 {
+		p.MaxLifetimeMS = 300_000
+	}
+}
+
+func (p EgressUpstreamConnectionPoolConfig) validate() error {
+	if !p.Enabled {
+		return nil
+	}
+
+	if p.MaxIdleConnsPerTenantHost <= 0 || p.IdleTimeoutMS <= 0 || p.MaxLifetimeMS <= 0 {
+		return errInvalidEgressPoolConfig
+	}
 
 	return nil
 }

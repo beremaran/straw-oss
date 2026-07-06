@@ -98,6 +98,8 @@ func (w *Worker) ActiveRequests() uint32 {
 // inherited from the caller's own lifecycle cannot express without racing
 // that ordering.
 func (w *Worker) Serve(stop <-chan struct{}) error {
+	defer w.closeExecutorIdleConnections()
+
 	subject, err := natsx.AssignmentSubject(w.id.WorkerID, w.sessionID)
 	if err != nil {
 		return fmt.Errorf("assignment subject: %w", err)
@@ -138,6 +140,10 @@ func (w *Worker) Serve(stop <-chan struct{}) error {
 	}
 
 	return nil
+}
+
+func (w *Worker) closeExecutorIdleConnections() {
+	w.executor.CloseIdleConnections()
 }
 
 func (w *Worker) abandonInFlight() {
@@ -295,7 +301,7 @@ func (w *Worker) runRequest(reqCtx context.Context, cancel context.CancelFunc, r
 	go func() {
 		seq := uint64(0)
 
-		resultCh <- w.executor.Execute(reqCtx, start, body, req.GetAttempt(), func(frame *strawpb.StreamFrame) {
+		resultCh <- w.executor.ExecuteWithTenant(reqCtx, env.GetTenantId(), start, body, req.GetAttempt(), func(frame *strawpb.StreamFrame) {
 			if data := frame.GetData(); data != nil {
 				offset := data.GetOffset()
 
