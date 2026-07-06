@@ -149,12 +149,30 @@ func runControl(controlConfig config.ControlConfig, natsConn *natsx.Connection) 
 
 	mux, proxyHandler, connectHandler := buildControlMux(controlConfig, apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore, configCache, redisClient, natsConn, chWriters, metrics)
 
-	err = control.SetupWorkerDiscoverySubscriptions(natsConn, workerRegistry)
+	err = setupNATSSubscriptions(natsConn, workerRegistry, chWriters)
+	if err != nil {
+		return err
+	}
+
+	return serveControl(ctx, controlConfig, mux, proxyHandler, connectHandler, metricsReg)
+}
+
+func setupNATSSubscriptions(natsConn *natsx.Connection, workerRegistry *control.WorkerRegistry, chWriters *clickHouseWriters) error {
+	err := control.SetupWorkerDiscoverySubscriptions(natsConn, workerRegistry)
 	if err != nil {
 		return fmt.Errorf("setup worker discovery: %w", err)
 	}
 
-	return serveControl(ctx, controlConfig, mux, proxyHandler, connectHandler, metricsReg)
+	if chWriters == nil {
+		return nil
+	}
+
+	err = control.SetupLogEventSubscription(natsConn, chWriters.logEvents)
+	if err != nil {
+		return fmt.Errorf("setup log events: %w", err)
+	}
+
+	return nil
 }
 
 // wireWorkerRegistrationReplayProtection wires the Redis-backed registration

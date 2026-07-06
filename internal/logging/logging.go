@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -145,7 +146,12 @@ func addLogAttr(fields map[string]string, attr slog.Attr) {
 		return
 	}
 
-	fields[attr.Key] = attr.Value.String()
+	value := attr.Value.String()
+	if isSensitiveLogValue(value) {
+		value = redactedValue
+	}
+
+	fields[attr.Key] = value
 }
 
 func takeField(fields map[string]string, key string) string {
@@ -170,6 +176,32 @@ func isSensitiveLogKey(key string) bool {
 
 	for _, token := range []string{"authorization", "cookie", "secret", "password", "private_key", "api_key", "credential", "token"} {
 		if strings.Contains(lower, token) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func isSensitiveLogValue(value string) bool {
+	lower := strings.ToLower(value)
+
+	if strings.Contains(lower, "private key") || strings.Contains(lower, "straw.v1.") || strings.Contains(lower, "_inbox.") {
+		return true
+	}
+
+	u, err := url.Parse(value)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return false
+	}
+
+	if u.User != nil {
+		return true
+	}
+
+	for key := range u.Query() {
+		switch strings.ToLower(key) {
+		case "signature", "x-amz-signature", "x-amz-credential", "x-goog-signature", "x-goog-credential":
 			return true
 		}
 	}

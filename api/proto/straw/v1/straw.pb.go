@@ -616,6 +616,7 @@ type Envelope struct {
 	//	*Envelope_AssignRequest
 	//	*Envelope_AssignAck
 	//	*Envelope_StreamFrame
+	//	*Envelope_LogEvent
 	Payload       isEnvelope_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -777,6 +778,15 @@ func (x *Envelope) GetStreamFrame() *StreamFrame {
 	return nil
 }
 
+func (x *Envelope) GetLogEvent() *LogEvent {
+	if x != nil {
+		if x, ok := x.Payload.(*Envelope_LogEvent); ok {
+			return x.LogEvent
+		}
+	}
+	return nil
+}
+
 type isEnvelope_Payload interface {
 	isEnvelope_Payload()
 }
@@ -809,6 +819,10 @@ type Envelope_StreamFrame struct {
 	StreamFrame *StreamFrame `protobuf:"bytes,26,opt,name=stream_frame,json=streamFrame,proto3,oneof"`
 }
 
+type Envelope_LogEvent struct {
+	LogEvent *LogEvent `protobuf:"bytes,27,opt,name=log_event,json=logEvent,proto3,oneof"`
+}
+
 func (*Envelope_RegisterRequest) isEnvelope_Payload() {}
 
 func (*Envelope_RegisterAck) isEnvelope_Payload() {}
@@ -822,6 +836,124 @@ func (*Envelope_AssignRequest) isEnvelope_Payload() {}
 func (*Envelope_AssignAck) isEnvelope_Payload() {}
 
 func (*Envelope_StreamFrame) isEnvelope_Payload() {}
+
+func (*Envelope_LogEvent) isEnvelope_Payload() {}
+
+type LogEvent struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	TimestampUnixMs int64                  `protobuf:"varint,1,opt,name=timestamp_unix_ms,json=timestampUnixMs,proto3" json:"timestamp_unix_ms,omitempty"`
+	Service         string                 `protobuf:"bytes,2,opt,name=service,proto3" json:"service,omitempty"`
+	Level           string                 `protobuf:"bytes,3,opt,name=level,proto3" json:"level,omitempty"`
+	Message         string                 `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"`
+	RequestId       string                 `protobuf:"bytes,5,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	TenantId        string                 `protobuf:"bytes,6,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	TraceId         string                 `protobuf:"bytes,7,opt,name=trace_id,json=traceId,proto3" json:"trace_id,omitempty"`
+	WorkerId        string                 `protobuf:"bytes,8,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
+	ErrorCode       string                 `protobuf:"bytes,9,opt,name=error_code,json=errorCode,proto3" json:"error_code,omitempty"`
+	Extra           map[string]string      `protobuf:"bytes,10,rep,name=extra,proto3" json:"extra,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *LogEvent) Reset() {
+	*x = LogEvent{}
+	mi := &file_straw_v1_straw_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LogEvent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LogEvent) ProtoMessage() {}
+
+func (x *LogEvent) ProtoReflect() protoreflect.Message {
+	mi := &file_straw_v1_straw_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LogEvent.ProtoReflect.Descriptor instead.
+func (*LogEvent) Descriptor() ([]byte, []int) {
+	return file_straw_v1_straw_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *LogEvent) GetTimestampUnixMs() int64 {
+	if x != nil {
+		return x.TimestampUnixMs
+	}
+	return 0
+}
+
+func (x *LogEvent) GetService() string {
+	if x != nil {
+		return x.Service
+	}
+	return ""
+}
+
+func (x *LogEvent) GetLevel() string {
+	if x != nil {
+		return x.Level
+	}
+	return ""
+}
+
+func (x *LogEvent) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+func (x *LogEvent) GetRequestId() string {
+	if x != nil {
+		return x.RequestId
+	}
+	return ""
+}
+
+func (x *LogEvent) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *LogEvent) GetTraceId() string {
+	if x != nil {
+		return x.TraceId
+	}
+	return ""
+}
+
+func (x *LogEvent) GetWorkerId() string {
+	if x != nil {
+		return x.WorkerId
+	}
+	return ""
+}
+
+func (x *LogEvent) GetErrorCode() string {
+	if x != nil {
+		return x.ErrorCode
+	}
+	return ""
+}
+
+func (x *LogEvent) GetExtra() map[string]string {
+	if x != nil {
+		return x.Extra
+	}
+	return nil
+}
 
 type RegisterRequest struct {
 	state                 protoimpl.MessageState     `protogen:"open.v1"`
@@ -849,7 +981,7 @@ type RegisterRequest struct {
 
 func (x *RegisterRequest) Reset() {
 	*x = RegisterRequest{}
-	mi := &file_straw_v1_straw_proto_msgTypes[1]
+	mi := &file_straw_v1_straw_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -861,7 +993,7 @@ func (x *RegisterRequest) String() string {
 func (*RegisterRequest) ProtoMessage() {}
 
 func (x *RegisterRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_straw_v1_straw_proto_msgTypes[1]
+	mi := &file_straw_v1_straw_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -874,7 +1006,7 @@ func (x *RegisterRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterRequest.ProtoReflect.Descriptor instead.
 func (*RegisterRequest) Descriptor() ([]byte, []int) {
-	return file_straw_v1_straw_proto_rawDescGZIP(), []int{1}
+	return file_straw_v1_straw_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *RegisterRequest) GetWorkerId() string {
@@ -1014,7 +1146,7 @@ type RegisterAck struct {
 
 func (x *RegisterAck) Reset() {
 	*x = RegisterAck{}
-	mi := &file_straw_v1_straw_proto_msgTypes[2]
+	mi := &file_straw_v1_straw_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1026,7 +1158,7 @@ func (x *RegisterAck) String() string {
 func (*RegisterAck) ProtoMessage() {}
 
 func (x *RegisterAck) ProtoReflect() protoreflect.Message {
-	mi := &file_straw_v1_straw_proto_msgTypes[2]
+	mi := &file_straw_v1_straw_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1039,7 +1171,7 @@ func (x *RegisterAck) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterAck.ProtoReflect.Descriptor instead.
 func (*RegisterAck) Descriptor() ([]byte, []int) {
-	return file_straw_v1_straw_proto_rawDescGZIP(), []int{2}
+	return file_straw_v1_straw_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *RegisterAck) GetOk() bool {
@@ -1081,7 +1213,7 @@ type HeartbeatRequest struct {
 
 func (x *HeartbeatRequest) Reset() {
 	*x = HeartbeatRequest{}
-	mi := &file_straw_v1_straw_proto_msgTypes[3]
+	mi := &file_straw_v1_straw_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1093,7 +1225,7 @@ func (x *HeartbeatRequest) String() string {
 func (*HeartbeatRequest) ProtoMessage() {}
 
 func (x *HeartbeatRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_straw_v1_straw_proto_msgTypes[3]
+	mi := &file_straw_v1_straw_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1106,7 +1238,7 @@ func (x *HeartbeatRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeartbeatRequest.ProtoReflect.Descriptor instead.
 func (*HeartbeatRequest) Descriptor() ([]byte, []int) {
-	return file_straw_v1_straw_proto_rawDescGZIP(), []int{3}
+	return file_straw_v1_straw_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *HeartbeatRequest) GetWorkerId() string {
@@ -1189,7 +1321,7 @@ type HeartbeatAck struct {
 
 func (x *HeartbeatAck) Reset() {
 	*x = HeartbeatAck{}
-	mi := &file_straw_v1_straw_proto_msgTypes[4]
+	mi := &file_straw_v1_straw_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1201,7 +1333,7 @@ func (x *HeartbeatAck) String() string {
 func (*HeartbeatAck) ProtoMessage() {}
 
 func (x *HeartbeatAck) ProtoReflect() protoreflect.Message {
-	mi := &file_straw_v1_straw_proto_msgTypes[4]
+	mi := &file_straw_v1_straw_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1214,7 +1346,7 @@ func (x *HeartbeatAck) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeartbeatAck.ProtoReflect.Descriptor instead.
 func (*HeartbeatAck) Descriptor() ([]byte, []int) {
-	return file_straw_v1_straw_proto_rawDescGZIP(), []int{4}
+	return file_straw_v1_straw_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *HeartbeatAck) GetOk() bool {
@@ -1253,7 +1385,7 @@ type AssignRequest struct {
 
 func (x *AssignRequest) Reset() {
 	*x = AssignRequest{}
-	mi := &file_straw_v1_straw_proto_msgTypes[5]
+	mi := &file_straw_v1_straw_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1265,7 +1397,7 @@ func (x *AssignRequest) String() string {
 func (*AssignRequest) ProtoMessage() {}
 
 func (x *AssignRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_straw_v1_straw_proto_msgTypes[5]
+	mi := &file_straw_v1_straw_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1278,7 +1410,7 @@ func (x *AssignRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AssignRequest.ProtoReflect.Descriptor instead.
 func (*AssignRequest) Descriptor() ([]byte, []int) {
-	return file_straw_v1_straw_proto_rawDescGZIP(), []int{5}
+	return file_straw_v1_straw_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *AssignRequest) GetMode() RequestMode {
@@ -1389,7 +1521,7 @@ type AssignAck struct {
 
 func (x *AssignAck) Reset() {
 	*x = AssignAck{}
-	mi := &file_straw_v1_straw_proto_msgTypes[6]
+	mi := &file_straw_v1_straw_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1401,7 +1533,7 @@ func (x *AssignAck) String() string {
 func (*AssignAck) ProtoMessage() {}
 
 func (x *AssignAck) ProtoReflect() protoreflect.Message {
-	mi := &file_straw_v1_straw_proto_msgTypes[6]
+	mi := &file_straw_v1_straw_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1414,7 +1546,7 @@ func (x *AssignAck) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AssignAck.ProtoReflect.Descriptor instead.
 func (*AssignAck) Descriptor() ([]byte, []int) {
-	return file_straw_v1_straw_proto_rawDescGZIP(), []int{6}
+	return file_straw_v1_straw_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *AssignAck) GetCode() AssignAckCode {
@@ -1455,7 +1587,7 @@ type StreamFrame struct {
 
 func (x *StreamFrame) Reset() {
 	*x = StreamFrame{}
-	mi := &file_straw_v1_straw_proto_msgTypes[7]
+	mi := &file_straw_v1_straw_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1467,7 +1599,7 @@ func (x *StreamFrame) String() string {
 func (*StreamFrame) ProtoMessage() {}
 
 func (x *StreamFrame) ProtoReflect() protoreflect.Message {
-	mi := &file_straw_v1_straw_proto_msgTypes[7]
+	mi := &file_straw_v1_straw_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1480,7 +1612,7 @@ func (x *StreamFrame) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamFrame.ProtoReflect.Descriptor instead.
 func (*StreamFrame) Descriptor() ([]byte, []int) {
-	return file_straw_v1_straw_proto_rawDescGZIP(), []int{7}
+	return file_straw_v1_straw_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *StreamFrame) GetStreamSeq() uint64 {
@@ -1683,7 +1815,7 @@ type Header struct {
 
 func (x *Header) Reset() {
 	*x = Header{}
-	mi := &file_straw_v1_straw_proto_msgTypes[8]
+	mi := &file_straw_v1_straw_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1695,7 +1827,7 @@ func (x *Header) String() string {
 func (*Header) ProtoMessage() {}
 
 func (x *Header) ProtoReflect() protoreflect.Message {
-	mi := &file_straw_v1_straw_proto_msgTypes[8]
+	mi := &file_straw_v1_straw_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1708,7 +1840,7 @@ func (x *Header) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Header.ProtoReflect.Descriptor instead.
 func (*Header) Descriptor() ([]byte, []int) {
-	return file_straw_v1_straw_proto_rawDescGZIP(), []int{8}
+	return file_straw_v1_straw_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *Header) GetName() string {
@@ -1735,7 +1867,7 @@ type DataFrame struct {
 
 func (x *DataFrame) Reset() {
 	*x = DataFrame{}
-	mi := &file_straw_v1_straw_proto_msgTypes[9]
+	mi := &file_straw_v1_straw_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1747,7 +1879,7 @@ func (x *DataFrame) String() string {
 func (*DataFrame) ProtoMessage() {}
 
 func (x *DataFrame) ProtoReflect() protoreflect.Message {
-	mi := &file_straw_v1_straw_proto_msgTypes[9]
+	mi := &file_straw_v1_straw_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1760,7 +1892,7 @@ func (x *DataFrame) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DataFrame.ProtoReflect.Descriptor instead.
 func (*DataFrame) Descriptor() ([]byte, []int) {
-	return file_straw_v1_straw_proto_rawDescGZIP(), []int{9}
+	return file_straw_v1_straw_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *DataFrame) GetOffset() uint64 {
@@ -1787,7 +1919,7 @@ type CreditFrame struct {
 
 func (x *CreditFrame) Reset() {
 	*x = CreditFrame{}
-	mi := &file_straw_v1_straw_proto_msgTypes[10]
+	mi := &file_straw_v1_straw_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1799,7 +1931,7 @@ func (x *CreditFrame) String() string {
 func (*CreditFrame) ProtoMessage() {}
 
 func (x *CreditFrame) ProtoReflect() protoreflect.Message {
-	mi := &file_straw_v1_straw_proto_msgTypes[10]
+	mi := &file_straw_v1_straw_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1812,7 +1944,7 @@ func (x *CreditFrame) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreditFrame.ProtoReflect.Descriptor instead.
 func (*CreditFrame) Descriptor() ([]byte, []int) {
-	return file_straw_v1_straw_proto_rawDescGZIP(), []int{10}
+	return file_straw_v1_straw_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *CreditFrame) GetUploadCreditBytes() uint64 {
@@ -1845,7 +1977,7 @@ type ErrorFrame struct {
 
 func (x *ErrorFrame) Reset() {
 	*x = ErrorFrame{}
-	mi := &file_straw_v1_straw_proto_msgTypes[11]
+	mi := &file_straw_v1_straw_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1857,7 +1989,7 @@ func (x *ErrorFrame) String() string {
 func (*ErrorFrame) ProtoMessage() {}
 
 func (x *ErrorFrame) ProtoReflect() protoreflect.Message {
-	mi := &file_straw_v1_straw_proto_msgTypes[11]
+	mi := &file_straw_v1_straw_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1870,7 +2002,7 @@ func (x *ErrorFrame) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ErrorFrame.ProtoReflect.Descriptor instead.
 func (*ErrorFrame) Descriptor() ([]byte, []int) {
-	return file_straw_v1_straw_proto_rawDescGZIP(), []int{11}
+	return file_straw_v1_straw_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ErrorFrame) GetCode() ErrorCode {
@@ -1938,7 +2070,7 @@ type EndFrame struct {
 
 func (x *EndFrame) Reset() {
 	*x = EndFrame{}
-	mi := &file_straw_v1_straw_proto_msgTypes[12]
+	mi := &file_straw_v1_straw_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1950,7 +2082,7 @@ func (x *EndFrame) String() string {
 func (*EndFrame) ProtoMessage() {}
 
 func (x *EndFrame) ProtoReflect() protoreflect.Message {
-	mi := &file_straw_v1_straw_proto_msgTypes[12]
+	mi := &file_straw_v1_straw_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1963,7 +2095,7 @@ func (x *EndFrame) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EndFrame.ProtoReflect.Descriptor instead.
 func (*EndFrame) Descriptor() ([]byte, []int) {
-	return file_straw_v1_straw_proto_rawDescGZIP(), []int{12}
+	return file_straw_v1_straw_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *EndFrame) GetSuccess() bool {
@@ -1982,7 +2114,7 @@ type CancelFrame struct {
 
 func (x *CancelFrame) Reset() {
 	*x = CancelFrame{}
-	mi := &file_straw_v1_straw_proto_msgTypes[13]
+	mi := &file_straw_v1_straw_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1994,7 +2126,7 @@ func (x *CancelFrame) String() string {
 func (*CancelFrame) ProtoMessage() {}
 
 func (x *CancelFrame) ProtoReflect() protoreflect.Message {
-	mi := &file_straw_v1_straw_proto_msgTypes[13]
+	mi := &file_straw_v1_straw_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2007,7 +2139,7 @@ func (x *CancelFrame) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelFrame.ProtoReflect.Descriptor instead.
 func (*CancelFrame) Descriptor() ([]byte, []int) {
-	return file_straw_v1_straw_proto_rawDescGZIP(), []int{13}
+	return file_straw_v1_straw_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *CancelFrame) GetReason() string {
@@ -2026,7 +2158,7 @@ type CancelledFrame struct {
 
 func (x *CancelledFrame) Reset() {
 	*x = CancelledFrame{}
-	mi := &file_straw_v1_straw_proto_msgTypes[14]
+	mi := &file_straw_v1_straw_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2038,7 +2170,7 @@ func (x *CancelledFrame) String() string {
 func (*CancelledFrame) ProtoMessage() {}
 
 func (x *CancelledFrame) ProtoReflect() protoreflect.Message {
-	mi := &file_straw_v1_straw_proto_msgTypes[14]
+	mi := &file_straw_v1_straw_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2051,7 +2183,7 @@ func (x *CancelledFrame) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelledFrame.ProtoReflect.Descriptor instead.
 func (*CancelledFrame) Descriptor() ([]byte, []int) {
-	return file_straw_v1_straw_proto_rawDescGZIP(), []int{14}
+	return file_straw_v1_straw_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *CancelledFrame) GetReason() string {
@@ -2070,7 +2202,7 @@ type TrailersFrame struct {
 
 func (x *TrailersFrame) Reset() {
 	*x = TrailersFrame{}
-	mi := &file_straw_v1_straw_proto_msgTypes[15]
+	mi := &file_straw_v1_straw_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2082,7 +2214,7 @@ func (x *TrailersFrame) String() string {
 func (*TrailersFrame) ProtoMessage() {}
 
 func (x *TrailersFrame) ProtoReflect() protoreflect.Message {
-	mi := &file_straw_v1_straw_proto_msgTypes[15]
+	mi := &file_straw_v1_straw_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2095,7 +2227,7 @@ func (x *TrailersFrame) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TrailersFrame.ProtoReflect.Descriptor instead.
 func (*TrailersFrame) Descriptor() ([]byte, []int) {
-	return file_straw_v1_straw_proto_rawDescGZIP(), []int{15}
+	return file_straw_v1_straw_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *TrailersFrame) GetHeaders() []*Header {
@@ -2116,7 +2248,7 @@ type InjectionOperation struct {
 
 func (x *InjectionOperation) Reset() {
 	*x = InjectionOperation{}
-	mi := &file_straw_v1_straw_proto_msgTypes[16]
+	mi := &file_straw_v1_straw_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2128,7 +2260,7 @@ func (x *InjectionOperation) String() string {
 func (*InjectionOperation) ProtoMessage() {}
 
 func (x *InjectionOperation) ProtoReflect() protoreflect.Message {
-	mi := &file_straw_v1_straw_proto_msgTypes[16]
+	mi := &file_straw_v1_straw_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2141,7 +2273,7 @@ func (x *InjectionOperation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InjectionOperation.ProtoReflect.Descriptor instead.
 func (*InjectionOperation) Descriptor() ([]byte, []int) {
-	return file_straw_v1_straw_proto_rawDescGZIP(), []int{16}
+	return file_straw_v1_straw_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *InjectionOperation) GetOp() string {
@@ -2186,7 +2318,7 @@ type DestinationPolicy struct {
 
 func (x *DestinationPolicy) Reset() {
 	*x = DestinationPolicy{}
-	mi := &file_straw_v1_straw_proto_msgTypes[17]
+	mi := &file_straw_v1_straw_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2198,7 +2330,7 @@ func (x *DestinationPolicy) String() string {
 func (*DestinationPolicy) ProtoMessage() {}
 
 func (x *DestinationPolicy) ProtoReflect() protoreflect.Message {
-	mi := &file_straw_v1_straw_proto_msgTypes[17]
+	mi := &file_straw_v1_straw_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2211,7 +2343,7 @@ func (x *DestinationPolicy) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DestinationPolicy.ProtoReflect.Descriptor instead.
 func (*DestinationPolicy) Descriptor() ([]byte, []int) {
-	return file_straw_v1_straw_proto_rawDescGZIP(), []int{17}
+	return file_straw_v1_straw_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *DestinationPolicy) GetAllowPrivateRanges() bool {
@@ -2320,7 +2452,7 @@ type BodyRefFrame struct {
 
 func (x *BodyRefFrame) Reset() {
 	*x = BodyRefFrame{}
-	mi := &file_straw_v1_straw_proto_msgTypes[18]
+	mi := &file_straw_v1_straw_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2332,7 +2464,7 @@ func (x *BodyRefFrame) String() string {
 func (*BodyRefFrame) ProtoMessage() {}
 
 func (x *BodyRefFrame) ProtoReflect() protoreflect.Message {
-	mi := &file_straw_v1_straw_proto_msgTypes[18]
+	mi := &file_straw_v1_straw_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2345,7 +2477,7 @@ func (x *BodyRefFrame) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BodyRefFrame.ProtoReflect.Descriptor instead.
 func (*BodyRefFrame) Descriptor() ([]byte, []int) {
-	return file_straw_v1_straw_proto_rawDescGZIP(), []int{18}
+	return file_straw_v1_straw_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *BodyRefFrame) GetRef() isBodyRefFrame_Ref {
@@ -2414,7 +2546,7 @@ type S3BodyRef struct {
 
 func (x *S3BodyRef) Reset() {
 	*x = S3BodyRef{}
-	mi := &file_straw_v1_straw_proto_msgTypes[19]
+	mi := &file_straw_v1_straw_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2426,7 +2558,7 @@ func (x *S3BodyRef) String() string {
 func (*S3BodyRef) ProtoMessage() {}
 
 func (x *S3BodyRef) ProtoReflect() protoreflect.Message {
-	mi := &file_straw_v1_straw_proto_msgTypes[19]
+	mi := &file_straw_v1_straw_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2439,7 +2571,7 @@ func (x *S3BodyRef) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use S3BodyRef.ProtoReflect.Descriptor instead.
 func (*S3BodyRef) Descriptor() ([]byte, []int) {
-	return file_straw_v1_straw_proto_rawDescGZIP(), []int{19}
+	return file_straw_v1_straw_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *S3BodyRef) GetObjectKey() string {
@@ -2474,7 +2606,7 @@ type DirectStreamRef struct {
 
 func (x *DirectStreamRef) Reset() {
 	*x = DirectStreamRef{}
-	mi := &file_straw_v1_straw_proto_msgTypes[20]
+	mi := &file_straw_v1_straw_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2486,7 +2618,7 @@ func (x *DirectStreamRef) String() string {
 func (*DirectStreamRef) ProtoMessage() {}
 
 func (x *DirectStreamRef) ProtoReflect() protoreflect.Message {
-	mi := &file_straw_v1_straw_proto_msgTypes[20]
+	mi := &file_straw_v1_straw_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2499,7 +2631,7 @@ func (x *DirectStreamRef) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DirectStreamRef.ProtoReflect.Descriptor instead.
 func (*DirectStreamRef) Descriptor() ([]byte, []int) {
-	return file_straw_v1_straw_proto_rawDescGZIP(), []int{20}
+	return file_straw_v1_straw_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *DirectStreamRef) GetEndpoint() string {
@@ -2546,7 +2678,7 @@ type RequestStart struct {
 
 func (x *RequestStart) Reset() {
 	*x = RequestStart{}
-	mi := &file_straw_v1_straw_proto_msgTypes[21]
+	mi := &file_straw_v1_straw_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2558,7 +2690,7 @@ func (x *RequestStart) String() string {
 func (*RequestStart) ProtoMessage() {}
 
 func (x *RequestStart) ProtoReflect() protoreflect.Message {
-	mi := &file_straw_v1_straw_proto_msgTypes[21]
+	mi := &file_straw_v1_straw_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2571,7 +2703,7 @@ func (x *RequestStart) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RequestStart.ProtoReflect.Descriptor instead.
 func (*RequestStart) Descriptor() ([]byte, []int) {
-	return file_straw_v1_straw_proto_rawDescGZIP(), []int{21}
+	return file_straw_v1_straw_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *RequestStart) GetMode() RequestMode {
@@ -2692,7 +2824,7 @@ type OutboundStartFrame struct {
 
 func (x *OutboundStartFrame) Reset() {
 	*x = OutboundStartFrame{}
-	mi := &file_straw_v1_straw_proto_msgTypes[22]
+	mi := &file_straw_v1_straw_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2704,7 +2836,7 @@ func (x *OutboundStartFrame) String() string {
 func (*OutboundStartFrame) ProtoMessage() {}
 
 func (x *OutboundStartFrame) ProtoReflect() protoreflect.Message {
-	mi := &file_straw_v1_straw_proto_msgTypes[22]
+	mi := &file_straw_v1_straw_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2717,7 +2849,7 @@ func (x *OutboundStartFrame) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OutboundStartFrame.ProtoReflect.Descriptor instead.
 func (*OutboundStartFrame) Descriptor() ([]byte, []int) {
-	return file_straw_v1_straw_proto_rawDescGZIP(), []int{22}
+	return file_straw_v1_straw_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *OutboundStartFrame) GetTargetHost() string {
@@ -2765,7 +2897,7 @@ type ResponseStart struct {
 
 func (x *ResponseStart) Reset() {
 	*x = ResponseStart{}
-	mi := &file_straw_v1_straw_proto_msgTypes[23]
+	mi := &file_straw_v1_straw_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2777,7 +2909,7 @@ func (x *ResponseStart) String() string {
 func (*ResponseStart) ProtoMessage() {}
 
 func (x *ResponseStart) ProtoReflect() protoreflect.Message {
-	mi := &file_straw_v1_straw_proto_msgTypes[23]
+	mi := &file_straw_v1_straw_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2790,7 +2922,7 @@ func (x *ResponseStart) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResponseStart.ProtoReflect.Descriptor instead.
 func (*ResponseStart) Descriptor() ([]byte, []int) {
-	return file_straw_v1_straw_proto_rawDescGZIP(), []int{23}
+	return file_straw_v1_straw_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *ResponseStart) GetStatus() uint32 {
@@ -2824,7 +2956,7 @@ type ErrorResponse struct {
 
 func (x *ErrorResponse) Reset() {
 	*x = ErrorResponse{}
-	mi := &file_straw_v1_straw_proto_msgTypes[24]
+	mi := &file_straw_v1_straw_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2836,7 +2968,7 @@ func (x *ErrorResponse) String() string {
 func (*ErrorResponse) ProtoMessage() {}
 
 func (x *ErrorResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_straw_v1_straw_proto_msgTypes[24]
+	mi := &file_straw_v1_straw_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2849,7 +2981,7 @@ func (x *ErrorResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ErrorResponse.ProtoReflect.Descriptor instead.
 func (*ErrorResponse) Descriptor() ([]byte, []int) {
-	return file_straw_v1_straw_proto_rawDescGZIP(), []int{24}
+	return file_straw_v1_straw_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *ErrorResponse) GetCategory() ErrorCategory {
@@ -2925,7 +3057,7 @@ type RegisterRequest_PoolRef struct {
 
 func (x *RegisterRequest_PoolRef) Reset() {
 	*x = RegisterRequest_PoolRef{}
-	mi := &file_straw_v1_straw_proto_msgTypes[25]
+	mi := &file_straw_v1_straw_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2937,7 +3069,7 @@ func (x *RegisterRequest_PoolRef) String() string {
 func (*RegisterRequest_PoolRef) ProtoMessage() {}
 
 func (x *RegisterRequest_PoolRef) ProtoReflect() protoreflect.Message {
-	mi := &file_straw_v1_straw_proto_msgTypes[25]
+	mi := &file_straw_v1_straw_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2950,7 +3082,7 @@ func (x *RegisterRequest_PoolRef) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterRequest_PoolRef.ProtoReflect.Descriptor instead.
 func (*RegisterRequest_PoolRef) Descriptor() ([]byte, []int) {
-	return file_straw_v1_straw_proto_rawDescGZIP(), []int{1, 0}
+	return file_straw_v1_straw_proto_rawDescGZIP(), []int{2, 0}
 }
 
 func (x *RegisterRequest_PoolRef) GetTenantId() string {
@@ -2971,7 +3103,7 @@ var File_straw_v1_straw_proto protoreflect.FileDescriptor
 
 const file_straw_v1_straw_proto_rawDesc = "" +
 	"\n" +
-	"\x14straw/v1/straw.proto\x12\bstraw.v1\"\xe5\x05\n" +
+	"\x14straw/v1/straw.proto\x12\bstraw.v1\"\x98\x06\n" +
 	"\bEnvelope\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x1b\n" +
@@ -2989,8 +3121,27 @@ const file_straw_v1_straw_proto_rawDesc = "" +
 	"\x0eassign_request\x18\x18 \x01(\v2\x17.straw.v1.AssignRequestH\x00R\rassignRequest\x124\n" +
 	"\n" +
 	"assign_ack\x18\x19 \x01(\v2\x13.straw.v1.AssignAckH\x00R\tassignAck\x12:\n" +
-	"\fstream_frame\x18\x1a \x01(\v2\x15.straw.v1.StreamFrameH\x00R\vstreamFrameB\t\n" +
-	"\apayload\"\x87\x06\n" +
+	"\fstream_frame\x18\x1a \x01(\v2\x15.straw.v1.StreamFrameH\x00R\vstreamFrame\x121\n" +
+	"\tlog_event\x18\x1b \x01(\v2\x12.straw.v1.LogEventH\x00R\blogEventB\t\n" +
+	"\apayload\"\x82\x03\n" +
+	"\bLogEvent\x12*\n" +
+	"\x11timestamp_unix_ms\x18\x01 \x01(\x03R\x0ftimestampUnixMs\x12\x18\n" +
+	"\aservice\x18\x02 \x01(\tR\aservice\x12\x14\n" +
+	"\x05level\x18\x03 \x01(\tR\x05level\x12\x18\n" +
+	"\amessage\x18\x04 \x01(\tR\amessage\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x05 \x01(\tR\trequestId\x12\x1b\n" +
+	"\ttenant_id\x18\x06 \x01(\tR\btenantId\x12\x19\n" +
+	"\btrace_id\x18\a \x01(\tR\atraceId\x12\x1b\n" +
+	"\tworker_id\x18\b \x01(\tR\bworkerId\x12\x1d\n" +
+	"\n" +
+	"error_code\x18\t \x01(\tR\terrorCode\x123\n" +
+	"\x05extra\x18\n" +
+	" \x03(\v2\x1d.straw.v1.LogEvent.ExtraEntryR\x05extra\x1a8\n" +
+	"\n" +
+	"ExtraEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x87\x06\n" +
 	"\x0fRegisterRequest\x12\x1b\n" +
 	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x12#\n" +
 	"\rexecutor_type\x18\x02 \x01(\tR\fexecutorType\x12#\n" +
@@ -3290,7 +3441,7 @@ func file_straw_v1_straw_proto_rawDescGZIP() []byte {
 }
 
 var file_straw_v1_straw_proto_enumTypes = make([]protoimpl.EnumInfo, 9)
-var file_straw_v1_straw_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
+var file_straw_v1_straw_proto_msgTypes = make([]protoimpl.MessageInfo, 31)
 var file_straw_v1_straw_proto_goTypes = []any{
 	(ErrorCode)(0),                  // 0: straw.v1.ErrorCode
 	(ErrorCategory)(0),              // 1: straw.v1.ErrorCategory
@@ -3302,84 +3453,88 @@ var file_straw_v1_straw_proto_goTypes = []any{
 	(RedirectPolicy)(0),             // 7: straw.v1.RedirectPolicy
 	(DestinationResolutionMode)(0),  // 8: straw.v1.DestinationResolutionMode
 	(*Envelope)(nil),                // 9: straw.v1.Envelope
-	(*RegisterRequest)(nil),         // 10: straw.v1.RegisterRequest
-	(*RegisterAck)(nil),             // 11: straw.v1.RegisterAck
-	(*HeartbeatRequest)(nil),        // 12: straw.v1.HeartbeatRequest
-	(*HeartbeatAck)(nil),            // 13: straw.v1.HeartbeatAck
-	(*AssignRequest)(nil),           // 14: straw.v1.AssignRequest
-	(*AssignAck)(nil),               // 15: straw.v1.AssignAck
-	(*StreamFrame)(nil),             // 16: straw.v1.StreamFrame
-	(*Header)(nil),                  // 17: straw.v1.Header
-	(*DataFrame)(nil),               // 18: straw.v1.DataFrame
-	(*CreditFrame)(nil),             // 19: straw.v1.CreditFrame
-	(*ErrorFrame)(nil),              // 20: straw.v1.ErrorFrame
-	(*EndFrame)(nil),                // 21: straw.v1.EndFrame
-	(*CancelFrame)(nil),             // 22: straw.v1.CancelFrame
-	(*CancelledFrame)(nil),          // 23: straw.v1.CancelledFrame
-	(*TrailersFrame)(nil),           // 24: straw.v1.TrailersFrame
-	(*InjectionOperation)(nil),      // 25: straw.v1.InjectionOperation
-	(*DestinationPolicy)(nil),       // 26: straw.v1.DestinationPolicy
-	(*BodyRefFrame)(nil),            // 27: straw.v1.BodyRefFrame
-	(*S3BodyRef)(nil),               // 28: straw.v1.S3BodyRef
-	(*DirectStreamRef)(nil),         // 29: straw.v1.DirectStreamRef
-	(*RequestStart)(nil),            // 30: straw.v1.RequestStart
-	(*OutboundStartFrame)(nil),      // 31: straw.v1.OutboundStartFrame
-	(*ResponseStart)(nil),           // 32: straw.v1.ResponseStart
-	(*ErrorResponse)(nil),           // 33: straw.v1.ErrorResponse
-	(*RegisterRequest_PoolRef)(nil), // 34: straw.v1.RegisterRequest.PoolRef
-	nil,                             // 35: straw.v1.ErrorFrame.DetailsEntry
-	nil,                             // 36: straw.v1.RequestStart.RoutingMetadataEntry
-	nil,                             // 37: straw.v1.ErrorResponse.DetailsEntry
+	(*LogEvent)(nil),                // 10: straw.v1.LogEvent
+	(*RegisterRequest)(nil),         // 11: straw.v1.RegisterRequest
+	(*RegisterAck)(nil),             // 12: straw.v1.RegisterAck
+	(*HeartbeatRequest)(nil),        // 13: straw.v1.HeartbeatRequest
+	(*HeartbeatAck)(nil),            // 14: straw.v1.HeartbeatAck
+	(*AssignRequest)(nil),           // 15: straw.v1.AssignRequest
+	(*AssignAck)(nil),               // 16: straw.v1.AssignAck
+	(*StreamFrame)(nil),             // 17: straw.v1.StreamFrame
+	(*Header)(nil),                  // 18: straw.v1.Header
+	(*DataFrame)(nil),               // 19: straw.v1.DataFrame
+	(*CreditFrame)(nil),             // 20: straw.v1.CreditFrame
+	(*ErrorFrame)(nil),              // 21: straw.v1.ErrorFrame
+	(*EndFrame)(nil),                // 22: straw.v1.EndFrame
+	(*CancelFrame)(nil),             // 23: straw.v1.CancelFrame
+	(*CancelledFrame)(nil),          // 24: straw.v1.CancelledFrame
+	(*TrailersFrame)(nil),           // 25: straw.v1.TrailersFrame
+	(*InjectionOperation)(nil),      // 26: straw.v1.InjectionOperation
+	(*DestinationPolicy)(nil),       // 27: straw.v1.DestinationPolicy
+	(*BodyRefFrame)(nil),            // 28: straw.v1.BodyRefFrame
+	(*S3BodyRef)(nil),               // 29: straw.v1.S3BodyRef
+	(*DirectStreamRef)(nil),         // 30: straw.v1.DirectStreamRef
+	(*RequestStart)(nil),            // 31: straw.v1.RequestStart
+	(*OutboundStartFrame)(nil),      // 32: straw.v1.OutboundStartFrame
+	(*ResponseStart)(nil),           // 33: straw.v1.ResponseStart
+	(*ErrorResponse)(nil),           // 34: straw.v1.ErrorResponse
+	nil,                             // 35: straw.v1.LogEvent.ExtraEntry
+	(*RegisterRequest_PoolRef)(nil), // 36: straw.v1.RegisterRequest.PoolRef
+	nil,                             // 37: straw.v1.ErrorFrame.DetailsEntry
+	nil,                             // 38: straw.v1.RequestStart.RoutingMetadataEntry
+	nil,                             // 39: straw.v1.ErrorResponse.DetailsEntry
 }
 var file_straw_v1_straw_proto_depIdxs = []int32{
-	10, // 0: straw.v1.Envelope.register_request:type_name -> straw.v1.RegisterRequest
-	11, // 1: straw.v1.Envelope.register_ack:type_name -> straw.v1.RegisterAck
-	12, // 2: straw.v1.Envelope.heartbeat_request:type_name -> straw.v1.HeartbeatRequest
-	13, // 3: straw.v1.Envelope.heartbeat_ack:type_name -> straw.v1.HeartbeatAck
-	14, // 4: straw.v1.Envelope.assign_request:type_name -> straw.v1.AssignRequest
-	15, // 5: straw.v1.Envelope.assign_ack:type_name -> straw.v1.AssignAck
-	16, // 6: straw.v1.Envelope.stream_frame:type_name -> straw.v1.StreamFrame
-	34, // 7: straw.v1.RegisterRequest.allowed_pools:type_name -> straw.v1.RegisterRequest.PoolRef
-	5,  // 8: straw.v1.HeartbeatRequest.health:type_name -> straw.v1.WorkerHealth
-	4,  // 9: straw.v1.AssignRequest.mode:type_name -> straw.v1.RequestMode
-	3,  // 10: straw.v1.AssignAck.code:type_name -> straw.v1.AssignAckCode
-	30, // 11: straw.v1.StreamFrame.request_start:type_name -> straw.v1.RequestStart
-	31, // 12: straw.v1.StreamFrame.outbound_start:type_name -> straw.v1.OutboundStartFrame
-	32, // 13: straw.v1.StreamFrame.response_start:type_name -> straw.v1.ResponseStart
-	18, // 14: straw.v1.StreamFrame.data:type_name -> straw.v1.DataFrame
-	19, // 15: straw.v1.StreamFrame.credit:type_name -> straw.v1.CreditFrame
-	27, // 16: straw.v1.StreamFrame.body_ref:type_name -> straw.v1.BodyRefFrame
-	22, // 17: straw.v1.StreamFrame.cancel:type_name -> straw.v1.CancelFrame
-	20, // 18: straw.v1.StreamFrame.error:type_name -> straw.v1.ErrorFrame
-	24, // 19: straw.v1.StreamFrame.trailers:type_name -> straw.v1.TrailersFrame
-	21, // 20: straw.v1.StreamFrame.end:type_name -> straw.v1.EndFrame
-	23, // 21: straw.v1.StreamFrame.cancelled:type_name -> straw.v1.CancelledFrame
-	0,  // 22: straw.v1.ErrorFrame.code:type_name -> straw.v1.ErrorCode
-	1,  // 23: straw.v1.ErrorFrame.category:type_name -> straw.v1.ErrorCategory
-	2,  // 24: straw.v1.ErrorFrame.timeout_type:type_name -> straw.v1.TimeoutType
-	35, // 25: straw.v1.ErrorFrame.details:type_name -> straw.v1.ErrorFrame.DetailsEntry
-	17, // 26: straw.v1.TrailersFrame.headers:type_name -> straw.v1.Header
-	6,  // 27: straw.v1.DestinationPolicy.sni_host_mismatch_policy:type_name -> straw.v1.SniHostMismatchPolicy
-	7,  // 28: straw.v1.DestinationPolicy.redirect_policy:type_name -> straw.v1.RedirectPolicy
-	8,  // 29: straw.v1.DestinationPolicy.resolution_mode:type_name -> straw.v1.DestinationResolutionMode
-	28, // 30: straw.v1.BodyRefFrame.s3:type_name -> straw.v1.S3BodyRef
-	29, // 31: straw.v1.BodyRefFrame.direct_stream:type_name -> straw.v1.DirectStreamRef
-	4,  // 32: straw.v1.RequestStart.mode:type_name -> straw.v1.RequestMode
-	17, // 33: straw.v1.RequestStart.headers:type_name -> straw.v1.Header
-	36, // 34: straw.v1.RequestStart.routing_metadata:type_name -> straw.v1.RequestStart.RoutingMetadataEntry
-	25, // 35: straw.v1.RequestStart.injection_operations:type_name -> straw.v1.InjectionOperation
-	7,  // 36: straw.v1.RequestStart.redirect_policy:type_name -> straw.v1.RedirectPolicy
-	26, // 37: straw.v1.RequestStart.destination_policy:type_name -> straw.v1.DestinationPolicy
-	17, // 38: straw.v1.ResponseStart.headers:type_name -> straw.v1.Header
-	1,  // 39: straw.v1.ErrorResponse.category:type_name -> straw.v1.ErrorCategory
-	0,  // 40: straw.v1.ErrorResponse.code:type_name -> straw.v1.ErrorCode
-	2,  // 41: straw.v1.ErrorResponse.timeout_type:type_name -> straw.v1.TimeoutType
-	37, // 42: straw.v1.ErrorResponse.details:type_name -> straw.v1.ErrorResponse.DetailsEntry
-	43, // [43:43] is the sub-list for method output_type
-	43, // [43:43] is the sub-list for method input_type
-	43, // [43:43] is the sub-list for extension type_name
-	43, // [43:43] is the sub-list for extension extendee
-	0,  // [0:43] is the sub-list for field type_name
+	11, // 0: straw.v1.Envelope.register_request:type_name -> straw.v1.RegisterRequest
+	12, // 1: straw.v1.Envelope.register_ack:type_name -> straw.v1.RegisterAck
+	13, // 2: straw.v1.Envelope.heartbeat_request:type_name -> straw.v1.HeartbeatRequest
+	14, // 3: straw.v1.Envelope.heartbeat_ack:type_name -> straw.v1.HeartbeatAck
+	15, // 4: straw.v1.Envelope.assign_request:type_name -> straw.v1.AssignRequest
+	16, // 5: straw.v1.Envelope.assign_ack:type_name -> straw.v1.AssignAck
+	17, // 6: straw.v1.Envelope.stream_frame:type_name -> straw.v1.StreamFrame
+	10, // 7: straw.v1.Envelope.log_event:type_name -> straw.v1.LogEvent
+	35, // 8: straw.v1.LogEvent.extra:type_name -> straw.v1.LogEvent.ExtraEntry
+	36, // 9: straw.v1.RegisterRequest.allowed_pools:type_name -> straw.v1.RegisterRequest.PoolRef
+	5,  // 10: straw.v1.HeartbeatRequest.health:type_name -> straw.v1.WorkerHealth
+	4,  // 11: straw.v1.AssignRequest.mode:type_name -> straw.v1.RequestMode
+	3,  // 12: straw.v1.AssignAck.code:type_name -> straw.v1.AssignAckCode
+	31, // 13: straw.v1.StreamFrame.request_start:type_name -> straw.v1.RequestStart
+	32, // 14: straw.v1.StreamFrame.outbound_start:type_name -> straw.v1.OutboundStartFrame
+	33, // 15: straw.v1.StreamFrame.response_start:type_name -> straw.v1.ResponseStart
+	19, // 16: straw.v1.StreamFrame.data:type_name -> straw.v1.DataFrame
+	20, // 17: straw.v1.StreamFrame.credit:type_name -> straw.v1.CreditFrame
+	28, // 18: straw.v1.StreamFrame.body_ref:type_name -> straw.v1.BodyRefFrame
+	23, // 19: straw.v1.StreamFrame.cancel:type_name -> straw.v1.CancelFrame
+	21, // 20: straw.v1.StreamFrame.error:type_name -> straw.v1.ErrorFrame
+	25, // 21: straw.v1.StreamFrame.trailers:type_name -> straw.v1.TrailersFrame
+	22, // 22: straw.v1.StreamFrame.end:type_name -> straw.v1.EndFrame
+	24, // 23: straw.v1.StreamFrame.cancelled:type_name -> straw.v1.CancelledFrame
+	0,  // 24: straw.v1.ErrorFrame.code:type_name -> straw.v1.ErrorCode
+	1,  // 25: straw.v1.ErrorFrame.category:type_name -> straw.v1.ErrorCategory
+	2,  // 26: straw.v1.ErrorFrame.timeout_type:type_name -> straw.v1.TimeoutType
+	37, // 27: straw.v1.ErrorFrame.details:type_name -> straw.v1.ErrorFrame.DetailsEntry
+	18, // 28: straw.v1.TrailersFrame.headers:type_name -> straw.v1.Header
+	6,  // 29: straw.v1.DestinationPolicy.sni_host_mismatch_policy:type_name -> straw.v1.SniHostMismatchPolicy
+	7,  // 30: straw.v1.DestinationPolicy.redirect_policy:type_name -> straw.v1.RedirectPolicy
+	8,  // 31: straw.v1.DestinationPolicy.resolution_mode:type_name -> straw.v1.DestinationResolutionMode
+	29, // 32: straw.v1.BodyRefFrame.s3:type_name -> straw.v1.S3BodyRef
+	30, // 33: straw.v1.BodyRefFrame.direct_stream:type_name -> straw.v1.DirectStreamRef
+	4,  // 34: straw.v1.RequestStart.mode:type_name -> straw.v1.RequestMode
+	18, // 35: straw.v1.RequestStart.headers:type_name -> straw.v1.Header
+	38, // 36: straw.v1.RequestStart.routing_metadata:type_name -> straw.v1.RequestStart.RoutingMetadataEntry
+	26, // 37: straw.v1.RequestStart.injection_operations:type_name -> straw.v1.InjectionOperation
+	7,  // 38: straw.v1.RequestStart.redirect_policy:type_name -> straw.v1.RedirectPolicy
+	27, // 39: straw.v1.RequestStart.destination_policy:type_name -> straw.v1.DestinationPolicy
+	18, // 40: straw.v1.ResponseStart.headers:type_name -> straw.v1.Header
+	1,  // 41: straw.v1.ErrorResponse.category:type_name -> straw.v1.ErrorCategory
+	0,  // 42: straw.v1.ErrorResponse.code:type_name -> straw.v1.ErrorCode
+	2,  // 43: straw.v1.ErrorResponse.timeout_type:type_name -> straw.v1.TimeoutType
+	39, // 44: straw.v1.ErrorResponse.details:type_name -> straw.v1.ErrorResponse.DetailsEntry
+	45, // [45:45] is the sub-list for method output_type
+	45, // [45:45] is the sub-list for method input_type
+	45, // [45:45] is the sub-list for extension type_name
+	45, // [45:45] is the sub-list for extension extendee
+	0,  // [0:45] is the sub-list for field type_name
 }
 
 func init() { file_straw_v1_straw_proto_init() }
@@ -3395,9 +3550,10 @@ func file_straw_v1_straw_proto_init() {
 		(*Envelope_AssignRequest)(nil),
 		(*Envelope_AssignAck)(nil),
 		(*Envelope_StreamFrame)(nil),
+		(*Envelope_LogEvent)(nil),
 	}
-	file_straw_v1_straw_proto_msgTypes[3].OneofWrappers = []any{}
-	file_straw_v1_straw_proto_msgTypes[7].OneofWrappers = []any{
+	file_straw_v1_straw_proto_msgTypes[4].OneofWrappers = []any{}
+	file_straw_v1_straw_proto_msgTypes[8].OneofWrappers = []any{
 		(*StreamFrame_RequestStart)(nil),
 		(*StreamFrame_OutboundStart)(nil),
 		(*StreamFrame_ResponseStart)(nil),
@@ -3410,19 +3566,19 @@ func file_straw_v1_straw_proto_init() {
 		(*StreamFrame_End)(nil),
 		(*StreamFrame_Cancelled)(nil),
 	}
-	file_straw_v1_straw_proto_msgTypes[11].OneofWrappers = []any{}
-	file_straw_v1_straw_proto_msgTypes[18].OneofWrappers = []any{
+	file_straw_v1_straw_proto_msgTypes[12].OneofWrappers = []any{}
+	file_straw_v1_straw_proto_msgTypes[19].OneofWrappers = []any{
 		(*BodyRefFrame_S3)(nil),
 		(*BodyRefFrame_DirectStream)(nil),
 	}
-	file_straw_v1_straw_proto_msgTypes[24].OneofWrappers = []any{}
+	file_straw_v1_straw_proto_msgTypes[25].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_straw_v1_straw_proto_rawDesc), len(file_straw_v1_straw_proto_rawDesc)),
 			NumEnums:      9,
-			NumMessages:   29,
+			NumMessages:   31,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

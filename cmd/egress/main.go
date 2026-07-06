@@ -113,6 +113,11 @@ func run() error {
 		}
 	}()
 
+	logPublisher := logging.NewNATSLogPublisher(natsConn, natsx.LogTelemetrySubject(), logging.DefaultNATSLogQueueEntries)
+	defer logPublisher.Close()
+
+	slog.SetDefault(slog.New(logging.NewTeeHandler(logging.NewHandler(os.Stdout), logPublisher)).With("service", "egress"))
+
 	slog.Info("connected to nats", "url", natsConn.ConnectedUrlRedacted())
 
 	return runWorker(ctx, natsConn, egressConfig)

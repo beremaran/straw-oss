@@ -121,7 +121,21 @@ message Envelope {
     AssignRequest assign_request = 24;
     AssignAck assign_ack = 25;
     StreamFrame stream_frame = 26;
+    LogEvent log_event = 27;
   }
+}
+
+message LogEvent {
+  int64 timestamp_unix_ms = 1;
+  string service = 2;
+  string level = 3;
+  string message = 4;
+  string request_id = 5;
+  string tenant_id = 6;
+  string trace_id = 7;
+  string worker_id = 8;
+  string error_code = 9;
+  map<string, string> extra = 10;
 }
 
 message RegisterRequest {
