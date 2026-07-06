@@ -1,6 +1,6 @@
 # 27 - Egress Log Events NATS Transport
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -61,18 +61,18 @@ canonical sink. ClickHouse remains the only canonical log sink; do not add Loki.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Define the protobuf log-event message and the canonical Egress-to-Control NATS subject.
-- [ ] Add NATS subject helpers and update the protocol/ACL documentation.
-- [ ] Implement a bounded Egress log publisher that never blocks the logging caller and drops oldest non-critical log
+- [x] Read all required planning docs.
+- [x] Define the protobuf log-event message and the canonical Egress-to-Control NATS subject.
+- [x] Add NATS subject helpers and update the protocol/ACL documentation.
+- [x] Implement a bounded Egress log publisher that never blocks the logging caller and drops oldest non-critical log
       events on overflow or NATS outage.
-- [ ] Wire `cmd/egress` to publish structured log events over NATS after connection, without adding ClickHouse config.
-- [ ] Wire Control to subscribe to the log telemetry subject and enqueue rows through the existing `LogEventWriter`.
-- [ ] Verify redaction: no secret material, NATS subjects, credentials, private keys, signed URLs, or upstream proxy
+- [x] Wire `cmd/egress` to publish structured log events over NATS after connection, without adding ClickHouse config.
+- [x] Wire Control to subscribe to the log telemetry subject and enqueue rows through the existing `LogEventWriter`.
+- [x] Verify redaction: no secret material, NATS subjects, credentials, private keys, signed URLs, or upstream proxy
       credentials can reach `log_events`.
-- [ ] Add the tests listed in Expected Files.
-- [ ] Run focused tests, then `make check`.
-- [ ] Write a handoff note.
+- [x] Add the tests listed in Expected Files.
+- [x] Run focused tests, then `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

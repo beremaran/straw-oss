@@ -40,6 +40,13 @@ HeartbeatRequest:
   deadline_unix_ms: empty
   attempt: 0
 
+LogEvent:
+  request_id: optional copied log context
+  tenant_id: optional copied log context
+  deadline_unix_ms: empty
+  attempt: 0
+  payload fields: redacted structured log row
+
 AssignRequest / StreamFrame:
   request_id: required
   tenant_id: required
@@ -53,6 +60,7 @@ AssignRequest / StreamFrame:
 |----------------------------------------------------------|--------------------------|--------------------|-------------|-----------------------------------------------------------------|
 | `straw.v1.control.register`                              | Executor → Control       | `RegisterRequest`  | `control`   | Registration request/reply                                      |
 | `straw.v1.control.heartbeat`                             | Executor → Control       | `HeartbeatRequest` | `control`   | Heartbeat request/reply                                         |
+| `straw.v1.control.logs`                                  | Executor → Control       | `LogEvent`         | `control`   | Transient structured Egress log telemetry for Control-owned ClickHouse writes |
 | `straw.v1.executor.<worker_id>.<session_id>.assign`      | Control → exact executor | `AssignRequest`    | none        | Exact-session assignment request/reply                          |
 | `straw.v1.req.<request_id>.<worker_id>.<session_id>.c2e` | Control → executor       | `StreamFrame`      | none        | Request body, tunnel upload, request control, response credit   |
 | `straw.v1.req.<request_id>.<worker_id>.<session_id>.e2c` | Executor → Control       | `StreamFrame`      | none        | Response body, tunnel download, executor control, upload credit |
@@ -183,8 +191,8 @@ prefixes so inbox permissions can be scoped: Control uses `_INBOX.ctl.>`; each w
 
 | Principal           | Publish allowed                                                                                                  | Subscribe allowed                                                                                                |
 |---------------------|-------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------|
-| Control             | `straw.v1.executor.*.*.assign`, `straw.v1.req.*.*.*.c2e`, `_INBOX.wrk.>` (register/heartbeat replies)             | `straw.v1.control.register`, `straw.v1.control.heartbeat`, `straw.v1.req.*.*.*.e2c`, `_INBOX.ctl.>` (assign replies) |
-| Worker `worker_id`  | `straw.v1.control.register`, `straw.v1.control.heartbeat`, `straw.v1.req.*.<worker_id>.*.e2c`, `_INBOX.ctl.>` (assign replies) | `straw.v1.executor.<worker_id>.*.assign`, `straw.v1.req.*.<worker_id>.*.c2e`, `_INBOX.wrk.<worker_id>.>`         |
+| Control             | `straw.v1.executor.*.*.assign`, `straw.v1.req.*.*.*.c2e`, `_INBOX.wrk.>` (register/heartbeat replies)             | `straw.v1.control.register`, `straw.v1.control.heartbeat`, `straw.v1.control.logs`, `straw.v1.req.*.*.*.e2c`, `_INBOX.ctl.>` (assign replies) |
+| Worker `worker_id`  | `straw.v1.control.register`, `straw.v1.control.heartbeat`, `straw.v1.control.logs`, `straw.v1.req.*.<worker_id>.*.e2c`, `_INBOX.ctl.>` (assign replies) | `straw.v1.executor.<worker_id>.*.assign`, `straw.v1.req.*.<worker_id>.*.c2e`, `_INBOX.wrk.<worker_id>.>`         |
 | Adapter `worker_id` | same as worker                                                                                                   | same as worker                                                                                                   |
 
 Workers can publish to Control's inbox prefix (`_INBOX.ctl.>`); this is accepted because inbox subjects are
