@@ -1,6 +1,6 @@
 # 21 - IDNA Hostname Support
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -37,12 +37,12 @@ form so that Unicode look-alikes cannot bypass suffix or host rules.
 
 ## Steps
 
-- [ ] Normalize hostnames to A-labels at the Control ingress boundary (one place, before policy evaluation).
-- [ ] Evaluate all deny/suffix/CNAME rules against the normalized form; add look-alike bypass tests
+- [x] Normalize hostnames to A-labels at the Control ingress boundary (one place, before policy evaluation).
+- [x] Evaluate all deny/suffix/CNAME rules against the normalized form; add look-alike bypass tests
       (e.g. a Unicode homograph of a denied host must still be denied).
-- [ ] Keep rejecting hostnames that fail IDNA conversion.
-- [ ] Run focused tests, then `make check`.
-- [ ] Write a handoff note.
+- [x] Keep rejecting hostnames that fail IDNA conversion.
+- [x] Run focused tests, then `make check`.
+- [x] Write a handoff note.
 
 ## Acceptance Criteria
 

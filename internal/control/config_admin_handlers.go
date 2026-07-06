@@ -672,9 +672,19 @@ func normalizeDenyRule(ruleType, value, reason string) (config.DenyRule, error) 
 
 	switch {
 	case ruleType == denyRuleTypeCNAMESuffix:
-		rule.NormalizedName = normalizeHostname(value)
+		normalized, err := normalizeHostname(value)
+		if err != nil {
+			return config.DenyRule{}, errInvalidDenyRuleValue
+		}
+
+		rule.NormalizedName = normalized
 	case denyRuleHostTypes[ruleType]:
-		rule.NormalizedHost = normalizeHostname(value)
+		normalized, err := normalizeHostname(value)
+		if err != nil {
+			return config.DenyRule{}, errInvalidDenyRuleValue
+		}
+
+		rule.NormalizedHost = normalized
 	case denyRuleCIDRTypes[ruleType]:
 		prefix, err := netip.ParsePrefix(value)
 		if err != nil {
@@ -690,10 +700,6 @@ func normalizeDenyRule(ruleType, value, reason string) (config.DenyRule, error) 
 	}
 
 	return rule, nil
-}
-
-func normalizeHostname(host string) string {
-	return strings.TrimSuffix(strings.ToLower(strings.TrimSpace(host)), ".")
 }
 
 var (
