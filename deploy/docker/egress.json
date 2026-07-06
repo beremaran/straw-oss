@@ -12,6 +12,9 @@
         "pool_id": "dev-pool"
       }
     ],
+    "capabilities": {
+      "ip_types": ["datacenter"]
+    },
     "nats": {
       "servers": ["nats://nats:4222"]
     }

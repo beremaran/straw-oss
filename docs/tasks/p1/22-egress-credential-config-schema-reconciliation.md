@@ -54,6 +54,9 @@ instead, that is a stop-and-ask condition, not a silent reversal.
   in env vars, never inline) — only the config *key shape* and its documentation.
 - Do not touch the `egress.capabilities.*`, `egress.outbound_*`, `egress.dns.*`, or NATS config keys; this task is
   scoped to the three identity/credential keys (`worker_id`, `credential_id`, `private_key_ed25519_env`).
+  (Cross-note: P0 task 49, `docs/tasks/p0/49-egress-capability-declaration-from-config.md`, added the nested
+  `egress.capabilities.*` object on 2026-07-07 matching `docs/planning/24`; that nested block is intentionally the
+  planning-doc shape and is not part of this task's flat-key reconciliation.)
 - Do not add a backward-compat shim that accepts both shapes; a single canonical shape is the whole point.
 
 ## Expected Files

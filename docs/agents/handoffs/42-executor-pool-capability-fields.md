@@ -70,12 +70,20 @@ Result: clean (`gofmt`, `golangci-lint --max-issues-per-linter 0 --max-same-issu
   — all pass, including `TestPostgresConfigStoreSnapshotAssembly`'s new capability-field round-trip assertion.
   Migration `0005` was applied to `straw_test` and re-applied a second time to confirm idempotency (`NOTICE:
   column ... already exists, skipping`).
-- Live compose verification: completed by `docs/tasks/p0/46-live-compose-verification.md` on 2026-07-06. The run
-  created `pool_task47_us` through the config API with `allowed_ip_types=["datacenter"]`,
-  `allowed_countries=["US"]`, and `allowed_regions=["us-west-1"]`; Postgres stored those JSONB values. With the
-  seeded fallback route disabled, a request through the live REST -> Control -> NATS path returned
-  `route_unavailable` for the non-matching compose worker. After registering a second live Go worker with matching
-  capabilities, the same request returned HTTP 200 from `https://example.com/`.
+- Live compose verification: **partially done 2026-07-07** by `docs/tasks/p0/46-live-compose-verification.md`
+  (compose SHA `eb0c32b2`). Observed on the full stack: an executor pool created via the API with
+  `allowed_ip_types`/`allowed_countries`/`allowed_regions` persisted those three jsonb columns correctly in
+  Postgres `executor_pools`; an invalid `ip_type` (`satellite`) was rejected with 400; a live request routed
+  through the restricted pool returned 200 (the dev worker, which claims empty capabilities, is a subset of any
+  restriction and is correctly *not* false-excluded); a PUT update round-tripped the restriction fields.
+  **The non-matching (exclusion) branch could not be driven live:** the shipped Egress worker
+  (`cmd/egress/main.go:214`) declares no countries/regions/ip_types, so no live worker can be excluded by a pool
+  restriction. That exclusion path stays unit-tested (`TestDispatcherRoutePoolCapabilityRestriction`) and is now
+  owned live by `docs/tasks/p0/49-egress-capability-declaration-from-config.md`. **Closed 2026-07-07 by task 49:**
+  the worker now declares `egress.capabilities.*` from static config, and the exclusion branch was driven live
+  (restriction `["residential"]` vs declared `["datacenter"]` → `route_unavailable`; loosened → 200). See
+  `docs/agents/handoffs/49-egress-capability-declaration-from-config.md`.
+  [Update 2026-07-06: the user approved the live step; now owned by `docs/tasks/p0/46-live-compose-verification.md`.]
 
 ## Reviewer Start Points
 

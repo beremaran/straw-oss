@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -381,6 +382,73 @@ func TestLoadEgressUpstreamConnectionPoolDefaultsAndValidation(t *testing.T) {
 	_, err = LoadEgress(path)
 	if err == nil || !strings.Contains(err.Error(), "upstream_connection_pool values must be positive when enabled") {
 		t.Fatalf("LoadEgress() error = %v, want upstream pool validation error", err)
+	}
+}
+
+func TestLoadEgressParsesCapabilities(t *testing.T) {
+	t.Parallel()
+
+	path := writeConfig(t, `{
+		"config_version": "v1",
+		"egress": {
+			"worker_id": "egress-local-001",
+			"credential_id": "wcred_test",
+			"private_key_ed25519_env": "STRAW_WORKER_PRIVATE_KEY_ED25519_BASE64",
+			"capabilities": {
+				"tags": ["datacenter", "local"],
+				"countries": ["AU"],
+				"regions": ["wa"],
+				"ip_types": ["datacenter"],
+				"supported_ingress_modes": ["rest"],
+				"max_concurrency": 100
+			}
+		}
+	}`)
+
+	cfg, err := LoadEgress(path)
+	if err != nil {
+		t.Fatalf("LoadEgress() error = %v", err)
+	}
+
+	caps := cfg.Capabilities
+	if !slices.Equal(caps.Tags, []string{"datacenter", "local"}) ||
+		!slices.Equal(caps.Countries, []string{"AU"}) ||
+		!slices.Equal(caps.Regions, []string{"wa"}) ||
+		!slices.Equal(caps.IPTypes, []string{"datacenter"}) ||
+		!slices.Equal(caps.SupportedIngressModes, []string{defaultIngressMode}) ||
+		caps.MaxConcurrency != 100 {
+		t.Fatalf("Capabilities = %+v, want the configured values", caps)
+	}
+}
+
+func TestLoadEgressCapabilitiesDefaults(t *testing.T) {
+	t.Parallel()
+
+	path := writeConfig(t, `{
+		"config_version": "v1",
+		"egress": {
+			"worker_id": "egress-local-001",
+			"credential_id": "wcred_test",
+			"private_key_ed25519_env": "STRAW_WORKER_PRIVATE_KEY_ED25519_BASE64"
+		}
+	}`)
+
+	cfg, err := LoadEgress(path)
+	if err != nil {
+		t.Fatalf("LoadEgress() error = %v", err)
+	}
+
+	caps := cfg.Capabilities
+	if len(caps.Tags) != 0 || len(caps.Countries) != 0 || len(caps.Regions) != 0 || len(caps.IPTypes) != 0 {
+		t.Fatalf("Capabilities lists = %+v, want empty defaults", caps)
+	}
+
+	if !slices.Equal(caps.SupportedIngressModes, []string{defaultIngressMode}) {
+		t.Fatalf("SupportedIngressModes = %v, want default [rest]", caps.SupportedIngressModes)
+	}
+
+	if caps.MaxConcurrency != 0 {
+		t.Fatalf("MaxConcurrency = %d, want 0 (unset)", caps.MaxConcurrency)
 	}
 }
 

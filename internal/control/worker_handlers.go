@@ -156,7 +156,7 @@ func (h *AdminHandlers) globalWorkerAction(w http.ResponseWriter, r *http.Reques
 		skipPostgres = audited
 	}
 
-	recordAudit(r.Context(), h.Audit, identity, "worker", workerID, action, 0, "", nil, nil, skipPostgres)
+	recordAudit(r.Context(), h.Audit, identity, "worker", workerID, action, 0, auditFieldPathAll, nil, nil, skipPostgres)
 	writeJSON(w, http.StatusOK, h.workerStateResponse(identity, workerID))
 }
 
@@ -223,7 +223,7 @@ func (h *AdminHandlers) tenantWorkerAction(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	recordAudit(r.Context(), h.Audit, identity, "worker", workerID, action, 0, "", nil, nil, skipPostgres)
+	recordAudit(r.Context(), h.Audit, identity, "worker", workerID, action, 0, auditFieldPathAll, nil, nil, skipPostgres)
 	writeJSON(w, http.StatusOK, h.workerStateResponse(identity, workerID))
 }
 

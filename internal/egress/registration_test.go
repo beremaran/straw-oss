@@ -2,6 +2,7 @@ package egress
 
 import (
 	"crypto/ed25519"
+	"slices"
 	"testing"
 
 	strawpb "github.com/beremaran/straw/v2/api/proto/straw/v1"
@@ -13,6 +14,7 @@ const (
 	testTenantA = "ten_a"
 	testPool1   = "pool_1"
 	testEgress  = "egress"
+	testIPType  = "datacenter"
 )
 
 func TestBuildRegisterRequestSignsVerifiably(t *testing.T) {
@@ -24,7 +26,7 @@ func TestBuildRegisterRequestSignsVerifiably(t *testing.T) {
 	id := Identity{WorkerID: testWorker1, CredentialID: testWcred1, ExecutorType: testEgress, PrivateKey: priv}
 	caps := Capabilities{
 		AllowedPools:   []*strawpb.RegisterRequest_PoolRef{{TenantId: testTenantA, PoolId: testPool1}},
-		Tags:           []string{"datacenter"},
+		Tags:           []string{testIPType},
 		MaxConcurrency: 4,
 	}
 
@@ -43,6 +45,42 @@ func TestBuildRegisterRequestSignsVerifiably(t *testing.T) {
 	otherPub, _, _ := ed25519.GenerateKey(nil)
 	if strawpb.VerifyRegistrationSignature(otherPub, req, req.GetSignedToken()) {
 		t.Fatal("signature verified under the wrong public key")
+	}
+}
+
+func TestBuildRegisterRequestCarriesCapabilities(t *testing.T) {
+	t.Parallel()
+
+	_, priv, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("GenerateKey: %v", err)
+	}
+
+	id := Identity{WorkerID: testWorker1, CredentialID: testWcred1, ExecutorType: testEgress, PrivateKey: priv}
+	caps := Capabilities{
+		Tags:                  []string{testIPType, "local"},
+		Countries:             []string{"AU"},
+		Regions:               []string{"wa"},
+		IPTypes:               []string{testIPType},
+		SupportedIngressModes: []string{"rest"},
+		MaxConcurrency:        100,
+	}
+
+	req, err := BuildRegisterRequest(id, caps)
+	if err != nil {
+		t.Fatalf("BuildRegisterRequest: %v", err)
+	}
+
+	if !slices.Equal(req.GetTags(), caps.Tags) ||
+		!slices.Equal(req.GetCountries(), caps.Countries) ||
+		!slices.Equal(req.GetRegions(), caps.Regions) ||
+		!slices.Equal(req.GetIpTypes(), caps.IPTypes) ||
+		!slices.Equal(req.GetSupportedIngressModes(), caps.SupportedIngressModes) {
+		t.Fatalf("RegisterRequest capability claims = %+v, want the declared capabilities", req)
+	}
+
+	if req.GetMaxConcurrency() != 100 {
+		t.Fatalf("MaxConcurrency = %d, want 100", req.GetMaxConcurrency())
 	}
 }
 

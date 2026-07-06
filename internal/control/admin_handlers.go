@@ -219,7 +219,7 @@ func (h *AdminHandlers) CreateTenant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	recordAudit(r.Context(), h.Audit, identity, "tenant", id, "create", 1, "", nil, tenant, false)
+	recordAudit(r.Context(), h.Audit, identity, "tenant", id, "create", 1, auditFieldPathAll, nil, tenant, false)
 
 	writeJSON(w, http.StatusCreated, toTenantResponse(tenant))
 }
@@ -340,7 +340,7 @@ func (h *AdminHandlers) UpdateTenant(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.ConfigCache.PublishInvalidation(r.Context(), id, updated.ConfigVersion)
-	recordAudit(r.Context(), h.Audit, identity, "tenant", id, configActionUpdate, updated.ConfigVersion, "", existing, updated, false)
+	recordAudit(r.Context(), h.Audit, identity, "tenant", id, configActionUpdate, updated.ConfigVersion, auditFieldPathAll, existing, updated, false)
 
 	writeJSON(w, http.StatusOK, toTenantResponse(updated))
 }
@@ -414,7 +414,7 @@ func (h *AdminHandlers) SoftDeleteTenant(w http.ResponseWriter, r *http.Request)
 	}
 
 	h.ConfigCache.PublishInvalidation(r.Context(), id, deleted.ConfigVersion)
-	recordAudit(r.Context(), h.Audit, identity, "tenant", id, configActionDelete, deleted.ConfigVersion, "", existing, nil, false)
+	recordAudit(r.Context(), h.Audit, identity, "tenant", id, configActionDelete, deleted.ConfigVersion, auditFieldPathAll, existing, nil, false)
 
 	writeJSON(w, http.StatusOK, toTenantResponse(deleted))
 }
@@ -561,7 +561,7 @@ func (h *AdminHandlers) RevokePlatformAPIKey(w http.ResponseWriter, r *http.Requ
 	// (see Authenticator.Authenticate), so revocation takes effect on the
 	// very next authentication attempt with no separate cache to
 	// invalidate.
-	recordAudit(r.Context(), h.Audit, identity, "platform_api_key", id, "revoke", revoked.ConfigVersion, "", existing, revoked, false)
+	recordAudit(r.Context(), h.Audit, identity, "platform_api_key", id, "revoke", revoked.ConfigVersion, auditFieldPathAll, existing, revoked, false)
 
 	writeJSON(w, http.StatusOK, toAPIKeyReadResponse(revoked))
 }
@@ -716,7 +716,7 @@ func (h *AdminHandlers) RevokeTenantAPIKey(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	recordAudit(r.Context(), h.Audit, identity, "tenant_api_key", id, "revoke", revoked.ConfigVersion, "", existing, revoked, false)
+	recordAudit(r.Context(), h.Audit, identity, "tenant_api_key", id, "revoke", revoked.ConfigVersion, auditFieldPathAll, existing, revoked, false)
 	writeJSON(w, http.StatusOK, toAPIKeyReadResponse(revoked))
 }
 
@@ -874,7 +874,7 @@ func (h *AdminHandlers) RevokeWorkerCredential(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	recordAudit(r.Context(), h.Audit, identity, "worker_credential", id, "revoke", revoked.ConfigVersion, "", existing, revoked, false)
+	recordAudit(r.Context(), h.Audit, identity, "worker_credential", id, "revoke", revoked.ConfigVersion, auditFieldPathAll, existing, revoked, false)
 
 	writeJSON(w, http.StatusOK, toWorkerCredentialResponse(revoked))
 }
@@ -1171,7 +1171,7 @@ func (h *AdminHandlers) PutPayloadCapturePolicy(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	recordAudit(r.Context(), h.Audit, identity, "payload_capture_policy", identity.TenantID, "update", saved.ConfigVersion, "", oldPolicy, saved, h.ConfigWrites != nil)
+	recordAudit(r.Context(), h.Audit, identity, "payload_capture_policy", identity.TenantID, "update", saved.ConfigVersion, auditFieldPathAll, oldPolicy, saved, h.ConfigWrites != nil)
 	h.ConfigCache.PublishInvalidation(r.Context(), identity.TenantID, saved.ConfigVersion)
 	writeJSON(w, http.StatusOK, toPayloadCapturePolicyResponse(saved))
 }
@@ -1242,7 +1242,7 @@ func (h *AdminHandlers) putRateLimits(w http.ResponseWriter, r *http.Request, id
 			return
 		}
 
-		recordAudit(r.Context(), h.Audit, identity, "rate_limit_config", identity.TenantID, "update", saved.ConfigVersion, "", oldCfg, saved, true)
+		recordAudit(r.Context(), h.Audit, identity, "rate_limit_config", identity.TenantID, "update", saved.ConfigVersion, auditFieldPathAll, oldCfg, saved, true)
 		writeJSON(w, http.StatusOK, toRateLimitResponse(saved))
 
 		return
@@ -1255,7 +1255,7 @@ func (h *AdminHandlers) putRateLimits(w http.ResponseWriter, r *http.Request, id
 		return
 	}
 
-	recordAudit(r.Context(), h.Audit, identity, "rate_limit_config", identity.TenantID, "update", saved.ConfigVersion, "", oldCfg, saved, false)
+	recordAudit(r.Context(), h.Audit, identity, "rate_limit_config", identity.TenantID, "update", saved.ConfigVersion, auditFieldPathAll, oldCfg, saved, false)
 
 	writeJSON(w, http.StatusOK, toRateLimitResponse(saved))
 }
@@ -1388,7 +1388,7 @@ func (h *AdminHandlers) createPlatformAPIKey(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	recordAudit(r.Context(), h.Audit, identity, "platform_api_key", id, "create", record.ConfigVersion, "", nil, record, false)
+	recordAudit(r.Context(), h.Audit, identity, "platform_api_key", id, "create", record.ConfigVersion, auditFieldPathAll, nil, record, false)
 
 	writeJSON(w, http.StatusCreated, apiKeyCreateResponse{
 		ID:            record.ID,
@@ -1440,7 +1440,7 @@ func (h *AdminHandlers) createTenantAPIKey(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	recordAudit(r.Context(), h.Audit, identity, "tenant_api_key", id, "create", record.ConfigVersion, "", nil, record, false)
+	recordAudit(r.Context(), h.Audit, identity, "tenant_api_key", id, "create", record.ConfigVersion, auditFieldPathAll, nil, record, false)
 
 	tid := tenantID
 	writeJSON(w, http.StatusCreated, apiKeyCreateResponse{
@@ -1487,7 +1487,7 @@ func (h *AdminHandlers) putTenantQuotas(w http.ResponseWriter, r *http.Request, 
 			return
 		}
 
-		recordAudit(r.Context(), h.Audit, identity, "quota_config", tenantID, "update", saved.ConfigVersion, "", oldQuota, saved, true)
+		recordAudit(r.Context(), h.Audit, identity, "quota_config", tenantID, "update", saved.ConfigVersion, auditFieldPathAll, oldQuota, saved, true)
 		writeJSON(w, http.StatusOK, toQuotaResponse(saved))
 
 		return
@@ -1513,7 +1513,7 @@ func (h *AdminHandlers) putTenantQuotas(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 
-	recordAudit(r.Context(), h.Audit, identity, "quota_config", tenantID, "update", saved.ConfigVersion, "", oldQuota, saved, false)
+	recordAudit(r.Context(), h.Audit, identity, "quota_config", tenantID, "update", saved.ConfigVersion, auditFieldPathAll, oldQuota, saved, false)
 
 	writeJSON(w, http.StatusOK, toQuotaResponse(saved))
 }
@@ -1555,7 +1555,7 @@ func (h *AdminHandlers) createWorkerCredential(w http.ResponseWriter, r *http.Re
 		}
 	}
 
-	recordAudit(r.Context(), h.Audit, identity, "worker_credential", id, "create", record.ConfigVersion, "", nil, record, false)
+	recordAudit(r.Context(), h.Audit, identity, "worker_credential", id, "create", record.ConfigVersion, auditFieldPathAll, nil, record, false)
 
 	writeJSON(w, http.StatusCreated, toWorkerCredentialResponse(record))
 

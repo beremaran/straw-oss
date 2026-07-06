@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -417,6 +418,58 @@ func TestDenyRuleValidationAndRoleRestriction(t *testing.T) {
 	}
 	if created.Value != "blocked.example" {
 		t.Fatalf("normalized value = %q, want blocked.example", created.Value)
+	}
+}
+
+// TestDenyRuleLeadingDotNormalization is docs/tasks/p0/48's fix: a
+// host/host_suffix value written with a leading dot (".evil.example") must
+// enforce exactly like the dotless form instead of being stored verbatim and
+// silently never matching, and a value that normalizes to nothing (".") must
+// be rejected rather than stored as an inert empty host.
+func TestDenyRuleLeadingDotNormalization(t *testing.T) {
+	t.Parallel()
+
+	withDot, err := normalizeDenyRule(denyRuleTypeHostSuffix, ".evil.example", "")
+	if err != nil {
+		t.Fatalf("normalize leading-dot host_suffix: %v", err)
+	}
+
+	withoutDot, err := normalizeDenyRule(denyRuleTypeHostSuffix, "evil.example", "")
+	if err != nil {
+		t.Fatalf("normalize dotless host_suffix: %v", err)
+	}
+
+	if withDot.NormalizedHost != "evil.example" {
+		t.Fatalf("normalized host = %q, want evil.example (leading dot stripped)", withDot.NormalizedHost)
+	}
+
+	if withDot.NormalizedHost != withoutDot.NormalizedHost {
+		t.Fatalf("leading-dot form normalized to %q, dotless to %q, want identical", withDot.NormalizedHost, withoutDot.NormalizedHost)
+	}
+
+	for _, host := range []string{"evil.example", "x.evil.example"} {
+		if !hostMatchesDenyRule(host, withDot) {
+			t.Fatalf("host %q not matched by host_suffix rule created as .evil.example", host)
+		}
+	}
+
+	hostRule, err := normalizeDenyRule(denyRuleTypeHost, ".evil.example", "")
+	if err != nil {
+		t.Fatalf("normalize leading-dot host: %v", err)
+	}
+
+	if !hostMatchesDenyRule("evil.example", hostRule) {
+		t.Fatal("exact host not matched by host rule created as .evil.example")
+	}
+
+	// Dot-only values normalize to "" and would never match any host: reject.
+	for _, ruleType := range []string{denyRuleTypeHost, denyRuleTypeHostSuffix, denyRuleTypeCNAMESuffix} {
+		for _, value := range []string{".", "..", " . "} {
+			_, err := normalizeDenyRule(ruleType, value, "")
+			if !errors.Is(err, errInvalidDenyRuleValue) {
+				t.Fatalf("normalizeDenyRule(%s, %q) err = %v, want errInvalidDenyRuleValue", ruleType, value, err)
+			}
+		}
 	}
 }
 

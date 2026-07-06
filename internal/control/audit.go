@@ -4,12 +4,26 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"sort"
+	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/beremaran/straw/v2/internal/config"
 )
+
+// auditFieldPathAll is the documented whole-object field_path sentinel
+// (docs/tasks/p0/50): call sites pass it for whole-object mutations, and
+// recordAudit refines it into the dotted paths of the fields that actually
+// differ when both old and new values are present. It stays "*" when the
+// change is not diffable (create, delete, or non-object payloads).
+const auditFieldPathAll = "*"
+
+var auditFieldNameAliases = map[string]string{
+	"Match": "match_conditions",
+}
 
 // AuditRecord mirrors the `config_audit_source` table. actor_id is always
 // the API key ID in P0 (docs/planning/26). Secret fields must be redacted
@@ -142,6 +156,7 @@ func recordAudit(
 
 	oldJSON, _ := redactAndMarshal(oldVal)
 	newJSON, _ := redactAndMarshal(newVal)
+	fieldPath = deriveFieldPath(fieldPath, oldJSON, newJSON)
 
 	_ = store.Record(ctx, AuditRecord{
 		TenantID:      identity.TenantID,
@@ -156,6 +171,136 @@ func recordAudit(
 		NewValueJSON:  newJSON,
 		SkipPostgres:  skipPostgres,
 	})
+}
+
+// deriveFieldPath refines the whole-object sentinel into a comma-joined,
+// sorted list of dotted paths for the fields that differ between the
+// redacted old and new JSON (docs/planning/26 "field_path"). Explicit
+// per-field paths pass through unchanged; the sentinel is kept when either
+// side is absent, either side is not a JSON object, or nothing differs.
+func deriveFieldPath(fieldPath, oldJSON, newJSON string) string {
+	if fieldPath != auditFieldPathAll || oldJSON == "" || newJSON == "" {
+		return fieldPath
+	}
+
+	var oldObj, newObj map[string]any
+	if json.Unmarshal([]byte(oldJSON), &oldObj) != nil || json.Unmarshal([]byte(newJSON), &newObj) != nil {
+		return fieldPath
+	}
+
+	paths := diffFieldPaths("", oldObj, newObj)
+	if len(paths) == 0 {
+		return fieldPath
+	}
+
+	sort.Strings(paths)
+
+	return strings.Join(paths, ",")
+}
+
+// diffFieldPaths walks two JSON objects and returns the dotted paths whose
+// values differ. Arrays and scalars are compared as leaves, so a changed
+// list element reports the list's path (e.g. "operations"), matching the
+// whole-object diff granularity task 44 established.
+func diffFieldPaths(prefix string, oldObj, newObj map[string]any) []string {
+	keys := make(map[string]struct{}, len(oldObj)+len(newObj))
+	for k := range oldObj {
+		keys[k] = struct{}{}
+	}
+
+	for k := range newObj {
+		keys[k] = struct{}{}
+	}
+
+	var out []string
+
+	for k := range keys {
+		path := auditFieldPath(prefix, k)
+
+		if auditFieldPathIgnored(path) {
+			continue
+		}
+
+		oldVal, inOld := oldObj[k]
+		newVal, inNew := newObj[k]
+		out = append(out, diffFieldValuePaths(path, oldVal, newVal, inOld, inNew)...)
+	}
+
+	return out
+}
+
+func auditFieldPath(prefix, name string) string {
+	path := auditFieldPathSegment(name)
+	if prefix != "" {
+		path = prefix + "." + path
+	}
+
+	return path
+}
+
+func diffFieldValuePaths(path string, oldVal, newVal any, inOld, inNew bool) []string {
+	if !inOld || !inNew {
+		return []string{path}
+	}
+
+	oldMap, oldIsMap := oldVal.(map[string]any)
+
+	newMap, newIsMap := newVal.(map[string]any)
+	if oldIsMap && newIsMap {
+		return diffFieldPaths(path, oldMap, newMap)
+	}
+
+	if reflect.DeepEqual(oldVal, newVal) {
+		return nil
+	}
+
+	return []string{path}
+}
+
+func auditFieldPathSegment(name string) string {
+	if alias, ok := auditFieldNameAliases[name]; ok {
+		return alias
+	}
+
+	if name == "" || strings.Contains(name, "_") {
+		return name
+	}
+
+	var b strings.Builder
+
+	for i, r := range name {
+		if auditSnakeBoundary(name, i, r) {
+			b.WriteByte('_')
+		}
+
+		b.WriteRune(unicode.ToLower(r))
+	}
+
+	return b.String()
+}
+
+func auditSnakeBoundary(name string, i int, r rune) bool {
+	if i == 0 || !unicode.IsUpper(r) {
+		return false
+	}
+
+	prev := rune(name[i-1])
+
+	next := rune(0)
+	if i+1 < len(name) {
+		next = rune(name[i+1])
+	}
+
+	return unicode.IsLower(prev) || unicode.IsDigit(prev) || (unicode.IsUpper(prev) && next != 0 && unicode.IsLower(next))
+}
+
+func auditFieldPathIgnored(path string) bool {
+	switch path {
+	case "config_version", "updated_at":
+		return true
+	default:
+		return false
+	}
 }
 
 // redactAndMarshal converts the object to its redacted JSON representation.

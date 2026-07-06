@@ -52,11 +52,17 @@ make check
 Result:
 
 - Postgres-backed tests: ran against `straw_test` and all passed successfully.
-- Live compose verification: completed by `docs/tasks/p0/46-live-compose-verification.md` on 2026-07-06. The run
-  created all six planning taxonomy values through the live config API (`cidr`, `host`, `host_suffix`,
-  `cname_suffix`, `metadata_ip`, `private_range`), verified the normalized Postgres rows, and drove
-  `https://blocked.task47.test/` through the live request endpoint, which returned HTTP 403
-  `destination_denied`.
+- Live compose verification: **done 2026-07-07** by `docs/tasks/p0/46-live-compose-verification.md` (compose SHA
+  `eb0c32b2`). Observed on the full stack: all six taxonomy types (`cidr`, `host`, `host_suffix`, `cname_suffix`,
+  `metadata_ip`, `private_range`) plus `allow_override` and `reason` were created via the API and persisted with
+  the correct normalized columns in Postgres `deny_rules`; a live request to a `host` deny target
+  (`denied.example.net`) was rejected with `destination_denied` ("Deny rule matched") while an allowed target
+  returned 200; `allow_override` precedence was observed (a host_suffix deny for `.evil.example` was overridden by
+  an allow_override rule); a no-leading-dot `host_suffix` deny (`blocked2.example`) rejected `sub.blocked2.example`
+  with `destination_denied`.
+  **Defect found:** a `host_suffix` deny created with a *leading-dot* value (`.blocked.example`) is accepted (200)
+  but silently never matches (`normalizeHostname` trims only trailing dots; `hostMatchesSuffix` prepends one →
+  `..blocked.example`). Now owned by `docs/tasks/p0/48-deny-host-suffix-leading-dot-normalization.md`.
 
 ## Reviewer Start Points
 

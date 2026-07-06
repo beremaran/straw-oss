@@ -56,13 +56,27 @@ or task it), not silent scope growth.
       the egress worker registers.
 - [x] Task 42 surface: create an executor pool with `allowed_ip_types`/`allowed_countries`/`allowed_regions` via
       the config API; verify the row in Postgres; verify a non-matching worker is not assignable and a matching
-      one is (live request through the stack).
+      one is (live request through the stack). — Persistence, matching-worker routing (200), and invalid-ip_type
+      400 verified live. **Non-matching (exclusion) branch not drivable:** stock egress declares no capabilities
+      (`cmd/egress/main.go:214`); owned by `docs/tasks/p0/49-egress-capability-declaration-from-config.md`.
+      **Closed 2026-07-07 by task 49:** egress now declares `ip_types: ["datacenter"]` from config; live re-check
+      confirmed a pool restricted to `["residential"]` yields `route_unavailable` and loosening to
+      `["datacenter"]` restores 200 (see `docs/agents/handoffs/49-egress-capability-declaration-from-config.md`).
 - [x] Task 43 surface: create deny rules across the full Section 26 taxonomy via the API; verify Postgres rows and
-      that a live request to a denied destination is rejected with the mapped error code.
+      that a live request to a denied destination is rejected with the mapped error code. — All six types +
+      allow_override + reason persisted; `host` deny → `destination_denied` live. **Defect:** leading-dot
+      `host_suffix` silently non-enforcing; owned by
+      `docs/tasks/p0/48-deny-host-suffix-leading-dot-normalization.md`.
 - [x] Task 44 surface: perform a config mutation and verify the ClickHouse `config_audit_events` row carries
-      `field_path`, `old_value_json`, `new_value_json`, and `config_version`.
+      `field_path`, `old_value_json`, `new_value_json`, and `config_version`. — `config_version`, `old_value_json`,
+      `new_value_json` populated + secrets redacted, verified live. **`field_path` now populated** (closed by
+      `docs/tasks/p0/50-config-audit-field-path-population.md`): all call sites pass the `*` sentinel, and
+      `deriveFieldPath` refines it to comma-separated field paths when both old/new values are present. Rechecked
+      live on 2026-07-07 after rebuilding Control: a real `PUT /api/v1/config/routing-rules/dev-default-route`
+      produced a ClickHouse `config_audit_events` row with `field_path = 'Priority'`.
 - [x] Task 45 surface: verify worker session/heartbeat/load state appears under the canonical Redis keys, expires
       on TTL after stopping the worker, and survives a Control restart (re-registration not required for state).
+      — All verified live; no defect.
 - [x] Update the four handoffs' skipped-verification notes with the observed results.
 - [x] Run `make check` (no code should have changed).
 - [x] Write a handoff note.
