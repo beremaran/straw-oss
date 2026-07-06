@@ -58,17 +58,11 @@ Task: `docs/tasks/p0/22-control-destination-policy-resolution.md`
 
 ## Decisions and flagged gaps
 
-- **IDNA/punycode (task Stop Condition/explicit dependency question):** I asked the user
-  whether to add `golang.org/x/net/idna` (not currently a real dependency of this
-  module — it only appears transitively/unused) for proper IDNA normalization, per the
-  AGENTS.md/skill rule to stop before adding a new dependency. No response arrived in
-  time, so I proceeded with the documented safe default: hostnames containing any
-  non-ASCII byte are rejected outright (`invalid_request`) rather than partially
-  normalized. This is fail-closed and prevents Unicode-homoglyph SSRF bypass, but a
-  tenant cannot reach a legitimate internationalized domain in P0. **Update
-  2026-07-06:** IDNA support is now owned by
-  `docs/tasks/p1/21-idna-hostname-support.md`, and adding `golang.org/x/net/idna`
-  is explicitly approved for that task.
+- **IDNA/punycode (task Stop Condition/explicit dependency question):** This was
+  originally deferred fail-closed. **Update 2026-07-06:** Closed by
+  `docs/tasks/p1/21-idna-hostname-support.md`; Control now normalizes target and
+  deny-rule hostnames with `golang.org/x/net/idna` before policy evaluation and
+  dispatch.
 - **Known Egress gap (not fixed here — out of this task's file scope,
   `internal/control` only):** `internal/egress/executor.go`'s
   `validateCIDRPolicy`/`deniedByDefault` (task 11) treats `DestinationPolicy.AllowedCidrs`
@@ -121,8 +115,6 @@ Result: all `TestResolveDestinationPolicy_*` tests pass (21 cases); `make check`
   construction is explicitly deferred to
   `docs/tasks/p0/24-control-request-dispatch-pipeline.md` (this task's own Out of Scope
   list).
-- IDNA/punycode hostname support: owned by
-  `docs/tasks/p1/21-idna-hostname-support.md`.
 - Reconciling `internal/egress/executor.go`'s `AllowedCidrs` precedence with this
   resolver's override semantics, and wiring `DeniedHostSuffixes`/`DeniedCnameSuffixes`
   enforcement: owned by `docs/tasks/p0/26-egress-destination-policy-precedence.md`.

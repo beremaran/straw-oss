@@ -240,6 +240,28 @@ func TestDispatcherControlNATSEgressRoundTrip(t *testing.T) {
 	}
 }
 
+func TestDispatcherControlNATSEgressRoundTripIDNAHost(t *testing.T) {
+	t.Parallel()
+
+	d, stop := newLiveDispatchHarness(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusTeapot)
+		_, _ = w.Write([]byte("idna body"))
+	}))
+	defer stop()
+
+	req := validatedDispatchRequest(t, rewriteDispatchHost(t, d.upstreamURL, "bücher.example"))
+	resp, perr := d.Dispatch(context.Background(), dispatchInput(req))
+	if perr != nil {
+		t.Fatalf("Dispatch error = %#v", perr)
+	}
+	if resp.Status != http.StatusTeapot {
+		t.Fatalf("status = %d, want %d", resp.Status, http.StatusTeapot)
+	}
+	if got, _ := base64.StdEncoding.DecodeString(resp.Body.DataBase64); string(got) != "idna body" {
+		t.Fatalf("body = %q, want idna body", got)
+	}
+}
+
 // TestDispatcherEgressPhaseTiming reproduces the 2026-07-05 live-stack gap
 // (docs/tasks/p0/41): a successful dispatch against an upstream with a real
 // delay must record egress_ms reflecting that delay, not 0, and the phase
@@ -504,7 +526,10 @@ func newLiveDispatchHarness(t *testing.T, upstreamHandler http.Handler) (*liveDi
 	controlConn := dispatchConnect(t, natsServer.URL())
 	workerConn := dispatchConnect(t, natsServer.URL())
 
-	resolver := dispatchResolver{"dispatch.test": loopbackDispatchIP(t, upstream.URL)}
+	resolver := dispatchResolver{
+		"dispatch.test":         loopbackDispatchIP(t, upstream.URL),
+		"xn--bcher-kva.example": loopbackDispatchIP(t, upstream.URL),
+	}
 	worker, err := egress.NewWorker(workerConn, egress.Identity{WorkerID: dispatchTestWorker}, egress.NewExecutor(egress.ExecutorOptions{Resolver: resolver}), dispatchTestSess, 4)
 	if err != nil {
 		t.Fatalf("NewWorker() error = %v", err)

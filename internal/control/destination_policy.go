@@ -23,14 +23,6 @@ import (
 // resolved-IP validation immediately before connect (docs/planning/16 "Dial
 // target invariant").
 //
-// Known gap (flagged per the ASCII-only decision below): hostnames containing
-// non-ASCII characters are rejected outright rather than IDNA/punycode
-// normalized. Proper IDNA support requires golang.org/x/net/idna, which is not
-// currently a real dependency of this module. Rejecting non-ASCII hostnames is
-// fail-closed and prevents Unicode-homoglyph SSRF bypass, but a tenant cannot
-// reach a legitimate internationalized domain in P0. IDNA support is owned by
-// docs/tasks/p1/21-idna-hostname-support.md.
-//
 // internal/egress/executor.go (task 26) enforces DeniedHostSuffixes and
 // DeniedCnameSuffixes downstream; this resolver only compiles them.
 
@@ -189,39 +181,18 @@ func isMetadataAddr(addr netip.Addr) bool {
 	return slices.Contains(metadataIPs, addr)
 }
 
-// normalizeTargetHost lowercases and trims the trailing dot from the URL
-// host, rejecting non-ASCII hostnames (see the package doc comment's IDNA
-// gap note) and IPv6 zone identifiers (already rejected earlier by
-// validateURL, re-checked here defensively). It reports whether the
-// normalized host is an IP literal.
+// normalizeTargetHost lowercases, IDNA-normalizes, and trims the trailing dot
+// from the URL host. It reports whether the normalized host is an IP literal.
 func normalizeTargetHost(u *url.URL) (string, netip.Addr, bool, *ValidationError) {
-	hostname := strings.ToLower(u.Hostname())
-	hostname = strings.TrimSuffix(hostname, ".")
-
-	if hostname == "" {
-		return "", netip.Addr{}, false, &ValidationError{Code: errorCodeInvalidRequest, Message: "url host is empty"}
-	}
-
-	if !isASCIIHostname(hostname) {
-		return "", netip.Addr{}, false, &ValidationError{Code: errorCodeInvalidRequest, Message: "non-ASCII hostnames are not supported"}
+	hostname, err := normalizeHostname(u.Hostname())
+	if err != nil {
+		return "", netip.Addr{}, false, &ValidationError{Code: errorCodeInvalidRequest, Message: "url host is not a valid hostname"}
 	}
 
 	parsed, err := netip.ParseAddr(hostname)
 	isLiteralIP := err == nil
 
 	return hostname, parsed, isLiteralIP, nil
-}
-
-func isASCIIHostname(hostname string) bool {
-	const maxASCIIByte = 0x80
-
-	for i := range len(hostname) {
-		if hostname[i] >= maxASCIIByte {
-			return false
-		}
-	}
-
-	return true
 }
 
 // compileDenyRules partitions the tenant's deny rules into the bundle fields

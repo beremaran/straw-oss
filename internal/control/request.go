@@ -5,10 +5,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
+
+	"golang.org/x/net/idna"
 )
 
 const (
@@ -58,6 +62,8 @@ var httpTokenAllowed = func() [256]bool {
 
 	return allowed
 }()
+
+var idnaLookup = idna.New(idna.MapForLookup(), idna.VerifyDNSLength(true))
 
 const (
 	maxRequestHeaderCount = 64
@@ -246,7 +252,46 @@ func validateURL(rawURL string) (*url.URL, error) {
 		return nil, &ValidationError{Code: errorCodeInvalidRequest, Message: "IPv6 zone identifiers are rejected"}
 	}
 
+	err = normalizeParsedURLHost(parsed)
+	if err != nil {
+		return nil, err
+	}
+
 	return parsed, nil
+}
+
+func normalizeParsedURLHost(parsed *url.URL) error {
+	host, err := normalizeHostname(parsed.Hostname())
+	if err != nil {
+		return &ValidationError{Code: errorCodeInvalidRequest, Message: "url host is not a valid hostname"}
+	}
+
+	if port := parsed.Port(); port != "" {
+		parsed.Host = net.JoinHostPort(host, port)
+	} else {
+		parsed.Host = host
+	}
+
+	return nil
+}
+
+func normalizeHostname(host string) (string, error) {
+	host = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(host)), ".")
+	if host == "" {
+		return "", &ValidationError{Code: errorCodeInvalidRequest, Message: "url host is empty"}
+	}
+
+	_, err := netip.ParseAddr(host)
+	if err == nil {
+		return host, nil
+	}
+
+	ascii, err := idnaLookup.ToASCII(host)
+	if err != nil {
+		return "", fmt.Errorf("normalize hostname %q: %w", host, err)
+	}
+
+	return strings.ToLower(ascii), nil
 }
 
 func validateHeaders(headers []HeaderPair) ([]HeaderPair, error) {

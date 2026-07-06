@@ -2,6 +2,7 @@ package control
 
 import (
 	"encoding/base64"
+	"errors"
 	"net/url"
 	"strings"
 	"testing"
@@ -77,6 +78,34 @@ func TestResolveDestinationPolicy_HostDenyNormalization(t *testing.T) {
 	_, verr := ResolveDestinationPolicy(req)
 	if verr == nil || verr.Code != errorCodeDestinationDenied {
 		t.Fatalf("verr = %+v, want destination_denied", verr)
+	}
+}
+
+func TestResolveDestinationPolicy_IDNAHostDenyNormalization(t *testing.T) {
+	snap := config.TenantSnapshot{
+		FingerprintProfiles: fingerprintSnapshot(),
+		DenyRules: []config.DenyRule{
+			{RuleType: denyRuleTypeHost, Action: denyRuleActionDeny, Enabled: true, NormalizedHost: "xn--pple-43d.com"},
+		},
+	}
+
+	req := DestinationPolicyRequest{
+		Snapshot:               snap,
+		TargetURL:              mustURL(t, "https://аpple.com/path"),
+		MaxInjectedHeaderBytes: 1024,
+	}
+
+	_, verr := ResolveDestinationPolicy(req)
+	if verr == nil || verr.Code != errorCodeDestinationDenied {
+		t.Fatalf("verr = %+v, want destination_denied", verr)
+	}
+}
+
+func TestValidateRequestRejectsInvalidIDNAHost(t *testing.T) {
+	_, err := ValidateRequest([]byte(`{"method":"GET","url":"https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.com/","timeout_ms":5000}`), 1<<20, 5000)
+	var verr *ValidationError
+	if !errors.As(err, &verr) || verr.Code != errorCodeInvalidRequest {
+		t.Fatalf("ValidateRequest() error = %#v, want invalid_request", err)
 	}
 }
 

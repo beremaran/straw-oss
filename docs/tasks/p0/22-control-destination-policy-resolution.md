@@ -42,9 +42,8 @@ fingerprint profile support before task 24 dispatches a request to Egress.
 - [x] Reject URL userinfo before dispatch and ensure public errors/details never contain unsanitized full URLs,
       credentials, worker IDs, session IDs, or NATS subjects.
 - [x] Evaluate deny rules with lowercase hostnames, trailing-dot normalization, default ports, IPv4/IPv6 literal
-      handling, CNAME semantics, metadata IPs, and private/link-local defaults. IDNA/punycode is a flagged gap, not
-      implemented: it requires `golang.org/x/net/idna`, a new dependency; non-ASCII hostnames are rejected outright
-      instead (fail-closed). See the handoff note for details and the no-owning-task flag.
+      handling, CNAME semantics, metadata IPs, and private/link-local defaults. IDNA/punycode was completed by
+      `docs/tasks/p1/21-idna-hostname-support.md`.
 - [x] Resolve ordered header-injection operations, enforcing the Section 15 denied-header table, sensitive-header role
       restrictions, duplicate `set` rejection, size bounds, and CR/LF rejection.
 - [x] Validate the requested or tenant-default fingerprint profile against the selected worker's supported profiles and
