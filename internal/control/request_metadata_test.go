@@ -78,7 +78,7 @@ func (r *captureRequestMetadataRecorder) last() (RequestEvent, bool) {
 	return r.events[len(r.events)-1], true
 }
 
-func TestSanitizeTargetURLDropsQuery(t *testing.T) {
+func TestSanitizeTargetURLDefaultsDropQueryHashPath(t *testing.T) {
 	t.Parallel()
 
 	u, err := url.Parse("https://example.com:8443/path/to/resource?token=secret&verbose=true")
@@ -86,10 +86,54 @@ func TestSanitizeTargetURLDropsQuery(t *testing.T) {
 		t.Fatalf("Parse() error = %v", err)
 	}
 
-	got := sanitizeTargetURL(u)
-	want := "https://example.com:8443/path/to/resource"
-	if got != want {
-		t.Fatalf("sanitizeTargetURL() = %q, want %q", got, want)
+	got := sanitizeTargetURL(u, defaultTenantPolicy())
+	if strings.Contains(got, "token=secret") || strings.Contains(got, "/path/to/resource") {
+		t.Fatalf("sanitizeTargetURL() = %q, want query dropped and path hashed", got)
+	}
+	if !strings.Contains(got, requestMetadataHashPrefix) {
+		t.Fatalf("sanitizeTargetURL() = %q, want hash marker", got)
+	}
+}
+
+func TestSanitizeTargetURLStorageModes(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		policy  TenantPolicy
+		wantURL string
+	}{
+		{
+			name:    "store both",
+			policy:  TenantPolicy{MetadataQueryStorage: MetadataStorageStore, MetadataPathStorage: MetadataStorageStore},
+			wantURL: "https://example.com/path/to/resource?token=secret",
+		},
+		{
+			name:    "hash query",
+			policy:  TenantPolicy{MetadataQueryStorage: MetadataStorageHash, MetadataPathStorage: MetadataStorageStore},
+			wantURL: "https://example.com/path/to/resource?sha256:1359227d95e1ba804467fce441aeb48f2c5c687357dd015ac9d69a204b4bee3d",
+		},
+		{
+			name:    "drop both",
+			policy:  TenantPolicy{MetadataQueryStorage: MetadataStorageDrop, MetadataPathStorage: MetadataStorageDrop},
+			wantURL: "https://example.com",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			u, err := url.Parse("https://example.com/path/to/resource?token=secret")
+			if err != nil {
+				t.Fatalf("Parse() error = %v", err)
+			}
+
+			got := sanitizeTargetURL(u, tt.policy)
+			if got != tt.wantURL {
+				t.Fatalf("sanitizeTargetURL() = %q, want %q", got, tt.wantURL)
+			}
+		})
 	}
 }
 
@@ -136,7 +180,7 @@ func TestBuildRequestEventRecordsActorAndSanitizedTarget(t *testing.T) {
 		BodyData:   []byte("hello"),
 		Headers:    []HeaderPair{{Name: "Authorization", Value: "Bearer secret"}},
 		Replayable: true,
-	})
+	}, TenantPolicy{MetadataQueryStorage: MetadataStorageDrop, MetadataPathStorage: MetadataStorageStore})
 
 	if ev.RequestID != "req_123" {
 		t.Fatalf("RequestID = %q, want req_123", ev.RequestID)
@@ -294,8 +338,8 @@ func TestRequestHandlerQueuesSanitizedMetadata(t *testing.T) {
 	if event.TenantID != requestMetadataTestTenantActor {
 		t.Fatalf("TenantID = %q, want ten_actor", event.TenantID)
 	}
-	if event.TargetURL != requestMetadataTestTargetURL {
-		t.Fatalf("TargetURL = %q, want %q", event.TargetURL, requestMetadataTestTargetURL)
+	if strings.Contains(event.TargetURL, "token=secret") || strings.Contains(event.TargetURL, "/path") || !strings.Contains(event.TargetURL, requestMetadataHashPrefix) {
+		t.Fatalf("TargetURL = %q, want query dropped and path hashed", event.TargetURL)
 	}
 	if event.TargetHost != "example.com" {
 		t.Fatalf("TargetHost = %q, want example.com", event.TargetHost)

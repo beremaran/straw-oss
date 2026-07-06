@@ -52,7 +52,7 @@ func (d *DefaultRequestDispatcher) dispatchTunnel(ctx context.Context, in Dispat
 		return SuccessResponse{}, perr
 	}
 
-	deadline := d.deadline(in.Request)
+	deadline := d.deadline(in.Request, prep.snapshot)
 
 	result, assignmentMs, perr := d.executeTunnelAttempt(ctx, in, prep.route, prep.policy, prep.snapshot.ConfigVersion, deadline, rw)
 	if perr != nil {

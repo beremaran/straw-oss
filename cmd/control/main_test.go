@@ -53,13 +53,13 @@ func TestBuildProxyHandlerOnlyWhenEnabled(t *testing.T) {
 	cfg := config.ControlConfig{
 		Server: config.ControlServerConfig{Host: "127.0.0.1", APIPort: 8080, MetricsPort: 9090},
 	}
-	if got := buildProxyHandler(cfg, nil, nil, nil); got != nil {
+	if got := buildProxyHandler(cfg, nil, nil, nil, nil); got != nil {
 		t.Fatal("buildProxyHandler disabled = non-nil, want nil")
 	}
 
 	cfg.Server.ProxyEnabled = true
 	cfg.Server.ProxyPort = 8081
-	if got := buildProxyHandler(cfg, nil, nil, nil); got == nil {
+	if got := buildProxyHandler(cfg, nil, nil, nil, nil); got == nil {
 		t.Fatal("buildProxyHandler enabled = nil, want handler")
 	}
 }

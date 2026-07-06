@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/beremaran/straw/v2/internal/config"
 )
 
 const (
@@ -564,6 +566,35 @@ func TestValidateRequestTimeoutWithinLimit(t *testing.T) {
 	}
 	if vr.TimeoutMs != 30000 {
 		t.Fatalf("timeout_ms = %d, want 30000", vr.TimeoutMs)
+	}
+}
+
+func TestHandlerRejectsTimeoutAboveTenantMax(t *testing.T) {
+	t.Parallel()
+
+	h, token := newTestHandler(t)
+	store := NewInMemorySnapshotStore()
+	_, err := store.SaveTenantSnapshot(context.Background(), config.TenantSnapshot{
+		TenantID:             "ten_test",
+		ConfigVersion:        1,
+		DefaultTimeoutMs:     2000,
+		MaxTimeoutMs:         2500,
+		MetadataQueryStorage: "drop",
+		MetadataPathStorage:  "hash",
+	}, 0)
+	if err != nil {
+		t.Fatalf("SaveTenantSnapshot() error = %v", err)
+	}
+	h.SetConfigCache(NewConfigCache(store, nil))
+
+	payload := `{"method":"GET","url":"https://example.com","timeout_ms":3000}`
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
 	}
 }
 

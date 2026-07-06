@@ -1,5 +1,12 @@
 package config
 
+const (
+	defaultTenantDefaultTimeoutMs = 60000
+	defaultTenantMaxTimeoutMs     = 300000
+	defaultMetadataQueryStorage   = "drop"
+	defaultMetadataPathStorage    = "hash"
+)
+
 // TenantSnapshot is the immutable tenant config view consumed by control-plane
 // admission and routing decisions. It is assembled from the Postgres config
 // stores keyed by (TenantID, ConfigVersion); in-flight requests keep the
@@ -12,8 +19,12 @@ package config
 // these carriers into the runtime router/dispatch types when they consume the
 // snapshot.
 type TenantSnapshot struct {
-	TenantID      string
-	ConfigVersion uint64
+	TenantID             string
+	ConfigVersion        uint64
+	DefaultTimeoutMs     uint64
+	MaxTimeoutMs         uint64
+	MetadataQueryStorage string
+	MetadataPathStorage  string
 
 	RevokedAPIKeyIDs      []string
 	RoutingRules          []RoutingRule
@@ -146,9 +157,13 @@ type TenantWorkerOverride struct {
 // The richer policy fields are set directly by the Postgres assembler.
 func NewTenantSnapshot(tenantID string, configVersion uint64, revokedAPIKeyIDs []string) TenantSnapshot {
 	return TenantSnapshot{
-		TenantID:         tenantID,
-		ConfigVersion:    configVersion,
-		RevokedAPIKeyIDs: append([]string(nil), revokedAPIKeyIDs...),
+		TenantID:             tenantID,
+		ConfigVersion:        configVersion,
+		DefaultTimeoutMs:     defaultTenantDefaultTimeoutMs,
+		MaxTimeoutMs:         defaultTenantMaxTimeoutMs,
+		MetadataQueryStorage: defaultMetadataQueryStorage,
+		MetadataPathStorage:  defaultMetadataPathStorage,
+		RevokedAPIKeyIDs:     append([]string(nil), revokedAPIKeyIDs...),
 	}
 }
 

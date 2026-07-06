@@ -172,8 +172,14 @@ func TestPostgresTenantStoreUpdatePersistsNameAndCeiling(t *testing.T) {
 	}
 
 	updated, err := store.Update(ctx, Tenant{
-		ID: pgTestTenantA, Name: pgTestTenantRenamed, Status: TenantStatusSuspended,
-		RateLimitCeiling: &RateLimitCeiling{WindowSeconds: 60, MaxRequests: 6000},
+		ID:                   pgTestTenantA,
+		Name:                 pgTestTenantRenamed,
+		Status:               TenantStatusSuspended,
+		DefaultTimeoutMs:     5000,
+		MaxTimeoutMs:         9000,
+		MetadataQueryStorage: MetadataStorageHash,
+		MetadataPathStorage:  MetadataStorageDrop,
+		RateLimitCeiling:     &RateLimitCeiling{WindowSeconds: 60, MaxRequests: 6000},
 	}, 0)
 	if err != nil {
 		t.Fatalf("Update() error = %v", err)
@@ -181,6 +187,10 @@ func TestPostgresTenantStoreUpdatePersistsNameAndCeiling(t *testing.T) {
 
 	if updated.Name != pgTestTenantRenamed || updated.Status != TenantStatusSuspended {
 		t.Fatalf("got name=%q status=%q, want name=Renamed status=suspended", updated.Name, updated.Status)
+	}
+	if updated.DefaultTimeoutMs != 5000 || updated.MaxTimeoutMs != 9000 ||
+		updated.MetadataQueryStorage != MetadataStorageHash || updated.MetadataPathStorage != MetadataStorageDrop {
+		t.Fatalf("tenant P0 fields = %+v, want timeout/storage policy persisted", updated)
 	}
 
 	if updated.RateLimitCeiling == nil || updated.RateLimitCeiling.WindowSeconds != 60 || updated.RateLimitCeiling.MaxRequests != 6000 {
@@ -196,8 +206,8 @@ func TestPostgresTenantStoreUpdatePersistsNameAndCeiling(t *testing.T) {
 		t.Fatalf("Get() error = %v", err)
 	}
 
-	if got.Name != pgTestTenantRenamed || got.RateLimitCeiling == nil {
-		t.Fatalf("reloaded tenant = %+v, want persisted rename and ceiling", got)
+	if got.Name != pgTestTenantRenamed || got.DefaultTimeoutMs != 5000 || got.MetadataPathStorage != MetadataStorageDrop || got.RateLimitCeiling == nil {
+		t.Fatalf("reloaded tenant = %+v, want persisted P0 fields", got)
 	}
 }
 

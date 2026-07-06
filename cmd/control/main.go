@@ -706,6 +706,7 @@ func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.API
 		InFlight:                   inflight,
 		Metrics:                    metrics,
 	})
+	requestHandler.SetConfigCache(configCache)
 	requestHandler.SetDispatcher(dispatcher)
 
 	mux := http.NewServeMux()
@@ -719,7 +720,7 @@ func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.API
 		})
 	}
 
-	return mux, buildProxyHandler(controlConfig, authenticator, chWriters.requestMetadata, dispatcher), buildConnectHandler(controlConfig, authenticator, dispatcher)
+	return mux, buildProxyHandler(controlConfig, authenticator, configCache, chWriters.requestMetadata, dispatcher), buildConnectHandler(controlConfig, authenticator, dispatcher)
 }
 
 func serveTelemetryRoutes(mux *http.ServeMux, h *control.TelemetryHandlers) {
@@ -729,7 +730,7 @@ func serveTelemetryRoutes(mux *http.ServeMux, h *control.TelemetryHandlers) {
 	mux.HandleFunc("GET /api/v1/telemetry/audit", h.Audit)
 }
 
-func buildProxyHandler(controlConfig config.ControlConfig, authenticator *control.Authenticator, metadata control.RequestMetadataRecorder, dispatcher control.RequestDispatcher) http.Handler {
+func buildProxyHandler(controlConfig config.ControlConfig, authenticator *control.Authenticator, configCache *control.ConfigCache, metadata control.RequestMetadataRecorder, dispatcher control.RequestDispatcher) http.Handler {
 	if !controlConfig.Server.ProxyEnabled {
 		return nil
 	}
@@ -742,6 +743,7 @@ func buildProxyHandler(controlConfig config.ControlConfig, authenticator *contro
 		metadata,
 	)
 	h.SetDispatcher(dispatcher)
+	h.SetConfigCache(configCache)
 
 	return h
 }

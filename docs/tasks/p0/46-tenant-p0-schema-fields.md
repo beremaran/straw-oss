@@ -1,6 +1,6 @@
 # 46 - Tenant P0 Schema Fields
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -63,17 +63,17 @@ Flagged (as "P1 fields ... not added") in
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Write the migration with planning-doc defaults.
-- [ ] Extend `Tenant`, the Postgres store, and validation.
-- [ ] Extend tenant PUT/GET handlers and their RBAC checks.
-- [ ] Wire tenant timeouts into request validation in `cmd/control`'s dispatch path.
-- [ ] Wire storage policy into `sanitizeTargetURL` via the tenant config snapshot in `cmd/control`'s metadata writer.
-- [ ] Add the tests listed in Expected Files.
-- [ ] Run focused tests, then `make check`.
-- [ ] Update the stale "P1 fields" notes in `docs/tasks/p0/29-...md` and
+- [x] Read all required planning docs.
+- [x] Write the migration with planning-doc defaults.
+- [x] Extend `Tenant`, the Postgres store, and validation.
+- [x] Extend tenant PUT/GET handlers and their RBAC checks.
+- [x] Wire tenant timeouts into request validation in `cmd/control`'s dispatch path.
+- [x] Wire storage policy into `sanitizeTargetURL` via the tenant config snapshot in `cmd/control`'s metadata writer.
+- [x] Add the tests listed in Expected Files.
+- [x] Run focused tests, then `make check`.
+- [x] Update the stale "P1 fields" notes in `docs/tasks/p0/29-...md` and
       `docs/agents/handoffs/29-...md` to point here.
-- [ ] Write a handoff note.
+- [x] Write a handoff note.
 
 ## Tests
 

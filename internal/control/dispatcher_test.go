@@ -567,6 +567,26 @@ func newTestDispatcherWithSnapshot(t *testing.T, snapshot config.TenantSnapshot,
 	})
 }
 
+func TestDispatcherDefaultTimeoutUsesTenantPolicyClampedByStaticMax(t *testing.T) {
+	t.Parallel()
+
+	now := time.Unix(100, 0)
+	d := NewDefaultRequestDispatcher(RequestDispatcherOptions{
+		MaxTimeoutMs: 5000,
+		Now:          func() time.Time { return now },
+	})
+
+	got := d.deadline(&ValidatedRequest{}, config.TenantSnapshot{DefaultTimeoutMs: 7000}).Sub(now)
+	if got != 5*time.Second {
+		t.Fatalf("deadline with static clamp = %s, want 5s", got)
+	}
+
+	got = d.deadline(&ValidatedRequest{}, config.TenantSnapshot{DefaultTimeoutMs: 3000}).Sub(now)
+	if got != 3*time.Second {
+		t.Fatalf("deadline with tenant default = %s, want 3s", got)
+	}
+}
+
 func dispatchSnapshot(rules []config.RoutingRule) config.TenantSnapshot {
 	return config.TenantSnapshot{
 		TenantID:      dispatchTestTenant,
