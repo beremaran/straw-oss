@@ -430,8 +430,12 @@ func (d *rawProxyDispatcher) DispatchRaw(_ context.Context, in DispatchInput, w 
 	w.WriteHeader(status)
 
 	var size uint64
+	rec, ok := w.(*httptest.ResponseRecorder)
+	if !ok {
+		return SuccessResponse{}, &PipelineError{Code: ControlInternalError}, true
+	}
 	for _, chunk := range d.chunks {
-		n, _ := w.Write(chunk)
+		n, _ := rec.Body.Write(chunk)
 		size += uint64FromInt(n)
 	}
 

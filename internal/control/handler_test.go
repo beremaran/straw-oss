@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	strawpb "github.com/beremaran/straw/v2/api/proto/straw/v1"
 	"github.com/beremaran/straw/v2/internal/config"
 )
 
@@ -58,6 +60,199 @@ func TestHandlerValidRequest(t *testing.T) {
 	}
 	if resp.RequestID == "" {
 		t.Fatal("request_id is empty")
+	}
+}
+
+func TestStreamHandlerWritesBinaryMetadataBeforeBodyAndTrailers(t *testing.T) {
+	t.Parallel()
+
+	h, token := newTestHandler(t)
+	h.SetDispatcher(streamingFakeDispatcher{
+		status:   http.StatusPartialContent,
+		headers:  []*strawpb.Header{{Name: "Content-Type", Value: []byte("text/plain")}},
+		chunks:   [][]byte{[]byte("hello"), []byte(" world")},
+		trailers: []*strawpb.Header{{Name: "X-Upstream-Trailer", Value: []byte("done")}},
+	})
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/requests:stream", strings.NewReader(`{"method":"GET","url":"https://example.com"}`))
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+
+	h.ServeStreamHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+	if got := w.Header().Get(headerCanonicalContentType); got != streamContentType {
+		t.Fatalf("content type = %q, want %q", got, streamContentType)
+	}
+
+	frames := decodeStreamFrames(t, w.Body.Bytes())
+	if len(frames) != 5 {
+		t.Fatalf("frame count = %d, want 5", len(frames))
+	}
+	if frames[0].typ != streamFrameMetadata {
+		t.Fatalf("first frame type = %d, want metadata", frames[0].typ)
+	}
+
+	var metadata streamMetadataPayload
+	mustUnmarshalFrame(t, frames[0], &metadata)
+	if metadata.RequestID == "" {
+		t.Fatal("metadata request_id is empty")
+	}
+	if metadata.Status != http.StatusPartialContent {
+		t.Fatalf("metadata status = %d, want %d", metadata.Status, http.StatusPartialContent)
+	}
+	if len(metadata.Headers) != 1 || metadata.Headers[0].Name != "Content-Type" {
+		t.Fatalf("metadata headers = %#v", metadata.Headers)
+	}
+
+	if frames[1].typ != streamFrameBody || string(frames[1].payload) != "hello" {
+		t.Fatalf("body frame 1 = (%d, %q), want body hello", frames[1].typ, frames[1].payload)
+	}
+	if frames[2].typ != streamFrameBody || string(frames[2].payload) != " world" {
+		t.Fatalf("body frame 2 = (%d, %q), want body world", frames[2].typ, frames[2].payload)
+	}
+
+	var trailers streamTrailersPayload
+	if frames[3].typ != streamFrameTrailers {
+		t.Fatalf("fourth frame type = %d, want trailers", frames[3].typ)
+	}
+	mustUnmarshalFrame(t, frames[3], &trailers)
+	if len(trailers.Headers) != 1 || trailers.Headers[0].Name != "X-Upstream-Trailer" {
+		t.Fatalf("trailers = %#v", trailers.Headers)
+	}
+
+	if frames[4].typ != streamFrameEnd {
+		t.Fatalf("last frame type = %d, want end", frames[4].typ)
+	}
+
+	var end streamEndPayload
+	mustUnmarshalFrame(t, frames[4], &end)
+	if end.Timing.TotalMs != 4 {
+		t.Fatalf("end timing total_ms = %d, want 4", end.Timing.TotalMs)
+	}
+}
+
+func TestStreamHandlerWritesErrorFrameAfterPartialBody(t *testing.T) {
+	t.Parallel()
+
+	h, token := newTestHandler(t)
+	h.SetDispatcher(streamingFakeDispatcher{
+		status:  http.StatusOK,
+		chunks:  [][]byte{[]byte("partial")},
+		perr:    &PipelineError{Code: UpstreamReset},
+		started: true,
+	})
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/requests:stream", strings.NewReader(`{"method":"GET","url":"https://example.com"}`))
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+
+	h.ServeStreamHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	frames := decodeStreamFrames(t, w.Body.Bytes())
+	if len(frames) != 3 {
+		t.Fatalf("frame count = %d, want 3", len(frames))
+	}
+	if frames[0].typ != streamFrameMetadata || frames[1].typ != streamFrameBody || frames[2].typ != streamFrameError {
+		t.Fatalf("frame types = %d, %d, %d; want metadata, body, error", frames[0].typ, frames[1].typ, frames[2].typ)
+	}
+
+	var errResp ErrorResponse
+	mustUnmarshalFrame(t, frames[2], &errResp)
+	if errResp.Code != errorCodeUpstreamReset {
+		t.Fatalf("error code = %q, want %q", errResp.Code, errorCodeUpstreamReset)
+	}
+}
+
+func TestStreamHandlerDoesNotApplyInlineResponseBodyLimit(t *testing.T) {
+	t.Parallel()
+
+	h, token := newTestHandler(t)
+	h.maxResponseBodyBytes = 3
+	h.SetDispatcher(streamingFakeDispatcher{status: http.StatusOK, chunks: [][]byte{[]byte("larger than inline")}})
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/requests:stream", strings.NewReader(`{"method":"GET","url":"https://example.com"}`))
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+
+	h.ServeStreamHTTP(w, req)
+
+	frames := decodeStreamFrames(t, w.Body.Bytes())
+	if len(frames) != 3 {
+		t.Fatalf("frame count = %d, want metadata/body/end", len(frames))
+	}
+	if frames[1].typ != streamFrameBody || string(frames[1].payload) != "larger than inline" {
+		t.Fatalf("body frame = (%d, %q), want streamed body", frames[1].typ, frames[1].payload)
+	}
+	if frames[2].typ != streamFrameEnd {
+		t.Fatalf("last frame type = %d, want end", frames[2].typ)
+	}
+}
+
+func TestStreamHandlerAuthAndRBAC(t *testing.T) {
+	t.Parallel()
+
+	t.Run("missing auth", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestHandler(t)
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/requests:stream", strings.NewReader(`{"method":"GET","url":"https://example.com"}`))
+		w := httptest.NewRecorder()
+
+		h.ServeStreamHTTP(w, req)
+
+		if w.Code != http.StatusUnauthorized {
+			t.Fatalf("status = %d, want %d", w.Code, http.StatusUnauthorized)
+		}
+	})
+
+	t.Run("viewer denied", func(t *testing.T) {
+		t.Parallel()
+
+		h, token := newTestHandlerWithRole(t, RoleViewer)
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/requests:stream", strings.NewReader(`{"method":"GET","url":"https://example.com"}`))
+		req.Header.Set("Authorization", "Bearer "+token)
+		w := httptest.NewRecorder()
+
+		h.ServeStreamHTTP(w, req)
+
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("status = %d, want %d", w.Code, http.StatusForbidden)
+		}
+	})
+}
+
+func TestStreamHandlerClientCancellationReturnsExistingError(t *testing.T) {
+	t.Parallel()
+
+	h, token := newTestHandler(t)
+	h.SetDispatcher(cancelAwareStreamDispatcher{})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/api/v1/requests:stream", strings.NewReader(`{"method":"GET","url":"https://example.com"}`))
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+
+	h.ServeStreamHTTP(w, req)
+
+	if w.Code != statusClientClosedRequest {
+		t.Fatalf("status = %d, want %d", w.Code, statusClientClosedRequest)
+	}
+
+	var errResp ErrorResponse
+	err := json.Unmarshal(w.Body.Bytes(), &errResp)
+	if err != nil {
+		t.Fatalf("unmarshal error response: %v", err)
+	}
+	if errResp.Code != errorCodeCancelled {
+		t.Fatalf("code = %q, want %q", errResp.Code, errorCodeCancelled)
 	}
 }
 
@@ -785,6 +980,12 @@ func TestHTTPValidationErrorStatus(t *testing.T) {
 func newTestHandler(t *testing.T) (*RequestHandler, string) {
 	t.Helper()
 
+	return newTestHandlerWithRole(t, RoleRequester)
+}
+
+func newTestHandlerWithRole(t *testing.T, role Role) (*RequestHandler, string) {
+	t.Helper()
+
 	store := NewInMemoryAPIKeyStore()
 	pepper := []byte("test-pepper")
 
@@ -796,7 +997,7 @@ func newTestHandler(t *testing.T) (*RequestHandler, string) {
 		ID:         "key_test_requester",
 		ScopeType:  ScopeTenant,
 		TenantID:   "ten_test",
-		Role:       RoleRequester,
+		Role:       role,
 		Prefix:     generated.Prefix,
 		SecretHash: HashAPIKeySecret(generated.Secret, pepper),
 		Status:     APIKeyStatusActive,
@@ -825,4 +1026,105 @@ func (fakeRequestDispatcher) Dispatch(_ context.Context, in DispatchInput) (Succ
 			Truncated: false,
 		},
 	}, nil
+}
+
+type streamFrame struct {
+	typ     byte
+	payload []byte
+}
+
+func decodeStreamFrames(t *testing.T, raw []byte) []streamFrame {
+	t.Helper()
+
+	var frames []streamFrame
+	for len(raw) > 0 {
+		if len(raw) < 5 {
+			t.Fatalf("short stream frame header: %d bytes", len(raw))
+		}
+
+		frameType := raw[0]
+		n := int(binary.BigEndian.Uint32(raw[1:5]))
+		raw = raw[5:]
+		if len(raw) < n {
+			t.Fatalf("short stream frame payload: got %d bytes, want %d", len(raw), n)
+		}
+
+		payload := append([]byte(nil), raw[:n]...)
+		frames = append(frames, streamFrame{typ: frameType, payload: payload})
+		raw = raw[n:]
+	}
+
+	return frames
+}
+
+func mustUnmarshalFrame(t *testing.T, frame streamFrame, out any) {
+	t.Helper()
+
+	err := json.Unmarshal(frame.payload, out)
+	if err != nil {
+		t.Fatalf("unmarshal frame type %d: %v", frame.typ, err)
+	}
+}
+
+type streamingFakeDispatcher struct {
+	status   int
+	headers  []*strawpb.Header
+	chunks   [][]byte
+	trailers []*strawpb.Header
+	perr     *PipelineError
+	started  bool
+}
+
+func (d streamingFakeDispatcher) Dispatch(_ context.Context, in DispatchInput) (SuccessResponse, *PipelineError) {
+	return SuccessResponse{RequestID: in.RequestID, Status: d.status}, d.perr
+}
+
+func (d streamingFakeDispatcher) DispatchRaw(_ context.Context, in DispatchInput, w http.ResponseWriter) (SuccessResponse, *PipelineError, bool) {
+	status := d.status
+	if status == 0 {
+		status = http.StatusOK
+	}
+
+	writeRawResponseStart(w, uint32(status), d.headers)
+	for _, chunk := range d.chunks {
+		_, _ = w.Write(chunk)
+	}
+	if len(d.trailers) > 0 {
+		writeRawTrailers(w, d.trailers)
+	}
+
+	return SuccessResponse{
+		RequestID: in.RequestID,
+		Status:    status,
+		Timing: RequestTiming{
+			RoutingMs:    1,
+			AssignmentMs: 2,
+			EgressMs:     3,
+			TotalMs:      4,
+		},
+		ResponseSizeBytes: totalChunkLen(d.chunks),
+	}, d.perr, d.started || d.perr == nil || len(d.chunks) > 0 || len(d.headers) > 0
+}
+
+func totalChunkLen(chunks [][]byte) uint64 {
+	var n uint64
+	for _, chunk := range chunks {
+		n += uint64FromInt(len(chunk))
+	}
+
+	return n
+}
+
+type cancelAwareStreamDispatcher struct{}
+
+func (cancelAwareStreamDispatcher) Dispatch(ctx context.Context, _ DispatchInput) (SuccessResponse, *PipelineError) {
+	<-ctx.Done()
+
+	return SuccessResponse{}, &PipelineError{Code: Cancelled}
+}
+
+func (cancelAwareStreamDispatcher) DispatchRaw(ctx context.Context, _ DispatchInput, _ http.ResponseWriter) (SuccessResponse, *PipelineError, bool) {
+	<-ctx.Done()
+
+	return SuccessResponse{}, &PipelineError{Code: Cancelled}, false
 }

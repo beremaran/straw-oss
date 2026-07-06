@@ -729,6 +729,7 @@ func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.API
 	mux := http.NewServeMux()
 	serveAdminUIRoutes(mux)
 	mux.Handle("POST /api/v1/requests", requestHandler)
+	mux.HandleFunc("POST /api/v1/requests:stream", requestHandler.ServeStreamHTTP)
 	serveAdminRoutes(mux, adminHandlers)
 
 	if chWriters.sink != nil {

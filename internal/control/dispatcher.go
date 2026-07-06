@@ -1308,6 +1308,14 @@ func headersFromProto(headers []*strawpb.Header) []HeaderPair {
 }
 
 func writeRawResponseStart(w http.ResponseWriter, status uint32, headers []*strawpb.Header) {
+	if stream, ok := w.(interface {
+		WriteRawResponseStart(status uint32, headers []*strawpb.Header)
+	}); ok {
+		stream.WriteRawResponseStart(status, headers)
+
+		return
+	}
+
 	for _, h := range headers {
 		if !rawResponseHeaderAllowed(h.GetName()) {
 			continue
@@ -1321,6 +1329,14 @@ func writeRawResponseStart(w http.ResponseWriter, status uint32, headers []*stra
 }
 
 func writeRawTrailers(w http.ResponseWriter, trailers []*strawpb.Header) {
+	if stream, ok := w.(interface {
+		WriteRawTrailers(headers []*strawpb.Header)
+	}); ok {
+		stream.WriteRawTrailers(trailers)
+
+		return
+	}
+
 	for _, h := range trailers {
 		if !rawResponseHeaderAllowed(h.GetName()) {
 			continue

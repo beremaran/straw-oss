@@ -2,20 +2,22 @@
 
 These must be decided before related implementation starts. Defaults already specified elsewhere are not open decisions.
 
-### P1 REST Streaming Response Format
+### P1 REST Streaming Response Format — Resolved 2026-07-06
 
 - **Blocked sections**: Section 7 REST Streaming Variant, Section 30 P1 tests.
-- **Options**: HTTP chunked JSON events; binary framing; server-sent events.
+- **Decision**: Binary framing, as specified in Section 7 REST Streaming Variant.
+- **Rejected options**: HTTP chunked JSON events; server-sent events.
 - **Acceptance tests required**: metadata before body bytes, upstream error after partial body, client cancellation, body
   limit behavior, and trailer handling.
 - **Decision owner**: Control/API owner.
 
-### P1 Egress Metrics Exposure
+### P1 Egress Metrics Exposure — Resolved 2026-07-06
 
 - **Blocked sections**: Section 23 Egress Metrics, Section 28 deployment ports.
-- **Options**: Control-aggregated metrics only; direct worker Prometheus scrape; both with explicit deployment flag.
-- **Acceptance tests required**: metric cardinality limits, worker-local endpoint access control, and outage behavior when
-  Control cannot aggregate.
+- **Decision**: Control-aggregated metrics only, behind an explicit enablement flag.
+- **Rejected options**: Direct worker Prometheus scrape; both with explicit deployment flag.
+- **Acceptance tests required**: metric cardinality limits, flag disabled/enabled behavior, no worker-local
+  endpoint/port exposure, and outage behavior when Control cannot aggregate.
 - **Decision owner**: Operations owner.
 
 ### P2 MITM Private-Key Storage Policy

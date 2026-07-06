@@ -67,7 +67,8 @@ Task: `docs/tasks/p0/22-control-destination-policy-resolution.md`
   normalized. This is fail-closed and prevents Unicode-homoglyph SSRF bypass, but a
   tenant cannot reach a legitimate internationalized domain in P0. **Update
   2026-07-06:** IDNA support is now owned by
-  `docs/tasks/p1/21-idna-hostname-support.md`.
+  `docs/tasks/p1/21-idna-hostname-support.md`, and adding `golang.org/x/net/idna`
+  is explicitly approved for that task.
 - **Known Egress gap (not fixed here — out of this task's file scope,
   `internal/control` only):** `internal/egress/executor.go`'s
   `validateCIDRPolicy`/`deniedByDefault` (task 11) treats `DestinationPolicy.AllowedCidrs`

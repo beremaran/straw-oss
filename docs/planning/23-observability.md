@@ -26,13 +26,11 @@ Label cardinality must be controlled. Do not label high-cardinality URLs directl
 
 ### Egress Metrics
 
-Choose one of the following per deployment:
+P1 uses Control-aggregated Egress metrics only, behind an explicit enablement flag. Egress reports bounded telemetry to
+Control over the service boundary; Control exposes the resulting Prometheus series on its metrics surface.
 
-- Control-aggregated metrics only: Egress reports telemetry over NATS.
-- Direct worker scrape: Egress exposes `/metrics` locally.
-
-P0 should prefer direct local `/healthz` and `/readyz`, with Control-aggregated request outcomes. If direct Prometheus
-scrape is shipped, document it as an explicit supported path.
+Direct worker Prometheus scraping is not a shipped P1 mode. Do not expose a worker-local `/metrics` endpoint or map a
+worker metrics port for Egress metrics unless a later task explicitly reopens that decision.
 
 ### Logs
 

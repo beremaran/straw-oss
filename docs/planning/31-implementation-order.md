@@ -29,7 +29,7 @@
 2. Raw CONNECT tunnel.
 3. SDK/CLI minimal surfaces.
 4. Telemetry read APIs and UI minimal admin/observability surface.
-5. Optional direct worker Prometheus scraping if chosen.
+5. Control-aggregated Egress metrics behind an explicit enablement flag.
 6. Optional upstream connection pooling if explicitly designed.
 7. Load/backpressure hardening.
 8. Production deployment templates.

@@ -66,7 +66,7 @@ P1 adds:
 - richer config-management APIs,
 - SDK, CLI, and minimal UI surfaces,
 - telemetry read APIs and dashboards,
-- optional direct worker Prometheus scraping if explicitly chosen,
+- Control-aggregated Egress metrics behind an explicit enablement flag,
 - optional upstream connection pooling if explicitly specified and tested,
 - improved observability dashboards,
 - load and backpressure testing,
