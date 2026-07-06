@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -24,6 +25,170 @@ import (
 // postgresQuotaStore implements QuotaStore over quota_configs.
 type postgresQuotaStore struct {
 	pool *pgxpool.Pool
+}
+
+// ---- Payload capture policies ----
+
+type postgresPayloadCapturePolicyStore struct {
+	pool *pgxpool.Pool
+}
+
+// NewPostgresPayloadCapturePolicyStore builds a store over payload_capture_policies.
+func NewPostgresPayloadCapturePolicyStore(pool *pgxpool.Pool) PayloadCapturePolicyStore {
+	return &postgresPayloadCapturePolicyStore{pool: pool}
+}
+
+func (s *postgresPayloadCapturePolicyStore) Get(ctx context.Context, tenantID string) (PayloadCapturePolicy, error) {
+	var (
+		enabled bool
+		raw     []byte
+		version int64
+	)
+
+	err := s.pool.QueryRow(ctx,
+		`SELECT enabled, allowed_decisions_jsonb, config_version
+		 FROM payload_capture_policies
+		 WHERE tenant_id = $1`,
+		tenantID,
+	).Scan(&enabled, &raw, &version)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return defaultPayloadCapturePolicy(tenantID), nil
+		}
+
+		return PayloadCapturePolicy{}, fmt.Errorf("postgres payload capture get: %w", err)
+	}
+
+	configVersion, err := dbUint64(version, "payload capture config version")
+	if err != nil {
+		return PayloadCapturePolicy{}, err
+	}
+
+	allowed, err := decodeCaptureDecisions(raw)
+	if err != nil {
+		return PayloadCapturePolicy{}, err
+	}
+
+	return PayloadCapturePolicy{TenantID: tenantID, Enabled: enabled, AllowedDecisions: allowed, ConfigVersion: configVersion}, nil
+}
+
+func (s *postgresPayloadCapturePolicyStore) Put(ctx context.Context, policy PayloadCapturePolicy, expectedVersion uint64) (PayloadCapturePolicy, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return PayloadCapturePolicy{}, fmt.Errorf("postgres payload capture put begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	saved, err := putPayloadCapturePolicyTx(ctx, tx, policy, expectedVersion)
+	if err != nil {
+		return PayloadCapturePolicy{}, err
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return PayloadCapturePolicy{}, fmt.Errorf("postgres payload capture put commit: %w", err)
+	}
+
+	return saved, nil
+}
+
+// PutPayloadCapturePolicy writes policy, bumps tenant version, and audits it.
+func (s *PostgresConfigStore) PutPayloadCapturePolicy(ctx context.Context, policy PayloadCapturePolicy, expectedVersion uint64, actor ConfigActor) (PayloadCapturePolicy, error) {
+	nextVersion, _, err := nextConfigVersionParam(expectedVersion)
+	if err != nil {
+		return PayloadCapturePolicy{}, err
+	}
+
+	saved := policy
+	saved.ConfigVersion = nextVersion
+
+	_, err = writeTenantConfig(ctx, s.pool, policy.TenantID, auditEntry{
+		actor: actor, resourceType: "payload_capture_policy", resourceID: policy.TenantID, action: configActionUpdate,
+		newValue: saved,
+	}, func(ctx context.Context, tx pgx.Tx) error {
+		var writeErr error
+
+		saved, writeErr = putPayloadCapturePolicyTx(ctx, tx, policy, expectedVersion)
+
+		return writeErr
+	})
+	if err != nil {
+		return PayloadCapturePolicy{}, err
+	}
+
+	return saved, nil
+}
+
+func putPayloadCapturePolicyTx(ctx context.Context, tx pgx.Tx, policy PayloadCapturePolicy, expectedVersion uint64) (PayloadCapturePolicy, error) {
+	current, err := currentResourceVersion(ctx, tx,
+		`SELECT config_version FROM payload_capture_policies WHERE tenant_id = $1`,
+		policy.TenantID)
+	if err != nil {
+		return PayloadCapturePolicy{}, err
+	}
+
+	if current != expectedVersion {
+		return PayloadCapturePolicy{}, ErrPayloadCaptureVersionConflict
+	}
+
+	nextVersion, newVersion, err := nextConfigVersionParam(expectedVersion)
+	if err != nil {
+		return PayloadCapturePolicy{}, err
+	}
+
+	raw, err := encodeCaptureDecisions(policy.AllowedDecisions)
+	if err != nil {
+		return PayloadCapturePolicy{}, err
+	}
+
+	_, err = tx.Exec(ctx,
+		`INSERT INTO payload_capture_policies
+		  (tenant_id, enabled, allowed_decisions_jsonb, created_at, updated_at, config_version)
+		 VALUES ($1, $2, $3, now(), now(), $4)
+		 ON CONFLICT (tenant_id) DO UPDATE SET
+		   enabled = EXCLUDED.enabled,
+		   allowed_decisions_jsonb = EXCLUDED.allowed_decisions_jsonb,
+		   updated_at = now(),
+		   config_version = EXCLUDED.config_version`,
+		policy.TenantID, policy.Enabled, raw, newVersion,
+	)
+	if err != nil {
+		return PayloadCapturePolicy{}, fmt.Errorf("postgres payload capture put: %w", err)
+	}
+
+	policy.ConfigVersion = nextVersion
+
+	return policy, nil
+}
+
+func encodeCaptureDecisions(decisions []CaptureDecision) ([]byte, error) {
+	out := make([]string, 0, len(decisions))
+	for _, decision := range decisions {
+		out = append(out, string(decision))
+	}
+
+	raw, err := json.Marshal(out)
+	if err != nil {
+		return nil, fmt.Errorf("encode payload capture decisions: %w", err)
+	}
+
+	return raw, nil
+}
+
+func decodeCaptureDecisions(raw []byte) ([]CaptureDecision, error) {
+	var strings []string
+
+	err := json.Unmarshal(raw, &strings)
+	if err != nil {
+		return nil, fmt.Errorf("decode payload capture decisions: %w", err)
+	}
+
+	out := make([]CaptureDecision, 0, len(strings))
+	for _, s := range strings {
+		out = append(out, CaptureDecision(s))
+	}
+
+	return out, nil
 }
 
 // NewPostgresQuotaStore builds a QuotaStore over the given pool.

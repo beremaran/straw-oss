@@ -34,6 +34,7 @@ type testAdmin struct {
 	tenants           *InMemoryTenantStore
 	quotas            *InMemoryQuotaStore
 	rateLimits        *InMemoryRateLimitConfigStore
+	payloadCapture    *InMemoryPayloadCapturePolicyStore
 	audit             *InMemoryAuditStore
 	routingRules      *InMemoryRoutingRuleStore
 	executorPools     *InMemoryExecutorPoolStore
@@ -53,6 +54,10 @@ type recordingConfigWrites struct {
 	rateExpected    uint64
 	rateCeiling     *RateLimitCeiling
 	rateActor       ConfigActor
+	payloadCalled   bool
+	payloadPolicy   PayloadCapturePolicy
+	payloadExpected uint64
+	payloadActor    ConfigActor
 	rollbackCalled  bool
 	rollbackTenant  string
 	rollbackRequest ConfigRollbackRequest
@@ -82,6 +87,16 @@ func (w *recordingConfigWrites) PutRateLimitConfig(_ context.Context, cfg RateLi
 	cfg.ConfigVersion = expectedVersion + 1
 
 	return cfg, nil
+}
+
+func (w *recordingConfigWrites) PutPayloadCapturePolicy(_ context.Context, policy PayloadCapturePolicy, expectedVersion uint64, actor ConfigActor) (PayloadCapturePolicy, error) {
+	w.payloadCalled = true
+	w.payloadPolicy = policy
+	w.payloadExpected = expectedVersion
+	w.payloadActor = actor
+	policy.ConfigVersion = expectedVersion + 1
+
+	return policy, nil
 }
 
 func (w *recordingConfigWrites) RollbackConfig(_ context.Context, tenantID string, req ConfigRollbackRequest, actor ConfigActor) (uint64, error) {
@@ -123,6 +138,7 @@ func newTestAdmin(t *testing.T) *testAdmin {
 		tenants:           NewInMemoryTenantStore(),
 		quotas:            NewInMemoryQuotaStore(),
 		rateLimits:        NewInMemoryRateLimitConfigStore(),
+		payloadCapture:    NewInMemoryPayloadCapturePolicyStore(),
 		audit:             NewInMemoryAuditStore(),
 		routingRules:      NewInMemoryRoutingRuleStore(),
 		executorPools:     NewInMemoryExecutorPoolStore(),
@@ -138,6 +154,7 @@ func newTestAdmin(t *testing.T) *testAdmin {
 		Tenants:             ta.tenants,
 		Quotas:              ta.quotas,
 		RateLimits:          ta.rateLimits,
+		PayloadCapture:      ta.payloadCapture,
 		Audit:               ta.audit,
 		ConfigCache:         cache,
 		Pepper:              pepper,
@@ -845,6 +862,62 @@ func TestRateLimitsCeilingRejectsExceedingWrite(t *testing.T) {
 
 	if errResp.Code != adminTestInvalidRequest {
 		t.Fatalf("code = %q, want %q", errResp.Code, adminTestInvalidRequest)
+	}
+}
+
+func TestPayloadCapturePolicyDefaultsRolesAndConflict(t *testing.T) {
+	t.Parallel()
+
+	ta := newTestAdmin(t)
+	err := ta.tenants.Create(context.Background(), Tenant{ID: adminTestTenantA, Name: "A", Status: TenantStatusActive, CreatedAt: time.Now().UTC()})
+	if err != nil {
+		t.Fatalf("seed tenant: %v", err)
+	}
+
+	tenantAdminToken := ta.seedTenantKey(t, adminTestKeyAAdmin, adminTestTenantA, RoleTenantAdmin)
+	viewerToken := ta.seedTenantKey(t, "key_a_viewer", adminTestTenantA, RoleViewer)
+
+	w := httptest.NewRecorder()
+	ta.h.GetPayloadCapturePolicy(w, newAdminRequest(http.MethodGet, "/api/v1/config/payload-capture", viewerToken, ""))
+	if w.Code != http.StatusOK {
+		t.Fatalf("viewer read status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	var got payloadCapturePolicyResponse
+
+	err = json.Unmarshal(w.Body.Bytes(), &got)
+	if err != nil {
+		t.Fatalf("unmarshal default: %v", err)
+	}
+	if got.Enabled || got.ConfigVersion != 0 || len(got.AllowedDecisions) != 1 || got.AllowedDecisions[0] != "none" {
+		t.Fatalf("default policy = %+v, want disabled version 0 none-only", got)
+	}
+
+	body := `{"expected_config_version":0,"enabled":true,"allowed_decisions":["metadata_only","headers"]}`
+	w = httptest.NewRecorder()
+	ta.h.PutPayloadCapturePolicy(w, newAdminRequest(http.MethodPut, "/api/v1/config/payload-capture", viewerToken, body))
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("viewer write status = %d, want %d", w.Code, http.StatusForbidden)
+	}
+
+	w = httptest.NewRecorder()
+	ta.h.PutPayloadCapturePolicy(w, newAdminRequest(http.MethodPut, "/api/v1/config/payload-capture", tenantAdminToken, body))
+	if w.Code != http.StatusOK {
+		t.Fatalf("tenant_admin write status = %d, want %d, body=%s", w.Code, http.StatusOK, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	ta.h.PutPayloadCapturePolicy(w, newAdminRequest(http.MethodPut, "/api/v1/config/payload-capture", tenantAdminToken, body))
+	if w.Code != http.StatusConflict {
+		t.Fatalf("stale write status = %d, want %d", w.Code, http.StatusConflict)
+	}
+
+	records, err := ta.audit.ListTenant(context.Background(), adminTestTenantA)
+	if err != nil {
+		t.Fatalf("audit list: %v", err)
+	}
+	if len(records) != 1 || records[0].ResourceType != "payload_capture_policy" {
+		t.Fatalf("audit records = %+v, want payload_capture_policy update", records)
 	}
 }
 

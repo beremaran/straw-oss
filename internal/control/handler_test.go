@@ -25,6 +25,7 @@ const (
 	handlerTestClientCategory     = "client"
 	handlerTestInlineBase64       = "inline_base64"
 	handlerTestMessage            = "test"
+	handlerTestTenantID           = "ten_test"
 	testExampleHost               = "example.com"
 )
 
@@ -192,6 +193,27 @@ func TestStreamHandlerDoesNotApplyInlineResponseBodyLimit(t *testing.T) {
 	}
 	if frames[2].typ != streamFrameEnd {
 		t.Fatalf("last frame type = %d, want end", frames[2].typ)
+	}
+}
+
+func TestStreamHandlerCaptureHintAllowedByTenantPolicy(t *testing.T) {
+	t.Parallel()
+
+	h, token := newTestHandler(t)
+	h.SetPayloadCapturePolicyStore(&staticPayloadCapturePolicyStore{policy: PayloadCapturePolicy{
+		TenantID: handlerTestTenantID, Enabled: true, AllowedDecisions: []CaptureDecision{CaptureDecisionHeaders},
+	}})
+	h.SetDispatcher(streamingFakeDispatcher{status: http.StatusOK})
+
+	payload := `{"method":"GET","url":"https://example.com","capture_hint":"headers"}`
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/requests:stream", strings.NewReader(payload))
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+
+	h.ServeStreamHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
 	}
 }
 
@@ -722,6 +744,38 @@ func TestValidateRequestCaptureHintOtherThanNone(t *testing.T) {
 	}
 }
 
+func TestValidateRequestCaptureHintAllowedByPolicy(t *testing.T) {
+	t.Parallel()
+
+	raw := []byte(`{"method":"GET","url":"https://example.com","capture_hint":"headers"}`)
+	_, err := ValidateRequestWithCapturePolicy(raw, 1_048_576, 120_000, PayloadCapturePolicy{
+		TenantID: adminTestTenantA, Enabled: true, AllowedDecisions: []CaptureDecision{CaptureDecisionHeaders},
+	})
+	if err != nil {
+		t.Fatalf("ValidateRequestWithCapturePolicy() error = %v", err)
+	}
+}
+
+func TestHandlerCaptureHintAllowedByTenantPolicy(t *testing.T) {
+	t.Parallel()
+
+	h, token := newTestHandler(t)
+	h.SetPayloadCapturePolicyStore(&staticPayloadCapturePolicyStore{policy: PayloadCapturePolicy{
+		TenantID: handlerTestTenantID, Enabled: true, AllowedDecisions: []CaptureDecision{CaptureDecisionHeaders},
+	}})
+
+	payload := `{"method":"GET","url":"https://example.com","capture_hint":"headers"}`
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+}
+
 func TestValidateRequestValidBase64Headers(t *testing.T) {
 	t.Parallel()
 
@@ -1022,7 +1076,7 @@ func newTestHandlerWithRole(t *testing.T, role Role) (*RequestHandler, string) {
 	record := APIKeyRecord{
 		ID:         "key_test_requester",
 		ScopeType:  ScopeTenant,
-		TenantID:   "ten_test",
+		TenantID:   handlerTestTenantID,
 		Role:       role,
 		Prefix:     generated.Prefix,
 		SecretHash: HashAPIKeySecret(generated.Secret, pepper),
@@ -1052,6 +1106,18 @@ func (fakeRequestDispatcher) Dispatch(_ context.Context, in DispatchInput) (Succ
 			Truncated: false,
 		},
 	}, nil
+}
+
+type staticPayloadCapturePolicyStore struct {
+	policy PayloadCapturePolicy
+}
+
+func (s *staticPayloadCapturePolicyStore) Get(_ context.Context, _ string) (PayloadCapturePolicy, error) {
+	return s.policy, nil
+}
+
+func (s *staticPayloadCapturePolicyStore) Put(context.Context, PayloadCapturePolicy, uint64) (PayloadCapturePolicy, error) {
+	return PayloadCapturePolicy{}, nil
 }
 
 type streamFrame struct {

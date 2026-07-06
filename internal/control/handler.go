@@ -19,6 +19,7 @@ type RequestHandler struct {
 	metadataWriter       RequestMetadataRecorder
 	dispatcher           RequestDispatcher
 	configCache          *ConfigCache
+	payloadCapture       PayloadCapturePolicyStore
 }
 
 // NewRequestHandler creates a handler with the given config limits. auth
@@ -49,6 +50,11 @@ func (h *RequestHandler) SetDispatcher(dispatcher RequestDispatcher) {
 // SetConfigCache wires tenant policy lookup for timeout and metadata storage.
 func (h *RequestHandler) SetConfigCache(cache *ConfigCache) {
 	h.configCache = cache
+}
+
+// SetPayloadCapturePolicyStore wires tenant capture policy lookup.
+func (h *RequestHandler) SetPayloadCapturePolicyStore(store PayloadCapturePolicyStore) {
+	h.payloadCapture = store
 }
 
 // Handler is the http.HandlerFunc for POST /api/v1/requests.
@@ -93,7 +99,9 @@ func (h *RequestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	policy := h.tenantPolicy(r.Context(), identity.TenantID)
 
-	validated, err := ValidateRequest(body, h.maxRequestBodyBytes, effectiveMaxTimeout(h.maxTimeoutMs, policy.MaxTimeoutMs))
+	capturePolicy := h.payloadCapturePolicy(r.Context(), identity.TenantID)
+
+	validated, err := ValidateRequestWithCapturePolicy(body, h.maxRequestBodyBytes, effectiveMaxTimeout(h.maxTimeoutMs, policy.MaxTimeoutMs), capturePolicy)
 	if err != nil {
 		var verr *ValidationError
 		if asValidationError(err, &verr) {
@@ -108,6 +116,19 @@ func (h *RequestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.dispatchValidated(w, r, requestID, identity, validated)
+}
+
+func (h *RequestHandler) payloadCapturePolicy(ctx context.Context, tenantID string) PayloadCapturePolicy {
+	if h.payloadCapture == nil {
+		return defaultPayloadCapturePolicy(tenantID)
+	}
+
+	policy, err := h.payloadCapture.Get(ctx, tenantID)
+	if err != nil {
+		return defaultPayloadCapturePolicy(tenantID)
+	}
+
+	return policy
 }
 
 func (h *RequestHandler) dispatchValidated(w http.ResponseWriter, r *http.Request, requestID string, identity Identity, validated *ValidatedRequest) {

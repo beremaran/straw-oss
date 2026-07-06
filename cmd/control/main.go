@@ -745,8 +745,7 @@ func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.API
 		InFlight:                   inflight,
 		Metrics:                    metrics,
 	})
-	requestHandler.SetConfigCache(configCache)
-	requestHandler.SetDispatcher(dispatcher)
+	configureRequestHandler(requestHandler, configCache, pool, dispatcher)
 
 	mux := http.NewServeMux()
 	serveAdminUIRoutes(mux)
@@ -762,6 +761,12 @@ func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.API
 	}
 
 	return mux, buildProxyHandler(controlConfig, authenticator, configCache, chWriters.requestMetadata, dispatcher), buildConnectHandler(controlConfig, authenticator, dispatcher)
+}
+
+func configureRequestHandler(h *control.RequestHandler, configCache *control.ConfigCache, pool *pgxpool.Pool, dispatcher control.RequestDispatcher) {
+	h.SetConfigCache(configCache)
+	h.SetPayloadCapturePolicyStore(control.NewPostgresPayloadCapturePolicyStore(pool))
+	h.SetDispatcher(dispatcher)
 }
 
 func serveTelemetryRoutes(mux *http.ServeMux, h *control.TelemetryHandlers) {
@@ -817,19 +822,20 @@ func buildAdminHandlers(apiKeyStore control.APIKeyStore, pepper []byte, workerRe
 	}
 
 	return &control.AdminHandlers{
-		Authenticator: control.NewAuthenticator(apiKeyStore, pepper).SetTenantStore(tenantStore),
-		APIKeys:       apiKeyStore,
-		WorkerCreds:   workerCreds,
-		Tenants:       tenantStore,
-		Quotas:        control.NewPostgresQuotaStore(pool),
-		RateLimits:    control.NewPostgresRateLimitConfigStore(pool),
-		Audit:         control.NewAuditStoreWithEvents(control.NewPostgresAuditStore(pool), auditEvents),
-		ConfigCache:   configCache,
-		Workers:       workerRegistry,
-		ConfigWrites:  configStore,
-		WorkerAdmin:   configStore,
-		InFlight:      inflight,
-		Pepper:        pepper,
+		Authenticator:  control.NewAuthenticator(apiKeyStore, pepper).SetTenantStore(tenantStore),
+		APIKeys:        apiKeyStore,
+		WorkerCreds:    workerCreds,
+		Tenants:        tenantStore,
+		Quotas:         control.NewPostgresQuotaStore(pool),
+		RateLimits:     control.NewPostgresRateLimitConfigStore(pool),
+		PayloadCapture: control.NewPostgresPayloadCapturePolicyStore(pool),
+		Audit:          control.NewAuditStoreWithEvents(control.NewPostgresAuditStore(pool), auditEvents),
+		ConfigCache:    configCache,
+		Workers:        workerRegistry,
+		ConfigWrites:   configStore,
+		WorkerAdmin:    configStore,
+		InFlight:       inflight,
+		Pepper:         pepper,
 
 		RoutingRules:        configStore,
 		ExecutorPools:       configStore,
@@ -878,6 +884,8 @@ func serveConfigResourceRoutes(mux *http.ServeMux, h *control.AdminHandlers) {
 	mux.HandleFunc("PUT /api/v1/config/tenants/{id}/quotas", h.PutTenantQuotas)
 	mux.HandleFunc("GET /api/v1/config/rate-limits", h.GetRateLimits)
 	mux.HandleFunc("PUT /api/v1/config/rate-limits", h.PutRateLimits)
+	mux.HandleFunc("GET /api/v1/config/payload-capture", h.GetPayloadCapturePolicy)
+	mux.HandleFunc("PUT /api/v1/config/payload-capture", h.PutPayloadCapturePolicy)
 	mux.HandleFunc("GET /api/v1/config/routing-rules", h.ListRoutingRules)
 	mux.HandleFunc("POST /api/v1/config/routing-rules", h.CreateRoutingRule)
 	mux.HandleFunc("PUT /api/v1/config/routing-rules/{id}", h.UpdateRoutingRule)
