@@ -34,3 +34,6 @@
 - [Open Decisions](./32-open-decisions.md)
 - [Risks](./33-risks.md)
 - [Appendix A — Reconciliation Notes](./a-reconciliation-notes.md)
+- [Appendix B — HTTP Proxy Ingress](./b-http-proxy-ingress.md)
+- [Appendix B — Telemetry Read APIs](./b-telemetry-read-api.md)
+- [Appendix B — Upstream Connection Pooling](./b-upstream-connection-pooling.md)

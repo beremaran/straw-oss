@@ -1,6 +1,6 @@
 # 16 - Upstream Connection Pooling
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -31,15 +31,15 @@ Specify optional upstream connection pooling and the feature flag/testing bar re
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Define the feature flag, default-off behavior, and config keys.
-- [ ] Define per-tenant/per-host pooling boundaries and eviction behavior.
-- [ ] Prove the design preserves the resolved-IP dial-target invariant.
-- [ ] Define tests for disabled default, enabled path, SSRF policy, connection reuse safety, and shutdown.
-- [ ] Define observability and failure modes.
-- [ ] Add or reference required test-matrix rows.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Read all required planning docs.
+- [x] Define the feature flag, default-off behavior, and config keys.
+- [x] Define per-tenant/per-host pooling boundaries and eviction behavior.
+- [x] Prove the design preserves the resolved-IP dial-target invariant.
+- [x] Define tests for disabled default, enabled path, SSRF policy, connection reuse safety, and shutdown.
+- [x] Define observability and failure modes.
+- [x] Add or reference required test-matrix rows.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

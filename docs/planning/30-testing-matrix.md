@@ -42,3 +42,8 @@ P0 must include contract-mapped tests.
 
 P1/P2 add proxy, CONNECT, MITM, BodyRef, payload capture, Provider Adapter, telemetry read APIs, connection pooling,
 and HTTP/2 test rows before those features ship.
+
+P1 upstream connection pooling is specified in `docs/planning/b-upstream-connection-pooling.md`. Before implementation
+ships, tests must prove the disabled default, exact pool-key reuse boundaries, tenant isolation, DNS rebinding/SSRF
+validation before reuse, no second resolution by the HTTP/TLS library, eviction/shutdown behavior, and stale-connection
+fallback.
