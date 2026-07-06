@@ -682,8 +682,7 @@ func (h *AdminHandlers) RevokeTenantAPIKey(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, toAPIKeyReadResponse(revoked))
 }
 
-// ---- Worker credential lifecycle (tenant_admin only; P0 forces
-// single-tenant scope) ----
+// ---- Worker credential lifecycle ----
 
 type workerCredentialCreateRequest struct {
 	ExecutorType           string             `json:"executor_type"`
@@ -716,10 +715,9 @@ func toWorkerCredentialResponse(c WorkerCredential) workerCredentialResponse {
 	}
 }
 
-// CreateWorkerCredential handles POST /worker-credentials. P0 forces
-// tenant_scope to the caller's tenant and rejects allowed_pools entries
-// referencing any other tenant (docs/planning/06, docs/planning/26).
-// Multi-tenant worker credentials are a P1 system_admin-only operation.
+// CreateWorkerCredential handles POST /worker-credentials. Tenant admins
+// create credentials scoped only to their tenant; system_admin may create
+// multi-tenant credentials from scoped allowed_pools (docs/planning/06, 26).
 func (h *AdminHandlers) CreateWorkerCredential(w http.ResponseWriter, r *http.Request) {
 	identity, err := h.authenticate(r)
 	if err != nil {
@@ -728,7 +726,19 @@ func (h *AdminHandlers) CreateWorkerCredential(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	err = RequireRole(identity, RoleTenantAdmin)
+	err = RequireRole(identity, RoleSystemAdmin, RoleTenantAdmin)
+	if err != nil {
+		writeAuthOrRBACError(w, err)
+
+		return
+	}
+
+	if identity.Role == RoleSystemAdmin {
+		err = RequirePlatformScope(identity)
+	} else {
+		err = RequireTenantScope(identity)
+	}
+
 	if err != nil {
 		writeAuthOrRBACError(w, err)
 
@@ -744,12 +754,12 @@ func (h *AdminHandlers) CreateWorkerCredential(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	req, ok := validateWorkerCredentialRequest(w, req, identity.TenantID)
+	req, tenantScope, ok := validateWorkerCredentialRequest(w, req, identity)
 	if !ok {
 		return
 	}
 
-	if !h.createWorkerCredential(w, r, identity, req) {
+	if !h.createWorkerCredential(w, r, identity, req, tenantScope) {
 		return
 	}
 }
@@ -1335,7 +1345,7 @@ func (h *AdminHandlers) putTenantQuotas(w http.ResponseWriter, r *http.Request, 
 	writeJSON(w, http.StatusOK, toQuotaResponse(saved))
 }
 
-func (h *AdminHandlers) createWorkerCredential(w http.ResponseWriter, r *http.Request, identity Identity, req workerCredentialCreateRequest) bool {
+func (h *AdminHandlers) createWorkerCredential(w http.ResponseWriter, r *http.Request, identity Identity, req workerCredentialCreateRequest, tenantScope []string) bool {
 	id, err := newResourceID()
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
@@ -1348,7 +1358,7 @@ func (h *AdminHandlers) createWorkerCredential(w http.ResponseWriter, r *http.Re
 		Status:                 WorkerCredentialStatusActive,
 		ExecutorType:           req.ExecutorType,
 		PublicKeyEd25519Base64: req.PublicKeyEd25519Base64,
-		TenantScope:            []string{identity.TenantID}, // forced single-tenant scope in P0
+		TenantScope:            tenantScope,
 		AllowedPools:           req.AllowedPools,
 		AllowedCapabilities:    req.AllowedCapabilities,
 		CreatedAt:              time.Now().UTC(),
@@ -1363,11 +1373,13 @@ func (h *AdminHandlers) createWorkerCredential(w http.ResponseWriter, r *http.Re
 		return false
 	}
 
-	_, err = h.bumpTenantVersion(r.Context(), identity.TenantID, nil)
-	if err != nil {
-		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
+	for _, tenantID := range tenantScope {
+		_, err = h.bumpTenantVersion(r.Context(), tenantID, nil)
+		if err != nil {
+			WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
 
-		return false
+			return false
+		}
 	}
 
 	recordAudit(r.Context(), h.Audit, identity, "worker_credential", id, "create", record.ConfigVersion, "", nil, record, false)
@@ -1377,25 +1389,19 @@ func (h *AdminHandlers) createWorkerCredential(w http.ResponseWriter, r *http.Re
 	return true
 }
 
-func validateWorkerCredentialRequest(w http.ResponseWriter, req workerCredentialCreateRequest, tenantID string) (workerCredentialCreateRequest, bool) {
+func validateWorkerCredentialRequest(w http.ResponseWriter, req workerCredentialCreateRequest, identity Identity) (workerCredentialCreateRequest, []string, bool) {
 	if req.PublicKeyEd25519Base64 == "" {
 		WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", nil))
 
-		return workerCredentialCreateRequest{}, false
+		return workerCredentialCreateRequest{}, nil, false
 	}
 
 	if req.ExecutorType == "" {
 		req.ExecutorType = errorCategoryEgress
 	}
 
-	for _, pool := range req.AllowedPools {
-		if pool.TenantID != tenantID {
-			WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", map[string]string{
-				errorDetailReasonKey: "allowed_pools entries must reference the caller's tenant in P0",
-			}))
-
-			return workerCredentialCreateRequest{}, false
-		}
+	if !validateWorkerCredentialPools(w, req.AllowedPools, identity) {
+		return workerCredentialCreateRequest{}, nil, false
 	}
 
 	if bad := invalidIngressModes(req.AllowedCapabilities.SupportedIngressModes); len(bad) > 0 {
@@ -1403,10 +1409,58 @@ func validateWorkerCredentialRequest(w http.ResponseWriter, req workerCredential
 			errorDetailReasonKey: fmt.Sprintf("invalid supported_ingress_modes: %v", bad),
 		}))
 
-		return workerCredentialCreateRequest{}, false
+		return workerCredentialCreateRequest{}, nil, false
 	}
 
-	return req, true
+	if identity.IsPlatform() {
+		if len(req.AllowedPools) == 0 {
+			WriteError(w, http.StatusForbidden, ErrorResponseFromCode(InsufficientPermissions, "", nil))
+
+			return workerCredentialCreateRequest{}, nil, false
+		}
+
+		return req, tenantScopeFromPools(req.AllowedPools), true
+	}
+
+	return req, []string{identity.TenantID}, true
+}
+
+func validateWorkerCredentialPools(w http.ResponseWriter, pools []AllowedPool, identity Identity) bool {
+	for _, pool := range pools {
+		if pool.TenantID == "" || pool.PoolID == "" {
+			WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", map[string]string{
+				errorDetailReasonKey: "allowed_pools entries require tenant_id and pool_id",
+			}))
+
+			return false
+		}
+
+		if !identity.IsPlatform() && pool.TenantID != identity.TenantID {
+			WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", map[string]string{
+				errorDetailReasonKey: "allowed_pools entries must reference the caller's tenant",
+			}))
+
+			return false
+		}
+	}
+
+	return true
+}
+
+func tenantScopeFromPools(pools []AllowedPool) []string {
+	seen := make(map[string]struct{}, len(pools))
+
+	out := make([]string, 0, len(pools))
+	for _, pool := range pools {
+		if _, ok := seen[pool.TenantID]; ok {
+			continue
+		}
+
+		seen[pool.TenantID] = struct{}{}
+		out = append(out, pool.TenantID)
+	}
+
+	return out
 }
 
 func (h *AdminHandlers) authenticate(r *http.Request) (Identity, error) {

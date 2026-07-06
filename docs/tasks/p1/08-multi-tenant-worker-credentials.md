@@ -1,6 +1,6 @@
 # 08 - Multi-Tenant Worker Credentials
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -31,17 +31,18 @@ Add platform-scoped creation and validation of worker credentials that can serve
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Extend worker credential create/update validation for platform-scoped `system_admin` multi-tenant scope.
-- [ ] Persist allowed tenant/pool scopes as scoped objects.
-- [ ] Enforce that tenant admins can still create only single-tenant credentials for their tenant.
-- [ ] Validate worker registration capabilities against every allowed tenant/pool scope.
-- [ ] Ensure routing never selects a worker for a tenant/pool outside its credential.
-- [ ] Add tests for system_admin creation, tenant-admin rejection, cross-tenant routing isolation, and registration
+- [x] Read all required planning docs.
+- [x] Extend worker credential create validation for platform-scoped `system_admin` multi-tenant scope. The required
+      planning docs do not define a worker credential update endpoint.
+- [x] Persist allowed tenant/pool scopes as scoped objects.
+- [x] Enforce that tenant admins can still create only single-tenant credentials for their tenant.
+- [x] Validate worker registration capabilities against every allowed tenant/pool scope.
+- [x] Ensure routing never selects a worker for a tenant/pool outside its credential.
+- [x] Add tests for system_admin creation, tenant-admin rejection, cross-tenant routing isolation, and registration
       scope validation.
-- [ ] Run focused worker credential tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Run focused worker credential tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 
