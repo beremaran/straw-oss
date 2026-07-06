@@ -217,6 +217,105 @@ func TestPostgresConfigStoreRedactsInjectionPolicyAudit(t *testing.T) {
 	}
 }
 
+func TestPostgresConfigRollbackRestoresAuditBackedResources(t *testing.T) {
+	pool := newIdentityTestPool(t)
+	seedTenant(t, pool, pgTestTenantA)
+
+	ctx := context.Background()
+	store := NewPostgresConfigStore(pool)
+	actor := ConfigActor{ActorType: configActorTypeAPIKey, ActorID: pgConfigActorID}
+
+	_, targetVersion, err := store.UpsertRoutingRule(ctx, pgTestTenantA, config.RoutingRule{
+		ID: "route_rollback", Priority: 10, Enabled: true, TargetPoolID: pgConfigPoolA,
+	}, 0, actor)
+	if err != nil {
+		t.Fatalf("UpsertRoutingRule(initial) error = %v", err)
+	}
+
+	_, currentVersion, err := store.UpsertRoutingRule(ctx, pgTestTenantA, config.RoutingRule{
+		ID: "route_rollback", Priority: 99, Enabled: true, TargetPoolID: pgConfigPoolA,
+	}, 1, actor)
+	if err != nil {
+		t.Fatalf("UpsertRoutingRule(update) error = %v", err)
+	}
+
+	newVersion, err := store.RollbackConfig(ctx, pgTestTenantA, ConfigRollbackRequest{
+		ExpectedConfigVersion: currentVersion,
+		TargetConfigVersion:   targetVersion,
+		Reason:                "restore route",
+	}, actor)
+	if err != nil {
+		t.Fatalf("RollbackConfig() error = %v", err)
+	}
+	if newVersion != currentVersion+1 {
+		t.Fatalf("rollback version = %d, want %d", newVersion, currentVersion+1)
+	}
+
+	restored, err := store.GetRoutingRule(ctx, pgTestTenantA, "route_rollback")
+	if err != nil {
+		t.Fatalf("GetRoutingRule() error = %v", err)
+	}
+	if restored.Priority != 10 || restored.ConfigVersion != newVersion {
+		t.Fatalf("restored route = %+v, want priority 10 version %d", restored, newVersion)
+	}
+
+	var auditVersion int64
+	err = pool.QueryRow(ctx,
+		`SELECT config_version FROM config_audit_source
+		 WHERE tenant_id = $1 AND resource_type = $2 AND action = $3
+		 ORDER BY id DESC LIMIT 1`,
+		pgTestTenantA, resourceTypeConfigRollback, configActionRollback,
+	).Scan(&auditVersion)
+	if err != nil {
+		t.Fatalf("read rollback audit: %v", err)
+	}
+	wantVersion, err := dbUint64(auditVersion, "rollback audit version")
+	if err != nil {
+		t.Fatalf("convert rollback audit version: %v", err)
+	}
+	if wantVersion != newVersion {
+		t.Fatalf("rollback audit version = %d, want %d", auditVersion, newVersion)
+	}
+}
+
+func TestPostgresConfigRollbackRejectsRedactedInjectionPolicy(t *testing.T) {
+	pool := newIdentityTestPool(t)
+	seedTenant(t, pool, pgTestTenantA)
+
+	ctx := context.Background()
+	store := NewPostgresConfigStore(pool)
+	actor := ConfigActor{ActorType: configActorTypeAPIKey, ActorID: pgConfigActorID}
+
+	_, targetVersion, err := store.UpsertRoutingRule(ctx, pgTestTenantA, config.RoutingRule{
+		ID: "route_before_secret", Priority: 1, Enabled: true, TargetPoolID: pgConfigPoolA,
+	}, 0, actor)
+	if err != nil {
+		t.Fatalf("UpsertRoutingRule() error = %v", err)
+	}
+
+	_, currentVersion, err := store.UpsertInjectionPolicy(ctx, pgTestTenantA, config.InjectionPolicy{
+		ID:      "inject_secret_rollback",
+		Enabled: true,
+		Operations: []config.InjectionOperation{{
+			Op:          injectionOpSet,
+			HeaderName:  testAuthorizationHeader,
+			ValueBase64: pgConfigEncodedValue,
+		}},
+	}, 0, actor)
+	if err != nil {
+		t.Fatalf("UpsertInjectionPolicy() error = %v", err)
+	}
+
+	_, err = store.RollbackConfig(ctx, pgTestTenantA, ConfigRollbackRequest{
+		ExpectedConfigVersion: currentVersion,
+		TargetConfigVersion:   targetVersion,
+		Reason:                "crosses secret",
+	}, actor)
+	if !errors.Is(err, ErrConfigRollbackSecretRedacted) {
+		t.Fatalf("RollbackConfig() error = %v, want ErrConfigRollbackSecretRedacted", err)
+	}
+}
+
 // TestPostgresConfigStoreWriteIsAtomic proves the resource write, version
 // increment, and audit row share one transaction: a write that fails inside the
 // transaction must leave the tenant config version unchanged.

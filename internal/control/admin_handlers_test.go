@@ -53,6 +53,11 @@ type recordingConfigWrites struct {
 	rateExpected    uint64
 	rateCeiling     *RateLimitCeiling
 	rateActor       ConfigActor
+	rollbackCalled  bool
+	rollbackTenant  string
+	rollbackRequest ConfigRollbackRequest
+	rollbackActor   ConfigActor
+	rollbackErr     error
 	globalWorkerID  string
 	tenantWorkerID  string
 	tenantWorkerTid string
@@ -77,6 +82,18 @@ func (w *recordingConfigWrites) PutRateLimitConfig(_ context.Context, cfg RateLi
 	cfg.ConfigVersion = expectedVersion + 1
 
 	return cfg, nil
+}
+
+func (w *recordingConfigWrites) RollbackConfig(_ context.Context, tenantID string, req ConfigRollbackRequest, actor ConfigActor) (uint64, error) {
+	w.rollbackCalled = true
+	w.rollbackTenant = tenantID
+	w.rollbackRequest = req
+	w.rollbackActor = actor
+	if w.rollbackErr != nil {
+		return 0, w.rollbackErr
+	}
+
+	return req.ExpectedConfigVersion + 1, nil
 }
 
 func (w *recordingConfigWrites) SetGlobalWorkerAdminConfig(_ context.Context, workerID string, _ bool, _ string, _ ConfigActor) error {
