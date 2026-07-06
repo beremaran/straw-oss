@@ -17,16 +17,17 @@ import (
 // (docs/planning/26-config-management-api-surface.md). All handlers
 // authenticate the caller and enforce RBAC before touching any store.
 type AdminHandlers struct {
-	Authenticator *Authenticator
-	APIKeys       APIKeyStore
-	WorkerCreds   WorkerCredentialStore
-	Tenants       TenantStore
-	Quotas        QuotaStore
-	RateLimits    RateLimitConfigStore
-	Audit         AuditStore
-	ConfigCache   *ConfigCache
-	Workers       *WorkerRegistry
-	ConfigWrites  ConfigWriteStore
+	Authenticator  *Authenticator
+	APIKeys        APIKeyStore
+	WorkerCreds    WorkerCredentialStore
+	Tenants        TenantStore
+	Quotas         QuotaStore
+	RateLimits     RateLimitConfigStore
+	PayloadCapture PayloadCapturePolicyStore
+	Audit          AuditStore
+	ConfigCache    *ConfigCache
+	Workers        *WorkerRegistry
+	ConfigWrites   ConfigWriteStore
 	// WorkerAdmin persists durable worker disable state. Optional: nil keeps
 	// runtime-only (single-Control) behavior for unit tests; the binary wires
 	// the Postgres store so disables survive restarts and reach snapshots.
@@ -64,6 +65,7 @@ type AdminHandlers struct {
 type ConfigWriteStore interface {
 	PutQuotaConfig(ctx context.Context, quota QuotaConfig, expectedVersion uint64, actor ConfigActor) (QuotaConfig, error)
 	PutRateLimitConfig(ctx context.Context, cfg RateLimitConfig, expectedVersion uint64, ceiling *RateLimitCeiling, actor ConfigActor) (RateLimitConfig, error)
+	PutPayloadCapturePolicy(ctx context.Context, policy PayloadCapturePolicy, expectedVersion uint64, actor ConfigActor) (PayloadCapturePolicy, error)
 	RollbackConfig(ctx context.Context, tenantID string, req ConfigRollbackRequest, actor ConfigActor) (uint64, error)
 	SetGlobalWorkerAdminConfig(ctx context.Context, workerID string, disabled bool, reason string, actor ConfigActor) error
 	SetTenantWorkerOverrideConfig(ctx context.Context, tenantID, workerID string, disabled bool, reason string, actor ConfigActor) error
@@ -1074,6 +1076,141 @@ func (h *AdminHandlers) PutRateLimits(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.putRateLimits(w, r, identity, tenant, req)
+}
+
+// ---- Payload capture policy (tenant-managed, P2) ----
+
+type payloadCapturePolicyRequest struct {
+	ExpectedConfigVersion uint64   `json:"expected_config_version"`
+	Enabled               bool     `json:"enabled"`
+	AllowedDecisions      []string `json:"allowed_decisions"`
+}
+
+type payloadCapturePolicyResponse struct {
+	TenantID         string   `json:"tenant_id"`
+	Enabled          bool     `json:"enabled"`
+	AllowedDecisions []string `json:"allowed_decisions"`
+	ConfigVersion    uint64   `json:"config_version"`
+}
+
+func toPayloadCapturePolicyResponse(policy PayloadCapturePolicy) payloadCapturePolicyResponse {
+	allowed := make([]string, 0, len(policy.AllowedDecisions))
+	for _, decision := range policy.AllowedDecisions {
+		allowed = append(allowed, string(decision))
+	}
+
+	return payloadCapturePolicyResponse{
+		TenantID: policy.TenantID, Enabled: policy.Enabled,
+		AllowedDecisions: allowed, ConfigVersion: policy.ConfigVersion,
+	}
+}
+
+// GetPayloadCapturePolicy handles GET /api/v1/config/payload-capture.
+func (h *AdminHandlers) GetPayloadCapturePolicy(w http.ResponseWriter, r *http.Request) {
+	identity, ok := h.authorizeConfig(w, r, RoleTenantAdmin, RoleOperator, RoleViewer)
+	if !ok {
+		return
+	}
+
+	if h.PayloadCapture == nil {
+		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
+
+		return
+	}
+
+	policy, err := h.PayloadCapture.Get(r.Context(), identity.TenantID)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
+
+		return
+	}
+
+	writeJSON(w, http.StatusOK, toPayloadCapturePolicyResponse(policy))
+}
+
+// PutPayloadCapturePolicy handles PUT /api/v1/config/payload-capture.
+func (h *AdminHandlers) PutPayloadCapturePolicy(w http.ResponseWriter, r *http.Request) {
+	identity, ok := h.authorizeConfig(w, r, RoleTenantAdmin)
+	if !ok {
+		return
+	}
+
+	if h.PayloadCapture == nil {
+		WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
+
+		return
+	}
+
+	req, allowed, ok := decodePayloadCapturePolicyRequest(w, r)
+	if !ok {
+		return
+	}
+
+	policy := PayloadCapturePolicy{TenantID: identity.TenantID, Enabled: req.Enabled, AllowedDecisions: allowed}
+
+	var oldPolicy *PayloadCapturePolicy
+
+	existing, err := h.PayloadCapture.Get(r.Context(), identity.TenantID)
+	if err == nil {
+		oldPolicy = &existing
+	}
+
+	var (
+		saved    PayloadCapturePolicy
+		writeErr error
+	)
+	if h.ConfigWrites != nil {
+		saved, writeErr = h.ConfigWrites.PutPayloadCapturePolicy(r.Context(), policy, req.ExpectedConfigVersion, configActor(identity))
+	} else {
+		saved, writeErr = h.PayloadCapture.Put(r.Context(), policy, req.ExpectedConfigVersion)
+	}
+
+	if writeErr != nil {
+		h.writePayloadCaptureError(w, writeErr)
+
+		return
+	}
+
+	recordAudit(r.Context(), h.Audit, identity, "payload_capture_policy", identity.TenantID, "update", saved.ConfigVersion, "", oldPolicy, saved, h.ConfigWrites != nil)
+	h.ConfigCache.PublishInvalidation(r.Context(), identity.TenantID, saved.ConfigVersion)
+	writeJSON(w, http.StatusOK, toPayloadCapturePolicyResponse(saved))
+}
+
+func decodePayloadCapturePolicyRequest(w http.ResponseWriter, r *http.Request) (payloadCapturePolicyRequest, []CaptureDecision, bool) {
+	var req payloadCapturePolicyRequest
+
+	err := decodeJSONBody(r, &req)
+	if err != nil {
+		WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", nil))
+
+		return payloadCapturePolicyRequest{}, nil, false
+	}
+
+	allowed := make([]CaptureDecision, 0, len(req.AllowedDecisions))
+	for _, raw := range req.AllowedDecisions {
+		decision := CaptureDecision(raw)
+		if !validCaptureDecision(decision) {
+			WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", map[string]string{
+				errorDetailReasonKey: "invalid allowed_decisions value",
+			}))
+
+			return payloadCapturePolicyRequest{}, nil, false
+		}
+
+		allowed = append(allowed, decision)
+	}
+
+	return req, allowed, true
+}
+
+func (h *AdminHandlers) writePayloadCaptureError(w http.ResponseWriter, err error) {
+	if errors.Is(err, ErrPayloadCaptureVersionConflict) {
+		WriteError(w, http.StatusConflict, ErrorResponseFromCode(Conflict, "", nil))
+
+		return
+	}
+
+	WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
 }
 
 func (h *AdminHandlers) putRateLimits(w http.ResponseWriter, r *http.Request, identity Identity, tenant Tenant, req rateLimitPutRequest) {

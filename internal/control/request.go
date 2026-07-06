@@ -122,6 +122,11 @@ type ValidatedRequest struct {
 
 // ValidateRequest parses and validates a RequestEnvelope against config limits.
 func ValidateRequest(raw []byte, maxRequestBodyBytes, maxTimeoutMs uint64) (*ValidatedRequest, error) {
+	return ValidateRequestWithCapturePolicy(raw, maxRequestBodyBytes, maxTimeoutMs, defaultPayloadCapturePolicy(""))
+}
+
+// ValidateRequestWithCapturePolicy validates a request against tenant capture policy.
+func ValidateRequestWithCapturePolicy(raw []byte, maxRequestBodyBytes, maxTimeoutMs uint64, capturePolicy PayloadCapturePolicy) (*ValidatedRequest, error) {
 	var env RequestEnvelope
 
 	dec := json.NewDecoder(strings.NewReader(string(raw)))
@@ -157,7 +162,7 @@ func ValidateRequest(raw []byte, maxRequestBodyBytes, maxTimeoutMs uint64) (*Val
 		return nil, err
 	}
 
-	err = validateCaptureHint(env.CaptureHint)
+	err = validateCaptureHint(env.CaptureHint, capturePolicy)
 	if err != nil {
 		return nil, err
 	}
@@ -408,12 +413,12 @@ func validateTimeout(timeoutMs, maxTimeoutMs uint64) (uint64, error) {
 	return timeoutMs, nil
 }
 
-func validateCaptureHint(hint string) error {
-	if hint == "" || hint == "none" {
+func validateCaptureHint(hint string, policy PayloadCapturePolicy) error {
+	if payloadCaptureAllows(hint, policy) {
 		return nil
 	}
 
-	return &ValidationError{Code: errorCodeInvalidRequest, Message: "capture_hint must be absent or none in P0"}
+	return &ValidationError{Code: errorCodeInvalidRequest, Message: "capture_hint is not allowed by tenant payload capture policy"}
 }
 
 // ValidationError is a structured validation error.

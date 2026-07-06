@@ -67,8 +67,9 @@ func (h *RequestHandler) ServeStreamHTTP(w http.ResponseWriter, r *http.Request)
 	}
 
 	policy := h.tenantPolicy(r.Context(), identity.TenantID)
+	capturePolicy := h.payloadCapturePolicy(r.Context(), identity.TenantID)
 
-	validated, err := ValidateRequest(body, h.maxRequestBodyBytes, effectiveMaxTimeout(h.maxTimeoutMs, policy.MaxTimeoutMs))
+	validated, err := ValidateRequestWithCapturePolicy(body, h.maxRequestBodyBytes, effectiveMaxTimeout(h.maxTimeoutMs, policy.MaxTimeoutMs), capturePolicy)
 	if err != nil {
 		var verr *ValidationError
 		if asValidationError(err, &verr) {

@@ -1,6 +1,6 @@
 # 09 - Payload Capture Policy
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -30,17 +30,17 @@ Add the tenant payload-capture policy schema and config API.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Define the `/api/v1/config/payload-capture` schema because Section 26 defers it until implementation starts.
-- [ ] Implement `GET /api/v1/config/payload-capture` for tenant_admin, operator, and viewer.
-- [ ] Implement `PUT /api/v1/config/payload-capture` for tenant_admin.
-- [ ] Keep policy disabled by default.
-- [ ] Extend request validation so `capture_hint` accepts only values allowed by the tenant policy.
-- [ ] Add tests for schema validation, roles, disabled default, capture_hint authorization, conflict handling, and audit
+- [x] Read all required planning docs.
+- [x] Define the `/api/v1/config/payload-capture` schema because Section 26 defers it until implementation starts.
+- [x] Implement `GET /api/v1/config/payload-capture` for tenant_admin, operator, and viewer.
+- [x] Implement `PUT /api/v1/config/payload-capture` for tenant_admin.
+- [x] Keep policy disabled by default.
+- [x] Extend request validation so `capture_hint` accepts only values allowed by the tenant policy.
+- [x] Add tests for schema validation, roles, disabled default, capture_hint authorization, conflict handling, and audit
       redaction.
-- [ ] Run focused payload-capture policy tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Run focused payload-capture policy tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 
