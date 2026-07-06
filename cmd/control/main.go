@@ -142,10 +142,8 @@ func runControl(controlConfig config.ControlConfig, natsConn *natsx.Connection) 
 
 	configCache := wireConfigInvalidation(ctx, configStore, redisClient)
 
-	chWriters := wireClickHouseWriters(controlConfig.Database.ClickHouse)
+	chWriters := wireTelemetry(controlConfig.Database.ClickHouse, workerRegistry)
 	defer chWriters.Close()
-
-	workerRegistry.SetEventRecorder(chWriters.workerEvents)
 
 	metricsReg, metrics := wireMetrics(workerRegistry, chWriters)
 
@@ -448,9 +446,16 @@ func wireConfigInvalidation(ctx context.Context, configStore *control.PostgresCo
 	return configCache
 }
 
-// clickHouseWriters holds the three async ClickHouse event writers
-// (docs/tasks/p0/32): request_events, worker_events, and config_audit_events.
-// All three share one HTTP sink and the same queue/batch/flush tuning; any
+func wireTelemetry(cfg config.ClickHouseConfig, workerRegistry *control.WorkerRegistry) *clickHouseWriters {
+	chWriters := wireClickHouseWriters(cfg)
+	wireLogEvents(chWriters)
+	workerRegistry.SetEventRecorder(chWriters.workerEvents)
+
+	return chWriters
+}
+
+// clickHouseWriters holds the async ClickHouse event writers. They share one
+// HTTP sink and the same queue/batch/flush tuning; any
 // field is nil when no ClickHouse endpoint is configured, in which case
 // Control records no telemetry for that table.
 type clickHouseWriters struct {
@@ -458,6 +463,7 @@ type clickHouseWriters struct {
 	requestMetadata *control.RequestMetadataWriter
 	workerEvents    *control.WorkerEventWriter
 	configAudit     *control.ConfigAuditEventWriter
+	logEvents       *control.LogEventWriter
 }
 
 // SetMetrics attaches the shared Prometheus metrics recorder to every writer.
@@ -469,16 +475,17 @@ func (w *clickHouseWriters) SetMetrics(m *control.Metrics) {
 	w.requestMetadata.SetMetrics(m)
 	w.workerEvents.SetMetrics(m)
 	w.configAudit.SetMetrics(m)
+	w.logEvents.SetMetrics(m)
 }
 
-// QueueDepth sums the buffered event count across all three writers for the
+// QueueDepth sums the buffered event count across all writers for the
 // single straw_clickhouse_write_queue_depth gauge (docs/planning/23).
 func (w *clickHouseWriters) QueueDepth() int {
 	if w == nil || w.requestMetadata == nil {
 		return 0
 	}
 
-	return w.requestMetadata.QueueDepth() + w.workerEvents.QueueDepth() + w.configAudit.QueueDepth()
+	return w.requestMetadata.QueueDepth() + w.workerEvents.QueueDepth() + w.configAudit.QueueDepth() + w.logEvents.QueueDepth()
 }
 
 // Close stops every writer's background flush loop and drains its queue.
@@ -490,6 +497,7 @@ func (w *clickHouseWriters) Close() {
 	w.requestMetadata.Close()
 	w.workerEvents.Close()
 	w.configAudit.Close()
+	w.logEvents.Close()
 }
 
 // wireClickHouseWriters builds the async event writers backed by the live
@@ -521,7 +529,16 @@ func wireClickHouseWriters(cfg config.ClickHouseConfig) *clickHouseWriters {
 		requestMetadata: control.NewRequestMetadataWriter(sink, cfg.MaxQueueEntries, cfg.BatchSize, flushInterval),
 		workerEvents:    control.NewWorkerEventWriter(sink, cfg.MaxQueueEntries, cfg.BatchSize, flushInterval),
 		configAudit:     control.NewConfigAuditEventWriter(sink, cfg.MaxQueueEntries, cfg.BatchSize, flushInterval),
+		logEvents:       control.NewLogEventWriter(sink, cfg.MaxQueueEntries, cfg.BatchSize, flushInterval),
 	}
+}
+
+func wireLogEvents(chWriters *clickHouseWriters) {
+	if chWriters == nil || chWriters.logEvents == nil {
+		return
+	}
+
+	slog.SetDefault(slog.New(logging.NewTeeHandler(logging.NewHandler(os.Stdout), chWriters.logEvents)).With("service", "control"))
 }
 
 // openPostgres connects to Postgres and applies the embedded migrations. The

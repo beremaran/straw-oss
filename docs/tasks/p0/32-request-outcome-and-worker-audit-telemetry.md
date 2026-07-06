@@ -35,8 +35,9 @@ adds outcome accuracy and the two missing write paths.
 
 - Do not implement telemetry read APIs or dashboards (P1).
 - Do not implement payload capture (P2).
-- Do not build the `log_events` ingestion pipeline; the owning follow-up is
-  `docs/tasks/p1/20-log-events-ingestion.md`.
+- Do not build the `log_events` ingestion pipeline; Control-local ingestion is owned by
+  `docs/tasks/p1/20-log-events-ingestion.md`, and Egress-to-Control log transport is owned by
+  `docs/tasks/p1/27-egress-log-events-nats-transport.md`.
 
 ## Expected Files
 
@@ -64,7 +65,8 @@ adds outcome accuracy and the two missing write paths.
       routing/deny/injection/pool config, worker admin, request cancel) with tenant/actor/resource/action, but
       does not thread `field_path`/`old_value_json`/`new_value_json`/`config_version` from the separate
       `insertConfigAudit`/`writeTenantConfig` Postgres path — see the task 32 handoff's Remaining Work.
-- [x] Document the `log_events` deferral, naming `docs/tasks/p1/20-log-events-ingestion.md` as the owning follow-up.
+- [x] Document the `log_events` deferral, naming `docs/tasks/p1/20-log-events-ingestion.md` and
+      `docs/tasks/p1/27-egress-log-events-nats-transport.md` as owning follow-ups.
 - [x] Add tests for: a completed request producing a `request_events` row with real status/timings/sizes; a failed
       request producing a row with the canonical `error_code`/category; `worker_events` and `config_audit_events`
       rows written; transport unaffected by a sink outage (fake sink); redaction still holds.
@@ -87,8 +89,8 @@ adds outcome accuracy and the two missing write paths.
 ## Handoff Notes
 
 - Document the outcome-capture point in the pipeline and the fields written per table.
-- List fields intentionally omitted and the `log_events` deferral's owning task
-  (`docs/tasks/p1/20-log-events-ingestion.md`).
+- List fields intentionally omitted and the `log_events` deferral's owning tasks
+  (`docs/tasks/p1/20-log-events-ingestion.md` and `docs/tasks/p1/27-egress-log-events-nats-transport.md`).
 
 ## Stop Conditions
 

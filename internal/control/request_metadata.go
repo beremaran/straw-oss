@@ -13,6 +13,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/beremaran/straw/v2/internal/logging"
 )
 
 const (
@@ -396,6 +398,11 @@ func (s *HTTPClickHouseSink) WriteWorkerEvents(ctx context.Context, events []Wor
 // config_audit_events table (docs/tasks/p0/32).
 func (s *HTTPClickHouseSink) WriteConfigAuditEvents(ctx context.Context, events []ConfigAuditEvent) error {
 	return insertClickHouseRows(ctx, s, configAuditEventsTable, events)
+}
+
+// WriteLogEvents posts JSONEachRow records to ClickHouse's log_events table.
+func (s *HTTPClickHouseSink) WriteLogEvents(ctx context.Context, events []logging.LogEvent) error {
+	return insertClickHouseRows(ctx, s, logEventsTable, events)
 }
 
 // insertClickHouseRows encodes rows as newline-delimited JSON and posts them

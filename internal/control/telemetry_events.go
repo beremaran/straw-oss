@@ -7,11 +7,13 @@ import (
 	"time"
 
 	strawpb "github.com/beremaran/straw/v2/api/proto/straw/v1"
+	"github.com/beremaran/straw/v2/internal/logging"
 )
 
 const (
 	workerEventsTable      = "worker_events"
 	configAuditEventsTable = "config_audit_events"
+	logEventsTable         = "log_events"
 
 	workerEventRegister      = "register"
 	workerEventHeartbeat     = "heartbeat"
@@ -26,7 +28,7 @@ const (
 )
 
 // asyncEventQueue is a bounded, batch-flushing async writer. It backs every
-// ClickHouse event sink (request/worker/config-audit) so the drop-oldest
+// ClickHouse event sink so the drop-oldest
 // batching and outage-tolerance behavior (docs/planning/22: "Request
 // transport does not block on ClickHouse") is defined once instead of once
 // per table.
@@ -43,6 +45,73 @@ type asyncEventQueue[T any] struct {
 	stopOnce sync.Once
 	stopCh   chan struct{}
 	doneCh   chan struct{}
+}
+
+// LogEventSink writes log_events batches to ClickHouse.
+type LogEventSink interface {
+	WriteLogEvents(ctx context.Context, events []logging.LogEvent) error
+}
+
+// LogEventWriter buffers log_events and flushes them to ClickHouse
+// asynchronously, using the same bounded queue as the other ClickHouse rows.
+type LogEventWriter struct {
+	q *asyncEventQueue[logging.LogEvent]
+}
+
+// NewLogEventWriter creates an async buffered writer for log_events.
+func NewLogEventWriter(sink LogEventSink, maxEntries, batchSize int, flushInterval time.Duration) *LogEventWriter {
+	var write func(context.Context, []logging.LogEvent) error
+	if sink != nil {
+		write = sink.WriteLogEvents
+	}
+
+	return &LogEventWriter{q: newAsyncEventQueue(write, maxEntries, batchSize, flushInterval)}
+}
+
+// SetMetrics attaches the Prometheus metrics recorder. Not concurrency-safe
+// with Flush/Enqueue; call immediately after construction.
+func (w *LogEventWriter) SetMetrics(m *Metrics) {
+	if w == nil {
+		return
+	}
+
+	w.q.SetMetrics(m)
+}
+
+// QueueDepth returns the current buffered event count.
+func (w *LogEventWriter) QueueDepth() int {
+	if w == nil {
+		return 0
+	}
+
+	return w.q.QueueDepth()
+}
+
+// Enqueue adds a log row to the bounded queue.
+func (w *LogEventWriter) Enqueue(event logging.LogEvent) {
+	if w == nil {
+		return
+	}
+
+	w.q.Enqueue(event)
+}
+
+// Flush writes queued events in batches.
+func (w *LogEventWriter) Flush(ctx context.Context) error {
+	if w == nil {
+		return nil
+	}
+
+	return w.q.Flush(ctx)
+}
+
+// Close stops the background flush loop and drains the queue once.
+func (w *LogEventWriter) Close() {
+	if w == nil {
+		return
+	}
+
+	w.q.Close()
 }
 
 func newAsyncEventQueue[T any](write func(context.Context, []T) error, maxEntries, batchSize int, flushInterval time.Duration) *asyncEventQueue[T] {

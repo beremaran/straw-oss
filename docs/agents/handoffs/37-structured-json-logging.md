@@ -59,8 +59,9 @@ Result: all pass, including `golangci-lint run --max-issues-per-linter 0 --max-s
 
 ## Remaining Work
 
-- None for this task's scope. Shipping these JSON logs to the ClickHouse `log_events` table remains deferred to
-  `docs/tasks/p1/20-log-events-ingestion.md`, as noted in the task file.
+- None for this task's scope. **[Update 2026-07-06: Control-local `log_events` ingestion is now implemented by
+  `docs/tasks/p1/20-log-events-ingestion.md`; Egress logs over NATS remain owned by
+  `docs/tasks/p1/27-egress-log-events-nats-transport.md`.]**
 
 ## Blockers
 

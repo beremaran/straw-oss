@@ -100,7 +100,7 @@ func newRequestMetrics() *Metrics {
 func newAdmissionMetrics() (prometheus.Counter, *prometheus.CounterVec, *prometheus.CounterVec) {
 	clickhouseWriteErrors := prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "straw_clickhouse_write_errors_total",
-		Help: "Failed ClickHouse request-metadata batch writes.",
+		Help: "Failed ClickHouse telemetry batch writes.",
 	})
 
 	rateLimitRejections := prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -255,7 +255,7 @@ func RegisterWorkerCollector(reg prometheus.Registerer, source workerStatsSource
 func RegisterClickHouseQueueDepth(reg prometheus.Registerer, source clickHouseQueueSource) {
 	reg.MustRegister(prometheus.NewGaugeFunc(prometheus.GaugeOpts{
 		Name: "straw_clickhouse_write_queue_depth",
-		Help: "Buffered request-metadata events awaiting a ClickHouse write.",
+		Help: "Buffered telemetry events awaiting a ClickHouse write.",
 	}, func() float64 {
 		return float64(source.QueueDepth())
 	}))

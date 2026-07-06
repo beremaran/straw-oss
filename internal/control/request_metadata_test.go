@@ -11,6 +11,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/beremaran/straw/v2/internal/logging"
 )
 
 const (
@@ -21,12 +23,46 @@ const (
 	testAuthorizationHeader            = "Authorization"
 	requestMetadataTestKeyActor        = "key_actor"
 	requestMetadataTestTenantActor     = "ten_actor"
+	requestMetadataTestLogFirst        = "first"
+	requestMetadataTestLogStarted      = "started"
 )
 
 type recordingRequestEventSink struct {
 	mu      sync.Mutex
 	batches [][]RequestEvent
 	err     error
+}
+
+type recordingLogEventSink struct {
+	mu      sync.Mutex
+	batches [][]logging.LogEvent
+	err     error
+}
+
+func (s *recordingLogEventSink) WriteLogEvents(_ context.Context, events []logging.LogEvent) error {
+	if s.err != nil {
+		return s.err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	batch := append([]logging.LogEvent(nil), events...)
+	s.batches = append(s.batches, batch)
+
+	return nil
+}
+
+func (s *recordingLogEventSink) events() []logging.LogEvent {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var events []logging.LogEvent
+	for _, batch := range s.batches {
+		events = append(events, batch...)
+	}
+
+	return events
 }
 
 func (s *recordingRequestEventSink) WriteRequestEvents(_ context.Context, events []RequestEvent) error {
@@ -293,6 +329,79 @@ func TestRequestMetadataWriterDropsOldestWhenFull(t *testing.T) {
 	}
 }
 
+func TestLogEventWriterFlushSuccess(t *testing.T) {
+	t.Parallel()
+
+	sink := &recordingLogEventSink{}
+	writer := NewLogEventWriter(sink, 10, 10, time.Hour)
+	t.Cleanup(writer.Close)
+
+	writer.Enqueue(logging.LogEvent{Service: errorCategoryControl, Message: requestMetadataTestLogStarted})
+
+	err := writer.Flush(context.Background())
+	if err != nil {
+		t.Fatalf("Flush() error = %v", err)
+	}
+
+	events := sink.events()
+	if len(events) != 1 {
+		t.Fatalf("events len = %d, want 1", len(events))
+	}
+	if events[0].Service != errorCategoryControl || events[0].Message != requestMetadataTestLogStarted {
+		t.Fatalf("event = %+v, want control %s", events[0], requestMetadataTestLogStarted)
+	}
+}
+
+func TestLogEventWriterOutageKeepsQueuedEvents(t *testing.T) {
+	t.Parallel()
+
+	sink := &recordingLogEventSink{err: errors.New("clickhouse down")}
+	writer := NewLogEventWriter(sink, 10, 10, time.Hour)
+	t.Cleanup(writer.Close)
+
+	writer.Enqueue(logging.LogEvent{Message: requestMetadataTestLogFirst})
+
+	err := writer.Flush(context.Background())
+	if err == nil {
+		t.Fatal("Flush() error = nil, want outage error")
+	}
+	if len(sink.events()) != 0 {
+		t.Fatalf("events len = %d, want 0 after failed flush", len(sink.events()))
+	}
+
+	sink.err = nil
+	err = writer.Flush(context.Background())
+	if err != nil {
+		t.Fatalf("Flush() retry error = %v", err)
+	}
+
+	events := sink.events()
+	if len(events) != 1 || events[0].Message != requestMetadataTestLogFirst {
+		t.Fatalf("events = %+v, want retried first event", events)
+	}
+}
+
+func TestLogEventWriterDropsOldestWhenFull(t *testing.T) {
+	t.Parallel()
+
+	sink := &recordingLogEventSink{}
+	writer := NewLogEventWriter(sink, 1, 1, time.Hour)
+	t.Cleanup(writer.Close)
+
+	writer.Enqueue(logging.LogEvent{Message: requestMetadataTestLogFirst})
+	writer.Enqueue(logging.LogEvent{Message: "second"})
+
+	err := writer.Flush(context.Background())
+	if err != nil {
+		t.Fatalf("Flush() error = %v", err)
+	}
+
+	events := sink.events()
+	if len(events) != 1 || events[0].Message != "second" {
+		t.Fatalf("events = %+v, want only newest event", events)
+	}
+}
+
 func TestRequestHandlerQueuesSanitizedMetadata(t *testing.T) {
 	t.Parallel()
 
@@ -512,5 +621,37 @@ func TestHTTPClickHouseSinkRequestFormat(t *testing.T) {
 	}
 	if !strings.Contains(gotBody, `"timestamp":"2026-07-04T16:44:11`) {
 		t.Fatalf("body timestamp not RFC3339 as expected: %s", gotBody)
+	}
+}
+
+func TestHTTPClickHouseSinkLogEventsRequestFormat(t *testing.T) {
+	var gotQuery url.Values
+	var gotBody string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.Query()
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	sink := NewHTTPClickHouseSink(srv.URL, "straw", "", "", srv.Client())
+	err := sink.WriteLogEvents(context.Background(), []logging.LogEvent{{
+		Timestamp: time.Date(2026, 7, 6, 12, 0, 0, 0, time.UTC),
+		Service:   errorCategoryControl,
+		Level:     "INFO",
+		Message:   requestMetadataTestLogStarted,
+		Extra:     map[string]string{"pool_id": "pool-1"},
+	}})
+	if err != nil {
+		t.Fatalf("WriteLogEvents() error = %v", err)
+	}
+
+	if got := gotQuery.Get("query"); got != "INSERT INTO log_events FORMAT JSONEachRow" {
+		t.Fatalf("query = %q", got)
+	}
+	if !strings.Contains(gotBody, `"service":"`+errorCategoryControl+`"`) || !strings.Contains(gotBody, `"extra":{"pool_id":"pool-1"}`) {
+		t.Fatalf("body = %s, want log event row", gotBody)
 	}
 }
