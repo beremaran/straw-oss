@@ -215,10 +215,18 @@ func (s *tunnelStreamState) nextTunnelEvent(ctx context.Context, deadline time.T
 
 		return true, &PipelineError{Code: TimeoutExceeded, TimeoutType: timeoutTypeTotalDeadline}
 	case <-ticks:
+		if s.dispatcher.natsDisconnected() {
+			return true, s.dispatcher.streamLost(s.route, TransportUnavailable)
+		}
+
 		return s.idleEvent(validator)
 	case err := <-s.clientErr:
 		return s.clientEvent(err)
-	case frame := <-frames:
+	case frame, ok := <-frames:
+		if !ok {
+			return true, s.dispatcher.streamLost(s.route, WorkerDisconnected)
+		}
+
 		return s.acceptValidated(frame, validator)
 	}
 }

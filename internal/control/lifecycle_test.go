@@ -72,6 +72,45 @@ func TestAssignmentPreStartFailuresAllowFallback(t *testing.T) {
 	}
 }
 
+func TestAssignmentWorkerLossBeforeRequestStartAllowsFallback(t *testing.T) {
+	t.Parallel()
+
+	a := NewAssignment("req_1", "ten_a", "worker_1", "sess_1", 1, false)
+	if !a.OnAssignAck(strawpb.AssignAckCode_ASSIGN_ACK_ACCEPTED) {
+		t.Fatal("accepted ack rejected")
+	}
+	if !a.SynthesizeTerminal(strawpb.ErrorCode_ERROR_CODE_WORKER_DISCONNECTED) {
+		t.Fatal("pre-start worker loss did not synthesize terminal outcome")
+	}
+	if !a.CanFallback() {
+		t.Fatal("worker loss before RequestStart should allow fallback")
+	}
+}
+
+func TestAssignmentOutboundStartDoesNotRelaxFallbackBoundary(t *testing.T) {
+	t.Parallel()
+
+	nonReplayable := NewAssignment("req_1", "ten_a", "worker_1", "sess_1", 1, false)
+	if !nonReplayable.OnAssignAck(strawpb.AssignAckCode_ASSIGN_ACK_ACCEPTED) || !nonReplayable.MarkRequestStart() {
+		t.Fatal("failed to start non-replayable assignment")
+	}
+	if nonReplayable.CanFallback() {
+		t.Fatal("non-replayable request must not fallback after RequestStart, even before OutboundStart")
+	}
+
+	replayable := NewAssignment("req_2", "ten_a", "worker_1", "sess_1", 1, true)
+	if !replayable.OnAssignAck(strawpb.AssignAckCode_ASSIGN_ACK_ACCEPTED) || !replayable.MarkRequestStart() {
+		t.Fatal("failed to start replayable assignment")
+	}
+	if !replayable.CanFallback() {
+		t.Fatal("replayable request may fallback after RequestStart until client response starts")
+	}
+	replayable.MarkClientResponded()
+	if replayable.CanFallback() {
+		t.Fatal("client-visible response forbids fallback; OutboundStart is not a separate P1 replay boundary")
+	}
+}
+
 func TestAssignmentFallbackBoundaryAndAdminCancel(t *testing.T) {
 	t.Parallel()
 
