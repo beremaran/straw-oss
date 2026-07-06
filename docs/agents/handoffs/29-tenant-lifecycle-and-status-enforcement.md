@@ -80,6 +80,8 @@ Additionally ran against a live Postgres (`docker compose up -d postgres`,
 - P1 tenant fields (`default_timeout_ms`, `max_timeout_ms`,
   `metadata_query_storage`, `metadata_path_storage`) are out of scope per
   the task's "Out of Scope" section and were not added.
+  **[Update 2026-07-06: the "P1" label was wrong — `docs/planning/26` lists all four under "P0 Config Resource
+  Schemas". Now owned by `docs/tasks/p0/46-tenant-p0-schema-fields.md`.]**
 
 ## Blockers
 

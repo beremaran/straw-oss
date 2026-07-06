@@ -47,6 +47,8 @@ Result: all tests pass, 0 linter issues.
   (single `DataFrame`), and the initial download credit (8 MiB) exceeds the inline response body
   limit (1 MiB by default), so credit is never exhausted in practice. Real streaming credit
   replenishment is a P1 concern.
+  **[Update 2026-07-06: owned by `docs/tasks/p1/24-streaming-credit-replenishment.md`, which covers both the
+  egress chunked credit-bounded send and Control's c2e `CreditFrame` replenishment.]**
 
 ## Blockers
 
