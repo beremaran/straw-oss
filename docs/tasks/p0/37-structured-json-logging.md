@@ -14,7 +14,9 @@ The 2026-07-04 review follow-up found no structured logging anywhere: `log/slog`
 through plain `log.Printf` in `cmd/control/main.go`, `cmd/egress/main.go`, and
 `internal/control/invalidation_redis.go`. `docs/planning/23` requires structured JSON logs from all services. The
 call-site count is small, so this is a mechanical conversion plus a `service` attribute per binary. Shipping logs to
-the ClickHouse `log_events` table is a separate, deferred concern owned by `docs/tasks/p1/20-log-events-ingestion.md`.
+the ClickHouse `log_events` table is a separate, deferred concern: Control-local ingestion is owned by
+`docs/tasks/p1/20-log-events-ingestion.md`, and Egress-to-Control log transport is owned by
+`docs/tasks/p1/27-egress-log-events-nats-transport.md`.
 
 ## Required Planning Docs
 
@@ -27,7 +29,9 @@ the ClickHouse `log_events` table is a separate, deferred concern owned by `docs
 
 ## Out of Scope
 
-- Do not build the ClickHouse `log_events` ingestion pipeline (owned by `docs/tasks/p1/20-log-events-ingestion.md`).
+- Do not build the ClickHouse `log_events` ingestion pipeline (Control side owned by
+  `docs/tasks/p1/20-log-events-ingestion.md`; Egress transport owned by
+  `docs/tasks/p1/27-egress-log-events-nats-transport.md`).
 - Do not add new log lines beyond converting existing ones and wiring the handler; per-request debug logging is not a
   P0 requirement.
 - Do not add a logging dependency; stdlib `log/slog` only.
@@ -63,7 +67,7 @@ the ClickHouse `log_events` table is a separate, deferred concern owned by `docs
   fields appear where available.
 - `worker_id` appears only in internal (Control/Egress service) logs, never in client-facing responses.
 - No secret values are logged; the `log_events` ClickHouse deferral names
-  `docs/tasks/p1/20-log-events-ingestion.md` as owner.
+  `docs/tasks/p1/20-log-events-ingestion.md` and `docs/tasks/p1/27-egress-log-events-nats-transport.md` as owners.
 
 ## Handoff Notes
 

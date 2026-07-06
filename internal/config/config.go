@@ -119,10 +119,9 @@ type RedisConfig struct {
 	WriteTimeoutMS int    `json:"write_timeout_ms"`
 }
 
-// ClickHouseConfig configures the async request-metadata write path
-// (docs/planning/22). It is optional: when Endpoint is empty, Control does not
-// write telemetry (the recorder stays a no-op) and the request transport is
-// unaffected.
+// ClickHouseConfig configures async telemetry writes (docs/planning/22). It is
+// optional: when Endpoint is empty, Control does not write telemetry (the
+// recorders stay no-op) and request transport is unaffected.
 type ClickHouseConfig struct {
 	Endpoint        string `json:"endpoint"`
 	Database        string `json:"database"`
