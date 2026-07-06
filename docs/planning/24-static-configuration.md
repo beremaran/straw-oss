@@ -109,7 +109,8 @@ these full paths.
 `egress.worker_id` and `egress.credential_id` are implemented as flat top-level keys (not nested under
 `egress.credential`), a pre-existing gap predating task 35. `egress.private_key_ed25519_env` (added by task 35) is
 likewise flat, alongside them, rather than `egress.credential.private_key_env`, for consistency with the fields it
-sits next to. Reconciling the nested `egress.credential.*` shape into the implemented flat shape has no owning task.
+sits next to. Reconciling the nested `egress.credential.*` shape into the implemented flat shape is owned by
+`docs/tasks/p1/22-egress-credential-config-schema-reconciliation.md`.
 
 ### Control Config Example
 
