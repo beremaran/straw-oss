@@ -235,7 +235,7 @@ func (d *DefaultRequestDispatcher) dispatch(ctx context.Context, in DispatchInpu
 		return SuccessResponse{}, d.withTiming(validationPipelineError(verr), routingMs, 0, started)
 	}
 
-	deadline := d.deadline(in.Request)
+	deadline := d.deadline(in.Request, snapshot)
 
 	result, assignmentMs, perr := d.executeAttempt(ctx, in, route, policy, snapshot.ConfigVersion, deadline)
 	if perr != nil {
@@ -295,7 +295,7 @@ func (d *DefaultRequestDispatcher) dispatchRaw(ctx context.Context, in DispatchI
 		return SuccessResponse{}, d.withTiming(validationPipelineError(verr), routingMs, 0, started), false
 	}
 
-	deadline := d.deadline(in.Request)
+	deadline := d.deadline(in.Request, snapshot)
 
 	result, assignmentMs, perr, wroteHeader := d.executeRawAttempt(ctx, in, route, policy, snapshot.ConfigVersion, deadline, w)
 	if perr != nil {
@@ -1007,10 +1007,10 @@ func expectedUploadBytes(req *ValidatedRequest) int64 {
 	return int64(len(req.BodyData))
 }
 
-func (d *DefaultRequestDispatcher) deadline(req *ValidatedRequest) time.Time {
+func (d *DefaultRequestDispatcher) deadline(req *ValidatedRequest, snapshot config.TenantSnapshot) time.Time {
 	timeoutMs := req.TimeoutMs
 	if timeoutMs == 0 {
-		timeoutMs = d.opts.MaxTimeoutMs
+		timeoutMs = effectiveDefaultTimeout(d.opts.MaxTimeoutMs, snapshot.DefaultTimeoutMs)
 	}
 
 	if timeoutMs == 0 {
@@ -1018,6 +1018,18 @@ func (d *DefaultRequestDispatcher) deadline(req *ValidatedRequest) time.Time {
 	}
 
 	return d.opts.Now().Add(time.Duration(timeoutMs) * time.Millisecond)
+}
+
+func effectiveDefaultTimeout(staticMax, tenantDefault uint64) uint64 {
+	if tenantDefault == 0 {
+		tenantDefault = defaultTenantDefaultTimeoutMs
+	}
+
+	if staticMax != 0 && tenantDefault > staticMax {
+		return staticMax
+	}
+
+	return tenantDefault
 }
 
 type dispatchResult struct {

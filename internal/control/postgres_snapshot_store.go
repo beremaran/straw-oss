@@ -173,6 +173,7 @@ func assembleTenantSnapshot(ctx context.Context, tx pgx.Tx, tenantID string, req
 	snapshot.ConfigVersion = version
 
 	readers := []func(context.Context, pgx.Tx, string, *config.TenantSnapshot) error{
+		readTenantPolicy,
 		readRevokedAPIKeys,
 		readRoutingRules,
 		readExecutorPools,
@@ -193,6 +194,38 @@ func assembleTenantSnapshot(ctx context.Context, tx pgx.Tx, tenantID string, req
 	}
 
 	return snapshot, nil
+}
+
+func readTenantPolicy(ctx context.Context, tx pgx.Tx, tenantID string, snap *config.TenantSnapshot) error {
+	var defaultTimeout, maxTimeout int64
+
+	var queryStorage, pathStorage string
+
+	err := tx.QueryRow(ctx,
+		`SELECT default_timeout_ms, max_timeout_ms, metadata_query_storage, metadata_path_storage
+		 FROM tenants WHERE id = $1`,
+		tenantID,
+	).Scan(&defaultTimeout, &maxTimeout, &queryStorage, &pathStorage)
+	if err != nil {
+		return fmt.Errorf("read tenant policy: %w", err)
+	}
+
+	defaultMs, err := dbUint64(defaultTimeout, "tenant default timeout")
+	if err != nil {
+		return err
+	}
+
+	maxMs, err := dbUint64(maxTimeout, "tenant max timeout")
+	if err != nil {
+		return err
+	}
+
+	snap.DefaultTimeoutMs = defaultMs
+	snap.MaxTimeoutMs = maxMs
+	snap.MetadataQueryStorage = queryStorage
+	snap.MetadataPathStorage = pathStorage
+
+	return nil
 }
 
 func readTenantVersion(ctx context.Context, tx pgx.Tx, tenantID string) (uint64, error) {

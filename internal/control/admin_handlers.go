@@ -122,26 +122,39 @@ type tenantRateLimitCeilingJSON struct {
 type tenantUpdateRequest struct {
 	Name                  string                      `json:"name"`
 	Status                string                      `json:"status"`
+	DefaultTimeoutMs      uint64                      `json:"default_timeout_ms"`
+	MaxTimeoutMs          uint64                      `json:"max_timeout_ms"`
+	MetadataQueryStorage  string                      `json:"metadata_query_storage"`
+	MetadataPathStorage   string                      `json:"metadata_path_storage"`
 	RateLimitCeiling      *tenantRateLimitCeilingJSON `json:"rate_limit_ceiling"`
 	ExpectedConfigVersion uint64                      `json:"expected_config_version"`
 }
 
 type tenantResponse struct {
-	ID               string                      `json:"id"`
-	Name             string                      `json:"name"`
-	Status           string                      `json:"status"`
-	RateLimitCeiling *tenantRateLimitCeilingJSON `json:"rate_limit_ceiling"`
-	CreatedAt        string                      `json:"created_at"`
-	ConfigVersion    uint64                      `json:"config_version"`
+	ID                   string                      `json:"id"`
+	Name                 string                      `json:"name"`
+	Status               string                      `json:"status"`
+	DefaultTimeoutMs     uint64                      `json:"default_timeout_ms"`
+	MaxTimeoutMs         uint64                      `json:"max_timeout_ms"`
+	MetadataQueryStorage string                      `json:"metadata_query_storage"`
+	MetadataPathStorage  string                      `json:"metadata_path_storage"`
+	RateLimitCeiling     *tenantRateLimitCeilingJSON `json:"rate_limit_ceiling"`
+	CreatedAt            string                      `json:"created_at"`
+	ConfigVersion        uint64                      `json:"config_version"`
 }
 
 func toTenantResponse(t Tenant) tenantResponse {
+	t = normalizeTenant(t)
 	resp := tenantResponse{
-		ID:            t.ID,
-		Name:          t.Name,
-		Status:        string(t.Status),
-		CreatedAt:     t.CreatedAt.Format(time.RFC3339),
-		ConfigVersion: t.ConfigVersion,
+		ID:                   t.ID,
+		Name:                 t.Name,
+		Status:               string(t.Status),
+		DefaultTimeoutMs:     t.DefaultTimeoutMs,
+		MaxTimeoutMs:         t.MaxTimeoutMs,
+		MetadataQueryStorage: string(t.MetadataQueryStorage),
+		MetadataPathStorage:  string(t.MetadataPathStorage),
+		CreatedAt:            t.CreatedAt.Format(time.RFC3339),
+		ConfigVersion:        t.ConfigVersion,
 	}
 
 	if t.RateLimitCeiling != nil {
@@ -195,7 +208,7 @@ func (h *AdminHandlers) CreateTenant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tenant := Tenant{ID: id, Name: req.Name, Status: TenantStatusActive, CreatedAt: time.Now().UTC()}
+	tenant := normalizeTenant(Tenant{ID: id, Name: req.Name, Status: TenantStatusActive, CreatedAt: time.Now().UTC()})
 
 	err = h.Tenants.Create(r.Context(), tenant)
 	if err != nil {
@@ -296,15 +309,12 @@ func (h *AdminHandlers) UpdateTenant(w http.ResponseWriter, r *http.Request) {
 
 	id := r.PathValue("id")
 
-	var ceiling *RateLimitCeiling
-	if req.RateLimitCeiling != nil {
-		ceiling = &RateLimitCeiling{
-			WindowSeconds: req.RateLimitCeiling.WindowSeconds,
-			MaxRequests:   req.RateLimitCeiling.MaxRequests,
-		}
-	}
+	tenant, err := tenantFromUpdateRequest(id, req)
+	if err != nil {
+		WriteError(w, http.StatusBadRequest, ErrorResponseFromCode(InvalidRequest, "", nil))
 
-	tenant := Tenant{ID: id, Name: req.Name, Status: TenantStatus(req.Status), RateLimitCeiling: ceiling}
+		return
+	}
 
 	existing, err := h.Tenants.Get(r.Context(), id)
 	if err != nil {
@@ -331,6 +341,32 @@ func (h *AdminHandlers) UpdateTenant(w http.ResponseWriter, r *http.Request) {
 	recordAudit(r.Context(), h.Audit, identity, "tenant", id, configActionUpdate, updated.ConfigVersion, "", existing, updated, false)
 
 	writeJSON(w, http.StatusOK, toTenantResponse(updated))
+}
+
+func tenantFromUpdateRequest(id string, req tenantUpdateRequest) (Tenant, error) {
+	tenant := normalizeTenant(Tenant{
+		ID:                   id,
+		Name:                 req.Name,
+		Status:               TenantStatus(req.Status),
+		DefaultTimeoutMs:     req.DefaultTimeoutMs,
+		MaxTimeoutMs:         req.MaxTimeoutMs,
+		MetadataQueryStorage: MetadataStoragePolicy(req.MetadataQueryStorage),
+		MetadataPathStorage:  MetadataStoragePolicy(req.MetadataPathStorage),
+	})
+
+	err := validateTenantPolicy(tenant)
+	if err != nil {
+		return Tenant{}, err
+	}
+
+	if req.RateLimitCeiling != nil {
+		tenant.RateLimitCeiling = &RateLimitCeiling{
+			WindowSeconds: req.RateLimitCeiling.WindowSeconds,
+			MaxRequests:   req.RateLimitCeiling.MaxRequests,
+		}
+	}
+
+	return tenant, nil
 }
 
 // SoftDeleteTenant handles DELETE /api/v1/config/tenants/{id}. system_admin

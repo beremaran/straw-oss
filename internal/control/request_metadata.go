@@ -3,6 +3,8 @@ package control
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,6 +20,7 @@ const (
 	requestMetadataRedacted     = "[redacted]"
 	requestMetadataDefaultTable = "request_events"
 	requestMetadataDefaultDB    = "straw"
+	requestMetadataHashPrefix   = "sha256:"
 )
 
 var errClickHouseInsertFailed = errors.New("clickhouse insert returned non-2xx status")
@@ -138,13 +141,46 @@ func (w *RequestMetadataWriter) Close() {
 	w.q.Close()
 }
 
-// buildRequestEvent creates the canonical request metadata record from the
-// validated request and resolved identity.
-func buildRequestEvent(requestID string, identity Identity, request *ValidatedRequest) RequestEvent {
+// TenantPolicy carries the tenant-owned request timeout and metadata policy.
+type TenantPolicy struct {
+	DefaultTimeoutMs     uint64
+	MaxTimeoutMs         uint64
+	MetadataQueryStorage MetadataStoragePolicy
+	MetadataPathStorage  MetadataStoragePolicy
+}
+
+func defaultTenantPolicy() TenantPolicy {
+	return TenantPolicy{
+		DefaultTimeoutMs:     defaultTenantDefaultTimeoutMs,
+		MaxTimeoutMs:         defaultTenantMaxTimeoutMs,
+		MetadataQueryStorage: defaultMetadataQueryStorage,
+		MetadataPathStorage:  defaultMetadataPathStorage,
+	}
+}
+
+func (p TenantPolicy) normalized() TenantPolicy {
+	t := normalizeTenant(Tenant{
+		DefaultTimeoutMs:     p.DefaultTimeoutMs,
+		MaxTimeoutMs:         p.MaxTimeoutMs,
+		MetadataQueryStorage: p.MetadataQueryStorage,
+		MetadataPathStorage:  p.MetadataPathStorage,
+	})
+
+	return TenantPolicy{
+		DefaultTimeoutMs:     t.DefaultTimeoutMs,
+		MaxTimeoutMs:         t.MaxTimeoutMs,
+		MetadataQueryStorage: t.MetadataQueryStorage,
+		MetadataPathStorage:  t.MetadataPathStorage,
+	}
+}
+
+func buildRequestEvent(requestID string, identity Identity, request *ValidatedRequest, policy TenantPolicy) RequestEvent {
 	var requestSize uint64
 	if request != nil {
 		requestSize = uint64(len(request.BodyData))
 	}
+
+	policy = policy.normalized()
 
 	event := RequestEvent{
 		Timestamp:        time.Now().UTC(),
@@ -172,7 +208,7 @@ func buildRequestEvent(requestID string, identity Identity, request *ValidatedRe
 			event.TargetHost = request.URL.Host
 		}
 
-		event.TargetURL = sanitizeTargetURL(request.URL)
+		event.TargetURL = sanitizeTargetURL(request.URL, policy)
 	}
 
 	return event
@@ -243,21 +279,44 @@ func uint32OrMax(v int64) uint32 {
 	return uint32(v)
 }
 
-func sanitizeTargetURL(u *url.URL) string {
+func sanitizeTargetURL(u *url.URL, policy TenantPolicy) string {
 	if u == nil {
 		return ""
 	}
 
+	policy = policy.normalized()
+
 	sanitized := *u
 	sanitized.User = nil
-	sanitized.RawQuery = ""
 	sanitized.Fragment = ""
+	sanitized.RawQuery = metadataComponent(sanitized.RawQuery, policy.MetadataQueryStorage)
 
 	if sanitized.Path == "" {
 		sanitized.Path = "/"
 	}
 
+	sanitized.Path = metadataComponent(sanitized.Path, policy.MetadataPathStorage)
+
 	return sanitized.String()
+}
+
+func metadataComponent(value string, policy MetadataStoragePolicy) string {
+	switch policy {
+	case MetadataStorageStore:
+		return value
+	case MetadataStorageHash:
+		if value == "" {
+			return ""
+		}
+
+		sum := sha256.Sum256([]byte(value))
+
+		return requestMetadataHashPrefix + hex.EncodeToString(sum[:])
+	case MetadataStorageDrop:
+		return ""
+	default:
+		return ""
+	}
 }
 
 func redactSensitiveHeaderValue(name, value string) string {

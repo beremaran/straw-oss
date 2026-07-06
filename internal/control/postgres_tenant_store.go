@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -48,16 +49,47 @@ func ceilingFromRow(windowSeconds, maxRequests *int64) (*RateLimitCeiling, error
 	return &RateLimitCeiling{WindowSeconds: w, MaxRequests: m}, nil
 }
 
+func tenantTimeoutParam(v uint64) (int64, error) {
+	if v > math.MaxInt64 {
+		return 0, errInvalidTenantTimeouts
+	}
+
+	return int64(v), nil
+}
+
 // Create inserts a tenant record.
 func (s *postgresTenantStore) Create(ctx context.Context, tenant Tenant) error {
+	tenant = normalizeTenant(tenant)
+
+	err := validateTenantPolicy(tenant)
+	if err != nil {
+		return err
+	}
+
+	defaultTimeout, err := tenantTimeoutParam(tenant.DefaultTimeoutMs)
+	if err != nil {
+		return err
+	}
+
+	maxTimeout, err := tenantTimeoutParam(tenant.MaxTimeoutMs)
+	if err != nil {
+		return err
+	}
+
 	now := time.Now().UTC()
 
-	_, err := s.pool.Exec(ctx,
-		`INSERT INTO tenants (id, name, status, created_at, updated_at, config_version)
-		 VALUES ($1, $2, $3, $4, $5, 0)`,
+	_, err = s.pool.Exec(ctx,
+		`INSERT INTO tenants
+		 (id, name, status, default_timeout_ms, max_timeout_ms, metadata_query_storage, metadata_path_storage,
+		  created_at, updated_at, config_version)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0)`,
 		tenant.ID,
 		tenant.Name,
 		string(tenant.Status),
+		defaultTimeout,
+		maxTimeout,
+		string(tenant.MetadataQueryStorage),
+		string(tenant.MetadataPathStorage),
 		now,
 		now,
 	)
@@ -68,19 +100,22 @@ func (s *postgresTenantStore) Create(ctx context.Context, tenant Tenant) error {
 	return nil
 }
 
-const tenantSelectColumns = `id, name, status, rate_limit_ceiling_window_seconds, rate_limit_ceiling_max_requests,
-	config_version, created_at, updated_at, deleted_at`
+const tenantSelectColumns = `id, name, status, default_timeout_ms, max_timeout_ms, metadata_query_storage,
+	metadata_path_storage, rate_limit_ceiling_window_seconds, rate_limit_ceiling_max_requests, config_version,
+	created_at, updated_at, deleted_at`
 
 func scanTenant(row pgx.Row) (Tenant, error) {
 	var (
 		id, name, status           string
+		queryStorage, pathStorage  string
 		windowSeconds, maxRequests *int64
+		defaultTimeout, maxTimeout int64
 		configVersion              int64
 		createdAt, updatedAt       time.Time
 		deletedAt                  *time.Time
 	)
 
-	err := row.Scan(&id, &name, &status, &windowSeconds, &maxRequests, &configVersion, &createdAt, &updatedAt, &deletedAt)
+	err := row.Scan(&id, &name, &status, &defaultTimeout, &maxTimeout, &queryStorage, &pathStorage, &windowSeconds, &maxRequests, &configVersion, &createdAt, &updatedAt, &deletedAt)
 	if err != nil {
 		return Tenant{}, fmt.Errorf("scan tenant row: %w", err)
 	}
@@ -95,16 +130,37 @@ func scanTenant(row pgx.Row) (Tenant, error) {
 		return Tenant{}, err
 	}
 
-	return Tenant{
-		ID:               id,
-		Name:             name,
-		Status:           TenantStatus(status),
-		CreatedAt:        createdAt,
-		UpdatedAt:        updatedAt,
-		DeletedAt:        deletedAt,
-		RateLimitCeiling: ceiling,
-		ConfigVersion:    version,
-	}, nil
+	defaultMs, err := dbUint64(defaultTimeout, "tenant default timeout")
+	if err != nil {
+		return Tenant{}, err
+	}
+
+	maxMs, err := dbUint64(maxTimeout, "tenant max timeout")
+	if err != nil {
+		return Tenant{}, err
+	}
+
+	tenant := Tenant{
+		ID:                   id,
+		Name:                 name,
+		Status:               TenantStatus(status),
+		DefaultTimeoutMs:     defaultMs,
+		MaxTimeoutMs:         maxMs,
+		MetadataQueryStorage: MetadataStoragePolicy(queryStorage),
+		MetadataPathStorage:  MetadataStoragePolicy(pathStorage),
+		CreatedAt:            createdAt,
+		UpdatedAt:            updatedAt,
+		DeletedAt:            deletedAt,
+		RateLimitCeiling:     ceiling,
+		ConfigVersion:        version,
+	}
+
+	err = validateTenantPolicy(tenant)
+	if err != nil {
+		return Tenant{}, err
+	}
+
+	return tenant, nil
 }
 
 // Get fetches a tenant by ID.
@@ -156,6 +212,23 @@ func (s *postgresTenantStore) List(ctx context.Context, limit, offset int) ([]Te
 // Update replaces name/status/rate_limit_ceiling under optimistic
 // concurrency against the tenant's own config_version.
 func (s *postgresTenantStore) Update(ctx context.Context, tenant Tenant, expectedVersion uint64) (Tenant, error) {
+	tenant = normalizeTenant(tenant)
+
+	err := validateTenantPolicy(tenant)
+	if err != nil {
+		return Tenant{}, err
+	}
+
+	defaultTimeout, err := tenantTimeoutParam(tenant.DefaultTimeoutMs)
+	if err != nil {
+		return Tenant{}, err
+	}
+
+	maxTimeout, err := tenantTimeoutParam(tenant.MaxTimeoutMs)
+	if err != nil {
+		return Tenant{}, err
+	}
+
 	windowSeconds, maxRequests := ceilingParams(tenant.RateLimitCeiling)
 
 	expectedVersionParam, err := configVersionParam(expectedVersion)
@@ -165,11 +238,15 @@ func (s *postgresTenantStore) Update(ctx context.Context, tenant Tenant, expecte
 
 	row := s.pool.QueryRow(ctx,
 		`UPDATE tenants
-		 SET name = $3, status = $4, rate_limit_ceiling_window_seconds = $5,
-		     rate_limit_ceiling_max_requests = $6, config_version = config_version + 1, updated_at = now()
+		 SET name = $3, status = $4, default_timeout_ms = $5, max_timeout_ms = $6,
+		     metadata_query_storage = $7, metadata_path_storage = $8,
+		     rate_limit_ceiling_window_seconds = $9, rate_limit_ceiling_max_requests = $10,
+		     config_version = config_version + 1, updated_at = now()
 		 WHERE id = $1 AND config_version = $2 AND status != 'deleted'
 		 RETURNING `+tenantSelectColumns,
-		tenant.ID, expectedVersionParam, tenant.Name, string(tenant.Status), windowSeconds, maxRequests,
+		tenant.ID, expectedVersionParam, tenant.Name, string(tenant.Status), defaultTimeout,
+		maxTimeout, string(tenant.MetadataQueryStorage), string(tenant.MetadataPathStorage),
+		windowSeconds, maxRequests,
 	)
 
 	updated, err := scanTenant(row)

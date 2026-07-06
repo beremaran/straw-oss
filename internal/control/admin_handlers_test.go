@@ -449,7 +449,7 @@ func TestUpdateTenantPersistsRateLimitCeilingAndForcesInvalidation(t *testing.T)
 		t.Fatalf("Snapshot() before update error = %v", err)
 	}
 
-	body := `{"name":"` + tenantUpdateTestName + `","status":"active","rate_limit_ceiling":{"window_seconds":60,"max_requests":6000},"expected_config_version":0}`
+	body := `{"name":"` + tenantUpdateTestName + `","status":"active","default_timeout_ms":5000,"max_timeout_ms":9000,"metadata_query_storage":"hash","metadata_path_storage":"drop","rate_limit_ceiling":{"window_seconds":60,"max_requests":6000},"expected_config_version":0}`
 	req := newAdminRequest(http.MethodPut, "/api/v1/config/tenants/"+tenantID, adminToken, body)
 	req.SetPathValue("id", tenantID)
 	w := httptest.NewRecorder()
@@ -465,8 +465,10 @@ func TestUpdateTenantPersistsRateLimitCeilingAndForcesInvalidation(t *testing.T)
 		t.Fatalf("unmarshal update response: %v", err)
 	}
 
-	if resp.Name != tenantUpdateTestName || resp.RateLimitCeiling == nil || resp.RateLimitCeiling.MaxRequests != 6000 {
-		t.Fatalf("UpdateTenant() response = %+v, want renamed with ceiling", resp)
+	if resp.Name != tenantUpdateTestName || resp.DefaultTimeoutMs != 5000 || resp.MaxTimeoutMs != 9000 ||
+		resp.MetadataQueryStorage != "hash" || resp.MetadataPathStorage != "drop" ||
+		resp.RateLimitCeiling == nil || resp.RateLimitCeiling.MaxRequests != 6000 {
+		t.Fatalf("UpdateTenant() response = %+v, want renamed with tenant P0 fields", resp)
 	}
 
 	after, err := ta.h.ConfigCache.Snapshot(context.Background(), tenantID)
@@ -485,6 +487,32 @@ func TestUpdateTenantPersistsRateLimitCeilingAndForcesInvalidation(t *testing.T)
 	ta.h.PutRateLimits(rlW, rlReq)
 	if rlW.Code != http.StatusBadRequest {
 		t.Fatalf("PutRateLimits() above ceiling status = %d, body=%s, want %d", rlW.Code, rlW.Body.String(), http.StatusBadRequest)
+	}
+}
+
+func TestUpdateTenantRejectsInvalidP0Fields(t *testing.T) {
+	t.Parallel()
+
+	ta := newTestAdmin(t)
+	adminToken := ta.seedPlatformKey(t, "key_admin", RoleSystemAdmin)
+	tenantID := createTenantForTest(t, ta, adminToken, "Tenant One")
+
+	body := `{"name":"Tenant One","status":"active","default_timeout_ms":9000,"max_timeout_ms":5000,"metadata_query_storage":"keep","metadata_path_storage":"hash","expected_config_version":0}`
+	req := newAdminRequest(http.MethodPut, "/api/v1/config/tenants/"+tenantID, adminToken, body)
+	req.SetPathValue("id", tenantID)
+	w := httptest.NewRecorder()
+	ta.h.UpdateTenant(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("UpdateTenant() status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+
+	var errResp ErrorResponse
+	err := json.Unmarshal(w.Body.Bytes(), &errResp)
+	if err != nil {
+		t.Fatalf("unmarshal error response: %v", err)
+	}
+	if errResp.Code != errorCodeInvalidRequest {
+		t.Fatalf("code = %q, want %q", errResp.Code, errorCodeInvalidRequest)
 	}
 }
 

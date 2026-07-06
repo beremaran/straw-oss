@@ -61,7 +61,7 @@ func (h *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	event := buildRequestEvent(requestID, identity, validated)
+	event := buildRequestEvent(requestID, identity, validated, h.tenantPolicy(r.Context(), identity.TenantID))
 
 	if h.dispatcher == nil {
 		perr := &PipelineError{Code: ControlInternalError}

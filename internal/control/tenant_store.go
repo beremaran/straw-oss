@@ -21,16 +21,40 @@ const (
 	TenantStatusDeleted TenantStatus = "deleted"
 )
 
+const (
+	defaultTenantDefaultTimeoutMs = 60000
+	defaultTenantMaxTimeoutMs     = 300000
+	defaultMetadataQueryStorage   = MetadataStorageDrop
+	defaultMetadataPathStorage    = MetadataStorageHash
+)
+
+// MetadataStoragePolicy controls how URL query/path metadata is stored.
+type MetadataStoragePolicy string
+
+const (
+	// MetadataStorageDrop omits the URL component from stored metadata.
+	MetadataStorageDrop MetadataStoragePolicy = "drop"
+	// MetadataStorageHash stores a stable hash for correlation.
+	MetadataStorageHash MetadataStoragePolicy = "hash"
+	// MetadataStorageStore stores the URL component as-is.
+	MetadataStorageStore MetadataStoragePolicy = "store"
+)
+
 // Tenant is the P0 tenant resource
 // (docs/planning/26-config-management-api-surface.md Tenant schema, P0
-// subset: name, status, rate_limit_ceiling, config_version).
+// subset: name, status, timeout/storage policy, rate_limit_ceiling,
+// config_version).
 type Tenant struct {
-	ID        string
-	Name      string
-	Status    TenantStatus
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	DeletedAt *time.Time
+	ID                   string
+	Name                 string
+	Status               TenantStatus
+	DefaultTimeoutMs     uint64
+	MaxTimeoutMs         uint64
+	MetadataQueryStorage MetadataStoragePolicy
+	MetadataPathStorage  MetadataStoragePolicy
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
+	DeletedAt            *time.Time
 	// RateLimitCeiling bounds tenant-managed rate-limit values
 	// (docs/planning/26); nil means unbounded. Settable only by
 	// system_admin.
@@ -43,6 +67,47 @@ type Tenant struct {
 	ConfigVersion uint64
 }
 
+func normalizeTenant(t Tenant) Tenant {
+	if t.DefaultTimeoutMs == 0 {
+		t.DefaultTimeoutMs = defaultTenantDefaultTimeoutMs
+	}
+
+	if t.MaxTimeoutMs == 0 {
+		t.MaxTimeoutMs = defaultTenantMaxTimeoutMs
+	}
+
+	if t.MetadataQueryStorage == "" {
+		t.MetadataQueryStorage = defaultMetadataQueryStorage
+	}
+
+	if t.MetadataPathStorage == "" {
+		t.MetadataPathStorage = defaultMetadataPathStorage
+	}
+
+	return t
+}
+
+func validateTenantPolicy(t Tenant) error {
+	if t.DefaultTimeoutMs < minRequestTimeoutMs || t.MaxTimeoutMs < minRequestTimeoutMs || t.DefaultTimeoutMs > t.MaxTimeoutMs {
+		return errInvalidTenantTimeouts
+	}
+
+	if !validMetadataStorage(t.MetadataQueryStorage) || !validMetadataStorage(t.MetadataPathStorage) {
+		return errInvalidTenantMetadata
+	}
+
+	return nil
+}
+
+func validMetadataStorage(v MetadataStoragePolicy) bool {
+	switch v {
+	case MetadataStorageDrop, MetadataStorageHash, MetadataStorageStore:
+		return true
+	default:
+		return false
+	}
+}
+
 var (
 	// ErrTenantNotFound is returned when a tenant ID cannot be found, or is
 	// already soft-deleted for writes that require a live tenant.
@@ -53,6 +118,8 @@ var (
 	// expected_config_version does not match the tenant's current
 	// config_version.
 	ErrTenantVersionConflict = errors.New("tenant config version conflict")
+	errInvalidTenantTimeouts = errors.New("invalid tenant timeout bounds")
+	errInvalidTenantMetadata = errors.New("invalid tenant metadata storage policy")
 )
 
 // TenantStore persists tenant boundary records.
@@ -90,6 +157,13 @@ func (s *InMemoryTenantStore) Create(_ context.Context, tenant Tenant) error {
 
 	if _, exists := s.tenants[tenant.ID]; exists {
 		return ErrTenantAlreadyExists
+	}
+
+	tenant = normalizeTenant(tenant)
+
+	err := validateTenantPolicy(tenant)
+	if err != nil {
+		return err
 	}
 
 	s.tenants[tenant.ID] = tenant
@@ -152,8 +226,19 @@ func (s *InMemoryTenantStore) Update(_ context.Context, tenant Tenant, expectedV
 	}
 
 	updated := current
+	tenant = normalizeTenant(tenant)
+
+	err := validateTenantPolicy(tenant)
+	if err != nil {
+		return Tenant{}, err
+	}
+
 	updated.Name = tenant.Name
 	updated.Status = tenant.Status
+	updated.DefaultTimeoutMs = tenant.DefaultTimeoutMs
+	updated.MaxTimeoutMs = tenant.MaxTimeoutMs
+	updated.MetadataQueryStorage = tenant.MetadataQueryStorage
+	updated.MetadataPathStorage = tenant.MetadataPathStorage
 	updated.RateLimitCeiling = tenant.RateLimitCeiling
 	updated.ConfigVersion = current.ConfigVersion + 1
 	updated.UpdatedAt = time.Now().UTC()

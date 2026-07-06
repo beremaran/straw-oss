@@ -1,6 +1,7 @@
 package control
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +18,7 @@ type RequestHandler struct {
 	authenticator        *Authenticator
 	metadataWriter       RequestMetadataRecorder
 	dispatcher           RequestDispatcher
+	configCache          *ConfigCache
 }
 
 // NewRequestHandler creates a handler with the given config limits. auth
@@ -42,6 +44,11 @@ func NewRequestHandler(maxRequestBodyBytes, maxResponseBodyBytes, maxTimeoutMs u
 // SetDispatcher wires the real request execution path.
 func (h *RequestHandler) SetDispatcher(dispatcher RequestDispatcher) {
 	h.dispatcher = dispatcher
+}
+
+// SetConfigCache wires tenant policy lookup for timeout and metadata storage.
+func (h *RequestHandler) SetConfigCache(cache *ConfigCache) {
+	h.configCache = cache
 }
 
 // Handler is the http.HandlerFunc for POST /api/v1/requests.
@@ -84,7 +91,9 @@ func (h *RequestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	validated, err := ValidateRequest(body, h.maxRequestBodyBytes, h.maxTimeoutMs)
+	policy := h.tenantPolicy(r.Context(), identity.TenantID)
+
+	validated, err := ValidateRequest(body, h.maxRequestBodyBytes, effectiveMaxTimeout(h.maxTimeoutMs, policy.MaxTimeoutMs))
 	if err != nil {
 		var verr *ValidationError
 		if asValidationError(err, &verr) {
@@ -102,7 +111,7 @@ func (h *RequestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *RequestHandler) dispatchValidated(w http.ResponseWriter, r *http.Request, requestID string, identity Identity, validated *ValidatedRequest) {
-	event := buildRequestEvent(requestID, identity, validated)
+	event := buildRequestEvent(requestID, identity, validated, h.tenantPolicy(r.Context(), identity.TenantID))
 
 	if h.dispatcher == nil {
 		perr := &PipelineError{Code: ControlInternalError}
@@ -126,6 +135,36 @@ func (h *RequestHandler) dispatchValidated(w http.ResponseWriter, r *http.Reques
 	}
 
 	writeSuccessResponse(w, resp)
+}
+
+func (h *RequestHandler) tenantPolicy(ctx context.Context, tenantID string) TenantPolicy {
+	if h.configCache == nil {
+		return defaultTenantPolicy()
+	}
+
+	snap, err := h.configCache.Snapshot(ctx, tenantID)
+	if err != nil {
+		return defaultTenantPolicy()
+	}
+
+	return TenantPolicy{
+		DefaultTimeoutMs:     snap.DefaultTimeoutMs,
+		MaxTimeoutMs:         snap.MaxTimeoutMs,
+		MetadataQueryStorage: MetadataStoragePolicy(snap.MetadataQueryStorage),
+		MetadataPathStorage:  MetadataStoragePolicy(snap.MetadataPathStorage),
+	}.normalized()
+}
+
+func effectiveMaxTimeout(staticMax, tenantMax uint64) uint64 {
+	if staticMax == 0 {
+		return tenantMax
+	}
+
+	if tenantMax == 0 || tenantMax > staticMax {
+		return staticMax
+	}
+
+	return tenantMax
 }
 
 // recordOutcome finalizes and enqueues the request_events row with the real
