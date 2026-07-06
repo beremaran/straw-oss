@@ -261,6 +261,40 @@ func TestRegisterIngressCapabilityOutOfScope(t *testing.T) {
 	}
 }
 
+func TestRegisterMultiTenantCredentialScope(t *testing.T) {
+	t.Parallel()
+	cred := defaultCred()
+	cred.TenantScope = []string{workerRegTestTenantA, workerRegTestTenantB}
+	cred.AllowedPools = []AllowedPool{
+		{TenantID: workerRegTestTenantA, PoolID: workerRegTestPool1},
+		{TenantID: workerRegTestTenantB, PoolID: workerRegTestPool1},
+	}
+	h := newRegHarness(t, cred)
+
+	out, err := h.reg.Register(context.Background(), h.signedRegister("worker-1", func(r *strawpb.RegisterRequest) {
+		r.AllowedPools = []*strawpb.RegisterRequest_PoolRef{
+			{TenantId: workerRegTestTenantA, PoolId: workerRegTestPool1},
+			{TenantId: workerRegTestTenantB, PoolId: workerRegTestPool1},
+		}
+	}))
+	if err != nil {
+		t.Fatalf("Register error: %v", err)
+	}
+	if !out.OK {
+		t.Fatalf("Register rejected: %s", out.Reason)
+	}
+
+	out, err = h.reg.Register(context.Background(), h.signedRegister("worker-2", func(r *strawpb.RegisterRequest) {
+		r.AllowedPools = []*strawpb.RegisterRequest_PoolRef{{TenantId: workerRegTestTenantC, PoolId: workerRegTestPool1}}
+	}))
+	if err != nil {
+		t.Fatalf("Register error: %v", err)
+	}
+	if out.OK || out.Reason != RejectPoolScope {
+		t.Fatalf("outcome = %+v, want reject pool_scope", out)
+	}
+}
+
 func TestRegisterDuplicateSessionReplacement(t *testing.T) {
 	t.Parallel()
 	h := newRegHarness(t, defaultCred())
