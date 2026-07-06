@@ -14,6 +14,8 @@ const (
 	pgConfigPoolA        = "pool_a"
 	pgConfigEncodedValue = "c2VjcmV0"
 	pgConfigActorID      = "key_config_admin"
+	pgConfigFastTag      = pgTestFastTag
+	pgConfigRegionAUEast = pgTestRegionAUEast
 )
 
 func TestPostgresConfigStoreSnapshotAssembly(t *testing.T) {
@@ -27,12 +29,12 @@ func TestPostgresConfigStoreSnapshotAssembly(t *testing.T) {
 	_, _, err := store.UpsertExecutorPool(ctx, pgTestTenantA, config.ExecutorPool{
 		ID:                   pgConfigPoolA,
 		ExecutorType:         pgTestExecutorType,
-		Tags:                 []string{"fast", "au"},
+		Tags:                 []string{pgConfigFastTag, "au"},
 		Enabled:              true,
 		AllowDegradedWorkers: true,
 		AllowedIPTypes:       []string{ipTypeDatacenter},
 		AllowedCountries:     []string{"AU"},
-		AllowedRegions:       []string{"au-east-1"},
+		AllowedRegions:       []string{pgConfigRegionAUEast},
 	}, 0, actor)
 	if err != nil {
 		t.Fatalf("UpsertExecutorPool() error = %v", err)
@@ -42,7 +44,7 @@ func TestPostgresConfigStoreSnapshotAssembly(t *testing.T) {
 		ID:           "route_keep",
 		Priority:     20,
 		Enabled:      true,
-		Match:        config.MatchConditions{TargetHost: "*.example.com", Tags: []string{"fast"}},
+		Match:        config.MatchConditions{TargetHost: "*.example.com", Tags: []string{pgConfigFastTag}},
 		TargetPoolID: pgConfigPoolA,
 	}, 0, actor)
 	if err != nil {
@@ -146,7 +148,7 @@ func TestPostgresConfigStoreSnapshotAssembly(t *testing.T) {
 	}
 	if gotPool := snap.ExecutorPools[0]; len(gotPool.AllowedIPTypes) != 1 || gotPool.AllowedIPTypes[0] != ipTypeDatacenter ||
 		len(gotPool.AllowedCountries) != 1 || gotPool.AllowedCountries[0] != "AU" ||
-		len(gotPool.AllowedRegions) != 1 || gotPool.AllowedRegions[0] != "au-east-1" {
+		len(gotPool.AllowedRegions) != 1 || gotPool.AllowedRegions[0] != pgConfigRegionAUEast {
 		t.Fatalf("executor pool capability fields = %+v, want datacenter/AU/au-east-1", gotPool)
 	}
 	if len(snap.DenyRules) != 1 || snap.DenyRules[0].NormalizedHost != pgConfigBlockedHost {

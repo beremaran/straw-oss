@@ -66,7 +66,7 @@ Result: passed.
 ## Remaining Work
 
 - Full unbuffered proxy response streaming, backpressure, post-header error handling, and proxy-client cancellation were completed by `docs/tasks/p1/03-raw-streaming-response-path.md`.
-- Routing `ingress_type` matching and worker capability gating are owned by `docs/tasks/p1/04-routing-ingress-type-and-worker-capability.md`.
+- Routing `ingress_type` matching and worker capability gating were completed by `docs/tasks/p1/04-routing-ingress-type-and-worker-capability.md`.
 - Raw CONNECT remains owned by `docs/tasks/p1/05-raw-connect-tunnel.md`.
 
 ## Blockers

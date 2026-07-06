@@ -20,6 +20,8 @@ const (
 const (
 	IngressTypeREST      = "rest"
 	IngressTypeHTTPProxy = "http_proxy"
+	IngressTypeConnect   = "connect"
+	IngressTypeMITM      = "mitm"
 )
 
 const (

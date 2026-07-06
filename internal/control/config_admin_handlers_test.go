@@ -128,6 +128,18 @@ func TestRoutingRuleCRUDAndRBAC(t *testing.T) {
 	}
 }
 
+func TestRoutingRuleRejectsUnknownIngressType(t *testing.T) {
+	t.Parallel()
+
+	ta := newTestAdmin(t)
+	tenantAdmin := ta.seedTenantKey(t, "key_route_ingress_admin", adminTestTenantA, RoleTenantAdmin)
+
+	w, _ := createRoutingRule(t, ta, tenantAdmin, `{"id":"route_bad_ingress","target_pool_id":"`+configTestPoolA+`","match_conditions":{"ingress_type":"ftp"}}`)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("create status = %d, want 400, body=%s", w.Code, w.Body.String())
+	}
+}
+
 func TestRoutingRulesTenantIsolation(t *testing.T) {
 	t.Parallel()
 

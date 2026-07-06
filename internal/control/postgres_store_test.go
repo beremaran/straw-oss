@@ -37,6 +37,8 @@ const (
 	pgTestExecutorType  = "egress"
 	pgTestTenantRenamed = "Renamed"
 	pgTestPublicKey     = "YWJjZA=="
+	pgTestFastTag       = "fast"
+	pgTestRegionAUEast  = "au-east-1"
 )
 
 // checkTestDatabaseDSN rejects any DSN whose database name does not end in
@@ -508,6 +510,13 @@ func TestPostgresWorkerCredentialStoreSingleTenant(t *testing.T) {
 		PublicKeyEd25519Base64: pgTestPublicKey,
 		TenantScope:            []string{pgTestTenantA},
 		AllowedPools:           []AllowedPool{{TenantID: pgTestTenantA, PoolID: "pool_1"}},
+		AllowedCapabilities: WorkerCapabilities{
+			Tags:                  []string{pgTestFastTag},
+			Countries:             []string{"AU"},
+			Regions:               []string{pgTestRegionAUEast},
+			IPTypes:               []string{ipTypeDatacenter},
+			SupportedIngressModes: []string{IngressTypeREST, IngressTypeHTTPProxy},
+		},
 	}
 
 	err := store.Create(context.Background(), cred)
@@ -522,6 +531,17 @@ func TestPostgresWorkerCredentialStoreSingleTenant(t *testing.T) {
 
 	if len(list) != 1 || list[0].ID != cred.ID {
 		t.Fatalf("ListTenant(A) = %+v, want single credential %q", list, cred.ID)
+	}
+	if got := list[0].AllowedCapabilities; len(got.SupportedIngressModes) != 2 || got.SupportedIngressModes[0] != IngressTypeREST || got.SupportedIngressModes[1] != IngressTypeHTTPProxy {
+		t.Fatalf("allowed capabilities = %+v, want ingress modes rest/http_proxy", got)
+	}
+
+	got, err := store.Get(context.Background(), cred.ID)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if len(got.AllowedCapabilities.SupportedIngressModes) != 2 || got.AllowedCapabilities.SupportedIngressModes[1] != IngressTypeHTTPProxy {
+		t.Fatalf("Get().AllowedCapabilities = %+v, want persisted ingress modes", got.AllowedCapabilities)
 	}
 
 	// Single-tenant P0 scope: a credential scoped to tenant A must not surface
