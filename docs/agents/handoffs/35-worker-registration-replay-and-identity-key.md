@@ -90,8 +90,9 @@ credential_id. Compose was torn down afterward (`docker compose down`, no `-v`).
   returns 404 instead of 500 for missing/already-revoked credentials. Same latent bug fixed in the sibling
   `postgresAPIKeyStore.Revoke` (`internal/control/postgres_apikey_store.go:141-143`, maps to `ErrAPIKeyNotFound`).
   Proven by `TestPostgresWorkerCredentialStoreRevokeMissingNotFound` in `internal/control/postgres_store_test.go`.
-- 2026-07-06: the remaining gap (`egress.credential.*` nested-vs-flat doc mismatch) is no longer unowned — it is
-  owned by `docs/tasks/p1/22-egress-credential-config-schema-reconciliation.md` on the P1 board.
+- 2026-07-06: the remaining gap (`egress.credential.*` nested-vs-flat doc mismatch) was closed by
+  `docs/tasks/p1/22-egress-credential-config-schema-reconciliation.md`; the canonical shape is flat
+  `egress.worker_id` / `egress.credential_id` / `egress.private_key_ed25519_env`.
 
 ## Blockers
 

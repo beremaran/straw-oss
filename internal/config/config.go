@@ -164,6 +164,29 @@ type EgressConfig struct {
 	AllowedPools []EgressPoolRef `json:"allowed_pools,omitempty"`
 }
 
+// UnmarshalJSON recognizes the retired nested credential object only so
+// validation reports the missing canonical flat fields instead of accepting it.
+func (e *EgressConfig) UnmarshalJSON(data []byte) error {
+	type egressConfig EgressConfig
+
+	var raw struct {
+		*egressConfig
+		Credential json.RawMessage `json:"credential,omitempty"`
+	}
+
+	raw.egressConfig = (*egressConfig)(e)
+
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+
+	err := dec.Decode(&raw)
+	if err != nil {
+		return fmt.Errorf("decode egress config: %w", err)
+	}
+
+	return nil
+}
+
 // EgressPoolRef is one (tenant, pool) membership an egress worker declares.
 type EgressPoolRef struct {
 	TenantID string `json:"tenant_id"`
