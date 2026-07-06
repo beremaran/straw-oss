@@ -70,6 +70,50 @@ func TestExecutorEmitsSuccessfulHTTPFramesAndAppliesInjection(t *testing.T) {
 	}
 }
 
+func TestExecutorOpenTunnelUsesDestinationPolicyDial(t *testing.T) {
+	t.Parallel()
+
+	client, server := net.Pipe()
+	defer func() { _ = client.Close() }()
+	defer func() { _ = server.Close() }()
+
+	exec := NewExecutor(ExecutorOptions{
+		Resolver: staticResolver{"tunnel.test": netip.MustParseAddr("203.0.113.10")},
+		DialContext: func(_ context.Context, _, address string) (net.Conn, error) {
+			if address != "203.0.113.10:443" {
+				t.Fatalf("dial address = %q, want 203.0.113.10:443", address)
+			}
+
+			return client, nil
+		},
+	})
+
+	conn, target, failure := exec.openTunnel(context.Background(), tunnelStart("connect://tunnel.test:443", &strawpb.DestinationPolicy{
+		AllowedCidrs:   []string{"203.0.113.10/32"},
+		RedirectPolicy: strawpb.RedirectPolicy_REDIRECT_POLICY_NO_FOLLOW,
+		ResolutionMode: strawpb.DestinationResolutionMode_DESTINATION_RESOLUTION_DIRECT_LOCAL,
+	}))
+	if failure != nil {
+		t.Fatalf("openTunnel() failure = %v", failure)
+	}
+	defer func() { _ = conn.Close() }()
+
+	if target.host != "tunnel.test" || target.port != 443 {
+		t.Fatalf("target = %+v, want tunnel.test:443", target)
+	}
+}
+
+func TestExecutorOpenTunnelAppliesDeniedIPPolicy(t *testing.T) {
+	t.Parallel()
+
+	exec := NewExecutor(ExecutorOptions{Resolver: staticResolver{"blocked.test": netip.MustParseAddr("127.0.0.1")}})
+
+	_, _, failure := exec.openTunnel(context.Background(), tunnelStart("connect://blocked.test:443", directPolicy(false)))
+	if failure == nil || failure.code != strawpb.ErrorCode_ERROR_CODE_DESTINATION_DENIED {
+		t.Fatalf("openTunnel() failure = %v, want destination denied", failure)
+	}
+}
+
 // TestExecutorSendsOutboundStartBeforeConnect verifies the docs/planning/09
 // step 19 ordering that docs/tasks/p0/41 depends on: with a send callback the
 // OutboundStartFrame is delivered before the upstream request is made, and is
@@ -493,6 +537,17 @@ func requestStart(rawURL string, policy *strawpb.DestinationPolicy) *strawpb.Req
 			{Op: opAppend, HeaderName: "X-Append", Value: []byte("two")},
 			{Op: opRemove, HeaderName: "X-Remove"},
 		},
+		DestinationPolicy: policy,
+	}
+}
+
+func tunnelStart(rawURL string, policy *strawpb.DestinationPolicy) *strawpb.RequestStart {
+	return &strawpb.RequestStart{
+		Mode:              strawpb.RequestMode_REQUEST_MODE_RAW_TUNNEL,
+		Method:            http.MethodConnect,
+		Url:               rawURL,
+		DeadlineUnixMs:    time.Now().Add(5 * time.Second).UnixMilli(),
+		RedirectPolicy:    strawpb.RedirectPolicy_REDIRECT_POLICY_NO_FOLLOW,
 		DestinationPolicy: policy,
 	}
 }

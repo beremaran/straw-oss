@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net"
 	"sync"
 	"time"
 
@@ -27,9 +29,12 @@ const (
 
 var errExecutorRequired = errors.New("executor is required")
 
-// p0SupportedModes is the set of RequestModes the official Go worker accepts
-// in P0 (docs/planning/16: no BodyRef, provider adapters, or raw tunnels yet).
-var p0SupportedModes = []strawpb.RequestMode{strawpb.RequestMode_REQUEST_MODE_DECODED_HTTP}
+const rawTunnelEstablishedStatus = 200
+
+var supportedModes = []strawpb.RequestMode{
+	strawpb.RequestMode_REQUEST_MODE_DECODED_HTTP,
+	strawpb.RequestMode_REQUEST_MODE_RAW_TUNNEL,
+}
 
 // Worker runs the live NATS assignment execution loop for one registered
 // worker session (docs/planning/12 "Assignment Flow", docs/planning/09 steps
@@ -235,7 +240,7 @@ func (w *Worker) snapshotCapacity() Capacity {
 		Draining:       w.draining,
 		ActiveRequests: w.active,
 		MaxConcurrency: w.maxConcurrency,
-		SupportedModes: p0SupportedModes,
+		SupportedModes: supportedModes,
 	}
 }
 
@@ -278,6 +283,12 @@ func (w *Worker) runRequest(reqCtx context.Context, cancel context.CancelFunc, r
 		return
 	}
 
+	if start.GetMode() == strawpb.RequestMode_REQUEST_MODE_RAW_TUNNEL {
+		w.runRawTunnel(reqCtx, cancel, req, env, start, frames, validator, e2cSubject)
+
+		return
+	}
+
 	resultCh := make(chan []*strawpb.StreamFrame, 1)
 	downloadCredit := newResponseCreditGate(req.GetInitialDownloadCreditBytes())
 
@@ -300,6 +311,224 @@ func (w *Worker) runRequest(reqCtx context.Context, cancel context.CancelFunc, r
 	}
 
 	w.publish(e2cSubject, env, result)
+}
+
+func (w *Worker) runRawTunnel(ctx context.Context, cancel context.CancelFunc, req *strawpb.AssignRequest, env *strawpb.Envelope, start *strawpb.RequestStart, frames <-chan *strawpb.StreamFrame, validator *natsx.StreamValidator, e2cSubject string) {
+	defer cancel()
+
+	conn, target, failure := w.executor.openTunnel(ctx, start)
+
+	builder := newSafeFrameBuilder(req.GetAttempt())
+	if failure != nil {
+		w.publish(e2cSubject, env, []*strawpb.StreamFrame{builder.outboundStart(target.host, target.port), builder.error(failure)})
+
+		return
+	}
+
+	defer func() { _ = conn.Close() }()
+
+	stream := rawTunnelStream{
+		worker:    w,
+		env:       env,
+		subject:   e2cSubject,
+		conn:      conn,
+		builder:   builder,
+		validator: validator,
+		credit:    newResponseCreditGate(req.GetInitialDownloadCreditBytes()),
+	}
+	stream.publish(builder.outboundStart(target.host, target.port), builder.responseStart(rawTunnelEstablishedStatus, nil))
+	stream.run(ctx, frames)
+}
+
+type rawTunnelStream struct {
+	worker    *Worker
+	env       *strawpb.Envelope
+	subject   string
+	conn      net.Conn
+	builder   *safeFrameBuilder
+	validator *natsx.StreamValidator
+	credit    *responseCreditGate
+}
+
+func (s rawTunnelStream) run(ctx context.Context, frames <-chan *strawpb.StreamFrame) {
+	done := make(chan error, 1)
+
+	go streamTunnelDownload(ctx, s.conn, s.credit, s.builder, s.publishOne, done)
+
+	ticker := time.NewTicker(idleCheckInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case err := <-done:
+			s.handleDone(err)
+
+			return
+		case <-ctx.Done():
+			s.publishOne(s.builder.error(mapHTTPError(ctx, ctx.Err())))
+
+			return
+		case <-ticker.C:
+			if s.validator.IdleExpired() {
+				return
+			}
+		case frame := <-frames:
+			if s.handleFrame(ctx, frame) {
+				return
+			}
+		}
+	}
+}
+
+func (s rawTunnelStream) handleDone(err error) {
+	if err != nil && !errors.Is(err, io.EOF) {
+		s.publishOne(s.builder.error(executorFailure(strawpb.ErrorCode_ERROR_CODE_UPSTREAM_RESET, upstreamResetFact)))
+
+		return
+	}
+
+	s.publishOne(s.builder.end())
+}
+
+func (s rawTunnelStream) handleFrame(ctx context.Context, frame *strawpb.StreamFrame) bool {
+	if s.validator.Accept(frame) != natsx.FrameAccepted {
+		return false
+	}
+
+	if data := frame.GetData(); data != nil {
+		return s.handleData(ctx, data)
+	}
+
+	if credit := frame.GetCredit(); credit != nil {
+		s.credit.grant(credit.GetDownloadCreditBytes())
+
+		return false
+	}
+
+	if cancelFrame := frame.GetCancel(); cancelFrame != nil {
+		s.publishOne(s.builder.cancelled(cancelFrame.GetReason()))
+
+		return true
+	}
+
+	return false
+}
+
+func (s rawTunnelStream) handleData(ctx context.Context, data *strawpb.DataFrame) bool {
+	_, err := s.conn.Write(data.GetData())
+	if err != nil {
+		s.publishOne(s.builder.error(mapHTTPError(ctx, err)))
+
+		return true
+	}
+
+	s.publishOne(s.builder.uploadCredit(uint64FromInt(len(data.GetData()))))
+
+	return false
+}
+
+func (s rawTunnelStream) publish(frames ...*strawpb.StreamFrame) {
+	s.worker.publish(s.subject, s.env, frames)
+}
+
+func (s rawTunnelStream) publishOne(frame *strawpb.StreamFrame) {
+	s.publish(frame)
+}
+
+func streamTunnelDownload(ctx context.Context, conn net.Conn, credit *responseCreditGate, builder *safeFrameBuilder, publish func(*strawpb.StreamFrame), done chan<- error) {
+	buf := make([]byte, responseFrameDataBytes)
+	offset := uint64(0)
+
+	for {
+		n, err := conn.Read(buf)
+		if n > 0 {
+			chunk := append([]byte(nil), buf[:n]...)
+			if !credit.take(ctx, uint64FromInt(n)) {
+				done <- ctx.Err()
+
+				return
+			}
+
+			publish(builder.data(offset, chunk))
+			offset += uint64FromInt(n)
+		}
+
+		if err != nil {
+			done <- err
+
+			return
+		}
+	}
+}
+
+type safeFrameBuilder struct {
+	mu sync.Mutex
+	b  *frameBuilder
+}
+
+func newSafeFrameBuilder(attempt uint32) *safeFrameBuilder {
+	return &safeFrameBuilder{b: newFrameBuilder(attempt)}
+}
+
+func (b *safeFrameBuilder) outboundStart(host string, port uint32) *strawpb.StreamFrame {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return b.b.outboundStart(host, port)
+}
+
+func (b *safeFrameBuilder) responseStart(status uint32, headers []*strawpb.Header) *strawpb.StreamFrame {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return b.b.responseStart(status, headers)
+}
+
+func (b *safeFrameBuilder) data(offset uint64, data []byte) *strawpb.StreamFrame {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return b.b.data(offset, data)
+}
+
+func (b *safeFrameBuilder) uploadCredit(bytes uint64) *strawpb.StreamFrame {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.b.seq++
+
+	return &strawpb.StreamFrame{
+		StreamSeq: b.b.seq,
+		Attempt:   b.b.attempt,
+		Payload:   &strawpb.StreamFrame_Credit{Credit: &strawpb.CreditFrame{UploadCreditBytes: bytes}},
+	}
+}
+
+func (b *safeFrameBuilder) cancelled(reason string) *strawpb.StreamFrame {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.b.seq++
+
+	return &strawpb.StreamFrame{
+		StreamSeq: b.b.seq,
+		Attempt:   b.b.attempt,
+		Payload:   &strawpb.StreamFrame_Cancelled{Cancelled: &strawpb.CancelledFrame{Reason: reason}},
+	}
+}
+
+func (b *safeFrameBuilder) end() *strawpb.StreamFrame {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return b.b.end()
+}
+
+func (b *safeFrameBuilder) error(failure *executionError) *strawpb.StreamFrame {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return b.b.error(failure)
 }
 
 // readRequestBody accepts c2e frames until RequestStart and its full inline
