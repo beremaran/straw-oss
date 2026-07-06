@@ -50,8 +50,10 @@ make check
 Result:
 - **Postgres-backed tests**: ran against `straw_test` successfully:
   `STRAW_TEST_POSTGRES_DSN='postgres://postgres:postgres@localhost:5432/straw_test?sslmode=disable' go test ./internal/control/...`
-- **Live compose verification**: skipped (focused unit and Postgres integration tests fully covered all implementation paths).
-  [Update 2026-07-06: now owned by `docs/tasks/p0/46-live-compose-verification.md`.]
+- **Live compose verification**: completed by `docs/tasks/p0/46-live-compose-verification.md` on 2026-07-06. Live
+  config mutations wrote ClickHouse `straw.config_audit_events` rows with `config_version` and redacted
+  `old_value_json`/`new_value_json`; whole-resource P0 writes carried `field_path` as the empty-string floor allowed
+  by `docs/tasks/p0/44-config-audit-event-enrichment.md`.
 
 ## Reviewer Start Points
 

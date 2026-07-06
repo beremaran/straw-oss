@@ -52,8 +52,11 @@ make check
 Result:
 
 - Postgres-backed tests: ran against `straw_test` and all passed successfully.
-- Live compose verification: skipped because it doesn't touch execution/dispatch flow runtime, only config/CRUD/compile layers.
-  [Update 2026-07-06: now owned by `docs/tasks/p0/46-live-compose-verification.md`.]
+- Live compose verification: completed by `docs/tasks/p0/46-live-compose-verification.md` on 2026-07-06. The run
+  created all six planning taxonomy values through the live config API (`cidr`, `host`, `host_suffix`,
+  `cname_suffix`, `metadata_ip`, `private_range`), verified the normalized Postgres rows, and drove
+  `https://blocked.task47.test/` through the live request endpoint, which returned HTTP 403
+  `destination_denied`.
 
 ## Reviewer Start Points
 

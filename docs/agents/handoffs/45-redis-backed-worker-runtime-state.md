@@ -47,8 +47,10 @@ Result:
 
 - Postgres-backed tests: not exercised; this diff does not touch Postgres files or migrations.
 - Redis-backed tests: ran against the local compose Redis service and passed without skips.
-- Live compose verification: skipped because the full Control/NATS/Egress/Postgres/ClickHouse compose stack was not running; this run started only Redis to verify the task's runtime-state backend.
-  [Update 2026-07-06: now owned by `docs/tasks/p0/46-live-compose-verification.md`.]
+- Live compose verification: completed by `docs/tasks/p0/46-live-compose-verification.md` on 2026-07-06. The full
+  compose stack produced `straw:worker-runtime:<worker_id>` Redis JSON keys with session, heartbeat/load, pool, and
+  capability fields plus TTLs. After stopping workers and restarting Control, `/api/v1/admin/workers` still listed
+  the Redis-backed sessions without re-registration; the keys expired after their TTLs.
 
 ## Reviewer Start Points
 
