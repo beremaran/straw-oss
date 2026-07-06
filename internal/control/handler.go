@@ -235,6 +235,11 @@ func writeSuccessResponse(w http.ResponseWriter, response SuccessResponse) {
 }
 
 func writePipelineError(w http.ResponseWriter, requestID string, err *PipelineError) {
+	status, resp := pipelineHTTPError(requestID, err)
+	WriteError(w, status, resp)
+}
+
+func pipelineErrorResponse(requestID string, err *PipelineError) ErrorResponse {
 	if err == nil {
 		err = &PipelineError{Code: ControlInternalError}
 	}
@@ -248,12 +253,22 @@ func writePipelineError(w http.ResponseWriter, requestID string, err *PipelineEr
 		resp.TimeoutType = err.TimeoutType
 	}
 
+	return resp
+}
+
+func pipelineHTTPError(requestID string, err *PipelineError) (int, ErrorResponse) {
+	resp := pipelineErrorResponse(requestID, err)
+
+	if err == nil {
+		err = &PipelineError{Code: ControlInternalError}
+	}
+
 	status := http.StatusInternalServerError
 	if entry, ok := ErrorRegistry[err.Code]; ok {
 		status = entry.HTTPStatus
 	}
 
-	WriteError(w, status, resp)
+	return status, resp
 }
 
 // SuccessResponse is the JSON envelope for successful upstream transport.

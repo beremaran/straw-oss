@@ -4,7 +4,7 @@ Status: not started
 
 ## Objective
 
-Implement `POST /api/v1/requests:stream` after the P1 streaming response format decision is resolved.
+Implement `POST /api/v1/requests:stream` using the resolved P1 binary frame format.
 
 ## Required Planning Docs
 
@@ -15,7 +15,7 @@ Implement `POST /api/v1/requests:stream` after the P1 streaming response format 
 
 ## Prerequisites
 
-- Decision `P1 REST Streaming Response Format` resolved.
+- Decision `P1 REST Streaming Response Format` resolved on 2026-07-06: use binary framing.
 - Task 03 completed.
 
 ## Out of Scope
@@ -32,11 +32,15 @@ Implement `POST /api/v1/requests:stream` after the P1 streaming response format 
 ## Steps
 
 - [ ] Read all required planning docs.
-- [ ] Implement the exact response framing chosen by `P1 REST Streaming Response Format`.
+- [ ] Implement the binary frame format from Section 7: 1 byte frame type, 4 byte big-endian payload length, then
+      payload bytes.
+- [ ] Emit `Content-Type: application/vnd.straw.request-stream.v1+binary`.
 - [ ] Reuse the raw streaming response path where possible.
-- [ ] Emit metadata before body bytes according to the chosen format.
+- [ ] Emit frame type 1 metadata before any frame type 2 body bytes.
+- [ ] Emit frame type 3 trailers, frame type 4 end, and frame type 5 error according to Section 7.
 - [ ] Handle upstream errors after partial body and client cancellation.
-- [ ] Enforce body limit and trailer behavior from the decision.
+- [ ] Enforce request-body limit and trailer behavior from the decision; do not apply inline response-body buffering
+      limits to streamed response bytes.
 - [ ] Add tests for metadata ordering, partial upstream error, cancellation, body limits, trailers, and auth/RBAC.
 - [ ] Run focused REST streaming tests.
 - [ ] Run `make check`.
@@ -49,16 +53,16 @@ Implement `POST /api/v1/requests:stream` after the P1 streaming response format 
 
 ## Acceptance Criteria
 
-- `/api/v1/requests:stream` follows the resolved streaming format exactly.
+- `/api/v1/requests:stream` returns the resolved binary content type and frame layout exactly.
 - Existing non-streaming REST remains unchanged.
 - Required decision acceptance tests are implemented.
 
 ## Handoff Notes
 
-- Link the resolved decision and list the chosen framing.
+- Link the resolved decision and list the implemented frame types.
 
 ## Stop Conditions
 
-- Stop if `P1 REST Streaming Response Format` is unresolved.
+- Stop if planning changes away from the resolved binary framing before implementation starts.
 - Stop before adding BodyRef behavior.
 - Stop if a deferral would have no owning task file.

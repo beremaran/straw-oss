@@ -34,7 +34,9 @@ Create the minimal Go SDK for Straw request transport and public error handling.
 - [x] Add typed `ErrorResponse` parsing using lower-snake-case categories and codes.
 - [x] Default `replayable=true` for GET, HEAD, and OPTIONS only before submission.
 - [x] Document that clients inspect the JSON envelope `status`, not the outer HTTP status, for upstream status.
-- [x] Add support for `/api/v1/requests:stream` only if task 06 is complete. Task 06 is not complete, so no stream API was added.
+- [x] Add support for `/api/v1/requests:stream` only if task 06 is complete. Task 06 was not complete during this
+      task; after task 06 completed, stream SDK/CLI support became owned by
+      `docs/tasks/p1/28-sdk-cli-rest-streaming-client.md`.
 - [x] Add tests for request encoding, error parsing, replayable defaults, upstream status handling, and cancellation.
 - [x] Run focused SDK tests.
 - [x] Run `make check`.

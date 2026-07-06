@@ -148,14 +148,38 @@ streaming endpoint exists, Control returns `body_too_large` with `details.direct
 
 ### REST Streaming Variant — P1
 
-P1 may add:
+P1 adds:
 
 ```http
 POST /api/v1/requests:stream
 ```
 
-This endpoint streams response bytes and metadata using HTTP chunking or server-selected framing. The exact framing must
-be specified before implementation.
+The endpoint uses binary framing with `Content-Type: application/vnd.straw.request-stream.v1+binary`. Each frame is:
+
+```text
+1 byte frame_type
+4 bytes big-endian payload_length
+payload_length bytes payload
+```
+
+Frame types:
+
+| Type | Name     | Payload                                                  |
+|------|----------|----------------------------------------------------------|
+| 1    | metadata | JSON object with `request_id`, upstream `status`, and response `headers` using REST `HeaderPair` base64 values |
+| 2    | body     | Raw upstream response bytes                              |
+| 3    | trailers | JSON object with response trailer `headers` using REST `HeaderPair` base64 values |
+| 4    | end      | JSON object with final `timing`                          |
+| 5    | error    | Public ErrorResponse JSON                                |
+
+The metadata frame is emitted before any body frame. The outer HTTP status is `200` once upstream metadata has been
+received; upstream status is carried in the metadata frame. If Control fails before emitting metadata, it returns the
+normal public ErrorResponse with the canonical HTTP status. If an upstream/transport error occurs after metadata or body
+bytes have been emitted, Control emits an error frame and does not emit an end frame.
+
+`request.max_inline_response_body_bytes` does not cap this endpoint because response bytes are not buffered into an
+inline JSON body. Request-body validation still uses `request.max_inline_request_body_bytes`. BodyRef remains out of
+scope for P1 REST streaming.
 
 ### Config and Admin APIs
 

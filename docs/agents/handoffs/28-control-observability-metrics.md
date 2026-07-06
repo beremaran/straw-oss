@@ -108,9 +108,9 @@ this task. Torn the stack back down (`docker compose down`) after the check.
 
 ## Remaining Work
 
-- None owned by this task. The optional direct worker Prometheus scrape (`docs/planning/31` P1 item 5) and any
-  telemetry read APIs/dashboards remain out of scope per the task's own "Out of Scope" section and are not touched
-  here.
+- None owned by this task. P1 Egress metrics are now Control-aggregated behind an explicit flag
+  (`docs/tasks/p1/15-egress-metrics-exposure.md`; `docs/planning/31` P1 item 5), and any telemetry read
+  APIs/dashboards remain out of scope per the task's own "Out of Scope" section and are not touched here.
 - Pre-existing, unrelated to this change: the compose `egress` service cannot complete worker registration against
   a fresh stack without manual worker-credential provisioning (documented in `deploy/docker/README.md`). This
   limited live verification of the NATS-path metrics (`straw_nats_request_duration_seconds`,

@@ -22,12 +22,18 @@ form so that Unicode look-alikes cannot bypass suffix or host rules.
 ## Prerequisites
 
 - P0 complete (destination policy pipeline stable).
+- Dependency approval granted on 2026-07-06 for `golang.org/x/net/idna`.
 
 ## Out of Scope
 
-- No new dependency without the AGENTS.md stop condition: prefer `golang.org/x/net/idna` only if already in the
-  module graph; otherwise stop and ask.
+- Do not hand-roll IDNA/punycode conversion; adding `golang.org/x/net/idna` is explicitly approved for this task.
 - No display-form (U-label) round-tripping in telemetry beyond recording the normalized form.
+
+## Expected Files
+
+- Modify: hostname validation/normalization at the Control ingress boundary.
+- Modify: destination-policy and request validation tests.
+- Modify: `go.mod` and `go.sum` to add `golang.org/x/net/idna`.
 
 ## Steps
 
@@ -46,5 +52,5 @@ form so that Unicode look-alikes cannot bypass suffix or host rules.
 
 ## Stop Conditions
 
-- Stop if a new dependency is needed (ask first, per AGENTS.md).
+- Stop if IDNA support would require a dependency other than `golang.org/x/net/idna`.
 - Stop if a deferral would have no owning task file.
