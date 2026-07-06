@@ -3,10 +3,12 @@ package cli
 import (
 	"context"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -18,7 +20,10 @@ const (
 	testCommandConfig  = "config"
 	testCommandRequest = "request"
 	testFlagBaseURL    = "--base-url"
+	testFlagMethod     = "--method"
+	testFlagURL        = "--url"
 	testResourceTenant = "tenants"
+	testStreamURL      = "https://example.test/stream"
 )
 
 func TestRequestCommandUsesSDKAndAPIKey(t *testing.T) {
@@ -45,8 +50,8 @@ func TestRequestCommandUsesSDKAndAPIKey(t *testing.T) {
 		testCommandRequest,
 		testFlagBaseURL, server.URL,
 		"--api-key", "sk_test_123",
-		"--method", http.MethodGet,
-		"--url", "https://example.test/path",
+		testFlagMethod, http.MethodGet,
+		testFlagURL, "https://example.test/path",
 		"--header", "X-Test: yes",
 		"--body-file", "-",
 	})
@@ -64,6 +69,76 @@ func TestRequestCommandUsesSDKAndAPIKey(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), `"request_id": "req_1"`) {
 		t.Fatalf("stdout = %s", out.String())
+	}
+}
+
+func TestRequestCommandStreamSeparatesBodyAndMetadata(t *testing.T) {
+	var got sdk.Request
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/requests:stream" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+
+		err := json.NewDecoder(r.Body).Decode(&got)
+		if err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+
+		writeCLIStreamTestFrame(t, w, sdk.StreamFrameMetadata, sdk.StreamMetadata{RequestID: "req_stream", Status: http.StatusOK})
+		writeCLIStreamTestFrame(t, w, sdk.StreamFrameBody, []byte("he"))
+		writeCLIStreamTestFrame(t, w, sdk.StreamFrameBody, []byte("llo"))
+		writeCLIStreamTestFrame(t, w, sdk.StreamFrameTrailers, sdk.StreamTrailers{Headers: []sdk.Header{{Name: "X-Done", ValueBase64: "MQ=="}}})
+		writeCLIStreamTestFrame(t, w, sdk.StreamFrameEnd, sdk.StreamEnd{Timing: sdk.Timing{TotalMs: 9}})
+	}))
+	defer server.Close()
+
+	var out, errOut strings.Builder
+	r := runner{stdin: strings.NewReader(""), stdout: &out, stderr: &errOut, httpClient: server.Client()}
+	err := r.run(context.Background(), []string{
+		testCommandRequest,
+		testFlagBaseURL, server.URL,
+		"--stream",
+		testFlagMethod, http.MethodGet,
+		testFlagURL, testStreamURL,
+	})
+	if err != nil {
+		t.Fatalf("run() error = %v", err)
+	}
+	if got.Method != http.MethodGet || got.URL != "https://example.test/stream" || !got.Replayable {
+		t.Fatalf("request = %+v", got)
+	}
+	if out.String() != "hello" {
+		t.Fatalf("stdout = %q, want raw body", out.String())
+	}
+	if !strings.Contains(errOut.String(), `"request_id": "req_stream"`) || !strings.Contains(errOut.String(), `"total_ms": 9`) {
+		t.Fatalf("stderr = %s", errOut.String())
+	}
+}
+
+func TestRequestCommandStreamWritesErrorFrameToStderr(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeCLIStreamTestFrame(t, w, sdk.StreamFrameMetadata, sdk.StreamMetadata{RequestID: "req_stream", Status: http.StatusOK})
+		writeCLIStreamTestFrame(t, w, sdk.StreamFrameError, sdk.ErrorResponse{Category: "egress", Code: "upstream_reset", Message: "reset"})
+	}))
+	defer server.Close()
+
+	var out, errOut strings.Builder
+	r := runner{stdin: strings.NewReader(""), stdout: &out, stderr: &errOut, httpClient: server.Client()}
+	err := r.run(context.Background(), []string{
+		testCommandRequest,
+		testFlagBaseURL, server.URL,
+		"--stream",
+		testFlagMethod, http.MethodGet,
+		testFlagURL, testStreamURL,
+	})
+	if err == nil || !strings.Contains(err.Error(), "upstream_reset") {
+		t.Fatalf("run() error = %v, want upstream_reset", err)
+	}
+	if out.String() != "" {
+		t.Fatalf("stdout = %q, want empty", out.String())
+	}
+	if !strings.Contains(errOut.String(), `"code": "upstream_reset"`) {
+		t.Fatalf("stderr = %s", errOut.String())
 	}
 }
 
@@ -122,8 +197,8 @@ func TestRequestCommandLoadsEnvironmentDefaults(t *testing.T) {
 	r := runner{stdin: strings.NewReader(""), stdout: &strings.Builder{}, stderr: &strings.Builder{}, httpClient: server.Client()}
 	err := r.run(context.Background(), []string{
 		testCommandRequest,
-		"--method", http.MethodGet,
-		"--url", "https://example.test/env",
+		testFlagMethod, http.MethodGet,
+		testFlagURL, "https://example.test/env",
 	})
 	if err != nil {
 		t.Fatalf("run() error = %v", err)
@@ -189,5 +264,37 @@ func TestRunRedactsSecretsFromErrors(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "sk_live_redacted") {
 		t.Fatalf("stderr = %s", stderr.String())
+	}
+}
+
+func writeCLIStreamTestFrame(t *testing.T, w io.Writer, typ sdk.StreamFrameType, payload any) {
+	t.Helper()
+
+	var raw []byte
+	switch v := payload.(type) {
+	case []byte:
+		raw = v
+	default:
+		var err error
+		raw, err = json.Marshal(v)
+		if err != nil {
+			t.Fatalf("marshal frame payload: %v", err)
+		}
+	}
+
+	header := [5]byte{byte(typ)}
+	payloadLen, err := strconv.ParseUint(strconv.Itoa(len(raw)), 10, 32)
+	if err != nil {
+		t.Fatalf("payload too large: %d", len(raw))
+	}
+	binary.BigEndian.PutUint32(header[1:], uint32(payloadLen))
+
+	_, err = w.Write(header[:])
+	if err != nil {
+		t.Fatalf("write frame header: %v", err)
+	}
+	_, err = w.Write(raw)
+	if err != nil {
+		t.Fatalf("write frame payload: %v", err)
 	}
 }

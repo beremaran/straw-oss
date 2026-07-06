@@ -1,6 +1,6 @@
 # 28 - SDK and CLI REST Streaming Client Surface
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -50,20 +50,20 @@ but the current SDK and CLI still expose only the non-streaming JSON request pat
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Add SDK stream frame constants/types matching `docs/planning/07-public-api-surface.md`.
-- [ ] Add an SDK method that posts to `/api/v1/requests:stream`, parses the 1-byte type plus 4-byte big-endian length
+- [x] Read all required planning docs.
+- [x] Add SDK stream frame constants/types matching `docs/planning/07-public-api-surface.md`.
+- [x] Add an SDK method that posts to `/api/v1/requests:stream`, parses the 1-byte type plus 4-byte big-endian length
       framing, exposes metadata before body chunks, surfaces trailers/end timing, and returns public `ErrorResponse`
       data for pre-metadata HTTP errors and post-metadata error frames.
-- [ ] Preserve auth, replayable defaults, and context cancellation behavior from `Client.Do`.
-- [ ] Add a CLI stream mode for the existing `request` command using the same request-building flags, writing body
+- [x] Preserve auth, replayable defaults, and context cancellation behavior from `Client.Do`.
+- [x] Add a CLI stream mode for the existing `request` command using the same request-building flags, writing body
       bytes to stdout as they arrive and metadata/trailers/end/error information to stderr without leaking secrets.
-- [ ] Add SDK tests for metadata-before-body ordering, partial-body error frames, trailers, terminal timing, HTTP error
+- [x] Add SDK tests for metadata-before-body ordering, partial-body error frames, trailers, terminal timing, HTTP error
       parsing before metadata, malformed frame length, and context cancellation.
-- [ ] Add CLI tests proving stream mode uses the SDK stream endpoint, writes body bytes incrementally to stdout, and
+- [x] Add CLI tests proving stream mode uses the SDK stream endpoint, writes body bytes incrementally to stdout, and
       keeps metadata/error output separate from the body stream.
-- [ ] Run focused tests, then `make check`.
-- [ ] Write a handoff note.
+- [x] Run focused tests, then `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 
