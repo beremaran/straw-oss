@@ -13,6 +13,7 @@
       }
     ],
     "capabilities": {
+      "supported_ingress_modes": ["rest", "mitm"],
       "ip_types": ["datacenter"]
     },
     "nats": {

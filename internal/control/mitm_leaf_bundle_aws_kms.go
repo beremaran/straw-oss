@@ -57,7 +57,7 @@ func NewAWSMITMLeafBundleKMSProvider(client *http.Client) *AWSMITMLeafBundleKMSP
 		client = http.DefaultClient
 	}
 
-	return &AWSMITMLeafBundleKMSProvider{client: client, now: time.Now}
+	return &AWSMITMLeafBundleKMSProvider{client: client, endpoint: os.Getenv("STRAW_MITM_LEAF_KMS_ENDPOINT"), now: time.Now}
 }
 
 // EncryptMITMLeafBundle encrypts a serialized leaf bundle with an AWS

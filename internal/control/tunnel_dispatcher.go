@@ -411,6 +411,28 @@ func (g *tunnelUploadGate) take(bytes uint64) bool {
 	}
 }
 
+func (g *tunnelUploadGate) takeMax(maxBytes uint64) (uint64, bool) {
+	for {
+		g.mu.Lock()
+		if g.closed {
+			g.mu.Unlock()
+
+			return 0, false
+		}
+
+		if g.credit > 0 {
+			bytes := min(g.credit, maxBytes)
+			g.credit -= bytes
+			g.mu.Unlock()
+
+			return bytes, true
+		}
+		g.mu.Unlock()
+
+		<-g.wake
+	}
+}
+
 func (g *tunnelUploadGate) close() {
 	g.mu.Lock()
 	g.closed = true

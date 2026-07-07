@@ -1,6 +1,6 @@
 # 30 - Ingress HTTP/2 Upload Flow Control and Live Proof
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -49,16 +49,16 @@ credit backpressure tests or a recorded live HTTP/2 MITM request through the nor
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Build a coverage table for the flow-control and normal-stream-translation rows in
+- [x] Read all required planning docs.
+- [x] Build a coverage table for the flow-control and normal-stream-translation rows in
       `docs/planning/c-http2-semantics.md`.
-- [ ] Implement and test ingress upload flow control so exhausted NATS upload credit stops or slows client h2
+- [x] Implement and test ingress upload flow control so exhausted NATS upload credit stops or slows client h2
       reads/window updates without unbounded buffering.
-- [ ] Drive at least one HTTP/2 MITM request through the compose stack across Control -> NATS -> Egress, proving
+- [x] Drive at least one HTTP/2 MITM request through the compose stack across Control -> NATS -> Egress, proving
       protocol translation through the normal stream protocol.
-- [ ] Record live compose commands and the request result.
-- [ ] Run focused tests, then `make check`.
-- [ ] Write a handoff note.
+- [x] Record live compose commands and the request result.
+- [x] Run focused tests, then `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

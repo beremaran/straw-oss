@@ -70,6 +70,7 @@ services:
       dockerfile: deploy/docker/Dockerfile.control
     ports:
       - "8080:8080"
+      - "8083:8083"
       - "9090:9090"
     environment:
       STRAW_POSTGRES_DSN: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-straw}?sslmode=disable
@@ -78,6 +79,10 @@ services:
       STRAW_CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-}
       STRAW_API_KEY_PEPPER: ${STRAW_API_KEY_PEPPER:-local-dev-pepper}
       STRAW_BOOTSTRAP_SYSTEM_ADMIN_KEY: ${STRAW_BOOTSTRAP_SYSTEM_ADMIN_KEY:-}
+      AWS_ACCESS_KEY_ID: local-dev
+      AWS_SECRET_ACCESS_KEY: local-dev-secret
+      AWS_REGION: us-east-1
+      STRAW_MITM_LEAF_KMS_ENDPOINT: http://kms-mock:8088/
       # Dev-only worker credential seed matching egress's baked-in identity
       # key below, so compose registration succeeds without a manual
       # /worker-credentials call. See deploy/docker/README.md.
@@ -89,6 +94,8 @@ services:
       # egress.json's allowed_pools. See deploy/docker/README.md.
       STRAW_BOOTSTRAP_DEV_TENANT_ID: "22222222-2222-4222-8222-222222222222"
       STRAW_BOOTSTRAP_DEV_POOL_ID: "dev-pool"
+    volumes:
+      - ./.dev/mitm-ca:/etc/straw/mitm-ca:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -98,6 +105,8 @@ services:
         condition: service_healthy
       clickhouse:
         condition: service_healthy
+      kms-mock:
+        condition: service_started
     healthcheck:
       test: ["CMD", "/control", "-config", "/etc/straw/control.json", "-healthcheck"]
       interval: 5s
@@ -129,6 +138,13 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    restart: unless-stopped
+
+  kms-mock:
+    image: python:3.12-alpine
+    command: ["python", "/app/kms-mock.py"]
+    volumes:
+      - ./deploy/docker/kms-mock.py:/app/kms-mock.py:ro
     restart: unless-stopped
 
   prometheus:

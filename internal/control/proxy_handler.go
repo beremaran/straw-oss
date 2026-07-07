@@ -300,17 +300,15 @@ func stripProxyRequestHeader(name string, connectionHeaders map[string]bool) boo
 }
 
 func readProxyBody(w http.ResponseWriter, r *http.Request, maxBytes uint64) ([]byte, error) {
-	const maxReadableBodyBytes = uint64(1<<63 - 2)
-
 	if r.Body == nil {
 		return nil, nil
 	}
 
-	if maxBytes > maxReadableBodyBytes {
-		return nil, &ValidationError{Code: errorCodeBodyTooLarge, Message: requestBodyExceedsLimit}
+	limit, err := proxyBodyLimit(maxBytes)
+	if err != nil {
+		return nil, err
 	}
 
-	limit := int64(maxBytes)
 	r.Body = http.MaxBytesReader(w, r.Body, limit+1)
 
 	body, err := io.ReadAll(r.Body)
@@ -323,6 +321,16 @@ func readProxyBody(w http.ResponseWriter, r *http.Request, maxBytes uint64) ([]b
 	}
 
 	return body, nil
+}
+
+func proxyBodyLimit(maxBytes uint64) (int64, error) {
+	const maxReadableBodyBytes = uint64(1<<63 - 2)
+
+	if maxBytes > maxReadableBodyBytes {
+		return 0, &ValidationError{Code: errorCodeBodyTooLarge, Message: requestBodyExceedsLimit}
+	}
+
+	return int64(maxBytes), nil
 }
 
 func proxyReplayable(method string) bool {
