@@ -27,6 +27,7 @@ const (
 	handlerTestInlineBase64       = "inline_base64"
 	handlerTestMessage            = "test"
 	handlerTestTenantID           = "ten_test"
+	handlerTestUpstreamTrailer    = "X-Upstream-Trailer"
 	testExampleHost               = "example.com"
 )
 
@@ -73,7 +74,7 @@ func TestStreamHandlerWritesBinaryMetadataBeforeBodyAndTrailers(t *testing.T) {
 		status:   http.StatusPartialContent,
 		headers:  []*strawpb.Header{{Name: "Content-Type", Value: []byte("text/plain")}},
 		chunks:   [][]byte{[]byte("hello"), []byte(" world")},
-		trailers: []*strawpb.Header{{Name: "X-Upstream-Trailer", Value: []byte("done")}},
+		trailers: []*strawpb.Header{{Name: handlerTestUpstreamTrailer, Value: []byte("done")}},
 	})
 
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/requests:stream", strings.NewReader(`{"method":"GET","url":"https://example.com"}`))
@@ -121,7 +122,7 @@ func TestStreamHandlerWritesBinaryMetadataBeforeBodyAndTrailers(t *testing.T) {
 		t.Fatalf("fourth frame type = %d, want trailers", frames[3].typ)
 	}
 	mustUnmarshalFrame(t, frames[3], &trailers)
-	if len(trailers.Headers) != 1 || trailers.Headers[0].Name != "X-Upstream-Trailer" {
+	if len(trailers.Headers) != 1 || trailers.Headers[0].Name != handlerTestUpstreamTrailer {
 		t.Fatalf("trailers = %#v", trailers.Headers)
 	}
 

@@ -1,9 +1,11 @@
 package control
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -399,12 +401,13 @@ func (d *captureProxyDispatcher) Dispatch(_ context.Context, in DispatchInput) (
 }
 
 type rawProxyDispatcher struct {
-	last    DispatchInput
-	calls   int
-	status  int
-	headers http.Header
-	chunks  [][]byte
-	err     *PipelineError
+	last     DispatchInput
+	calls    int
+	status   int
+	headers  http.Header
+	trailers http.Header
+	chunks   [][]byte
+	err      *PipelineError
 }
 
 func (d *rawProxyDispatcher) Dispatch(_ context.Context, in DispatchInput) (SuccessResponse, *PipelineError) {
@@ -430,13 +433,14 @@ func (d *rawProxyDispatcher) DispatchRaw(_ context.Context, in DispatchInput, w 
 	w.WriteHeader(status)
 
 	var size uint64
-	rec, ok := w.(*httptest.ResponseRecorder)
-	if !ok {
-		return SuccessResponse{}, &PipelineError{Code: ControlInternalError}, true
-	}
 	for _, chunk := range d.chunks {
-		n, _ := rec.Body.Write(chunk)
-		size += uint64FromInt(n)
+		_, _ = io.Copy(w, bytes.NewReader(chunk))
+		size += uint64FromInt(len(chunk))
+	}
+	for name, values := range d.trailers {
+		for _, value := range values {
+			w.Header().Add(http.TrailerPrefix+name, value)
+		}
 	}
 
 	return SuccessResponse{RequestID: in.RequestID, Status: status, ResponseSizeBytes: size}, d.err, true

@@ -428,6 +428,89 @@ func TestMITMRawDispatcherWritesDecodedResponse(t *testing.T) {
 	}
 }
 
+func TestMITMHTTP2PseudoHeadersNormalizeToRequest(t *testing.T) {
+	t.Parallel()
+
+	h, token, dispatcher := newTestMITMHandler(t)
+	server := newMITMHTTP2TestServer(t, h)
+	req := newMITMHTTP2Request(t, server.URL+"/path?q=1", token)
+
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("Do() error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusNotFound)
+	}
+	if dispatcher.last.Request == nil {
+		t.Fatal("dispatcher request is nil")
+	}
+	if got := dispatcher.last.Request.Method; got != http.MethodGet {
+		t.Fatalf("method = %q, want GET", got)
+	}
+	if got := dispatcher.last.Request.URL.String(); got != "https://"+mitmTestHost+"/path?q=1" {
+		t.Fatalf("url = %q, want normalized h2 pseudo-header target", got)
+	}
+	if got := decodedProxyHeaders(dispatcher.last.Request.Headers); got[":authority"] != "" || got[":path"] != "" || got[":scheme"] != "" || got[":method"] != "" {
+		t.Fatalf("pseudo-headers forwarded: %#v", got)
+	}
+}
+
+func TestMITMRejectsColonPrefixedHeader(t *testing.T) {
+	t.Parallel()
+
+	h, token, dispatcher := newTestMITMHandler(t)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
+	req.Host = mitmTestHost
+	req.TLS = &tls.ConnectionState{ServerName: mitmTestHost}
+	req.Header.Set(headerNameProxyAuthorization, "Bearer "+token)
+	req.Header[":evil"] = []string{"inject"}
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+	if dispatcher.calls != 0 {
+		t.Fatalf("dispatcher calls = %d, want 0", dispatcher.calls)
+	}
+}
+
+func TestMITMHTTP2ForwardsTrailersAfterBody(t *testing.T) {
+	t.Parallel()
+
+	h, token, _ := newTestMITMHandler(t)
+	h.SetDispatcher(&rawProxyDispatcher{
+		status: http.StatusOK,
+		headers: http.Header{
+			headerCanonicalContentType: []string{mediaTypeTextPlain},
+		},
+		trailers: http.Header{handlerTestUpstreamTrailer: []string{"done"}},
+		chunks:   [][]byte{[]byte("ok")},
+	})
+	server := newMITMHTTP2TestServer(t, h)
+
+	resp, err := server.Client().Do(newMITMHTTP2Request(t, server.URL+"/trailers", token))
+	if err != nil {
+		t.Fatalf("Do() error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("ReadAll() error = %v", err)
+	}
+	if string(body) != "ok" {
+		t.Fatalf("body = %q, want ok", body)
+	}
+	if got := resp.Trailer.Get(handlerTestUpstreamTrailer); got != "done" {
+		t.Fatalf("trailer = %q, want done", got)
+	}
+}
+
 func TestMITMHTTP2StreamsHaveUniqueRequestIDs(t *testing.T) {
 	t.Parallel()
 

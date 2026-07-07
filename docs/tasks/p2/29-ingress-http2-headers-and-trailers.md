@@ -1,6 +1,6 @@
 # 29 - Ingress HTTP/2 Headers and Trailers
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -46,13 +46,13 @@ colon-header rejection, or trailer-ordering tests.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Build a coverage table for the pseudo-header and trailer rows in `docs/planning/c-http2-semantics.md`.
-- [ ] Verify pseudo-header normalization at ingress matches the task 14 contract.
-- [ ] Verify rejection or stripping of unsafe custom colon-prefixed headers at ingress.
-- [ ] Verify HTTP/2 trailers are forwarded or recorded per the ingress contract and NATS `TrailersFrame` ordering.
-- [ ] Run focused tests, then `make check`.
-- [ ] Write a handoff note.
+- [x] Read all required planning docs.
+- [x] Build a coverage table for the pseudo-header and trailer rows in `docs/planning/c-http2-semantics.md`.
+- [x] Verify pseudo-header normalization at ingress matches the task 14 contract.
+- [x] Verify rejection or stripping of unsafe custom colon-prefixed headers at ingress.
+- [x] Verify HTTP/2 trailers are forwarded or recorded per the ingress contract and NATS `TrailersFrame` ordering.
+- [x] Run focused tests, then `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 
