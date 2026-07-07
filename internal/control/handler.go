@@ -351,6 +351,12 @@ type SuccessResponse struct {
 	// carried for request_events telemetry (docs/tasks/p0/32). Not part of
 	// the wire contract.
 	ResponseSizeBytes uint64 `json:"-"`
+	// RouteID/PoolID/SelectedExecutor/ExecutorType carry the routing decision
+	// for request_events telemetry. Not part of the wire contract.
+	RouteID          string `json:"-"`
+	PoolID           string `json:"-"`
+	SelectedExecutor string `json:"-"`
+	ExecutorType     string `json:"-"`
 }
 
 // ResponseBody carries the upstream response body. Mode is "inline_base64" for
