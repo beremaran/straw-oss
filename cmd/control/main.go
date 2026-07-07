@@ -94,6 +94,11 @@ func run() error {
 		return fmt.Errorf("validate payload limits: %w", err)
 	}
 
+	_, err = buildMITMLeafBundleProviderConfig(controlConfig)
+	if err != nil {
+		return fmt.Errorf("validate mitm leaf bundle kms config: %w", err)
+	}
+
 	natsConn, err := natsx.Connect(natsx.ConnectOptions{
 		Servers:             controlConfig.NATS.Servers,
 		UserCredentialsFile: controlConfig.NATS.UserCredentialsFile,
@@ -282,6 +287,19 @@ func serveControl(ctx context.Context, controlConfig config.ControlConfig, mux *
 	defer stopMITM()
 
 	return serveControlHTTP(ctx, controlConfig, mux, ready)
+}
+
+func buildMITMLeafBundleProviderConfig(controlConfig config.ControlConfig) (*control.MITMLeafBundleProviderConfig, error) {
+	if controlConfig.Server.MITMLeafKMSProvider == "" && controlConfig.Server.MITMLeafKMSKeyID == "" {
+		return nil, nil
+	}
+
+	providerConfig, err := control.NewMITMLeafBundleProviderConfig(controlConfig.Server.MITMLeafKMSProvider, controlConfig.Server.MITMLeafKMSKeyID)
+	if err != nil {
+		return nil, fmt.Errorf("build mitm leaf bundle provider config: %w", err)
+	}
+
+	return &providerConfig, nil
 }
 
 func serveMITMHTTP(ctx context.Context, controlConfig config.ControlConfig, handler http.Handler) func() {

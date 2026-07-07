@@ -1,6 +1,6 @@
 # 19 - MITM Leaf Bundle KMS Provider
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -56,20 +56,20 @@ cache, locks, TTL, and flood controls.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Add canonical config keys and env vars for the MITM leaf-bundle KMS provider name and key ID.
-- [ ] Validate that provider name and key ID are supplied together when MITM leaf bundle storage is configured.
-- [ ] Define a small provider interface for encrypt/decrypt and an envelope that records provider name, key ID/version,
+- [x] Read all required planning docs.
+- [x] Add canonical config keys and env vars for the MITM leaf-bundle KMS provider name and key ID.
+- [x] Validate that provider name and key ID are supplied together when MITM leaf bundle storage is configured.
+- [x] Define a small provider interface for encrypt/decrypt and an envelope that records provider name, key ID/version,
       nonce/metadata needed by the provider, and ciphertext.
-- [ ] Define the AAD inputs as tenant ID, deployment ID, normalized SNI, and CA identity/version so ciphertext cannot be
+- [x] Define the AAD inputs as tenant ID, deployment ID, normalized SNI, and CA identity/version so ciphertext cannot be
       replayed across scopes.
-- [ ] Ensure production code has no plaintext/static-key provider; tests may use a fake provider in `_test.go`.
-- [ ] Wire `cmd/control` to construct or validate the configured provider boundary, but do not write any leaf bundle
+- [x] Ensure production code has no plaintext/static-key provider; tests may use a fake provider in `_test.go`.
+- [x] Wire `cmd/control` to construct or validate the configured provider boundary, but do not write any leaf bundle
       storage until task 04.
-- [ ] Add tests for config validation, encrypted envelope round trip through the fake provider, AAD mismatch rejection,
+- [x] Add tests for config validation, encrypted envelope round trip through the fake provider, AAD mismatch rejection,
       key-version rotation overlap, and stored ciphertext not containing PEM/private-key bytes.
-- [ ] Run focused provider/config tests, then `make check`.
-- [ ] Write a handoff note.
+- [x] Run focused provider/config tests, then `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

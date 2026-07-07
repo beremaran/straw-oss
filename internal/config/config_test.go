@@ -86,10 +86,58 @@ func TestLoadControl(t *testing.T) {
 						"mitm_port": 8083,
 						"mitm_ca_cert_file": "/tmp/ca.pem",
 						"mitm_ca_key_file": "/tmp/ca-key.pem",
-						"mitm_cert_validity_days": 45
+						"mitm_cert_validity_days": 45,
+						"mitm_leaf_kms_provider": "aws-kms",
+						"mitm_leaf_kms_key_id": "arn:aws:kms:us-west-2:123:key/abc"
 					}
 				}
 			}`,
+		},
+		{
+			name: "mitm leaf kms provider requires key id",
+			config: `{
+				"config_version": "v1",
+				"control": {
+					"server": {
+						"host": "127.0.0.1",
+						"api_port": 8080,
+						"metrics_port": 9090,
+						"mitm_leaf_kms_provider": "aws-kms"
+					}
+				}
+			}`,
+			wantErr: "server.mitm_leaf_kms_provider and server.mitm_leaf_kms_key_id must be supplied together",
+		},
+		{
+			name: "mitm leaf kms key id requires provider",
+			config: `{
+				"config_version": "v1",
+				"control": {
+					"server": {
+						"host": "127.0.0.1",
+						"api_port": 8080,
+						"metrics_port": 9090,
+						"mitm_leaf_kms_key_id": "key"
+					}
+				}
+			}`,
+			wantErr: "server.mitm_leaf_kms_provider and server.mitm_leaf_kms_key_id must be supplied together",
+		},
+		{
+			name: "mitm leaf kms rejects plaintext provider",
+			config: `{
+				"config_version": "v1",
+				"control": {
+					"server": {
+						"host": "127.0.0.1",
+						"api_port": 8080,
+						"metrics_port": 9090,
+						"mitm_leaf_kms_provider": "plaintext",
+						"mitm_leaf_kms_key_id": "key"
+					}
+				}
+			}`,
+			wantErr: "server.mitm_leaf_kms_provider must not be plaintext or static-key",
 		},
 		{
 			name: "invalid enabled mitm port",
@@ -300,6 +348,30 @@ func TestLoadControlMITMValidityDaysRejectsInvalidEnv(t *testing.T) {
 	_, err := LoadControl(path)
 	if err == nil || !strings.Contains(err.Error(), "server.mitm_cert_validity_days must be positive") {
 		t.Fatalf("LoadControl() error = %v, want validity error", err)
+	}
+}
+
+func TestLoadControlMITMLeafKMSEnv(t *testing.T) {
+	t.Setenv("STRAW_MITM_LEAF_KMS_PROVIDER", "aws-kms")
+	t.Setenv("STRAW_MITM_LEAF_KMS_KEY_ID", "arn:test")
+
+	path := writeConfig(t, `{
+		"config_version": "v1",
+		"control": {
+			"server": {
+				"host": "127.0.0.1",
+				"api_port": 8080,
+				"metrics_port": 9090
+			}
+		}
+	}`)
+
+	cfg, err := LoadControl(path)
+	if err != nil {
+		t.Fatalf("LoadControl() error = %v", err)
+	}
+	if cfg.Server.MITMLeafKMSProvider != "aws-kms" || cfg.Server.MITMLeafKMSKeyID != "arn:test" {
+		t.Fatalf("MITM leaf KMS config = %q/%q", cfg.Server.MITMLeafKMSProvider, cfg.Server.MITMLeafKMSKeyID)
 	}
 }
 
