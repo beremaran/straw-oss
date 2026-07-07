@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -427,6 +428,99 @@ func TestMITMRawDispatcherWritesDecodedResponse(t *testing.T) {
 	}
 }
 
+func TestMITMHTTP2StreamsHaveUniqueRequestIDs(t *testing.T) {
+	t.Parallel()
+
+	h, token, _ := newTestMITMHandler(t)
+	dispatcher := &mitmHTTP2TrackingDispatcher{release: make(chan struct{})}
+	h.SetDispatcher(dispatcher)
+	server := newMITMHTTP2TestServer(t, h)
+
+	reqs := []*http.Request{
+		newMITMHTTP2Request(t, server.URL+"/one", token),
+		newMITMHTTP2Request(t, server.URL+"/two", token),
+	}
+
+	responses := make(chan error, len(reqs))
+	for _, req := range reqs {
+		go func() {
+			resp, err := server.Client().Do(req)
+			if err != nil {
+				responses <- err
+
+				return
+			}
+			responses <- resp.Body.Close()
+		}()
+	}
+	dispatcher.waitStarted(t, 2)
+	close(dispatcher.release)
+
+	for range reqs {
+		err := <-responses
+		if err != nil {
+			t.Fatalf("Do() error = %v", err)
+		}
+	}
+
+	ids := dispatcher.requestIDs()
+	if len(ids) != 2 {
+		t.Fatalf("request IDs = %v, want 2", ids)
+	}
+	if ids[0] == "" || ids[1] == "" || ids[0] == ids[1] {
+		t.Fatalf("request IDs = %v, want unique non-empty IDs", ids)
+	}
+}
+
+func TestMITMHTTP2StreamCancelIsIsolated(t *testing.T) {
+	t.Parallel()
+
+	h, token, _ := newTestMITMHandler(t)
+	dispatcher := &mitmHTTP2TrackingDispatcher{release: make(chan struct{})}
+	h.SetDispatcher(dispatcher)
+	server := newMITMHTTP2TestServer(t, h)
+
+	ctx1, cancel1 := context.WithCancel(t.Context())
+	defer cancel1()
+	ctx2, cancel2 := context.WithCancel(t.Context())
+	defer cancel2()
+
+	go doMITMHTTP2Request(t, server.Client(), newMITMHTTP2Request(t, server.URL+"/one", token).WithContext(ctx1))
+	go doMITMHTTP2Request(t, server.Client(), newMITMHTTP2Request(t, server.URL+"/two", token).WithContext(ctx2))
+
+	dispatcher.waitStarted(t, 2)
+	firstID := dispatcher.requestIDForPath(t, "/one")
+	cancel1()
+	dispatcher.waitCancelled(t, firstID)
+
+	if cancelled := dispatcher.cancelledIDs(); len(cancelled) != 1 || cancelled[0] != firstID {
+		t.Fatalf("cancelled IDs = %v, want only %q", cancelled, firstID)
+	}
+	close(dispatcher.release)
+}
+
+func TestMITMHTTP2ConnectionCloseCancelsAllStreams(t *testing.T) {
+	t.Parallel()
+
+	h, token, _ := newTestMITMHandler(t)
+	dispatcher := &mitmHTTP2TrackingDispatcher{release: make(chan struct{})}
+	h.SetDispatcher(dispatcher)
+	server := newMITMHTTP2TestServer(t, h)
+
+	client := server.Client()
+	go doMITMHTTP2Request(t, client, newMITMHTTP2Request(t, server.URL+"/one", token))
+	go doMITMHTTP2Request(t, client, newMITMHTTP2Request(t, server.URL+"/two", token))
+
+	dispatcher.waitStarted(t, 2)
+	client.CloseIdleConnections()
+	server.CloseClientConnections()
+
+	for _, id := range dispatcher.requestIDs() {
+		dispatcher.waitCancelled(t, id)
+	}
+	close(dispatcher.release)
+}
+
 func TestMITMNormalizeHost(t *testing.T) {
 	t.Parallel()
 
@@ -445,6 +539,158 @@ type bufferedConn struct {
 
 func (c *bufferedConn) Read(p []byte) (int, error) {
 	return c.r.Read(p)
+}
+
+type mitmHTTP2TrackingDispatcher struct {
+	mu        sync.Mutex
+	started   map[string]chan struct{}
+	cancelled map[string]chan struct{}
+	paths     map[string]string
+	order     []string
+	release   chan struct{}
+}
+
+func (d *mitmHTTP2TrackingDispatcher) Dispatch(ctx context.Context, in DispatchInput) (SuccessResponse, *PipelineError) {
+	resp, perr, _ := d.DispatchRaw(ctx, in, httptest.NewRecorder())
+
+	return resp, perr
+}
+
+func (d *mitmHTTP2TrackingDispatcher) DispatchRaw(ctx context.Context, in DispatchInput, w http.ResponseWriter) (SuccessResponse, *PipelineError, bool) {
+	d.mu.Lock()
+	if d.started == nil {
+		d.started = make(map[string]chan struct{})
+		d.cancelled = make(map[string]chan struct{})
+		d.paths = make(map[string]string)
+	}
+	d.order = append(d.order, in.RequestID)
+	d.paths[in.RequestID] = in.Request.URL.Path
+	started := make(chan struct{})
+	cancelled := make(chan struct{})
+	d.started[in.RequestID] = started
+	d.cancelled[in.RequestID] = cancelled
+	close(started)
+	d.mu.Unlock()
+
+	select {
+	case <-ctx.Done():
+		close(cancelled)
+
+		return SuccessResponse{}, &PipelineError{Code: Cancelled}, false
+	case <-d.release:
+		w.WriteHeader(http.StatusNoContent)
+
+		return SuccessResponse{RequestID: in.RequestID, Status: http.StatusNoContent}, nil, true
+	}
+}
+
+func (d *mitmHTTP2TrackingDispatcher) waitStarted(t *testing.T, n int) {
+	t.Helper()
+
+	deadline := time.Now().Add(time.Second)
+	for {
+		d.mu.Lock()
+		count := len(d.order)
+		d.mu.Unlock()
+		if count >= n {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("started streams = %d, want %d", count, n)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func (d *mitmHTTP2TrackingDispatcher) requestIDs() []string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	return append([]string(nil), d.order...)
+}
+
+func (d *mitmHTTP2TrackingDispatcher) requestIDForPath(t *testing.T, path string) string {
+	t.Helper()
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	for requestID, got := range d.paths {
+		if got == path {
+			return requestID
+		}
+	}
+	t.Fatalf("no request for path %q in %v", path, d.paths)
+
+	return ""
+}
+
+func (d *mitmHTTP2TrackingDispatcher) waitCancelled(t *testing.T, requestID string) {
+	t.Helper()
+
+	d.mu.Lock()
+	ch := d.cancelled[requestID]
+	d.mu.Unlock()
+
+	select {
+	case <-ch:
+	case <-time.After(time.Second):
+		t.Fatalf("request %q was not cancelled", requestID)
+	}
+}
+
+func (d *mitmHTTP2TrackingDispatcher) cancelledIDs() []string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	out := make([]string, 0, len(d.cancelled))
+	for requestID, ch := range d.cancelled {
+		select {
+		case <-ch:
+			out = append(out, requestID)
+		default:
+		}
+	}
+
+	return out
+}
+
+func newMITMHTTP2TestServer(t *testing.T, h http.Handler) *httptest.Server {
+	t.Helper()
+
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.ProtoMajor != 2 {
+			t.Errorf("request protocol = %s, want HTTP/2", r.Proto)
+		}
+		h.ServeHTTP(w, r)
+	}))
+	server.EnableHTTP2 = true
+	server.StartTLS()
+	t.Cleanup(server.Close)
+
+	return server
+}
+
+func newMITMHTTP2Request(t *testing.T, rawURL, token string) *http.Request {
+	t.Helper()
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, rawURL, nil)
+	if err != nil {
+		t.Fatalf("NewRequest() error = %v", err)
+	}
+	req.Host = mitmTestHost
+	req.Header.Set(headerNameProxyAuthorization, "Bearer "+token)
+
+	return req
+}
+
+func doMITMHTTP2Request(t *testing.T, client *http.Client, req *http.Request) {
+	t.Helper()
+
+	resp, err := client.Do(req)
+	if err == nil {
+		_ = resp.Body.Close()
+	}
 }
 
 func newTestServerCertificate(t *testing.T, host string) (*tls.Certificate, *x509.CertPool) {
