@@ -5,6 +5,7 @@ const sidebars = {
   docsSidebar: [
     'index',
     'quickstart',
+    'ingress_modes',
     'sdk',
     'cli',
     {

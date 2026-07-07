@@ -11,6 +11,9 @@ Both the Control Plane and Egress Worker binaries expose local HTTP health endpo
 ### Control Plane Ports
 Both `server.api_port` and `server.metrics_port` are required config fields with no built-in default — the Docker Compose stack in this repo sets them to `8080` and `9090` respectively, and this guide uses those values in its examples.
 - **REST / Config API Port**: `8080` (Compose stack default)
+- **HTTP Forward Proxy Port**: `8081` (default when `server.proxy_enabled` is true)
+- **HTTP CONNECT Tunnel Port**: `8082` (default when `server.connect_enabled` is true)
+- **MITM Inspection Proxy Port**: `8083` (default when `server.mitm_enabled` is true)
 - **Metrics / Health Port**: `9090` (Compose stack default)
 
 ### Egress Worker Ports
