@@ -133,6 +133,25 @@ When Straw successfully contacts the upstream server, it returns an HTTP `200 OK
 
 ---
 
+## Streaming Transport (`POST /api/v1/requests:stream`)
+
+For large or long-running response bodies, `POST /api/v1/requests:stream` accepts the same request envelope and auth/role rules as `/api/v1/requests`, but returns the response as a sequence of length-prefixed binary frames instead of one buffered JSON body. This lets a client start reading upstream bytes before the response finishes.
+
+- **Response Content-Type**: `application/vnd.straw.request-stream.v1+binary`
+- **Frame wire format**: each frame is `[1-byte type][4-byte big-endian payload length][payload]`. Every frame's payload is JSON except the Body frame, whose payload is the raw response bytes.
+
+| Type byte | Name | Payload |
+| :--- | :--- | :--- |
+| `1` | Metadata | JSON `{request_id, status, headers}` — the first frame, sent once upstream response headers arrive. |
+| `2` | Body | Raw bytes — one chunk of the upstream response body. Zero or more of these follow Metadata. |
+| `3` | Trailers | JSON `{headers}` — HTTP trailers, if the upstream sent any. |
+| `4` | End | JSON `{timing}` — terminal frame on success, with the same timing stats as the non-streaming response. |
+| `5` | Error | JSON [error envelope](#error-response-envelope) — sent instead of, or after, other frames if execution fails. |
+
+The Go SDK's `DoStream` (see the [SDK guide](../sdk.md#2-streaming-request-forwarding-dostream)) decodes this frame format automatically — use it from Go rather than parsing frames by hand. Clients in other languages parse the wire format directly.
+
+---
+
 ## Error Response Envelope
 
 If Straw fails to process, route, schedule, or execute the request, it returns a standard JSON error envelope with an appropriate HTTP status code:
@@ -147,6 +166,19 @@ If Straw fails to process, route, schedule, or execute the request, it returns a
   "details": {
     "reason": "unknown field 'foo'"
   }
+}
+```
+
+For `rate_limit_exceeded` responses, the envelope also carries a `retry_after_ms` field (integer milliseconds) whenever it's computable, telling the client how long to wait before retrying:
+
+```json
+{
+  "category": "client",
+  "code": "rate_limit_exceeded",
+  "message": "tenant rate limit exceeded",
+  "retryable": true,
+  "request_id": "req_1783260685717525503",
+  "retry_after_ms": 850
 }
 ```
 

@@ -6,6 +6,7 @@ const sidebars = {
     'index',
     'quickstart',
     'sdk',
+    'cli',
     {
       type: 'category',
       label: 'API Reference',
