@@ -80,10 +80,16 @@ type ControlServerConfig struct {
 	APIPort              int    `json:"api_port"`
 	MetricsPort          int    `json:"metrics_port"`
 	EgressMetricsEnabled bool   `json:"egress_metrics_enabled,omitempty"`
-	ProxyEnabled         bool   `json:"proxy_enabled,omitempty"`
-	ProxyPort            int    `json:"proxy_port,omitempty"`
-	ConnectEnabled       bool   `json:"connect_enabled,omitempty"`
-	ConnectPort          int    `json:"connect_port,omitempty"`
+	// MultiControlEnabled turns on cross-Control-instance admin cancellation
+	// (docs/tasks/p1/23): Control advertises each in-flight request's ownership
+	// in Redis and routes a cancel for a request owned by a sibling replica to
+	// that replica. Default off so a single-Control deployment pays no extra
+	// Redis round-trips (docs/planning/32 "Multiple Concurrent Control Replicas").
+	MultiControlEnabled bool `json:"multi_control_enabled,omitempty"`
+	ProxyEnabled        bool `json:"proxy_enabled,omitempty"`
+	ProxyPort           int  `json:"proxy_port,omitempty"`
+	ConnectEnabled      bool `json:"connect_enabled,omitempty"`
+	ConnectPort         int  `json:"connect_port,omitempty"`
 }
 
 // ControlRequestConfig configures request body and timeout limits.

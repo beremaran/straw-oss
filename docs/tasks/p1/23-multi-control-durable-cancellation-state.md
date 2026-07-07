@@ -1,6 +1,6 @@
 # 23 - Multi-Control Durable Cancellation State
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -81,20 +81,20 @@ not invisible.
 
 ## Steps
 
-- [ ] Confirm the gate: a committed multi-Control-replica decision exists. If not, stop.
-- [ ] Read all required planning docs.
-- [ ] Choose the cross-instance signal mechanism within the existing Redis runtime-state tier (e.g. a
+- [x] Confirm the gate: a committed multi-Control-replica decision exists. If not, stop.
+- [x] Read all required planning docs.
+- [x] Choose the cross-instance signal mechanism within the existing Redis runtime-state tier (e.g. a
       request_id -> owning-instance record plus a pub/sub or polled cancel signal); document the choice before coding.
-- [ ] Extend `InFlightRegistry` so `Cancel` on a `request_id` not owned locally publishes a cancel signal the owning
+- [x] Extend `InFlightRegistry` so `Cancel` on a `request_id` not owned locally publishes a cancel signal the owning
       instance consumes and applies to its local `context.CancelFunc`; keep the local fast path unchanged.
-- [ ] Ensure the owning instance's teardown still publishes the request's `CancelFrame` on its `c2e` subject and
+- [x] Ensure the owning instance's teardown still publishes the request's `CancelFrame` on its `c2e` subject and
       returns the cancelled terminal outcome exactly once (no duplicate teardown).
-- [ ] Wire the shared runtime-state client into the registry in `cmd/control/main.go` (`buildControlMux`).
-- [ ] Add a test with two registries over one shared backend: a cancel received by instance A tears down a request
+- [x] Wire the shared runtime-state client into the registry in `cmd/control/main.go` (`buildControlMux`).
+- [x] Add a test with two registries over one shared backend: a cancel received by instance A tears down a request
       in-flight on instance B; and a cancel for a truly unknown `request_id` still returns the existing not-found
       outcome.
-- [ ] Run focused control tests, then `make check`.
-- [ ] Write a handoff note.
+- [x] Run focused control tests, then `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

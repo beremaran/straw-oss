@@ -201,8 +201,8 @@ func (d *DefaultRequestDispatcher) dispatch(ctx context.Context, in DispatchInpu
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	d.opts.InFlight.Register(in.RequestID, in.Identity.TenantID, cancel)
-	defer d.opts.InFlight.Deregister(in.RequestID)
+	d.opts.InFlight.Register(ctx, in.RequestID, in.Identity.TenantID, cancel)
+	defer d.opts.InFlight.Deregister(ctx, in.RequestID)
 
 	snapshot, err := d.opts.ConfigCache.Snapshot(ctx, in.Identity.TenantID)
 	if err != nil {
@@ -262,8 +262,8 @@ func (d *DefaultRequestDispatcher) dispatchRaw(ctx context.Context, in DispatchI
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	d.opts.InFlight.Register(in.RequestID, in.Identity.TenantID, cancel)
-	defer d.opts.InFlight.Deregister(in.RequestID)
+	d.opts.InFlight.Register(ctx, in.RequestID, in.Identity.TenantID, cancel)
+	defer d.opts.InFlight.Deregister(ctx, in.RequestID)
 
 	snapshot, err := d.opts.ConfigCache.Snapshot(ctx, in.Identity.TenantID)
 	if err != nil {
