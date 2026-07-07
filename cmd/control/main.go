@@ -867,6 +867,7 @@ type clickHouseWriters struct {
 	workerEvents    *control.WorkerEventWriter
 	configAudit     *control.ConfigAuditEventWriter
 	logEvents       *control.LogEventWriter
+	payloadCapture  *control.PayloadCaptureEventWriter
 }
 
 // SetMetrics attaches the shared Prometheus metrics recorder to every writer.
@@ -879,6 +880,7 @@ func (w *clickHouseWriters) SetMetrics(m *control.Metrics) {
 	w.workerEvents.SetMetrics(m)
 	w.configAudit.SetMetrics(m)
 	w.logEvents.SetMetrics(m)
+	w.payloadCapture.SetMetrics(m)
 }
 
 // QueueDepth sums the buffered event count across all writers for the
@@ -888,7 +890,7 @@ func (w *clickHouseWriters) QueueDepth() int {
 		return 0
 	}
 
-	return w.requestMetadata.QueueDepth() + w.workerEvents.QueueDepth() + w.configAudit.QueueDepth() + w.logEvents.QueueDepth()
+	return w.requestMetadata.QueueDepth() + w.workerEvents.QueueDepth() + w.configAudit.QueueDepth() + w.logEvents.QueueDepth() + w.payloadCapture.QueueDepth()
 }
 
 // Close stops every writer's background flush loop and drains its queue.
@@ -901,6 +903,7 @@ func (w *clickHouseWriters) Close() {
 	w.workerEvents.Close()
 	w.configAudit.Close()
 	w.logEvents.Close()
+	w.payloadCapture.Close()
 }
 
 // wireClickHouseWriters builds the async event writers backed by the live
@@ -933,6 +936,7 @@ func wireClickHouseWriters(cfg config.ClickHouseConfig) *clickHouseWriters {
 		workerEvents:    control.NewWorkerEventWriter(sink, cfg.MaxQueueEntries, cfg.BatchSize, flushInterval),
 		configAudit:     control.NewConfigAuditEventWriter(sink, cfg.MaxQueueEntries, cfg.BatchSize, flushInterval),
 		logEvents:       control.NewLogEventWriter(sink, cfg.MaxQueueEntries, cfg.BatchSize, flushInterval),
+		payloadCapture:  control.NewPayloadCaptureEventWriter(sink, cfg.MaxQueueEntries, cfg.BatchSize, flushInterval),
 	}
 }
 
@@ -1130,7 +1134,7 @@ func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.API
 		InFlight:                   inflight,
 		Metrics:                    metrics,
 	})
-	configureRequestHandler(requestHandler, configCache, pool, dispatcher)
+	configureRequestHandler(requestHandler, configCache, pool, dispatcher, bodyStore, chWriters.payloadCapture)
 
 	mux := http.NewServeMux()
 	serveControlRoutes(mux, controlConfig, requestHandler, authenticator, configCache, adminHandlers)
@@ -1174,9 +1178,14 @@ func serveControlRoutes(mux *http.ServeMux, controlConfig config.ControlConfig, 
 	serveAdminRoutes(mux, adminHandlers)
 }
 
-func configureRequestHandler(h *control.RequestHandler, configCache *control.ConfigCache, pool *pgxpool.Pool, dispatcher control.RequestDispatcher) {
+func configureRequestHandler(h *control.RequestHandler, configCache *control.ConfigCache, pool *pgxpool.Pool, dispatcher control.RequestDispatcher, bodyStore *control.S3RequestBodyRefStore, captureEvents *control.PayloadCaptureEventWriter) {
 	h.SetConfigCache(configCache)
 	h.SetPayloadCapturePolicyStore(control.NewPostgresPayloadCapturePolicyStore(pool))
+
+	if bodyStore != nil && captureEvents != nil {
+		h.SetPayloadCaptureStore(control.NewPayloadCaptureStore(bodyStore, captureEvents))
+	}
+
 	h.SetDispatcher(dispatcher)
 }
 

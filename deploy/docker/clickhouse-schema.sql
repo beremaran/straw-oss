@@ -1,6 +1,5 @@
--- P0 ClickHouse schema for the Straw local stack.
+-- ClickHouse schema for the Straw local stack.
 -- Canonical source: docs/planning/22-canonical-clickhouse-schema.md.
--- Only P0 tables are created here; payload_capture_events is P2 and omitted.
 -- Mounted at /docker-entrypoint-initdb.d so ClickHouse applies it on first boot.
 
 CREATE DATABASE IF NOT EXISTS straw;
@@ -95,3 +94,25 @@ CREATE TABLE IF NOT EXISTS straw.log_events
 PARTITION BY toYYYYMM(timestamp)
 ORDER BY (service, timestamp)
 TTL toDateTime(timestamp) + INTERVAL 30 DAY;
+
+-- P2: payload capture metadata. Bodies are stored in object storage by
+-- reference (request_body_ref / response_body_ref); only redacted headers and
+-- reference keys land here. The 7-day TTL is the retention backstop from
+-- docs/planning/22.
+CREATE TABLE IF NOT EXISTS straw.payload_capture_events
+(
+    captured_at       DateTime64(3, 'UTC'),
+    request_id        String,
+    tenant_id         LowCardinality(String),
+    capture_scope     LowCardinality(String),
+    capture_decision  LowCardinality(String),
+    request_headers   String,
+    response_headers  String,
+    request_body_ref  String,
+    response_body_ref String,
+    redacted_fields   Array(String),
+    truncated         UInt8
+) ENGINE = MergeTree
+PARTITION BY toYYYYMM(captured_at)
+ORDER BY (tenant_id, captured_at, request_id)
+TTL toDateTime(captured_at) + INTERVAL 7 DAY;

@@ -113,16 +113,16 @@ func (s *S3RequestBodyRefStore) deleteBody(ctx context.Context, frame *strawpb.B
 		return nil
 	}
 
-	signed, err := s.Client.PresignDelete(key, bodyRefExpiry(s.Expiry))
+	del, err := s.Client.PresignDelete(key, bodyRefExpiry(s.Expiry))
 	if err != nil {
 		return fmt.Errorf("request body ref delete: %w", objectstore.Unavailable(err))
 	}
 
-	return s.deleteObject(ctx, signed)
+	return s.deleteObject(ctx, del)
 }
 
-func (s *S3RequestBodyRefStore) deleteObject(ctx context.Context, signed string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, signed, nil)
+func (s *S3RequestBodyRefStore) deleteObject(ctx context.Context, del objectstore.PresignedDelete) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, del.URL, nil)
 	if err != nil {
 		return fmt.Errorf("request body ref delete request: %w", objectstore.Unavailable(err))
 	}

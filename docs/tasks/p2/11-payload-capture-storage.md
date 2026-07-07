@@ -1,6 +1,6 @@
 # 11 - Payload Capture Storage
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -32,17 +32,17 @@ Persist payload capture metadata in ClickHouse and store large captured bodies b
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Implement writes to the canonical `payload_capture_events` table.
-- [ ] Enforce table TTL and retention behavior.
-- [ ] Store large captured bodies by object reference.
-- [ ] Link body refs to tenant/request/capture event metadata.
-- [ ] Ensure secret and sensitive fields follow storage redaction rules.
-- [ ] Add tests for ClickHouse rows, TTL/retention metadata, large body refs, object cleanup, redaction, and outage
+- [x] Read all required planning docs.
+- [x] Implement writes to the canonical `payload_capture_events` table.
+- [x] Enforce table TTL and retention behavior.
+- [x] Store large captured bodies by object reference.
+- [x] Link body refs to tenant/request/capture event metadata.
+- [x] Ensure secret and sensitive fields follow storage redaction rules.
+- [x] Add tests for ClickHouse rows, TTL/retention metadata, large body refs, object cleanup, redaction, and outage
       behavior.
-- [ ] Run focused capture storage tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Run focused capture storage tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 
