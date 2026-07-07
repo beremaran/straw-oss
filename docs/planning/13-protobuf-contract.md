@@ -294,10 +294,12 @@ message DestinationPolicy {
 }
 
 enum DestinationResolutionMode {
+  reserved "DESTINATION_RESOLUTION_PROVIDER_ADAPTER";
+
   DESTINATION_RESOLUTION_MODE_UNSPECIFIED = 0;
   DESTINATION_RESOLUTION_DIRECT_LOCAL = 1;
   DESTINATION_RESOLUTION_UPSTREAM_PROXY_REMOTE = 2;
-  DESTINATION_RESOLUTION_PROVIDER_ADAPTER = 3;
+  DESTINATION_RESOLUTION_EXECUTOR_DELEGATED = 3;
 }
 ```
 
@@ -307,7 +309,7 @@ explicitly allows them for the tenant or deployment.
 `DESTINATION_RESOLUTION_DIRECT_LOCAL`: Worker resolves, validates, and connects to the validated IP.
 `DESTINATION_RESOLUTION_UPSTREAM_PROXY_REMOTE`: Worker cannot prove resolved-IP policy. Allowed only if the upstream
 proxy is trusted to enforce equivalent policy, or if tenant/deployment policy explicitly accepts remote-resolution risk.
-`DESTINATION_RESOLUTION_PROVIDER_ADAPTER`: Adapter must enforce equivalent destination policy and report constrained
+`DESTINATION_RESOLUTION_EXECUTOR_DELEGATED`: Executor must enforce equivalent destination policy and report constrained
 facts back to Control.
 
 ### OutboundStartFrame

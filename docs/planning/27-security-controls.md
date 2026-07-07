@@ -108,7 +108,7 @@ Egress enforces destination policy based on the `DestinationResolutionMode` from
 - Allowed only if the deployment trusts the proxy for equivalent SSRF enforcement.
 - If not trusted, the request is rejected at Control before dispatch.
 
-**Executor-delegated resolution** (`DESTINATION_RESOLUTION_PROVIDER_ADAPTER`; rename owned by the P2 Egress SDK task):
+**Executor-delegated resolution** (`DESTINATION_RESOLUTION_EXECUTOR_DELEGATED`):
 - A custom Egress implementation that resolves destinations internally must enforce equivalent destination policy.
 - The implementation reports constrained facts back to Control.
 

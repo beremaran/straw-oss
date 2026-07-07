@@ -267,7 +267,7 @@ func (e DestinationResolutionMode) Valid() bool {
 	case DestinationResolutionMode_DESTINATION_RESOLUTION_MODE_UNSPECIFIED,
 		DestinationResolutionMode_DESTINATION_RESOLUTION_DIRECT_LOCAL,
 		DestinationResolutionMode_DESTINATION_RESOLUTION_UPSTREAM_PROXY_REMOTE,
-		DestinationResolutionMode_DESTINATION_RESOLUTION_PROVIDER_ADAPTER:
+		DestinationResolutionMode_DESTINATION_RESOLUTION_EXECUTOR_DELEGATED:
 		return true
 	default:
 		return false
