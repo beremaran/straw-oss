@@ -149,7 +149,6 @@ services:
 
   docs:
     image: node:20-alpine
-    profiles: ["docs"]
     working_dir: /site
     command: ["sh", "-c", "npm install && npm start -- --host 0.0.0.0"]
     ports:
@@ -160,7 +159,6 @@ services:
 
   prometheus:
     image: prom/prometheus:v2.54.1
-    profiles: ["observability"]
     ports:
       - "9091:9090"
     volumes:
@@ -174,14 +172,12 @@ services:
 
   blackbox:
     image: prom/blackbox-exporter:v0.25.0
-    profiles: ["observability"]
     volumes:
       - ./deploy/observability/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
     restart: unless-stopped
 
   grafana:
     image: grafana/grafana:11.2.0
-    profiles: ["observability"]
     ports:
       - "3000:3000"
     environment:
