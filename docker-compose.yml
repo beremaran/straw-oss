@@ -188,7 +188,7 @@ services:
       - grafana_data:/var/lib/grafana
       - ./deploy/observability/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
       - ./deploy/observability/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
-      - ./deploy/observability/grafana/dashboards:/etc/grafana/provisioning/dashboards/straw:ro
+      - ./deploy/observability/grafana/dashboards:/etc/grafana/dashboards/straw:ro
     depends_on:
       prometheus:
         condition: service_started
