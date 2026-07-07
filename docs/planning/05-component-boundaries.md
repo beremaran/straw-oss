@@ -32,13 +32,19 @@ constrained execution facts back to Control.
 The worker is stateless with respect to Straw control-plane state. Local static config may include upstream proxy
 credentials, network-interface binding, DNS configuration, and local health endpoints.
 
-### Provider Adapter
+### Egress SDK and Custom Egress Implementations
 
-Provider Adapters are P2 executors. They participate in the same NATS registration, heartbeat, assignment, stream, and
-error protocol as Egress Workers. They differ only in execution behavior: a Provider Adapter may select provider
-accounts, upstream endpoints, or vendor-specific request mechanics internally.
+P2 extracts the worker's protocol machinery — NATS registration, heartbeat, assignment handling, stream framing, and
+error protocol — into a public Go Egress SDK with a pluggable execution seam. The official Egress Worker becomes the
+reference implementation built on that SDK.
 
-Provider Adapters are operator-configured only. Phase 2 does not include marketplace discovery, provider billing
+Operators may build custom Egress implementations on the SDK that supply their own execution behavior: forwarding to a
+commercial provider, vendor-specific request mechanics, or synthetic responses. Straw does not name or model specific
+providers; a provider integration is just a custom Egress implementation.
+
+Custom implementations are operator-configured only, and the operator assumes the executor-side obligations the
+official worker enforces: equivalent destination-policy enforcement (see `27-security-controls.md`) and constrained,
+public-safe execution facts reported back to Control. There is no marketplace discovery, provider billing
 reconciliation, automatic provider account provisioning, or provider economics.
 
 ### NATS

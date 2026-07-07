@@ -8,7 +8,7 @@ Straw lets operators combine:
 
 - operator-owned Egress Workers,
 - operator-configured upstream proxies,
-- optional Provider Adapters for direct provider/vendor execution,
+- optional custom Egress implementations, built on the Egress SDK, for provider/vendor-delegated execution,
 - policy-based route selection,
 - stable transport error semantics,
 - browser-like outbound TLS behavior where supported by the executor.

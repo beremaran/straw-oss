@@ -35,35 +35,48 @@ These must be decided before related implementation starts. Defaults already spe
   returns the existing not-found outcome.
 - **Decision owner**: Operations owner.
 
-### P2 MITM Private-Key Storage Policy
+### P2 MITM Private-Key Storage Policy — Resolved 2026-07-07
 
 - **Blocked sections**: Section 17 MITM Design, Section 27 Security Controls.
-- **Options**: never store generated leaf private keys; encrypted Redis/disk cache; KMS-backed shared cache.
+- **Decision**: KMS-backed shared cache. Generated leaf cert bundles (including private keys) are stored in a shared
+  cache encrypted via a KMS-compatible mechanism, tenant/deployment scoped, readable by Control instances only.
+- **Rejected options**: never store generated leaf private keys; encrypted Redis/disk cache with a deployment key.
 - **Acceptance tests required**: cache miss generation, encrypted-at-rest verification for stored keys, rotation, and
   unique-SNI flood limits.
 - **Decision owner**: Security owner.
 
-### P2 BodyRef Response-Body Mode
+### P2 BodyRef Response-Body Mode — Resolved 2026-07-07
 
 - **Blocked sections**: Section 18 Large-Body Transport, Section 13 BodyRef protobuf usage.
-- **Options**: executor writes response object and Control reads after completion; executor streams through Control while
-  teeing to object storage.
+- **Decision**: Executor streams the response body through Control while teeing to object storage. Streaming remains
+  the synchronous transport path; the teed object backs REST download references and retention policy.
+- **Rejected options**: executor writes the response object and Control reads after completion.
 - **Acceptance tests required**: cancellation cleanup, checksum/size validation, object retention, object-storage outage,
   and response-body-too-large behavior.
 - **Decision owner**: Transport owner.
 
-### P2 Provider Adapter Baseline
+### P2 Provider Adapter Baseline — Superseded 2026-07-07
 
-- **Blocked sections**: Section 5 Provider Adapter, Section 31 P2 implementation order.
-- **Options**: protocol scaffolding only; one static Bright Data adapter.
-- **Acceptance tests required**: adapter registration, destination-policy enforcement, constrained error facts, and no
-  marketplace/provider billing behavior.
+- **Blocked sections**: Section 5 Egress SDK, Section 31 P2 implementation order.
+- **Decision**: Drop the Provider Adapter concept entirely. P2 ships a public Egress SDK that owns the NATS
+  registration, heartbeat, assignment, stream, and error protocol behind a pluggable execution seam; the official
+  Egress Worker is rebased onto the SDK as its reference implementation; and one example custom Egress implementation
+  proves the SDK end to end. Provider integrations are just custom Egress implementations — Straw names no providers.
+  Custom implementations remain operator-configured only, with no marketplace or provider billing behavior.
+- **Rejected options**: a separate Provider Adapter entity and protocol; a named static provider adapter (the earlier
+  same-day resolution: adapter protocol plus one static Bright Data adapter); protocol scaffolding only.
+- **Acceptance tests required**: SDK-built worker protocol conformance (registration, assignment, stream, errors),
+  official worker on the SDK passing the existing E2E flow, constrained error facts, and no marketplace/provider
+  billing behavior.
 - **Decision owner**: Integrations owner.
 
-### P2 Quota Reconciliation Accuracy
+### P2 Quota Reconciliation Accuracy — Resolved 2026-07-07
 
 - **Blocked sections**: Section 20 Reconciliation Position, Section 33 Quota Accuracy.
-- **Options**: operationally accurate reconciliation; near-billing-grade reconciliation; billing-grade accounting.
+- **Decision**: Billing-grade accounting. Reconciliation must define a durable usage-event source, aggregation cadence,
+  idempotency keys, late-arriving event handling, a correction policy for Redis hot counters, and user-visible quota
+  display semantics accurate enough to invoice against.
+- **Rejected options**: operationally accurate reconciliation; near-billing-grade reconciliation.
 - **Acceptance tests required**: idempotent aggregation, late event handling, correction policy, and user-visible quota
   display semantics.
 - **Decision owner**: Billing/operations owner.

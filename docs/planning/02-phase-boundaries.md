@@ -40,7 +40,7 @@ P0 excludes:
 - HTTP forward proxy,
 - raw CONNECT,
 - MITM,
-- Provider Adapters,
+- the Egress SDK and custom Egress implementations,
 - object-storage large-body transport,
 - direct streaming large-body transport,
 - external REST response streaming,
@@ -72,7 +72,7 @@ P1 adds:
 - load and backpressure testing,
 - operational deployment templates.
 
-### P2 — MITM, Large Bodies, Payload Capture, Provider Adapters
+### P2 — MITM, Large Bodies, Payload Capture, Egress SDK
 
 P2 adds:
 
@@ -80,7 +80,7 @@ P2 adds:
 - generated leaf certificate cache/storage,
 - BodyRef transport after choosing the P2 response-body mode,
 - payload capture with storage-only redaction,
-- Provider Adapter protocol and at least one static adapter implementation,
+- the public Egress SDK, the official worker rebased onto it, and one example custom Egress implementation,
 - HTTP/2 support where explicitly specified and tested,
 - quota reconciliation suitable for billing-grade or near-billing-grade reporting if required.
 
