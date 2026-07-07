@@ -60,7 +60,7 @@ Result:
 
 ## Remaining Work
 
-- BodyRef request-body runtime rebase remains owned by `docs/tasks/p2/31-egress-sdk-bodyref-runtime-rebase.md`.
+- BodyRef request-body runtime rebase was completed by `docs/tasks/p2/31-egress-sdk-bodyref-runtime-rebase.md`.
 - SDK runtime test migration and wiring proof remains owned by `docs/tasks/p2/28-egress-sdk-runtime-test-migration-and-wiring-proof.md`.
 - Final SDK conformance and live compose verification remains owned by `docs/tasks/p2/24-egress-sdk-conformance-and-live-verification.md`.
 

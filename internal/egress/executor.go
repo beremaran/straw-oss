@@ -4,10 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -28,6 +26,7 @@ import (
 	"golang.org/x/net/http2"
 
 	strawpb "github.com/beremaran/straw/v2/api/proto/straw/v1"
+	sdkegress "github.com/beremaran/straw/v2/sdk/egress"
 )
 
 const (
@@ -454,78 +453,14 @@ func (e *Executor) ExecuteWithTenant(ctx context.Context, tenantID string, start
 }
 
 func (e *Executor) downloadBodyRef(ctx context.Context, frame *strawpb.BodyRefFrame) ([]byte, *executionError) {
-	ref, failure := e.validateBodyRef(frame)
+	resolver := sdkegress.HTTPBodyRefResolver{Client: e.bodyRefHTTPClient, Now: e.now}
+
+	body, failure := resolver.DownloadBodyRef(ctx, frame)
 	if failure != nil {
-		return nil, failure
-	}
-
-	body, failure := e.fetchBodyRef(ctx, ref)
-	if failure != nil {
-		return nil, failure
-	}
-
-	return body, verifyBodyRef(frame, body)
-}
-
-func (e *Executor) validateBodyRef(frame *strawpb.BodyRefFrame) (*strawpb.S3BodyRef, *executionError) {
-	ref := frame.GetS3()
-	if ref == nil || ref.GetSignedUrl() == "" {
-		return nil, executorFailure(strawpb.ErrorCode_ERROR_CODE_BODY_REF_UNAVAILABLE, "body_ref_unavailable")
-	}
-
-	if ref.GetExpiresUnixMs() > 0 && !e.now().Before(time.UnixMilli(ref.GetExpiresUnixMs())) {
-		return nil, executorFailure(strawpb.ErrorCode_ERROR_CODE_BODY_REF_UNAVAILABLE, "body_ref_expired")
-	}
-
-	return ref, nil
-}
-
-func (e *Executor) fetchBodyRef(ctx context.Context, ref *strawpb.S3BodyRef) ([]byte, *executionError) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ref.GetSignedUrl(), nil)
-	if err != nil {
-		return nil, executorFailure(strawpb.ErrorCode_ERROR_CODE_BODY_REF_UNAVAILABLE, "body_ref_unavailable")
-	}
-
-	resp, err := e.bodyRefClient().Do(req)
-	if err != nil {
-		return nil, executorFailure(strawpb.ErrorCode_ERROR_CODE_BODY_REF_UNAVAILABLE, "body_ref_unavailable")
-	}
-
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return nil, executorFailure(strawpb.ErrorCode_ERROR_CODE_BODY_REF_UNAVAILABLE, "body_ref_unavailable")
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, executorFailure(strawpb.ErrorCode_ERROR_CODE_BODY_REF_UNAVAILABLE, "body_ref_unavailable")
+		return nil, executorFailure(failure.GetCode(), failure.GetDetails()[errorFactDetailKey])
 	}
 
 	return body, nil
-}
-
-func (e *Executor) bodyRefClient() *http.Client {
-	if e.bodyRefHTTPClient != nil {
-		return e.bodyRefHTTPClient
-	}
-
-	return http.DefaultClient
-}
-
-func verifyBodyRef(frame *strawpb.BodyRefFrame, body []byte) *executionError {
-	if want := frame.GetExpectedSizeBytes(); want != uint64(len(body)) {
-		return executorFailure(strawpb.ErrorCode_ERROR_CODE_BODY_REF_UNAVAILABLE, "body_ref_size_mismatch")
-	}
-
-	if want := frame.GetSha256Hex(); want != "" {
-		sum := sha256.Sum256(body)
-		if !strings.EqualFold(hex.EncodeToString(sum[:]), want) {
-			return executorFailure(strawpb.ErrorCode_ERROR_CODE_BODY_REF_UNAVAILABLE, "body_ref_checksum_mismatch")
-		}
-	}
-
-	return nil
 }
 
 func (e *Executor) doRequestWithRetry(ctx context.Context, tenantID string, target target, start *strawpb.RequestStart, body []byte) (*http.Response, *executionError) {
