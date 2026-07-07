@@ -15,6 +15,7 @@ Local docker-compose support for the full P0 vertical slice: Control, Egress, NA
 | Service    | Port | Purpose                        |
 |------------|------|--------------------------------|
 | control    | 8080 | REST/config/admin API          |
+| control    | 8083 | MITM CONNECT proxy             |
 | control    | 9090 | Metrics + `/healthz` `/readyz`  |
 | egress     | 8090 | `/healthz` `/readyz` (container-local; not published) |
 | nats       | 4222 | client / 8222 monitoring       |
@@ -25,6 +26,9 @@ Local docker-compose support for the full P0 vertical slice: Control, Egress, NA
 ## Start / stop
 
 ```sh
+# Generate dev-only MITM CA material before starting Control.
+scripts/dev-mitm-ca.sh
+
 # Build and start the whole stack (Control waits for the four backends to be healthy).
 docker compose up -d --build
 
@@ -96,6 +100,27 @@ Request metadata lands asynchronously in ClickHouse (`straw.request_events`, ~1s
 The in-process proof of the same path is `TestDispatcherControlNATSEgressRoundTrip`
 (`go test ./internal/control/`), which controls both the worker key and the registered credential. See
 `docs/agents/testing-matrix-audit.md`.
+
+## Live HTTP/2 MITM round-trip
+
+The local compose stack enables the P2 MITM CONNECT proxy on `8083`, using dev-only CA material from
+`.dev/mitm-ca` and a local AWS-KMS-compatible mock for encrypted leaf-bundle cache writes. Generate the CA before
+starting Control:
+
+```sh
+scripts/dev-mitm-ca.sh
+STRAW_BOOTSTRAP_SYSTEM_ADMIN_KEY=<your-dev-admin-key> docker compose up -d --build
+curl -fsS http://localhost:9090/readyz && echo ready
+```
+
+Mint the dev tenant requester key as in the REST round-trip section, then drive one HTTP/2 MITM request:
+
+```sh
+STRAW_REQUESTER_SECRET=<requester-secret> go run ./scripts/mitm-h2-request.go
+```
+
+Expected output includes `proto=HTTP/2.0` and the upstream HTTP status. The request is an authenticated CONNECT to
+Control, an inner TLS handshake signed by the dev MITM CA, and a normal Control -> NATS -> Egress stream dispatch.
 
 ## Body object lifecycle
 

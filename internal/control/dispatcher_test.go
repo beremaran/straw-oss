@@ -471,6 +471,83 @@ func TestDispatcherSendsLargeRequestBodyRef(t *testing.T) {
 	}
 }
 
+func TestDispatcherStreamingRequestBodyWaitsForUploadCreditBeforeReading(t *testing.T) {
+	t.Parallel()
+
+	reader := &recordingChunkReader{
+		chunks: [][]byte{[]byte("abc"), []byte("def")},
+		reads:  make(chan struct{}, 2),
+	}
+	d := NewDefaultRequestDispatcher(RequestDispatcherOptions{
+		MaxFrameDataBytes:        3,
+		InitialUploadCreditBytes: 3,
+	})
+	frames := make(chan *strawpb.StreamFrame, 2)
+	upload := &requestBodyUpload{
+		gate: newTunnelUploadGate(3),
+		c2e: &c2eStreamSender{
+			publishFn: func(frame *strawpb.StreamFrame) {
+				frames <- frame
+			},
+		},
+	}
+	in := DispatchInput{
+		RequestID: "req_stream",
+		Identity:  Identity{TenantID: dispatchTestTenant},
+		Request: &ValidatedRequest{
+			BodyReader:    reader,
+			BodySizeBytes: 6,
+		},
+	}
+
+	errs := make(chan error, 1)
+	go func() { errs <- d.streamRequestBody(context.Background(), in, upload) }()
+
+	<-reader.reads
+	if got := (<-frames).GetData().GetData(); string(got) != "abc" {
+		t.Fatalf("first frame = %q, want abc", got)
+	}
+
+	select {
+	case <-reader.reads:
+		t.Fatal("body reader was read again before upload credit was granted")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	upload.gate.grant(3)
+
+	<-reader.reads
+	if got := (<-frames).GetData().GetData(); string(got) != "def" {
+		t.Fatalf("second frame = %q, want def", got)
+	}
+
+	err := <-errs
+	if err != nil {
+		t.Fatalf("streamRequestBody() error = %v", err)
+	}
+}
+
+type recordingChunkReader struct {
+	chunks [][]byte
+	reads  chan struct{}
+}
+
+func (r *recordingChunkReader) Read(p []byte) (int, error) {
+	r.reads <- struct{}{}
+	if len(r.chunks) == 0 {
+		return 0, io.EOF
+	}
+
+	n := copy(p, r.chunks[0])
+	r.chunks = r.chunks[1:]
+
+	return n, nil
+}
+
+func (r *recordingChunkReader) Close() error {
+	return nil
+}
+
 func TestDispatcherCleansUploadedRequestBodyRefOnPublishFailure(t *testing.T) {
 	t.Parallel()
 
@@ -1398,7 +1475,7 @@ func TestDispatcherWorkerLossAfterRequestStartSynthesizesWorkerDisconnected(t *t
 	frames := make(chan *strawpb.StreamFrame)
 	close(frames)
 
-	_, perr := d.readResponse(context.Background(), frames, dispatchRoute(), time.Now().Add(time.Second), "c2e", dispatchInput(validatedDispatchRequest(t, "https://example.com/")), 2)
+	_, perr := d.readResponse(context.Background(), frames, dispatchRoute(), time.Now().Add(time.Second), "c2e", dispatchInput(validatedDispatchRequest(t, "https://example.com/")), 2, nil)
 	if perr == nil || perr.Code != WorkerDisconnected {
 		t.Fatalf("readResponse error = %#v, want worker_disconnected", perr)
 	}
@@ -1419,7 +1496,7 @@ func TestDispatcherWorkerLossAfterPartialResponseSynthesizesWorkerDisconnected(t
 	close(frames)
 
 	w := httptest.NewRecorder()
-	result, perr, wroteHeader := d.streamRawResponse(context.Background(), frames, dispatchRoute(), time.Now().Add(time.Second), "c2e", dispatchInput(validatedDispatchRequest(t, "https://example.com/")), 2, w)
+	result, perr, wroteHeader := d.streamRawResponse(context.Background(), frames, dispatchRoute(), time.Now().Add(time.Second), "c2e", dispatchInput(validatedDispatchRequest(t, "https://example.com/")), 2, nil, w)
 	if perr == nil || perr.Code != WorkerDisconnected {
 		t.Fatalf("streamRawResponse error = %#v, want worker_disconnected", perr)
 	}
@@ -1457,7 +1534,7 @@ func TestDispatcherReplenishesDownloadCreditForDecodedResponse(t *testing.T) {
 	frames <- &strawpb.StreamFrame{StreamSeq: 4, Attempt: defaultRequestAttempt, Payload: &strawpb.StreamFrame_Data{Data: &strawpb.DataFrame{Offset: 1, Data: []byte("b")}}}
 	frames <- &strawpb.StreamFrame{StreamSeq: 5, Attempt: defaultRequestAttempt, Payload: &strawpb.StreamFrame_End{End: &strawpb.EndFrame{Success: true}}}
 
-	result, perr := d.readResponse(context.Background(), frames, dispatchRoute(), time.Now().Add(time.Second), "c2e", dispatchInput(validatedDispatchRequest(t, "https://example.com/")), 2)
+	result, perr := d.readResponse(context.Background(), frames, dispatchRoute(), time.Now().Add(time.Second), "c2e", dispatchInput(validatedDispatchRequest(t, "https://example.com/")), 2, nil)
 	if perr != nil {
 		t.Fatalf("readResponse error = %#v", perr)
 	}
@@ -1493,7 +1570,7 @@ func TestDispatcherInFlightNATSDisconnectSynthesizesTransportUnavailable(t *test
 	d.opts.Metrics = NewMetrics(reg)
 	frames := make(chan *strawpb.StreamFrame)
 
-	_, perr := d.readResponse(context.Background(), frames, dispatchRoute(), time.Now().Add(time.Second), "c2e", dispatchInput(validatedDispatchRequest(t, "https://example.com/")), 2)
+	_, perr := d.readResponse(context.Background(), frames, dispatchRoute(), time.Now().Add(time.Second), "c2e", dispatchInput(validatedDispatchRequest(t, "https://example.com/")), 2, nil)
 	if perr == nil || perr.Code != TransportUnavailable {
 		t.Fatalf("readResponse error = %#v, want transport_unavailable", perr)
 	}

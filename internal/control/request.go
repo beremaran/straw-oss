@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/netip"
@@ -112,6 +113,8 @@ type ValidatedRequest struct {
 	URL             *url.URL
 	Headers         []HeaderPair
 	BodyData        []byte
+	BodyReader      io.ReadCloser
+	BodySizeBytes   int64
 	Routing         RoutingHints
 	IngressType     string
 	Fingerprint     string

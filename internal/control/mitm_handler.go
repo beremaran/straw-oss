@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"crypto/tls"
+	"io"
 	"net"
 	"net/http"
 	"strings"
@@ -155,20 +156,40 @@ func (h *MITMHandler) validateMITMRequest(w http.ResponseWriter, r *http.Request
 		return nil, err
 	}
 
-	body, err := readProxyBody(w, r, h.maxRequestBodyBytes)
+	body, bodyReader, bodySize, err := h.mitmRequestBody(w, r)
 	if err != nil {
 		return nil, err
 	}
 
 	return &ValidatedRequest{
-		Method:      r.Method,
-		URL:         parsedURL,
-		Headers:     headers,
-		BodyData:    body,
-		IngressType: IngressTypeMITM,
-		TimeoutMs:   0,
-		Replayable:  proxyReplayable(r.Method),
+		Method:        r.Method,
+		URL:           parsedURL,
+		Headers:       headers,
+		BodyData:      body,
+		BodyReader:    bodyReader,
+		BodySizeBytes: bodySize,
+		IngressType:   IngressTypeMITM,
+		TimeoutMs:     0,
+		Replayable:    proxyReplayable(r.Method),
 	}, nil
+}
+
+func (h *MITMHandler) mitmRequestBody(w http.ResponseWriter, r *http.Request) ([]byte, io.ReadCloser, int64, error) {
+	if r.ProtoMajor >= 2 && r.Body != nil {
+		limit, err := proxyBodyLimit(h.maxRequestBodyBytes)
+		if err != nil {
+			return nil, nil, 0, err
+		}
+
+		return nil, http.MaxBytesReader(w, r.Body, limit+1), r.ContentLength, nil
+	}
+
+	body, err := readProxyBody(w, r, h.maxRequestBodyBytes)
+	if err != nil {
+		return nil, nil, 0, err
+	}
+
+	return body, nil, int64(len(body)), nil
 }
 
 func validateMITMHostSNI(host, sni string) *ValidationError {

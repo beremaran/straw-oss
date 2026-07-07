@@ -268,7 +268,7 @@ func (d *DefaultRequestDispatcher) finalizeDispatch(ctx context.Context, in Disp
 
 	if d.opts.QuotaAdmission != nil {
 		_ = d.opts.QuotaAdmission.RecordSuccess(ctx, quotaFromSnapshot(in.Identity.TenantID, snapshot.Quota))
-		_ = d.opts.QuotaAdmission.AddBandwidth(ctx, in.Identity.TenantID, int64(len(in.Request.BodyData)+len(result.body)))
+		_ = d.opts.QuotaAdmission.AddBandwidth(ctx, in.Identity.TenantID, requestBodySize(in.Request)+int64(len(result.body)))
 	}
 
 	return successFromDispatch(in.RequestID, result, routingMs, assignmentMs, millisSince(started, d.opts.Now())), nil
@@ -344,7 +344,7 @@ func (d *DefaultRequestDispatcher) dispatchRaw(ctx context.Context, in DispatchI
 
 	if d.opts.QuotaAdmission != nil {
 		_ = d.opts.QuotaAdmission.RecordSuccess(ctx, quotaFromSnapshot(in.Identity.TenantID, snapshot.Quota))
-		_ = d.opts.QuotaAdmission.AddBandwidth(ctx, in.Identity.TenantID, int64(len(in.Request.BodyData))+int64FromUint64(result.size))
+		_ = d.opts.QuotaAdmission.AddBandwidth(ctx, in.Identity.TenantID, requestBodySize(in.Request)+int64FromUint64(result.size))
 	}
 
 	return rawSuccessFromDispatch(in.RequestID, result, routingMs, assignmentMs, millisSince(started, d.opts.Now())), nil, wroteHeader
@@ -584,7 +584,8 @@ func (d *DefaultRequestDispatcher) executeAttemptUnmeasured(ctx context.Context,
 		return dispatchResult{}, assignmentMs, requestStreamPipelineError(err)
 	}
 
-	result, perr := d.readResponse(ctx, frames, route, deadline, c2eSubject, in, nextSeq)
+	upload := d.startStreamingRequestBody(ctx, c2eSubject, in, deadline, nextSeq)
+	result, perr := d.readResponse(ctx, frames, route, deadline, c2eSubject, in, nextSeq, upload)
 
 	return result, assignmentMs, perr
 }
@@ -647,7 +648,8 @@ func (d *DefaultRequestDispatcher) executeRawAttemptUnmeasured(ctx context.Conte
 		return dispatchResult{}, assignmentMs, requestStreamPipelineError(err), false
 	}
 
-	result, perr, wroteHeader := d.streamRawResponse(ctx, frames, route, deadline, c2eSubject, in, nextSeq, w)
+	upload := d.startStreamingRequestBody(ctx, c2eSubject, in, deadline, nextSeq)
+	result, perr, wroteHeader := d.streamRawResponse(ctx, frames, route, deadline, c2eSubject, in, nextSeq, upload, w)
 
 	return result, assignmentMs, perr, wroteHeader
 }
@@ -736,10 +738,11 @@ func (d *DefaultRequestDispatcher) sendRequestStart(ctx context.Context, subject
 	}
 
 	var uploaded *strawpb.BodyRefFrame
-
-	seq, uploaded, err = d.sendRequestBody(ctx, subject, in, deadline, seq)
-	if err != nil {
-		return 0, err
+	if in.Request.BodyReader == nil {
+		seq, uploaded, err = d.sendRequestBody(ctx, subject, in, deadline, seq)
+		if err != nil {
+			return 0, err
+		}
 	}
 
 	err = d.opts.NATS.Flush()
@@ -750,6 +753,97 @@ func (d *DefaultRequestDispatcher) sendRequestStart(ctx context.Context, subject
 	}
 
 	return seq + 1, nil
+}
+
+type requestBodyUpload struct {
+	gate *tunnelUploadGate
+	err  <-chan error
+	c2e  *c2eStreamSender
+}
+
+func (d *DefaultRequestDispatcher) startStreamingRequestBody(ctx context.Context, subject string, in DispatchInput, deadline time.Time, seq uint64) *requestBodyUpload {
+	if in.Request == nil || in.Request.BodyReader == nil {
+		return nil
+	}
+
+	gate := newTunnelUploadGate(d.opts.InitialUploadCreditBytes)
+	errs := make(chan error, 1)
+	upload := &requestBodyUpload{
+		gate: gate,
+		err:  errs,
+		c2e:  &c2eStreamSender{dispatcher: d, subject: subject, in: in, deadline: deadline, seq: seq},
+	}
+
+	go func() {
+		defer gate.close()
+		defer func() { _ = in.Request.BodyReader.Close() }()
+
+		errs <- d.streamRequestBody(ctx, in, upload)
+	}()
+
+	return upload
+}
+
+func (d *DefaultRequestDispatcher) streamRequestBody(ctx context.Context, in DispatchInput, upload *requestBodyUpload) error {
+	buf := make([]byte, d.opts.MaxFrameDataBytes)
+	offset := uint64(0)
+
+	for {
+		if in.Request.BodySizeBytes >= 0 && offset >= uint64(in.Request.BodySizeBytes) {
+			return nil
+		}
+
+		credit, ok := upload.gate.takeMax(uint64(len(buf)))
+		if !ok {
+			return context.Canceled
+		}
+
+		n, err := in.Request.BodyReader.Read(buf[:credit])
+		if n > 0 {
+			chunk := append([]byte(nil), buf[:n]...)
+			upload.c2e.data(offset, chunk)
+			offset += uint64FromInt(n)
+		}
+
+		if uint64FromInt(n) < credit {
+			upload.gate.grant(credit - uint64FromInt(n))
+		}
+
+		perr := streamingRequestBodyReadError(err)
+		if perr != nil {
+			return perr
+		}
+
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("stream request body context: %w", ctx.Err())
+		default:
+		}
+	}
+}
+
+func uploadErrorChan(upload *requestBodyUpload) <-chan error {
+	if upload == nil {
+		return nil
+	}
+
+	return upload.err
+}
+
+func closeUploadGate(upload *requestBodyUpload) {
+	if upload == nil {
+		return
+	}
+
+	upload.gate.close()
+}
+
+func streamingRequestBodyReadError(err error) error {
+	if err == nil || errors.Is(err, io.EOF) {
+		return nil
+	}
+
+	return &requestStreamError{perr: &PipelineError{Code: BodyTooLarge}, err: err}
 }
 
 func (d *DefaultRequestDispatcher) sendRequestBody(ctx context.Context, subject string, in DispatchInput, deadline time.Time, seq uint64) (uint64, *strawpb.BodyRefFrame, error) {
@@ -855,6 +949,14 @@ func requestStreamPipelineError(err error) *PipelineError {
 	return &PipelineError{Code: TransportUnavailable}
 }
 
+func requestStreamPipelineErrorOrNil(err error) *PipelineError {
+	if err == nil {
+		return nil
+	}
+
+	return requestStreamPipelineError(err)
+}
+
 func (e *requestStreamError) Error() string {
 	if e.err != nil {
 		return e.err.Error()
@@ -886,49 +988,95 @@ func (d *DefaultRequestDispatcher) publishFrame(subject string, in DispatchInput
 	return nil
 }
 
-func (d *DefaultRequestDispatcher) readResponse(ctx context.Context, frames <-chan *strawpb.StreamFrame, route RouteOutcome, deadline time.Time, c2eSubject string, in DispatchInput, c2eSeq uint64) (dispatchResult, *PipelineError) {
-	validator := natsx.NewStreamValidator(defaultRequestAttempt, d.initialDownloadCredit(), d.opts.FrameIdleTimeout, d.opts.Now)
-	result := dispatchResult{status: http.StatusOK}
-	egressStarted := time.Time{}
+func (d *DefaultRequestDispatcher) readResponse(ctx context.Context, frames <-chan *strawpb.StreamFrame, route RouteOutcome, deadline time.Time, c2eSubject string, in DispatchInput, c2eSeq uint64, upload *requestBodyUpload) (dispatchResult, *PipelineError) {
+	state := decodedResponseStreamState{
+		dispatcher:    d,
+		validator:     natsx.NewStreamValidator(defaultRequestAttempt, d.initialDownloadCredit(), d.opts.FrameIdleTimeout, d.opts.Now),
+		route:         route,
+		deadline:      deadline,
+		c2eSubject:    c2eSubject,
+		in:            in,
+		c2eSeq:        c2eSeq,
+		upload:        upload,
+		uploadErr:     uploadErrorChan(upload),
+		result:        dispatchResult{status: http.StatusOK},
+		egressStarted: time.Time{},
+	}
+	defer closeUploadGate(upload)
 
 	ticker := time.NewTicker(responseFrameCheckInterval)
 	defer ticker.Stop()
 
 	for {
-		select {
-		case <-ctx.Done():
-			d.sendCancel(c2eSubject, in, deadline, c2eSeq, "client_cancelled")
+		done, perr := state.next(ctx, ticker.C, frames)
+		if perr != nil {
+			return dispatchResult{}, perr
+		}
 
-			return dispatchResult{}, &PipelineError{Code: Cancelled}
-		case <-time.After(time.Until(deadline)):
-			d.sendCancel(c2eSubject, in, deadline, c2eSeq, "deadline_exceeded")
-
-			return dispatchResult{}, &PipelineError{Code: TimeoutExceeded, TimeoutType: timeoutTypeTotalDeadline}
-		case <-ticker.C:
-			if perr := d.responseStreamTick(validator, route, c2eSubject, in, deadline, c2eSeq); perr != nil {
-				return dispatchResult{}, perr
-			}
-		case frame, ok := <-frames:
-			if !ok {
-				return dispatchResult{}, d.streamLost(route, WorkerDisconnected)
-			}
-
-			done, perr := d.acceptResponseFrame(validator, frame, route, &result, &egressStarted, c2eSubject, in, deadline, &c2eSeq)
-			if perr != nil {
-				return dispatchResult{}, perr
-			}
-
-			if done {
-				return result, nil
-			}
+		if done {
+			return state.result, nil
 		}
 	}
 }
 
-func (d *DefaultRequestDispatcher) streamRawResponse(ctx context.Context, frames <-chan *strawpb.StreamFrame, route RouteOutcome, deadline time.Time, c2eSubject string, in DispatchInput, c2eSeq uint64, w http.ResponseWriter) (dispatchResult, *PipelineError, bool) {
-	validator := natsx.NewStreamValidator(defaultRequestAttempt, d.initialDownloadCredit(), d.opts.FrameIdleTimeout, d.opts.Now)
+type decodedResponseStreamState struct {
+	dispatcher    *DefaultRequestDispatcher
+	validator     *natsx.StreamValidator
+	route         RouteOutcome
+	deadline      time.Time
+	c2eSubject    string
+	in            DispatchInput
+	c2eSeq        uint64
+	upload        *requestBodyUpload
+	uploadErr     <-chan error
+	result        dispatchResult
+	egressStarted time.Time
+}
+
+func (s *decodedResponseStreamState) next(ctx context.Context, ticks <-chan time.Time, frames <-chan *strawpb.StreamFrame) (bool, *PipelineError) {
+	select {
+	case <-ctx.Done():
+		s.dispatcher.sendCancel(s.c2eSubject, s.in, s.deadline, s.c2eSeq, "client_cancelled")
+
+		return true, &PipelineError{Code: Cancelled}
+	case err := <-s.uploadErr:
+		s.uploadErr = nil
+
+		return s.uploadEvent(err)
+	case <-time.After(time.Until(s.deadline)):
+		s.dispatcher.sendCancel(s.c2eSubject, s.in, s.deadline, s.c2eSeq, "deadline_exceeded")
+
+		return true, &PipelineError{Code: TimeoutExceeded, TimeoutType: timeoutTypeTotalDeadline}
+	case <-ticks:
+		return false, s.dispatcher.responseStreamTick(s.validator, s.route, s.c2eSubject, s.in, s.deadline, s.c2eSeq)
+	case frame, ok := <-frames:
+		return s.frameEvent(frame, ok)
+	}
+}
+
+func (s *decodedResponseStreamState) uploadEvent(err error) (bool, *PipelineError) {
+	perr := requestStreamPipelineErrorOrNil(err)
+	if perr == nil {
+		return false, nil
+	}
+
+	s.dispatcher.sendCancel(s.c2eSubject, s.in, s.deadline, s.c2eSeq, "client_upload_failed")
+
+	return true, perr
+}
+
+func (s *decodedResponseStreamState) frameEvent(frame *strawpb.StreamFrame, ok bool) (bool, *PipelineError) {
+	if !ok {
+		return true, s.dispatcher.streamLost(s.route, WorkerDisconnected)
+	}
+
+	return s.dispatcher.acceptResponseFrame(s.validator, frame, s.route, &s.result, &s.egressStarted, s.c2eSubject, s.in, s.deadline, &s.c2eSeq, s.upload)
+}
+
+func (d *DefaultRequestDispatcher) streamRawResponse(ctx context.Context, frames <-chan *strawpb.StreamFrame, route RouteOutcome, deadline time.Time, c2eSubject string, in DispatchInput, c2eSeq uint64, upload *requestBodyUpload, w http.ResponseWriter) (dispatchResult, *PipelineError, bool) {
 	state := rawResponseStreamState{
 		dispatcher: d,
+		validator:  natsx.NewStreamValidator(defaultRequestAttempt, d.initialDownloadCredit(), d.opts.FrameIdleTimeout, d.opts.Now),
 		route:      route,
 		deadline:   deadline,
 		c2eSubject: c2eSubject,
@@ -937,48 +1085,79 @@ func (d *DefaultRequestDispatcher) streamRawResponse(ctx context.Context, frames
 		w:          w,
 		result:     dispatchResult{status: http.StatusOK},
 	}
+	if upload != nil {
+		state.upload = upload
+		state.c2eSeq = upload.c2e.seq
+	}
+
+	state.uploadErr = uploadErrorChan(upload)
+	defer closeUploadGate(upload)
 
 	ticker := time.NewTicker(responseFrameCheckInterval)
 	defer ticker.Stop()
 
 	for {
-		select {
-		case <-ctx.Done():
-			d.sendCancel(c2eSubject, in, deadline, state.c2eSeq, "client_cancelled")
-
-			return state.result, &PipelineError{Code: Cancelled}, state.wroteHeader
-		case <-time.After(time.Until(deadline)):
-			d.sendCancel(c2eSubject, in, deadline, state.c2eSeq, "deadline_exceeded")
-
-			return state.result, &PipelineError{Code: TimeoutExceeded, TimeoutType: timeoutTypeTotalDeadline}, state.wroteHeader
-		case <-ticker.C:
-			if perr := d.responseStreamTick(validator, route, c2eSubject, in, deadline, state.c2eSeq); perr != nil {
-				return state.result, perr, state.wroteHeader
-			}
-		case frame, ok := <-frames:
-			if !ok {
-				return state.result, d.streamLost(route, WorkerDisconnected), state.wroteHeader
-			}
-
-			done, perr := state.acceptValidated(frame, validator)
-			if done || perr != nil {
-				return state.result, perr, state.wroteHeader
-			}
+		done, perr := state.next(ctx, ticker.C, frames)
+		if done || perr != nil {
+			return state.result, perr, state.wroteHeader
 		}
 	}
 }
 
 type rawResponseStreamState struct {
 	dispatcher  *DefaultRequestDispatcher
+	validator   *natsx.StreamValidator
 	route       RouteOutcome
 	deadline    time.Time
 	c2eSubject  string
 	in          DispatchInput
 	c2eSeq      uint64
+	upload      *requestBodyUpload
+	uploadErr   <-chan error
 	w           http.ResponseWriter
 	result      dispatchResult
 	egressStart time.Time
 	wroteHeader bool
+}
+
+func (s *rawResponseStreamState) next(ctx context.Context, ticks <-chan time.Time, frames <-chan *strawpb.StreamFrame) (bool, *PipelineError) {
+	select {
+	case <-ctx.Done():
+		s.dispatcher.sendCancel(s.c2eSubject, s.in, s.deadline, s.c2eSeq, "client_cancelled")
+
+		return true, &PipelineError{Code: Cancelled}
+	case err := <-s.uploadErr:
+		s.uploadErr = nil
+
+		return s.uploadEvent(err)
+	case <-time.After(time.Until(s.deadline)):
+		s.dispatcher.sendCancel(s.c2eSubject, s.in, s.deadline, s.c2eSeq, "deadline_exceeded")
+
+		return true, &PipelineError{Code: TimeoutExceeded, TimeoutType: timeoutTypeTotalDeadline}
+	case <-ticks:
+		return false, s.dispatcher.responseStreamTick(s.validator, s.route, s.c2eSubject, s.in, s.deadline, s.c2eSeq)
+	case frame, ok := <-frames:
+		return s.frameEvent(frame, ok)
+	}
+}
+
+func (s *rawResponseStreamState) uploadEvent(err error) (bool, *PipelineError) {
+	perr := requestStreamPipelineErrorOrNil(err)
+	if perr == nil {
+		return false, nil
+	}
+
+	s.dispatcher.sendCancel(s.c2eSubject, s.in, s.deadline, s.c2eSeq, "client_upload_failed")
+
+	return true, perr
+}
+
+func (s *rawResponseStreamState) frameEvent(frame *strawpb.StreamFrame, ok bool) (bool, *PipelineError) {
+	if !ok {
+		return true, s.dispatcher.streamLost(s.route, WorkerDisconnected)
+	}
+
+	return s.acceptValidated(frame, s.validator)
 }
 
 func (s *rawResponseStreamState) acceptValidated(frame *strawpb.StreamFrame, validator *natsx.StreamValidator) (bool, *PipelineError) {
@@ -991,6 +1170,12 @@ func (s *rawResponseStreamState) acceptValidated(frame *strawpb.StreamFrame, val
 }
 
 func (s *rawResponseStreamState) accept(frame *strawpb.StreamFrame, validator *natsx.StreamValidator) (bool, *PipelineError) {
+	if credit := frame.GetCredit(); credit != nil {
+		s.grantUploadCredit(credit)
+
+		return false, nil
+	}
+
 	switch p := frame.GetPayload().(type) {
 	case *strawpb.StreamFrame_OutboundStart:
 		s.egressStart = s.dispatcher.opts.Now()
@@ -1003,9 +1188,7 @@ func (s *rawResponseStreamState) accept(frame *strawpb.StreamFrame, validator *n
 	case *strawpb.StreamFrame_Data:
 		return false, s.writeData(p.Data, validator)
 	case *strawpb.StreamFrame_Trailers:
-		if s.wroteHeader {
-			writeRawTrailers(s.w, p.Trailers.GetHeaders())
-		}
+		s.writeTrailers(p.Trailers)
 	case *strawpb.StreamFrame_Error:
 		return true, s.dispatcher.executorError(s.route, p.Error)
 	case *strawpb.StreamFrame_Cancelled:
@@ -1021,6 +1204,22 @@ func (s *rawResponseStreamState) accept(frame *strawpb.StreamFrame, validator *n
 	}
 
 	return false, nil
+}
+
+func (s *rawResponseStreamState) writeTrailers(trailers *strawpb.TrailersFrame) {
+	if !s.wroteHeader {
+		return
+	}
+
+	writeRawTrailers(s.w, trailers.GetHeaders())
+}
+
+func (s *rawResponseStreamState) grantUploadCredit(credit *strawpb.CreditFrame) {
+	if s.upload == nil {
+		return
+	}
+
+	s.upload.gate.grant(credit.GetUploadCreditBytes())
 }
 
 func (s *rawResponseStreamState) writeData(data *strawpb.DataFrame, validator *natsx.StreamValidator) *PipelineError {
@@ -1041,7 +1240,14 @@ func (s *rawResponseStreamState) writeData(data *strawpb.DataFrame, validator *n
 	s.result.size += written
 
 	flushRawResponse(s.w)
-	s.c2eSeq = s.dispatcher.sendDownloadCredit(s.c2eSubject, s.in, s.deadline, s.c2eSeq, written)
+
+	if s.upload != nil {
+		s.upload.c2e.credit(written)
+		s.c2eSeq = s.upload.c2e.seq
+	} else {
+		s.c2eSeq = s.dispatcher.sendDownloadCredit(s.c2eSubject, s.in, s.deadline, s.c2eSeq, written)
+	}
+
 	validator.GrantCredit(written)
 
 	return nil
@@ -1081,20 +1287,20 @@ func (d *DefaultRequestDispatcher) initialDownloadCredit() uint64 {
 	return min(d.opts.InitialDownloadCreditBytes, d.opts.MaxInflightDownloadBytes)
 }
 
-func (d *DefaultRequestDispatcher) acceptResponseFrame(validator *natsx.StreamValidator, frame *strawpb.StreamFrame, route RouteOutcome, result *dispatchResult, egressStarted *time.Time, c2eSubject string, in DispatchInput, deadline time.Time, c2eSeq *uint64) (bool, *PipelineError) {
+func (d *DefaultRequestDispatcher) acceptResponseFrame(validator *natsx.StreamValidator, frame *strawpb.StreamFrame, route RouteOutcome, result *dispatchResult, egressStarted *time.Time, c2eSubject string, in DispatchInput, deadline time.Time, c2eSeq *uint64, upload *requestBodyUpload) (bool, *PipelineError) {
 	ok, done, perr := acceptedResponseFrame(validator.Accept(frame))
 	if !ok || done {
 		return done, perr
 	}
 
-	if handled, perr := d.acceptResponseProgress(frame, result, egressStarted, validator, c2eSubject, in, deadline, c2eSeq); handled {
+	if handled, perr := d.acceptResponseProgress(frame, result, egressStarted, validator, c2eSubject, in, deadline, c2eSeq, upload); handled {
 		return false, perr
 	}
 
 	return d.acceptResponseTerminal(frame, route, result, egressStarted)
 }
 
-func (d *DefaultRequestDispatcher) acceptResponseProgress(frame *strawpb.StreamFrame, result *dispatchResult, egressStarted *time.Time, validator *natsx.StreamValidator, c2eSubject string, in DispatchInput, deadline time.Time, c2eSeq *uint64) (bool, *PipelineError) {
+func (d *DefaultRequestDispatcher) acceptResponseProgress(frame *strawpb.StreamFrame, result *dispatchResult, egressStarted *time.Time, validator *natsx.StreamValidator, c2eSubject string, in DispatchInput, deadline time.Time, c2eSeq *uint64, upload *requestBodyUpload) (bool, *PipelineError) {
 	switch p := frame.GetPayload().(type) {
 	case *strawpb.StreamFrame_OutboundStart:
 		*egressStarted = d.opts.Now()
@@ -1102,9 +1308,13 @@ func (d *DefaultRequestDispatcher) acceptResponseProgress(frame *strawpb.StreamF
 		result.status = p.ResponseStart.GetStatus()
 		result.headers = p.ResponseStart.GetHeaders()
 	case *strawpb.StreamFrame_Data:
-		_, perr := d.acceptResponseData(p.Data, result, validator, c2eSubject, in, deadline, c2eSeq)
+		_, perr := d.acceptResponseData(p.Data, result, validator, c2eSubject, in, deadline, c2eSeq, upload)
 
 		return true, perr
+	case *strawpb.StreamFrame_Credit:
+		if upload != nil {
+			upload.gate.grant(p.Credit.GetUploadCreditBytes())
+		}
 	default:
 		return false, nil
 	}
@@ -1143,7 +1353,7 @@ func acceptedResponseFrame(outcome natsx.FrameOutcome) (bool, bool, *PipelineErr
 	return true, false, nil
 }
 
-func (d *DefaultRequestDispatcher) acceptResponseData(data *strawpb.DataFrame, result *dispatchResult, validator *natsx.StreamValidator, c2eSubject string, in DispatchInput, deadline time.Time, c2eSeq *uint64) (bool, *PipelineError) {
+func (d *DefaultRequestDispatcher) acceptResponseData(data *strawpb.DataFrame, result *dispatchResult, validator *natsx.StreamValidator, c2eSubject string, in DispatchInput, deadline time.Time, c2eSeq *uint64, upload *requestBodyUpload) (bool, *PipelineError) {
 	result.body = append(result.body, data.GetData()...)
 
 	selection, perr := SelectBodyTransport(d.opts.BodyTransport, BodyTransportSelectionRequest{
@@ -1175,7 +1385,14 @@ func (d *DefaultRequestDispatcher) acceptResponseData(data *strawpb.DataFrame, r
 	}
 
 	bytes := uint64FromInt(len(data.GetData()))
-	*c2eSeq = d.sendDownloadCredit(c2eSubject, in, deadline, *c2eSeq, bytes)
+
+	if upload != nil {
+		upload.c2e.credit(bytes)
+		*c2eSeq = upload.c2e.seq
+	} else {
+		*c2eSeq = d.sendDownloadCredit(c2eSubject, in, deadline, *c2eSeq, bytes)
+	}
+
 	validator.GrantCredit(bytes)
 
 	return false, nil
@@ -1254,6 +1471,22 @@ func requestMode(req *ValidatedRequest) strawpb.RequestMode {
 
 func expectedUploadBytes(req *ValidatedRequest) int64 {
 	if req != nil && req.IngressType == IngressTypeConnect {
+		return 0
+	}
+
+	if req != nil && req.BodyReader != nil {
+		return req.BodySizeBytes
+	}
+
+	return int64(len(req.BodyData))
+}
+
+func requestBodySize(req *ValidatedRequest) int64 {
+	if req != nil && req.BodyReader != nil && req.BodySizeBytes >= 0 {
+		return req.BodySizeBytes
+	}
+
+	if req == nil {
 		return 0
 	}
 
