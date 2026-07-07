@@ -1,108 +1,164 @@
 package egress
 
 import (
-	"crypto/ed25519"
-	"crypto/rand"
+	"context"
+	"errors"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	strawpb "github.com/beremaran/straw/v2/api/proto/straw/v1"
 	"github.com/beremaran/straw/v2/internal/natsx"
+	sdkegress "github.com/beremaran/straw/v2/sdk/egress"
 )
 
-// registrationNonceBytes is the size of the random nonce bound into every
-// signed registration token (docs/planning/27 "Worker Credential Signing").
-const registrationNonceBytes = 16
-
-// ProtocolMajor is the worker protocol major version this worker speaks. It
-// must match the Control-side constant for registration to succeed.
-const ProtocolMajor uint32 = 1
+// ProtocolMajor is the worker protocol major version this worker speaks.
+const ProtocolMajor = sdkegress.ProtocolMajor
 
 // Identity holds the stable identity a worker registers with.
-type Identity struct {
-	WorkerID     string
-	CredentialID string
-	ExecutorType string
-	PrivateKey   ed25519.PrivateKey
-}
+type Identity = sdkegress.Identity
 
 // Capabilities are the capability claims a worker advertises at registration.
-// They must be within the worker credential's allowed scope or Control rejects
-// the registration.
-type Capabilities struct {
-	AllowedPools          []*strawpb.RegisterRequest_PoolRef
-	Tags                  []string
-	Countries             []string
-	Regions               []string
-	IPTypes               []string
-	SupportedIngressModes []string
-	MaxConcurrency        uint32
-	SoftwareVersion       string
-	InitialDraining       bool
-}
+type Capabilities = sdkegress.Capabilities
+
+// Capacity describes the executor's current admission state when an AssignRequest arrives.
+type Capacity = sdkegress.Capacity
+
+var errConnRequired = errors.New("nats connection is required")
 
 // BuildRegisterRequest assembles and signs a RegisterRequest for the worker.
-// The returned message carries the ed25519 signature over its canonical
-// payload in SignedToken, binding a fresh crypto/rand nonce and the current
-// time as issued-at so Control can reject replays and stale requests
-// (docs/planning/27-security-controls.md).
 func BuildRegisterRequest(id Identity, caps Capabilities) (*strawpb.RegisterRequest, error) {
-	pools := make([]*strawpb.RegisterRequest_PoolRef, 0, len(caps.AllowedPools))
-	for _, p := range caps.AllowedPools {
-		pools = append(pools, &strawpb.RegisterRequest_PoolRef{TenantId: p.GetTenantId(), PoolId: p.GetPoolId()})
-	}
-
-	nonce := make([]byte, registrationNonceBytes)
-
-	_, err := rand.Read(nonce)
+	req, err := sdkegress.BuildRegisterRequest(id, caps)
 	if err != nil {
-		return nil, fmt.Errorf("generate registration nonce: %w", err)
+		return nil, fmt.Errorf("sdk build register request: %w", err)
 	}
-
-	req := &strawpb.RegisterRequest{
-		WorkerId:              id.WorkerID,
-		ExecutorType:          id.ExecutorType,
-		CredentialId:          id.CredentialID,
-		ProtocolMajor:         ProtocolMajor,
-		ProtocolMinor:         0,
-		SoftwareVersion:       caps.SoftwareVersion,
-		AllowedPools:          pools,
-		Tags:                  caps.Tags,
-		Countries:             caps.Countries,
-		Regions:               caps.Regions,
-		IpTypes:               caps.IPTypes,
-		SupportedIngressModes: caps.SupportedIngressModes,
-		MaxConcurrency:        caps.MaxConcurrency,
-		InitialDraining:       caps.InitialDraining,
-		Nonce:                 nonce,
-		IssuedAtUnixMs:        time.Now().UnixMilli(),
-	}
-	req.SignedToken = strawpb.SignRegistration(id.PrivateKey, req)
 
 	return req, nil
 }
 
-// InboxPrefix returns the scoped reply-inbox prefix this worker must configure
-// on its NATS request/reply client (`_INBOX.wrk.<worker_id>`), per the ACL
-// table in docs/planning/12-nats-protocol.md.
-func (id Identity) InboxPrefix() (string, error) {
-	prefix, err := natsx.WorkerInboxPrefix(id.WorkerID)
-	if err != nil {
-		return "", fmt.Errorf("worker inbox prefix: %w", err)
-	}
-
-	return prefix, nil
-}
-
 // BuildHeartbeat assembles a HeartbeatRequest for the given active session.
 func BuildHeartbeat(id Identity, sessionID string, health strawpb.WorkerHealth, activeRequests, availableCapacity, maxConcurrency uint32, draining bool) *strawpb.HeartbeatRequest {
-	return &strawpb.HeartbeatRequest{
-		WorkerId:          id.WorkerID,
-		SessionId:         sessionID,
-		Health:            health,
-		ActiveRequests:    activeRequests,
-		AvailableCapacity: availableCapacity,
-		MaxConcurrency:    maxConcurrency,
-		Draining:          draining,
+	return sdkegress.BuildHeartbeat(id, sessionID, health, activeRequests, availableCapacity, maxConcurrency, draining)
+}
+
+// EvaluateAssignment implements the executor-side admission decision for an AssignRequest.
+func EvaluateAssignment(req *strawpb.AssignRequest, capacity Capacity) strawpb.AssignAckCode {
+	return sdkegress.EvaluateAssignment(req, capacity)
+}
+
+// Register sends a worker registration request over NATS and returns the Control-assigned session id.
+func Register(ctx context.Context, conn *natsx.Connection, id Identity, caps Capabilities) (string, error) {
+	sessionID, err := sdkegress.Register(ctx, conn, id, caps)
+	if err != nil {
+		return "", fmt.Errorf("sdk register: %w", err)
 	}
+
+	return sessionID, nil
+}
+
+// Heartbeat sends a worker heartbeat request over NATS.
+func Heartbeat(ctx context.Context, conn *natsx.Connection, id Identity, sessionID string, health strawpb.WorkerHealth, activeRequests, availableCapacity, maxConcurrency uint32, draining bool) error {
+	err := sdkegress.Heartbeat(ctx, conn, id, sessionID, health, activeRequests, availableCapacity, maxConcurrency, draining)
+	if err != nil {
+		return fmt.Errorf("sdk heartbeat: %w", err)
+	}
+
+	return nil
+}
+
+// Run delegates the session runtime to sdk/egress and keeps the assignment loop in this package.
+func Run(ctx context.Context, conn *natsx.Connection, id Identity, caps Capabilities, executor *Executor, heartbeatInterval time.Duration, ready *atomic.Bool) error {
+	err := sdkegress.Run(ctx, conn, id, caps, heartbeatInterval, ready, func(sessionID string, maxConcurrency uint32) (sdkegress.AssignmentServer, error) {
+		return NewWorker(conn, id, executor, sessionID, maxConcurrency)
+	})
+	if err != nil {
+		return fmt.Errorf("sdk run: %w", err)
+	}
+
+	return nil
+}
+
+// FakeExecutor scripts deterministic e2c lifecycle frames for tests.
+type FakeExecutor struct {
+	attempt uint32
+	seq     uint64
+}
+
+// NewFakeExecutor builds a fake executor emitting frames for the given attempt.
+func NewFakeExecutor(attempt uint32) *FakeExecutor {
+	return &FakeExecutor{attempt: attempt}
+}
+
+type isPayload interface {
+	set(frame *strawpb.StreamFrame)
+}
+
+type outboundStart struct {
+	host string
+	port uint32
+}
+
+func (p outboundStart) set(f *strawpb.StreamFrame) {
+	f.Payload = &strawpb.StreamFrame_OutboundStart{OutboundStart: &strawpb.OutboundStartFrame{TargetHost: p.host, TargetPort: p.port}}
+}
+
+type responseStart struct{ status uint32 }
+
+func (p responseStart) set(f *strawpb.StreamFrame) {
+	f.Payload = &strawpb.StreamFrame_ResponseStart{ResponseStart: &strawpb.ResponseStart{Status: p.status}}
+}
+
+type dataFrame struct {
+	offset uint64
+	data   []byte
+}
+
+func (p dataFrame) set(f *strawpb.StreamFrame) {
+	f.Payload = &strawpb.StreamFrame_Data{Data: &strawpb.DataFrame{Offset: p.offset, Data: p.data}}
+}
+
+type endFrame struct{ success bool }
+
+func (p endFrame) set(f *strawpb.StreamFrame) {
+	f.Payload = &strawpb.StreamFrame_End{End: &strawpb.EndFrame{Success: p.success}}
+}
+
+type errorFrame struct {
+	code strawpb.ErrorCode
+	fact string
+}
+
+func (p errorFrame) set(f *strawpb.StreamFrame) {
+	ef := &strawpb.ErrorFrame{Code: p.code}
+	if p.fact != "" {
+		ef.Details = map[string]string{"fact": p.fact}
+	}
+
+	f.Payload = &strawpb.StreamFrame_Error{Error: ef}
+}
+
+// SuccessResponse scripts a minimal successful response stream.
+func (f *FakeExecutor) SuccessResponse(host string, port uint32, status uint32, body []byte) []*strawpb.StreamFrame {
+	return []*strawpb.StreamFrame{
+		f.next(outboundStart{host: host, port: port}),
+		f.next(responseStart{status: status}),
+		f.next(dataFrame{offset: 0, data: body}),
+		f.next(endFrame{success: true}),
+	}
+}
+
+// ErrorResponse scripts an outbound failure response stream.
+func (f *FakeExecutor) ErrorResponse(host string, port uint32, code strawpb.ErrorCode, fact string) []*strawpb.StreamFrame {
+	return []*strawpb.StreamFrame{
+		f.next(outboundStart{host: host, port: port}),
+		f.next(errorFrame{code: code, fact: fact}),
+	}
+}
+
+func (f *FakeExecutor) next(payload isPayload) *strawpb.StreamFrame {
+	f.seq++
+	frame := &strawpb.StreamFrame{StreamSeq: f.seq, Attempt: f.attempt}
+	payload.set(frame)
+
+	return frame
 }

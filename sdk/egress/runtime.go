@@ -9,8 +9,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/nats-io/nats.go"
+
 	strawpb "github.com/beremaran/straw/v2/api/proto/straw/v1"
-	"github.com/beremaran/straw/v2/internal/natsx"
 )
 
 const (
@@ -22,9 +23,24 @@ const (
 	registerBackoffFactor    = 2
 )
 
+// NATSConn is the minimal request/reply surface the SDK session runtime needs.
+type NATSConn interface {
+	Request(subject string, data []byte, timeout time.Duration) (*nats.Msg, error)
+}
+
+// AssignmentServer is the temporary bridge to the assignment loop. Tasks 26-28
+// move this protocol machinery into the SDK.
+type AssignmentServer interface {
+	ActiveRequests() uint32
+	Serve(stop <-chan struct{}) error
+}
+
+// AssignmentFactory builds an assignment server for a registered session.
+type AssignmentFactory func(sessionID string, maxConcurrency uint32) (AssignmentServer, error)
+
 // Register sends a worker registration request over NATS and returns the
 // Control-assigned session id.
-func Register(ctx context.Context, conn *natsx.Connection, id Identity, caps Capabilities) (string, error) {
+func Register(ctx context.Context, conn NATSConn, id Identity, caps Capabilities) (string, error) {
 	req, err := BuildRegisterRequest(id, caps)
 	if err != nil {
 		return "", fmt.Errorf("build register request: %w", err)
@@ -36,25 +52,22 @@ func Register(ctx context.Context, conn *natsx.Connection, id Identity, caps Cap
 		Payload:       &strawpb.Envelope_RegisterRequest{RegisterRequest: req},
 	}
 
-	raw, err := natsx.MarshalEnvelope(env)
+	raw, err := MarshalEnvelope(env)
 	if err != nil {
 		return "", fmt.Errorf("marshal envelope: %w", err)
 	}
 
-	reply, err := request(ctx, conn, natsx.RegistrationSubject(), raw, registerTimeout)
+	reply, err := request(ctx, conn, RegistrationSubject(), raw, registerTimeout)
 	if err != nil {
 		return "", err
 	}
 
-	resp, err := natsx.UnmarshalEnvelope(reply)
+	resp, err := UnmarshalEnvelope(reply)
 	if err != nil {
 		return "", fmt.Errorf("unmarshal envelope: %w", err)
 	}
 
 	ack := resp.GetRegisterAck()
-
-	var sessionID string
-
 	if ack == nil {
 		return "", errRegisterAckMissing
 	}
@@ -63,7 +76,7 @@ func Register(ctx context.Context, conn *natsx.Connection, id Identity, caps Cap
 		return "", fmt.Errorf("registration rejected: %w", errRegistrationRejected)
 	}
 
-	sessionID = ack.GetSessionId()
+	sessionID := ack.GetSessionId()
 	if sessionID == "" {
 		return "", errRegistrationNoSession
 	}
@@ -72,9 +85,8 @@ func Register(ctx context.Context, conn *natsx.Connection, id Identity, caps Cap
 }
 
 // Heartbeat sends a worker heartbeat request over NATS.
-func Heartbeat(ctx context.Context, conn *natsx.Connection, id Identity, sessionID string, health strawpb.WorkerHealth, activeRequests, availableCapacity, maxConcurrency uint32, draining bool) error {
+func Heartbeat(ctx context.Context, conn NATSConn, id Identity, sessionID string, health strawpb.WorkerHealth, activeRequests, availableCapacity, maxConcurrency uint32, draining bool) error {
 	hb := BuildHeartbeat(id, sessionID, health, activeRequests, availableCapacity, maxConcurrency, draining)
-	hb.WorkerTimestampMs = time.Now().UTC().UnixMilli()
 
 	env := &strawpb.Envelope{
 		ProtocolMajor: ProtocolMajor,
@@ -82,23 +94,22 @@ func Heartbeat(ctx context.Context, conn *natsx.Connection, id Identity, session
 		Payload:       &strawpb.Envelope_HeartbeatRequest{HeartbeatRequest: hb},
 	}
 
-	raw, err := natsx.MarshalEnvelope(env)
+	raw, err := MarshalEnvelope(env)
 	if err != nil {
 		return fmt.Errorf("marshal envelope: %w", err)
 	}
 
-	reply, err := request(ctx, conn, natsx.HeartbeatSubject(), raw, heartbeatTimeout)
+	reply, err := request(ctx, conn, HeartbeatSubject(), raw, heartbeatTimeout)
 	if err != nil {
 		return err
 	}
 
-	resp, err := natsx.UnmarshalEnvelope(reply)
+	resp, err := UnmarshalEnvelope(reply)
 	if err != nil {
 		return fmt.Errorf("unmarshal envelope: %w", err)
 	}
 
 	ack := resp.GetHeartbeatAck()
-
 	if ack == nil {
 		return errHeartbeatAckMissing
 	}
@@ -110,19 +121,14 @@ func Heartbeat(ctx context.Context, conn *natsx.Connection, id Identity, session
 	return nil
 }
 
-// Run keeps the worker registered and heartbeating, and runs the live
-// assignment execution loop, until ctx is canceled. Registration retries
-// with bounded backoff while Control is unreachable, and a heartbeat NACK
-// (e.g. a Control restart wiping its in-memory registry) drains the dead
-// session and re-registers. On shutdown it sends a draining heartbeat before
-// telling the assignment loop to stop accepting new work and drain in-flight
-// requests (docs/planning/29 "Worker Graceful Shutdown"). If ready is
-// non-nil, it is set true once registration succeeds and false again once
-// the session is lost or draining begins, so an egress /readyz endpoint
-// (docs/planning/23) can reflect the run loop's live state.
-func Run(ctx context.Context, conn *natsx.Connection, id Identity, caps Capabilities, executor *Executor, heartbeatInterval time.Duration, ready *atomic.Bool) error {
+// Run keeps the worker registered and heartbeating until ctx is canceled.
+func Run(ctx context.Context, conn NATSConn, id Identity, caps Capabilities, heartbeatInterval time.Duration, ready *atomic.Bool, newAssignmentServer AssignmentFactory) error {
 	if heartbeatInterval <= 0 {
 		heartbeatInterval = defaultHeartbeatInterval
+	}
+
+	if newAssignmentServer == nil {
+		return errAssignmentFactoryRequired
 	}
 
 	setReady(ready, false)
@@ -135,7 +141,7 @@ func Run(ctx context.Context, conn *natsx.Connection, id Identity, caps Capabili
 
 		setReady(ready, true)
 
-		sessionLost, err := runSession(ctx, conn, id, caps, executor, sessionID, heartbeatInterval, ready)
+		sessionLost, err := runSession(ctx, conn, id, caps, sessionID, heartbeatInterval, ready, newAssignmentServer)
 
 		setReady(ready, false)
 
@@ -151,14 +157,7 @@ func Run(ctx context.Context, conn *natsx.Connection, id Identity, caps Capabili
 	}
 }
 
-// registerWithRetry retries Register with bounded exponential backoff until
-// it succeeds or ctx is canceled. Every attempt rebuilds and re-signs the
-// request, so retries carry fresh nonces and issued-at timestamps and pass
-// Control's replay protection.
-// ponytail: retries every failure (including rejections) and has no jitter —
-// P0 runs a handful of workers; classify permanent rejections as fatal and
-// add jitter if a fleet ever makes retry storms matter.
-func registerWithRetry(ctx context.Context, conn *natsx.Connection, id Identity, caps Capabilities, backoffMin, backoffMax time.Duration) (string, error) {
+func registerWithRetry(ctx context.Context, conn NATSConn, id Identity, caps Capabilities, backoffMin, backoffMax time.Duration) (string, error) {
 	backoff := backoffMin
 
 	for {
@@ -183,12 +182,8 @@ func registerWithRetry(ctx context.Context, conn *natsx.Connection, id Identity,
 	}
 }
 
-// runSession serves one registered session until ctx is canceled (graceful
-// shutdown, returns false) or Control rejects a heartbeat for it (returns
-// true so Run re-registers). Either way the assignment loop stops accepting
-// new work and drains in-flight requests before returning.
-func runSession(ctx context.Context, conn *natsx.Connection, id Identity, caps Capabilities, executor *Executor, sessionID string, heartbeatInterval time.Duration, ready *atomic.Bool) (bool, error) {
-	worker, err := NewWorker(conn, id, executor, sessionID, caps.MaxConcurrency)
+func runSession(ctx context.Context, conn NATSConn, id Identity, caps Capabilities, sessionID string, heartbeatInterval time.Duration, ready *atomic.Bool, newAssignmentServer AssignmentFactory) (bool, error) {
+	worker, err := newAssignmentServer(sessionID, caps.MaxConcurrency)
 	if err != nil {
 		return false, err
 	}
@@ -208,13 +203,7 @@ func runSession(ctx context.Context, conn *natsx.Connection, id Identity, caps C
 	return runHeartbeatLoop(ctx, conn, id, sessionID, caps, worker, heartbeatInterval, ready), nil
 }
 
-// runHeartbeatLoop sends an immediate heartbeat and then periodic ones until
-// ctx is canceled, then sends a final draining heartbeat (docs/planning/29
-// "Worker Graceful Shutdown" step 1) and clears ready. It returns true as
-// soon as Control rejects a heartbeat, meaning the session is no longer
-// recognized and the worker must re-register; transport errors are ignored
-// and the next tick retries.
-func runHeartbeatLoop(ctx context.Context, conn *natsx.Connection, id Identity, sessionID string, caps Capabilities, worker *Worker, heartbeatInterval time.Duration, ready *atomic.Bool) bool {
+func runHeartbeatLoop(ctx context.Context, conn NATSConn, id Identity, sessionID string, caps Capabilities, worker AssignmentServer, heartbeatInterval time.Duration, ready *atomic.Bool) bool {
 	sendHeartbeat := func(hbCtx context.Context, draining bool) error {
 		active := worker.ActiveRequests()
 
@@ -244,14 +233,13 @@ func runHeartbeatLoop(ctx context.Context, conn *natsx.Connection, id Identity, 
 	}
 }
 
-// setReady stores v in ready if ready is non-nil.
 func setReady(ready *atomic.Bool, v bool) {
 	if ready != nil {
 		ready.Store(v)
 	}
 }
 
-func request(ctx context.Context, conn *natsx.Connection, subject string, raw []byte, timeout time.Duration) ([]byte, error) {
+func request(ctx context.Context, conn NATSConn, subject string, raw []byte, timeout time.Duration) ([]byte, error) {
 	if ctx != nil {
 		ctxErr := ctx.Err()
 		if ctxErr != nil {
@@ -283,12 +271,12 @@ func capacityFromConcurrency(activeRequests, maxConcurrency uint32) uint32 {
 	return maxConcurrency - activeRequests
 }
 
-// Error values for registration and heartbeat.
 var (
-	errRegisterAckMissing    = errors.New("register ack missing")
-	errRegistrationRejected  = errors.New("registration rejected")
-	errRegistrationNoSession = errors.New("registration accepted without session id")
-	errHeartbeatAckMissing   = errors.New("heartbeat ack missing")
-	errHeartbeatRejected     = errors.New("heartbeat rejected")
-	errConnRequired          = errors.New("nats connection is required")
+	errRegisterAckMissing        = errors.New("register ack missing")
+	errRegistrationRejected      = errors.New("registration rejected")
+	errRegistrationNoSession     = errors.New("registration accepted without session id")
+	errHeartbeatAckMissing       = errors.New("heartbeat ack missing")
+	errHeartbeatRejected         = errors.New("heartbeat rejected")
+	errConnRequired              = errors.New("nats connection is required")
+	errAssignmentFactoryRequired = errors.New("assignment factory is required")
 )
