@@ -305,11 +305,24 @@ type SuccessResponse struct {
 	ResponseSizeBytes uint64 `json:"-"`
 }
 
-// ResponseBody carries the upstream response body.
+// ResponseBody carries the upstream response body. Mode is "inline_base64" for
+// bodies within the inline threshold, or "body_ref" when the body was teed to
+// object storage and BodyRef holds the scoped download reference.
 type ResponseBody struct {
-	Mode       string `json:"mode"`
-	DataBase64 string `json:"data_base64,omitempty"`
-	Truncated  bool   `json:"truncated"`
+	Mode       string           `json:"mode"`
+	DataBase64 string           `json:"data_base64,omitempty"`
+	Truncated  bool             `json:"truncated"`
+	BodyRef    *ResponseBodyRef `json:"body_ref,omitempty"`
+}
+
+// ResponseBodyRef is the scoped, short-lived download reference for a response
+// body stored in object storage (docs/planning/18 S3 Response Body Flow).
+type ResponseBodyRef struct {
+	ObjectKey     string `json:"object_key"`
+	SignedURL     string `json:"signed_url"`
+	ExpiresUnixMs int64  `json:"expires_unix_ms"`
+	SizeBytes     uint64 `json:"size_bytes"`
+	Sha256Hex     string `json:"sha256_hex"`
 }
 
 // RequestTiming captures per-phase latency.

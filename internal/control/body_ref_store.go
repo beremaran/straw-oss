@@ -23,8 +23,18 @@ type RequestBodyRefStore interface {
 	DeleteRequestBody(ctx context.Context, frame *strawpb.BodyRefFrame) error
 }
 
-// S3RequestBodyRefStore backs request BodyRef with the objectstore SigV4
-// single-object presigned PUT/GET primitives.
+// ResponseBodyRefStore uploads a fully-buffered response body to object storage
+// (the P2 "tee") and returns the BodyRef frame that backs the REST download
+// reference. Control tees only after the synchronous stream from the executor
+// completes, so a cancelled or errored request never creates an object.
+type ResponseBodyRefStore interface {
+	UploadResponseBody(ctx context.Context, tenantID, requestID string, body []byte) (*strawpb.BodyRefFrame, error)
+	DeleteResponseBody(ctx context.Context, frame *strawpb.BodyRefFrame) error
+}
+
+// S3RequestBodyRefStore backs both request and response BodyRef with the
+// objectstore SigV4 single-object presigned PUT/GET primitives. The name is
+// historical: it implements both RequestBodyRefStore and ResponseBodyRefStore.
 type S3RequestBodyRefStore struct {
 	Client     *objectstore.Client
 	HTTPClient *http.Client
@@ -39,20 +49,41 @@ func NewS3RequestBodyRefStore(client *objectstore.Client) *S3RequestBodyRefStore
 
 // UploadRequestBody uploads body and returns a scoped S3 BodyRef frame.
 func (s *S3RequestBodyRefStore) UploadRequestBody(ctx context.Context, tenantID, requestID string, body []byte) (*strawpb.BodyRefFrame, error) {
+	return s.uploadBody(ctx, tenantID, requestID, objectstore.DirectionRequest, body)
+}
+
+// UploadResponseBody uploads a buffered response body and returns a scoped S3
+// BodyRef frame (the P2 response-body tee, docs/planning/18 S3 Response Body
+// Flow).
+func (s *S3RequestBodyRefStore) UploadResponseBody(ctx context.Context, tenantID, requestID string, body []byte) (*strawpb.BodyRefFrame, error) {
+	return s.uploadBody(ctx, tenantID, requestID, objectstore.DirectionResponse, body)
+}
+
+// DeleteRequestBody deletes a previously uploaded request body object.
+func (s *S3RequestBodyRefStore) DeleteRequestBody(ctx context.Context, frame *strawpb.BodyRefFrame) error {
+	return s.deleteBody(ctx, frame)
+}
+
+// DeleteResponseBody deletes a previously uploaded response body object.
+func (s *S3RequestBodyRefStore) DeleteResponseBody(ctx context.Context, frame *strawpb.BodyRefFrame) error {
+	return s.deleteBody(ctx, frame)
+}
+
+func (s *S3RequestBodyRefStore) uploadBody(ctx context.Context, tenantID, requestID string, dir objectstore.Direction, body []byte) (*strawpb.BodyRefFrame, error) {
 	if s == nil || s.Client == nil {
-		return nil, fmt.Errorf("request body ref store: %w", objectstore.ErrUnavailable)
+		return nil, fmt.Errorf("body ref store: %w", objectstore.ErrUnavailable)
 	}
 
-	key, err := s.Client.ObjectKey(tenantID, requestID, objectstore.DirectionRequest)
+	key, err := s.Client.ObjectKey(tenantID, requestID, dir)
 	if err != nil {
-		return nil, fmt.Errorf("request body ref key: %w", objectstore.Unavailable(err))
+		return nil, fmt.Errorf("body ref key: %w", objectstore.Unavailable(err))
 	}
 
 	expiry := bodyRefExpiry(s.Expiry)
 
 	put, err := s.Client.PresignPut(key, expiry)
 	if err != nil {
-		return nil, fmt.Errorf("request body ref put: %w", objectstore.Unavailable(err))
+		return nil, fmt.Errorf("body ref put: %w", objectstore.Unavailable(err))
 	}
 
 	err = s.putObject(ctx, put, body)
@@ -62,16 +93,15 @@ func (s *S3RequestBodyRefStore) UploadRequestBody(ctx context.Context, tenantID,
 
 	getURL, err := s.Client.PresignGet(key, expiry)
 	if err != nil {
-		return nil, fmt.Errorf("request body ref get: %w", objectstore.Unavailable(err))
+		return nil, fmt.Errorf("body ref get: %w", objectstore.Unavailable(err))
 	}
 
 	return s.bodyRefFrame(key, getURL, expiry, body), nil
 }
 
-// DeleteRequestBody deletes a previously uploaded request body object.
-func (s *S3RequestBodyRefStore) DeleteRequestBody(ctx context.Context, frame *strawpb.BodyRefFrame) error {
+func (s *S3RequestBodyRefStore) deleteBody(ctx context.Context, frame *strawpb.BodyRefFrame) error {
 	if s == nil || s.Client == nil {
-		return fmt.Errorf("request body ref store: %w", objectstore.ErrUnavailable)
+		return fmt.Errorf("body ref store: %w", objectstore.ErrUnavailable)
 	}
 
 	if frame == nil || frame.GetS3() == nil {
