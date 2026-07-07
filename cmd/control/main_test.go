@@ -8,12 +8,14 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"math/big"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -29,9 +31,12 @@ import (
 const (
 	testControlHost  = "127.0.0.1"
 	testMITMLeafHost = "example.com"
+	testMITMKMSKeyID = "arn:aws:kms:us-west-2:123:key/abc"
 	testProtoH2      = "h2"
 	testProtoHTTP11  = "http/1.1"
 )
+
+const testMITMCAFileMode os.FileMode = 0o600
 
 func TestOpenRedisMissingURLEnvFails(t *testing.T) {
 	t.Setenv("STRAW_TEST_MAIN_REDIS_URL_UNSET", "")
@@ -148,7 +153,7 @@ func TestBuildMITMLeafBundleProvider(t *testing.T) {
 
 	cfg := config.ControlConfig{}
 	cfg.Server.MITMLeafKMSProvider = mitmLeafKMSProviderAWS
-	cfg.Server.MITMLeafKMSKeyID = "arn:aws:kms:us-west-2:123:key/abc"
+	cfg.Server.MITMLeafKMSKeyID = testMITMKMSKeyID
 
 	providerConfig, provider, err := buildMITMLeafBundleProvider(cfg)
 	if err != nil {
@@ -322,7 +327,7 @@ func TestBuildMITMLeafLookupRequiresTenantIdentity(t *testing.T) {
 		Server: config.ControlServerConfig{
 			MITMCertValidityDays: 1,
 			MITMLeafKMSProvider:  mitmLeafKMSProviderAWS,
-			MITMLeafKMSKeyID:     "arn:aws:kms:us-west-2:123:key/abc",
+			MITMLeafKMSKeyID:     testMITMKMSKeyID,
 		},
 	}
 	client := redis.NewClient(&redis.Options{Addr: "127.0.0.1:1", MaxRetries: -1})
@@ -336,6 +341,43 @@ func TestBuildMITMLeafLookupRequiresTenantIdentity(t *testing.T) {
 	_, err = lookup(httptest.NewRequestWithContext(context.Background(), http.MethodConnect, "http://proxy.test", nil), control.Identity{}, testMITMLeafHost, testMITMLeafHost+":443")
 	if err == nil {
 		t.Fatal("lookup without tenant identity error = nil")
+	}
+}
+
+func TestMITMLeafFileHooksReloadsAfterCARotation(t *testing.T) {
+	t.Parallel()
+
+	certFile := t.TempDir() + "/ca.pem"
+	keyFile := t.TempDir() + "/ca-key.pem"
+	writeTestMITMCAFiles(t, certFile, keyFile, newTestMITMCA(t))
+
+	cfg := config.ControlConfig{
+		DeploymentID: "dep_main_test",
+		Server: config.ControlServerConfig{
+			MITMCACertFile:       certFile,
+			MITMCAKeyFile:        keyFile,
+			MITMCertValidityDays: 1,
+			MITMLeafKMSProvider:  mitmLeafKMSProviderAWS,
+			MITMLeafKMSKeyID:     testMITMKMSKeyID,
+		},
+	}
+	client := redis.NewClient(&redis.Options{Addr: "127.0.0.1:1", MaxRetries: -1})
+	t.Cleanup(func() { _ = client.Close() })
+
+	hooks := newMITMLeafFileHooks(cfg, client, mainTestKMSProvider{})
+	_, _, err := hooks.hooks()
+	if err != nil {
+		t.Fatalf("hooks() error = %v", err)
+	}
+	firstVersion := hooks.version
+
+	writeTestMITMCAFiles(t, certFile, keyFile, newTestMITMCA(t))
+	_, _, err = hooks.hooks()
+	if err != nil {
+		t.Fatalf("hooks() after rotation error = %v", err)
+	}
+	if hooks.version == firstVersion {
+		t.Fatal("CA file rotation did not update hook CA version")
 	}
 }
 
@@ -513,4 +555,25 @@ func newTestMITMCA(t *testing.T) *mitmCA {
 	}
 
 	return &mitmCA{cert: cert, key: key}
+}
+
+func writeTestMITMCAFiles(t *testing.T, certFile, keyFile string, ca *mitmCA) {
+	t.Helper()
+
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: ca.cert.Raw})
+	keyDER, err := x509.MarshalPKCS8PrivateKey(ca.key)
+	if err != nil {
+		t.Fatalf("MarshalPKCS8PrivateKey() error = %v", err)
+	}
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER})
+
+	err = os.WriteFile(certFile, certPEM, testMITMCAFileMode)
+	if err != nil {
+		t.Fatalf("write cert: %v", err)
+	}
+
+	err = os.WriteFile(keyFile, keyPEM, testMITMCAFileMode)
+	if err != nil {
+		t.Fatalf("write key: %v", err)
+	}
 }

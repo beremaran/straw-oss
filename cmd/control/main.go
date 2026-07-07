@@ -366,14 +366,9 @@ func serveMITMHTTP(ctx context.Context, controlConfig config.ControlConfig, hand
 
 	addr := fmt.Sprintf("%s:%d", controlConfig.Server.Host, controlConfig.Server.MITMPort)
 
-	ca, err := loadMITMCACertificate(controlConfig.Server.MITMCACertFile, controlConfig.Server.MITMCAKeyFile)
-	if err != nil {
-		slog.Error("mitm ca load failed", "error", err)
+	leafHooks := newMITMLeafFileHooks(controlConfig, redisClient, nil)
 
-		return func() {}
-	}
-
-	leafLookup, leafPreflight, err := buildMITMLeafHooks(controlConfig, ca, redisClient, nil)
+	_, _, err := leafHooks.hooks()
 	if err != nil {
 		slog.Error("mitm leaf cache setup failed", "error", err)
 
@@ -384,7 +379,7 @@ func serveMITMHTTP(ctx context.Context, controlConfig config.ControlConfig, hand
 		Addr:              addr,
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
-	server.Handler = configureMITMServer(handler, leafLookup, leafPreflight, controlConfig.HTTP2.Enabled)
+	server.Handler = configureMITMServer(handler, leafHooks.Lookup, leafHooks.Preflight, controlConfig.HTTP2.Enabled)
 
 	go func() {
 		serveErr := server.ListenAndServe()
@@ -426,6 +421,66 @@ func buildMITMLeafLookup(controlConfig config.ControlConfig, ca *mitmCA, redisCl
 	lookup, _, err := buildMITMLeafHooks(controlConfig, ca, redisClient, provider)
 
 	return lookup, err
+}
+
+type mitmLeafFileHooks struct {
+	cfg      config.ControlConfig
+	redis    redis.Cmdable
+	provider control.MITMLeafBundleKMSProvider
+
+	mu        sync.Mutex
+	version   string
+	lookup    control.MITMLeafLookup
+	preflight control.MITMLeafPreflight
+}
+
+func newMITMLeafFileHooks(cfg config.ControlConfig, redisClient redis.Cmdable, provider control.MITMLeafBundleKMSProvider) *mitmLeafFileHooks {
+	return &mitmLeafFileHooks{cfg: cfg, redis: redisClient, provider: provider}
+}
+
+func (h *mitmLeafFileHooks) Lookup(r *http.Request, identity control.Identity, sni, authority string) (*tls.Certificate, error) {
+	lookup, _, err := h.hooks()
+	if err != nil {
+		return nil, err
+	}
+
+	return lookup(r, identity, sni, authority)
+}
+
+func (h *mitmLeafFileHooks) Preflight(r *http.Request, identity control.Identity, authority string) error {
+	_, preflight, err := h.hooks()
+	if err != nil {
+		return err
+	}
+
+	return preflight(r, identity, authority)
+}
+
+func (h *mitmLeafFileHooks) hooks() (control.MITMLeafLookup, control.MITMLeafPreflight, error) {
+	ca, err := loadMITMCACertificate(h.cfg.Server.MITMCACertFile, h.cfg.Server.MITMCAKeyFile)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	_, version := mitmCAIdentityVersion(ca.cert)
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if version == h.version && h.lookup != nil && h.preflight != nil {
+		return h.lookup, h.preflight, nil
+	}
+
+	lookup, preflight, err := buildMITMLeafHooks(h.cfg, ca, h.redis, h.provider)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	h.version = version
+	h.lookup = lookup
+	h.preflight = preflight
+
+	return lookup, preflight, nil
 }
 
 func buildMITMLeafHooks(controlConfig config.ControlConfig, ca *mitmCA, redisClient redis.Cmdable, provider control.MITMLeafBundleKMSProvider) (control.MITMLeafLookup, control.MITMLeafPreflight, error) {
@@ -1177,7 +1232,7 @@ func serveControlRoutes(mux *http.ServeMux, controlConfig config.ControlConfig, 
 	serveAdminUIRoutes(mux)
 	mux.Handle("POST /api/v1/requests", requestHandler)
 	mux.HandleFunc("POST /api/v1/requests:stream", requestHandler.ServeStreamHTTP)
-	serveMITMCARoutes(mux, controlConfig, authenticator, configCache)
+	serveMITMCARoutes(mux, controlConfig, authenticator, configCache, adminHandlers.Audit)
 	serveAdminRoutes(mux, adminHandlers)
 }
 
@@ -1199,16 +1254,20 @@ func serveTelemetryRoutes(mux *http.ServeMux, h *control.TelemetryHandlers) {
 	mux.HandleFunc("GET /api/v1/telemetry/audit", h.Audit)
 }
 
-func serveMITMCARoutes(mux *http.ServeMux, controlConfig config.ControlConfig, authenticator *control.Authenticator, configCache *control.ConfigCache) {
+func serveMITMCARoutes(mux *http.ServeMux, controlConfig config.ControlConfig, authenticator *control.Authenticator, configCache *control.ConfigCache, audit control.AuditStore) {
 	if controlConfig.Server.MITMCACertFile == "" {
 		return
 	}
 
-	mux.Handle("GET /api/v1/mitm/ca.pem", &control.MITMCAHandler{
+	h := &control.MITMCAHandler{
 		Authenticator: authenticator,
 		ConfigCache:   configCache,
 		CertFile:      controlConfig.Server.MITMCACertFile,
-	})
+		KeyFile:       controlConfig.Server.MITMCAKeyFile,
+		Audit:         audit,
+	}
+	mux.Handle("GET /api/v1/mitm/ca.pem", h)
+	mux.Handle("PUT /api/v1/mitm/ca", h)
 }
 
 func buildIngressHandlers(controlConfig config.ControlConfig, authenticator *control.Authenticator, configCache *control.ConfigCache, metadata control.RequestMetadataRecorder, dispatcher control.RequestDispatcher) (http.Handler, http.Handler, http.Handler) {

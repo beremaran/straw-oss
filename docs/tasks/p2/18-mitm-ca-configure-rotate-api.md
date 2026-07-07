@@ -1,6 +1,6 @@
 # 18 - MITM CA Configure and Rotate API
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -42,16 +42,16 @@ configured public cert (`internal/control/mitm_ca_handler.go:41`).
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Define the minimal request/response contract for CA configure/rotate under `/api/v1`.
-- [ ] Enforce `tenant_admin` for configure/rotate and reject requester, viewer, operator, and platform data-plane keys.
-- [ ] Accept only operator-provided CA material or references; never generate production CA keys.
-- [ ] Ensure responses, logs, errors, telemetry, and audit rows never include private key material.
-- [ ] If leaf caching exists, invalidate or version cached leaves on CA rotation.
-- [ ] Add tests for tenant_admin success, non-admin denial, secret redaction, invalid CA material, and cache/version behavior.
-- [ ] Run focused MITM CA configure/rotate tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Read all required planning docs.
+- [x] Define the minimal request/response contract for CA configure/rotate under `/api/v1`.
+- [x] Enforce `tenant_admin` for configure/rotate and reject requester, viewer, operator, and platform data-plane keys.
+- [x] Accept only operator-provided CA material or references; never generate production CA keys.
+- [x] Ensure responses, logs, errors, telemetry, and audit rows never include private key material.
+- [x] If leaf caching exists, invalidate or version cached leaves on CA rotation.
+- [x] Add tests for tenant_admin success, non-admin denial, secret redaction, invalid CA material, and cache/version behavior.
+- [x] Run focused MITM CA configure/rotate tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 
