@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"syscall"
 )
 
@@ -35,6 +36,7 @@ var (
 	errInvalidServerConnectPort = errors.New("server.connect_port must be 8082 when connect_enabled is true")
 	errInvalidServerMITMPort    = errors.New("server.mitm_port must be 8083 when mitm_enabled is true")
 	errMITMCAFilesRequired      = errors.New("server.mitm_ca_cert_file and server.mitm_ca_key_file are required when mitm_enabled is true")
+	errInvalidMITMValidityDays  = errors.New("server.mitm_cert_validity_days must be positive")
 	errInvalidEgressHealthPort  = errors.New("health_port must be between 1 and 65535")
 	errEgressPoolRefIncomplete  = errors.New("allowed_pools entries require both tenant_id and pool_id")
 	errInvalidEgressPoolConfig  = errors.New("upstream_connection_pool values must be positive when enabled")
@@ -87,15 +89,16 @@ type ControlServerConfig struct {
 	// in Redis and routes a cancel for a request owned by a sibling replica to
 	// that replica. Default off so a single-Control deployment pays no extra
 	// Redis round-trips (docs/planning/32 "Multiple Concurrent Control Replicas").
-	MultiControlEnabled bool   `json:"multi_control_enabled,omitempty"`
-	ProxyEnabled        bool   `json:"proxy_enabled,omitempty"`
-	ProxyPort           int    `json:"proxy_port,omitempty"`
-	ConnectEnabled      bool   `json:"connect_enabled,omitempty"`
-	ConnectPort         int    `json:"connect_port,omitempty"`
-	MITMEnabled         bool   `json:"mitm_enabled,omitempty"`
-	MITMPort            int    `json:"mitm_port,omitempty"`
-	MITMCACertFile      string `json:"mitm_ca_cert_file,omitempty"`
-	MITMCAKeyFile       string `json:"mitm_ca_key_file,omitempty"`
+	MultiControlEnabled  bool   `json:"multi_control_enabled,omitempty"`
+	ProxyEnabled         bool   `json:"proxy_enabled,omitempty"`
+	ProxyPort            int    `json:"proxy_port,omitempty"`
+	ConnectEnabled       bool   `json:"connect_enabled,omitempty"`
+	ConnectPort          int    `json:"connect_port,omitempty"`
+	MITMEnabled          bool   `json:"mitm_enabled,omitempty"`
+	MITMPort             int    `json:"mitm_port,omitempty"`
+	MITMCACertFile       string `json:"mitm_ca_cert_file,omitempty"`
+	MITMCAKeyFile        string `json:"mitm_ca_key_file,omitempty"`
+	MITMCertValidityDays int    `json:"mitm_cert_validity_days,omitempty"`
 }
 
 // ControlRequestConfig configures request body and timeout limits.
@@ -408,8 +411,25 @@ func (s *ControlServerConfig) applyDefaults() {
 		s.ConnectPort = 8082
 	}
 
+	s.applyMITMDefaults()
+}
+
+func (s *ControlServerConfig) applyMITMDefaults() {
 	if s.MITMEnabled && s.MITMPort == 0 {
 		s.MITMPort = 8083
+	}
+
+	if raw := os.Getenv("STRAW_MITM_CERT_VALIDITY_DAYS"); raw != "" {
+		days, err := strconv.Atoi(raw)
+		if err == nil {
+			s.MITMCertValidityDays = days
+		} else {
+			s.MITMCertValidityDays = -1
+		}
+	}
+
+	if s.MITMEnabled && s.MITMCertValidityDays == 0 {
+		s.MITMCertValidityDays = 30
 	}
 }
 
@@ -540,6 +560,10 @@ func (s ControlServerConfig) validateMITM() error {
 
 	if s.MITMEnabled && (s.MITMCACertFile == "" || s.MITMCAKeyFile == "") {
 		return errMITMCAFilesRequired
+	}
+
+	if s.MITMCertValidityDays < 0 || (s.MITMEnabled && s.MITMCertValidityDays == 0) {
+		return errInvalidMITMValidityDays
 	}
 
 	return nil

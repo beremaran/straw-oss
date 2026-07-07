@@ -1,6 +1,6 @@
 # 03 - MITM CA Management
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -30,16 +30,16 @@ Add operator-provided MITM CA configuration, optional local dev CA helpers, and 
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Add static config and environment handling for operator-provided CA paths and `STRAW_MITM_CERT_VALIDITY_DAYS`.
-- [ ] Add optional offline dev/test CA helper scripts that are clearly not production CA generation.
-- [ ] Implement `GET /api/v1/mitm/ca.pem` for authenticated tenants allowed to use MITM.
-- [ ] Enforce tenant_admin-only rotate/configure behavior if rotation endpoints are added.
-- [ ] Ensure CA private key material is never logged or returned.
-- [ ] Add tests for config loading, CA download authorization, tenant access, rotation permissions, and secret redaction.
-- [ ] Run focused MITM CA tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Read all required planning docs.
+- [x] Add static config and environment handling for operator-provided CA paths and `STRAW_MITM_CERT_VALIDITY_DAYS`.
+- [x] Add optional offline dev/test CA helper scripts that are clearly not production CA generation.
+- [x] Implement `GET /api/v1/mitm/ca.pem` for authenticated tenants allowed to use MITM.
+- [x] Enforce tenant_admin-only rotate/configure behavior if rotation endpoints are added.
+- [x] Ensure CA private key material is never logged or returned.
+- [x] Add tests for config loading, CA download authorization, tenant access, rotation permissions, and secret redaction.
+- [x] Run focused MITM CA tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

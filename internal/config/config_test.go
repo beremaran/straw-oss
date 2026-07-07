@@ -85,7 +85,8 @@ func TestLoadControl(t *testing.T) {
 						"mitm_enabled": true,
 						"mitm_port": 8083,
 						"mitm_ca_cert_file": "/tmp/ca.pem",
-						"mitm_ca_key_file": "/tmp/ca-key.pem"
+						"mitm_ca_key_file": "/tmp/ca-key.pem",
+						"mitm_cert_validity_days": 45
 					}
 				}
 			}`,
@@ -247,6 +248,58 @@ func TestLoadControlDefaultsMITMPort(t *testing.T) {
 	}
 	if cfg.Server.MITMPort != 8083 {
 		t.Fatalf("mitm_port = %d, want 8083", cfg.Server.MITMPort)
+	}
+	if cfg.Server.MITMCertValidityDays != 30 {
+		t.Fatalf("mitm_cert_validity_days = %d, want 30", cfg.Server.MITMCertValidityDays)
+	}
+}
+
+func TestLoadControlMITMValidityDaysEnv(t *testing.T) {
+	t.Setenv("STRAW_MITM_CERT_VALIDITY_DAYS", "14")
+
+	path := writeConfig(t, `{
+		"config_version": "v1",
+		"control": {
+			"server": {
+				"host": "127.0.0.1",
+				"api_port": 8080,
+				"metrics_port": 9090,
+				"mitm_enabled": true,
+				"mitm_ca_cert_file": "/tmp/ca.pem",
+				"mitm_ca_key_file": "/tmp/ca-key.pem"
+			}
+		}
+	}`)
+
+	cfg, err := LoadControl(path)
+	if err != nil {
+		t.Fatalf("LoadControl() error = %v", err)
+	}
+	if cfg.Server.MITMCertValidityDays != 14 {
+		t.Fatalf("mitm_cert_validity_days = %d, want 14", cfg.Server.MITMCertValidityDays)
+	}
+}
+
+func TestLoadControlMITMValidityDaysRejectsInvalidEnv(t *testing.T) {
+	t.Setenv("STRAW_MITM_CERT_VALIDITY_DAYS", "nope")
+
+	path := writeConfig(t, `{
+		"config_version": "v1",
+		"control": {
+			"server": {
+				"host": "127.0.0.1",
+				"api_port": 8080,
+				"metrics_port": 9090,
+				"mitm_enabled": true,
+				"mitm_ca_cert_file": "/tmp/ca.pem",
+				"mitm_ca_key_file": "/tmp/ca-key.pem"
+			}
+		}
+	}`)
+
+	_, err := LoadControl(path)
+	if err == nil || !strings.Contains(err.Error(), "server.mitm_cert_validity_days must be positive") {
+		t.Fatalf("LoadControl() error = %v, want validity error", err)
 	}
 }
 
