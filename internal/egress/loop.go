@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -282,10 +283,21 @@ func requestContext(deadlineUnixMs int64) (context.Context, context.CancelFunc) 
 func (w *Worker) runRequest(reqCtx context.Context, cancel context.CancelFunc, req *strawpb.AssignRequest, env *strawpb.Envelope, frames <-chan *strawpb.StreamFrame, e2cSubject string) {
 	defer cancel()
 
-	validator := natsx.NewStreamValidator(req.GetAttempt(), req.GetInitialUploadCreditBytes(), frameIdleTimeout, nil)
+	validator := natsx.NewStreamValidatorWithOptions(natsx.StreamValidatorOptions{
+		Attempt:       req.GetAttempt(),
+		InitialCredit: req.GetInitialUploadCreditBytes(),
+		IdleTimeout:   frameIdleTimeout,
+		AllowBodyRef:  true,
+	})
 
-	start, body, ok := readRequestBody(reqCtx, validator, frames, req.GetExpectedUploadBytes())
+	start, body, failure, ok := readRequestBody(reqCtx, validator, frames, req.GetExpectedUploadBytes(), env.GetTenantId(), env.GetRequestId(), w.executor)
 	if !ok {
+		return
+	}
+
+	if failure != nil {
+		w.publishRequestFailure(e2cSubject, env, req.GetAttempt(), failure)
+
 		return
 	}
 
@@ -295,46 +307,7 @@ func (w *Worker) runRequest(reqCtx context.Context, cancel context.CancelFunc, r
 		return
 	}
 
-	resultCh := make(chan []*strawpb.StreamFrame, 1)
-	downloadCredit := newResponseCreditGate(req.GetInitialDownloadCreditBytes())
-
-	go func() {
-		seq := uint64(0)
-
-		resultCh <- w.executor.ExecuteWithTenant(reqCtx, env.GetTenantId(), start, body, req.GetAttempt(), func(frame *strawpb.StreamFrame) {
-			if data := frame.GetData(); data != nil {
-				offset := data.GetOffset()
-
-				remaining := data.GetData()
-				for len(remaining) > 0 {
-					n, ok := downloadCredit.takeAvailable(reqCtx, min(len(remaining), responseFrameDataBytes))
-					if !ok {
-						return
-					}
-
-					seq++
-					chunk := remaining[:n]
-					w.publish(e2cSubject, env, []*strawpb.StreamFrame{{
-						StreamSeq: seq,
-						Attempt:   frame.GetAttempt(),
-						Payload:   &strawpb.StreamFrame_Data{Data: &strawpb.DataFrame{Offset: offset, Data: append([]byte(nil), chunk...)}},
-					}})
-					offset += uint64FromInt(len(chunk))
-					remaining = remaining[n:]
-				}
-
-				return
-			}
-
-			seq++
-			frame.StreamSeq = seq
-
-			// Publish OutboundStart before DNS/connect (docs/planning/09
-			// step 19) so Control measures the real egress phase instead of
-			// receiving it batched with the terminal frame.
-			w.publish(e2cSubject, env, []*strawpb.StreamFrame{frame})
-		})
-	}()
+	resultCh, downloadCredit := w.startDecodedRequest(reqCtx, req, env, start, body, e2cSubject)
 
 	result, canceled, reason := waitForResult(resultCh, frames, validator, cancel, downloadCredit)
 	if canceled {
@@ -342,6 +315,64 @@ func (w *Worker) runRequest(reqCtx context.Context, cancel context.CancelFunc, r
 	}
 
 	w.publish(e2cSubject, env, result)
+}
+
+func (w *Worker) publishRequestFailure(subject string, env *strawpb.Envelope, attempt uint32, failure *executionError) {
+	w.publish(subject, env, []*strawpb.StreamFrame{newFrameBuilder(attempt).error(failure)})
+}
+
+func (w *Worker) startDecodedRequest(ctx context.Context, req *strawpb.AssignRequest, env *strawpb.Envelope, start *strawpb.RequestStart, body []byte, e2cSubject string) (<-chan []*strawpb.StreamFrame, *responseCreditGate) {
+	resultCh := make(chan []*strawpb.StreamFrame, 1)
+	downloadCredit := newResponseCreditGate(req.GetInitialDownloadCreditBytes())
+
+	go func() {
+		seq := uint64(0)
+
+		resultCh <- w.executor.ExecuteWithTenant(ctx, env.GetTenantId(), start, body, req.GetAttempt(), func(frame *strawpb.StreamFrame) {
+			seq = w.publishResponseProgress(ctx, e2cSubject, env, downloadCredit, seq, frame)
+		})
+	}()
+
+	return resultCh, downloadCredit
+}
+
+func (w *Worker) publishResponseProgress(ctx context.Context, subject string, env *strawpb.Envelope, credit *responseCreditGate, seq uint64, frame *strawpb.StreamFrame) uint64 {
+	if data := frame.GetData(); data != nil {
+		return w.publishResponseData(ctx, subject, env, credit, seq, frame.GetAttempt(), data)
+	}
+
+	seq++
+	frame.StreamSeq = seq
+
+	// Publish OutboundStart before DNS/connect (docs/planning/09 step 19) so
+	// Control measures the real egress phase instead of receiving it batched.
+	w.publish(subject, env, []*strawpb.StreamFrame{frame})
+
+	return seq
+}
+
+func (w *Worker) publishResponseData(ctx context.Context, subject string, env *strawpb.Envelope, credit *responseCreditGate, seq uint64, attempt uint32, data *strawpb.DataFrame) uint64 {
+	offset := data.GetOffset()
+	remaining := data.GetData()
+
+	for len(remaining) > 0 {
+		n, ok := credit.takeAvailable(ctx, min(len(remaining), responseFrameDataBytes))
+		if !ok {
+			return seq
+		}
+
+		seq++
+		chunk := remaining[:n]
+		w.publish(subject, env, []*strawpb.StreamFrame{{
+			StreamSeq: seq,
+			Attempt:   attempt,
+			Payload:   &strawpb.StreamFrame_Data{Data: &strawpb.DataFrame{Offset: offset, Data: append([]byte(nil), chunk...)}},
+		}})
+		offset += uint64FromInt(len(chunk))
+		remaining = remaining[n:]
+	}
+
+	return seq
 }
 
 func (w *Worker) runRawTunnel(ctx context.Context, cancel context.CancelFunc, req *strawpb.AssignRequest, env *strawpb.Envelope, start *strawpb.RequestStart, frames <-chan *strawpb.StreamFrame, validator *natsx.StreamValidator, e2cSubject string) {
@@ -562,11 +593,10 @@ func (b *safeFrameBuilder) error(failure *executionError) *strawpb.StreamFrame {
 	return b.b.error(failure)
 }
 
-// readRequestBody accepts c2e frames until RequestStart and its full inline
-// body (sized by AssignRequest.ExpectedUploadBytes) have arrived. P0 does not
-// support BodyRef (docs/planning/16), so the body is always inline DataFrames.
-func readRequestBody(ctx context.Context, validator *natsx.StreamValidator, frames <-chan *strawpb.StreamFrame, expectedUploadBytes int64) (*strawpb.RequestStart, []byte, bool) {
-	state := &requestBodyState{}
+// readRequestBody accepts c2e frames until RequestStart and the full request
+// body (inline DataFrames or P2 BodyRef) has arrived.
+func readRequestBody(ctx context.Context, validator *natsx.StreamValidator, frames <-chan *strawpb.StreamFrame, expectedUploadBytes int64, tenantID, requestID string, refs *Executor) (*strawpb.RequestStart, []byte, *executionError, bool) {
+	state := &requestBodyState{tenantID: tenantID, requestID: requestID, refs: refs}
 	if expectedUploadBytes > 0 {
 		state.expected = uint64(expectedUploadBytes)
 	}
@@ -577,28 +607,32 @@ func readRequestBody(ctx context.Context, validator *natsx.StreamValidator, fram
 	for !state.complete() {
 		select {
 		case <-ctx.Done():
-			return nil, nil, false
+			return nil, nil, nil, false
 		case frame, ok := <-frames:
-			if !ok || !state.accept(validator, frame) {
-				return nil, nil, false
+			if !ok || !state.accept(ctx, validator, frame) {
+				return nil, nil, state.failure, state.failure != nil
 			}
 		case <-ticker.C:
 			if validator.IdleExpired() {
-				return nil, nil, false
+				return nil, nil, nil, false
 			}
 		}
 	}
 
-	return state.start, state.body, true
+	return state.start, state.body, nil, true
 }
 
 // requestBodyState accumulates c2e RequestStart/DataFrame payloads into the
 // inline request body Executor.Execute expects.
 type requestBodyState struct {
-	start    *strawpb.RequestStart
-	body     []byte
-	received uint64
-	expected uint64
+	start     *strawpb.RequestStart
+	body      []byte
+	received  uint64
+	expected  uint64
+	tenantID  string
+	requestID string
+	refs      *Executor
+	failure   *executionError
 }
 
 func (s *requestBodyState) complete() bool {
@@ -609,7 +643,7 @@ func (s *requestBodyState) complete() bool {
 // frame is a protocol violation, an unexpected payload, or a pre-start
 // Cancel, any of which abort the request per docs/planning/09 "Terminal
 // Rule" (nothing is published; Control synthesizes the outcome).
-func (s *requestBodyState) accept(validator *natsx.StreamValidator, frame *strawpb.StreamFrame) bool {
+func (s *requestBodyState) accept(ctx context.Context, validator *natsx.StreamValidator, frame *strawpb.StreamFrame) bool {
 	outcome := validator.Accept(frame)
 	if outcome == natsx.FrameDuplicate {
 		return true
@@ -625,6 +659,8 @@ func (s *requestBodyState) accept(validator *natsx.StreamValidator, frame *straw
 	case *strawpb.StreamFrame_Data:
 		s.body = append(s.body, p.Data.GetData()...)
 		s.received += uint64(len(p.Data.GetData()))
+	case *strawpb.StreamFrame_BodyRef:
+		return s.acceptBodyRef(ctx, p.BodyRef)
 	case *strawpb.StreamFrame_Credit:
 		// Download credit grants are consumed after RequestStart while the
 		// executor streams response DataFrames.
@@ -633,6 +669,37 @@ func (s *requestBodyState) accept(validator *natsx.StreamValidator, frame *straw
 	}
 
 	return true
+}
+
+func (s *requestBodyState) acceptBodyRef(ctx context.Context, frame *strawpb.BodyRefFrame) bool {
+	if s.start == nil || s.refs == nil {
+		return false
+	}
+
+	if !bodyRefObjectKeyScoped(frame, s.tenantID, s.requestID) {
+		s.failure = executorFailure(strawpb.ErrorCode_ERROR_CODE_BODY_REF_UNAVAILABLE, "body_ref_scope_mismatch")
+
+		return false
+	}
+
+	body, failure := s.refs.downloadBodyRef(ctx, frame)
+	if failure != nil {
+		s.failure = failure
+
+		return false
+	}
+
+	s.body = body
+	s.received = uint64(len(body))
+
+	return true
+}
+
+func bodyRefObjectKeyScoped(frame *strawpb.BodyRefFrame, tenantID, requestID string) bool {
+	key := frame.GetS3().GetObjectKey()
+	prefix := "tenant/" + tenantID + "/request/" + requestID + "/request/"
+
+	return strings.HasPrefix(key, prefix)
 }
 
 // waitForResult waits for the outbound execution to finish while still

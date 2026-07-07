@@ -84,6 +84,7 @@ type RequestDispatcherOptions struct {
 	RateLimitAdmission         *RateLimitAdmission
 	QuotaAdmission             *QuotaAdmission
 	BodyTransport              config.ControlBodyTransportConfig
+	BodyObjectStore            RequestBodyRefStore
 	MaxInlineResponseBodyBytes uint64
 	MaxFrameDataBytes          uint64
 	MaxTimeoutMs               uint64
@@ -529,9 +530,9 @@ func (d *DefaultRequestDispatcher) executeAttemptUnmeasured(ctx context.Context,
 
 	assignmentMs := millisSince(assignmentStarted, d.opts.Now())
 
-	nextSeq, err := d.sendRequestStart(c2eSubject, in, route, policy, configVersion, deadline)
+	nextSeq, err := d.sendRequestStart(ctx, c2eSubject, in, route, policy, configVersion, deadline)
 	if err != nil {
-		return dispatchResult{}, assignmentMs, &PipelineError{Code: TransportUnavailable}
+		return dispatchResult{}, assignmentMs, requestStreamPipelineError(err)
 	}
 
 	result, perr := d.readResponse(ctx, frames, route, deadline, c2eSubject, in, nextSeq)
@@ -592,9 +593,9 @@ func (d *DefaultRequestDispatcher) executeRawAttemptUnmeasured(ctx context.Conte
 
 	assignmentMs := millisSince(assignmentStarted, d.opts.Now())
 
-	nextSeq, err := d.sendRequestStart(c2eSubject, in, route, policy, configVersion, deadline)
+	nextSeq, err := d.sendRequestStart(ctx, c2eSubject, in, route, policy, configVersion, deadline)
 	if err != nil {
-		return dispatchResult{}, assignmentMs, &PipelineError{Code: TransportUnavailable}, false
+		return dispatchResult{}, assignmentMs, requestStreamPipelineError(err), false
 	}
 
 	result, perr, wroteHeader := d.streamRawResponse(ctx, frames, route, deadline, c2eSubject, in, nextSeq, w)
@@ -656,7 +657,7 @@ func (d *DefaultRequestDispatcher) requestAssign(subject string, in DispatchInpu
 // sendRequestStart publishes RequestStart and inline body DataFrames on the c2e
 // subject and returns the next c2e stream_seq (i.e. the seq a subsequent
 // CancelFrame should use).
-func (d *DefaultRequestDispatcher) sendRequestStart(subject string, in DispatchInput, route RouteOutcome, policy *DestinationPolicyResult, configVersion uint64, deadline time.Time) (uint64, error) {
+func (d *DefaultRequestDispatcher) sendRequestStart(ctx context.Context, subject string, in DispatchInput, route RouteOutcome, policy *DestinationPolicyResult, configVersion uint64, deadline time.Time) (uint64, error) {
 	start := &strawpb.RequestStart{
 		Mode:                   requestMode(in.Request),
 		Method:                 in.Request.Method,
@@ -685,16 +686,98 @@ func (d *DefaultRequestDispatcher) sendRequestStart(subject string, in DispatchI
 		return 0, err
 	}
 
+	var uploaded *strawpb.BodyRefFrame
+
+	seq, uploaded, err = d.sendRequestBody(ctx, subject, in, deadline, seq)
+	if err != nil {
+		return 0, err
+	}
+
+	err = d.opts.NATS.Flush()
+	if err != nil {
+		d.deleteUploadedRequestBody(ctx, uploaded)
+
+		return 0, fmt.Errorf("flush request stream: %w", err)
+	}
+
+	return seq + 1, nil
+}
+
+func (d *DefaultRequestDispatcher) sendRequestBody(ctx context.Context, subject string, in DispatchInput, deadline time.Time, seq uint64) (uint64, *strawpb.BodyRefFrame, error) {
+	body := in.Request.BodyData
+	if len(body) == 0 {
+		return seq, nil, nil
+	}
+
+	selection, perr := SelectBodyTransport(d.opts.BodyTransport, BodyTransportSelectionRequest{
+		Direction:        BodyTransportDirectionRequest,
+		SizeBytes:        uint64FromInt(len(body)),
+		InlineLimitBytes: d.opts.MaxFrameDataBytes,
+	})
+	if perr != nil {
+		return 0, nil, &requestStreamError{perr: perr}
+	}
+
+	switch selection.Transport {
+	case BodyTransportDataFrames:
+		seq, err := d.sendRequestDataFrames(subject, in, deadline, seq, body)
+
+		return seq, nil, err
+	case BodyTransportS3BodyRef:
+		if d.opts.BodyObjectStore == nil {
+			return 0, nil, &requestStreamError{perr: bodyRefUnavailableError(BodyTransportDirectionRequest, BodyTransportS3BodyRef)}
+		}
+
+		ref, err := d.opts.BodyObjectStore.UploadRequestBody(ctx, in.Identity.TenantID, in.RequestID, body)
+		if err != nil {
+			return 0, nil, &requestStreamError{
+				perr: bodyRefUnavailableError(BodyTransportDirectionRequest, BodyTransportS3BodyRef),
+				err:  err,
+			}
+		}
+
+		seq++
+
+		err = d.publishFrame(subject, in, deadline, &strawpb.StreamFrame{
+			StreamSeq: seq,
+			Attempt:   defaultRequestAttempt,
+			Payload:   &strawpb.StreamFrame_BodyRef{BodyRef: ref},
+		})
+		if err != nil {
+			d.deleteUploadedRequestBody(ctx, ref)
+
+			return 0, nil, err
+		}
+
+		return seq, ref, nil
+	case BodyTransportDirectStreamRef:
+		return 0, nil, &requestStreamError{perr: bodyRefUnavailableError(BodyTransportDirectionRequest, BodyTransportDirectStreamRef)}
+	default:
+		return 0, nil, &requestStreamError{perr: bodyRefUnavailableError(BodyTransportDirectionRequest, selection.Transport)}
+	}
+}
+
+func (d *DefaultRequestDispatcher) deleteUploadedRequestBody(ctx context.Context, ref *strawpb.BodyRefFrame) {
+	if ref == nil || d.opts.BodyObjectStore == nil {
+		return
+	}
+
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
+	defer cancel()
+
+	_ = d.opts.BodyObjectStore.DeleteRequestBody(cleanupCtx, ref)
+}
+
+func (d *DefaultRequestDispatcher) sendRequestDataFrames(subject string, in DispatchInput, deadline time.Time, seq uint64, body []byte) (uint64, error) {
 	offset := uint64(0)
 
-	body := in.Request.BodyData
 	for len(body) > 0 {
 		seq++
 		n := frameChunkSize(len(body), d.opts.MaxFrameDataBytes)
 		chunk := body[:n]
 		body = body[n:]
 
-		err = d.publishFrame(subject, in, deadline, &strawpb.StreamFrame{
+		err := d.publishFrame(subject, in, deadline, &strawpb.StreamFrame{
 			StreamSeq: seq,
 			Attempt:   defaultRequestAttempt,
 			Payload:   &strawpb.StreamFrame_Data{Data: &strawpb.DataFrame{Offset: offset, Data: chunk}},
@@ -706,12 +789,29 @@ func (d *DefaultRequestDispatcher) sendRequestStart(subject string, in DispatchI
 		offset += uint64(len(chunk))
 	}
 
-	err = d.opts.NATS.Flush()
-	if err != nil {
-		return 0, fmt.Errorf("flush request stream: %w", err)
+	return seq, nil
+}
+
+type requestStreamError struct {
+	perr *PipelineError
+	err  error
+}
+
+func requestStreamPipelineError(err error) *PipelineError {
+	var streamErr *requestStreamError
+	if errors.As(err, &streamErr) && streamErr.perr != nil {
+		return streamErr.perr
 	}
 
-	return seq + 1, nil
+	return &PipelineError{Code: TransportUnavailable}
+}
+
+func (e *requestStreamError) Error() string {
+	if e.err != nil {
+		return e.err.Error()
+	}
+
+	return "request stream error"
 }
 
 func (d *DefaultRequestDispatcher) publishFrame(subject string, in DispatchInput, deadline time.Time, frame *strawpb.StreamFrame) error {

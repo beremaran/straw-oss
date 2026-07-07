@@ -247,6 +247,7 @@ func TestExecutorEmittableSetMatchesContract(t *testing.T) {
 		strawpb.ErrorCode_ERROR_CODE_UPSTREAM_PROXY_FAILURE:      {},
 		strawpb.ErrorCode_ERROR_CODE_STREAM_UPLOAD_ABORTED:       {},
 		strawpb.ErrorCode_ERROR_CODE_STREAM_DOWNLOAD_ABORTED:     {},
+		strawpb.ErrorCode_ERROR_CODE_BODY_REF_UNAVAILABLE:        {},
 		strawpb.ErrorCode_ERROR_CODE_BODY_TOO_LARGE:              {},
 		strawpb.ErrorCode_ERROR_CODE_EXECUTOR_INTERNAL_ERROR:     {},
 	}

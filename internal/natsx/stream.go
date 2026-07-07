@@ -60,6 +60,16 @@ type StreamValidator struct {
 	idleTimeout  time.Duration
 	lastActivity time.Time
 	now          func() time.Time
+	allowBodyRef bool
+}
+
+// StreamValidatorOptions configures a stream validator.
+type StreamValidatorOptions struct {
+	Attempt       uint32
+	InitialCredit uint64
+	IdleTimeout   time.Duration
+	Now           func() time.Time
+	AllowBodyRef  bool
 }
 
 // NewStreamValidator builds a validator for the given active attempt.
@@ -67,17 +77,30 @@ type StreamValidator struct {
 // (AssignRequest initial upload/download credit). idleTimeout of zero disables
 // the idle check. now may be nil (defaults to time.Now).
 func NewStreamValidator(attempt uint32, initialCredit uint64, idleTimeout time.Duration, now func() time.Time) *StreamValidator {
+	return NewStreamValidatorWithOptions(StreamValidatorOptions{
+		Attempt:       attempt,
+		InitialCredit: initialCredit,
+		IdleTimeout:   idleTimeout,
+		Now:           now,
+	})
+}
+
+// NewStreamValidatorWithOptions builds a validator. AllowBodyRef is only set
+// on P2 receive paths that are explicitly prepared to dereference BodyRef.
+func NewStreamValidatorWithOptions(opts StreamValidatorOptions) *StreamValidator {
+	now := opts.Now
 	if now == nil {
 		now = time.Now
 	}
 
 	return &StreamValidator{
-		attempt:      attempt,
+		attempt:      opts.Attempt,
 		expectedSeq:  1,
-		credit:       initialCredit,
-		idleTimeout:  idleTimeout,
+		credit:       opts.InitialCredit,
+		idleTimeout:  opts.IdleTimeout,
 		lastActivity: now(),
 		now:          now,
+		allowBodyRef: opts.AllowBodyRef,
 	}
 }
 
@@ -114,7 +137,7 @@ func (v *StreamValidator) Accept(f *strawpb.StreamFrame) FrameOutcome {
 
 	// stream_seq is exactly the next expected value. Apply payload-specific
 	// validation before committing.
-	if outcome := validateP0Payload(f); outcome != FrameAccepted {
+	if outcome := v.validatePayload(f); outcome != FrameAccepted {
 		return outcome
 	}
 
@@ -162,8 +185,8 @@ func (v *StreamValidator) validateFrameShell(f *strawpb.StreamFrame) FrameOutcom
 	return FrameAccepted
 }
 
-func validateP0Payload(f *strawpb.StreamFrame) FrameOutcome {
-	if _, ok := f.GetPayload().(*strawpb.StreamFrame_BodyRef); ok {
+func (v *StreamValidator) validatePayload(f *strawpb.StreamFrame) FrameOutcome {
+	if _, ok := f.GetPayload().(*strawpb.StreamFrame_BodyRef); ok && !v.allowBodyRef {
 		return FrameInvalid
 	}
 

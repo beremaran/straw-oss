@@ -37,6 +37,7 @@ import (
 	"github.com/beremaran/straw/v2/internal/control"
 	"github.com/beremaran/straw/v2/internal/logging"
 	"github.com/beremaran/straw/v2/internal/natsx"
+	"github.com/beremaran/straw/v2/internal/objectstore"
 	"github.com/beremaran/straw/v2/internal/postgresx"
 	"github.com/beremaran/straw/v2/internal/redisx"
 	"github.com/beremaran/straw/v2/migrations"
@@ -164,14 +165,9 @@ func runControl(controlConfig config.ControlConfig, natsConn *natsx.Connection) 
 
 	configStore := control.NewPostgresConfigStore(pool)
 
-	err = bootstrapDevProvisioning(context.Background(), control.NewPostgresTenantStore(pool), workerCreds, configStore)
+	err = setupControlConfigState(configStore, workerRegistry, workerCreds, pool)
 	if err != nil {
 		return err
-	}
-
-	err = rehydrateWorkerAdminState(context.Background(), configStore, workerRegistry)
-	if err != nil {
-		return fmt.Errorf("rehydrate worker admin state: %w", err)
 	}
 
 	configCache := wireConfigInvalidation(ctx, configStore, redisClient)
@@ -183,7 +179,10 @@ func runControl(controlConfig config.ControlConfig, natsConn *natsx.Connection) 
 
 	inflight := wireInFlightRegistry(ctx, controlConfig, redisClient)
 
-	mux, proxyHandler, connectHandler, mitmHandler := buildControlMux(controlConfig, apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore, configCache, redisClient, natsConn, chWriters, metrics, inflight)
+	mux, proxyHandler, connectHandler, mitmHandler, err := buildControlMux(controlConfig, apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore, configCache, redisClient, natsConn, chWriters, metrics, inflight)
+	if err != nil {
+		return err
+	}
 
 	err = setupNATSSubscriptions(natsConn, workerRegistry, chWriters)
 	if err != nil {
@@ -191,6 +190,41 @@ func runControl(controlConfig config.ControlConfig, natsConn *natsx.Connection) 
 	}
 
 	return serveControl(ctx, controlConfig, mux, proxyHandler, connectHandler, mitmHandler, redisClient, metricsReg)
+}
+
+func setupControlConfigState(configStore *control.PostgresConfigStore, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool) error {
+	err := bootstrapDevProvisioning(context.Background(), control.NewPostgresTenantStore(pool), workerCreds, configStore)
+	if err != nil {
+		return err
+	}
+
+	err = rehydrateWorkerAdminState(context.Background(), configStore, workerRegistry)
+	if err != nil {
+		return fmt.Errorf("rehydrate worker admin state: %w", err)
+	}
+
+	return nil
+}
+
+func buildRequestBodyRefStore(cfg config.BodyObjectStorageConfig) (control.RequestBodyRefStore, error) {
+	if !cfg.Enabled {
+		return nil, nil
+	}
+
+	client, err := objectstore.New(objectstore.Options{
+		Enabled:       cfg.Enabled,
+		Endpoint:      cfg.Endpoint,
+		Bucket:        cfg.Bucket,
+		Region:        cfg.Region,
+		AccessKeyEnv:  cfg.AccessKeyEnv,
+		SecretKeyEnv:  cfg.SecretKeyEnv,
+		RetentionDays: cfg.BodyRetentionDays,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("build request body ref store: %w", err)
+	}
+
+	return control.NewS3RequestBodyRefStore(client), nil
 }
 
 func setupNATSSubscriptions(natsConn *natsx.Connection, workerRegistry *control.WorkerRegistry, chWriters *clickHouseWriters) error {
@@ -1048,29 +1082,18 @@ func rehydrateWorkerAdminState(ctx context.Context, configStore *control.Postgre
 
 // buildControlMux assembles the HTTP handler with the Postgres-backed identity
 // and config stores.
-func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool, configStore *control.PostgresConfigStore, configCache *control.ConfigCache, redisClient *redis.Client, natsConn *natsx.Connection, chWriters *clickHouseWriters, metrics *control.Metrics, inflight *control.InFlightRegistry) (*http.ServeMux, http.Handler, http.Handler, http.Handler) {
+func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool, configStore *control.PostgresConfigStore, configCache *control.ConfigCache, redisClient *redis.Client, natsConn *natsx.Connection, chWriters *clickHouseWriters, metrics *control.Metrics, inflight *control.InFlightRegistry) (*http.ServeMux, http.Handler, http.Handler, http.Handler, error) {
+	bodyStore, err := buildRequestBodyRefStore(controlConfig.BodyTransport.ObjectStorage)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+
 	tenantStore := control.NewPostgresTenantStore(pool)
 	adminHandlers := buildAdminHandlers(apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore, configCache, redisClient, inflight, tenantStore, chWriters.configAudit)
 
 	authenticator := control.NewAuthenticator(apiKeyStore, pepper).SetTenantStore(tenantStore)
 
-	var requestHandler *control.RequestHandler
-	if chWriters.requestMetadata != nil {
-		requestHandler = control.NewRequestHandler(
-			controlConfig.Request.MaxInlineRequestBodyBytes,
-			controlConfig.Request.MaxInlineResponseBodyBytes,
-			controlConfig.Request.MaxTimeoutMs,
-			authenticator,
-			chWriters.requestMetadata,
-		)
-	} else {
-		requestHandler = control.NewRequestHandler(
-			controlConfig.Request.MaxInlineRequestBodyBytes,
-			controlConfig.Request.MaxInlineResponseBodyBytes,
-			controlConfig.Request.MaxTimeoutMs,
-			authenticator,
-		)
-	}
+	requestHandler := newControlRequestHandler(controlConfig, authenticator, chWriters)
 
 	rateLimitAdmission := control.NewRateLimitAdmission(control.NewRateLimiter(redisClient, control.DefaultRateLimitGuardrails(), nil))
 	rateLimitAdmission.SetMetrics(metrics)
@@ -1086,6 +1109,7 @@ func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.API
 		RateLimitAdmission:         rateLimitAdmission,
 		QuotaAdmission:             quotaAdmission,
 		BodyTransport:              controlConfig.BodyTransport,
+		BodyObjectStore:            bodyStore,
 		MaxInlineResponseBodyBytes: controlConfig.Request.MaxInlineResponseBodyBytes,
 		MaxFrameDataBytes:          controlConfig.Transport.MaxFrameDataBytes,
 		MaxTimeoutMs:               controlConfig.Request.MaxTimeoutMs,
@@ -1106,7 +1130,26 @@ func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.API
 
 	proxyHandler, connectHandler, mitmHandler := buildIngressHandlers(controlConfig, authenticator, configCache, chWriters.requestMetadata, dispatcher)
 
-	return mux, proxyHandler, connectHandler, mitmHandler
+	return mux, proxyHandler, connectHandler, mitmHandler, nil
+}
+
+func newControlRequestHandler(controlConfig config.ControlConfig, authenticator *control.Authenticator, chWriters *clickHouseWriters) *control.RequestHandler {
+	if chWriters.requestMetadata != nil {
+		return control.NewRequestHandler(
+			controlConfig.Request.MaxInlineRequestBodyBytes,
+			controlConfig.Request.MaxInlineResponseBodyBytes,
+			controlConfig.Request.MaxTimeoutMs,
+			authenticator,
+			chWriters.requestMetadata,
+		)
+	}
+
+	return control.NewRequestHandler(
+		controlConfig.Request.MaxInlineRequestBodyBytes,
+		controlConfig.Request.MaxInlineResponseBodyBytes,
+		controlConfig.Request.MaxTimeoutMs,
+		authenticator,
+	)
 }
 
 func serveControlRoutes(mux *http.ServeMux, controlConfig config.ControlConfig, requestHandler *control.RequestHandler, authenticator *control.Authenticator, configCache *control.ConfigCache, adminHandlers *control.AdminHandlers) {
