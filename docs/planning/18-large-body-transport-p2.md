@@ -28,16 +28,12 @@ P2 adds BodyRef modes.
 
 ### S3 Response Body Flow
 
-Two modes are candidates, but P2 implementation must choose one response-body mode before build work starts:
+Section 32 resolved the P2 response-body mode on 2026-07-07: executor streams the response body through Control while
+teeing to object storage. Streaming remains the synchronous transport path; the stored object backs REST download
+references and retention policy.
 
-- executor-writes-object, Control reads after completion;
-- executor streams through Control while optionally teeing to object storage.
-
-For scraping-style synchronous transport, executor-to-Control streaming remains preferred. Object storage is mainly for
-bodies too large for NATS or for REST response download references.
-
-The chosen mode must be recorded in Section 32 before P2 implementation begins. Do not ship both modes unless a later
-decision explicitly specifies the selection rules and tests.
+Do not ship the rejected executor-writes-object/read-after-completion mode unless a later decision explicitly
+supersedes Section 32 and specifies selection rules and tests.
 
 ### Object Storage Security
 

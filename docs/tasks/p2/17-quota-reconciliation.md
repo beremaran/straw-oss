@@ -4,8 +4,7 @@ Status: not started
 
 ## Objective
 
-Implement quota reconciliation accuracy chosen by the P2 open decision, if billing-grade or near-billing-grade reporting
-is required.
+Implement billing-grade quota reconciliation, as resolved by the P2 quota accuracy decision on 2026-07-07.
 
 ## Required Planning Docs
 
@@ -22,7 +21,7 @@ is required.
 
 ## Out of Scope
 
-- Do not claim billing-grade accuracy unless the decision selects and tests it.
+- Do not claim billing-grade accuracy without the required tests.
 - Do not change P0 admission-control quota semantics without migration notes.
 
 ## Expected Files
@@ -33,7 +32,7 @@ is required.
 ## Steps
 
 - [ ] Read all required planning docs.
-- [ ] Implement only the accuracy level chosen by `P2 Quota Reconciliation Accuracy`.
+- [ ] Implement billing-grade reconciliation as chosen by `P2 Quota Reconciliation Accuracy`.
 - [ ] Define and use a durable usage-event source from ClickHouse.
 - [ ] Add idempotent aggregation keys.
 - [ ] Handle late events and correction policy for Redis hot counters.
@@ -61,5 +60,5 @@ is required.
 
 ## Stop Conditions
 
-- Stop if `P2 Quota Reconciliation Accuracy` is unresolved.
+- Stop if `P2 Quota Reconciliation Accuracy` is removed or superseded.
 - Stop if a deferral would have no owning task file.

@@ -4,7 +4,7 @@ Status: not started
 
 ## Objective
 
-Implement the single response-body BodyRef mode chosen by the P2 open decision.
+Implement the single response-body BodyRef mode resolved on 2026-07-07.
 
 ## Required Planning Docs
 
@@ -32,7 +32,8 @@ Implement the single response-body BodyRef mode chosen by the P2 open decision.
 ## Steps
 
 - [ ] Read all required planning docs.
-- [ ] Implement exactly the chosen response-body mode from `P2 BodyRef Response-Body Mode`.
+- [ ] Implement exactly the resolved `P2 BodyRef Response-Body Mode`: executor streams through Control while teeing
+      to object storage.
 - [ ] Enforce response size thresholds and `body_too_large` behavior.
 - [ ] Verify size/checksum and object retention.
 - [ ] Handle cancellation and cleanup.
@@ -60,6 +61,6 @@ Implement the single response-body BodyRef mode chosen by the P2 open decision.
 
 ## Stop Conditions
 
-- Stop if the response-body mode decision is unresolved.
+- Stop if the response-body mode decision is removed or superseded.
 - Stop if implementation starts to support both modes without explicit selection rules.
 - Stop if a deferral would have no owning task file.

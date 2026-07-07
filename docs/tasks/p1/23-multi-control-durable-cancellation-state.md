@@ -31,18 +31,16 @@ Current-code evidence (single-Control, in-process only):
 
 Owning task for the single-Control implementation this extends: `docs/tasks/p0/27-admin-request-cancellation.md`.
 
-## Phase placement and gate
+## Phase placement and decision
 
 Placed in **P1** ("worker-loss and NATS-outage hardening beyond the P0 baseline" / operational hardening in
 `docs/planning/02-phase-boundaries.md`, lines 59-73). Cross-Control coordination of an in-flight control signal is
 operational hardening, not a P2 data-plane feature (MITM/BodyRef/capture) and not Future-Work "managed disaster
 recovery."
 
-**This task is gated on the multi-Control-replica need actually arising.** P0 and P1 both describe a single Control
-service; running more than one Control replica is not yet an established deployment requirement in the planning docs.
-Do not start this task until a deployment or planning decision commits Straw to multiple concurrent Control replicas
-sharing one request plane. Until then it stays `not started` as the registered owner of the gap so the deferral is
-not invisible.
+The multi-Control-replica gate was resolved in `docs/planning/32-open-decisions.md` on 2026-07-07. Straw supports
+multiple concurrent Control replicas sharing one request plane, with cross-instance runtime coordination in Redis
+behind `server.multi_control_enabled` (default off). This task is now complete.
 
 ## Required Planning Docs
 
@@ -56,7 +54,8 @@ not invisible.
 ## Prerequisites
 
 - P0 task 27 completed (single-Control in-process cancellation is the thing this extends). Done.
-- A committed decision that Straw runs multiple concurrent Control replicas (the gate above). If absent, do not start.
+- A committed decision that Straw runs multiple concurrent Control replicas. Done:
+  `docs/planning/32-open-decisions.md` resolved it on 2026-07-07.
 
 ## Out of Scope
 
@@ -126,7 +125,7 @@ not invisible.
 
 ## Stop Conditions
 
-- Stop if the multi-Control-replica gate is not met (no committed decision to run multiple Control replicas).
+- Stop if the committed multi-Control-replica decision is removed or superseded.
 - Stop if closing this gap would require a persistent request queue, a new datastore, or a retry/replay workflow
   (all out of scope / Future Work).
 - Stop if a deferral would have no owning task file.

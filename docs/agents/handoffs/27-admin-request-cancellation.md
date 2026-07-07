@@ -67,8 +67,8 @@ Result: all new tests pass; `make check` (gofmt + `go test ./...` + `golangci-li
   "Out of Scope" section, consistent with the task 13 worker-runtime-state deferral) — it does not survive a
   Control restart and is not shared across Control instances. Multi-Control coordination and durable cancellation
   state are out of scope for P0 and have no owning P0 task; if needed later they'd be a new P1/P2 task.
-  2026-07-06 update: this gap is now owned by `docs/tasks/p1/23-multi-control-durable-cancellation-state.md`
-  on the P1 board (registered 2026-07-05, gated on a committed multi-Control-replica decision).
+  2026-07-06 update: this gap became owned by `docs/tasks/p1/23-multi-control-durable-cancellation-state.md`
+  on the P1 board while waiting for a committed multi-Control-replica decision.
   2026-07-07 update: the multi-Control-replica decision is committed (`docs/planning/32` "Multiple Concurrent
   Control Replicas — Resolved 2026-07-07") and `docs/tasks/p1/23` is **done**. Cross-instance admin cancel now
   reaches the owning Control replica via the Redis runtime-state tier (opt-in `server.multi_control_enabled`); the

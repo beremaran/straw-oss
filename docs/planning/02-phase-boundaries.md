@@ -78,11 +78,11 @@ P2 adds:
 
 - MITM HTTPS decoded mode,
 - generated leaf certificate cache/storage,
-- BodyRef transport after choosing the P2 response-body mode,
+- BodyRef transport using the Section 32 response-body mode,
 - payload capture with storage-only redaction,
 - the public Egress SDK, the official worker rebased onto it, and one example custom Egress implementation,
 - HTTP/2 support where explicitly specified and tested,
-- quota reconciliation suitable for billing-grade or near-billing-grade reporting if required.
+- billing-grade quota reconciliation.
 
 ### Future Work
 

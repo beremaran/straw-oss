@@ -66,9 +66,10 @@ Result: passed.
 
 - MITM ingress implementation is owned by `docs/tasks/p2/02-mitm-ingress.md`.
 - MITM CA management is owned by `docs/tasks/p2/03-mitm-ca-management.md`.
-- MITM leaf certificate cache implementation is owned by `docs/tasks/p2/04-mitm-leaf-cert-cache.md`.
+- MITM leaf bundle KMS provider/config is owned by `docs/tasks/p2/19-mitm-leaf-bundle-kms-provider.md` and must be
+  completed before task 04.
+- MITM leaf certificate cache implementation is owned by `docs/tasks/p2/04-mitm-leaf-cert-cache.md` after task 19.
 
 ## Blockers
 
 - None.
-

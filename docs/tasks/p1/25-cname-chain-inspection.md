@@ -22,9 +22,8 @@ sweep):
 `docs/planning/27-security-controls.md:49` lists "CNAME chains" in the deny-rule normalization requirements, the
 same list whose IDNA row is owned by `docs/tasks/p1/21-idna-hostname-support.md`; this task is the sibling owner
 for the CNAME-chain row. The p0/26 task text explicitly permitted "document why deeper chain inspection is out of
-reach with the stdlib resolver" — this task lifts that ceiling. Exposing intermediate hops requires a resolver
-that returns raw CNAME records (e.g. a custom `miekg/dns`-based resolver): a new dependency, which is an AGENTS.md
-stop condition and this task's decision gate.
+reach with the stdlib resolver" — this task lifts that ceiling. It completed with standard-library DNS message
+parsing, so no external resolver dependency gate remains.
 
 ## Required Planning Docs
 
@@ -52,8 +51,7 @@ stop condition and this task's decision gate.
 ## Steps
 
 - [x] Read all required planning docs.
-- [x] Stop and ask before adding any DNS dependency (e.g. `miekg/dns`); proceed only with explicit approval, or
-      with a stdlib-only approach if one is found.
+- [x] Avoid adding a DNS dependency; use the stdlib-only raw-chain DNS approach.
 - [x] Extend the `Resolver` interface to return the CNAME chain (all hops, normalized: lowercase, trailing dot
       stripped) and implement it in the default resolver (`cmd/egress` binary path).
 - [x] Match `denied_cname_suffixes` against every hop with the existing exact/dot-boundary suffix rules.
@@ -79,12 +77,11 @@ stop condition and this task's decision gate.
 
 ## Handoff Notes
 
-- Record the dependency decision (which resolver library, or why stdlib sufficed) and the chain normalization
-  applied per hop.
+- Record why stdlib sufficed and the chain normalization applied per hop.
 
 ## Stop Conditions
 
-- Stop before adding any new dependency — the raw-chain resolver needs user approval (AGENTS.md).
+- Stop before adding any new dependency; the completed implementation intentionally uses the standard library.
 - Stop if resolver behavior differences (search domains, DNSSEC, split-horizon) make chain results ambiguous for
   the tests — ask.
 - Stop if a deferral would have no owning task file.
