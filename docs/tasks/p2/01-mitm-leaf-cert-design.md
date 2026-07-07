@@ -1,6 +1,6 @@
 # 01 - MITM Leaf Certificate Design
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -30,16 +30,16 @@ implementation starts.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Record the resolved private-key storage policy and rejected options.
-- [ ] Specify public certificate caching and private-key storage/encryption behavior.
-- [ ] Specify TTL rules bounded by certificate validity days.
-- [ ] Specify local singleflight, Redis distributed lock, bounded generation concurrency, and per-tenant/global
+- [x] Read all required planning docs.
+- [x] Record the resolved private-key storage policy and rejected options.
+- [x] Specify public certificate caching and private-key storage/encryption behavior.
+- [x] Specify TTL rules bounded by certificate validity days.
+- [x] Specify local singleflight, Redis distributed lock, bounded generation concurrency, and per-tenant/global
       unique-SNI flood limits.
-- [ ] Specify rotation, cache miss, and encrypted-at-rest tests.
-- [ ] Add MITM certificate test rows needed before implementation.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Specify rotation, cache miss, and encrypted-at-rest tests.
+- [x] Add MITM certificate test rows needed before implementation.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 
