@@ -773,6 +773,38 @@ func TestQuotaWriteRequiresPlatformKey(t *testing.T) {
 	if quota.MaxRequests != 1000 {
 		t.Fatalf("max_requests = %d, want 1000", quota.MaxRequests)
 	}
+	if quota.Usage != nil {
+		t.Fatalf("usage before snapshot = %+v, want omitted", quota.Usage)
+	}
+
+	now := time.Now().UTC()
+	ta.h.QuotaUsage = &recordingQuotaUsageSnapshotStore{usages: []QuotaUsage{{
+		TenantID:        adminTestTenantA,
+		Period:          monthlyPeriodKey(now),
+		RequestCount:    1,
+		BandwidthBytes:  18,
+		AccurateThrough: now,
+		Source:          quotaUsageSourceClickHouse,
+		AggregationKey:  quotaAggregationKeyVersion,
+		NextReconcileAt: now.Add(quotaReconciliationCadence),
+	}}}
+
+	w = httptest.NewRecorder()
+	ta.h.GetQuotas(w, newAdminRequest(http.MethodGet, "/api/v1/config/quotas", tenantAdminToken, ""))
+	if w.Code != http.StatusOK {
+		t.Fatalf("tenant quota read with reconciler status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	err = json.Unmarshal(w.Body.Bytes(), &quota)
+	if err != nil {
+		t.Fatalf("unmarshal quota with usage: %v", err)
+	}
+	if quota.Usage == nil || quota.Usage.RequestCount != 1 || quota.Usage.BandwidthBytes != 18 || quota.Usage.Source != quotaUsageSourceClickHouse {
+		t.Fatalf("quota usage = %+v, want reconciled ClickHouse usage", quota.Usage)
+	}
+	if !quota.Usage.AccurateThrough.Equal(now) || quota.Usage.AggregationKey != quotaAggregationKeyVersion || !quota.Usage.NextReconcileAt.Equal(now.Add(quotaReconciliationCadence)) {
+		t.Fatalf("quota usage display fields = %+v, want invoice-facing snapshot metadata", quota.Usage)
+	}
 }
 
 // ---- rate limit config: dimension write, tenant read, ceiling rejection ----

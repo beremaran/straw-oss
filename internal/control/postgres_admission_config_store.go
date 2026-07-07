@@ -269,6 +269,57 @@ func (s *postgresQuotaStore) Get(ctx context.Context, tenantID string) (QuotaCon
 	}, nil
 }
 
+// List returns every configured monthly quota for reconciliation jobs.
+func (s *postgresQuotaStore) List(ctx context.Context) ([]QuotaConfig, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT tenant_id, quota_period, request_count_limit, bandwidth_bytes_limit,
+		        count_on_admission, fail_policy, config_version
+		 FROM quota_configs
+		 WHERE quota_period = 'monthly'
+		 ORDER BY tenant_id`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("postgres quota list: %w", err)
+	}
+
+	defer rows.Close()
+
+	var quotas []QuotaConfig
+
+	for rows.Next() {
+		var (
+			quota            QuotaConfig
+			requestLimit     *int64
+			bandwidthLimit   *int64
+			countOnAdmission bool
+			version          int64
+		)
+
+		err = rows.Scan(&quota.TenantID, &quota.Period, &requestLimit, &bandwidthLimit, &countOnAdmission, &quota.RedisFailPolicy, &version)
+		if err != nil {
+			return nil, fmt.Errorf("postgres quota list scan: %w", err)
+		}
+
+		quota.MaxRequests = derefInt64(requestLimit)
+		quota.MaxBandwidthBytes = derefInt64(bandwidthLimit)
+		quota.RequestCountPolicy = boolToRequestCountPolicy(countOnAdmission)
+
+		quota.ConfigVersion, err = dbUint64(version, "quota config version")
+		if err != nil {
+			return nil, err
+		}
+
+		quotas = append(quotas, quota)
+	}
+
+	err = rows.Err()
+	if err != nil {
+		return nil, fmt.Errorf("postgres quota list rows: %w", err)
+	}
+
+	return quotas, nil
+}
+
 // Put upserts a tenant's monthly quota under optimistic concurrency on the
 // quota's config_version.
 func (s *postgresQuotaStore) Put(ctx context.Context, quota QuotaConfig, expectedVersion uint64) (QuotaConfig, error) {

@@ -179,7 +179,7 @@ func runControl(controlConfig config.ControlConfig, natsConn *natsx.Connection) 
 
 	inflight := wireInFlightRegistry(ctx, controlConfig, redisClient)
 
-	mux, proxyHandler, connectHandler, mitmHandler, err := buildControlMux(controlConfig, apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore, configCache, redisClient, natsConn, chWriters, metrics, inflight)
+	mux, proxyHandler, connectHandler, mitmHandler, err := buildControlMux(ctx, controlConfig, apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore, configCache, redisClient, natsConn, chWriters, metrics, inflight)
 	if err != nil {
 		return err
 	}
@@ -1088,7 +1088,7 @@ func rehydrateWorkerAdminState(ctx context.Context, configStore *control.Postgre
 
 // buildControlMux assembles the HTTP handler with the Postgres-backed identity
 // and config stores.
-func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool, configStore *control.PostgresConfigStore, configCache *control.ConfigCache, redisClient *redis.Client, natsConn *natsx.Connection, chWriters *clickHouseWriters, metrics *control.Metrics, inflight *control.InFlightRegistry) (*http.ServeMux, http.Handler, http.Handler, http.Handler, error) {
+func buildControlMux(ctx context.Context, controlConfig config.ControlConfig, apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool, configStore *control.PostgresConfigStore, configCache *control.ConfigCache, redisClient *redis.Client, natsConn *natsx.Connection, chWriters *clickHouseWriters, metrics *control.Metrics, inflight *control.InFlightRegistry) (*http.ServeMux, http.Handler, http.Handler, http.Handler, error) {
 	bodyStore, err := buildBodyRefStore(controlConfig.BodyTransport.ObjectStorage)
 	if err != nil {
 		return nil, nil, nil, nil, err
@@ -1108,7 +1108,8 @@ func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.API
 	}
 
 	tenantStore := control.NewPostgresTenantStore(pool)
-	adminHandlers := buildAdminHandlers(apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore, configCache, redisClient, inflight, tenantStore, chWriters.configAudit)
+	adminHandlers := buildAdminHandlers(apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore, configCache, redisClient, inflight, tenantStore, chWriters.configAudit, chWriters.sink)
+	startQuotaReconciliation(ctx, adminHandlers.QuotaReconciler, adminHandlers.Quotas)
 
 	authenticator := control.NewAuthenticator(apiKeyStore, pepper).SetTenantStore(tenantStore)
 
@@ -1268,7 +1269,7 @@ func buildMITMHandler(controlConfig config.ControlConfig, authenticator *control
 // (docs/tasks/p0/21). These are the admin-surface instances; the request path
 // consumes its own rate limiter/quota/sticky instances wired into the
 // dispatcher (docs/tasks/p0/24).
-func buildAdminHandlers(apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool, configStore *control.PostgresConfigStore, configCache *control.ConfigCache, redisClient *redis.Client, inflight *control.InFlightRegistry, tenantStore control.TenantStore, configAuditEvents *control.ConfigAuditEventWriter) *control.AdminHandlers {
+func buildAdminHandlers(apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool, configStore *control.PostgresConfigStore, configCache *control.ConfigCache, redisClient *redis.Client, inflight *control.InFlightRegistry, tenantStore control.TenantStore, configAuditEvents *control.ConfigAuditEventWriter, clickHouseSink *control.HTTPClickHouseSink) *control.AdminHandlers {
 	rateLimiter := control.NewRateLimiter(redisClient, control.DefaultRateLimitGuardrails(), nil)
 
 	// A plain interface-typed nil check on configAuditEvents would miss a
@@ -1277,6 +1278,15 @@ func buildAdminHandlers(apiKeyStore control.APIKeyStore, pepper []byte, workerRe
 	var auditEvents control.ConfigAuditRecorder
 	if configAuditEvents != nil {
 		auditEvents = configAuditEvents
+	}
+
+	var quotaReconciler *control.QuotaReconciler
+
+	var quotaUsage control.QuotaUsageSnapshotStore
+	if clickHouseSink != nil {
+		quotaUsage = control.NewPostgresQuotaUsageStore(pool)
+		quotaReconciler = control.NewQuotaReconciler(control.NewHTTPClickHouseQuotaUsageSource(clickHouseSink), redisClient, nil)
+		quotaReconciler.SetSnapshotStore(quotaUsage)
 	}
 
 	return &control.AdminHandlers{
@@ -1305,7 +1315,17 @@ func buildAdminHandlers(apiKeyStore control.APIKeyStore, pepper []byte, workerRe
 		RateLimitAdmission: control.NewRateLimitAdmission(rateLimiter),
 		QuotaAdmission:     control.NewQuotaAdmission(redisClient, nil),
 		StickySessions:     control.NewRedisStickyStore(redisClient),
+		QuotaReconciler:    quotaReconciler,
+		QuotaUsage:         quotaUsage,
 	}
+}
+
+func startQuotaReconciliation(ctx context.Context, reconciler *control.QuotaReconciler, quotas control.QuotaConfigSource) {
+	if reconciler == nil || quotas == nil {
+		return
+	}
+
+	go reconciler.Run(ctx, quotas)
 }
 
 // serveAdminRoutes registers all admin HTTP routes on the given mux.

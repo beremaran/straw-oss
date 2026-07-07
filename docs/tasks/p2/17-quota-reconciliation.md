@@ -1,6 +1,6 @@
 # 17 - Quota Reconciliation
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -31,17 +31,17 @@ Implement billing-grade quota reconciliation, as resolved by the P2 quota accura
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Implement billing-grade reconciliation as chosen by `P2 Quota Reconciliation Accuracy`.
-- [ ] Define and use a durable usage-event source from ClickHouse.
-- [ ] Add idempotent aggregation keys.
-- [ ] Handle late events and correction policy for Redis hot counters.
-- [ ] Preserve request-count versus attempt-count semantics.
-- [ ] Define user-visible quota display semantics.
-- [ ] Add tests for idempotency, late events, correction, display semantics, Redis loss, and bandwidth/request accounting.
-- [ ] Run focused quota reconciliation tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Read all required planning docs.
+- [x] Implement billing-grade reconciliation as chosen by `P2 Quota Reconciliation Accuracy`.
+- [x] Define and use a durable usage-event source from ClickHouse.
+- [x] Add idempotent aggregation keys.
+- [x] Handle late events and correction policy for Redis hot counters.
+- [x] Preserve request-count versus attempt-count semantics.
+- [x] Define user-visible quota display semantics.
+- [x] Add tests for idempotency, late events, correction, display semantics, Redis loss, and bandwidth/request accounting.
+- [x] Run focused quota reconciliation tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

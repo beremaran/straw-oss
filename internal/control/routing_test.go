@@ -346,7 +346,7 @@ func TestRoutingRuleDisabledSkipped(t *testing.T) {
 	h.registerReady(t, "w1", routingTestTenantA, routingTestPool1)
 	h.registerReady(t, "w2", routingTestTenantA, routingTestPool2)
 
-	out := h.router.Evaluate(RouteRequest{TenantID: "ten_a"})
+	out := h.router.Evaluate(RouteRequest{TenantID: routingTestTenantA})
 	if !out.OK || out.RuleID != "r_enabled" {
 		t.Fatalf("Evaluate = %+v, want disabled rule skipped", out)
 	}

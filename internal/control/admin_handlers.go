@@ -58,6 +58,8 @@ type AdminHandlers struct {
 	RateLimitAdmission *RateLimitAdmission
 	QuotaAdmission     *QuotaAdmission
 	StickySessions     StickyBackend
+	QuotaReconciler    *QuotaReconciler
+	QuotaUsage         QuotaUsageSnapshotStore
 }
 
 // ConfigWriteStore persists mutable tenant/platform config and its audit row in
@@ -886,16 +888,17 @@ func containsString(list []string, want string) bool {
 // ---- Quota config (platform-managed writes, tenant-readable) ----
 
 type quotaResponse struct {
-	TenantID           string `json:"tenant_id"`
-	Period             string `json:"period"`
-	MaxRequests        int64  `json:"max_requests"`
-	MaxBandwidthBytes  int64  `json:"max_bandwidth_bytes"`
-	RequestCountPolicy string `json:"request_count_policy"`
-	RedisFailPolicy    string `json:"redis_fail_policy"`
-	ConfigVersion      uint64 `json:"config_version"`
+	TenantID           string      `json:"tenant_id"`
+	Period             string      `json:"period"`
+	MaxRequests        int64       `json:"max_requests"`
+	MaxBandwidthBytes  int64       `json:"max_bandwidth_bytes"`
+	RequestCountPolicy string      `json:"request_count_policy"`
+	RedisFailPolicy    string      `json:"redis_fail_policy"`
+	ConfigVersion      uint64      `json:"config_version"`
+	Usage              *QuotaUsage `json:"usage,omitempty"`
 }
 
-func toQuotaResponse(q QuotaConfig) quotaResponse {
+func toQuotaResponse(q QuotaConfig, usage *QuotaUsage) quotaResponse {
 	return quotaResponse{
 		TenantID:           q.TenantID,
 		Period:             q.Period,
@@ -904,6 +907,7 @@ func toQuotaResponse(q QuotaConfig) quotaResponse {
 		RequestCountPolicy: q.RequestCountPolicy,
 		RedisFailPolicy:    q.RedisFailPolicy,
 		ConfigVersion:      q.ConfigVersion,
+		Usage:              usage,
 	}
 }
 
@@ -931,7 +935,22 @@ func (h *AdminHandlers) GetQuotas(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, toQuotaResponse(quota))
+	var usage *QuotaUsage
+
+	if h.QuotaUsage != nil {
+		snapshot, found, err := h.QuotaUsage.GetQuotaUsage(r.Context(), identity.TenantID, monthlyPeriodKey(time.Now()))
+		if err != nil {
+			WriteError(w, http.StatusInternalServerError, ErrorResponseFromCode(ControlInternalError, "", nil))
+
+			return
+		}
+
+		if found {
+			usage = &snapshot
+		}
+	}
+
+	writeJSON(w, http.StatusOK, toQuotaResponse(quota, usage))
 }
 
 type quotaPutRequest struct {
@@ -1488,7 +1507,7 @@ func (h *AdminHandlers) putTenantQuotas(w http.ResponseWriter, r *http.Request, 
 		}
 
 		recordAudit(r.Context(), h.Audit, identity, "quota_config", tenantID, "update", saved.ConfigVersion, auditFieldPathAll, oldQuota, saved, true)
-		writeJSON(w, http.StatusOK, toQuotaResponse(saved))
+		writeJSON(w, http.StatusOK, toQuotaResponse(saved, nil))
 
 		return
 	}
@@ -1515,7 +1534,7 @@ func (h *AdminHandlers) putTenantQuotas(w http.ResponseWriter, r *http.Request, 
 
 	recordAudit(r.Context(), h.Audit, identity, "quota_config", tenantID, "update", saved.ConfigVersion, auditFieldPathAll, oldQuota, saved, false)
 
-	writeJSON(w, http.StatusOK, toQuotaResponse(saved))
+	writeJSON(w, http.StatusOK, toQuotaResponse(saved, nil))
 }
 
 func (h *AdminHandlers) createWorkerCredential(w http.ResponseWriter, r *http.Request, identity Identity, req workerCredentialCreateRequest, tenantScope []string) bool {

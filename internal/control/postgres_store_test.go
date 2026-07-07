@@ -159,6 +159,53 @@ func TestPostgresTenantStoreDuplicateRejected(t *testing.T) {
 	}
 }
 
+func TestPostgresQuotaUsageStoreRoundTrip(t *testing.T) {
+	pool := newIdentityTestPool(t)
+	seedTenant(t, pool, pgTestTenantA)
+
+	store := NewPostgresQuotaUsageStore(pool)
+	usage := QuotaUsage{
+		TenantID:       pgTestTenantA,
+		Period:         "202607",
+		RequestCount:   3,
+		BandwidthBytes: 4096,
+		AccurateThrough: time.Date(2026, 7, 20, 10, 0, 0, 0,
+			time.UTC),
+		Source:         quotaUsageSourceClickHouse,
+		AggregationKey: quotaAggregationKeyVersion,
+	}
+
+	err := store.PutQuotaUsage(context.Background(), usage)
+	if err != nil {
+		t.Fatalf("PutQuotaUsage() error = %v", err)
+	}
+
+	got, found, err := store.GetQuotaUsage(context.Background(), pgTestTenantA, "202607")
+	if err != nil {
+		t.Fatalf("GetQuotaUsage() error = %v", err)
+	}
+	if !found {
+		t.Fatal("GetQuotaUsage() found = false, want true")
+	}
+	if got.RequestCount != usage.RequestCount || got.BandwidthBytes != usage.BandwidthBytes || got.Source != usage.Source || got.AggregationKey != usage.AggregationKey {
+		t.Fatalf("quota usage = %+v, want %+v", got, usage)
+	}
+
+	usage.RequestCount = 5
+	err = store.PutQuotaUsage(context.Background(), usage)
+	if err != nil {
+		t.Fatalf("PutQuotaUsage() update error = %v", err)
+	}
+
+	got, found, err = store.GetQuotaUsage(context.Background(), pgTestTenantA, "202607")
+	if err != nil {
+		t.Fatalf("GetQuotaUsage() after update error = %v", err)
+	}
+	if !found || got.RequestCount != 5 {
+		t.Fatalf("updated quota usage = %+v found=%v, want request_count 5", got, found)
+	}
+}
+
 func TestPostgresTenantStoreUpdatePersistsNameAndCeiling(t *testing.T) {
 	pool := newIdentityTestPool(t)
 	store := NewPostgresTenantStore(pool)
