@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -776,6 +777,48 @@ func TestHandlerCaptureHintAllowedByTenantPolicy(t *testing.T) {
 	}
 }
 
+func TestHandlerPayloadCaptureStoresSuccessfulRESTResponse(t *testing.T) {
+	t.Parallel()
+
+	h, token := newTestHandler(t)
+	h.SetPayloadCapturePolicyStore(&staticPayloadCapturePolicyStore{policy: PayloadCapturePolicy{
+		TenantID: handlerTestTenantID, Enabled: true, AllowedDecisions: []CaptureDecision{CaptureDecisionBodyFull},
+	}})
+
+	bodies := &fakeCaptureBodyStore{keyReq: captureTestReqKey, keyResp: captureTestRespKey}
+	rec := &recordingCaptureRecorder{}
+	h.SetPayloadCaptureStore(NewPayloadCaptureStore(bodies, rec))
+	h.SetDispatcher(bodyCaptureDispatcher{})
+
+	payload := `{"method":"POST","url":"https://example.com","headers":[{"name":"Authorization","value_base64":"c2VjcmV0"}],"body":{"mode":"inline_base64","data_base64":"cmVxdWVzdA=="},"capture_hint":"body_full"}`
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	if len(rec.events) != 1 {
+		t.Fatalf("recorded %d capture events, want 1", len(rec.events))
+	}
+
+	ev := rec.events[0]
+	if ev.TenantID != handlerTestTenantID || ev.CaptureScope != string(ScopeTenant) || ev.CaptureDecision != string(CaptureDecisionBodyFull) {
+		t.Fatalf("capture identity/scope/decision = %+v", ev)
+	}
+
+	if ev.RequestBodyRef != captureTestReqKey || ev.ResponseBodyRef != captureTestRespKey {
+		t.Fatalf("capture body refs = %q/%q, want %s/%s", ev.RequestBodyRef, ev.ResponseBodyRef, captureTestReqKey, captureTestRespKey)
+	}
+
+	if strings.Contains(ev.RequestHeaders, "secret") || !strings.Contains(ev.RequestHeaders, requestMetadataRedacted) {
+		t.Fatalf("request headers not redacted: %s", ev.RequestHeaders)
+	}
+}
+
 func TestValidateRequestValidBase64Headers(t *testing.T) {
 	t.Parallel()
 
@@ -1104,6 +1147,23 @@ func (fakeRequestDispatcher) Dispatch(_ context.Context, in DispatchInput) (Succ
 		Body: ResponseBody{
 			Mode:      handlerTestInlineBase64,
 			Truncated: false,
+		},
+	}, nil
+}
+
+type bodyCaptureDispatcher struct{}
+
+func (bodyCaptureDispatcher) Dispatch(_ context.Context, in DispatchInput) (SuccessResponse, *PipelineError) {
+	return SuccessResponse{
+		RequestID: in.RequestID,
+		Status:    http.StatusOK,
+		Headers: []HeaderPair{{
+			Name:  testSetCookieHeader,
+			Value: base64.StdEncoding.EncodeToString([]byte("secret-cookie")),
+		}},
+		Body: ResponseBody{
+			Mode:       handlerTestInlineBase64,
+			DataBase64: base64.StdEncoding.EncodeToString([]byte("response")),
 		},
 	}, nil
 }

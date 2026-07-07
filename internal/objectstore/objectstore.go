@@ -237,6 +237,11 @@ type PresignedPut struct {
 	Headers map[string]string
 }
 
+// PresignedDelete is a scoped cleanup URL.
+type PresignedDelete struct {
+	URL string
+}
+
 // PresignGet returns a short-lived SigV4 URL that grants GET on exactly one
 // object key. The signature is bound to the key, so it grants no access to any
 // other object and reveals no bucket-listing capability.
@@ -258,8 +263,13 @@ func (c *Client) PresignPut(key string, expiry time.Duration) (PresignedPut, err
 // PresignDelete returns a short-lived SigV4 URL that grants DELETE on exactly
 // one object key. Control uses this for best-effort cleanup after upload
 // cancellation or request-stream publication failure.
-func (c *Client) PresignDelete(key string, expiry time.Duration) (string, error) {
-	return c.presign("DELETE", key, expiry, nil)
+func (c *Client) PresignDelete(key string, expiry time.Duration) (PresignedDelete, error) {
+	signed, err := c.presign("DELETE", key, expiry, nil)
+	if err != nil {
+		return PresignedDelete{}, err
+	}
+
+	return PresignedDelete{URL: signed}, nil
 }
 
 // presign implements S3 SigV4 query (presigned URL) signing over the standard

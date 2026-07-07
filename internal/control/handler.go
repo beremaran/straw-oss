@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,6 +21,7 @@ type RequestHandler struct {
 	dispatcher           RequestDispatcher
 	configCache          *ConfigCache
 	payloadCapture       PayloadCapturePolicyStore
+	payloadStore         *PayloadCaptureStore
 }
 
 // NewRequestHandler creates a handler with the given config limits. auth
@@ -55,6 +57,11 @@ func (h *RequestHandler) SetConfigCache(cache *ConfigCache) {
 // SetPayloadCapturePolicyStore wires tenant capture policy lookup.
 func (h *RequestHandler) SetPayloadCapturePolicyStore(store PayloadCapturePolicyStore) {
 	h.payloadCapture = store
+}
+
+// SetPayloadCaptureStore wires the request/response capture storage tee.
+func (h *RequestHandler) SetPayloadCaptureStore(store *PayloadCaptureStore) {
+	h.payloadStore = store
 }
 
 // Handler is the http.HandlerFunc for POST /api/v1/requests.
@@ -155,7 +162,48 @@ func (h *RequestHandler) dispatchValidated(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	h.recordPayloadCapture(r.Context(), requestID, identity, validated, resp)
+
 	writeSuccessResponse(w, resp)
+}
+
+func (h *RequestHandler) recordPayloadCapture(ctx context.Context, requestID string, identity Identity, req *ValidatedRequest, resp SuccessResponse) {
+	if h.payloadStore == nil || req.CaptureDecision == string(CaptureDecisionNone) {
+		return
+	}
+
+	responseBody, responseBodyRef := captureResponseBody(resp.Body)
+	result := CapturePayload(
+		CaptureDecision(req.CaptureDecision),
+		req.Headers,
+		req.BodyData,
+		resp.Headers,
+		responseBody,
+		CaptureOptions{},
+	)
+
+	_ = h.payloadStore.StoreWithRefs(ctx, PayloadCaptureMeta{
+		TenantID:     identity.TenantID,
+		RequestID:    requestID,
+		CaptureScope: string(identity.ScopeType),
+	}, result, "", responseBodyRef)
+}
+
+func captureResponseBody(body ResponseBody) ([]byte, string) {
+	if body.BodyRef != nil {
+		return nil, body.BodyRef.ObjectKey
+	}
+
+	if body.DataBase64 == "" {
+		return nil, ""
+	}
+
+	decoded, err := base64.StdEncoding.DecodeString(body.DataBase64)
+	if err != nil {
+		return nil, ""
+	}
+
+	return decoded, ""
 }
 
 func (h *RequestHandler) tenantPolicy(ctx context.Context, tenantID string) TenantPolicy {
