@@ -50,3 +50,4 @@ fallback.
 
 P2 HTTP/2 semantics are specified in `docs/planning/c-http2-semantics.md`. Before implementation ships, tests must prove the disabled default, multiplexing, stream cancellation mapping, error mapping, flow control backpressure, pseudo-header mapping/rejection, trailers, connection-level error handling, ALPN negotiation, protocol translation, and HTTP/1.1 fallback/downgrade rules.
 
+P2 MITM leaf certificate behavior is specified in `docs/planning/c-mitm-leaf-certificate-design.md`. Before implementation ships, tests must prove cache miss generation, encrypted-at-rest private-key storage, cache hit reuse without regeneration, TTL bounded by certificate validity, CA and KMS/deployment-key rotation, local singleflight, Redis distributed lock coalescing, bounded generation concurrency, and per-tenant/global unique-SNI flood limits.

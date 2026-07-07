@@ -38,3 +38,4 @@
 - [Appendix B — Telemetry Read APIs](./b-telemetry-read-api.md)
 - [Appendix B — Upstream Connection Pooling](./b-upstream-connection-pooling.md)
 - [Appendix C — HTTP/2 Semantics](./c-http2-semantics.md)
+- [Appendix C — MITM Leaf Certificate Design](./c-mitm-leaf-certificate-design.md)
