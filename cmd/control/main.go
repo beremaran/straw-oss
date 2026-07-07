@@ -206,7 +206,7 @@ func setupControlConfigState(configStore *control.PostgresConfigStore, workerReg
 	return nil
 }
 
-func buildBodyRefStore(cfg config.BodyObjectStorageConfig) (*control.S3RequestBodyRefStore, error) {
+func buildBodyRefStore(ctx context.Context, cfg config.BodyObjectStorageConfig) (*control.S3RequestBodyRefStore, error) {
 	if !cfg.Enabled {
 		return nil, nil
 	}
@@ -222,6 +222,11 @@ func buildBodyRefStore(cfg config.BodyObjectStorageConfig) (*control.S3RequestBo
 	})
 	if err != nil {
 		return nil, fmt.Errorf("build body ref store: %w", err)
+	}
+
+	err = client.ApplyLifecycleRetention(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("apply body object lifecycle retention: %w", err)
 	}
 
 	return control.NewS3RequestBodyRefStore(client), nil
@@ -1144,7 +1149,7 @@ func rehydrateWorkerAdminState(ctx context.Context, configStore *control.Postgre
 // buildControlMux assembles the HTTP handler with the Postgres-backed identity
 // and config stores.
 func buildControlMux(ctx context.Context, controlConfig config.ControlConfig, apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool, configStore *control.PostgresConfigStore, configCache *control.ConfigCache, redisClient *redis.Client, natsConn *natsx.Connection, chWriters *clickHouseWriters, metrics *control.Metrics, inflight *control.InFlightRegistry) (*http.ServeMux, http.Handler, http.Handler, http.Handler, error) {
-	bodyStore, err := buildBodyRefStore(controlConfig.BodyTransport.ObjectStorage)
+	bodyStore, err := buildBodyRefStore(ctx, controlConfig.BodyTransport.ObjectStorage)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}

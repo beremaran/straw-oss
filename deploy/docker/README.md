@@ -97,6 +97,13 @@ The in-process proof of the same path is `TestDispatcherControlNATSEgressRoundTr
 (`go test ./internal/control/`), which controls both the worker key and the registered credential. See
 `docs/agents/testing-matrix-audit.md`.
 
+## Body object lifecycle
+
+When `control.body_transport.object_storage.enabled` is true, Control applies the S3 bucket lifecycle rule at startup
+with the configured `body_retention_days` value. The rule expires BodyRef objects under the `tenant/` prefix, covering
+objects orphaned by a Control crash after upload. Compose uses the same path as production; override retention in
+`deploy/docker/control.json`, bounded to 1-3 days by config validation.
+
 ## Running the Postgres-backed tests
 
 The Postgres test harness truncates identity tables between tests, so it refuses to run against any
