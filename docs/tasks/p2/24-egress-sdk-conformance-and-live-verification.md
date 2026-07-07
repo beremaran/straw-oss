@@ -1,6 +1,6 @@
 # 24 - Egress SDK Conformance and Live Verification
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -47,14 +47,14 @@ This task owns the independent conformance/live proof after the rebase lands.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Add an SDK-only stub-executor conformance test that registers, heartbeats, receives an assignment, streams a
+- [x] Read all required planning docs.
+- [x] Add an SDK-only stub-executor conformance test that registers, heartbeats, receives an assignment, streams a
       response, and maps an executor error without importing `internal/*`.
-- [ ] Verify `sdk/egress` and the conformance test import no `internal/*` packages.
-- [ ] Bring up `deploy/docker`, rebuild `egress`, and drive a real request through Control to the rebased worker.
-- [ ] Record live request evidence, including the Control request result and any relevant compose service commands.
-- [ ] Run focused tests, then `make check`.
-- [ ] Write a handoff note.
+- [x] Verify `sdk/egress` and the conformance test import no `internal/*` packages.
+- [x] Bring up `deploy/docker`, rebuild `egress`, and drive a real request through Control to the rebased worker.
+- [x] Record live request evidence, including the Control request result and any relevant compose service commands.
+- [x] Run focused tests, then `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 
