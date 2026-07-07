@@ -155,6 +155,7 @@ services:
       - "3001:3000"
     volumes:
       - ./website:/site
+      - ./docs:/docs
     restart: unless-stopped
 
   prometheus:
