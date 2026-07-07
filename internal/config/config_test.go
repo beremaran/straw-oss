@@ -441,6 +441,126 @@ func TestLoadControlMITMLeafKMSEnv(t *testing.T) {
 	}
 }
 
+func TestLoadControlBodyTransportDefaultsAndValidation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		body    string
+		wantErr string
+		check   func(t *testing.T, cfg ControlConfig)
+	}{
+		{
+			name: "defaults",
+			body: `{}`,
+			check: func(t *testing.T, cfg ControlConfig) {
+				t.Helper()
+
+				if cfg.BodyTransport.LargeBodyThresholdBytes != DefaultLargeBodyThresholdBytes {
+					t.Fatalf("large_body_threshold_bytes = %d, want %d", cfg.BodyTransport.LargeBodyThresholdBytes, DefaultLargeBodyThresholdBytes)
+				}
+				if cfg.BodyTransport.ResponseBodyMode != BodyResponseModeStreamThroughControlTeeObjectStorage {
+					t.Fatalf("response_body_mode = %q, want resolved mode", cfg.BodyTransport.ResponseBodyMode)
+				}
+				if cfg.BodyTransport.ObjectStorage.BodyRetentionDays != DefaultBodyRetentionDays {
+					t.Fatalf("body_retention_days = %d, want %d", cfg.BodyTransport.ObjectStorage.BodyRetentionDays, DefaultBodyRetentionDays)
+				}
+			},
+		},
+		{
+			name: "valid object storage and direct stream",
+			body: `{
+				"large_body_threshold_bytes": 2097152,
+				"object_storage": {
+					"enabled": true,
+					"endpoint": "https://s3.example",
+					"bucket": "straw-bodies",
+					"region": "us-west-2",
+					"access_key_env": "STRAW_S3_ACCESS_KEY",
+					"secret_key_env": "STRAW_S3_SECRET_KEY",
+					"body_retention_days": 3
+				},
+				"direct_stream": {
+					"enabled": true,
+					"endpoint": "http://stream.test"
+				}
+			}`,
+			check: func(t *testing.T, cfg ControlConfig) {
+				t.Helper()
+
+				if cfg.BodyTransport.LargeBodyThresholdBytes != 2_097_152 {
+					t.Fatalf("large_body_threshold_bytes = %d, want 2097152", cfg.BodyTransport.LargeBodyThresholdBytes)
+				}
+				if !cfg.BodyTransport.ObjectStorage.Enabled || !cfg.BodyTransport.DirectStream.Enabled {
+					t.Fatalf("enabled transports = object:%v direct:%v, want both true", cfg.BodyTransport.ObjectStorage.Enabled, cfg.BodyTransport.DirectStream.Enabled)
+				}
+				if cfg.BodyTransport.DirectStream.StreamTimeoutMS != DefaultDirectStreamTimeoutMS {
+					t.Fatalf("stream_timeout_ms = %d, want default", cfg.BodyTransport.DirectStream.StreamTimeoutMS)
+				}
+			},
+		},
+		{
+			name: "unsupported response mode",
+			body: `{
+				"response_body_mode": "executor_writes_object_read_after_completion"
+			}`,
+			wantErr: "body_transport.response_body_mode is unsupported",
+		},
+		{
+			name: "retention too long",
+			body: `{
+				"object_storage": {
+					"body_retention_days": 4
+				}
+			}`,
+			wantErr: "body_transport.object_storage.body_retention_days must be between 1 and 3",
+		},
+		{
+			name: "direct stream timeout invalid",
+			body: `{
+				"direct_stream": {
+					"enabled": true,
+					"stream_timeout_ms": -1
+				}
+			}`,
+			wantErr: "body_transport.direct_stream.stream_timeout_ms must be positive",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			path := writeConfig(t, `{
+				"config_version": "v1",
+				"control": {
+					"server": {
+						"host": "127.0.0.1",
+						"api_port": 8080,
+						"metrics_port": 9090
+					},
+					"body_transport": `+tt.body+`
+				}
+			}`)
+
+			cfg, err := LoadControl(path)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("LoadControl() error = %v, want substring %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("LoadControl() error = %v", err)
+			}
+			if tt.check != nil {
+				tt.check(t, cfg)
+			}
+		})
+	}
+}
+
 func TestLoadControlRedisDefaults(t *testing.T) {
 	t.Parallel()
 

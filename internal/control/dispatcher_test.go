@@ -210,6 +210,29 @@ func TestDispatcherResponseBodyTooLarge(t *testing.T) {
 	}
 }
 
+func TestDispatcherResponseBodyRefUnavailableWhenSelectedBackendUnwired(t *testing.T) {
+	t.Parallel()
+
+	d, stop := newLiveDispatchHarness(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("too large"))
+	}))
+	defer stop()
+	d.opts.MaxInlineResponseBodyBytes = 3
+	d.opts.BodyTransport = config.ControlBodyTransportConfig{
+		LargeBodyThresholdBytes: 3,
+		ObjectStorage:           config.BodyObjectStorageConfig{Enabled: true},
+	}.Normalized()
+
+	req := validatedDispatchRequest(t, rewriteDispatchHost(t, d.upstreamURL, "dispatch.test"))
+	_, perr := d.Dispatch(context.Background(), dispatchInput(req))
+	if perr == nil || perr.Code != BodyRefUnavailable {
+		t.Fatalf("Dispatch error = %#v, want body_ref_unavailable", perr)
+	}
+	if perr.Details[errorDetailDirectionKey] != "response" || perr.Details["transport"] != string(BodyTransportS3BodyRef) {
+		t.Fatalf("error details = %#v, want response s3 body ref", perr.Details)
+	}
+}
+
 func TestDispatcherControlNATSEgressRoundTrip(t *testing.T) {
 	t.Parallel()
 

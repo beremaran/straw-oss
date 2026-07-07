@@ -26,6 +26,18 @@ these full paths.
 | `control.request.max_timeout_ms`                        | `300000`   | 24                                 |
 | `control.request.max_inline_request_body_bytes`         | `1048576`  | 24                                 |
 | `control.request.max_inline_response_body_bytes`        | `1048576`  | 24                                 |
+| `control.body_transport.large_body_threshold_bytes`     | `1048576`  | 18, 24                             |
+| `control.body_transport.response_body_mode`             | `stream_through_control_tee_object_storage` | 18, 32 |
+| `control.body_transport.object_storage.enabled`         | `false`    | 18, 24                             |
+| `control.body_transport.object_storage.endpoint`        | —          | 18, 24                             |
+| `control.body_transport.object_storage.bucket`          | —          | 18, 24                             |
+| `control.body_transport.object_storage.region`          | —          | 18, 24                             |
+| `control.body_transport.object_storage.access_key_env`  | —          | 18, 24                             |
+| `control.body_transport.object_storage.secret_key_env`  | —          | 18, 24                             |
+| `control.body_transport.object_storage.body_retention_days` | `1`    | 18, 24                             |
+| `control.body_transport.direct_stream.enabled`          | `false`    | 18, 24                             |
+| `control.body_transport.direct_stream.endpoint`         | —          | 18, 24                             |
+| `control.body_transport.direct_stream.stream_timeout_ms`| `300000`   | 18, 24                             |
 | `control.worker.availability_timeout_ms`                | `15000`    | 11                                 |
 | `control.worker.dead_timeout_ms`                        | `30000`    | 11                                 |
 | `control.worker.duplicate_session_grace_ms`             | `10000`    | 11                                 |
@@ -143,6 +155,22 @@ control:
     max_inline_request_body_bytes: 1048576
     max_inline_response_body_bytes: 1048576
 
+  body_transport:
+    large_body_threshold_bytes: 1048576
+    response_body_mode: "stream_through_control_tee_object_storage"
+    object_storage:
+      enabled: false
+      endpoint: "https://s3.amazonaws.com"
+      bucket: "straw-bodies"
+      region: "us-east-1"
+      access_key_env: "STRAW_S3_ACCESS_KEY"
+      secret_key_env: "STRAW_S3_SECRET_KEY"
+      body_retention_days: 1
+    direct_stream:
+      enabled: false
+      endpoint: "http://body-stream:9090"
+      stream_timeout_ms: 300000
+
   worker:
     availability_timeout_ms: 15000
     dead_timeout_ms: 30000
@@ -208,21 +236,6 @@ control:
       sampling_rate: 0.1
       propagate_trace_context: true
 
-# P2-only body_transport. Ignored or rejected in P0 unless feature flag enabled.
-# body_transport:
-#   large_body_threshold_bytes: 1048576
-#   object_storage:
-#     enabled: false
-#     endpoint: "https://s3.amazonaws.com"
-#     bucket: "straw-bodies"
-#     region: "us-east-1"
-#     access_key_env: "STRAW_S3_ACCESS_KEY"
-#     secret_key_env: "STRAW_S3_SECRET_KEY"
-#     body_retention_days: 1
-#   direct_stream:
-#     enabled: false
-#     endpoint: "http://body-stream:9090"
-#     stream_timeout_ms: 300000
 ```
 
 ### Egress Config Example

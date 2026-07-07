@@ -22,6 +22,15 @@ const defaultEgressHealthPort = 8090
 // default from docs/planning/24-static-configuration.md.
 const defaultIngressMode = "rest"
 
+const (
+	DefaultLargeBodyThresholdBytes = 1_048_576
+	DefaultBodyRetentionDays       = 1
+	MaxBodyRetentionDays           = 3
+	DefaultDirectStreamTimeoutMS   = 300_000
+
+	BodyResponseModeStreamThroughControlTeeObjectStorage = "stream_through_control_tee_object_storage"
+)
+
 var (
 	errMissingControlSection    = errors.New("missing control section")
 	errMissingEgressSection     = errors.New("missing egress section")
@@ -42,6 +51,10 @@ var (
 	errMITMLeafKMSRequired      = errors.New("server.mitm_leaf_kms_provider and server.mitm_leaf_kms_key_id are required when mitm_enabled is true")
 	errMITMLeafKMSSplitConfig   = errors.New("server.mitm_leaf_kms_provider and server.mitm_leaf_kms_key_id must be supplied together")
 	errMITMLeafKMSUnsafeConfig  = errors.New("server.mitm_leaf_kms_provider must not be plaintext or static-key")
+	errBodyThresholdRequired    = errors.New("body_transport.large_body_threshold_bytes must be positive")
+	errBodyResponseModeInvalid  = errors.New("body_transport.response_body_mode is unsupported")
+	errBodyRetentionInvalid     = errors.New("body_transport.object_storage.body_retention_days must be between 1 and 3")
+	errDirectStreamTimeout      = errors.New("body_transport.direct_stream.stream_timeout_ms must be positive when direct stream is enabled")
 	errInvalidEgressHealthPort  = errors.New("health_port must be between 1 and 65535")
 	errEgressPoolRefIncomplete  = errors.New("allowed_pools entries require both tenant_id and pool_id")
 	errInvalidEgressPoolConfig  = errors.New("upstream_connection_pool values must be positive when enabled")
@@ -56,14 +69,15 @@ type File struct {
 
 // ControlConfig is the control-service config block.
 type ControlConfig struct {
-	DeploymentID string                 `json:"deployment_id,omitempty"`
-	Server       ControlServerConfig    `json:"server"`
-	Request      ControlRequestConfig   `json:"request"`
-	Transport    ControlTransportConfig `json:"transport"`
-	Worker       ControlWorkerConfig    `json:"worker"`
-	NATS         NATSConfig             `json:"nats"`
-	Database     DatabaseConfig         `json:"database"`
-	HTTP2        ControlHTTP2Config     `json:"http2"`
+	DeploymentID  string                     `json:"deployment_id,omitempty"`
+	Server        ControlServerConfig        `json:"server"`
+	Request       ControlRequestConfig       `json:"request"`
+	Transport     ControlTransportConfig     `json:"transport"`
+	BodyTransport ControlBodyTransportConfig `json:"body_transport,omitempty"`
+	Worker        ControlWorkerConfig        `json:"worker"`
+	NATS          NATSConfig                 `json:"nats"`
+	Database      DatabaseConfig             `json:"database"`
+	HTTP2         ControlHTTP2Config         `json:"http2"`
 }
 
 // ControlWorkerConfig configures worker registration replay protection
@@ -119,6 +133,32 @@ type ControlRequestConfig struct {
 // ControlTransportConfig configures the control transport limits.
 type ControlTransportConfig struct {
 	MaxFrameDataBytes uint64 `json:"max_frame_data_bytes"`
+}
+
+// ControlBodyTransportConfig configures P2 large-body transport selection.
+type ControlBodyTransportConfig struct {
+	LargeBodyThresholdBytes uint64                  `json:"large_body_threshold_bytes,omitempty"`
+	ResponseBodyMode        string                  `json:"response_body_mode,omitempty"`
+	ObjectStorage           BodyObjectStorageConfig `json:"object_storage,omitempty"`
+	DirectStream            BodyDirectStreamConfig  `json:"direct_stream,omitempty"`
+}
+
+// BodyObjectStorageConfig configures the object-storage BodyRef transport.
+type BodyObjectStorageConfig struct {
+	Enabled           bool   `json:"enabled,omitempty"`
+	Endpoint          string `json:"endpoint,omitempty"`
+	Bucket            string `json:"bucket,omitempty"`
+	Region            string `json:"region,omitempty"`
+	AccessKeyEnv      string `json:"access_key_env,omitempty"`
+	SecretKeyEnv      string `json:"secret_key_env,omitempty"`
+	BodyRetentionDays int    `json:"body_retention_days,omitempty"`
+}
+
+// BodyDirectStreamConfig configures the direct stream BodyRef transport.
+type BodyDirectStreamConfig struct {
+	Enabled         bool   `json:"enabled,omitempty"`
+	Endpoint        string `json:"endpoint,omitempty"`
+	StreamTimeoutMS int    `json:"stream_timeout_ms,omitempty"`
 }
 
 // NATSConfig configures the NATS client connection.
@@ -387,7 +427,7 @@ func (c *ControlConfig) validate() error {
 		return err
 	}
 
-	return nil
+	return c.BodyTransport.validate()
 }
 
 func (c *ControlConfig) applyDefaults() {
@@ -410,6 +450,8 @@ func (c *ControlConfig) applyDefaults() {
 		c.Transport.MaxFrameDataBytes = 1_048_576
 	}
 
+	c.BodyTransport.applyDefaults()
+
 	if c.Request.MaxTimeoutMs == 0 {
 		c.Request.MaxTimeoutMs = 120_000
 	}
@@ -417,6 +459,51 @@ func (c *ControlConfig) applyDefaults() {
 	c.Worker.applyDefaults()
 	c.NATS.applyDefaults()
 	c.Database.applyDefaults()
+}
+
+// Normalized returns a config value with runtime defaults applied.
+func (c ControlBodyTransportConfig) Normalized() ControlBodyTransportConfig {
+	c.applyDefaults()
+
+	return c
+}
+
+func (c *ControlBodyTransportConfig) applyDefaults() {
+	if c.LargeBodyThresholdBytes == 0 {
+		c.LargeBodyThresholdBytes = DefaultLargeBodyThresholdBytes
+	}
+
+	if c.ResponseBodyMode == "" {
+		c.ResponseBodyMode = BodyResponseModeStreamThroughControlTeeObjectStorage
+	}
+
+	if c.ObjectStorage.BodyRetentionDays == 0 {
+		c.ObjectStorage.BodyRetentionDays = DefaultBodyRetentionDays
+	}
+
+	if c.DirectStream.Enabled && c.DirectStream.StreamTimeoutMS == 0 {
+		c.DirectStream.StreamTimeoutMS = DefaultDirectStreamTimeoutMS
+	}
+}
+
+func (c ControlBodyTransportConfig) validate() error {
+	if c.LargeBodyThresholdBytes == 0 {
+		return errBodyThresholdRequired
+	}
+
+	if c.ResponseBodyMode != BodyResponseModeStreamThroughControlTeeObjectStorage {
+		return fmt.Errorf("%w: %s", errBodyResponseModeInvalid, c.ResponseBodyMode)
+	}
+
+	if c.ObjectStorage.BodyRetentionDays < DefaultBodyRetentionDays || c.ObjectStorage.BodyRetentionDays > MaxBodyRetentionDays {
+		return errBodyRetentionInvalid
+	}
+
+	if c.DirectStream.Enabled && c.DirectStream.StreamTimeoutMS <= 0 {
+		return errDirectStreamTimeout
+	}
+
+	return nil
 }
 
 func (s *ControlServerConfig) applyDefaults() {
