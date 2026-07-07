@@ -1,6 +1,6 @@
 # 06 - Object Storage Foundation
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -30,17 +30,17 @@ Add the object storage foundation for BodyRef and payload-capture body reference
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Add object storage config and credential loading.
-- [ ] Implement tenant/request-scoped object key generation with high-entropy nonce.
-- [ ] Implement scoped signed URL or temporary credential generation with short expiry.
-- [ ] Require server-side encryption where supported.
-- [ ] Enforce retention defaults and maximums.
-- [ ] Define outage behavior for object storage unavailable.
-- [ ] Add tests for key shape, entropy, tenant scoping, expiry, SSE, retention, and outage behavior.
-- [ ] Run focused object storage tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Read all required planning docs.
+- [x] Add object storage config and credential loading.
+- [x] Implement tenant/request-scoped object key generation with high-entropy nonce.
+- [x] Implement scoped signed URL or temporary credential generation with short expiry.
+- [x] Require server-side encryption where supported.
+- [x] Enforce retention defaults and maximums.
+- [x] Define outage behavior for object storage unavailable.
+- [x] Add tests for key shape, entropy, tenant scoping, expiry, SSE, retention, and outage behavior.
+- [x] Run focused object storage tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

@@ -57,6 +57,7 @@ var (
 	errBodyResponseModeInvalid  = errors.New("body_transport.response_body_mode is unsupported")
 	errBodyRetentionInvalid     = errors.New("body_transport.object_storage.body_retention_days must be between 1 and 3")
 	errDirectStreamTimeout      = errors.New("body_transport.direct_stream.stream_timeout_ms must be positive when direct stream is enabled")
+	errObjectStorageIncomplete  = errors.New("body_transport.object_storage requires endpoint, bucket, region, access_key_env, and secret_key_env when enabled")
 	errInvalidEgressHealthPort  = errors.New("health_port must be between 1 and 65535")
 	errEgressPoolRefIncomplete  = errors.New("allowed_pools entries require both tenant_id and pool_id")
 	errInvalidEgressPoolConfig  = errors.New("upstream_connection_pool values must be positive when enabled")
@@ -501,11 +502,19 @@ func (c ControlBodyTransportConfig) validate() error {
 		return errBodyRetentionInvalid
 	}
 
+	if c.ObjectStorage.Enabled && !c.ObjectStorage.complete() {
+		return errObjectStorageIncomplete
+	}
+
 	if c.DirectStream.Enabled && c.DirectStream.StreamTimeoutMS <= 0 {
 		return errDirectStreamTimeout
 	}
 
 	return nil
+}
+
+func (o BodyObjectStorageConfig) complete() bool {
+	return o.Endpoint != "" && o.Bucket != "" && o.Region != "" && o.AccessKeyEnv != "" && o.SecretKeyEnv != ""
 }
 
 func (s *ControlServerConfig) applyDefaults() {
