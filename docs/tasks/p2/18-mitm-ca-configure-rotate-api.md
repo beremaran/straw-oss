@@ -26,7 +26,7 @@ configured public cert (`internal/control/mitm_ca_handler.go:41`).
 ## Prerequisites
 
 - Task 03 completed (public CA config/download baseline).
-- Task 04 completed if rotation must invalidate or migrate cached leaf certificates.
+- Task 20 completed if rotation must invalidate or migrate cached leaf certificates.
 
 ## Out of Scope
 
@@ -73,5 +73,5 @@ configured public cert (`internal/control/mitm_ca_handler.go:41`).
 ## Stop Conditions
 
 - Stop if the selected storage model would require a new dependency.
-- Stop if task 04 has not defined the cache invalidation/versioning point needed for safe rotation.
+- Stop if task 20 has not defined the cache invalidation/versioning point needed for safe rotation.
 - Stop if a deferral would have no owning task file.

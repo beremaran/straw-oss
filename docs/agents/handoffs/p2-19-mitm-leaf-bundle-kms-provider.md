@@ -20,7 +20,7 @@ Filled from the independent verifier's report (straw-task-runner workflow step 1
 | Decrypt rejects when tenant ID, deployment ID, SNI, or CA identity/version AAD does not match. | VERIFIED | `internal/control/mitm_leaf_bundle_crypto.go:45`, `internal/control/mitm_leaf_bundle_crypto_test.go:164` | `internal/control/mitm_leaf_bundle_crypto_test.go:48` |
 | Rotation overlap is testable: old key decrypts during overlap, disabling it fails. | VERIFIED | `internal/control/mitm_leaf_bundle_crypto.go:37` | `internal/control/mitm_leaf_bundle_crypto_test.go:71` |
 | No production code path provides plaintext/static deployment-key provider. | VERIFIED | `internal/control/mitm_leaf_bundle_crypto.go:20`, `internal/control/mitm_leaf_bundle_crypto.go:67`, `internal/config/config.go:590`; fake provider is `_test.go` only at `internal/control/mitm_leaf_bundle_crypto_test.go:115` | `internal/control/mitm_leaf_bundle_crypto_test.go:96` |
-| Task 04 lists this task as a prerequisite. | VERIFIED | `docs/tasks/p2/04-mitm-leaf-cert-cache.md:20` | doc evidence |
+| Task 20 lists this task as a prerequisite. | VERIFIED | `docs/tasks/p2/20-mitm-leaf-cert-cache.md:37` | doc evidence |
 
 ## Planning-Doc Coverage
 
@@ -28,8 +28,8 @@ Every in-phase field/endpoint/behavior from the task's cited planning-doc sectio
 
 | Planning item | Status | Evidence / owning task |
 |---------------|--------|------------------------|
-| Stored generated MITM leaf bundles must include public chain and private key, encrypted before leaving Control memory. | implemented | `internal/control/mitm_leaf_bundle_crypto.go:20`, `internal/control/mitm_leaf_bundle_crypto.go:34`; storage/cache write remains owned by `docs/tasks/p2/04-mitm-leaf-cert-cache.md`. |
-| KMS-compatible shared cache policy with tenant/deployment scope. | implemented | `internal/control/mitm_leaf_bundle_crypto.go:45`; cache/Redis behavior remains owned by `docs/tasks/p2/04-mitm-leaf-cert-cache.md`. |
+| Stored generated MITM leaf bundles must include public chain and private key, encrypted before leaving Control memory. | implemented | `internal/control/mitm_leaf_bundle_crypto.go:20`, `internal/control/mitm_leaf_bundle_crypto.go:34`; storage/cache write remains owned by `docs/tasks/p2/20-mitm-leaf-cert-cache.md`. |
+| KMS-compatible shared cache policy with tenant/deployment scope. | implemented | `internal/control/mitm_leaf_bundle_crypto.go:45`; cache/Redis behavior remains owned by `docs/tasks/p2/20-mitm-leaf-cert-cache.md`. |
 | KMS key rotation overlap must be testable. | implemented | `internal/control/mitm_leaf_bundle_crypto.go:37`, `internal/control/mitm_leaf_bundle_crypto_test.go:71`. |
 | Canonical config keys under `control.server`. | implemented | `docs/planning/24-static-configuration.md:22`, `docs/planning/24-static-configuration.md:23`, `internal/config/config.go:105`, `internal/config/config.go:106`. |
 | Canonical `STRAW_` env names. | implemented | `docs/planning/24-static-configuration.md:292`, `docs/planning/24-static-configuration.md:293`, `internal/config/config.go:436`, `internal/config/config.go:440`. |
@@ -59,7 +59,7 @@ Result:
 
 ## Remaining Work
 
-- None for this task. Leaf-bundle cache/storage, Redis locks, local singleflight, TTLs, and flood controls remain owned by `docs/tasks/p2/04-mitm-leaf-cert-cache.md`.
+- None for this task. Leaf-bundle cache/storage, Redis locks, local singleflight, TTLs, and flood controls remain owned by `docs/tasks/p2/20-mitm-leaf-cert-cache.md`.
 
 ## Blockers
 

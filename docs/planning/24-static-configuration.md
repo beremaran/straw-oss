@@ -9,6 +9,7 @@ these full paths.
 
 | Config Key                                              | Default    | Section(s) Referenced              |
 |---------------------------------------------------------|------------|------------------------------------|
+| `control.deployment_id`                                 | —          | 17, 24                             |
 | `control.server.host`                                   | `0.0.0.0`  | 24                                 |
 | `control.server.api_port`                               | `8080`     | 24                                 |
 | `control.server.metrics_port`                           | `9090`     | 7, 24 (metrics, healthz, readyz)   |
@@ -291,6 +292,7 @@ Canonical examples:
 - `STRAW_MITM_CERT_VALIDITY_DAYS`,
 - `STRAW_MITM_LEAF_KMS_PROVIDER`,
 - `STRAW_MITM_LEAF_KMS_KEY_ID`,
+- `STRAW_CONTROL_DEPLOYMENT_ID`,
 - `STRAW_BODY_OBJECT_STORAGE_ENABLED`,
 - `STRAW_UPSTREAM_PROXY_USERNAME`,
 - `STRAW_UPSTREAM_PROXY_PASSWORD`,

@@ -28,7 +28,7 @@ Filled from independent verifier report `019f3ac9-ec63-7f70-9055-b976d4b0b909`.
 | MITM must not claim to change client JA3/JA4 fingerprinting. | implemented | MITM code does not touch fingerprint fields; `cmd/control/main.go:335` limits ALPN to HTTP/1.1 |
 | Operators provide CA material through static config. | implemented | `internal/config/config.go:95`, `cmd/control/main.go:335` |
 | Generated per-SNI certificate is a leaf certificate. | implemented | `cmd/control/main.go:397`, `TestGenerateMITMLeafSignsServerCertificate` |
-| Leaf cert cache/storage policy. | out of scope | Owned by `docs/tasks/p2/04-mitm-leaf-cert-cache.md`; this task generates uncached leaves. |
+| Leaf cert cache/storage policy. | out of scope | Owned by `docs/tasks/p2/20-mitm-leaf-cert-cache.md`; this task generates uncached leaves. |
 | Routing match condition supports `ingress_type=mitm`. | already existed / implemented path | `internal/control/request.go:28`; MITM sets it at `internal/control/mitm_handler.go:117` |
 | Port 8083 is MITM proxy and unused ports are not mapped before enabled. | implemented | `internal/config/config.go:411`, `cmd/control/main.go:287` |
 | Destination deny normalization includes SNI vs Host mismatches and private/metadata denial. | implemented | `internal/control/mitm_handler.go:92`, `internal/control/mitm_handler.go:123`, `internal/control/mitm_handler_test.go:124` |
@@ -58,7 +58,7 @@ Result:
 
 ## Remaining Work
 
-- Certificate cache/storage is owned by `docs/tasks/p2/04-mitm-leaf-cert-cache.md`.
+- Certificate cache/storage is owned by `docs/tasks/p2/20-mitm-leaf-cert-cache.md`.
 - MITM HTTP/2 ALPN is owned by `docs/tasks/p2/16-ingress-http2-and-mitm-alpn.md`.
 
 ## Blockers

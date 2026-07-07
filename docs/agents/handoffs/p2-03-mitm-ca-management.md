@@ -33,7 +33,7 @@ Filled from the independent verifier's report.
 | Public API base path is `/api/v1`. | implemented | `cmd/control/main.go:1020` |
 | P2 may add MITM CA distribution API. | implemented | `cmd/control/main.go:1020` |
 | `STRAW_MITM_CERT_VALIDITY_DAYS` is the canonical environment variable. | implemented | `internal/config/config.go:422`, `docs/planning/24-static-configuration.md:21` |
-| Leaf certificate cache/storage policy. | out of scope | Owned by `docs/tasks/p2/04-mitm-leaf-cert-cache.md`. |
+| Leaf certificate cache/storage policy. | out of scope | Owned by `docs/tasks/p2/20-mitm-leaf-cert-cache.md`. |
 | HTTP/2 MITM ALPN. | out of scope | Owned by `docs/tasks/p2/16-ingress-http2-and-mitm-alpn.md`. |
 
 ## Verification

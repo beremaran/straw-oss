@@ -22,7 +22,7 @@ HTTP proxy.
 
 ## Out of Scope
 
-- Do not implement certificate cache storage (task 04).
+- Do not implement certificate cache storage (task 20).
 - Do not claim client JA3/JA4 spoofing.
 - Do not implement HTTP/2 ALPN before task 16.
 
