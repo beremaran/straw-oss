@@ -1,6 +1,6 @@
 # 31 - Egress SDK BodyRef Request-Body Runtime Rebase
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -49,14 +49,14 @@ request-body protocol until these hooks are public and internal-free.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Move BodyRef scope validation and download/verification hooks into `sdk/egress` behind a minimal body-ref
+- [x] Read all required planning docs.
+- [x] Move BodyRef scope validation and download/verification hooks into `sdk/egress` behind a minimal body-ref
       interface.
-- [ ] Keep the official BodyRef HTTP client behavior in `internal/egress`.
-- [ ] Add/move the BodyRef tests listed in Expected Files.
-- [ ] Verify `sdk/egress` imports no `internal/*` packages.
-- [ ] Run focused tests, then `make check`.
-- [ ] Write a handoff note.
+- [x] Keep the official BodyRef HTTP client behavior in `internal/egress`.
+- [x] Add/move the BodyRef tests listed in Expected Files.
+- [x] Verify `sdk/egress` imports no `internal/*` packages.
+- [x] Run focused tests, then `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 
