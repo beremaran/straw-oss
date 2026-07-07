@@ -1,101 +1,89 @@
-# 12 - Egress SDK
+# 12 - Egress SDK Protocol Foundation
 
 Status: not started
 
 ## Objective
 
-Extract the Egress worker's protocol machinery — NATS registration, heartbeat, assignment handling, stream framing,
-and error protocol — from `internal/egress` into a public `sdk/egress` package with a pluggable `Executor` interface,
-and rebase the official worker (`cmd/egress`) onto it as the SDK's reference implementation. When done, a third party
-can build a custom Egress node by importing `sdk/egress` and supplying only an `Executor`.
+Create the public `sdk/egress` package foundation for custom Egress implementations: public protocol types,
+registration/heartbeat helpers, assignment admission, stream subject/envelope helpers, and the pluggable `Executor`
+interface derived from the official worker's existing execution seam. This task deliberately stops before rebasing the
+official worker so the public API boundary can be verified first.
 
 ## Context (gap being closed)
 
 The 2026-07-07 decision `P2 Provider Adapter Baseline` (superseded entry in `docs/planning/32-open-decisions.md`)
 dropped the Provider Adapter concept: provider integrations become custom Egress implementations built on an Egress
-SDK. That SDK does not exist. Current code: `sdk/` is the client SDK only; all worker protocol machinery lives in
-`internal/egress` (unimportable outside the module); the loop takes the concrete executor, not an interface
-(`NewWorker(conn, id, executor *Executor, ...)` at `internal/egress/loop.go:59`); the execution seam already exists as
-one method, `Execute(ctx, start, body, attempt, send)` at `internal/egress/executor.go:387`; the binary wires it via
-`egress.Run(ctx, natsConn, id, caps, executor, heartbeatInterval, ready)` at `cmd/egress/main.go:264`. This task also
-owns the `DESTINATION_RESOLUTION_PROVIDER_ADAPTER` naming cleanup flagged in `docs/planning/27-security-controls.md`
-(Executor-delegated resolution section).
+SDK. Current code has no public Egress SDK: `sdk/` contains only the client SDK, while worker protocol machinery is
+inside unimportable `internal/egress` and `internal/natsx`. Evidence: `internal/egress/registration.go` defines
+`Identity`, `Capabilities`, `BuildRegisterRequest`, `Register`, and `Heartbeat`; `internal/egress/assignment.go`
+defines `Capacity` and `EvaluateAssignment`; `internal/egress/loop.go` defines the live `Worker`; `internal/natsx`
+owns subject and envelope helpers. The official executor already exposes the intended seam:
+`Execute(ctx, start, body, attempt, send)` in `internal/egress/executor.go`; the full extraction was too large for one
+safe task, so follow-on tasks 22-24 own the rebase, enum rename, and conformance/live verification.
 
 ## Required Planning Docs
 
-- `docs/planning/05-component-boundaries.md` (Egress Worker; Egress SDK and Custom Egress Implementations)
-- `docs/planning/12-nats-protocol.md` (envelope, registration, heartbeat, stream, error protocol the SDK must carry)
-- `docs/planning/13-protobuf-contract.md` (compatibility rules; reserved names/numbers; Buf breaking checks)
-- `docs/planning/27-security-controls.md` (Executor-delegated resolution; destination policy modes)
+- `docs/planning/05-component-boundaries.md` (Egress SDK and Custom Egress Implementations)
+- `docs/planning/12-nats-protocol.md` (subjects, envelope, registration, heartbeat, assignment, stream rules)
 - `docs/planning/32-open-decisions.md` (superseded `P2 Provider Adapter Baseline` entry)
 
 ## Prerequisites
 
-- None within P2 (the P0 worker loop, registration, and executor this task extracts are complete).
+- None within P2 (the P0 worker loop, registration, and executor seam this task exposes already exist).
 
 ## Out of Scope
 
-- No marketplace discovery, provider billing, or provider account provisioning.
-- No new execution behavior: the official worker's outbound execution engine stays in `internal/egress` and must
-  behave identically after the rebase.
-- No example custom implementation (task 13 owns that).
-- No protocol changes beyond the enum-value rename; wire numbers and message shapes are untouched.
+- Do not rebase `cmd/egress` or `internal/egress` onto `sdk/egress`; task 22 owns that.
+- Do not rename `DESTINATION_RESOLUTION_PROVIDER_ADAPTER`; task 23 owns the protobuf/doc cleanup.
+- Do not add the SDK conformance/live compose verification; task 24 owns that after the rebase.
+- Do not add the example custom implementation; task 13 owns that after task 24.
+- No marketplace discovery, provider billing, provider account provisioning, or new execution behavior.
 
 ## Expected Files
 
-- Add: `sdk/egress/` — public worker runtime (registration, heartbeat, assignment, stream framing, error protocol)
-  and the `Executor` interface derived from the `Execute(ctx, start, body, attempt, send)` seam.
-- Modify: `internal/egress` — keeps the official outbound execution engine (`Executor`), now implementing the SDK
-  interface; protocol machinery moves out.
-- Modify: `cmd/egress/main.go` — constructs the `sdk/egress` worker with the `internal/egress` executor.
-- Modify: `api/proto/straw/v1/straw.proto` (+ regenerate) and `api/proto/straw/v1/validate.go:270` — rename
-  `DESTINATION_RESOLUTION_PROVIDER_ADAPTER` to executor-delegated naming, wire number unchanged, old name reserved
-  per `13-protobuf-contract.md`.
-- Modify: `docs/planning/27-security-controls.md` — drop the "rename owned by the P2 Egress SDK task" parenthetical.
-- Test: moved/adapted loop, registration, and assignment tests under `sdk/egress`; a new conformance test driving the
-  SDK worker with a stub executor; `cmd/egress` wiring test.
+- Add: `sdk/egress/` — public worker SDK foundation: identity/capabilities, registration request construction,
+  heartbeat construction, assignment admission, subject/envelope helpers needed by SDK consumers, and `Executor`.
+- Modify: `internal/egress` only as needed to reuse public SDK types without changing official worker behavior.
+- Test: SDK foundation unit tests for registration signing, inbox/subject validation, heartbeat construction,
+  assignment admission, and stream envelope round trips.
 
 ## Steps
 
 - [ ] Read all required planning docs.
-- [ ] Define the `Executor` interface in `sdk/egress` from the existing `Execute(ctx, start, body, attempt, send)`
-      seam.
-- [ ] Move registration, heartbeat, assignment, stream-framing, and error-protocol code from `internal/egress` to
-      `sdk/egress`, leaving the outbound execution engine in `internal/egress` as an implementation of the interface.
-- [ ] Rewire `cmd/egress` so the binary constructs the `sdk/egress` worker with the internal executor.
-- [ ] Rename the `DESTINATION_RESOLUTION_PROVIDER_ADAPTER` enum value (wire number unchanged, old name reserved),
-      regenerate, and update `validate.go` and the `27-security-controls.md` note.
-- [ ] Move/adapt the existing protocol tests and add a stub-executor conformance test proving registration,
-      assignment, stream frames, and error mapping work with no `internal/egress` code involved.
-- [ ] Bring up `deploy/docker`, rebuild `egress`, and drive a real request through Control to the rebased worker.
+- [ ] Define `sdk/egress.Executor` from the existing `Execute(ctx, start, body, attempt, send)` seam.
+- [ ] Move or wrap the public-safe identity, capability, registration-request, heartbeat, capacity, and assignment
+      admission helpers into `sdk/egress`.
+- [ ] Expose SDK-safe subject and envelope helpers required for custom workers without importing `internal/*`
+      packages.
+- [ ] Keep the official worker behavior unchanged; any `internal/egress` edits must be mechanical reuse of the new
+      public helpers.
+- [ ] Add focused SDK foundation tests.
+- [ ] Verify `sdk/egress` imports no `internal/*` packages.
 - [ ] Run focused tests, then `make check`.
 - [ ] Write a handoff note.
 
 ## Tests
 
-- `go test ./sdk/... ./internal/egress ./cmd/egress`
+- `go test ./sdk/... ./internal/egress`
 - `make check`
 
 ## Acceptance Criteria
 
-- `sdk/egress` exposes the worker runtime and `Executor` interface with no imports of `internal/*` packages (proven
-  by `go list -deps` or grep over `sdk/egress` imports).
-- `cmd/egress` constructs the `sdk/egress` worker (visible in `cmd/egress/main.go`), and a live request through the
-  compose stack succeeds against the rebased binary.
-- A stub-executor conformance test registers, heartbeats, receives an assignment, streams a response, and maps an
-  executor error — exercising only `sdk/egress`.
-- `grep -rn PROVIDER_ADAPTER` over non-generated code returns only the proto `reserved` entry for the old name, and
-  Buf breaking checks pass.
-- The `27-security-controls.md` "rename owned by" parenthetical is gone.
+- `sdk/egress` exists and exposes `Executor`, identity/capability types, registration/heartbeat helpers, assignment
+  admission, and subject/envelope helpers sufficient for a custom worker runtime foundation.
+- `grep -R "\"github.com/beremaran/straw/v2/internal/" sdk/egress` returns no matches.
+- SDK tests prove registration signing, heartbeat construction, assignment admission, and subject/envelope round trips.
+- Existing `internal/egress` tests still pass, proving no official worker behavior changed in this foundation slice.
+- Tasks 22, 23, and 24 own the remaining Egress SDK extraction work explicitly.
 
 ## Handoff Notes
 
-- Record what stayed in `internal/egress` vs moved to `sdk/egress`, and the exact `Executor` interface shape.
-- Record the new enum value name and confirmation that Buf breaking checks passed.
-- State whether task 13 can proceed purely against `sdk/egress`.
+- Record the public `Executor` interface shape and the SDK helpers added.
+- Record any `internal/egress` behavior intentionally left untouched for task 22.
+- State that task 13 remains blocked until task 24 is complete.
 
 ## Stop Conditions
 
-- Stop if Buf breaking checks reject the enum rename even with reserved old name; ask instead of forcing it.
-- Stop if the extraction cannot preserve wire behavior without protocol changes.
+- Stop if a public `sdk/egress` foundation cannot be built without importing `internal/*`.
+- Stop if preserving current worker behavior requires protocol changes.
 - Stop if a deferral would have no owning task file.

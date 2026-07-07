@@ -15,7 +15,8 @@ The 2026-07-07 decision `P2 Provider Adapter Baseline` (superseded entry in `doc
 replaced the named static provider adapter with "one example custom Egress implementation" — vendor-neutral, since
 Straw no longer names providers. `docs/planning/02-phase-boundaries.md` (P2 list) requires it. Nothing outside
 `cmd/egress` implements the SDK today, so the SDK's public seam is unproven until this exists. This task depends on
-task 12's `sdk/egress` package (`docs/tasks/p2/12-egress-sdk.md`).
+task 24's conformance/live verification (`docs/tasks/p2/24-egress-sdk-conformance-and-live-verification.md`), which
+proves task 12's `sdk/egress` package and task 22's official-worker rebase.
 
 ## Required Planning Docs
 
@@ -25,14 +26,15 @@ task 12's `sdk/egress` package (`docs/tasks/p2/12-egress-sdk.md`).
 
 ## Prerequisites
 
-- Task 12 completed (`sdk/egress` public package and `Executor` interface exist).
+- Task 24 completed (`sdk/egress` public package, official-worker rebase, enum rename, and conformance/live
+  verification are done).
 
 ## Out of Scope
 
 - No named provider integration (Bright Data, Scrape.do, etc.) and no provider credentials handling.
 - No marketplace, billing, or account provisioning.
-- No changes to `sdk/egress` beyond what a real third-party consumer could make (i.e., none; API gaps found here go
-  back to task 12's owner via a new task or a stop).
+- No changes to `sdk/egress` beyond what a real third-party consumer could make (i.e., none; API gaps found here
+  require a new owning task or a stop).
 
 ## Expected Files
 
@@ -75,6 +77,6 @@ task 12's `sdk/egress` package (`docs/tasks/p2/12-egress-sdk.md`).
 
 ## Stop Conditions
 
-- Stop if the example cannot be built without importing `internal/*` packages — that is a task 12 API gap, not
-  something to patch around here.
+- Stop if the example cannot be built without importing `internal/*` packages — that is an SDK API gap, not something
+  to patch around here.
 - Stop if a deferral would have no owning task file.
