@@ -1,16 +1,23 @@
-# 16 - Ingress HTTP/2 and MITM ALPN
+# 16 - MITM HTTP/2 ALPN and Basic H2 Ingress
 
-Status: not started
+Status: done
 
 ## Objective
 
-Implement ingress HTTP/2 stream mapping and MITM ALPN behavior if task 14 specifies them as supported.
+Implement the MITM HTTP/2 ALPN gate specified by task 14: Control offers `h2` on the authenticated MITM inner TLS
+handshake only when `control.http2.enabled` is true and tenant routing policy permits MITM, while preserving HTTP/1.1
+compatibility and proving basic HTTP/2 MITM requests route through the normal decoded MITM handler.
+
+Full ingress HTTP/2 cancellation, NATS-credit flow-control, trailer, and connection-level fanout semantics were split
+to `docs/tasks/p2/25-ingress-http2-stream-semantics.md` after independent verification found this original task too
+large for one honest vertical slice.
 
 ## Required Planning Docs
 
 - `docs/planning/15-http-semantics.md`
 - `docs/planning/17-mitm-design-p2.md`
 - `docs/planning/12-nats-protocol.md`
+- `docs/planning/c-http2-semantics.md`
 
 ## Prerequisites
 
@@ -22,42 +29,51 @@ Implement ingress HTTP/2 stream mapping and MITM ALPN behavior if task 14 specif
 ## Out of Scope
 
 - Do not implement outbound HTTP/2.
-- Do not enable ALPN behavior not specified by task 14.
+- Do not implement full ingress HTTP/2 stream cancellation, NATS-credit flow-control, trailer forwarding, or
+  connection-level error fanout; `docs/tasks/p2/25-ingress-http2-stream-semantics.md` owns those task 14 semantics.
 - Do not change HTTP/1.1 ingress behavior.
 
 ## Expected Files
 
-- Create or modify: HTTP/2 ingress and MITM ALPN handling.
-- Test: ingress HTTP/2 tests.
+- Modify: `internal/control/mitm_connect_handler.go` and `internal/control/mitm_handler.go` for policy-gated MITM
+  ALPN and h2 inner server setup.
+- Modify: `cmd/control/main.go` so the built Control binary wires `control.http2.enabled` into the MITM CONNECT
+  bootstrap.
+- Test: `cmd/control/main_test.go` MITM ALPN and basic h2 request tests.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Confirm task 14 includes ingress and MITM ALPN support.
-- [ ] Map each HTTP/2 stream to one `request_id`.
-- [ ] Apply cancellation and flow-control semantics from task 14.
-- [ ] Normalize pseudo-headers and trailers.
-- [ ] Handle connection-level errors across active streams.
-- [ ] Add tests for concurrent streams, cancellation, flow-control, pseudo-headers, trailers, connection errors, and MITM
-      ALPN.
-- [ ] Run focused ingress HTTP/2 tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Read all required planning docs.
+- [x] Confirm task 14 includes MITM ALPN support.
+- [x] Wire the built Control binary (`cmd/control`) so `control.http2.enabled` reaches the MITM CONNECT bootstrap.
+- [x] Gate MITM `h2` ALPN on both static Control config and tenant MITM routing policy.
+- [x] Configure the authenticated inner MITM TLS server for HTTP/2 only when the gate allows it.
+- [x] Prove HTTP/2-disabled and tenant-policy-denied MITM handshakes negotiate HTTP/1.1.
+- [x] Prove enabled and tenant-policy-allowed MITM handshakes negotiate `h2` and serve concurrent h2 requests through
+      the normal decoded MITM handler.
+- [x] Run focused ingress HTTP/2 tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 
-- Focused ingress HTTP/2 tests.
+- `go test ./cmd/control -run TestConfigureMITMServerHTTP2ALPN -count=1`
 - `make check`
 
 ## Acceptance Criteria
 
-- Ingress HTTP/2 follows task 14 semantics.
-- MITM ALPN behavior is implemented only if specified.
+- MITM ALPN behavior is implemented only where task 14 specifies it and only when both `control.http2.enabled` and
+  tenant MITM routing policy allow it.
+- A basic HTTP/2 MITM request is translated through the normal decoded MITM handler path and concurrent h2 streams each
+  receive a response.
 - HTTP/1.1 ingress remains compatible.
+- Full ingress HTTP/2 stream semantics remain owned by `docs/tasks/p2/25-ingress-http2-stream-semantics.md`.
 
 ## Handoff Notes
 
 - Document supported ingress modes and ALPN behavior.
+- Include the independent verifier verdict that accepted the ALPN slice and rejected full stream semantics, with task 25
+  named as owner for the remaining scope.
 
 ## Stop Conditions
 

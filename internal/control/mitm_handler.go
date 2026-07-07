@@ -23,6 +23,9 @@ type MITMLeafLookup func(r *http.Request, identity Identity, sni, authority stri
 // before the tunnel is established.
 type MITMLeafPreflight func(r *http.Request, identity Identity, authority string) error
 
+// MITMHTTP2Policy decides whether an authenticated tenant may negotiate h2.
+type MITMHTTP2Policy func(ctx context.Context, identity Identity) bool
+
 // NewMITMHandler creates the HTTPS MITM ingress handler.
 func NewMITMHandler(maxRequestBodyBytes, maxResponseBodyBytes, maxTimeoutMs uint64, auth *Authenticator, metadataWriter ...RequestMetadataRecorder) *MITMHandler {
 	return &MITMHandler{ProxyHandler: NewProxyHandler(maxRequestBodyBytes, maxResponseBodyBytes, maxTimeoutMs, auth, metadataWriter...)}
@@ -31,6 +34,26 @@ func NewMITMHandler(maxRequestBodyBytes, maxResponseBodyBytes, maxTimeoutMs uint
 // Authenticator returns the authenticator used by this MITM handler.
 func (h *MITMHandler) Authenticator() *Authenticator {
 	return h.authenticator
+}
+
+// AllowsHTTP2 reports whether tenant routing policy permits MITM h2 ingress.
+func (h *MITMHandler) AllowsHTTP2(ctx context.Context, identity Identity) bool {
+	if h.configCache == nil {
+		return false
+	}
+
+	snapshot, err := h.configCache.Snapshot(ctx, identity.TenantID)
+	if err != nil {
+		return false
+	}
+
+	for _, rule := range snapshot.RoutingRules {
+		if rule.Enabled && ruleAllowsMITM(rule) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // WithMITMIdentity attaches the CONNECT-authenticated identity to the decoded
