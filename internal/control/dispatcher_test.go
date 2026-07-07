@@ -26,6 +26,7 @@ import (
 	"github.com/beremaran/straw/v2/internal/config"
 	"github.com/beremaran/straw/v2/internal/egress"
 	"github.com/beremaran/straw/v2/internal/natsx"
+	"github.com/beremaran/straw/v2/internal/objectstore"
 	"github.com/beremaran/straw/v2/internal/testutil"
 )
 
@@ -233,6 +234,138 @@ func TestDispatcherResponseBodyRefUnavailableWhenSelectedBackendUnwired(t *testi
 	}
 	if perr.Details[errorDetailDirectionKey] != "response" || perr.Details["transport"] != string(BodyTransportS3BodyRef) {
 		t.Fatalf("error details = %#v, want response s3 body ref", perr.Details)
+	}
+}
+
+func TestDispatcherTeesLargeResponseBodyToObjectStorage(t *testing.T) {
+	t.Parallel()
+
+	body := strings.Repeat("response payload ", 64)
+	d, stop := newLiveDispatchHarness(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(body))
+	}))
+	defer stop()
+
+	store := &fakeResponseBodyRefStore{}
+	d.opts.MaxInlineResponseBodyBytes = 8
+	d.opts.BodyTransport = config.ControlBodyTransportConfig{
+		LargeBodyThresholdBytes: 8,
+		ObjectStorage:           config.BodyObjectStorageConfig{Enabled: true},
+	}.Normalized()
+	d.opts.ResponseObjectStore = store
+
+	req := validatedDispatchRequest(t, rewriteDispatchHost(t, d.upstreamURL, "dispatch.test"))
+	resp, perr := d.Dispatch(context.Background(), dispatchInput(req))
+	if perr != nil {
+		t.Fatalf("Dispatch error = %#v", perr)
+	}
+	if resp.Body.Mode != "body_ref" || resp.Body.BodyRef == nil {
+		t.Fatalf("response body = %#v, want body_ref download reference", resp.Body)
+	}
+	if resp.Body.DataBase64 != "" {
+		t.Fatalf("body_ref response inlined data = %q, want empty", resp.Body.DataBase64)
+	}
+	if store.uploadCount() != 1 {
+		t.Fatalf("upload count = %d, want exactly one tee", store.uploadCount())
+	}
+	if string(store.body) != body {
+		t.Fatalf("teed body = %q..., want full upstream body", string(store.body[:min(16, len(store.body))]))
+	}
+	// Size/checksum validation: the surfaced download reference must match the
+	// teed body exactly.
+	ref := resp.Body.BodyRef
+	sum := sha256.Sum256([]byte(body))
+	if ref.SizeBytes != uint64(len(body)) || ref.Sha256Hex != hex.EncodeToString(sum[:]) {
+		t.Fatalf("body_ref size/checksum = %d/%s, want %d/%s", ref.SizeBytes, ref.Sha256Hex, len(body), hex.EncodeToString(sum[:]))
+	}
+	if !strings.HasPrefix(ref.ObjectKey, "tenant/"+dispatchTestTenant+"/request/") || !strings.Contains(ref.ObjectKey, "/response/") || ref.SignedURL == "" {
+		t.Fatalf("body_ref object = %#v, want response-scoped key and signed URL", ref)
+	}
+	if resp.ResponseSizeBytes != uint64(len(body)) {
+		t.Fatalf("response size = %d, want %d", resp.ResponseSizeBytes, len(body))
+	}
+}
+
+func TestDispatcherResponseTeeObjectStorageOutage(t *testing.T) {
+	t.Parallel()
+
+	body := strings.Repeat("x", 128)
+	d, stop := newLiveDispatchHarness(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(body))
+	}))
+	defer stop()
+
+	store := &fakeResponseBodyRefStore{err: objectstore.Unavailable(nil)}
+	d.opts.MaxInlineResponseBodyBytes = 8
+	d.opts.BodyTransport = config.ControlBodyTransportConfig{
+		LargeBodyThresholdBytes: 8,
+		ObjectStorage:           config.BodyObjectStorageConfig{Enabled: true},
+	}.Normalized()
+	d.opts.ResponseObjectStore = store
+
+	req := validatedDispatchRequest(t, rewriteDispatchHost(t, d.upstreamURL, "dispatch.test"))
+	_, perr := d.Dispatch(context.Background(), dispatchInput(req))
+	if perr == nil || perr.Code != BodyRefUnavailable {
+		t.Fatalf("Dispatch error = %#v, want body_ref_unavailable on object storage outage", perr)
+	}
+	if perr.Details[errorDetailDirectionKey] != "response" {
+		t.Fatalf("error details = %#v, want response direction", perr.Details)
+	}
+}
+
+func TestDispatcherDoesNotTeeResponseWhenCancelled(t *testing.T) {
+	t.Parallel()
+
+	release := make(chan struct{})
+	wrote := make(chan struct{})
+
+	d, stop := newLiveDispatchHarness(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(strings.Repeat("y", 128)))
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+		close(wrote)
+		<-release
+	}))
+	defer stop()
+	// Unblock the upstream handler before stop()/upstream.Close run (defers are
+	// LIFO), so the blocked handler cannot deadlock httptest.Server.Close.
+	defer close(release)
+
+	store := &fakeResponseBodyRefStore{}
+	d.opts.MaxInlineResponseBodyBytes = 8
+	d.opts.BodyTransport = config.ControlBodyTransportConfig{
+		LargeBodyThresholdBytes: 8,
+		ObjectStorage:           config.BodyObjectStorageConfig{Enabled: true},
+	}.Normalized()
+	d.opts.ResponseObjectStore = store
+
+	ctx, cancel := context.WithCancel(context.Background())
+	req := validatedDispatchRequest(t, rewriteDispatchHost(t, d.upstreamURL, "dispatch.test"))
+
+	done := make(chan *PipelineError, 1)
+	go func() {
+		_, perr := d.Dispatch(ctx, dispatchInput(req))
+		done <- perr
+	}()
+
+	<-wrote
+	cancel()
+
+	select {
+	case perr := <-done:
+		if perr == nil || perr.Code != Cancelled {
+			t.Fatalf("Dispatch error = %#v, want cancelled", perr)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Dispatch did not return after cancellation")
+	}
+
+	// The upstream never sent End, so the tee never ran: no orphaned object.
+	if store.uploadCount() != 0 {
+		t.Fatalf("upload count = %d, want 0 (no tee before stream completion)", store.uploadCount())
 	}
 }
 
@@ -875,6 +1008,54 @@ func (s *fakeRequestBodyRefStore) DeleteRequestBody(_ context.Context, frame *st
 	s.deleted = frame
 
 	return nil
+}
+
+// fakeResponseBodyRefStore records response tees. When err is nil it echoes the
+// received body back as a BodyRef frame with real size/checksum, so tests can
+// assert Control surfaces exactly what was teed.
+type fakeResponseBodyRefStore struct {
+	mu       sync.Mutex
+	err      error
+	uploads  int
+	body     []byte
+	tenantID string
+	frame    *strawpb.BodyRefFrame
+}
+
+func (s *fakeResponseBodyRefStore) UploadResponseBody(_ context.Context, tenantID, requestID string, body []byte) (*strawpb.BodyRefFrame, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.uploads++
+	if s.err != nil {
+		return nil, s.err
+	}
+
+	s.tenantID = tenantID
+	s.body = append([]byte(nil), body...)
+	sum := sha256.Sum256(body)
+	s.frame = &strawpb.BodyRefFrame{
+		Ref: &strawpb.BodyRefFrame_S3{S3: &strawpb.S3BodyRef{
+			ObjectKey:     "tenant/" + tenantID + "/request/" + requestID + "/response/nonce",
+			SignedUrl:     "https://object.example/response",
+			ExpiresUnixMs: time.Now().Add(time.Minute).UnixMilli(),
+		}},
+		ExpectedSizeBytes: uint64(len(body)),
+		Sha256Hex:         hex.EncodeToString(sum[:]),
+	}
+
+	return s.frame, nil
+}
+
+func (s *fakeResponseBodyRefStore) DeleteResponseBody(_ context.Context, _ *strawpb.BodyRefFrame) error {
+	return nil
+}
+
+func (s *fakeResponseBodyRefStore) uploadCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.uploads
 }
 
 func dispatchRoute() RouteOutcome {

@@ -85,6 +85,7 @@ type RequestDispatcherOptions struct {
 	QuotaAdmission             *QuotaAdmission
 	BodyTransport              config.ControlBodyTransportConfig
 	BodyObjectStore            RequestBodyRefStore
+	ResponseObjectStore        ResponseBodyRefStore
 	MaxInlineResponseBodyBytes uint64
 	MaxFrameDataBytes          uint64
 	MaxTimeoutMs               uint64
@@ -250,12 +251,43 @@ func (d *DefaultRequestDispatcher) dispatch(ctx context.Context, in DispatchInpu
 		return SuccessResponse{}, perr
 	}
 
+	return d.finalizeDispatch(ctx, in, snapshot, result, routingMs, assignmentMs, started)
+}
+
+// finalizeDispatch runs the post-success steps: tee a large response body to
+// object storage (if selected), record quota usage, and build the response.
+func (d *DefaultRequestDispatcher) finalizeDispatch(ctx context.Context, in DispatchInput, snapshot config.TenantSnapshot, result dispatchResult, routingMs, assignmentMs int64, started time.Time) (SuccessResponse, *PipelineError) {
+	if result.useBodyRef {
+		if perr := d.teeResponseBody(ctx, in, &result); perr != nil {
+			perr = d.withTiming(perr, routingMs, assignmentMs, started)
+			perr.EgressMs = result.egressMs
+
+			return SuccessResponse{}, perr
+		}
+	}
+
 	if d.opts.QuotaAdmission != nil {
 		_ = d.opts.QuotaAdmission.RecordSuccess(ctx, quotaFromSnapshot(in.Identity.TenantID, snapshot.Quota))
 		_ = d.opts.QuotaAdmission.AddBandwidth(ctx, in.Identity.TenantID, int64(len(in.Request.BodyData)+len(result.body)))
 	}
 
 	return successFromDispatch(in.RequestID, result, routingMs, assignmentMs, millisSince(started, d.opts.Now())), nil
+}
+
+// teeResponseBody uploads the completed response body to object storage and
+// records the resulting BodyRef on result. It runs only after the synchronous
+// stream from the executor has finished, so a cancelled or errored request
+// never reaches here and never orphans an object. An object-storage outage
+// maps to body_ref_unavailable, matching the docs/planning/29 outage row.
+func (d *DefaultRequestDispatcher) teeResponseBody(ctx context.Context, in DispatchInput, result *dispatchResult) *PipelineError {
+	frame, err := d.opts.ResponseObjectStore.UploadResponseBody(ctx, in.Identity.TenantID, in.RequestID, result.body)
+	if err != nil {
+		return bodyRefUnavailableError(BodyTransportDirectionResponse, BodyTransportS3BodyRef)
+	}
+
+	result.bodyRef = frame
+
+	return nil
 }
 
 func (d *DefaultRequestDispatcher) dispatchRaw(ctx context.Context, in DispatchInput, w http.ResponseWriter, started time.Time) (SuccessResponse, *PipelineError, bool) {
@@ -334,11 +366,7 @@ func successFromDispatch(requestID string, result dispatchResult, routingMs, ass
 		RequestID: requestID,
 		Status:    int(result.status),
 		Headers:   headersFromProto(result.headers),
-		Body: ResponseBody{
-			Mode:       "inline_base64",
-			DataBase64: base64.StdEncoding.EncodeToString(result.body),
-			Truncated:  false,
-		},
+		Body:      responseBodyFromDispatch(result),
 		Timing: RequestTiming{
 			RoutingMs:    routingMs,
 			AssignmentMs: assignmentMs,
@@ -346,6 +374,27 @@ func successFromDispatch(requestID string, result dispatchResult, routingMs, ass
 			TotalMs:      totalMs,
 		},
 		ResponseSizeBytes: uint64(len(result.body)),
+	}
+}
+
+func responseBodyFromDispatch(result dispatchResult) ResponseBody {
+	if ref := result.bodyRef; ref != nil {
+		return ResponseBody{
+			Mode: "body_ref",
+			BodyRef: &ResponseBodyRef{
+				ObjectKey:     ref.GetS3().GetObjectKey(),
+				SignedURL:     ref.GetS3().GetSignedUrl(),
+				ExpiresUnixMs: ref.GetS3().GetExpiresUnixMs(),
+				SizeBytes:     ref.GetExpectedSizeBytes(),
+				Sha256Hex:     ref.GetSha256Hex(),
+			},
+		}
+	}
+
+	return ResponseBody{
+		Mode:       "inline_base64",
+		DataBase64: base64.StdEncoding.EncodeToString(result.body),
+		Truncated:  false,
 	}
 }
 
@@ -1106,15 +1155,30 @@ func (d *DefaultRequestDispatcher) acceptResponseData(data *strawpb.DataFrame, r
 		return true, perr
 	}
 
-	if selection.Transport == BodyTransportDataFrames {
-		bytes := uint64FromInt(len(data.GetData()))
-		*c2eSeq = d.sendDownloadCredit(c2eSubject, in, deadline, *c2eSeq, bytes)
-		validator.GrantCredit(bytes)
+	switch selection.Transport {
+	case BodyTransportDataFrames:
+		// Still inlineable; keep streaming.
+	case BodyTransportS3BodyRef:
+		if d.opts.ResponseObjectStore == nil {
+			return true, bodyRefUnavailableError(BodyTransportDirectionResponse, BodyTransportS3BodyRef)
+		}
 
-		return false, nil
+		// Over the inline threshold with object storage enabled: keep streaming
+		// through Control and tee the completed body to object storage at End.
+		result.useBodyRef = true
+	case BodyTransportDirectStreamRef:
+		// DirectStreamRef is not implemented for responses (only one response
+		// BodyRef mode ships: the object-storage tee).
+		return true, bodyRefUnavailableError(BodyTransportDirectionResponse, selection.Transport)
+	default:
+		return true, bodyRefUnavailableError(BodyTransportDirectionResponse, selection.Transport)
 	}
 
-	return true, bodyRefUnavailableError(BodyTransportDirectionResponse, selection.Transport)
+	bytes := uint64FromInt(len(data.GetData()))
+	*c2eSeq = d.sendDownloadCredit(c2eSubject, in, deadline, *c2eSeq, bytes)
+	validator.GrantCredit(bytes)
+
+	return false, nil
 }
 
 func (d *DefaultRequestDispatcher) executorError(route RouteOutcome, frame *strawpb.ErrorFrame) *PipelineError {
@@ -1227,6 +1291,12 @@ type dispatchResult struct {
 	body     []byte
 	size     uint64
 	egressMs int64
+	// useBodyRef is set once the buffered response body exceeds the inline
+	// threshold and object storage is enabled: Control keeps streaming and tees
+	// the completed body to object storage instead of inlining it.
+	useBodyRef bool
+	// bodyRef holds the teed object reference after a successful upload.
+	bodyRef *strawpb.BodyRefFrame
 }
 
 type snapshotRules struct {

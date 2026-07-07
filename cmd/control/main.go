@@ -206,7 +206,7 @@ func setupControlConfigState(configStore *control.PostgresConfigStore, workerReg
 	return nil
 }
 
-func buildRequestBodyRefStore(cfg config.BodyObjectStorageConfig) (control.RequestBodyRefStore, error) {
+func buildBodyRefStore(cfg config.BodyObjectStorageConfig) (*control.S3RequestBodyRefStore, error) {
 	if !cfg.Enabled {
 		return nil, nil
 	}
@@ -221,7 +221,7 @@ func buildRequestBodyRefStore(cfg config.BodyObjectStorageConfig) (control.Reque
 		RetentionDays: cfg.BodyRetentionDays,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("build request body ref store: %w", err)
+		return nil, fmt.Errorf("build body ref store: %w", err)
 	}
 
 	return control.NewS3RequestBodyRefStore(client), nil
@@ -1083,9 +1083,22 @@ func rehydrateWorkerAdminState(ctx context.Context, configStore *control.Postgre
 // buildControlMux assembles the HTTP handler with the Postgres-backed identity
 // and config stores.
 func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool, configStore *control.PostgresConfigStore, configCache *control.ConfigCache, redisClient *redis.Client, natsConn *natsx.Connection, chWriters *clickHouseWriters, metrics *control.Metrics, inflight *control.InFlightRegistry) (*http.ServeMux, http.Handler, http.Handler, http.Handler, error) {
-	bodyStore, err := buildRequestBodyRefStore(controlConfig.BodyTransport.ObjectStorage)
+	bodyStore, err := buildBodyRefStore(controlConfig.BodyTransport.ObjectStorage)
 	if err != nil {
 		return nil, nil, nil, nil, err
+	}
+
+	// Typed-nil guard: a nil *S3RequestBodyRefStore stored in an interface is not
+	// == nil, which would defeat the dispatcher's nil checks. Only wire the
+	// stores when object storage is actually enabled.
+	var (
+		requestBodyStore  control.RequestBodyRefStore
+		responseBodyStore control.ResponseBodyRefStore
+	)
+
+	if bodyStore != nil {
+		requestBodyStore = bodyStore
+		responseBodyStore = bodyStore
 	}
 
 	tenantStore := control.NewPostgresTenantStore(pool)
@@ -1109,7 +1122,8 @@ func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.API
 		RateLimitAdmission:         rateLimitAdmission,
 		QuotaAdmission:             quotaAdmission,
 		BodyTransport:              controlConfig.BodyTransport,
-		BodyObjectStore:            bodyStore,
+		BodyObjectStore:            requestBodyStore,
+		ResponseObjectStore:        responseBodyStore,
 		MaxInlineResponseBodyBytes: controlConfig.Request.MaxInlineResponseBodyBytes,
 		MaxFrameDataBytes:          controlConfig.Transport.MaxFrameDataBytes,
 		MaxTimeoutMs:               controlConfig.Request.MaxTimeoutMs,

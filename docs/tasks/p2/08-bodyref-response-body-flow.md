@@ -1,6 +1,6 @@
 # 08 - BodyRef Response Body Flow
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -31,18 +31,18 @@ Implement the single response-body BodyRef mode resolved on 2026-07-07.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Implement exactly the resolved `P2 BodyRef Response-Body Mode`: executor streams through Control while teeing
+- [x] Read all required planning docs.
+- [x] Implement exactly the resolved `P2 BodyRef Response-Body Mode`: executor streams through Control while teeing
       to object storage.
-- [ ] Enforce response size thresholds and `body_too_large` behavior.
-- [ ] Verify size/checksum and object retention.
-- [ ] Handle cancellation and cleanup.
-- [ ] Handle object storage outage according to Section 29 and the resolved decision.
-- [ ] Add tests for chosen mode, cancellation cleanup, checksum/size validation, object retention, outage, and
+- [x] Enforce response size thresholds and `body_too_large` behavior.
+- [x] Verify size/checksum and object retention.
+- [x] Handle cancellation and cleanup.
+- [x] Handle object storage outage according to Section 29 and the resolved decision.
+- [x] Add tests for chosen mode, cancellation cleanup, checksum/size validation, object retention, outage, and
       response body too large.
-- [ ] Run focused response BodyRef tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Run focused response BodyRef tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 
