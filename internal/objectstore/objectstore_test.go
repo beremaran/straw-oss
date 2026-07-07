@@ -1,7 +1,12 @@
 package objectstore
 
 import (
+	"context"
+	"encoding/xml"
 	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -161,7 +166,7 @@ func TestPresignGetIsScopedAndShortLived(t *testing.T) {
 	if !strings.Contains(q.Get("X-Amz-Credential"), "/us-east-1/s3/aws4_request") {
 		t.Fatalf("credential scope wrong: %q", q.Get("X-Amz-Credential"))
 	}
-	if q.Get("X-Amz-SignedHeaders") != "host" {
+	if q.Get("X-Amz-SignedHeaders") != hostHeader {
 		t.Fatalf("GET signed headers = %q, want host", q.Get("X-Amz-SignedHeaders"))
 	}
 
@@ -214,6 +219,67 @@ func TestUnavailableSentinel(t *testing.T) {
 	}
 	if IsUnavailable(errors.New("other")) {
 		t.Fatalf("unrelated error misclassified")
+	}
+}
+
+func TestApplyLifecycleRetention(t *testing.T) {
+	var got struct {
+		path string
+		body []byte
+		auth string
+		hash string
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got.path = r.URL.RequestURI()
+		got.auth = r.Header.Get("Authorization")
+		got.hash = r.Header.Get("X-Amz-Content-Sha256")
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read lifecycle body: %v", err)
+		}
+		got.body = body
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	t.Setenv(testEnvA, "os-id-placeholder")
+	t.Setenv(testEnvB, "os-signing-placeholder")
+	c, err := New(Options{
+		Enabled: true, Endpoint: server.URL, Bucket: "straw-bodies", Region: "us-east-1",
+		AccessKeyEnv: testEnvA, SecretKeyEnv: testEnvB, RetentionDays: 3,
+	})
+	if err != nil {
+		t.Fatalf("New() = %v", err)
+	}
+	c.now = func() time.Time { return time.Date(2026, 7, 7, 0, 0, 0, 0, time.UTC) }
+
+	err = c.ApplyLifecycleRetention(context.Background())
+	if err != nil {
+		t.Fatalf("ApplyLifecycleRetention() = %v", err)
+	}
+	if got.path != "/straw-bodies?lifecycle" {
+		t.Fatalf("path = %q, want bucket lifecycle API", got.path)
+	}
+	if !strings.Contains(got.auth, sigV4Algo+" Credential=os-id-placeholder/20260707/us-east-1/s3/aws4_request") ||
+		!strings.Contains(got.auth, "SignedHeaders=content-type;host;x-amz-content-sha256;x-amz-date") ||
+		!strings.Contains(got.auth, "Signature=") {
+		t.Fatalf("authorization header = %q", got.auth)
+	}
+	if got.hash == "" {
+		t.Fatalf("missing content hash")
+	}
+
+	var cfg lifecycleConfiguration
+	err = xml.Unmarshal(got.body, &cfg)
+	if err != nil {
+		t.Fatalf("unmarshal lifecycle XML: %v\n%s", err, got.body)
+	}
+	if len(cfg.Rules) != 1 {
+		t.Fatalf("rules = %d, want 1", len(cfg.Rules))
+	}
+	rule := cfg.Rules[0]
+	if rule.Status != "Enabled" || rule.Filter.Prefix != "tenant/" || rule.Expiration.Days != 3 {
+		t.Fatalf("rule = %#v, want enabled tenant/ expiration 3 days", rule)
 	}
 }
 

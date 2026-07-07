@@ -39,6 +39,10 @@ NATS, Postgres, Redis, ClickHouse, and Egress health are backend-network only.
 - Store `.env` values in a real secret manager. Do not commit generated `.env` files or worker private keys.
 - Keep `edge` and `backend` networks isolated; only Control and optional observability UIs should have published ports.
 - Operate Prometheus/Grafana/Blackbox when the `observability` profile is enabled.
+- Grant Control permission to call `PutBucketLifecycleConfiguration` on the configured body-object bucket. When
+  object storage is enabled, Control applies a lifecycle rule at startup that expires BodyRef objects under `tenant/`
+  after `control.body_transport.object_storage.body_retention_days` days. Override that config value for debugging;
+  validation keeps it within the P2 1-3 day bound.
 
 ## Validation
 

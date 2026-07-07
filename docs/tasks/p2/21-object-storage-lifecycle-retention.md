@@ -1,6 +1,6 @@
 # 21 - Object Storage Lifecycle Retention
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -34,16 +34,16 @@ and payload-capture (11) flows.
 
 ## Steps
 
-- [ ] Read the required planning docs.
-- [ ] Decide and document whether the lifecycle rule is applied by Control at startup (a signed
+- [x] Read the required planning docs.
+- [x] Decide and document whether the lifecycle rule is applied by Control at startup (a signed
       `PutBucketLifecycleConfiguration` using the configured `Retention()`) or provisioned as operator infrastructure
       (documented bucket setup for compose/MinIO and production), then implement the chosen path.
-- [ ] Ensure the rule expires objects under the body-object prefix at the configured retention (default 1 day, max 3).
-- [ ] Provide/verify object-storage bucket provisioning for the local compose stack so the flow is observable live.
-- [ ] Add tests proving the lifecycle rule is applied with the configured expiration, and that retention stays within
+- [x] Ensure the rule expires objects under the body-object prefix at the configured retention (default 1 day, max 3).
+- [x] Provide/verify object-storage bucket provisioning for the local compose stack so the flow is observable live.
+- [x] Add tests proving the lifecycle rule is applied with the configured expiration, and that retention stays within
       the 1–3 day bound.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Acceptance Criteria
 

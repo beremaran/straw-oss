@@ -13,12 +13,17 @@
 package objectstore
 
 import (
+	"bytes"
+	"context"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/xml"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"net/url"
 	"os"
 	"sort"
@@ -45,12 +50,16 @@ const (
 
 	sigV4Service = "s3"
 	sigV4Algo    = "AWS4-HMAC-SHA256"
+	hostHeader   = "host"
 
 	// sseHeader / sseValue enforce server-side encryption on uploads. The header
 	// is signed into presigned PUT URLs so the object cannot be written without
 	// it (docs/planning/18 Object Storage Security).
 	sseHeader = "x-amz-server-side-encryption"
 	sseValue  = "AES256"
+
+	hoursPerDay       = 24
+	errorBodyMaxBytes = 4096
 )
 
 // DefaultPresignExpiry and MaxPresignExpiry keep signed URLs short-lived.
@@ -99,6 +108,7 @@ var (
 	errIdentifier     = errors.New("tenant_id and request_id must be non-empty and free of '/'")
 	errDirection      = errors.New("direction must be request or response")
 	errEmptyKey       = errors.New("object key is required")
+	errLifecycleApply = errors.New("put bucket lifecycle failed")
 )
 
 // Options configures a Client. Callers map their config into it; credentials are
@@ -201,6 +211,69 @@ func parseEndpoint(raw string) (*url.URL, error) {
 
 // Retention returns the configured body-object retention.
 func (c *Client) Retention() time.Duration { return c.retention }
+
+// ApplyLifecycleRetention installs the bucket backstop that expires BodyRef
+// objects left behind when Control crashes after upload but before cleanup.
+func (c *Client) ApplyLifecycleRetention(ctx context.Context) error {
+	body, err := xml.Marshal(lifecycleConfiguration{
+		XMLName: xml.Name{Local: "LifecycleConfiguration"},
+		Rules: []lifecycleRule{{
+			ID:     "straw-body-object-retention",
+			Status: "Enabled",
+			Filter: lifecycleFilter{Prefix: "tenant/"},
+			Expiration: lifecycleExpiration{
+				Days: int(c.retention / (hoursPerDay * time.Hour)),
+			},
+		}},
+	})
+	if err != nil {
+		return fmt.Errorf("marshal lifecycle retention: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, c.endpoint.Scheme+"://"+c.endpoint.Host+"/"+awsURIEncode(c.bucket, false)+"?lifecycle", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("build lifecycle request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/xml")
+	c.signRequest(req, body)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return Unavailable(err)
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		msg, _ := io.ReadAll(io.LimitReader(resp.Body, errorBodyMaxBytes))
+
+		return Unavailable(fmt.Errorf("%w: status %d: %s", errLifecycleApply, resp.StatusCode, strings.TrimSpace(string(msg))))
+	}
+
+	return nil
+}
+
+type lifecycleConfiguration struct {
+	XMLName xml.Name        `xml:"LifecycleConfiguration"`
+	Rules   []lifecycleRule `xml:"Rule"`
+}
+
+type lifecycleRule struct {
+	ID         string              `xml:"ID"`
+	Status     string              `xml:"Status"`
+	Filter     lifecycleFilter     `xml:"Filter"`
+	Expiration lifecycleExpiration `xml:"Expiration"`
+}
+
+type lifecycleFilter struct {
+	Prefix string `xml:"Prefix"`
+}
+
+type lifecycleExpiration struct {
+	Days int `xml:"Days"`
+}
 
 // ObjectKey builds the tenant/request-scoped, high-entropy object key from
 // docs/planning/18: tenant/<tenant_id>/request/<request_id>/<direction>/<nonce>.
@@ -333,7 +406,7 @@ func clampExpiry(expiry time.Duration) time.Duration {
 }
 
 func (c *Client) canonicalHeaders(extra map[string]string) (string, string) {
-	headers := map[string]string{"host": c.endpoint.Host}
+	headers := map[string]string{hostHeader: c.endpoint.Host}
 	for name, value := range extra {
 		headers[strings.ToLower(name)] = strings.TrimSpace(value)
 	}
@@ -354,6 +427,101 @@ func (c *Client) canonicalHeaders(extra map[string]string) (string, string) {
 	}
 
 	return strings.Join(names, ";"), b.String()
+}
+
+func (c *Client) signRequest(req *http.Request, payload []byte) {
+	now := c.now().UTC()
+	amzDate := now.Format("20060102T150405Z")
+	date := now.Format("20060102")
+	payloadHash := sha256.Sum256(payload)
+	payloadHashHex := hex.EncodeToString(payloadHash[:])
+
+	req.Header.Set("Host", c.endpoint.Host)
+	req.Header.Set("X-Amz-Date", amzDate)
+	req.Header.Set("X-Amz-Content-Sha256", payloadHashHex)
+
+	headers := map[string]string{
+		hostHeader:             c.endpoint.Host,
+		"x-amz-content-sha256": payloadHashHex,
+		"x-amz-date":           amzDate,
+	}
+
+	for name, values := range req.Header {
+		lower := strings.ToLower(name)
+		if lower == "authorization" || len(values) == 0 {
+			continue
+		}
+
+		headers[lower] = strings.TrimSpace(strings.Join(values, ","))
+	}
+
+	names := make([]string, 0, len(headers))
+	for name := range headers {
+		names = append(names, name)
+	}
+
+	sort.Strings(names)
+
+	var canonicalHeaders strings.Builder
+	for _, name := range names {
+		canonicalHeaders.WriteString(name)
+		canonicalHeaders.WriteByte(':')
+		canonicalHeaders.WriteString(headers[name])
+		canonicalHeaders.WriteByte('\n')
+	}
+
+	scope := strings.Join([]string{date, c.region, sigV4Service, "aws4_request"}, "/")
+	canonicalRequest := strings.Join([]string{
+		req.Method,
+		req.URL.EscapedPath(),
+		canonicalRawQuery(req.URL.RawQuery),
+		canonicalHeaders.String(),
+		strings.Join(names, ";"),
+		payloadHashHex,
+	}, "\n")
+	canonicalHash := sha256.Sum256([]byte(canonicalRequest))
+	stringToSign := strings.Join([]string{
+		sigV4Algo,
+		amzDate,
+		scope,
+		hex.EncodeToString(canonicalHash[:]),
+	}, "\n")
+	signature := hmacSHA256Hex(awsSigningKey(c.secretKey, date, c.region, sigV4Service), []byte(stringToSign))
+
+	req.Header.Set("Authorization", sigV4Algo+" Credential="+c.accessKey+"/"+scope+", SignedHeaders="+strings.Join(names, ";")+", Signature="+signature)
+}
+
+func canonicalRawQuery(raw string) string {
+	if raw == "" {
+		return ""
+	}
+
+	if !strings.Contains(raw, "=") {
+		return awsURIEncode(raw, true) + "="
+	}
+
+	values, err := url.ParseQuery(raw)
+	if err != nil {
+		return raw
+	}
+
+	parts := make([]string, 0)
+
+	for key, vals := range values {
+		if len(vals) == 0 {
+			parts = append(parts, awsURIEncode(key, true)+"=")
+
+			continue
+		}
+
+		for _, val := range vals {
+			parts = append(parts, awsURIEncode(key, true)+"="+awsURIEncode(val, true))
+		}
+	}
+
+	sort.Strings(parts)
+
+	return strings.Join(parts, "&")
 }
 
 func canonicalQueryString(query map[string]string) string {
