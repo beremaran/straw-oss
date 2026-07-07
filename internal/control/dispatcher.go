@@ -996,6 +996,7 @@ func acceptedResponseFrame(outcome natsx.FrameOutcome) (bool, bool, *PipelineErr
 
 func (d *DefaultRequestDispatcher) acceptResponseData(data *strawpb.DataFrame, result *dispatchResult, validator *natsx.StreamValidator, c2eSubject string, in DispatchInput, deadline time.Time, c2eSeq *uint64) (bool, *PipelineError) {
 	result.body = append(result.body, data.GetData()...)
+
 	selection, perr := SelectBodyTransport(d.opts.BodyTransport, BodyTransportSelectionRequest{
 		Direction:        BodyTransportDirectionResponse,
 		SizeBytes:        uint64FromInt(len(result.body)),

@@ -1,6 +1,6 @@
 # 05 - BodyRef Transport Selection
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -32,17 +32,18 @@ Enable BodyRef transport selection using the response-body mode resolved on 2026
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Add config for large-body threshold and enabled body transports.
-- [ ] Select DataFrames, S3 BodyRef, DirectStreamRef, or `body_too_large` according to Section 18.
-- [ ] Reject unsupported BodyRef variants when config disables them.
-- [ ] Map unavailable body refs to `body_ref_unavailable`.
-- [ ] Enforce the resolved response-body mode from `docs/planning/32-open-decisions.md`: executor streams through
-      Control while teeing to object storage.
-- [ ] Add tests for threshold edges, disabled transports, BodyRef variants, response mode selection, and errors.
-- [ ] Run focused transport selection tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Read all required planning docs.
+- [x] Add config for large-body threshold and enabled body transports.
+- [x] Select DataFrames, S3 BodyRef, DirectStreamRef, or `body_too_large` according to Section 18.
+- [x] Reject unsupported BodyRef variants when config disables them.
+- [x] Map unavailable body refs to `body_ref_unavailable`.
+- [x] Enforce the resolved response-body mode from `docs/planning/32-open-decisions.md`: executor streams through
+      Control while teeing to object storage. (Mode enforced at config/selection level; the streaming-tee runtime is
+      owned by task 06/08, per Out of Scope.)
+- [x] Add tests for threshold edges, disabled transports, BodyRef variants, response mode selection, and errors.
+- [x] Run focused transport selection tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

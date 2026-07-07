@@ -50,4 +50,13 @@ fallback.
 
 P2 HTTP/2 semantics are specified in `docs/planning/c-http2-semantics.md`. Before implementation ships, tests must prove the disabled default, multiplexing, stream cancellation mapping, error mapping, flow control backpressure, pseudo-header mapping/rejection, trailers, connection-level error handling, ALPN negotiation, protocol translation, and HTTP/1.1 fallback/downgrade rules.
 
+P2 large-body transport (BodyRef) is specified in `docs/planning/18-large-body-transport-p2.md`. Transport selection
+(task `docs/tasks/p2/05-bodyref-transport-selection.md`) must prove the Section 18 table: small bodies stay on NATS
+DataFrames, bodies over `large_body_threshold_bytes` select S3 BodyRef when object storage is enabled and
+DirectStreamRef when direct streaming is enabled (object storage taking precedence when both are on), no enabled
+large-body transport maps to `body_too_large` with `direction`/`limit_bytes`, disabled/unavailable BodyRef variants
+map to `body_ref_unavailable`, and only the resolved `stream_through_control_tee_object_storage` response-body mode
+validates. The request upload flow, response tee-through-Control flow, checksum/size verification, retention, and
+object-storage outage behavior are proven by tasks 06–08.
+
 P2 MITM leaf certificate behavior is specified in `docs/planning/c-mitm-leaf-certificate-design.md`. Before implementation ships, tests must prove cache miss generation, encrypted-at-rest private-key storage, cache hit reuse without regeneration, TTL bounded by certificate validity, CA and KMS/deployment-key rotation, local singleflight, Redis distributed lock coalescing, bounded generation concurrency, and per-tenant/global unique-SNI flood limits.
