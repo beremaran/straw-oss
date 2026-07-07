@@ -47,6 +47,7 @@ Straw isolates egress traffic control into two distinct operational layers:
 
 - [Quickstart Guide](quickstart.md) — Set up a local development cluster using Docker Compose and send your first egress request.
 - [Go SDK Guide](sdk.md) — Integrate your Go applications using Straw's native public API client library.
+- [CLI Reference](cli.md) — Send requests and manage configuration from the terminal with the `straw` command.
 - [Egress Worker Guide](egress_worker.md) — Install, configure, and manage Egress execution worker instances.
 - [Authentication & Roles](api/auth.md) — Learn about API key prefixes, scopes, and Role-Based Access Control (RBAC).
 - [REST Request Forwarding](api/requests.md) — Documenting the request-forwarding schema, validation normalizations, and canonical error codes.

@@ -1,12 +1,8 @@
 # Straw Documentation Website
 
-Docusaurus site that publishes two sections directly from the repo's existing Markdown — no
-content is duplicated here:
+Docusaurus site that publishes consumer-facing documentation directly from the repo's existing public Markdown — no content is duplicated here:
 
-- **SDK & API Docs** (`/docs`) — sourced from `../docs/public/**` (public-facing quickstart,
-  auth, config, requests, admin API reference).
-- **Internal Docs** (`/internal`) — sourced from `../docs/planning/**` (architecture and
-  planning docs for internal developers).
+- **Documentation Portal** (`/docs`) — sourced from `../docs/public/**` (public-facing quickstart, SDK integration, authentication, configuration, request forwarding, and operations guides).
 
 Edit the Markdown in those source directories; this site just renders it.
 

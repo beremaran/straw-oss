@@ -9,8 +9,9 @@ This guide details operational guidelines for maintaining, configuring, and moni
 Both the Control Plane and Egress Worker binaries expose local HTTP health endpoints to assist with load balancer integration and orchestrator liveness/readiness checks.
 
 ### Control Plane Ports
-- **REST / Config API Port**: `8080` (default)
-- **Metrics / Health Port**: `9090` (default)
+Both `server.api_port` and `server.metrics_port` are required config fields with no built-in default — the Docker Compose stack in this repo sets them to `8080` and `9090` respectively, and this guide uses those values in its examples.
+- **REST / Config API Port**: `8080` (Compose stack default)
+- **Metrics / Health Port**: `9090` (Compose stack default)
 
 ### Egress Worker Ports
 - **Health Port**: `8090` (default)

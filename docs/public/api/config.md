@@ -360,6 +360,8 @@ Modifies HTTP request headers prior to forwarding them to the destination.
 
 ## 8. Quotas & Rate Limits
 
+Rate limiting is enforced with a Redis-backed sliding-window log per `(dimension, key)` pair — each accepted request records a timestamp, and a request is admitted only if fewer than `max_requests` timestamps fall within the trailing `window_seconds`. On a rejection, the error envelope's `retry_after_ms` (see [error responses](requests.md#error-response-envelope)) tells the client when the oldest timestamp in the window will expire. `fail_policy` decides what happens if Redis itself is unreachable at check time: `open` admits the request, `closed` rejects it.
+
 ### Get Tenant Quotas
 - **Endpoint**: `GET /api/v1/config/quotas`
 - **Role**: `tenant_admin`, `operator`, or `viewer`
@@ -423,7 +425,7 @@ Modifies HTTP request headers prior to forwarding them to the destination.
 
 ## 9. Fingerprint Profiles (Read-Only)
 
-Fingerprint profiles are built-in presets seeded in the database. The public API exposes a read-only list; there is no write endpoint.
+Fingerprint profiles are built-in presets seeded in the database. The public API exposes a read-only list; there is no write endpoint. The seeded profile names are: `default`, `chrome_120`, `firefox_121`, `safari_17` — pass one of these as `fingerprint_profile` on a [request](requests.md).
 
 ### List Profiles
 - **Endpoint**: `GET /api/v1/config/fingerprint-profiles`
@@ -433,7 +435,7 @@ Fingerprint profiles are built-in presets seeded in the database. The public API
   [
     {
       "name": "chrome_120",
-      "scope_type": "built_in",
+      "scope_type": "global",
       "supported_by_worker": true,
       "enabled": true,
       "config_version": 1
@@ -461,4 +463,91 @@ Fingerprint profiles are built-in presets seeded in the database. The public API
       "created_at": "2026-07-05T14:11:23Z"
     }
   ]
+  ```
+
+---
+
+## 11. Config Rollback
+
+Reverts a tenant's configuration (routing rules, executor pools, deny rules, injection policies, quotas, rate limits) to the state recorded at an earlier config version, using the history exposed by [Config Change History](#10-config-change-history).
+
+- **Endpoint**: `POST /api/v1/config/rollback`
+- **Role**: `tenant_admin`
+- **Request Body**:
+  ```json
+  {
+    "expected_config_version": 12,
+    "target_config_version": 8,
+    "reason": "routing rule change caused destination_denied spike"
+  }
+  ```
+- **Behavior**:
+  - `expected_config_version` guards against lost updates the same way other writes do — a mismatch returns `409 Conflict` (`conflict`).
+  - `target_config_version` must reference a version that still exists in change history; otherwise Straw returns `400 Bad Request` (`invalid_request`).
+  - A rollback that would need to restore a previously redacted secret field (e.g. a worker credential private key) is rejected with `400 Bad Request` — reapply secret-bearing fields through their normal create/update endpoints instead.
+  - `reason` is freeform text recorded in the audit log for the rollback event.
+- **Response Status**: `200 OK` with the resulting tenant config version.
+
+---
+
+## 12. Payload Capture Policy
+
+Controls whether — and how much of — a tenant's request/response payloads (headers, bodies) the Control plane is authorized to persist for later inspection, beyond the metadata already recorded in [telemetry](telemetry.md). Disabled by default for every tenant.
+
+### Get Capture Policy
+- **Endpoint**: `GET /api/v1/config/payload-capture`
+- **Role**: `tenant_admin`, `operator`, or `viewer`
+- **Response Body**:
+  ```json
+  {
+    "tenant_id": "22222222-2222-4222-8222-222222222222",
+    "enabled": false,
+    "allowed_decisions": ["none"],
+    "config_version": 1
+  }
+  ```
+
+### Update Capture Policy
+- **Endpoint**: `PUT /api/v1/config/payload-capture`
+- **Role**: `tenant_admin`
+- **Request Body**:
+  ```json
+  {
+    "expected_config_version": 1,
+    "enabled": true,
+    "allowed_decisions": ["none", "metadata_only", "headers", "body_truncated", "body_full"]
+  }
+  ```
+- **`allowed_decisions`** is the set of `capture_hint` values ([request field](requests.md#request-field-descriptions)) the tenant is permitted to request per-call. Valid values, in increasing order of sensitivity: `none`, `metadata_only`, `headers`, `body_truncated`, `body_full`.
+- **Response Body**: Returns the updated policy (`200 OK`).
+
+---
+
+## 13. MITM CA Distribution
+
+Only active when the Control plane operator has configured `server.mitm_ca_cert_file`/`server.mitm_ca_key_file` — most deployments run REST-only and can skip this section. It exists to let `mitm`-mode clients (see the [ingress mode field](../egress_worker.md) on worker capabilities) fetch and rotate the CA certificate Egress workers use to terminate TLS.
+
+### Get Public CA Certificate
+- **Endpoint**: `GET /api/v1/mitm/ca.pem`
+- **Authentication**: Required
+- **Required Role**: `requester` or `tenant_admin`, and the caller's tenant must have at least one enabled routing rule that allows MITM ingress
+- **Response**: `200 OK`, `Content-Type: application/x-pem-file`, body is the raw PEM-encoded public certificate.
+
+### Rotate CA Certificate
+- **Endpoint**: `PUT /api/v1/mitm/ca`
+- **Required Role**: `tenant_admin`
+- **Request Body**:
+  ```json
+  {
+    "cert_pem": "-----BEGIN CERTIFICATE-----...",
+    "key_pem": "-----BEGIN PRIVATE KEY-----..."
+  }
+  ```
+- **Behavior**: Validates the cert/key pair, writes it to the configured cert/key files, and records an audit entry.
+- **Response Body**:
+  ```json
+  {
+    "ca_identity": "...",
+    "ca_version": "..."
+  }
   ```
