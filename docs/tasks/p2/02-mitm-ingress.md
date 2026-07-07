@@ -1,6 +1,6 @@
 # 02 - MITM Ingress
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -34,17 +34,17 @@ HTTP proxy.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Add port 8083 listener behind static config.
-- [ ] Terminate inbound TLS with a server-capable TLS stack.
-- [ ] Use generated per-SNI leaf certificates from task 04.
-- [ ] Decode HTTPS requests into the shared internal request model.
-- [ ] Set routing `ingress_type=mitm`.
-- [ ] Preserve destination policy, header stripping, and tenant isolation behavior.
-- [ ] Add tests for TLS termination, decoded request mapping, ingress_type routing, denied destinations, and shutdown.
-- [ ] Run focused MITM ingress tests.
-- [ ] Run `make check`.
-- [ ] Write a handoff note.
+- [x] Read all required planning docs.
+- [x] Add port 8083 listener behind static config.
+- [x] Terminate inbound TLS with a server-capable TLS stack.
+- [x] Use generated per-SNI leaf certificates from task 04.
+- [x] Decode HTTPS requests into the shared internal request model.
+- [x] Set routing `ingress_type=mitm`.
+- [x] Preserve destination policy, header stripping, and tenant isolation behavior.
+- [x] Add tests for TLS termination, decoded request mapping, ingress_type routing, denied destinations, and shutdown.
+- [x] Run focused MITM ingress tests.
+- [x] Run `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 
