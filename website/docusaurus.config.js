@@ -43,19 +43,7 @@ const config = {
     ],
   ],
 
-  plugins: [
-    [
-      '@docusaurus/plugin-content-docs',
-      /** @type {import('@docusaurus/plugin-content-docs').Options} */
-      ({
-        id: 'internal',
-        path: '../docs/planning',
-        routeBasePath: 'internal',
-        sidebarPath: './sidebars-internal.js',
-        editUrl: 'https://github.com/beremaran/straw/tree/master/docs/planning/',
-      }),
-    ],
-  ],
+  plugins: [],
 
   themeConfig:
     /** @type {import('@docusaurus/preset-classic').ThemeConfig} */
@@ -78,13 +66,6 @@ const config = {
             label: 'SDK & API Docs',
           },
           {
-            type: 'docSidebar',
-            sidebarId: 'internalSidebar',
-            docsPluginId: 'internal',
-            position: 'left',
-            label: 'Internal Docs',
-          },
-          {
             href: 'https://github.com/beremaran/straw',
             label: 'GitHub',
             position: 'right',
@@ -95,10 +76,19 @@ const config = {
         style: 'dark',
         links: [
           {
-            title: 'Docs',
+            title: 'Guides & SDK',
             items: [
-              {label: 'Quickstart', to: '/docs/quickstart'},
-              {label: 'Internal Architecture', to: '/internal/'},
+              {label: 'Quickstart Guide', to: '/docs/quickstart'},
+              {label: 'Go SDK Integration', to: '/docs/sdk'},
+              {label: 'Egress Worker Setup', to: '/docs/egress_worker'},
+            ],
+          },
+          {
+            title: 'APIs & Operations',
+            items: [
+              {label: 'REST Request forwarding', to: '/docs/api/requests'},
+              {label: 'Telemetry Read APIs', to: '/docs/api/telemetry'},
+              {label: 'System Operations', to: '/docs/operations'},
             ],
           },
           {
