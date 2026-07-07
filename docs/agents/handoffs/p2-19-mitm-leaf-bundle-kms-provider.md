@@ -28,8 +28,8 @@ Every in-phase field/endpoint/behavior from the task's cited planning-doc sectio
 
 | Planning item | Status | Evidence / owning task |
 |---------------|--------|------------------------|
-| Stored generated MITM leaf bundles must include public chain and private key, encrypted before leaving Control memory. | implemented | `internal/control/mitm_leaf_bundle_crypto.go:20`, `internal/control/mitm_leaf_bundle_crypto.go:34`; storage/cache write remains owned by `docs/tasks/p2/20-mitm-leaf-cert-cache.md`. |
-| KMS-compatible shared cache policy with tenant/deployment scope. | implemented | `internal/control/mitm_leaf_bundle_crypto.go:45`; cache/Redis behavior remains owned by `docs/tasks/p2/20-mitm-leaf-cert-cache.md`. |
+| Stored generated MITM leaf bundles must include public chain and private key, encrypted before leaving Control memory. | completed later | Boundary added here at `internal/control/mitm_leaf_bundle_crypto.go:20`; Redis storage closed by `docs/tasks/p2/20-mitm-leaf-cert-cache.md`. |
+| KMS-compatible shared cache policy with tenant/deployment scope. | completed later | AAD boundary added here at `internal/control/mitm_leaf_bundle_crypto.go:45`; cache/Redis behavior closed by `docs/tasks/p2/20-mitm-leaf-cert-cache.md`. |
 | KMS key rotation overlap must be testable. | implemented | `internal/control/mitm_leaf_bundle_crypto.go:37`, `internal/control/mitm_leaf_bundle_crypto_test.go:71`. |
 | Canonical config keys under `control.server`. | implemented | `docs/planning/24-static-configuration.md:22`, `docs/planning/24-static-configuration.md:23`, `internal/config/config.go:105`, `internal/config/config.go:106`. |
 | Canonical `STRAW_` env names. | implemented | `docs/planning/24-static-configuration.md:292`, `docs/planning/24-static-configuration.md:293`, `internal/config/config.go:436`, `internal/config/config.go:440`. |
@@ -59,7 +59,7 @@ Result:
 
 ## Remaining Work
 
-- None for this task. Leaf-bundle cache/storage, Redis locks, local singleflight, TTLs, and flood controls remain owned by `docs/tasks/p2/20-mitm-leaf-cert-cache.md`.
+- None for this task. Leaf-bundle cache/storage, Redis locks, local singleflight, TTLs, and flood controls were completed by `docs/tasks/p2/20-mitm-leaf-cert-cache.md`.
 
 ## Blockers
 

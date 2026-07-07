@@ -122,6 +122,7 @@ identity and credential keys under `egress`; the old nested `egress.credential.*
 ```yaml
 config_version: "v1"
 control:
+  deployment_id: "straw-prod-west-1"
   server:
     host: "0.0.0.0"
     api_port: 8080
@@ -133,6 +134,8 @@ control:
     mitm_ca_cert_file: "/etc/straw/mitm/ca.pem"
     mitm_ca_key_file: "/etc/straw/mitm/ca-key.pem"
     mitm_cert_validity_days: 30
+    mitm_leaf_kms_provider: "aws-kms"
+    mitm_leaf_kms_key_id: "arn:aws:kms:us-west-2:123456789012:key/example"
 
   request:
     default_timeout_ms: 60000

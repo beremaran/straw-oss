@@ -19,6 +19,10 @@ type mitmIdentityKey struct{}
 // inner TLS handshake selects a certificate.
 type MITMLeafLookup func(r *http.Request, identity Identity, sni, authority string) (*tls.Certificate, error)
 
+// MITMLeafPreflight checks whether an authenticated CONNECT target may proceed
+// before the tunnel is established.
+type MITMLeafPreflight func(r *http.Request, identity Identity, authority string) error
+
 // NewMITMHandler creates the HTTPS MITM ingress handler.
 func NewMITMHandler(maxRequestBodyBytes, maxResponseBodyBytes, maxTimeoutMs uint64, auth *Authenticator, metadataWriter ...RequestMetadataRecorder) *MITMHandler {
 	return &MITMHandler{ProxyHandler: NewProxyHandler(maxRequestBodyBytes, maxResponseBodyBytes, maxTimeoutMs, auth, metadataWriter...)}

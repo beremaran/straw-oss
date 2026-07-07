@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"encoding/pem"
 	"io"
 	"math/big"
@@ -259,6 +260,56 @@ func TestMITMConnectRequiresProxyAuthorizationBeforeLeafLookup(t *testing.T) {
 
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401", w.Code)
+	}
+	if leafCalls != 0 {
+		t.Fatalf("leaf calls = %d, want 0", leafCalls)
+	}
+	if dispatcher.calls != 0 {
+		t.Fatalf("dispatcher calls = %d, want 0", dispatcher.calls)
+	}
+}
+
+func TestMITMConnectLeafPreflightWritesRateLimitBeforeTunnel(t *testing.T) {
+	t.Parallel()
+
+	inner, token, dispatcher := newTestMITMHandler(t)
+	leafCalls := 0
+	h := NewMITMConnectHandler(inner.Authenticator(), inner, func(_ *http.Request, _ Identity, _, _ string) (*tls.Certificate, error) {
+		leafCalls++
+
+		cert, _ := newTestServerCertificate(t, mitmTestHost)
+
+		return cert, nil
+	})
+	h.SetLeafPreflight(func(_ *http.Request, identity Identity, authority string) error {
+		if identity.TenantID != mitmTestTenant {
+			t.Fatalf("preflight tenant = %q, want %s", identity.TenantID, mitmTestTenant)
+		}
+		if authority != mitmTestHostPort {
+			t.Fatalf("preflight authority = %q, want %s", authority, mitmTestHostPort)
+		}
+
+		return errMITMLeafGenerationLimit
+	})
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodConnect, "http://"+mitmTestHostPort, nil)
+	req.Host = mitmTestHostPort
+	req.Header.Set(headerNameProxyAuthorization, "Bearer "+token)
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want 429", w.Code)
+	}
+
+	var resp ErrorResponse
+	err := json.NewDecoder(w.Body).Decode(&resp)
+	if err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if resp.Code != errorCodeRateLimitExceeded {
+		t.Fatalf("error code = %q, want %q", resp.Code, errorCodeRateLimitExceeded)
 	}
 	if leafCalls != 0 {
 		t.Fatalf("leaf calls = %d, want 0", leafCalls)

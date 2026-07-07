@@ -23,6 +23,7 @@ func TestLoadControl(t *testing.T) {
 			config: `{
 				"config_version": "v1",
 				"control": {
+					"deployment_id": "dep_test",
 					"server": {
 						"host": "127.0.0.1",
 						"api_port": 8080,
@@ -49,6 +50,7 @@ func TestLoadControl(t *testing.T) {
 			config: `{
 				"config_version": "v1",
 				"control": {
+					"deployment_id": "dep_test",
 					"server": {
 						"host": "127.0.0.1",
 						"api_port": 0,
@@ -78,6 +80,7 @@ func TestLoadControl(t *testing.T) {
 			config: `{
 				"config_version": "v1",
 				"control": {
+					"deployment_id": "dep_test",
 					"server": {
 						"host": "127.0.0.1",
 						"api_port": 8080,
@@ -144,6 +147,7 @@ func TestLoadControl(t *testing.T) {
 			config: `{
 				"config_version": "v1",
 				"control": {
+					"deployment_id": "dep_test",
 					"server": {
 						"host": "127.0.0.1",
 						"api_port": 8080,
@@ -151,7 +155,9 @@ func TestLoadControl(t *testing.T) {
 						"mitm_enabled": true,
 						"mitm_port": 8082,
 						"mitm_ca_cert_file": "/tmp/ca.pem",
-						"mitm_ca_key_file": "/tmp/ca-key.pem"
+						"mitm_ca_key_file": "/tmp/ca-key.pem",
+						"mitm_leaf_kms_provider": "aws-kms",
+						"mitm_leaf_kms_key_id": "arn:test"
 					}
 				}
 			}`,
@@ -162,11 +168,14 @@ func TestLoadControl(t *testing.T) {
 			config: `{
 				"config_version": "v1",
 				"control": {
+					"deployment_id": "dep_test",
 					"server": {
 						"host": "127.0.0.1",
 						"api_port": 8080,
 						"metrics_port": 9090,
-						"mitm_enabled": true
+						"mitm_enabled": true,
+						"mitm_leaf_kms_provider": "aws-kms",
+						"mitm_leaf_kms_key_id": "arn:test"
 					}
 				}
 			}`,
@@ -279,13 +288,16 @@ func TestLoadControlDefaultsMITMPort(t *testing.T) {
 	path := writeConfig(t, `{
 		"config_version": "v1",
 		"control": {
+			"deployment_id": "dep_test",
 			"server": {
 				"host": "127.0.0.1",
 				"api_port": 8080,
 				"metrics_port": 9090,
 				"mitm_enabled": true,
 				"mitm_ca_cert_file": "/tmp/ca.pem",
-				"mitm_ca_key_file": "/tmp/ca-key.pem"
+				"mitm_ca_key_file": "/tmp/ca-key.pem",
+				"mitm_leaf_kms_provider": "aws-kms",
+				"mitm_leaf_kms_key_id": "arn:test"
 			}
 		}
 	}`)
@@ -308,13 +320,16 @@ func TestLoadControlMITMValidityDaysEnv(t *testing.T) {
 	path := writeConfig(t, `{
 		"config_version": "v1",
 		"control": {
+			"deployment_id": "dep_test",
 			"server": {
 				"host": "127.0.0.1",
 				"api_port": 8080,
 				"metrics_port": 9090,
 				"mitm_enabled": true,
 				"mitm_ca_cert_file": "/tmp/ca.pem",
-				"mitm_ca_key_file": "/tmp/ca-key.pem"
+				"mitm_ca_key_file": "/tmp/ca-key.pem",
+				"mitm_leaf_kms_provider": "aws-kms",
+				"mitm_leaf_kms_key_id": "arn:test"
 			}
 		}
 	}`)
@@ -334,13 +349,16 @@ func TestLoadControlMITMValidityDaysRejectsInvalidEnv(t *testing.T) {
 	path := writeConfig(t, `{
 		"config_version": "v1",
 		"control": {
+			"deployment_id": "dep_test",
 			"server": {
 				"host": "127.0.0.1",
 				"api_port": 8080,
 				"metrics_port": 9090,
 				"mitm_enabled": true,
 				"mitm_ca_cert_file": "/tmp/ca.pem",
-				"mitm_ca_key_file": "/tmp/ca-key.pem"
+				"mitm_ca_key_file": "/tmp/ca-key.pem",
+				"mitm_leaf_kms_provider": "aws-kms",
+				"mitm_leaf_kms_key_id": "arn:test"
 			}
 		}
 	}`)
@@ -348,6 +366,54 @@ func TestLoadControlMITMValidityDaysRejectsInvalidEnv(t *testing.T) {
 	_, err := LoadControl(path)
 	if err == nil || !strings.Contains(err.Error(), "server.mitm_cert_validity_days must be positive") {
 		t.Fatalf("LoadControl() error = %v, want validity error", err)
+	}
+}
+
+func TestLoadControlMITMRequiresDeploymentID(t *testing.T) {
+	t.Parallel()
+
+	path := writeConfig(t, `{
+		"config_version": "v1",
+		"control": {
+			"server": {
+				"host": "127.0.0.1",
+				"api_port": 8080,
+				"metrics_port": 9090,
+				"mitm_enabled": true,
+				"mitm_ca_cert_file": "/tmp/ca.pem",
+				"mitm_ca_key_file": "/tmp/ca-key.pem",
+				"mitm_leaf_kms_provider": "aws-kms",
+				"mitm_leaf_kms_key_id": "arn:test"
+			}
+		}
+	}`)
+
+	_, err := LoadControl(path)
+	if err == nil || !strings.Contains(err.Error(), "control.deployment_id is required") {
+		t.Fatalf("LoadControl() error = %v, want deployment id error", err)
+	}
+}
+
+func TestLoadControlDeploymentIDEnv(t *testing.T) {
+	t.Setenv("STRAW_CONTROL_DEPLOYMENT_ID", "dep_env")
+
+	path := writeConfig(t, `{
+		"config_version": "v1",
+		"control": {
+			"server": {
+				"host": "127.0.0.1",
+				"api_port": 8080,
+				"metrics_port": 9090
+			}
+		}
+	}`)
+
+	cfg, err := LoadControl(path)
+	if err != nil {
+		t.Fatalf("LoadControl() error = %v", err)
+	}
+	if cfg.DeploymentID != "dep_env" {
+		t.Fatalf("DeploymentID = %q, want dep_env", cfg.DeploymentID)
 	}
 }
 

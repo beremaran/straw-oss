@@ -19,11 +19,18 @@ type MITMConnectHandler struct {
 	authenticator *Authenticator
 	inner         http.Handler
 	leafLookup    MITMLeafLookup
+	leafPreflight MITMLeafPreflight
 }
 
 // NewMITMConnectHandler creates an authenticated CONNECT MITM bootstrap.
 func NewMITMConnectHandler(auth *Authenticator, inner http.Handler, leafLookup MITMLeafLookup) *MITMConnectHandler {
 	return &MITMConnectHandler{authenticator: auth, inner: inner, leafLookup: leafLookup}
+}
+
+// SetLeafPreflight wires an optional cache/admission check that runs before
+// the CONNECT tunnel is established.
+func (h *MITMConnectHandler) SetLeafPreflight(preflight MITMLeafPreflight) {
+	h.leafPreflight = preflight
 }
 
 func (h *MITMConnectHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -49,7 +56,26 @@ func (h *MITMConnectHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.leafPreflight != nil {
+		err := h.leafPreflight(r, identity, target.Host)
+		if err != nil {
+			writeMITMLeafPreflightError(w, requestID, err)
+
+			return
+		}
+	}
+
 	h.serveTunnel(w, r, requestID, identity, target.Host)
+}
+
+func writeMITMLeafPreflightError(w http.ResponseWriter, requestID string, err error) {
+	if errors.Is(err, errMITMLeafGenerationLimit) {
+		writePipelineError(w, requestID, &PipelineError{Code: RateLimitExceeded})
+
+		return
+	}
+
+	writePipelineError(w, requestID, &PipelineError{Code: ControlInternalError})
 }
 
 func (h *MITMConnectHandler) serveTunnel(w http.ResponseWriter, r *http.Request, requestID string, identity Identity, authority string) {

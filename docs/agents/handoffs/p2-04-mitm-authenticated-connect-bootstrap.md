@@ -36,7 +36,7 @@ Filled from the independent verifier's report.
 | Proxy-Authorization is the proxy auth boundary and must be stripped from forwarded headers. | already existed / preserved | CONNECT auth: `internal/control/connect_handler.go:85`; inner identity: `internal/control/mitm_handler.go:41`; stripping via `internal/control/proxy_handler.go:180`; existing `TestMITMHandlerMapsDecodedTLSRequest`. |
 | SNI vs Host mismatch and CONNECT target host/port are normalized/validated. | implemented / preserved | CONNECT target: `internal/control/connect_handler.go:115`; mismatch before leaf: `internal/control/mitm_connect_handler.go:77`; decoded request mismatch: `internal/control/mitm_handler.go:116`; `TestMITMConnectRejectsSNIMismatchBeforeLeafLookup`. |
 | MITM port purpose is 8083. | implemented through existing config/default and runtime binding | `cmd/control/main.go:310`; verifier also cited `internal/config/config.go:423` defaulting enabled MITM to 8083. |
-| Encrypted leaf cache storage, Redis locks, local singleflight, TTLs, and flood controls. | out of scope | Owned by `docs/tasks/p2/20-mitm-leaf-cert-cache.md`; no implementation added here. |
+| Encrypted leaf cache storage, Redis locks, local singleflight, TTLs, and flood controls. | completed later | Closed by `docs/tasks/p2/20-mitm-leaf-cert-cache.md`. |
 | MITM HTTP/2 ALPN. | out of scope | Owned by `docs/tasks/p2/16-ingress-http2-and-mitm-alpn.md`; this task keeps `http/1.1` only at `internal/control/mitm_connect_handler.go:69`. |
 | Tenant-admin CA configure/rotate APIs. | out of scope | Owned by `docs/tasks/p2/18-mitm-ca-configure-rotate-api.md`. |
 
@@ -65,7 +65,7 @@ Result:
 
 ## Remaining Work
 
-- None for this task. Encrypted leaf cache storage, Redis locks, local singleflight, TTLs, and flood controls remain owned by `docs/tasks/p2/20-mitm-leaf-cert-cache.md`.
+- None for this task. Encrypted leaf cache storage, Redis locks, local singleflight, TTLs, and flood controls were completed by `docs/tasks/p2/20-mitm-leaf-cert-cache.md`.
 
 ## Blockers
 

@@ -31,6 +31,7 @@ var (
 	errCredentialIDRequired     = errors.New("credential_id is required")
 	errPrivateKeyEnvRequired    = errors.New("private_key_ed25519_env is required")
 	errInvalidConfigVersion     = errors.New("invalid config_version")
+	errControlDeploymentIDReq   = errors.New("control.deployment_id is required when mitm_enabled is true")
 	errInvalidServerAPIPort     = errors.New("server.api_port must be between 1 and 65535")
 	errInvalidServerMetricsPort = errors.New("server.metrics_port must be between 1 and 65535")
 	errInvalidServerProxyPort   = errors.New("server.proxy_port must be 8081 when proxy_enabled is true")
@@ -38,6 +39,7 @@ var (
 	errInvalidServerMITMPort    = errors.New("server.mitm_port must be 8083 when mitm_enabled is true")
 	errMITMCAFilesRequired      = errors.New("server.mitm_ca_cert_file and server.mitm_ca_key_file are required when mitm_enabled is true")
 	errInvalidMITMValidityDays  = errors.New("server.mitm_cert_validity_days must be positive")
+	errMITMLeafKMSRequired      = errors.New("server.mitm_leaf_kms_provider and server.mitm_leaf_kms_key_id are required when mitm_enabled is true")
 	errMITMLeafKMSSplitConfig   = errors.New("server.mitm_leaf_kms_provider and server.mitm_leaf_kms_key_id must be supplied together")
 	errMITMLeafKMSUnsafeConfig  = errors.New("server.mitm_leaf_kms_provider must not be plaintext or static-key")
 	errInvalidEgressHealthPort  = errors.New("health_port must be between 1 and 65535")
@@ -54,13 +56,14 @@ type File struct {
 
 // ControlConfig is the control-service config block.
 type ControlConfig struct {
-	Server    ControlServerConfig    `json:"server"`
-	Request   ControlRequestConfig   `json:"request"`
-	Transport ControlTransportConfig `json:"transport"`
-	Worker    ControlWorkerConfig    `json:"worker"`
-	NATS      NATSConfig             `json:"nats"`
-	Database  DatabaseConfig         `json:"database"`
-	HTTP2     ControlHTTP2Config     `json:"http2"`
+	DeploymentID string                 `json:"deployment_id,omitempty"`
+	Server       ControlServerConfig    `json:"server"`
+	Request      ControlRequestConfig   `json:"request"`
+	Transport    ControlTransportConfig `json:"transport"`
+	Worker       ControlWorkerConfig    `json:"worker"`
+	NATS         NATSConfig             `json:"nats"`
+	Database     DatabaseConfig         `json:"database"`
+	HTTP2        ControlHTTP2Config     `json:"http2"`
 }
 
 // ControlWorkerConfig configures worker registration replay protection
@@ -373,19 +376,28 @@ func (f File) validateVersion() error {
 }
 
 func (c *ControlConfig) validate() error {
-	c.Server.applyDefaults()
+	c.applyDefaults()
+
+	if c.Server.MITMEnabled && c.DeploymentID == "" {
+		return errControlDeploymentIDReq
+	}
 
 	err := c.Server.validate()
 	if err != nil {
 		return err
 	}
 
-	c.applyDefaults()
-
 	return nil
 }
 
 func (c *ControlConfig) applyDefaults() {
+	c.DeploymentID = strings.TrimSpace(c.DeploymentID)
+	if raw := os.Getenv("STRAW_CONTROL_DEPLOYMENT_ID"); raw != "" {
+		c.DeploymentID = strings.TrimSpace(raw)
+	}
+
+	c.Server.applyDefaults()
+
 	if c.Request.MaxInlineRequestBodyBytes == 0 {
 		c.Request.MaxInlineRequestBodyBytes = 1_048_576
 	}
@@ -567,6 +579,20 @@ func (s ControlServerConfig) validate() error {
 }
 
 func (s ControlServerConfig) validateMITM() error {
+	err := s.validateMITMListener()
+	if err != nil {
+		return err
+	}
+
+	err = s.validateMITMLeafStorage()
+	if err != nil {
+		return err
+	}
+
+	return s.validateMITMLeafKMS()
+}
+
+func (s ControlServerConfig) validateMITMListener() error {
 	if s.MITMEnabled && s.MITMPort != 8083 {
 		return fmt.Errorf("%w: %d", errInvalidServerMITMPort, s.MITMPort)
 	}
@@ -579,7 +605,15 @@ func (s ControlServerConfig) validateMITM() error {
 		return errInvalidMITMValidityDays
 	}
 
-	return s.validateMITMLeafKMS()
+	return nil
+}
+
+func (s ControlServerConfig) validateMITMLeafStorage() error {
+	if s.MITMEnabled && (s.MITMLeafKMSProvider == "" || s.MITMLeafKMSKeyID == "") {
+		return errMITMLeafKMSRequired
+	}
+
+	return nil
 }
 
 func (s ControlServerConfig) validateMITMLeafKMS() error {
