@@ -14,6 +14,11 @@ these full paths.
 | `control.server.metrics_port`                           | `9090`     | 7, 24 (metrics, healthz, readyz)   |
 | `control.server.read_timeout_ms`                        | `30000`    | 24                                 |
 | `control.server.write_timeout_ms`                       | `30000`    | 24                                 |
+| `control.server.mitm_enabled`                           | `false`    | 17, 24                             |
+| `control.server.mitm_port`                              | `8083`     | 17, 24                             |
+| `control.server.mitm_ca_cert_file`                      | —          | 17, 24                             |
+| `control.server.mitm_ca_key_file`                       | —          | 17, 24                             |
+| `control.server.mitm_cert_validity_days`                | `30`       | 17, 24                             |
 | `control.request.default_timeout_ms`                    | `60000`    | 24                                 |
 | `control.request.max_timeout_ms`                        | `300000`   | 24                                 |
 | `control.request.max_inline_request_body_bytes`         | `1048576`  | 24                                 |
@@ -120,6 +125,11 @@ control:
     metrics_port: 9090
     read_timeout_ms: 30000
     write_timeout_ms: 30000
+    mitm_enabled: false
+    mitm_port: 8083
+    mitm_ca_cert_file: "/etc/straw/mitm/ca.pem"
+    mitm_ca_key_file: "/etc/straw/mitm/ca-key.pem"
+    mitm_cert_validity_days: 30
 
   request:
     default_timeout_ms: 60000

@@ -977,10 +977,7 @@ func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.API
 	configureRequestHandler(requestHandler, configCache, pool, dispatcher)
 
 	mux := http.NewServeMux()
-	serveAdminUIRoutes(mux)
-	mux.Handle("POST /api/v1/requests", requestHandler)
-	mux.HandleFunc("POST /api/v1/requests:stream", requestHandler.ServeStreamHTTP)
-	serveAdminRoutes(mux, adminHandlers)
+	serveControlRoutes(mux, controlConfig, requestHandler, authenticator, configCache, adminHandlers)
 
 	if chWriters.sink != nil {
 		serveTelemetryRoutes(mux, &control.TelemetryHandlers{
@@ -994,6 +991,14 @@ func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.API
 	return mux, proxyHandler, connectHandler, mitmHandler
 }
 
+func serveControlRoutes(mux *http.ServeMux, controlConfig config.ControlConfig, requestHandler *control.RequestHandler, authenticator *control.Authenticator, configCache *control.ConfigCache, adminHandlers *control.AdminHandlers) {
+	serveAdminUIRoutes(mux)
+	mux.Handle("POST /api/v1/requests", requestHandler)
+	mux.HandleFunc("POST /api/v1/requests:stream", requestHandler.ServeStreamHTTP)
+	serveMITMCARoutes(mux, controlConfig, authenticator, configCache)
+	serveAdminRoutes(mux, adminHandlers)
+}
+
 func configureRequestHandler(h *control.RequestHandler, configCache *control.ConfigCache, pool *pgxpool.Pool, dispatcher control.RequestDispatcher) {
 	h.SetConfigCache(configCache)
 	h.SetPayloadCapturePolicyStore(control.NewPostgresPayloadCapturePolicyStore(pool))
@@ -1005,6 +1010,18 @@ func serveTelemetryRoutes(mux *http.ServeMux, h *control.TelemetryHandlers) {
 	mux.HandleFunc("GET /api/v1/telemetry/requests/{request_id}", h.RequestDetail)
 	mux.HandleFunc("GET /api/v1/telemetry/workers", h.Workers)
 	mux.HandleFunc("GET /api/v1/telemetry/audit", h.Audit)
+}
+
+func serveMITMCARoutes(mux *http.ServeMux, controlConfig config.ControlConfig, authenticator *control.Authenticator, configCache *control.ConfigCache) {
+	if controlConfig.Server.MITMCACertFile == "" {
+		return
+	}
+
+	mux.Handle("GET /api/v1/mitm/ca.pem", &control.MITMCAHandler{
+		Authenticator: authenticator,
+		ConfigCache:   configCache,
+		CertFile:      controlConfig.Server.MITMCACertFile,
+	})
 }
 
 func buildIngressHandlers(controlConfig config.ControlConfig, authenticator *control.Authenticator, configCache *control.ConfigCache, metadata control.RequestMetadataRecorder, dispatcher control.RequestDispatcher) (http.Handler, http.Handler, http.Handler) {
