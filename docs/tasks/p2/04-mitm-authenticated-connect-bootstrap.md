@@ -1,6 +1,6 @@
 # 04 - MITM Authenticated CONNECT Bootstrap
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -64,23 +64,23 @@ tenant-aware leaf-generation hook. The encrypted cache itself is owned by
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Add a focused failing test proving MITM CONNECT authenticates the proxy request before inner TLS certificate
+- [x] Read all required planning docs.
+- [x] Add a focused failing test proving MITM CONNECT authenticates the proxy request before inner TLS certificate
       lookup.
-- [ ] Reuse or extract the existing CONNECT authentication, target validation, hijack, and `200 Connection Established`
+- [x] Reuse or extract the existing CONNECT authentication, target validation, hijack, and `200 Connection Established`
       helpers for the MITM listener.
-- [ ] Start an inner `tls.Server` on the hijacked CONNECT connection and call a leaf lookup/generation hook with the
+- [x] Start an inner `tls.Server` on the hijacked CONNECT connection and call a leaf lookup/generation hook with the
       authenticated tenant identity and normalized SNI/CONNECT authority.
-- [ ] Serve the decoded HTTPS request through the MITM dispatch path using the CONNECT-authenticated identity, without
+- [x] Serve the decoded HTTPS request through the MITM dispatch path using the CONNECT-authenticated identity, without
       requiring `Proxy-Authorization` inside the inner HTTPS request.
-- [ ] Remove or fail closed the old direct TLS MITM `GetCertificate` path so it cannot become a cache-writing path with
+- [x] Remove or fail closed the old direct TLS MITM `GetCertificate` path so it cannot become a cache-writing path with
       no tenant identity.
-- [ ] Preserve Host/SNI mismatch rejection, destination policy behavior, header stripping, shutdown, and
+- [x] Preserve Host/SNI mismatch rejection, destination policy behavior, header stripping, shutdown, and
       `ingress_type=mitm`.
-- [ ] Add tests for CONNECT auth failure, CONNECT target validation, tenant identity reaching the cert hook, decoded
+- [x] Add tests for CONNECT auth failure, CONNECT target validation, tenant identity reaching the cert hook, decoded
       MITM dispatch after inner TLS, and direct TLS path removal/fail-closed behavior.
-- [ ] Run focused MITM bootstrap tests, then `make check`.
-- [ ] Write a handoff note.
+- [x] Run focused MITM bootstrap tests, then `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

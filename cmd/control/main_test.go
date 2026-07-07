@@ -1,21 +1,24 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"errors"
 	"io"
 	"math/big"
 	"net"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/beremaran/straw/v2/internal/config"
+	"github.com/beremaran/straw/v2/internal/control"
 )
 
 const (
@@ -169,66 +172,112 @@ func TestGenerateMITMLeafSignsServerCertificate(t *testing.T) {
 	}
 }
 
-func TestMITMServerTerminatesTLSAndShutsDown(t *testing.T) {
+func TestConfigureMITMServerUsesAuthenticatedConnectBootstrap(t *testing.T) {
 	t.Parallel()
 
 	ca := newTestMITMCA(t)
-	server := &http.Server{ReadHeaderTimeout: readHeaderTimeout}
-	configureMITMServer(server, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.TLS == nil {
-			t.Error("request TLS state is nil")
-		}
-		_, _ = w.Write([]byte("ok"))
-	}), ca)
+	mitm, token := newTestMainMITMHandler(t)
+	server := httptest.NewServer(configureMITMServer(mitm, ca))
+	defer server.Close()
 
-	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", testControlHost+":0")
-	if err != nil {
-		t.Fatalf("listen: %v", err)
+	directTLS, err := (&tls.Dialer{Config: &tls.Config{RootCAs: x509.NewCertPool(), ServerName: testMITMLeafHost}}).DialContext(context.Background(), "tcp", strings.TrimPrefix(server.URL, "http://"))
+	if err == nil {
+		_ = directTLS.Close()
+		t.Fatal("direct TLS to MITM port succeeded, want CONNECT bootstrap")
 	}
 
-	errCh := make(chan error, 1)
-	go func() {
-		errCh <- server.ServeTLS(listener, "", "")
-	}()
+	conn, err := (&net.Dialer{}).DialContext(context.Background(), "tcp", strings.TrimPrefix(server.URL, "http://"))
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	_, err = io.WriteString(conn, "CONNECT "+testMITMLeafHost+":443 HTTP/1.1\r\nHost: "+testMITMLeafHost+":443\r\nProxy-Authorization: Bearer "+token+"\r\n\r\n")
+	if err != nil {
+		t.Fatalf("write CONNECT: %v", err)
+	}
+	br := bufio.NewReader(conn)
+	resp, err := http.ReadResponse(br, &http.Request{Method: http.MethodConnect})
+	if err != nil {
+		t.Fatalf("read CONNECT: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("CONNECT status = %d, want 200", resp.StatusCode)
+	}
 
 	pool := x509.NewCertPool()
 	pool.AddCert(ca.cert)
-	client := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, ServerName: testMITMLeafHost}}}
-
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://"+listener.Addr().String()+"/", nil)
+	tlsConn := tls.Client(&testBufferedConn{Conn: conn, r: br}, &tls.Config{RootCAs: pool, ServerName: testMITMLeafHost})
+	err = tlsConn.HandshakeContext(context.Background())
 	if err != nil {
-		t.Fatalf("NewRequestWithContext() error = %v", err)
+		t.Fatalf("inner TLS handshake: %v", err)
 	}
-
-	resp, err := client.Do(req)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://"+testMITMLeafHost+"/", nil)
 	if err != nil {
-		t.Fatalf("GET MITM server: %v", err)
+		t.Fatalf("NewRequest() error = %v", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
-
-	body, err := io.ReadAll(resp.Body)
+	req.Host = testMITMLeafHost + ":443"
+	err = req.Write(tlsConn)
 	if err != nil {
-		t.Fatalf("read body: %v", err)
+		t.Fatalf("write inner request: %v", err)
 	}
-	if string(body) != "ok" {
-		t.Fatalf("body = %q, want ok", body)
-	}
-
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	err = server.Shutdown(shutdownCtx)
+	innerResp, err := http.ReadResponse(bufio.NewReader(tlsConn), req)
 	if err != nil {
-		t.Fatalf("Shutdown() error = %v", err)
+		t.Fatalf("read inner response: %v", err)
+	}
+	defer func() { _ = innerResp.Body.Close() }()
+	if innerResp.StatusCode != http.StatusOK {
+		t.Fatalf("inner status = %d, want 200", innerResp.StatusCode)
+	}
+}
+
+type testBufferedConn struct {
+	net.Conn
+	r *bufio.Reader
+}
+
+func (c *testBufferedConn) Read(p []byte) (int, error) {
+	return c.r.Read(p)
+}
+
+func newTestMainMITMHandler(t *testing.T) (*control.MITMHandler, string) {
+	t.Helper()
+
+	store := control.NewInMemoryAPIKeyStore()
+	pepper := []byte("pepper")
+	generated, err := control.GenerateAPIKey()
+	if err != nil {
+		t.Fatalf("GenerateAPIKey() error = %v", err)
+	}
+	err = store.Create(context.Background(), control.APIKeyRecord{
+		ID:         "key_main_mitm",
+		ScopeType:  control.ScopeTenant,
+		TenantID:   "ten_main_mitm",
+		Role:       control.RoleRequester,
+		Prefix:     generated.Prefix,
+		SecretHash: control.HashAPIKeySecret(generated.Secret, pepper),
+		Status:     control.APIKeyStatusActive,
+		CreatedAt:  time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
 	}
 
-	select {
-	case err := <-errCh:
-		if !errors.Is(err, http.ErrServerClosed) {
-			t.Fatalf("ServeTLS() error = %v, want ErrServerClosed", err)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("ServeTLS did not return after shutdown")
-	}
+	h := control.NewMITMHandler(1_048_576, 1_048_576, 120_000, control.NewAuthenticator(store, pepper))
+	h.SetDispatcher(testMainMITMDispatcher{})
+
+	return h, generated.Secret
+}
+
+type testMainMITMDispatcher struct{}
+
+func (testMainMITMDispatcher) Dispatch(context.Context, control.DispatchInput) (control.SuccessResponse, *control.PipelineError) {
+	return control.SuccessResponse{
+		Status:  http.StatusOK,
+		Headers: []control.HeaderPair{{Name: "Content-Type", Value: "text/plain"}},
+		Body:    control.ResponseBody{Mode: "inline_base64", DataBase64: "b2s="},
+	}, nil
 }
 
 func newTestMITMCA(t *testing.T) *mitmCA {
