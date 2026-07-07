@@ -81,11 +81,15 @@ func (h *ConnectHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ConnectHandler) authenticate(r *http.Request) (Identity, error) {
-	if h.authenticator == nil {
+	return authenticateConnect(h.authenticator, r)
+}
+
+func authenticateConnect(authenticator *Authenticator, r *http.Request) (Identity, error) {
+	if authenticator == nil {
 		return Identity{}, ErrAuthFailure
 	}
 
-	identity, err := h.authenticator.Authenticate(r.Context(), r.Header.Get(headerNameProxyAuthorization))
+	identity, err := authenticator.Authenticate(r.Context(), r.Header.Get(headerNameProxyAuthorization))
 	if err != nil {
 		return Identity{}, err
 	}

@@ -1,12 +1,22 @@
 package control
 
 import (
+	"bufio"
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"io"
+	"math/big"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/beremaran/straw/v2/internal/config"
 )
@@ -14,6 +24,8 @@ import (
 const (
 	mitmTestHost     = testExampleHost
 	mitmTestHostPort = mitmTestHost + ":443"
+	mitmTestTenant   = "ten_mitm"
+	mitmOtherHost    = "other.example"
 )
 
 func TestMITMHandlerMapsDecodedTLSRequest(t *testing.T) {
@@ -136,7 +148,7 @@ func TestMITMHandlerRejectsHostSNIMismatch(t *testing.T) {
 
 	h, token, dispatcher := newTestMITMHandler(t)
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
-	req.Host = "other.example"
+	req.Host = mitmOtherHost
 	req.TLS = &tls.ConnectionState{ServerName: mitmTestHost}
 	req.Header.Set(headerNameProxyAuthorization, "Bearer "+token)
 	w := httptest.NewRecorder()
@@ -148,6 +160,157 @@ func TestMITMHandlerRejectsHostSNIMismatch(t *testing.T) {
 	}
 	if dispatcher.calls != 0 {
 		t.Fatalf("dispatcher calls = %d, want 0", dispatcher.calls)
+	}
+}
+
+func TestMITMConnectAuthenticatesBeforeLeafLookupAndServesInnerRequest(t *testing.T) {
+	t.Parallel()
+
+	inner, token, dispatcher := newTestMITMHandler(t)
+	var gotIdentity Identity
+	var gotSNI, gotAuthority string
+	cert, pool := newTestServerCertificate(t, mitmTestHost)
+	h := NewMITMConnectHandler(inner.Authenticator(), inner, func(_ *http.Request, identity Identity, sni, authority string) (*tls.Certificate, error) {
+		gotIdentity = identity
+		gotSNI = sni
+		gotAuthority = authority
+
+		return cert, nil
+	})
+
+	server := httptest.NewServer(h)
+	defer server.Close()
+
+	conn, err := (&net.Dialer{}).DialContext(context.Background(), "tcp", strings.TrimPrefix(server.URL, "http://"))
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	_, err = io.WriteString(conn, "CONNECT Example.COM.:443 HTTP/1.1\r\nHost: Example.COM.:443\r\nProxy-Authorization: Bearer "+token+"\r\n\r\n")
+	if err != nil {
+		t.Fatalf("write CONNECT: %v", err)
+	}
+	br := bufio.NewReader(conn)
+	resp, err := http.ReadResponse(br, &http.Request{Method: http.MethodConnect})
+	if err != nil {
+		t.Fatalf("read CONNECT response: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("CONNECT status = %d, want 200", resp.StatusCode)
+	}
+
+	tlsConn := tls.Client(&bufferedConn{Conn: conn, r: br}, &tls.Config{RootCAs: pool, ServerName: mitmTestHost})
+	err = tlsConn.HandshakeContext(context.Background())
+	if err != nil {
+		t.Fatalf("inner TLS handshake: %v", err)
+	}
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://"+mitmTestHostPort+"/path", nil)
+	if err != nil {
+		t.Fatalf("NewRequest() error = %v", err)
+	}
+	req.Host = mitmTestHostPort
+	err = req.Write(tlsConn)
+	if err != nil {
+		t.Fatalf("write inner request: %v", err)
+	}
+	innerResp, err := http.ReadResponse(bufio.NewReader(tlsConn), req)
+	if err != nil {
+		t.Fatalf("read inner response: %v", err)
+	}
+	defer func() { _ = innerResp.Body.Close() }()
+	if innerResp.StatusCode != http.StatusNotFound {
+		t.Fatalf("inner status = %d, want dispatch response", innerResp.StatusCode)
+	}
+
+	if gotIdentity.TenantID != mitmTestTenant {
+		t.Fatalf("leaf identity tenant = %q, want %s", gotIdentity.TenantID, mitmTestTenant)
+	}
+	if gotSNI != mitmTestHost {
+		t.Fatalf("leaf sni = %q, want %q", gotSNI, mitmTestHost)
+	}
+	if gotAuthority != mitmTestHostPort {
+		t.Fatalf("leaf authority = %q, want %q", gotAuthority, mitmTestHostPort)
+	}
+	if dispatcher.last.Identity.TenantID != mitmTestTenant {
+		t.Fatalf("dispatch tenant = %q, want CONNECT-authenticated tenant", dispatcher.last.Identity.TenantID)
+	}
+}
+
+func TestMITMConnectRequiresProxyAuthorizationBeforeLeafLookup(t *testing.T) {
+	t.Parallel()
+
+	inner, _, dispatcher := newTestMITMHandler(t)
+	leafCalls := 0
+	h := NewMITMConnectHandler(inner.Authenticator(), inner, func(_ *http.Request, _ Identity, _, _ string) (*tls.Certificate, error) {
+		leafCalls++
+
+		cert, _ := newTestServerCertificate(t, mitmTestHost)
+
+		return cert, nil
+	})
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodConnect, "http://"+mitmTestHostPort, nil)
+	req.Host = mitmTestHostPort
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", w.Code)
+	}
+	if leafCalls != 0 {
+		t.Fatalf("leaf calls = %d, want 0", leafCalls)
+	}
+	if dispatcher.calls != 0 {
+		t.Fatalf("dispatcher calls = %d, want 0", dispatcher.calls)
+	}
+}
+
+func TestMITMConnectRejectsSNIMismatchBeforeLeafLookup(t *testing.T) {
+	t.Parallel()
+
+	inner, token, _ := newTestMITMHandler(t)
+	leafCalls := 0
+	h := NewMITMConnectHandler(inner.Authenticator(), inner, func(_ *http.Request, _ Identity, _, _ string) (*tls.Certificate, error) {
+		leafCalls++
+
+		cert, _ := newTestServerCertificate(t, mitmTestHost)
+
+		return cert, nil
+	})
+
+	server := httptest.NewServer(h)
+	defer server.Close()
+
+	conn, err := (&net.Dialer{}).DialContext(context.Background(), "tcp", strings.TrimPrefix(server.URL, "http://"))
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	_, err = io.WriteString(conn, "CONNECT "+mitmTestHostPort+" HTTP/1.1\r\nHost: "+mitmTestHostPort+"\r\nProxy-Authorization: Bearer "+token+"\r\n\r\n")
+	if err != nil {
+		t.Fatalf("write CONNECT: %v", err)
+	}
+	br := bufio.NewReader(conn)
+	resp, err := http.ReadResponse(br, &http.Request{Method: http.MethodConnect})
+	if err != nil {
+		t.Fatalf("read CONNECT response: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("CONNECT status = %d, want 200", resp.StatusCode)
+	}
+
+	tlsConn := tls.Client(&bufferedConn{Conn: conn, r: br}, &tls.Config{ServerName: mitmOtherHost})
+	err = tlsConn.HandshakeContext(context.Background())
+	if err == nil {
+		t.Fatal("inner TLS handshake error = nil, want SNI mismatch failure")
+	}
+	if leafCalls != 0 {
+		t.Fatalf("leaf calls = %d, want 0", leafCalls)
 	}
 }
 
@@ -164,7 +327,7 @@ func newTestMITMHandler(t *testing.T) (*MITMHandler, string, *captureProxyDispat
 	err = store.Create(context.Background(), APIKeyRecord{
 		ID:         "key_mitm_requester",
 		ScopeType:  ScopeTenant,
-		TenantID:   "ten_mitm",
+		TenantID:   mitmTestTenant,
 		Role:       RoleRequester,
 		Prefix:     generated.Prefix,
 		SecretHash: HashAPIKeySecret(generated.Secret, pepper),
@@ -222,4 +385,53 @@ func TestMITMNormalizeHost(t *testing.T) {
 	if got := normalizeMITMHost("[2001:db8::1]:443"); got != "[2001:db8::1]:443" {
 		t.Fatalf("normalizeMITMHost(ipv6) = %q", got)
 	}
+}
+
+type bufferedConn struct {
+	net.Conn
+	r *bufio.Reader
+}
+
+func (c *bufferedConn) Read(p []byte) (int, error) {
+	return c.r.Read(p)
+}
+
+func newTestServerCertificate(t *testing.T, host string) (*tls.Certificate, *x509.CertPool) {
+	t.Helper()
+
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() error = %v", err)
+	}
+	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	if err != nil {
+		t.Fatalf("serial: %v", err)
+	}
+	tpl := &x509.Certificate{
+		SerialNumber: serial,
+		Subject:      pkix.Name{CommonName: host},
+		DNSNames:     []string{host},
+		NotBefore:    time.Now().Add(-time.Minute),
+		NotAfter:     time.Now().Add(time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tpl, tpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatalf("CreateCertificate() error = %v", err)
+	}
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
+	cert, err := tls.X509KeyPair(certPEM, keyPEM)
+	if err != nil {
+		t.Fatalf("X509KeyPair() error = %v", err)
+	}
+	parsed, err := x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatalf("ParseCertificate() error = %v", err)
+	}
+	pool := x509.NewCertPool()
+	pool.AddCert(parsed)
+
+	return &cert, pool
 }

@@ -1,6 +1,8 @@
 package control
 
 import (
+	"context"
+	"crypto/tls"
 	"net"
 	"net/http"
 	"strings"
@@ -11,19 +13,41 @@ type MITMHandler struct {
 	*ProxyHandler
 }
 
+type mitmIdentityKey struct{}
+
+// MITMLeafLookup receives the CONNECT-authenticated tenant identity before the
+// inner TLS handshake selects a certificate.
+type MITMLeafLookup func(r *http.Request, identity Identity, sni, authority string) (*tls.Certificate, error)
+
 // NewMITMHandler creates the HTTPS MITM ingress handler.
 func NewMITMHandler(maxRequestBodyBytes, maxResponseBodyBytes, maxTimeoutMs uint64, auth *Authenticator, metadataWriter ...RequestMetadataRecorder) *MITMHandler {
 	return &MITMHandler{ProxyHandler: NewProxyHandler(maxRequestBodyBytes, maxResponseBodyBytes, maxTimeoutMs, auth, metadataWriter...)}
 }
 
+// Authenticator returns the authenticator used by this MITM handler.
+func (h *MITMHandler) Authenticator() *Authenticator {
+	return h.authenticator
+}
+
+// WithMITMIdentity attaches the CONNECT-authenticated identity to the decoded
+// inner HTTPS request.
+func WithMITMIdentity(ctx context.Context, identity Identity) context.Context {
+	return context.WithValue(ctx, mitmIdentityKey{}, identity)
+}
+
 func (h *MITMHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	requestID := generateRequestID()
 
-	identity, err := h.authenticateProxy(r)
-	if err != nil {
-		h.writeProxyAuthError(w, requestID, err)
+	identity, ok := r.Context().Value(mitmIdentityKey{}).(Identity)
+	if !ok {
+		var err error
 
-		return
+		identity, err = h.authenticateProxy(r)
+		if err != nil {
+			h.writeProxyAuthError(w, requestID, err)
+
+			return
+		}
 	}
 
 	validated, err := h.validateMITMRequest(w, r)

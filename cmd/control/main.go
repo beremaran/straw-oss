@@ -320,10 +320,10 @@ func serveMITMHTTP(ctx context.Context, controlConfig config.ControlConfig, hand
 		Addr:              addr,
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
-	configureMITMServer(server, handler, ca)
+	server.Handler = configureMITMServer(handler, ca)
 
 	go func() {
-		serveErr := server.ListenAndServeTLS("", "")
+		serveErr := server.ListenAndServe()
 		if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
 			slog.Error("mitm server failed", "error", serveErr)
 		}
@@ -342,17 +342,17 @@ func serveMITMHTTP(ctx context.Context, controlConfig config.ControlConfig, hand
 	}
 }
 
-func configureMITMServer(server *http.Server, handler http.Handler, ca *mitmCA) {
-	server.Handler = handler
-	server.ReadHeaderTimeout = readHeaderTimeout
-	server.TLSConfig = &tls.Config{
-		MinVersion: tls.VersionTLS12,
-		GetCertificate: func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
-			return generateMITMLeaf(ca, hello.ServerName)
-		},
-		NextProtos: []string{"http/1.1"},
+func configureMITMServer(handler http.Handler, ca *mitmCA) http.Handler {
+	mitm, ok := handler.(*control.MITMHandler)
+	if !ok {
+		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "mitm handler not configured", http.StatusInternalServerError)
+		})
 	}
-	server.TLSNextProto = make(map[string]func(*http.Server, *tls.Conn, http.Handler))
+
+	return control.NewMITMConnectHandler(mitm.Authenticator(), handler, func(_ *http.Request, _ control.Identity, sni, _ string) (*tls.Certificate, error) {
+		return generateMITMLeaf(ca, sni)
+	})
 }
 
 func loadMITMCACertificate(certFile, keyFile string) (*mitmCA, error) {
