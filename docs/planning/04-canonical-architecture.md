@@ -37,7 +37,7 @@ flowchart LR
 
   subgraph Executors
     Egress[Egress Workers]
-    Adapter[Provider Adapters]
+    Custom[Custom Egress implementations\nP2: built on the Egress SDK]
   end
 
   Body[Large-body transport\nP2: object storage or direct stream]
@@ -54,12 +54,12 @@ flowchart LR
   Control --> CH
   Control <--> NATS
   NATS <--> Egress
-  NATS <--> Adapter
+  NATS <--> Custom
   Control -. P2 .- Body
   Egress -. P2 .- Body
-  Adapter -. P2 .- Body
+  Custom -. P2 .- Body
   Egress --> Targets
   Egress --> Vendors
-  Adapter --> Vendors
-  Adapter --> Targets
+  Custom --> Vendors
+  Custom --> Targets
 ```

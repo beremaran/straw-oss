@@ -40,7 +40,7 @@ P0 must include contract-mapped tests.
 | SSRF          | local DNS validation connects only to validated IP; DNS rebinding between validation and dial is blocked       |
 | Timeout       | total deadline wins over phase timeout when simultaneous; phase timeouts bounded by remaining deadline         |
 
-P1/P2 add proxy, CONNECT, MITM, BodyRef, payload capture, Provider Adapter, telemetry read APIs, connection pooling,
+P1/P2 add proxy, CONNECT, MITM, BodyRef, payload capture, Egress SDK, telemetry read APIs, connection pooling,
 and HTTP/2 test rows before those features ship.
 
 P1 upstream connection pooling is specified in `docs/planning/b-upstream-connection-pooling.md`. Before implementation

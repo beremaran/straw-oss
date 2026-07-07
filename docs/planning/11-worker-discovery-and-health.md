@@ -1,7 +1,7 @@
 ## 11. Worker Discovery and Health
 
-Egress Workers and Provider Adapters use the same registration and heartbeat protocol. Provider Adapters are P2, but the
-protocol shape is common.
+All Egress implementations — the official worker and custom implementations built on the P2 Egress SDK — use the same
+registration and heartbeat protocol. The protocol shape is common; only execution behavior differs.
 
 ### Worker State Model
 

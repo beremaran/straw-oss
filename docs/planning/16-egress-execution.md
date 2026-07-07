@@ -42,7 +42,8 @@ proxy performs DNS resolution and connection establishment. In this mode:
 - If the deployment does not trust the proxy for SSRF enforcement, requests using this mode are rejected with
   `destination_denied`.
 
-**Provider adapter mode**: The adapter must enforce equivalent destination policy and report constrained facts back to
+**Executor-delegated mode**: A custom Egress implementation that delegates upstream execution internally (for example,
+forwarding to a commercial provider) must enforce equivalent destination policy and report constrained facts back to
 Control.
 
 Egress must block unless explicitly allowed by policy:
