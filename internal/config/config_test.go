@@ -74,6 +74,56 @@ func TestLoadControl(t *testing.T) {
 			}`,
 		},
 		{
+			name: "valid mitm listener",
+			config: `{
+				"config_version": "v1",
+				"control": {
+					"server": {
+						"host": "127.0.0.1",
+						"api_port": 8080,
+						"metrics_port": 9090,
+						"mitm_enabled": true,
+						"mitm_port": 8083,
+						"mitm_ca_cert_file": "/tmp/ca.pem",
+						"mitm_ca_key_file": "/tmp/ca-key.pem"
+					}
+				}
+			}`,
+		},
+		{
+			name: "invalid enabled mitm port",
+			config: `{
+				"config_version": "v1",
+				"control": {
+					"server": {
+						"host": "127.0.0.1",
+						"api_port": 8080,
+						"metrics_port": 9090,
+						"mitm_enabled": true,
+						"mitm_port": 8082,
+						"mitm_ca_cert_file": "/tmp/ca.pem",
+						"mitm_ca_key_file": "/tmp/ca-key.pem"
+					}
+				}
+			}`,
+			wantErr: "server.mitm_port must be 8083 when mitm_enabled is true",
+		},
+		{
+			name: "enabled mitm requires ca files",
+			config: `{
+				"config_version": "v1",
+				"control": {
+					"server": {
+						"host": "127.0.0.1",
+						"api_port": 8080,
+						"metrics_port": 9090,
+						"mitm_enabled": true
+					}
+				}
+			}`,
+			wantErr: "server.mitm_ca_cert_file and server.mitm_ca_key_file are required",
+		},
+		{
 			name: "invalid enabled proxy port",
 			config: `{
 					"config_version": "v1",
@@ -171,6 +221,32 @@ func TestLoadControlDefaultsConnectPort(t *testing.T) {
 	}
 	if cfg.Server.ConnectPort != 8082 {
 		t.Fatalf("connect_port = %d, want 8082", cfg.Server.ConnectPort)
+	}
+}
+
+func TestLoadControlDefaultsMITMPort(t *testing.T) {
+	t.Parallel()
+
+	path := writeConfig(t, `{
+		"config_version": "v1",
+		"control": {
+			"server": {
+				"host": "127.0.0.1",
+				"api_port": 8080,
+				"metrics_port": 9090,
+				"mitm_enabled": true,
+				"mitm_ca_cert_file": "/tmp/ca.pem",
+				"mitm_ca_key_file": "/tmp/ca-key.pem"
+			}
+		}
+	}`)
+
+	cfg, err := LoadControl(path)
+	if err != nil {
+		t.Fatalf("LoadControl() error = %v", err)
+	}
+	if cfg.Server.MITMPort != 8083 {
+		t.Fatalf("mitm_port = %d, want 8083", cfg.Server.MITMPort)
 	}
 }
 

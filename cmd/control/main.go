@@ -4,14 +4,21 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"log/slog"
+	"math/big"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"os/signal"
 	"sync"
@@ -41,9 +48,21 @@ const (
 	clickHouseWriteTimeout  = 5 * time.Second
 	healthcheckProbeTimeout = 2 * time.Second
 	maxProxyHeaderCapture   = 64 << 10
+	mitmLeafKeyBits         = 2048
+	mitmSerialBits          = 128
 )
 
-var errHealthcheckNotReady = errors.New("healthcheck probe returned non-2xx status")
+var (
+	errHealthcheckNotReady = errors.New("healthcheck probe returned non-2xx status")
+	errDecodeMITMCACert    = errors.New("decode mitm ca cert")
+	errDecodeMITMCAKey     = errors.New("decode mitm ca key")
+	errOpenConfiguredFile  = errors.New("open configured file")
+)
+
+type mitmCA struct {
+	cert *x509.Certificate
+	key  any
+}
 
 func main() {
 	slog.SetDefault(logging.New("control"))
@@ -150,14 +169,14 @@ func runControl(controlConfig config.ControlConfig, natsConn *natsx.Connection) 
 
 	inflight := wireInFlightRegistry(ctx, controlConfig, redisClient)
 
-	mux, proxyHandler, connectHandler := buildControlMux(controlConfig, apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore, configCache, redisClient, natsConn, chWriters, metrics, inflight)
+	mux, proxyHandler, connectHandler, mitmHandler := buildControlMux(controlConfig, apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore, configCache, redisClient, natsConn, chWriters, metrics, inflight)
 
 	err = setupNATSSubscriptions(natsConn, workerRegistry, chWriters)
 	if err != nil {
 		return err
 	}
 
-	return serveControl(ctx, controlConfig, mux, proxyHandler, connectHandler, metricsReg)
+	return serveControl(ctx, controlConfig, mux, proxyHandler, connectHandler, mitmHandler, metricsReg)
 }
 
 func setupNATSSubscriptions(natsConn *natsx.Connection, workerRegistry *control.WorkerRegistry, chWriters *clickHouseWriters) error {
@@ -246,7 +265,7 @@ func openStores(controlConfig config.ControlConfig) (*pgxpool.Pool, *redis.Clien
 
 // serveControl starts the metrics/readiness server and the API server, marking
 // readiness true until ctx cancellation begins drain.
-func serveControl(ctx context.Context, controlConfig config.ControlConfig, mux *http.ServeMux, proxyHandler http.Handler, connectHandler http.Handler, metricsReg *prometheus.Registry) error {
+func serveControl(ctx context.Context, controlConfig config.ControlConfig, mux *http.ServeMux, proxyHandler http.Handler, connectHandler http.Handler, mitmHandler http.Handler, metricsReg *prometheus.Registry) error {
 	ready := &atomic.Bool{}
 	ready.Store(true)
 
@@ -259,7 +278,164 @@ func serveControl(ctx context.Context, controlConfig config.ControlConfig, mux *
 	stopConnect := serveConnectHTTP(ctx, controlConfig, connectHandler)
 	defer stopConnect()
 
+	stopMITM := serveMITMHTTP(ctx, controlConfig, mitmHandler)
+	defer stopMITM()
+
 	return serveControlHTTP(ctx, controlConfig, mux, ready)
+}
+
+func serveMITMHTTP(ctx context.Context, controlConfig config.ControlConfig, handler http.Handler) func() {
+	if !controlConfig.Server.MITMEnabled || handler == nil {
+		return func() {}
+	}
+
+	addr := fmt.Sprintf("%s:%d", controlConfig.Server.Host, controlConfig.Server.MITMPort)
+
+	ca, err := loadMITMCACertificate(controlConfig.Server.MITMCACertFile, controlConfig.Server.MITMCAKeyFile)
+	if err != nil {
+		slog.Error("mitm ca load failed", "error", err)
+
+		return func() {}
+	}
+
+	server := &http.Server{
+		Addr:              addr,
+		ReadHeaderTimeout: readHeaderTimeout,
+	}
+	configureMITMServer(server, handler, ca)
+
+	go func() {
+		serveErr := server.ListenAndServeTLS("", "")
+		if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+			slog.Error("mitm server failed", "error", serveErr)
+		}
+	}()
+
+	slog.Info("mitm proxy listening", "addr", addr)
+
+	return func() {
+		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), controlShutdownTimeout)
+		defer cancel()
+
+		shutdownErr := server.Shutdown(shutdownCtx)
+		if shutdownErr != nil {
+			slog.Error("shutdown mitm server failed", "error", shutdownErr)
+		}
+	}
+}
+
+func configureMITMServer(server *http.Server, handler http.Handler, ca *mitmCA) {
+	server.Handler = handler
+	server.ReadHeaderTimeout = readHeaderTimeout
+	server.TLSConfig = &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		GetCertificate: func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+			return generateMITMLeaf(ca, hello.ServerName)
+		},
+		NextProtos: []string{"http/1.1"},
+	}
+	server.TLSNextProto = make(map[string]func(*http.Server, *tls.Conn, http.Handler))
+}
+
+func loadMITMCACertificate(certFile, keyFile string) (*mitmCA, error) {
+	certPEM, err := readConfiguredFile(certFile)
+	if err != nil {
+		return nil, fmt.Errorf("read mitm ca cert: %w", err)
+	}
+
+	keyPEM, err := readConfiguredFile(keyFile)
+	if err != nil {
+		return nil, fmt.Errorf("read mitm ca key: %w", err)
+	}
+
+	block, _ := pem.Decode(certPEM)
+	if block == nil {
+		return nil, errDecodeMITMCACert
+	}
+
+	ca, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("parse mitm ca cert: %w", err)
+	}
+
+	keyBlock, _ := pem.Decode(keyPEM)
+	if keyBlock == nil {
+		return nil, errDecodeMITMCAKey
+	}
+
+	key, err := x509.ParsePKCS8PrivateKey(keyBlock.Bytes)
+	if err != nil {
+		key, err = x509.ParsePKCS1PrivateKey(keyBlock.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("parse mitm ca key: %w", err)
+		}
+	}
+
+	return &mitmCA{cert: ca, key: key}, nil
+}
+
+func readConfiguredFile(path string) ([]byte, error) {
+	fd, err := syscall.Open(path, syscall.O_RDONLY, 0)
+	if err != nil {
+		return nil, fmt.Errorf("open configured file: %w", err)
+	}
+
+	f := os.NewFile(uintptr(fd), path)
+	if f == nil {
+		_ = syscall.Close(fd)
+
+		return nil, errOpenConfiguredFile
+	}
+
+	defer func() {
+		_ = f.Close()
+	}()
+
+	b, err := io.ReadAll(f)
+	if err != nil {
+		return nil, fmt.Errorf("read configured file: %w", err)
+	}
+
+	return b, nil
+}
+
+func generateMITMLeaf(ca *mitmCA, serverName string) (*tls.Certificate, error) {
+	if serverName == "" {
+		serverName = "mitm.local"
+	}
+
+	key, err := rsa.GenerateKey(rand.Reader, mitmLeafKeyBits)
+	if err != nil {
+		return nil, fmt.Errorf("generate mitm leaf key: %w", err)
+	}
+
+	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), mitmSerialBits))
+	if err != nil {
+		return nil, fmt.Errorf("generate mitm leaf serial: %w", err)
+	}
+
+	tpl := &x509.Certificate{
+		SerialNumber: serial,
+		Subject:      pkix.Name{CommonName: serverName},
+		NotBefore:    time.Now().Add(-time.Minute),
+		NotAfter:     time.Now().Add(30 * 24 * time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	}
+
+	ip, err := netip.ParseAddr(serverName)
+	if err == nil {
+		tpl.IPAddresses = []net.IP{ip.AsSlice()}
+	} else {
+		tpl.DNSNames = []string{serverName}
+	}
+
+	der, err := x509.CreateCertificate(rand.Reader, tpl, ca.cert, &key.PublicKey, ca.key)
+	if err != nil {
+		return nil, fmt.Errorf("sign mitm leaf: %w", err)
+	}
+
+	return &tls.Certificate{Certificate: [][]byte{der, ca.cert.Raw}, PrivateKey: key, Leaf: tpl}, nil
 }
 
 func serveConnectHTTP(ctx context.Context, controlConfig config.ControlConfig, handler http.Handler) func() {
@@ -755,7 +931,7 @@ func rehydrateWorkerAdminState(ctx context.Context, configStore *control.Postgre
 
 // buildControlMux assembles the HTTP handler with the Postgres-backed identity
 // and config stores.
-func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool, configStore *control.PostgresConfigStore, configCache *control.ConfigCache, redisClient *redis.Client, natsConn *natsx.Connection, chWriters *clickHouseWriters, metrics *control.Metrics, inflight *control.InFlightRegistry) (*http.ServeMux, http.Handler, http.Handler) {
+func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool, configStore *control.PostgresConfigStore, configCache *control.ConfigCache, redisClient *redis.Client, natsConn *natsx.Connection, chWriters *clickHouseWriters, metrics *control.Metrics, inflight *control.InFlightRegistry) (*http.ServeMux, http.Handler, http.Handler, http.Handler) {
 	tenantStore := control.NewPostgresTenantStore(pool)
 	adminHandlers := buildAdminHandlers(apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore, configCache, redisClient, inflight, tenantStore, chWriters.configAudit)
 
@@ -813,7 +989,9 @@ func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.API
 		})
 	}
 
-	return mux, buildProxyHandler(controlConfig, authenticator, configCache, chWriters.requestMetadata, dispatcher), buildConnectHandler(controlConfig, authenticator, dispatcher)
+	proxyHandler, connectHandler, mitmHandler := buildIngressHandlers(controlConfig, authenticator, configCache, chWriters.requestMetadata, dispatcher)
+
+	return mux, proxyHandler, connectHandler, mitmHandler
 }
 
 func configureRequestHandler(h *control.RequestHandler, configCache *control.ConfigCache, pool *pgxpool.Pool, dispatcher control.RequestDispatcher) {
@@ -827,6 +1005,12 @@ func serveTelemetryRoutes(mux *http.ServeMux, h *control.TelemetryHandlers) {
 	mux.HandleFunc("GET /api/v1/telemetry/requests/{request_id}", h.RequestDetail)
 	mux.HandleFunc("GET /api/v1/telemetry/workers", h.Workers)
 	mux.HandleFunc("GET /api/v1/telemetry/audit", h.Audit)
+}
+
+func buildIngressHandlers(controlConfig config.ControlConfig, authenticator *control.Authenticator, configCache *control.ConfigCache, metadata control.RequestMetadataRecorder, dispatcher control.RequestDispatcher) (http.Handler, http.Handler, http.Handler) {
+	return buildProxyHandler(controlConfig, authenticator, configCache, metadata, dispatcher),
+		buildConnectHandler(controlConfig, authenticator, dispatcher),
+		buildMITMHandler(controlConfig, authenticator, configCache, metadata, dispatcher)
 }
 
 func buildProxyHandler(controlConfig config.ControlConfig, authenticator *control.Authenticator, configCache *control.ConfigCache, metadata control.RequestMetadataRecorder, dispatcher control.RequestDispatcher) http.Handler {
@@ -854,6 +1038,24 @@ func buildConnectHandler(controlConfig config.ControlConfig, authenticator *cont
 
 	h := control.NewConnectHandler(authenticator)
 	h.SetDispatcher(dispatcher)
+
+	return h
+}
+
+func buildMITMHandler(controlConfig config.ControlConfig, authenticator *control.Authenticator, configCache *control.ConfigCache, metadata control.RequestMetadataRecorder, dispatcher control.RequestDispatcher) http.Handler {
+	if !controlConfig.Server.MITMEnabled {
+		return nil
+	}
+
+	h := control.NewMITMHandler(
+		controlConfig.Request.MaxInlineRequestBodyBytes,
+		controlConfig.Request.MaxInlineResponseBodyBytes,
+		controlConfig.Request.MaxTimeoutMs,
+		authenticator,
+		metadata,
+	)
+	h.SetDispatcher(dispatcher)
+	h.SetConfigCache(configCache)
 
 	return h
 }
