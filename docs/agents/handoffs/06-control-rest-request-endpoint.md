@@ -17,7 +17,10 @@ Task: `docs/tasks/p0/06-control-rest-request-endpoint.md`
   - Validates method (POST only), reads and parses JSON request body.
   - Delegates to `ValidateRequest` for schema validation.
   - Returns `ErrorResponse` for validation failures with correct HTTP status codes.
-  - Returns `SuccessResponse` envelope (stubbed execution path).
+  - Returned `SuccessResponse` envelope through the original stubbed execution path.
+    [Update 2026-07-07 sweep: this is historical only; the live handler now dispatches through
+    `internal/control/handler.go` -> `DefaultRequestDispatcher`, closed by
+    `docs/tasks/p0/24-control-request-dispatch-pipeline.md`.]
 - Added `internal/control/handler_test.go` with 29 tests covering:
   - Valid request with headers and body.
   - Missing method, CONNECT rejection, URL fragment/userinfo rejection.
@@ -66,7 +69,9 @@ Result:
 
 ## Notes
 
-- The handler currently stubs the execution path (returns HTTP 200 with a synthetic success envelope) because authentication, routing, assignment, and egress are deferred to later tasks.
+- Historical note: the task-06 handler originally stubbed the execution path. That is now resolved by
+  `docs/tasks/p0/24-control-request-dispatch-pipeline.md`; `RequestHandler` calls the real dispatcher and records
+  the actual response/error outcome.
 - The handler correctly validates the P0 request shape: all invalid fields, CONNECT, URL fragments, userinfo, Host header, BodyRef, capture_hint, body limits, and timeout limits are rejected.
 - Sample valid request:
   ```json

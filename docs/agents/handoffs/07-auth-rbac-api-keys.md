@@ -156,8 +156,15 @@ Key new tests (in addition to auth/RBAC unit tests for generation, hashing, pref
 - Full tenant resource schema (`docs/planning/26` §"Tenant") and remaining config endpoints (routing rules, executor
   pools, deny rules, injection policies, fingerprint profiles, rate limits, config audit list) — out of this task's
   scope, deferred to later tasks.
+  [Update 2026-07-07 sweep: resolved across the P0/P1 config tasks. Tenant lifecycle/status landed in
+  `docs/tasks/p0/29-tenant-lifecycle-and-status-enforcement.md`, tenant timeout/metadata-storage fields in
+  `docs/tasks/p0/46-tenant-p0-schema-fields.md`, routing/deny/injection/fingerprint/rate-limit surfaces in
+  `docs/tasks/p0/20-config-admin-apis.md`, executor pools in `docs/tasks/p0/30-executor-pool-config-api.md`, and
+  config change history in `docs/tasks/p0/31-config-change-history-api.md`.]
 - Per-tenant `operator` data-plane execution policy, if/when a tenant policy config resource is introduced (see
   Deviations).
+  [Update 2026-07-07 sweep: still not a gap; `docs/planning/06-identity-roles-and-tenant-isolation.md` defines this
+  as optional by tenant policy, and no tenant-policy resource is currently in a phase board.]
 
 ## Blockers
 

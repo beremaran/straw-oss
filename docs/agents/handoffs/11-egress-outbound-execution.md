@@ -57,6 +57,8 @@ Result:
   `cmd/egress/main.go` constructs it and discards it (`_ = egress.NewExecutor(...)`), and no
   assignment-consumption loop exists. Live invocation is owned by
   `docs/tasks/p0/23-egress-assignment-execution-loop.md`.
+  [Update 2026-07-07 sweep: resolved by `docs/tasks/p0/23-egress-assignment-execution-loop.md`; `cmd/egress/main.go`
+  now constructs the executor and passes it into `egress.Run`, which starts the assignment loop.]
 
 ## Blockers
 

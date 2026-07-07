@@ -41,3 +41,5 @@ Result:
 - Shutdown uses `Drain()` instead of `Close()`.
 - Subscription and publish wiring for registration, heartbeat, assignment, and stream frames is still deferred to
   tasks 17, 23, and 24.
+  [Update 2026-07-07 sweep: resolved — tasks 17, 23, and 24 are done and wire those subscriptions/publish paths in
+  the running Control/Egress binaries.]

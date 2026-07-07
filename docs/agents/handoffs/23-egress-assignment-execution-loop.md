@@ -30,6 +30,8 @@ Result: all passed; `make check` reported `0 issues` from golangci-lint.
 ## Remaining Work
 
 - Control-side dispatch, response buffering, and Control-owned synthesized terminal outcomes remain deferred to `docs/tasks/p0/24-control-request-dispatch-pipeline.md`.
+  [Update 2026-07-07 sweep: resolved by `docs/tasks/p0/24-control-request-dispatch-pipeline.md`; Control dispatch,
+  response buffering, and terminal outcome mapping are now on the live request path.]
 - Test-only `testutil.NewFakeNATSServer` is used in focused loop tests; no runtime fake, stub, or in-memory backend was added.
 
 ## Blockers

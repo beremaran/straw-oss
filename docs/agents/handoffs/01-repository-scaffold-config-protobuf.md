@@ -31,7 +31,12 @@ Result:
 ## Remaining Work
 
 - Generated protobuf plumbing is deferred to task 02.
+  [Update 2026-07-07 sweep: resolved by `docs/tasks/p0/02-canonical-protobuf-and-buf.md`; `api/proto/straw/v1`
+  contains the checked-in `.proto` contract and generated Go bindings.]
 - Only the minimal config shape for P0 startup is present.
+  [Update 2026-07-07 sweep: resolved by later P0/P1 tasks as each runtime surface landed; current config includes the
+  NATS/Postgres/Redis/ClickHouse, worker identity/capability, proxy, metrics, streaming, and P2 toggle surfaces
+  required by the active boards.]
 
 ## Blockers
 

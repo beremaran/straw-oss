@@ -90,12 +90,18 @@ which defaults to `time.Now`.
   validation only, consistent with tasks 03/06/07). This task implements the
   registration/heartbeat *processing* + subject/inbox helpers the future
   transport will call. Assignment/stream transport is task 10.
+  [Update 2026-07-07 sweep: resolved — `docs/tasks/p0/16-nats-client-foundation.md` added the live NATS client,
+  `docs/tasks/p0/17-worker-registration-heartbeat-over-nats.md` wired register/heartbeat request/reply, and
+  `docs/tasks/p0/23-egress-assignment-execution-loop.md` wired assignment/stream transport.]
 - Runtime state is in-process only (no Redis/TTL yet); Redis-backed worker session/heartbeat/load and cooldown state
   is now owned by `docs/tasks/p0/45-redis-backed-worker-runtime-state.md`.
 - Registration signature has no per-registration nonce (Core NATS
   request/reply gives no nonce channel in P0); it proves credential
   possession, with NATS subject ACLs + credential status as the outer
   controls. Documented in `registration_sign.go`.
+  [Update 2026-07-07 sweep: resolved — `docs/tasks/p0/35-worker-registration-replay-and-identity-key.md` added
+  `nonce` and `issued_at_unix_ms` to registration signing, Redis-backed nonce consumption, and persistent egress
+  identity keys.]
 - Capability-scope authoring via `POST /worker-credentials` (task 07 surface)
   is not added; `AllowedCapabilities` defaults to unrestricted.
   [Update 2026-07-06 sweep: resolved — `POST /worker-credentials` accepts and validates

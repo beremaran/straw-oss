@@ -115,9 +115,13 @@ Result: all `TestResolveDestinationPolicy_*` tests pass (21 cases); `make check`
   construction is explicitly deferred to
   `docs/tasks/p0/24-control-request-dispatch-pipeline.md` (this task's own Out of Scope
   list).
+  [Update 2026-07-07 sweep: resolved by `docs/tasks/p0/24-control-request-dispatch-pipeline.md`; dispatch now
+  resolves the destination policy bundle and includes it in `RequestStart`.]
 - Reconciling `internal/egress/executor.go`'s `AllowedCidrs` precedence with this
   resolver's override semantics, and wiring `DeniedHostSuffixes`/`DeniedCnameSuffixes`
   enforcement: owned by `docs/tasks/p0/26-egress-destination-policy-precedence.md`.
+  [Update 2026-07-07 sweep: resolved by `docs/tasks/p0/26-egress-destination-policy-precedence.md`; the remaining
+  CNAME-chain depth limitation was later closed by `docs/tasks/p1/25-cname-chain-inspection.md`.]
 
 ## Blockers
 
