@@ -1,4 +1,4 @@
-.PHONY: check commit fmt-check test postgres-migrations-check lint load-smoke production-deploy-check
+.PHONY: check commit fmt-check test postgres-migrations-check lint load-smoke production-deploy-check docs-website
 
 test:
 	go test ./...
@@ -18,6 +18,9 @@ load-smoke:
 
 production-deploy-check:
 	./deploy/production/check-compose.sh
+
+docs-website:
+	cd website && npm run build
 
 check: fmt-check test lint
 
