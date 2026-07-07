@@ -525,6 +525,17 @@ func TestLoadControlBodyTransportDefaultsAndValidation(t *testing.T) {
 			}`,
 			wantErr: "body_transport.direct_stream.stream_timeout_ms must be positive",
 		},
+		{
+			name: "object storage enabled but incomplete",
+			body: `{
+				"object_storage": {
+					"enabled": true,
+					"endpoint": "https://s3.example",
+					"bucket": "straw-bodies"
+				}
+			}`,
+			wantErr: "body_transport.object_storage requires endpoint, bucket, region",
+		},
 	}
 
 	for _, tt := range tests {

@@ -56,7 +56,11 @@ DataFrames, bodies over `large_body_threshold_bytes` select S3 BodyRef when obje
 DirectStreamRef when direct streaming is enabled (object storage taking precedence when both are on), no enabled
 large-body transport maps to `body_too_large` with `direction`/`limit_bytes`, disabled/unavailable BodyRef variants
 map to `body_ref_unavailable`, and only the resolved `stream_through_control_tee_object_storage` response-body mode
-validates. The request upload flow, response tee-through-Control flow, checksum/size verification, retention, and
-object-storage outage behavior are proven by tasks 06–08.
+validates. The object-storage foundation (task `docs/tasks/p2/06-object-storage-foundation.md`) must prove tenant/request-scoped
+object keys with high-entropy nonces, rejection of identifiers that could escape the tenant prefix, SigV4 presigned
+URLs bound to one object key and method with short/clamped expiry, server-side encryption signed into upload URLs, no
+bucket-listing surface, retention defaults/maximums (1–3 days), and the object-storage-unavailable sentinel that maps
+to `body_ref_unavailable`. The request upload flow, response tee-through-Control flow, and checksum/size verification
+are proven by tasks 07–08.
 
 P2 MITM leaf certificate behavior is specified in `docs/planning/c-mitm-leaf-certificate-design.md`. Before implementation ships, tests must prove cache miss generation, encrypted-at-rest private-key storage, cache hit reuse without regeneration, TTL bounded by certificate validity, CA and KMS/deployment-key rotation, local singleflight, Redis distributed lock coalescing, bounded generation concurrency, and per-tenant/global unique-SNI flood limits.
