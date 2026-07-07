@@ -41,7 +41,7 @@ Every in-phase field/endpoint/behavior from the task's cited planning-doc sectio
 | `straw_rate_limit_rejections_total`. | implemented | `deploy/observability/grafana/dashboards/straw-operational-overview.json:200` |
 | `straw_quota_rejections_total`. | implemented | `deploy/observability/grafana/dashboards/straw-operational-overview.json:205` |
 | Controlled Prometheus label cardinality and no full URLs/worker IDs in shared dashboards. | implemented | `deploy/observability/dashboard_test.go:52`, `deploy/observability/README.md:11` |
-| Egress direct metrics exposure decision. | out of scope | Blocked by `docs/planning/32-open-decisions.md`; owned by `docs/tasks/p1/15-egress-metrics-exposure.md`. |
+| Egress direct metrics exposure decision. | out of scope | Resolved by `docs/planning/32-open-decisions.md` ("P1 Egress Metrics Exposure — Resolved 2026-07-06") and implemented by `docs/tasks/p1/15-egress-metrics-exposure.md`. |
 | Structured JSON logs fields. | already existed | Logging shipped by `docs/tasks/p0/37-structured-json-logging.md`; this task adds metric dashboards only. |
 | Routing/coordination SLO p50 < 100 ms, p99 < 500 ms. | implemented | `deploy/observability/grafana/dashboards/straw-operational-overview.json:400` |
 | Control graceful-shutdown readiness/drain behavior. | implemented | Health/readiness probe panel at `deploy/observability/grafana/dashboards/straw-operational-overview.json:315`; operational behavior already implemented by earlier P0 tasks. |
@@ -50,7 +50,7 @@ Every in-phase field/endpoint/behavior from the task's cited planning-doc sectio
 | Redis outage behavior. | implemented | `deploy/observability/grafana/dashboards/straw-operational-overview.json:355` |
 | NATS outage behavior. | implemented | `deploy/observability/grafana/dashboards/straw-operational-overview.json:360` |
 | ClickHouse outage behavior. | implemented | `deploy/observability/grafana/dashboards/straw-operational-overview.json:365` |
-| Object storage outage behavior. | out of scope | P2 BodyRef behavior; owned by the unresolved `P2 BodyRef Response-Body Mode` decision in `docs/planning/32-open-decisions.md`. Dashboard includes the P2 outage row for visibility at `deploy/observability/grafana/dashboards/straw-operational-overview.json:370`. |
+| Object storage outage behavior. | out of scope | P2 BodyRef behavior; the `P2 BodyRef Response-Body Mode` decision is now resolved in `docs/planning/32-open-decisions.md` (2026-07-07) and implementation is owned by `docs/tasks/p2/05-bodyref-transport-selection.md`, `docs/tasks/p2/06-object-storage-foundation.md`, and `docs/tasks/p2/08-bodyref-response-body-flow.md`. Dashboard includes the P2 outage row for visibility at `deploy/observability/grafana/dashboards/straw-operational-overview.json:370`. |
 
 ## Verification
 
@@ -79,3 +79,5 @@ Result:
 ## Blockers
 
 - Commit/push is blocked until the pre-existing unmerged `docs/tasks/p0.md` state and unrelated staged edits are resolved or explicitly included.
+  [Update 2026-07-07 sweep: stale process blocker — the current sweep started from a clean working tree; no product
+  gap or owning task is required.]

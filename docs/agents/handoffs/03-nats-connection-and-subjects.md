@@ -34,6 +34,11 @@ Result:
 ## Remaining Work
 
 - Actual NATS client subscriptions and request flow are deferred to later tasks.
+  [Update 2026-07-07 sweep: resolved — the binaries now hold live NATS connections via
+  `docs/tasks/p0/16-nats-client-foundation.md`, worker registration/heartbeat subscriptions are wired by
+  `docs/tasks/p0/17-worker-registration-heartbeat-over-nats.md`, egress assignment consumption is wired by
+  `docs/tasks/p0/23-egress-assignment-execution-loop.md`, and Control request dispatch is wired by
+  `docs/tasks/p0/24-control-request-dispatch-pipeline.md`.]
 
 ## Blockers
 

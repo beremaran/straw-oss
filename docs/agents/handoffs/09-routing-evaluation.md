@@ -51,6 +51,9 @@ the pre-existing package (237 issues repo-wide before this change) and are not p
   added by task 13 (rate limits/quotas/sticky over Redis).]
 - Executor `AssignRequest` dispatch (actually sending the assignment over the NATS subject
   `Router.Evaluate` resolves) is task 10 (Assignment and stream lifecycle), out of scope here.
+  [Update 2026-07-07 sweep: resolved by the live transport tasks — `docs/tasks/p0/23-egress-assignment-execution-loop.md`
+  consumes assignment requests on Egress, and `docs/tasks/p0/24-control-request-dispatch-pipeline.md` sends
+  assignments from Control on the request path.]
 
 ## Blockers
 
@@ -70,3 +73,8 @@ the pre-existing package (237 issues repo-wide before this change) and are not p
   implemented — no destination/deny-list policy model exists yet in `internal/control` (that's task 12/
   egress policy territory). Routing here only applies tenant/pool/health/draining/disable/cooldown/
   capability filters.
+  [Update 2026-07-07 sweep: the destination-policy model now exists and is wired by
+  `docs/tasks/p0/22-control-destination-policy-resolution.md`,
+  `docs/tasks/p0/24-control-request-dispatch-pipeline.md`, and
+  `docs/tasks/p0/26-egress-destination-policy-precedence.md`. Routing itself remains worker/pool/capability
+  selection; destination allow/deny policy is enforced before and during execution, not as a router-only filter.]

@@ -62,6 +62,8 @@ Result: all pass, including `golangci-lint run --max-issues-per-linter 0 --max-s
 - None for this task's scope. **[Update 2026-07-06: Control-local `log_events` ingestion is now implemented by
   `docs/tasks/p1/20-log-events-ingestion.md`; Egress logs over NATS remain owned by
   `docs/tasks/p1/27-egress-log-events-nats-transport.md`.]**
+  [Update 2026-07-07 sweep: resolved — `docs/tasks/p1/27-egress-log-events-nats-transport.md` is done and wires
+  Egress structured logs through protobuf NATS to Control-backed ClickHouse `log_events`.]
 
 ## Blockers
 

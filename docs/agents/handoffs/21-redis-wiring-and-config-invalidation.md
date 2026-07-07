@@ -86,9 +86,13 @@ every Redis-backed test in `internal/control` ran for real rather than skipping.
   `RateLimiter`/`RateLimitAdmission`/`QuotaAdmission`/`StickySessions` sitting unused on
   `AdminHandlers` are `docs/tasks/p0/24-control-request-dispatch-pipeline.md`'s scope, as called
   out in the task's own Out of Scope section.
+  [Update 2026-07-07 sweep: resolved by `docs/tasks/p0/24-control-request-dispatch-pipeline.md`; `DefaultRequestDispatcher`
+  now calls rate-limit/quota admission and uses Redis-backed sticky sessions through the live Control wiring.]
 - `WorkerRegistry` runtime state stayed single-Control/in-memory in this task's scope. The Redis-backed worker
   session/heartbeat/load and cooldown state required by `docs/planning/21` is now owned by
   `docs/tasks/p0/45-redis-backed-worker-runtime-state.md`.
+  [Update 2026-07-07 sweep: resolved by `docs/tasks/p0/45-redis-backed-worker-runtime-state.md`; Control wires
+  `NewRedisWorkerRuntimeStore(redisClient)` into `WorkerRegistry`.]
 - Grepped the diff for `InMemory|stub|fake|synthetic|TODO`: no hits in the changed production
   files. (Tests use the pre-existing `fakeSnapshotStore`/`fakeInvalidationPublisher` doubles from
   task 19/20's `config_cache_test.go`, unchanged here.)
