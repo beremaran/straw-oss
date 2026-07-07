@@ -22,6 +22,8 @@ const defaultEgressHealthPort = 8090
 // default from docs/planning/24-static-configuration.md.
 const defaultIngressMode = "rest"
 
+// P2 large-body transport defaults and the single resolved response-body mode
+// from docs/planning/18-large-body-transport-p2.md and Section 32.
 const (
 	DefaultLargeBodyThresholdBytes = 1_048_576
 	DefaultBodyRetentionDays       = 1
@@ -73,7 +75,7 @@ type ControlConfig struct {
 	Server        ControlServerConfig        `json:"server"`
 	Request       ControlRequestConfig       `json:"request"`
 	Transport     ControlTransportConfig     `json:"transport"`
-	BodyTransport ControlBodyTransportConfig `json:"body_transport,omitempty"`
+	BodyTransport ControlBodyTransportConfig `json:"body_transport"`
 	Worker        ControlWorkerConfig        `json:"worker"`
 	NATS          NATSConfig                 `json:"nats"`
 	Database      DatabaseConfig             `json:"database"`
@@ -139,8 +141,8 @@ type ControlTransportConfig struct {
 type ControlBodyTransportConfig struct {
 	LargeBodyThresholdBytes uint64                  `json:"large_body_threshold_bytes,omitempty"`
 	ResponseBodyMode        string                  `json:"response_body_mode,omitempty"`
-	ObjectStorage           BodyObjectStorageConfig `json:"object_storage,omitempty"`
-	DirectStream            BodyDirectStreamConfig  `json:"direct_stream,omitempty"`
+	ObjectStorage           BodyObjectStorageConfig `json:"object_storage"`
+	DirectStream            BodyDirectStreamConfig  `json:"direct_stream"`
 }
 
 // BodyObjectStorageConfig configures the object-storage BodyRef transport.

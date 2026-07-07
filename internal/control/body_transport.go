@@ -7,27 +7,33 @@ import (
 	"github.com/beremaran/straw/v2/internal/config"
 )
 
+// BodyTransportDirection identifies whether a body is a request or response body.
 type BodyTransportDirection string
 
+// Body transport directions.
 const (
 	BodyTransportDirectionRequest  BodyTransportDirection = "request"
 	BodyTransportDirectionResponse BodyTransportDirection = "response"
 )
 
+// BodyTransportKind is one of the Section 18 large-body transports.
 type BodyTransportKind string
 
+// Large-body transports from docs/planning/18-large-body-transport-p2.md.
 const (
 	BodyTransportDataFrames      BodyTransportKind = "data_frames"
 	BodyTransportS3BodyRef       BodyTransportKind = "s3_body_ref"
 	BodyTransportDirectStreamRef BodyTransportKind = "direct_stream_ref"
 )
 
+// BodyTransportSelectionRequest describes a body to route through the Section 18 table.
 type BodyTransportSelectionRequest struct {
 	Direction        BodyTransportDirection
 	SizeBytes        uint64
 	InlineLimitBytes uint64
 }
 
+// BodyTransportSelection is the chosen transport plus the resolved response-body mode.
 type BodyTransportSelection struct {
 	Transport        BodyTransportKind
 	ResponseBodyMode string
@@ -66,6 +72,8 @@ func SelectBodyTransport(cfg config.ControlBodyTransportConfig, req BodyTranspor
 	return BodyTransportSelection{}, bodyTooLargeTransportError(req.Direction, req.InlineLimitBytes)
 }
 
+// ValidateBodyRefFrame rejects BodyRef frames whose transport is disabled by
+// config or whose reference is unusable, mapping either to body_ref_unavailable.
 func ValidateBodyRefFrame(cfg config.ControlBodyTransportConfig, frame *strawpb.BodyRefFrame) *PipelineError {
 	if frame == nil {
 		return &PipelineError{Code: ProtocolError}
@@ -75,11 +83,11 @@ func ValidateBodyRefFrame(cfg config.ControlBodyTransportConfig, frame *strawpb.
 
 	switch ref := frame.GetRef().(type) {
 	case *strawpb.BodyRefFrame_S3:
-		if !cfg.ObjectStorage.Enabled || ref.S3 == nil || (ref.S3.GetObjectKey() == "" && ref.S3.GetSignedUrl() == "") {
+		if !s3RefUsable(cfg, ref.S3) {
 			return bodyRefUnavailableError(BodyTransportDirectionRequest, BodyTransportS3BodyRef)
 		}
 	case *strawpb.BodyRefFrame_DirectStream:
-		if !cfg.DirectStream.Enabled || ref.DirectStream == nil || ref.DirectStream.GetEndpoint() == "" || ref.DirectStream.GetStreamId() == "" {
+		if !directStreamRefUsable(cfg, ref.DirectStream) {
 			return bodyRefUnavailableError(BodyTransportDirectionRequest, BodyTransportDirectStreamRef)
 		}
 	default:
@@ -87,6 +95,14 @@ func ValidateBodyRefFrame(cfg config.ControlBodyTransportConfig, frame *strawpb.
 	}
 
 	return nil
+}
+
+func s3RefUsable(cfg config.ControlBodyTransportConfig, ref *strawpb.S3BodyRef) bool {
+	return cfg.ObjectStorage.Enabled && ref != nil && (ref.GetObjectKey() != "" || ref.GetSignedUrl() != "")
+}
+
+func directStreamRefUsable(cfg config.ControlBodyTransportConfig, ref *strawpb.DirectStreamRef) bool {
+	return cfg.DirectStream.Enabled && ref != nil && ref.GetEndpoint() != "" && ref.GetStreamId() != ""
 }
 
 func bodyTooLargeTransportError(direction BodyTransportDirection, limitBytes uint64) *PipelineError {
