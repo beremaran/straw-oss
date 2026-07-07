@@ -36,18 +36,36 @@ DELETE requests on routing rules, pools, deny rules, and injection policies perf
     "name": "Acme Corp"
   }
   ```
+  `name` is the only field this endpoint accepts; the timeout and metadata-storage fields below are always
+  created at their defaults and can only be changed afterward via `PUT`.
 - **Response Status**: `201 Created`
 - **Response Body**:
   ```json
   {
-    "id": "ten_9a8f7b...",
+    "id": "c5b39be2-2c1b-4b3f-a9bb-971c74267fc2",
     "name": "Acme Corp",
     "status": "active",
+    "default_timeout_ms": 60000,
+    "max_timeout_ms": 300000,
+    "metadata_query_storage": "drop",
+    "metadata_path_storage": "hash",
     "rate_limit_ceiling": null,
-    "created_at": "2026-07-05T14:11:23Z",
-    "config_version": 1
+    "created_at": "2026-07-07T17:04:02Z",
+    "config_version": 0
   }
   ```
+
+Tenant fields:
+- `default_timeout_ms` (integer, default `60000`): timeout applied to a request from this tenant when it does not
+  specify `timeout_ms`.
+- `max_timeout_ms` (integer, default `300000`): the largest `timeout_ms` a request from this tenant may specify.
+  Must be `>= default_timeout_ms`, and both must be `>= 1000`.
+- `metadata_query_storage`, `metadata_path_storage` (string, one of `drop`, `hash`, `store`; defaults `drop` and
+  `hash` respectively): how the URL query string and path are recorded in ClickHouse request metadata. `drop` omits
+  the component, `hash` stores a stable hash for correlation without retaining the raw value, `store` retains it
+  as-is.
+
+Violating either constraint returns `400 Bad Request` with code `invalid_request`.
 
 ### List Tenants
 - **Endpoint**: `GET /api/v1/config/tenants`
@@ -65,11 +83,15 @@ DELETE requests on routing rules, pools, deny rules, and injection policies perf
   {
     "name": "Acme Corporation",
     "status": "active",
+    "default_timeout_ms": 30000,
+    "max_timeout_ms": 120000,
+    "metadata_query_storage": "hash",
+    "metadata_path_storage": "store",
     "rate_limit_ceiling": {
       "window_seconds": 60,
       "max_requests": 5000
     },
-    "expected_config_version": 1
+    "expected_config_version": 0
   }
   ```
 - **Response Body**: Returns updated Tenant object (`200 OK`).
@@ -131,7 +153,8 @@ Used to register and authorize Egress worker instances.
 
 ### Create Worker Credential
 - **Endpoint**: `POST /api/v1/config/worker-credentials`
-- **Role**: `tenant_admin`
+- **Role**: `tenant_admin` (scoped to the caller's tenant) or `system_admin` (may set `allowed_pools` spanning
+  multiple tenants; `allowed_pools` is required in that case).
 - **Request Body**:
   ```json
   {
@@ -142,15 +165,24 @@ Used to register and authorize Egress worker instances.
         "pool_id": "dev-pool"
       }
     ],
-    "public_key_ed25519_base64": "pRt97w+OVIQlr+uYeiECfFepc3WjylxQw/edkmcfprQ="
+    "public_key_ed25519_base64": "pRt97w+OVIQlr+uYeiECfFepc3WjylxQw/edkmcfprQ=",
+    "allowed_capabilities": {
+      "tags": ["datacenter"],
+      "countries": ["US"],
+      "regions": ["us-west-1"],
+      "ip_types": ["datacenter"],
+      "supported_ingress_modes": ["rest"]
+    }
   }
   ```
+  `allowed_capabilities` is optional; an empty/omitted object means the credential's claims are unrestricted at
+  registration time.
 - **Response Body**: Returns the created credential object with status `"active"` (`200 OK`).
 
 ### List Worker Credentials
 - **Endpoint**: `GET /api/v1/config/worker-credentials`
 - **Role**: `tenant_admin`
-- **Response Body**: Returns worker credentials scoped to the caller's tenant. The response includes `id`, `tenant_scope`, `executor_type`, `allowed_pools`, `public_key_ed25519_base64`, `status`, and `config_version`.
+- **Response Body**: Returns worker credentials scoped to the caller's tenant. The response includes `id`, `tenant_scope`, `executor_type`, `allowed_pools`, `allowed_capabilities`, `public_key_ed25519_base64`, `status`, and `config_version`.
 
 ### Revoke Worker Credential
 - **Endpoint**: `POST /api/v1/config/worker-credentials/{id}/revoke`
@@ -302,7 +334,8 @@ Modifies HTTP request headers prior to forwarding them to the destination.
     ]
   }
   ```
-- **Response Body**: Returns created policy (`200 OK`).
+- **Response Body**: Returns created policy (`200 OK`), including a read-only `max_operations` field (currently
+  `32`) — the cap on `operations` length. Exceeding it returns `400 Bad Request` with code `invalid_request`.
 
 ### List Injection Policies
 - **Endpoint**: `GET /api/v1/config/injection-policies`
