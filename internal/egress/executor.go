@@ -33,6 +33,7 @@ import (
 const (
 	schemeHTTPS             = "https"
 	defaultFallbackCacheTTL = 5 * time.Minute
+	errorFactDetailKey      = "fact"
 
 	injectionFactFailed     = "header_injection_failed"
 	invalidRequestStartFact = "invalid_request_start"
@@ -1673,7 +1674,7 @@ func (b *frameBuilder) end() *strawpb.StreamFrame {
 func (b *frameBuilder) error(failure *executionError) *strawpb.StreamFrame {
 	errFrame := &strawpb.ErrorFrame{
 		Code:    failure.code,
-		Details: map[string]string{"fact": failure.fact},
+		Details: map[string]string{errorFactDetailKey: failure.fact},
 	}
 	if failure.timeoutType != strawpb.TimeoutType_TIMEOUT_TYPE_UNSPECIFIED {
 		errFrame.TimeoutType = &failure.timeoutType

@@ -271,7 +271,5 @@ func runWorker(ctx context.Context, natsConn *natsx.Connection, cfg config.Egres
 }
 
 var runSDKWorker = func(ctx context.Context, natsConn *natsx.Connection, id sdkegress.Identity, caps sdkegress.Capabilities, executor *internalegress.Executor, heartbeatInterval time.Duration, ready *atomic.Bool) error {
-	return sdkegress.Run(ctx, natsConn, id, caps, heartbeatInterval, ready, func(sessionID string, maxConcurrency uint32) (sdkegress.AssignmentServer, error) {
-		return internalegress.NewWorker(natsConn, internalegress.Identity(id), executor, sessionID, maxConcurrency)
-	})
+	return internalegress.Run(ctx, natsConn, internalegress.Identity(id), internalegress.Capabilities(caps), executor, heartbeatInterval, ready)
 }

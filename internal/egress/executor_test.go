@@ -945,15 +945,14 @@ func TestWorkerShutdownClosesExecutorPool(t *testing.T) {
 		t.Fatalf("ExecuteWithTenant() frames = %#v, want success", frames)
 	}
 
-	worker := &Worker{executor: exec}
-	worker.closeExecutorIdleConnections()
+	exec.CloseIdleConnections()
 
 	deadline := time.Now().Add(time.Second)
 	for closedConns.Load() == 0 && time.Now().Before(deadline) {
 		time.Sleep(time.Millisecond)
 	}
 	if closedConns.Load() == 0 {
-		t.Fatal("worker shutdown cleanup did not close pooled idle connection")
+		t.Fatal("shutdown cleanup did not close pooled idle connection")
 	}
 }
 

@@ -1,6 +1,6 @@
 # 26 - Egress SDK Decoded Stream Runtime Rebase
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -42,15 +42,15 @@ and BodyRef request-body hooks in task 31.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Move exact-session assignment subscription and `AssignAck` handling into `sdk/egress`.
-- [ ] Move decoded `RequestStart`/inline body read, cancellation, response credit, and e2c publish behavior into
+- [x] Read all required planning docs.
+- [x] Move exact-session assignment subscription and `AssignAck` handling into `sdk/egress`.
+- [x] Move decoded `RequestStart`/inline body read, cancellation, response credit, and e2c publish behavior into
       `sdk/egress`.
-- [ ] Keep official outbound HTTP execution in `internal/egress.Executor`.
-- [ ] Add/move the decoded runtime tests listed in Expected Files.
-- [ ] Verify `sdk/egress` imports no `internal/*` packages.
-- [ ] Run focused tests, then `make check`.
-- [ ] Write a handoff note.
+- [x] Keep official outbound HTTP execution in `internal/egress.Executor`.
+- [x] Add/move the decoded runtime tests listed in Expected Files.
+- [x] Verify `sdk/egress` imports no `internal/*` packages.
+- [x] Run focused tests, then `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

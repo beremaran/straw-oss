@@ -2,7 +2,6 @@ package egress
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync/atomic"
 	"time"
@@ -23,8 +22,6 @@ type Capabilities = sdkegress.Capabilities
 
 // Capacity describes the executor's current admission state when an AssignRequest arrives.
 type Capacity = sdkegress.Capacity
-
-var errConnRequired = errors.New("nats connection is required")
 
 // BuildRegisterRequest assembles and signs a RegisterRequest for the worker.
 func BuildRegisterRequest(id Identity, caps Capabilities) (*strawpb.RegisterRequest, error) {
@@ -66,16 +63,42 @@ func Heartbeat(ctx context.Context, conn *natsx.Connection, id Identity, session
 	return nil
 }
 
-// Run delegates the session runtime to sdk/egress and keeps the assignment loop in this package.
+// Run delegates the session and decoded assignment runtime to sdk/egress.
 func Run(ctx context.Context, conn *natsx.Connection, id Identity, caps Capabilities, executor *Executor, heartbeatInterval time.Duration, ready *atomic.Bool) error {
 	err := sdkegress.Run(ctx, conn, id, caps, heartbeatInterval, ready, func(sessionID string, maxConcurrency uint32) (sdkegress.AssignmentServer, error) {
-		return NewWorker(conn, id, executor, sessionID, maxConcurrency)
+		return sdkegress.NewWorker(sdkegress.WorkerOptions{
+			Conn:           conn,
+			Identity:       sdkegress.Identity(id),
+			Executor:       executor,
+			BodyRefs:       bodyRefAdapter{executor: executor},
+			SessionID:      sessionID,
+			MaxConcurrency: maxConcurrency,
+			SupportedModes: []strawpb.RequestMode{strawpb.RequestMode_REQUEST_MODE_DECODED_HTTP},
+		})
 	})
 	if err != nil {
 		return fmt.Errorf("sdk run: %w", err)
 	}
 
 	return nil
+}
+
+type bodyRefAdapter struct {
+	executor *Executor
+}
+
+func (a bodyRefAdapter) DownloadBodyRef(ctx context.Context, frame *strawpb.BodyRefFrame) ([]byte, *strawpb.ErrorFrame) {
+	body, failure := a.executor.downloadBodyRef(ctx, frame)
+	if failure == nil {
+		return body, nil
+	}
+
+	details := map[string]string{errorFactDetailKey: failure.fact}
+	if failure.timeoutType != strawpb.TimeoutType_TIMEOUT_TYPE_UNSPECIFIED {
+		details["timeout_type"] = failure.timeoutType.String()
+	}
+
+	return nil, &strawpb.ErrorFrame{Code: failure.code, Details: details}
 }
 
 // FakeExecutor scripts deterministic e2c lifecycle frames for tests.
@@ -131,7 +154,7 @@ type errorFrame struct {
 func (p errorFrame) set(f *strawpb.StreamFrame) {
 	ef := &strawpb.ErrorFrame{Code: p.code}
 	if p.fact != "" {
-		ef.Details = map[string]string{"fact": p.fact}
+		ef.Details = map[string]string{errorFactDetailKey: p.fact}
 	}
 
 	f.Payload = &strawpb.StreamFrame_Error{Error: ef}
