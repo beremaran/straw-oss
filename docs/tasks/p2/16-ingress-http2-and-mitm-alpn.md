@@ -17,6 +17,7 @@ Implement ingress HTTP/2 stream mapping and MITM ALPN behavior if task 14 specif
 - Task 14 completed.
 - Task 02 completed if ALPN covers MITM.
 - Task 04 completed if ALPN covers MITM.
+- Task 20 completed if ALPN tests depend on cached MITM leaf selection.
 
 ## Out of Scope
 

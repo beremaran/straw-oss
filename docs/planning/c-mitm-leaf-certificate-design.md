@@ -5,10 +5,21 @@ This appendix defines the P2 MITM leaf-certificate policy consumed by:
 - `docs/tasks/p2/01-mitm-leaf-cert-design.md`
 - `docs/tasks/p2/02-mitm-ingress.md`
 - `docs/tasks/p2/03-mitm-ca-management.md`
-- `docs/tasks/p2/04-mitm-leaf-cert-cache.md`
+- `docs/tasks/p2/04-mitm-authenticated-connect-bootstrap.md`
+- `docs/tasks/p2/20-mitm-leaf-cert-cache.md`
 
 MITM leaf generation is disabled unless MITM is enabled for the deployment and tenant. Control is the only Straw
 process that can generate, read, decrypt, or serve generated leaf certificate bundles.
+
+Leaf generation and cache lookup require authenticated tenant identity before any cache key, KMS additional
+authenticated data, or per-tenant flood limit is evaluated. In explicit-proxy MITM, Control authenticates the CONNECT
+request first, then performs the inner server-side TLS handshake for the CONNECT authority with that authenticated
+tenant captured in the certificate-generation path. The SNI remains an input to host validation and cache scoping, but
+it is not a tenant identity source.
+
+`deployment_id` is the stable configured Control deployment identity (`control.deployment_id` /
+`STRAW_CONTROL_DEPLOYMENT_ID`). It is required when encrypted MITM leaf-bundle storage is enabled so cached private keys
+cannot be replayed across deployments.
 
 ---
 
@@ -70,6 +81,13 @@ does not permit plaintext key storage or bypass tenant/global limits.
 Unique-SNI flood protection is required because singleflight only deduplicates repeated SNIs. When limits are exceeded,
 Control fails the MITM request with a canonical overload/rate-limit error without generating a certificate.
 
+A direct TLS listener whose `GetCertificate` callback only receives ClientHello/SNI must not use a global, placeholder,
+or SNI-derived tenant in cache keys or KMS AAD. That path must be replaced by the authenticated CONNECT bootstrap before
+tenant-scoped cache storage ships, or it must fail closed without generating cached tenant-scoped bundles.
+
+That runtime replacement is owned by `docs/tasks/p2/04-mitm-authenticated-connect-bootstrap.md`; encrypted cache storage
+and flood controls are owned by `docs/tasks/p2/20-mitm-leaf-cert-cache.md`.
+
 ## 5. Required Tests Before Implementation Ships
 
 Implementation tasks must prove:
@@ -84,4 +102,3 @@ Implementation tasks must prove:
 - Redis lock collapses cross-Control same-SNI misses;
 - bounded generation concurrency is enforced;
 - per-tenant and global unique-SNI flood limits reject excess unique names without generation.
-

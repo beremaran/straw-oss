@@ -11,6 +11,13 @@ MITM does not change the client's JA3/JA4 fingerprint. The client's fingerprint 
 Control's server TLS configuration can affect compatibility, ALPN, supported versions, and certificates, but it cannot
 make an inbound client appear like a different browser client.
 
+MITM leaf certificate selection must run only after Control has authenticated the proxy request and knows the tenant.
+For explicit-proxy MITM, Control authenticates the CONNECT request first, then starts the inner server-side TLS
+handshake for the CONNECT authority using that authenticated tenant identity. A direct TLS `GetCertificate` path that
+only knows SNI must not read or write the tenant-scoped leaf cache with a placeholder tenant.
+Once tenant-scoped leaf cache storage is wired, the MITM listener is an explicit proxy CONNECT endpoint, not a direct
+TLS origin endpoint.
+
 ### Certificate Terms
 
 - Straw CA: operator-provided CA certificate/private key used to sign generated leaf certificates.

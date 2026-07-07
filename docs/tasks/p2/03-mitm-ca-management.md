@@ -19,7 +19,7 @@ Add operator-provided MITM CA configuration, optional local dev CA helpers, and 
 ## Out of Scope
 
 - Do not generate production CA keys inside Straw.
-- Do not implement leaf certificate cache.
+- Do not implement leaf certificate cache (task 20).
 - Do not let non-admin users rotate/configure the CA.
 
 ## Expected Files

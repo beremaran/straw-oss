@@ -4,20 +4,21 @@ Status: done
 
 ## Objective
 
-Add the minimal KMS-compatible encryption provider boundary and runtime config that task 04 can use before any
+Add the minimal KMS-compatible encryption provider boundary and runtime config that task 20 can use before any
 generated MITM leaf bundle containing private-key material is written outside Control memory.
 
 ## Context (gap being closed)
 
-Task 04 preflight found that it cannot implement encrypted shared leaf-bundle storage without first adding a KMS
-provider/config owner. Task 04 must store generated leaf certificate bundles according to task 01 without changing the
+The original task 04 preflight found that it could not implement encrypted shared leaf-bundle storage without first
+adding a KMS provider/config owner. The cache work is now task 20; it must store generated leaf certificate bundles
+according to task 01 without changing the
 resolved private-key policy. Appendix C requires generated bundles to include the public certificate chain and private
 key, and requires stored bundles to be encrypted through a KMS-compatible mechanism before they leave Control memory.
 Current Control config only exposes MITM enablement, port, CA files, and cert validity (`internal/config/config.go:97`),
 with only a cert-validity env override (`internal/config/config.go:422`). The current MITM TLS path calls
 `generateMITMLeaf` directly from `GetCertificate` (`cmd/control/main.go:332`), and `generateMITMLeaf` returns a
 `tls.Certificate` containing the private key without any encrypted bundle/envelope mechanism
-(`cmd/control/main.go:438`). This task owns the missing provider/config prerequisite so task 04 can stay focused on
+(`cmd/control/main.go:438`). This task owns the missing provider/config prerequisite so task 20 can stay focused on
 cache, locks, TTL, and flood controls.
 
 ## Required Planning Docs
@@ -36,7 +37,7 @@ cache, locks, TTL, and flood controls.
 
 ## Out of Scope
 
-- Do not implement the MITM leaf certificate cache, Redis keys/locks, local singleflight, or flood controls; task 04
+- Do not implement the MITM leaf certificate cache, Redis keys/locks, local singleflight, or flood controls; task 20
   owns those.
 - Do not add a cloud-provider SDK or new dependency.
 - Do not add a plaintext, static deployment-key, or "dev convenience" provider that production code can use for stored
@@ -52,7 +53,7 @@ cache, locks, TTL, and flood controls.
   tenant/deployment/SNI additional-authenticated-data helper.
 - Add: `internal/control/mitm_leaf_bundle_crypto_test.go` for provider/envelope tests using a test-only fake provider.
 - Modify: `cmd/control/main.go` only as needed for `cmd/control` to construct/validate the configured provider without
-  enabling cache storage before task 04.
+  enabling cache storage before task 20.
 
 ## Steps
 
@@ -65,7 +66,7 @@ cache, locks, TTL, and flood controls.
       replayed across scopes.
 - [x] Ensure production code has no plaintext/static-key provider; tests may use a fake provider in `_test.go`.
 - [x] Wire `cmd/control` to construct or validate the configured provider boundary, but do not write any leaf bundle
-      storage until task 04.
+      storage until task 20.
 - [x] Add tests for config validation, encrypted envelope round trip through the fake provider, AAD mismatch rejection,
       key-version rotation overlap, and stored ciphertext not containing PEM/private-key bytes.
 - [x] Run focused provider/config tests, then `make check`.
@@ -84,12 +85,12 @@ cache, locks, TTL, and flood controls.
 - Decrypt rejects a bundle when tenant ID, deployment ID, SNI, or CA identity/version AAD does not match.
 - Rotation overlap is testable: an old key version can decrypt during overlap, and disabling it causes decrypt failure.
 - No production code path provides a plaintext or static deployment-key provider for stored leaf private keys.
-- Task 04 lists this task as a prerequisite.
+- Task 20 lists this task as a prerequisite.
 
 ## Handoff Notes
 
 - Document the config key names, env vars, envelope fields, AAD fields, fake-provider test behavior, and the exact
-  constructor task 04 should call.
+  constructor task 20 should call.
 
 ## Stop Conditions
 
