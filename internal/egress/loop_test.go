@@ -1,6 +1,9 @@
 package egress
 
 import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -18,6 +21,7 @@ const (
 	loopTestWorker  = "loop_worker"
 	loopTestSession = "loop_session"
 	loopTestTenant  = "ten_loop"
+	bodyRefTestURL  = "https://example.com/"
 )
 
 func TestWorkerAcceptsAssignmentExecutesAndPublishesTerminalFrame(t *testing.T) {
@@ -245,6 +249,130 @@ func TestWorkerDownloadCreditGatesResponseData(t *testing.T) {
 	}
 	if frames[1].GetEnd() == nil {
 		t.Fatalf("terminal frame = %#v, want EndFrame", frames[1])
+	}
+}
+
+func TestReadRequestBodyRejectsBodyRefChecksumMismatch(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("tampered"))
+	}))
+	t.Cleanup(server.Close)
+
+	sum := sha256.Sum256([]byte("expected"))
+	exec := NewExecutor(ExecutorOptions{})
+	validator := natsx.NewStreamValidatorWithOptions(natsx.StreamValidatorOptions{
+		Attempt:       1,
+		InitialCredit: 8 << 20,
+		AllowBodyRef:  true,
+	})
+	frames := make(chan *strawpb.StreamFrame, 2)
+	frames <- &strawpb.StreamFrame{
+		StreamSeq: 1,
+		Attempt:   1,
+		Payload: &strawpb.StreamFrame_RequestStart{RequestStart: &strawpb.RequestStart{
+			Mode:           strawpb.RequestMode_REQUEST_MODE_DECODED_HTTP,
+			Method:         http.MethodPost,
+			Url:            bodyRefTestURL,
+			DeadlineUnixMs: time.Now().Add(time.Minute).UnixMilli(),
+		}},
+	}
+	frames <- &strawpb.StreamFrame{
+		StreamSeq: 2,
+		Attempt:   1,
+		Payload: &strawpb.StreamFrame_BodyRef{BodyRef: &strawpb.BodyRefFrame{
+			Ref: &strawpb.BodyRefFrame_S3{S3: &strawpb.S3BodyRef{
+				ObjectKey:     "tenant/ten_bodyref/request/req_bodyref/request/nonce",
+				SignedUrl:     server.URL,
+				ExpiresUnixMs: time.Now().Add(time.Minute).UnixMilli(),
+			}},
+			ExpectedSizeBytes: uint64(len("expected")),
+			Sha256Hex:         hex.EncodeToString(sum[:]),
+		}},
+	}
+
+	_, _, failure, ok := readRequestBody(context.Background(), validator, frames, int64(len("expected")), "ten_bodyref", "req_bodyref", exec)
+	if !ok || failure == nil || failure.code != strawpb.ErrorCode_ERROR_CODE_BODY_REF_UNAVAILABLE {
+		t.Fatalf("readRequestBody() ok=%v failure=%v, want body_ref_unavailable", ok, failure)
+	}
+}
+
+func TestReadRequestBodyRejectsExpiredBodyRef(t *testing.T) {
+	t.Parallel()
+
+	exec := NewExecutor(ExecutorOptions{Now: func() time.Time { return time.Unix(200, 0) }})
+	validator := natsx.NewStreamValidatorWithOptions(natsx.StreamValidatorOptions{
+		Attempt:       1,
+		InitialCredit: 8 << 20,
+		AllowBodyRef:  true,
+	})
+	frames := make(chan *strawpb.StreamFrame, 2)
+	frames <- &strawpb.StreamFrame{
+		StreamSeq: 1,
+		Attempt:   1,
+		Payload: &strawpb.StreamFrame_RequestStart{RequestStart: &strawpb.RequestStart{
+			Mode:           strawpb.RequestMode_REQUEST_MODE_DECODED_HTTP,
+			Method:         http.MethodPost,
+			Url:            bodyRefTestURL,
+			DeadlineUnixMs: time.Now().Add(time.Minute).UnixMilli(),
+		}},
+	}
+	frames <- &strawpb.StreamFrame{
+		StreamSeq: 2,
+		Attempt:   1,
+		Payload: &strawpb.StreamFrame_BodyRef{BodyRef: &strawpb.BodyRefFrame{
+			Ref: &strawpb.BodyRefFrame_S3{S3: &strawpb.S3BodyRef{
+				ObjectKey:     "tenant/ten_bodyref/request/req_bodyref/request/nonce",
+				SignedUrl:     "http://127.0.0.1/body",
+				ExpiresUnixMs: time.Unix(100, 0).UnixMilli(),
+			}},
+			ExpectedSizeBytes: 1,
+		}},
+	}
+
+	_, _, failure, ok := readRequestBody(context.Background(), validator, frames, 1, "ten_bodyref", "req_bodyref", exec)
+	if !ok || failure == nil || failure.code != strawpb.ErrorCode_ERROR_CODE_BODY_REF_UNAVAILABLE {
+		t.Fatalf("readRequestBody() ok=%v failure=%v, want expired body_ref_unavailable", ok, failure)
+	}
+}
+
+func TestReadRequestBodyRejectsBodyRefTenantRequestMismatch(t *testing.T) {
+	t.Parallel()
+
+	exec := NewExecutor(ExecutorOptions{})
+	validator := natsx.NewStreamValidatorWithOptions(natsx.StreamValidatorOptions{
+		Attempt:       1,
+		InitialCredit: 8 << 20,
+		AllowBodyRef:  true,
+	})
+	frames := make(chan *strawpb.StreamFrame, 2)
+	frames <- &strawpb.StreamFrame{
+		StreamSeq: 1,
+		Attempt:   1,
+		Payload: &strawpb.StreamFrame_RequestStart{RequestStart: &strawpb.RequestStart{
+			Mode:           strawpb.RequestMode_REQUEST_MODE_DECODED_HTTP,
+			Method:         http.MethodPost,
+			Url:            bodyRefTestURL,
+			DeadlineUnixMs: time.Now().Add(time.Minute).UnixMilli(),
+		}},
+	}
+	frames <- &strawpb.StreamFrame{
+		StreamSeq: 2,
+		Attempt:   1,
+		Payload: &strawpb.StreamFrame_BodyRef{BodyRef: &strawpb.BodyRefFrame{
+			Ref: &strawpb.BodyRefFrame_S3{S3: &strawpb.S3BodyRef{
+				ObjectKey:     "tenant/other/request/req_bodyref/request/nonce",
+				SignedUrl:     "http://127.0.0.1/body",
+				ExpiresUnixMs: time.Now().Add(time.Minute).UnixMilli(),
+			}},
+			ExpectedSizeBytes: 1,
+		}},
+	}
+
+	_, _, failure, ok := readRequestBody(context.Background(), validator, frames, 1, "ten_bodyref", "req_bodyref", exec)
+	if !ok || failure == nil || failure.fact != "body_ref_scope_mismatch" {
+		t.Fatalf("readRequestBody() ok=%v failure=%v, want body_ref_scope_mismatch", ok, failure)
 	}
 }
 

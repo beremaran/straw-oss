@@ -3,8 +3,11 @@ package control
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -260,6 +263,172 @@ func TestDispatcherControlNATSEgressRoundTrip(t *testing.T) {
 	}
 	if len(resp.Headers) == 0 {
 		t.Fatal("headers empty, want upstream headers")
+	}
+}
+
+func TestDispatcherSendsLargeRequestBodyRef(t *testing.T) {
+	t.Parallel()
+
+	natsServer := testutil.NewFakeNATSServer(t, 2_000_000)
+	conn := dispatchConnect(t, natsServer.URL())
+
+	c2eSubject, err := natsx.StreamSubject("req_bodyref", dispatchTestWorker, dispatchTestSess, natsx.DirectionControlToExecutor)
+	if err != nil {
+		t.Fatalf("StreamSubject: %v", err)
+	}
+
+	frames := make(chan *strawpb.StreamFrame, 2)
+	_, err = conn.Subscribe(c2eSubject, func(msg *nats.Msg) {
+		frames <- decodeDispatchFrame(msg.Data)
+	})
+	if err != nil {
+		t.Fatalf("Subscribe: %v", err)
+	}
+	_ = conn.Flush()
+
+	body := []byte("request body above threshold")
+	sum := sha256.Sum256(body)
+	store := &fakeRequestBodyRefStore{
+		frame: &strawpb.BodyRefFrame{
+			Ref: &strawpb.BodyRefFrame_S3{S3: &strawpb.S3BodyRef{
+				ObjectKey:     "tenant/ten_dispatch/request/req_bodyref/request/nonce",
+				SignedUrl:     "https://object.example/request",
+				ExpiresUnixMs: time.Now().Add(time.Minute).UnixMilli(),
+			}},
+			ExpectedSizeBytes: uint64(len(body)),
+			Sha256Hex:         hex.EncodeToString(sum[:]),
+		},
+	}
+
+	d := newTestDispatcher(t, []config.RoutingRule{dispatchRule()}, dispatchCandidates{dispatchCandidate()})
+	d.opts.NATS = conn
+	d.opts.BodyTransport = config.ControlBodyTransportConfig{
+		LargeBodyThresholdBytes: 3,
+		ObjectStorage:           config.BodyObjectStorageConfig{Enabled: true},
+	}.Normalized()
+	d.opts.BodyObjectStore = store
+
+	req := validatedDispatchRequest(t, "https://example.com/")
+	req.Method = http.MethodPost
+	req.BodyData = body
+
+	_, err = d.sendRequestStart(context.Background(), c2eSubject, DispatchInput{
+		RequestID: "req_bodyref",
+		Identity:  Identity{TenantID: dispatchTestTenant},
+		Request:   req,
+	}, dispatchRoute(), &DestinationPolicyResult{Policy: &strawpb.DestinationPolicy{}}, 1, time.Now().Add(time.Second))
+	if err != nil {
+		t.Fatalf("sendRequestStart() error = %v", err)
+	}
+
+	start := <-frames
+	if start.GetRequestStart() == nil {
+		t.Fatalf("first frame = %#v, want RequestStart", start)
+	}
+
+	ref := <-frames
+	if got := ref.GetBodyRef(); got == nil || got.GetS3().GetObjectKey() != store.frame.GetS3().GetObjectKey() {
+		t.Fatalf("second frame body_ref = %#v, want uploaded S3 ref", got)
+	}
+	if data := ref.GetData(); data != nil {
+		t.Fatalf("large request sent DataFrame: %#v", data)
+	}
+	if store.tenantID != dispatchTestTenant || store.requestID != "req_bodyref" || string(store.body) != string(body) {
+		t.Fatalf("upload scope/body = tenant %q request %q body %q", store.tenantID, store.requestID, string(store.body))
+	}
+}
+
+func TestDispatcherCleansUploadedRequestBodyRefOnPublishFailure(t *testing.T) {
+	t.Parallel()
+
+	natsServer := testutil.NewFakeNATSServer(t, 2_000_000)
+	conn := dispatchConnect(t, natsServer.URL())
+	conn.Close()
+
+	store := &fakeRequestBodyRefStore{
+		frame: &strawpb.BodyRefFrame{
+			Ref: &strawpb.BodyRefFrame_S3{S3: &strawpb.S3BodyRef{
+				ObjectKey:     "tenant/ten_dispatch/request/req_cleanup/request/nonce",
+				SignedUrl:     "https://object.example/request",
+				ExpiresUnixMs: time.Now().Add(time.Minute).UnixMilli(),
+			}},
+			ExpectedSizeBytes: 4,
+		},
+	}
+	d := newTestDispatcher(t, []config.RoutingRule{dispatchRule()}, dispatchCandidates{dispatchCandidate()})
+	d.opts.NATS = conn
+	d.opts.BodyTransport = config.ControlBodyTransportConfig{
+		LargeBodyThresholdBytes: 3,
+		ObjectStorage:           config.BodyObjectStorageConfig{Enabled: true},
+	}.Normalized()
+	d.opts.BodyObjectStore = store
+
+	req := validatedDispatchRequest(t, "https://example.com/")
+	req.Method = http.MethodPost
+	req.BodyData = []byte("body")
+
+	_, _, err := d.sendRequestBody(context.Background(), "straw.v1.req.req_cleanup.worker.session.c2e", DispatchInput{
+		RequestID: "req_cleanup",
+		Identity:  Identity{TenantID: dispatchTestTenant},
+		Request:   req,
+	}, time.Now().Add(time.Second), 1)
+	if err == nil {
+		t.Fatal("sendRequestBody() error = nil, want publish failure")
+	}
+	if store.deleted == nil || store.deleted.GetS3().GetObjectKey() != store.frame.GetS3().GetObjectKey() {
+		t.Fatalf("deleted BodyRef = %#v, want uploaded ref", store.deleted)
+	}
+}
+
+func TestDispatcherControlNATSEgressRoundTripLargeRequestBodyRef(t *testing.T) {
+	t.Parallel()
+
+	body := []byte("large body via object storage")
+	sum := sha256.Sum256(body)
+	object := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(body)
+	}))
+	t.Cleanup(object.Close)
+
+	d, stop := newLiveDispatchHarness(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read upstream request body: %v", err)
+		}
+		if string(raw) != string(body) {
+			t.Fatalf("upstream body = %q, want %q", string(raw), string(body))
+		}
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer stop()
+
+	d.opts.BodyTransport = config.ControlBodyTransportConfig{
+		LargeBodyThresholdBytes: 3,
+		ObjectStorage:           config.BodyObjectStorageConfig{Enabled: true},
+	}.Normalized()
+	d.opts.BodyObjectStore = &fakeRequestBodyRefStore{
+		frame: &strawpb.BodyRefFrame{
+			Ref: &strawpb.BodyRefFrame_S3{S3: &strawpb.S3BodyRef{
+				ObjectKey:     "tenant/ten_dispatch/request/req_dispatch/request/nonce",
+				SignedUrl:     object.URL,
+				ExpiresUnixMs: time.Now().Add(time.Minute).UnixMilli(),
+			}},
+			ExpectedSizeBytes: uint64(len(body)),
+			Sha256Hex:         hex.EncodeToString(sum[:]),
+		},
+	}
+
+	req := validatedDispatchRequest(t, rewriteDispatchHost(t, d.upstreamURL, "dispatch.test"))
+	req.Method = http.MethodPost
+	req.BodyData = body
+
+	resp, perr := d.Dispatch(context.Background(), dispatchInput(req))
+	if perr != nil {
+		t.Fatalf("Dispatch error = %#v", perr)
+	}
+	if resp.Status != http.StatusAccepted {
+		t.Fatalf("status = %d, want %d", resp.Status, http.StatusAccepted)
 	}
 }
 
@@ -683,6 +852,29 @@ func (c *recordingDispatchCandidates) RecordFailure(workerID string) {
 	if workerID == dispatchTestWorker {
 		c.count++
 	}
+}
+
+type fakeRequestBodyRefStore struct {
+	frame     *strawpb.BodyRefFrame
+	err       error
+	tenantID  string
+	requestID string
+	body      []byte
+	deleted   *strawpb.BodyRefFrame
+}
+
+func (s *fakeRequestBodyRefStore) UploadRequestBody(_ context.Context, tenantID, requestID string, body []byte) (*strawpb.BodyRefFrame, error) {
+	s.tenantID = tenantID
+	s.requestID = requestID
+	s.body = append([]byte(nil), body...)
+
+	return s.frame, s.err
+}
+
+func (s *fakeRequestBodyRefStore) DeleteRequestBody(_ context.Context, frame *strawpb.BodyRefFrame) error {
+	s.deleted = frame
+
+	return nil
 }
 
 func dispatchRoute() RouteOutcome {

@@ -158,9 +158,9 @@ func (d *DefaultRequestDispatcher) executeTunnelAttempt(ctx context.Context, in 
 
 	assignmentMs := millisSince(assignmentStarted, d.opts.Now())
 
-	nextSeq, err := d.sendRequestStart(c2eSubject, in, route, policy, configVersion, deadline)
+	nextSeq, err := d.sendRequestStart(ctx, c2eSubject, in, route, policy, configVersion, deadline)
 	if err != nil {
-		return dispatchResult{}, assignmentMs, &PipelineError{Code: TransportUnavailable}
+		return dispatchResult{}, assignmentMs, requestStreamPipelineError(err)
 	}
 
 	result, perr := d.streamTunnel(ctx, frames, route, deadline, c2eSubject, in, nextSeq, rw)

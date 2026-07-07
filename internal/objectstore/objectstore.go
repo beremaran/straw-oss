@@ -255,6 +255,13 @@ func (c *Client) PresignPut(key string, expiry time.Duration) (PresignedPut, err
 	return PresignedPut{URL: signed, Headers: map[string]string{sseHeader: sseValue}}, nil
 }
 
+// PresignDelete returns a short-lived SigV4 URL that grants DELETE on exactly
+// one object key. Control uses this for best-effort cleanup after upload
+// cancellation or request-stream publication failure.
+func (c *Client) PresignDelete(key string, expiry time.Duration) (string, error) {
+	return c.presign("DELETE", key, expiry, nil)
+}
+
 // presign implements S3 SigV4 query (presigned URL) signing over the standard
 // library. extraSigned headers (beyond host) are folded into SignedHeaders so
 // the request must carry them verbatim.
