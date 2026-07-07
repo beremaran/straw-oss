@@ -1,6 +1,6 @@
 # 27 - Egress SDK Raw Tunnel Runtime Rebase
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -46,13 +46,13 @@ internal-free.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Move raw tunnel stream runtime into `sdk/egress` behind a minimal dial/open interface.
-- [ ] Keep official outbound dial and dial-target validation in `internal/egress`.
-- [ ] Add/move the raw tunnel tests listed in Expected Files.
-- [ ] Verify `sdk/egress` imports no `internal/*` packages.
-- [ ] Run focused tests, then `make check`.
-- [ ] Write a handoff note.
+- [x] Read all required planning docs.
+- [x] Move raw tunnel stream runtime into `sdk/egress` behind a minimal dial/open interface.
+- [x] Keep official outbound dial and dial-target validation in `internal/egress`.
+- [x] Add/move the raw tunnel tests listed in Expected Files.
+- [x] Verify `sdk/egress` imports no `internal/*` packages.
+- [x] Run focused tests, then `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

@@ -3,6 +3,7 @@ package egress
 import (
 	"fmt"
 
+	strawpb "github.com/beremaran/straw/v2/api/proto/straw/v1"
 	"github.com/beremaran/straw/v2/internal/natsx"
 	sdkegress "github.com/beremaran/straw/v2/sdk/egress"
 )
@@ -17,8 +18,10 @@ func NewWorker(conn *natsx.Connection, id Identity, executor *Executor, sessionI
 		Identity:       sdkegress.Identity(id),
 		Executor:       executor,
 		BodyRefs:       bodyRefAdapter{executor: executor},
+		Tunnels:        tunnelAdapter{executor: executor},
 		SessionID:      sessionID,
 		MaxConcurrency: maxConcurrency,
+		SupportedModes: []strawpb.RequestMode{strawpb.RequestMode_REQUEST_MODE_DECODED_HTTP, strawpb.RequestMode_REQUEST_MODE_RAW_TUNNEL},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("sdk new worker: %w", err)

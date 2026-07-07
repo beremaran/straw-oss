@@ -3,6 +3,7 @@ package egress
 import (
 	"context"
 	"fmt"
+	"net"
 	"sync/atomic"
 	"time"
 
@@ -71,9 +72,10 @@ func Run(ctx context.Context, conn *natsx.Connection, id Identity, caps Capabili
 			Identity:       sdkegress.Identity(id),
 			Executor:       executor,
 			BodyRefs:       bodyRefAdapter{executor: executor},
+			Tunnels:        tunnelAdapter{executor: executor},
 			SessionID:      sessionID,
 			MaxConcurrency: maxConcurrency,
-			SupportedModes: []strawpb.RequestMode{strawpb.RequestMode_REQUEST_MODE_DECODED_HTTP},
+			SupportedModes: []strawpb.RequestMode{strawpb.RequestMode_REQUEST_MODE_DECODED_HTTP, strawpb.RequestMode_REQUEST_MODE_RAW_TUNNEL},
 		})
 	})
 	if err != nil {
@@ -99,6 +101,26 @@ func (a bodyRefAdapter) DownloadBodyRef(ctx context.Context, frame *strawpb.Body
 	}
 
 	return nil, &strawpb.ErrorFrame{Code: failure.code, Details: details}
+}
+
+type tunnelAdapter struct {
+	executor *Executor
+}
+
+func (a tunnelAdapter) OpenTunnel(ctx context.Context, start *strawpb.RequestStart) (net.Conn, sdkegress.TunnelTarget, *strawpb.ErrorFrame) {
+	conn, target, failure := a.executor.openTunnel(ctx, start)
+	out := sdkegress.TunnelTarget{Host: target.host, Port: target.port}
+
+	if failure == nil {
+		return conn, out, nil
+	}
+
+	details := map[string]string{errorFactDetailKey: failure.fact}
+	if failure.timeoutType != strawpb.TimeoutType_TIMEOUT_TYPE_UNSPECIFIED {
+		details["timeout_type"] = failure.timeoutType.String()
+	}
+
+	return nil, out, &strawpb.ErrorFrame{Code: failure.code, Details: details}
 }
 
 // FakeExecutor scripts deterministic e2c lifecycle frames for tests.
