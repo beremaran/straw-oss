@@ -14,6 +14,8 @@ import (
 const (
 	testMITMLeafKMSProvider = "test-kms"
 	testMITMLeafTenantID    = "ten_123"
+	testMITMLeafOldKeyID    = "old"
+	testMITMLeafNewKeyID    = "new"
 )
 
 var (
@@ -72,12 +74,12 @@ func TestMITMLeafBundleFakeProviderRotationOverlap(t *testing.T) {
 	t.Parallel()
 
 	provider := newFakeMITMLeafBundleProvider(testMITMLeafKMSProvider, map[string][]byte{
-		"old": []byte("old-secret"),
-		"new": []byte("new-secret"),
+		testMITMLeafOldKeyID: []byte("old-secret"),
+		testMITMLeafNewKeyID: []byte("new-secret"),
 	})
 	aad := testMITMLeafBundleAAD()
 
-	oldEnv, err := provider.EncryptMITMLeafBundle(context.Background(), "old", aad, []byte("bundle"))
+	oldEnv, err := provider.EncryptMITMLeafBundle(context.Background(), testMITMLeafOldKeyID, aad, []byte("bundle"))
 	if err != nil {
 		t.Fatalf("EncryptMITMLeafBundle(old) error = %v", err)
 	}
@@ -86,7 +88,7 @@ func TestMITMLeafBundleFakeProviderRotationOverlap(t *testing.T) {
 		t.Fatalf("DecryptMITMLeafBundle(old overlap) error = %v", err)
 	}
 
-	delete(provider.keys, "old")
+	delete(provider.keys, testMITMLeafOldKeyID)
 	_, err = provider.DecryptMITMLeafBundle(context.Background(), oldEnv, aad)
 	if err == nil {
 		t.Fatal("DecryptMITMLeafBundle(disabled old key) error = nil")

@@ -6,9 +6,11 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/hex"
 	"encoding/pem"
 	"errors"
 	"flag"
@@ -21,6 +23,7 @@ import (
 	"net/netip"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -50,13 +53,19 @@ const (
 	maxProxyHeaderCapture   = 64 << 10
 	mitmLeafKeyBits         = 2048
 	mitmSerialBits          = 128
+	hoursPerDay             = 24
+	mitmDefaultValidityDays = 30
+	mitmLeafKMSProviderAWS  = "aws-kms"
 )
 
 var (
-	errHealthcheckNotReady = errors.New("healthcheck probe returned non-2xx status")
-	errDecodeMITMCACert    = errors.New("decode mitm ca cert")
-	errDecodeMITMCAKey     = errors.New("decode mitm ca key")
-	errOpenConfiguredFile  = errors.New("open configured file")
+	errHealthcheckNotReady             = errors.New("healthcheck probe returned non-2xx status")
+	errDecodeMITMCACert                = errors.New("decode mitm ca cert")
+	errDecodeMITMCAKey                 = errors.New("decode mitm ca key")
+	errOpenConfiguredFile              = errors.New("open configured file")
+	errUnsupportedMITMLeafKMSProvider  = errors.New("unsupported mitm leaf kms provider")
+	errMITMLeafCacheRequiresCAAndRedis = errors.New("mitm leaf cache requires ca and redis")
+	errMITMLeafCacheRequiresKMS        = errors.New("mitm leaf cache requires kms provider")
 )
 
 type mitmCA struct {
@@ -94,7 +103,7 @@ func run() error {
 		return fmt.Errorf("validate payload limits: %w", err)
 	}
 
-	_, err = buildMITMLeafBundleProviderConfig(controlConfig)
+	_, _, err = buildMITMLeafBundleProvider(controlConfig)
 	if err != nil {
 		return fmt.Errorf("validate mitm leaf bundle kms config: %w", err)
 	}
@@ -181,7 +190,7 @@ func runControl(controlConfig config.ControlConfig, natsConn *natsx.Connection) 
 		return err
 	}
 
-	return serveControl(ctx, controlConfig, mux, proxyHandler, connectHandler, mitmHandler, metricsReg)
+	return serveControl(ctx, controlConfig, mux, proxyHandler, connectHandler, mitmHandler, redisClient, metricsReg)
 }
 
 func setupNATSSubscriptions(natsConn *natsx.Connection, workerRegistry *control.WorkerRegistry, chWriters *clickHouseWriters) error {
@@ -270,7 +279,7 @@ func openStores(controlConfig config.ControlConfig) (*pgxpool.Pool, *redis.Clien
 
 // serveControl starts the metrics/readiness server and the API server, marking
 // readiness true until ctx cancellation begins drain.
-func serveControl(ctx context.Context, controlConfig config.ControlConfig, mux *http.ServeMux, proxyHandler http.Handler, connectHandler http.Handler, mitmHandler http.Handler, metricsReg *prometheus.Registry) error {
+func serveControl(ctx context.Context, controlConfig config.ControlConfig, mux *http.ServeMux, proxyHandler http.Handler, connectHandler http.Handler, mitmHandler http.Handler, redisClient *redis.Client, metricsReg *prometheus.Registry) error {
 	ready := &atomic.Bool{}
 	ready.Store(true)
 
@@ -283,7 +292,7 @@ func serveControl(ctx context.Context, controlConfig config.ControlConfig, mux *
 	stopConnect := serveConnectHTTP(ctx, controlConfig, connectHandler)
 	defer stopConnect()
 
-	stopMITM := serveMITMHTTP(ctx, controlConfig, mitmHandler)
+	stopMITM := serveMITMHTTP(ctx, controlConfig, mitmHandler, redisClient)
 	defer stopMITM()
 
 	return serveControlHTTP(ctx, controlConfig, mux, ready)
@@ -302,7 +311,21 @@ func buildMITMLeafBundleProviderConfig(controlConfig config.ControlConfig) (*con
 	return &providerConfig, nil
 }
 
-func serveMITMHTTP(ctx context.Context, controlConfig config.ControlConfig, handler http.Handler) func() {
+func buildMITMLeafBundleProvider(controlConfig config.ControlConfig) (*control.MITMLeafBundleProviderConfig, control.MITMLeafBundleKMSProvider, error) {
+	providerConfig, err := buildMITMLeafBundleProviderConfig(controlConfig)
+	if err != nil || providerConfig == nil {
+		return providerConfig, nil, err
+	}
+
+	switch strings.ToLower(providerConfig.ProviderName) {
+	case mitmLeafKMSProviderAWS:
+		return providerConfig, control.NewAWSMITMLeafBundleKMSProvider(nil), nil
+	default:
+		return nil, nil, fmt.Errorf("%w: %s", errUnsupportedMITMLeafKMSProvider, providerConfig.ProviderName)
+	}
+}
+
+func serveMITMHTTP(ctx context.Context, controlConfig config.ControlConfig, handler http.Handler, redisClient *redis.Client) func() {
 	if !controlConfig.Server.MITMEnabled || handler == nil {
 		return func() {}
 	}
@@ -316,11 +339,18 @@ func serveMITMHTTP(ctx context.Context, controlConfig config.ControlConfig, hand
 		return func() {}
 	}
 
+	leafLookup, leafPreflight, err := buildMITMLeafHooks(controlConfig, ca, redisClient, nil)
+	if err != nil {
+		slog.Error("mitm leaf cache setup failed", "error", err)
+
+		return func() {}
+	}
+
 	server := &http.Server{
 		Addr:              addr,
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
-	server.Handler = configureMITMServer(handler, ca)
+	server.Handler = configureMITMServer(handler, leafLookup, leafPreflight)
 
 	go func() {
 		serveErr := server.ListenAndServe()
@@ -342,7 +372,7 @@ func serveMITMHTTP(ctx context.Context, controlConfig config.ControlConfig, hand
 	}
 }
 
-func configureMITMServer(handler http.Handler, ca *mitmCA) http.Handler {
+func configureMITMServer(handler http.Handler, leafLookup control.MITMLeafLookup, leafPreflight control.MITMLeafPreflight) http.Handler {
 	mitm, ok := handler.(*control.MITMHandler)
 	if !ok {
 		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -350,9 +380,63 @@ func configureMITMServer(handler http.Handler, ca *mitmCA) http.Handler {
 		})
 	}
 
-	return control.NewMITMConnectHandler(mitm.Authenticator(), handler, func(_ *http.Request, _ control.Identity, sni, _ string) (*tls.Certificate, error) {
-		return generateMITMLeaf(ca, sni)
+	connect := control.NewMITMConnectHandler(mitm.Authenticator(), handler, leafLookup)
+	connect.SetLeafPreflight(leafPreflight)
+
+	return connect
+}
+
+func buildMITMLeafLookup(controlConfig config.ControlConfig, ca *mitmCA, redisClient redis.Cmdable, provider control.MITMLeafBundleKMSProvider) (control.MITMLeafLookup, error) {
+	lookup, _, err := buildMITMLeafHooks(controlConfig, ca, redisClient, provider)
+
+	return lookup, err
+}
+
+func buildMITMLeafHooks(controlConfig config.ControlConfig, ca *mitmCA, redisClient redis.Cmdable, provider control.MITMLeafBundleKMSProvider) (control.MITMLeafLookup, control.MITMLeafPreflight, error) {
+	if ca == nil || redisClient == nil {
+		return nil, nil, errMITMLeafCacheRequiresCAAndRedis
+	}
+
+	providerConfig, builtProvider, err := buildMITMLeafBundleProvider(controlConfig)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if provider == nil {
+		provider = builtProvider
+	}
+
+	if providerConfig == nil || provider == nil {
+		return nil, nil, errMITMLeafCacheRequiresKMS
+	}
+
+	validity := time.Duration(controlConfig.Server.MITMCertValidityDays) * hoursPerDay * time.Hour
+	caIdentity, caVersion := mitmCAIdentityVersion(ca.cert)
+
+	cache, err := control.NewMITMLeafCache(control.MITMLeafCacheConfig{
+		Redis:        redisClient,
+		KMS:          provider,
+		KMSKeyID:     providerConfig.KeyID,
+		DeploymentID: controlConfig.DeploymentID,
+		CAIdentity:   caIdentity,
+		CAVersion:    caVersion,
+		Validity:     validity,
+		Generate: func(_ context.Context, normalizedSNI string) (*tls.Certificate, error) {
+			return generateMITMLeaf(ca, normalizedSNI, validity)
+		},
 	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("build mitm leaf cache: %w", err)
+	}
+
+	lookup := func(r *http.Request, identity control.Identity, sni, authority string) (*tls.Certificate, error) {
+		return cache.Leaf(r.Context(), identity, sni, authority)
+	}
+	preflight := func(r *http.Request, identity control.Identity, authority string) error {
+		return cache.Preflight(r.Context(), identity, authority)
+	}
+
+	return lookup, preflight, nil
 }
 
 func loadMITMCACertificate(certFile, keyFile string) (*mitmCA, error) {
@@ -417,9 +501,13 @@ func readConfiguredFile(path string) ([]byte, error) {
 	return b, nil
 }
 
-func generateMITMLeaf(ca *mitmCA, serverName string) (*tls.Certificate, error) {
+func generateMITMLeaf(ca *mitmCA, serverName string, validity time.Duration) (*tls.Certificate, error) {
 	if serverName == "" {
 		serverName = "mitm.local"
+	}
+
+	if validity <= 0 {
+		validity = mitmDefaultValidityDays * hoursPerDay * time.Hour
 	}
 
 	key, err := rsa.GenerateKey(rand.Reader, mitmLeafKeyBits)
@@ -436,7 +524,7 @@ func generateMITMLeaf(ca *mitmCA, serverName string) (*tls.Certificate, error) {
 		SerialNumber: serial,
 		Subject:      pkix.Name{CommonName: serverName},
 		NotBefore:    time.Now().Add(-time.Minute),
-		NotAfter:     time.Now().Add(30 * 24 * time.Hour),
+		NotAfter:     time.Now().Add(validity),
 		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 	}
@@ -454,6 +542,17 @@ func generateMITMLeaf(ca *mitmCA, serverName string) (*tls.Certificate, error) {
 	}
 
 	return &tls.Certificate{Certificate: [][]byte{der, ca.cert.Raw}, PrivateKey: key, Leaf: tpl}, nil
+}
+
+func mitmCAIdentityVersion(ca *x509.Certificate) (string, string) {
+	if ca == nil {
+		return "", ""
+	}
+
+	keySum := sha256.Sum256(ca.RawSubjectPublicKeyInfo)
+	certSum := sha256.Sum256(ca.Raw)
+
+	return hex.EncodeToString(keySum[:]), hex.EncodeToString(certSum[:])
 }
 
 func serveConnectHTTP(ctx context.Context, controlConfig config.ControlConfig, handler http.Handler) func() {

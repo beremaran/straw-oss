@@ -17,6 +17,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/redis/go-redis/v9"
+
 	"github.com/beremaran/straw/v2/internal/config"
 	"github.com/beremaran/straw/v2/internal/control"
 )
@@ -125,14 +127,36 @@ func TestBuildMITMLeafBundleProviderConfig(t *testing.T) {
 		t.Fatalf("buildMITMLeafBundleProviderConfig(empty) = %+v, %v; want nil, nil", got, err)
 	}
 
-	cfg.Server.MITMLeafKMSProvider = "aws-kms"
+	cfg.Server.MITMLeafKMSProvider = mitmLeafKMSProviderAWS
 	cfg.Server.MITMLeafKMSKeyID = "arn:test"
 	got, err = buildMITMLeafBundleProviderConfig(cfg)
 	if err != nil {
 		t.Fatalf("buildMITMLeafBundleProviderConfig() error = %v", err)
 	}
-	if got.ProviderName != "aws-kms" || got.KeyID != "arn:test" {
+	if got.ProviderName != mitmLeafKMSProviderAWS || got.KeyID != "arn:test" {
 		t.Fatalf("provider config = %+v", got)
+	}
+}
+
+func TestBuildMITMLeafBundleProvider(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.ControlConfig{}
+	cfg.Server.MITMLeafKMSProvider = mitmLeafKMSProviderAWS
+	cfg.Server.MITMLeafKMSKeyID = "arn:aws:kms:us-west-2:123:key/abc"
+
+	providerConfig, provider, err := buildMITMLeafBundleProvider(cfg)
+	if err != nil {
+		t.Fatalf("buildMITMLeafBundleProvider() error = %v", err)
+	}
+	if providerConfig == nil || providerConfig.ProviderName != mitmLeafKMSProviderAWS || provider == nil {
+		t.Fatalf("provider = (%+v, %T), want aws provider", providerConfig, provider)
+	}
+
+	cfg.Server.MITMLeafKMSProvider = "other-kms"
+	_, _, err = buildMITMLeafBundleProvider(cfg)
+	if err == nil {
+		t.Fatal("buildMITMLeafBundleProvider(unsupported) error = nil")
 	}
 }
 
@@ -140,7 +164,7 @@ func TestGenerateMITMLeafSignsServerCertificate(t *testing.T) {
 	t.Parallel()
 
 	ca := newTestMITMCA(t)
-	cert, err := generateMITMLeaf(ca, testMITMLeafHost)
+	cert, err := generateMITMLeaf(ca, testMITMLeafHost, 14*24*time.Hour)
 	if err != nil {
 		t.Fatalf("generateMITMLeaf() error = %v", err)
 	}
@@ -158,8 +182,11 @@ func TestGenerateMITMLeafSignsServerCertificate(t *testing.T) {
 	if len(leaf.ExtKeyUsage) != 1 || leaf.ExtKeyUsage[0] != x509.ExtKeyUsageServerAuth {
 		t.Fatalf("ExtKeyUsage = %v, want server auth", leaf.ExtKeyUsage)
 	}
+	if leaf.NotAfter.Sub(leaf.NotBefore) > 15*24*time.Hour {
+		t.Fatalf("leaf validity = %v, want capped near 14 days", leaf.NotAfter.Sub(leaf.NotBefore))
+	}
 
-	ipCert, err := generateMITMLeaf(ca, testControlHost)
+	ipCert, err := generateMITMLeaf(ca, testControlHost, time.Hour)
 	if err != nil {
 		t.Fatalf("generateMITMLeaf(ip) error = %v", err)
 	}
@@ -177,7 +204,10 @@ func TestConfigureMITMServerUsesAuthenticatedConnectBootstrap(t *testing.T) {
 
 	ca := newTestMITMCA(t)
 	mitm, token := newTestMainMITMHandler(t)
-	server := httptest.NewServer(configureMITMServer(mitm, ca))
+	leafLookup := func(_ *http.Request, _ control.Identity, sni, _ string) (*tls.Certificate, error) {
+		return generateMITMLeaf(ca, sni, time.Hour)
+	}
+	server := httptest.NewServer(configureMITMServer(mitm, leafLookup, nil))
 	defer server.Close()
 
 	directTLS, err := (&tls.Dialer{Config: &tls.Config{RootCAs: x509.NewCertPool(), ServerName: testMITMLeafHost}}).DialContext(context.Background(), "tcp", strings.TrimPrefix(server.URL, "http://"))
@@ -232,6 +262,32 @@ func TestConfigureMITMServerUsesAuthenticatedConnectBootstrap(t *testing.T) {
 	}
 }
 
+func TestBuildMITMLeafLookupRequiresTenantIdentity(t *testing.T) {
+	t.Parallel()
+
+	ca := newTestMITMCA(t)
+	cfg := config.ControlConfig{
+		DeploymentID: "dep_main_test",
+		Server: config.ControlServerConfig{
+			MITMCertValidityDays: 1,
+			MITMLeafKMSProvider:  mitmLeafKMSProviderAWS,
+			MITMLeafKMSKeyID:     "arn:aws:kms:us-west-2:123:key/abc",
+		},
+	}
+	client := redis.NewClient(&redis.Options{Addr: "127.0.0.1:1", MaxRetries: -1})
+	t.Cleanup(func() { _ = client.Close() })
+
+	lookup, err := buildMITMLeafLookup(cfg, ca, client, mainTestKMSProvider{})
+	if err != nil {
+		t.Fatalf("buildMITMLeafLookup() error = %v", err)
+	}
+
+	_, err = lookup(httptest.NewRequestWithContext(context.Background(), http.MethodConnect, "http://proxy.test", nil), control.Identity{}, testMITMLeafHost, testMITMLeafHost+":443")
+	if err == nil {
+		t.Fatal("lookup without tenant identity error = nil")
+	}
+}
+
 type testBufferedConn struct {
 	net.Conn
 	r *bufio.Reader
@@ -278,6 +334,16 @@ func (testMainMITMDispatcher) Dispatch(context.Context, control.DispatchInput) (
 		Headers: []control.HeaderPair{{Name: "Content-Type", Value: "text/plain"}},
 		Body:    control.ResponseBody{Mode: "inline_base64", DataBase64: "b2s="},
 	}, nil
+}
+
+type mainTestKMSProvider struct{}
+
+func (mainTestKMSProvider) EncryptMITMLeafBundle(context.Context, string, control.MITMLeafBundleAAD, []byte) (control.MITMLeafBundleEnvelope, error) {
+	return control.MITMLeafBundleEnvelope{}, nil
+}
+
+func (mainTestKMSProvider) DecryptMITMLeafBundle(context.Context, control.MITMLeafBundleEnvelope, control.MITMLeafBundleAAD) ([]byte, error) {
+	return nil, nil
 }
 
 func newTestMITMCA(t *testing.T) *mitmCA {

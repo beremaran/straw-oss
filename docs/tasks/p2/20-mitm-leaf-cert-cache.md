@@ -1,6 +1,6 @@
 # 20 - MITM Leaf Certificate Cache
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -60,23 +60,23 @@ Section 21 explicitly lists P2 MITM cert cache/locks as Redis runtime state.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Load and validate the stable deployment ID used in cache keys and KMS AAD.
-- [ ] Define Redis key prefixes and AAD using tenant ID, deployment ID, normalized SNI, and CA identity/version.
-- [ ] Generate per-SNI leaf certificates signed by the configured CA with validity capped by
+- [x] Read all required planning docs.
+- [x] Load and validate the stable deployment ID used in cache keys and KMS AAD.
+- [x] Define Redis key prefixes and AAD using tenant ID, deployment ID, normalized SNI, and CA identity/version.
+- [x] Generate per-SNI leaf certificates signed by the configured CA with validity capped by
       `mitm_cert_validity_days`.
-- [ ] Store only encrypted serialized leaf bundles in Redis, with TTL no longer than the certificate's remaining
+- [x] Store only encrypted serialized leaf bundles in Redis, with TTL no longer than the certificate's remaining
       validity.
-- [ ] Implement cache hit decrypt/reuse without regenerating the keypair.
-- [ ] Implement local singleflight and Redis distributed locking for same tenant/deployment/SNI misses, including lock
+- [x] Implement cache hit decrypt/reuse without regenerating the keypair.
+- [x] Implement local singleflight and Redis distributed locking for same tenant/deployment/SNI misses, including lock
       TTL/loss behavior.
-- [ ] Enforce bounded generation concurrency and per-tenant plus global unique-SNI limits before generating a keypair.
-- [ ] Wire `cmd/control` to use the cache through task 04's tenant-aware hook; do not add any direct TLS/SNI-only cache
+- [x] Enforce bounded generation concurrency and per-tenant plus global unique-SNI limits before generating a keypair.
+- [x] Wire `cmd/control` to use the cache through task 04's tenant-aware hook; do not add any direct TLS/SNI-only cache
       path.
-- [ ] Add tests for cache miss, cache hit, encrypted storage, TTL cap, CA/KMS rotation behavior, local singleflight,
+- [x] Add tests for cache miss, cache hit, encrypted storage, TTL cap, CA/KMS rotation behavior, local singleflight,
       Redis lock coalescing/loss, generation bounds, and per-tenant/global flood limits.
-- [ ] Run focused MITM leaf cache tests, then `make check`.
-- [ ] Write a handoff note.
+- [x] Run focused MITM leaf cache tests, then `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 
