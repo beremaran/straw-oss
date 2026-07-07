@@ -13,8 +13,8 @@ credit, executor error frames, and e2c publish behavior must run through the pub
 The original task 22 was split on 2026-07-07 because it mixed the whole worker runtime in one oversized slice. After
 task 22, `sdk/egress` owns registration and heartbeat, but `internal/egress/loop.go` still owns
 `NewWorker`, `Serve`, `handleAssign`, `prepareRequestStream`, decoded `runRequest`, `waitForResult`, response-credit
-gating, and e2c publishing. This task owns that decoded stream protocol move. Raw tunnel and BodyRef-specific hooks are
-separate in task 27.
+gating, and e2c publishing. This task owns that decoded stream protocol move. Raw tunnel hooks are separate in task 27
+and BodyRef request-body hooks in task 31.
 
 ## Required Planning Docs
 
@@ -29,8 +29,8 @@ separate in task 27.
 ## Out of Scope
 
 - Do not move raw CONNECT tunnel handling; task 27 owns it.
-- Do not move BodyRef request-body download hooks; task 27 owns it.
-- Do not add final SDK conformance/live verification; task 24 owns that after tasks 22, 23, 26, 27, and 28.
+- Do not move BodyRef request-body download hooks; task 31 owns it.
+- Do not add final SDK conformance/live verification; task 24 owns that after tasks 22, 23, 26, 27, 28, and 31.
 - Do not change NATS wire messages, subject shapes, stream sequencing, or error semantics.
 
 ## Expected Files
@@ -69,7 +69,7 @@ separate in task 27.
 ## Handoff Notes
 
 - Record what decoded runtime moved to `sdk/egress` and any temporary compatibility wrappers left behind.
-- State that task 27 still owns raw tunnel and BodyRef runtime movement.
+- State that task 27 still owns raw tunnel runtime movement and task 31 owns BodyRef request-body runtime movement.
 
 ## Stop Conditions
 

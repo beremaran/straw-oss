@@ -30,7 +30,10 @@ large for one honest vertical slice.
 
 - Do not implement outbound HTTP/2.
 - Do not implement full ingress HTTP/2 stream cancellation, NATS-credit flow-control, trailer forwarding, or
-  connection-level error fanout; `docs/tasks/p2/25-ingress-http2-stream-semantics.md` owns those task 14 semantics.
+  connection-level error fanout; these task 14 semantics are split across
+  `docs/tasks/p2/25-ingress-http2-stream-semantics.md` (identity/cancellation/fanout),
+  `docs/tasks/p2/29-ingress-http2-headers-and-trailers.md` (headers/trailers), and
+  `docs/tasks/p2/30-ingress-http2-upload-flow-control-and-live-proof.md` (flow control/live proof).
 - Do not change HTTP/1.1 ingress behavior.
 
 ## Expected Files
@@ -67,13 +70,15 @@ large for one honest vertical slice.
 - A basic HTTP/2 MITM request is translated through the normal decoded MITM handler path and concurrent h2 streams each
   receive a response.
 - HTTP/1.1 ingress remains compatible.
-- Full ingress HTTP/2 stream semantics remain owned by `docs/tasks/p2/25-ingress-http2-stream-semantics.md`.
+- Full ingress HTTP/2 stream semantics remain owned by the task 25 / 29 / 30 split
+  (`docs/tasks/p2/25-ingress-http2-stream-semantics.md`, `docs/tasks/p2/29-ingress-http2-headers-and-trailers.md`,
+  `docs/tasks/p2/30-ingress-http2-upload-flow-control-and-live-proof.md`).
 
 ## Handoff Notes
 
 - Document supported ingress modes and ALPN behavior.
-- Include the independent verifier verdict that accepted the ALPN slice and rejected full stream semantics, with task 25
-  named as owner for the remaining scope.
+- Include the independent verifier verdict that accepted the ALPN slice and rejected full stream semantics, with tasks
+  25, 29, and 30 named as owners for the remaining scope.
 
 ## Stop Conditions
 

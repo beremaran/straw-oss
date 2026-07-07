@@ -7,7 +7,7 @@ Status: done
 Move the official worker's session-level runtime onto `sdk/egress`: registration request/reply, bounded registration
 retry, heartbeat request/reply, session loss re-registration, ready/draining state, and `cmd/egress` construction must
 run through the public SDK. The exact-session assignment loop remains temporarily delegated to `internal/egress` and is
-owned by follow-on tasks 26-28.
+owned by follow-on tasks 26, 27, 31, and 28.
 
 ## Context (gap being closed)
 
@@ -32,7 +32,7 @@ approved splitting it on 2026-07-07. This task owns the first slice only.
 ## Out of Scope
 
 - Do not move decoded request stream framing, cancellation, or response credit; task 26 owns that.
-- Do not move raw tunnel or BodyRef handling; task 27 owns that.
+- Do not move raw tunnel handling (task 27 owns it) or BodyRef handling (task 31 owns it).
 - Do not finish migrating all runtime tests or add final conformance/live verification; tasks 28 and 24 own that.
 - Do not rename `DESTINATION_RESOLUTION_PROVIDER_ADAPTER`; task 23 owns that.
 - Do not add the standalone custom Egress example; task 13 owns that.
@@ -77,8 +77,8 @@ approved splitting it on 2026-07-07. This task owns the first slice only.
   re-registration except as compatibility wrappers if required by existing tests.
 - `sdk/egress` runtime tests cover registration retry with fresh nonces, retry cancellation, heartbeat NACK
   re-registration, ready state, and final draining heartbeat.
-- Exact-session assignment subscription and request stream protocol remain owned by follow-on tasks 26-28, named in
-  this task's handoff rather than left as an unowned deferral.
+- Exact-session assignment subscription and request stream protocol remain owned by follow-on tasks 26, 27, 31, and
+  28, named in this task's handoff rather than left as an unowned deferral.
 - `grep -R "\"github.com/beremaran/straw/v2/internal/" sdk/egress` returns no matches.
 - Existing official executor tests still pass, proving outbound execution behavior stayed in `internal/egress` and did
   not change.
@@ -87,8 +87,8 @@ approved splitting it on 2026-07-07. This task owns the first slice only.
 
 - Record exactly what moved to `sdk/egress` and what stayed in `internal/egress`.
 - Record the `cmd/egress` wiring evidence.
-- State that tasks 26-28 still own decoded stream runtime, raw tunnel/BodyRef runtime, and full runtime test migration,
-  and that task 24 still owns independent SDK conformance plus live compose verification.
+- State that tasks 26, 27, 31, and 28 still own decoded stream runtime, raw tunnel runtime, BodyRef runtime, and full
+  runtime test migration, and that task 24 still owns independent SDK conformance plus live compose verification.
 
 ## Stop Conditions
 
