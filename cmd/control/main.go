@@ -148,7 +148,9 @@ func runControl(controlConfig config.ControlConfig, natsConn *natsx.Connection) 
 
 	metricsReg, metrics := wireMetrics(controlConfig, workerRegistry, chWriters)
 
-	mux, proxyHandler, connectHandler := buildControlMux(controlConfig, apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore, configCache, redisClient, natsConn, chWriters, metrics)
+	inflight := wireInFlightRegistry(ctx, controlConfig, redisClient)
+
+	mux, proxyHandler, connectHandler := buildControlMux(controlConfig, apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore, configCache, redisClient, natsConn, chWriters, metrics, inflight)
 
 	err = setupNATSSubscriptions(natsConn, workerRegistry, chWriters)
 	if err != nil {
@@ -475,6 +477,51 @@ func wireConfigInvalidation(ctx context.Context, configStore *control.PostgresCo
 	return configCache
 }
 
+// wireInFlightRegistry builds the admin-cancel in-flight registry. When
+// server.multi_control_enabled is set (docs/planning/32 "Multiple Concurrent
+// Control Replicas"), it attaches the Redis-backed cross-instance coordinator
+// so a cancel for a request owned by a sibling Control replica reaches that
+// replica (docs/tasks/p1/23), and starts the pub/sub subscriber that applies
+// sibling-authorized cancels to this replica's local contexts. Disabled (the
+// default) leaves the registry pure in-process/single-Control.
+func wireInFlightRegistry(ctx context.Context, controlConfig config.ControlConfig, redisClient *redis.Client) *control.InFlightRegistry {
+	inflight := control.NewInFlightRegistry()
+
+	if !controlConfig.Server.MultiControlEnabled {
+		return inflight
+	}
+
+	inflight.SetCrossInstance(control.NewRedisInFlightCoordinator(redisClient, 0))
+
+	go runRequestCancelSubscriber(ctx, redisClient, inflight)
+
+	return inflight
+}
+
+// runRequestCancelSubscriber runs the cross-instance cancel pub/sub subscriber
+// until ctx is canceled, reconnecting after transient errors (e.g. a Redis
+// restart) rather than exiting the process.
+func runRequestCancelSubscriber(ctx context.Context, client *redis.Client, inflight *control.InFlightRegistry) {
+	subscriber := control.NewRedisRequestCancelSubscriber(client, inflight)
+
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+
+		err := subscriber.Run(ctx)
+		if err != nil && ctx.Err() == nil {
+			slog.Warn("request cancel subscriber failed; retrying", "error", err)
+
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(time.Second):
+			}
+		}
+	}
+}
+
 func wireTelemetry(cfg config.ClickHouseConfig, workerRegistry *control.WorkerRegistry) *clickHouseWriters {
 	chWriters := wireClickHouseWriters(cfg)
 	wireLogEvents(chWriters)
@@ -708,8 +755,7 @@ func rehydrateWorkerAdminState(ctx context.Context, configStore *control.Postgre
 
 // buildControlMux assembles the HTTP handler with the Postgres-backed identity
 // and config stores.
-func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool, configStore *control.PostgresConfigStore, configCache *control.ConfigCache, redisClient *redis.Client, natsConn *natsx.Connection, chWriters *clickHouseWriters, metrics *control.Metrics) (*http.ServeMux, http.Handler, http.Handler) {
-	inflight := control.NewInFlightRegistry()
+func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool, configStore *control.PostgresConfigStore, configCache *control.ConfigCache, redisClient *redis.Client, natsConn *natsx.Connection, chWriters *clickHouseWriters, metrics *control.Metrics, inflight *control.InFlightRegistry) (*http.ServeMux, http.Handler, http.Handler) {
 	tenantStore := control.NewPostgresTenantStore(pool)
 	adminHandlers := buildAdminHandlers(apiKeyStore, pepper, workerRegistry, workerCreds, pool, configStore, configCache, redisClient, inflight, tenantStore, chWriters.configAudit)
 

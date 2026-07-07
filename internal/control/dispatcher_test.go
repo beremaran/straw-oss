@@ -1187,7 +1187,7 @@ func TestDispatcherAdminCancelEndToEnd(t *testing.T) {
 
 	admin := Identity{ScopeType: ScopePlatform, Role: RoleSystemAdmin}
 
-	err := registry.Cancel(admin, in.RequestID)
+	err := registry.Cancel(context.Background(), admin, in.RequestID)
 	if err != nil {
 		t.Fatalf("registry.Cancel() error = %v", err)
 	}
@@ -1229,7 +1229,7 @@ func TestDispatcherAdminCancelForeignTenantRejected(t *testing.T) {
 
 	foreign := Identity{ScopeType: ScopeTenant, TenantID: "ten_other", Role: RoleTenantAdmin}
 
-	err := registry.Cancel(foreign, in.RequestID)
+	err := registry.Cancel(context.Background(), foreign, in.RequestID)
 	if !errors.Is(err, ErrInsufficientPermissions) {
 		t.Fatalf("registry.Cancel() error = %v, want ErrInsufficientPermissions", err)
 	}

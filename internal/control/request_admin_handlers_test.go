@@ -1,6 +1,7 @@
 package control
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -14,7 +15,7 @@ func TestCancelRequestSystemAdminCancelsAnyRequest(t *testing.T) {
 	ta.h.InFlight = NewInFlightRegistry()
 
 	called := false
-	ta.h.InFlight.Register("req_1", adminTestTenantA, func() { called = true })
+	ta.h.InFlight.Register(context.Background(), "req_1", adminTestTenantA, func() { called = true })
 
 	token := ta.seedPlatformKey(t, "key_admin", RoleSystemAdmin)
 	w := httptest.NewRecorder()
@@ -42,7 +43,7 @@ func TestCancelRequestTenantAdminAndOperatorCancelOwnTenant(t *testing.T) {
 			ta.h.InFlight = NewInFlightRegistry()
 
 			called := false
-			ta.h.InFlight.Register("req_1", adminTestTenantA, func() { called = true })
+			ta.h.InFlight.Register(context.Background(), "req_1", adminTestTenantA, func() { called = true })
 
 			token := ta.seedTenantKey(t, "key_"+string(role), adminTestTenantA, role)
 			w := httptest.NewRecorder()
@@ -68,7 +69,7 @@ func TestCancelRequestForeignTenantInsufficientPermissionsNoDisclosure(t *testin
 	ta.h.InFlight = NewInFlightRegistry()
 
 	called := false
-	ta.h.InFlight.Register("req_1", adminTestTenantB, func() { called = true })
+	ta.h.InFlight.Register(context.Background(), "req_1", adminTestTenantB, func() { called = true })
 
 	token := ta.seedTenantKey(t, adminTestKeyAAdmin, adminTestTenantA, RoleTenantAdmin)
 	w := httptest.NewRecorder()
@@ -129,7 +130,7 @@ func TestCancelRequestViewerForbidden(t *testing.T) {
 
 	ta := newTestAdmin(t)
 	ta.h.InFlight = NewInFlightRegistry()
-	ta.h.InFlight.Register("req_1", adminTestTenantA, func() {})
+	ta.h.InFlight.Register(context.Background(), "req_1", adminTestTenantA, func() {})
 
 	token := ta.seedTenantKey(t, "key_viewer", adminTestTenantA, RoleViewer)
 	w := httptest.NewRecorder()

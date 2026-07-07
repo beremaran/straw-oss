@@ -40,7 +40,7 @@ func (h *AdminHandlers) CancelRequest(w http.ResponseWriter, r *http.Request) {
 
 	requestID := r.PathValue("request_id")
 
-	err = h.InFlight.Cancel(identity, requestID)
+	err = h.InFlight.Cancel(r.Context(), identity, requestID)
 	switch {
 	case err == nil:
 		recordAudit(r.Context(), h.Audit, identity, "request", requestID, "cancel", 0, auditFieldPathAll, nil, nil, false)

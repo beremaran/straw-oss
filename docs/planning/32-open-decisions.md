@@ -20,6 +20,21 @@ These must be decided before related implementation starts. Defaults already spe
   endpoint/port exposure, and outage behavior when Control cannot aggregate.
 - **Decision owner**: Operations owner.
 
+### P1 Multiple Concurrent Control Replicas — Resolved 2026-07-07
+
+- **Blocked sections**: `docs/tasks/p1/23-multi-control-durable-cancellation-state.md` (its gate), Section 21
+  runtime-state placement of cross-instance in-flight state.
+- **Decision**: Straw supports running more than one Control replica sharing one request plane. Cross-instance
+  runtime coordination lives in the existing Redis runtime-state tier (Section 21), not a new datastore, and is
+  gated per deployment by an explicit enablement flag (`server.multi_control_enabled`, default off) so a
+  single-Control deployment pays no extra Redis round-trips.
+- **Rejected options**: single-Control-only forever; a new dedicated coordination datastore; always-on
+  cross-instance state with no flag.
+- **Acceptance tests required**: cross-instance admin cancel tears down a request in-flight on a sibling replica;
+  the single-Control fast path still cancels in-process without touching Redis; an unknown `request_id` still
+  returns the existing not-found outcome.
+- **Decision owner**: Operations owner.
+
 ### P2 MITM Private-Key Storage Policy
 
 - **Blocked sections**: Section 17 MITM Design, Section 27 Security Controls.

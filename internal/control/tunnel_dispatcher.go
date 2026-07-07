@@ -44,8 +44,8 @@ func (d *DefaultRequestDispatcher) dispatchTunnel(ctx context.Context, in Dispat
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	d.opts.InFlight.Register(in.RequestID, in.Identity.TenantID, cancel)
-	defer d.opts.InFlight.Deregister(in.RequestID)
+	d.opts.InFlight.Register(ctx, in.RequestID, in.Identity.TenantID, cancel)
+	defer d.opts.InFlight.Deregister(ctx, in.RequestID)
 
 	prep, perr := d.prepareTunnelDispatch(ctx, in, started)
 	if perr != nil {
