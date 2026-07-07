@@ -58,5 +58,5 @@ implementation starts.
 
 ## Stop Conditions
 
-- Stop if `P2 MITM Private-Key Storage Policy` is unresolved.
+- Stop if `P2 MITM Private-Key Storage Policy` is removed or superseded.
 - Stop if a deferral would have no owning task file.

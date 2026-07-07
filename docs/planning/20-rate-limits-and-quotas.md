@@ -88,7 +88,8 @@ Fail policy is explicit and configurable per tenant/system.
 P0 tests must verify quota behavior under Redis failure according to configured policy. P0 does not need to repair lost
 Redis counters unless a reconciliation job is explicitly implemented.
 
-A billing-grade or near-billing-grade quota system requires a later reconciliation design defining:
+A billing-grade quota system is required by the 2026-07-07 Section 32 decision. The P2 reconciliation design must
+define:
 
 - durable usage-event source,
 - aggregation cadence,

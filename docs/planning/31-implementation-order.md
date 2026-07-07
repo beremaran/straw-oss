@@ -41,4 +41,4 @@
 3. Payload capture.
 4. Egress SDK, official worker rebased onto it, and one example custom Egress implementation.
 5. HTTP/2 support if fully specified and tested.
-6. Billing-grade or near-billing-grade quota reconciliation if required.
+6. Billing-grade quota reconciliation.

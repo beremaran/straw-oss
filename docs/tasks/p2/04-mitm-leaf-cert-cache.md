@@ -17,6 +17,7 @@ Implement leaf certificate generation, cache/storage, coalescing, and flood cont
 - Task 01 completed.
 - Task 02 completed.
 - Task 03 completed.
+- Task 19 completed (KMS-compatible leaf-bundle provider/config exists).
 
 ## Out of Scope
 
