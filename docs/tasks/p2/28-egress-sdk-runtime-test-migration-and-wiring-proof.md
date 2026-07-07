@@ -10,11 +10,11 @@ the SDK runtime with the official executor.
 
 ## Context (gap being closed)
 
-Tasks 22, 26, and 27 move runtime behavior in slices. The original task 22 also required moving/adapting runtime tests
+Tasks 22, 26, 27, and 31 move runtime behavior in slices. The original task 22 also required moving/adapting runtime tests
 and proving `cmd/egress` wiring, but doing that before the runtime move is complete leaves duplicate tests and
 ambiguous ownership. Current tests such as `internal/egress/loop_test.go`, `internal/egress/runtime_test.go`, and
-`internal/egress/assignment_test.go` cover protocol machinery that belongs under `sdk/egress` once tasks 22, 26, and
-27 are complete.
+`internal/egress/assignment_test.go` cover protocol machinery that belongs under `sdk/egress` once tasks 22, 26, 27,
+and 31 are complete.
 
 ## Required Planning Docs
 
@@ -26,7 +26,8 @@ ambiguous ownership. Current tests such as `internal/egress/loop_test.go`, `inte
 
 - Task 22 completed (session runtime moved).
 - Task 26 completed (decoded stream runtime moved).
-- Task 27 completed (raw tunnel and BodyRef runtime moved).
+- Task 27 completed (raw tunnel runtime moved).
+- Task 31 completed (BodyRef request-body runtime moved).
 
 ## Out of Scope
 

@@ -26,7 +26,8 @@ This task owns the independent conformance/live proof after the rebase lands.
 - Task 12 completed (`sdk/egress` foundation exists).
 - Task 22 completed (`cmd/egress` session runtime is rebased onto `sdk/egress`).
 - Task 26 completed (decoded stream runtime is rebased onto `sdk/egress`).
-- Task 27 completed (raw tunnel and BodyRef runtime are rebased onto `sdk/egress`).
+- Task 27 completed (raw tunnel runtime is rebased onto `sdk/egress`).
+- Task 31 completed (BodyRef request-body runtime is rebased onto `sdk/egress`).
 - Task 28 completed (runtime tests and command wiring proof are migrated).
 - Task 23 completed (public docs/protobuf no longer use Provider Adapter terminology for executor-delegated mode).
 
