@@ -147,6 +147,17 @@ services:
       - ./deploy/docker/kms-mock.py:/app/kms-mock.py:ro
     restart: unless-stopped
 
+  docs:
+    image: node:20-alpine
+    profiles: ["docs"]
+    working_dir: /site
+    command: ["sh", "-c", "npm install && npm start -- --host 0.0.0.0"]
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./website:/site
+    restart: unless-stopped
+
   prometheus:
     image: prom/prometheus:v2.54.1
     profiles: ["observability"]
