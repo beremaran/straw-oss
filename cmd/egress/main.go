@@ -18,9 +18,10 @@ import (
 
 	strawpb "github.com/beremaran/straw/v2/api/proto/straw/v1"
 	"github.com/beremaran/straw/v2/internal/config"
-	"github.com/beremaran/straw/v2/internal/egress"
+	internalegress "github.com/beremaran/straw/v2/internal/egress"
 	"github.com/beremaran/straw/v2/internal/logging"
 	"github.com/beremaran/straw/v2/internal/natsx"
+	sdkegress "github.com/beremaran/straw/v2/sdk/egress"
 )
 
 const (
@@ -202,7 +203,7 @@ func serveHealthHTTP(ctx context.Context, cfg config.EgressConfig, ready *atomic
 // buildCapabilities maps the loaded egress static config onto the capability
 // claims sent in the worker's RegisterRequest
 // (docs/planning/24-static-configuration.md `egress.capabilities.*`).
-func buildCapabilities(cfg config.EgressConfig) egress.Capabilities {
+func buildCapabilities(cfg config.EgressConfig) sdkegress.Capabilities {
 	pools := make([]*strawpb.RegisterRequest_PoolRef, 0, len(cfg.AllowedPools))
 	for _, p := range cfg.AllowedPools {
 		pools = append(pools, &strawpb.RegisterRequest_PoolRef{TenantId: p.TenantID, PoolId: p.PoolID})
@@ -213,7 +214,7 @@ func buildCapabilities(cfg config.EgressConfig) egress.Capabilities {
 		maxConcurrency = cfg.Capabilities.MaxConcurrency
 	}
 
-	return egress.Capabilities{
+	return sdkegress.Capabilities{
 		SoftwareVersion:       "dev",
 		MaxConcurrency:        maxConcurrency,
 		AllowedPools:          pools,
@@ -231,7 +232,7 @@ func runWorker(ctx context.Context, natsConn *natsx.Connection, cfg config.Egres
 		return fmt.Errorf("load worker private key: %w", err)
 	}
 
-	id := egress.Identity{
+	id := sdkegress.Identity{
 		WorkerID:     cfg.WorkerID,
 		CredentialID: cfg.CredentialID,
 		ExecutorType: "egress",
@@ -243,10 +244,10 @@ func runWorker(ctx context.Context, natsConn *natsx.Connection, cfg config.Egres
 	heartbeatInterval := time.Duration(cfg.HeartbeatIntervalMs) * time.Millisecond
 
 	pool := cfg.UpstreamConnectionPool
-	executor := egress.NewExecutor(egress.ExecutorOptions{
+	executor := internalegress.NewExecutor(internalegress.ExecutorOptions{
 		HTTP2Enabled:     cfg.HTTP2.Enabled,
 		FallbackCacheTTL: time.Duration(cfg.HTTP2.FallbackCacheTTLMS) * time.Millisecond,
-		Pool: egress.UpstreamConnectionPoolOptions{
+		Pool: internalegress.UpstreamConnectionPoolOptions{
 			Enabled:                   pool.Enabled,
 			MaxIdleConnsPerTenantHost: pool.MaxIdleConnsPerTenantHost,
 			IdleTimeout:               time.Duration(pool.IdleTimeoutMS) * time.Millisecond,
@@ -261,10 +262,16 @@ func runWorker(ctx context.Context, natsConn *natsx.Connection, cfg config.Egres
 
 	slog.Info("starting run loop", "worker_id", cfg.WorkerID, "heartbeat_interval", heartbeatInterval.String())
 
-	err = egress.Run(ctx, natsConn, id, caps, executor, heartbeatInterval, ready)
+	err = runSDKWorker(ctx, natsConn, id, caps, executor, heartbeatInterval, ready)
 	if err != nil {
 		return fmt.Errorf("egress run loop: %w", err)
 	}
 
 	return nil
+}
+
+var runSDKWorker = func(ctx context.Context, natsConn *natsx.Connection, id sdkegress.Identity, caps sdkegress.Capabilities, executor *internalegress.Executor, heartbeatInterval time.Duration, ready *atomic.Bool) error {
+	return sdkegress.Run(ctx, natsConn, id, caps, heartbeatInterval, ready, func(sessionID string, maxConcurrency uint32) (sdkegress.AssignmentServer, error) {
+		return internalegress.NewWorker(natsConn, internalegress.Identity(id), executor, sessionID, maxConcurrency)
+	})
 }
