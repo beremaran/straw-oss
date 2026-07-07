@@ -1,6 +1,6 @@
 # 13 - Example Custom Egress Implementation
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -46,16 +46,17 @@ proves task 12's `sdk/egress` package and task 22's official-worker rebase.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Implement the static-response `Executor` and the example worker `main.go` using only `sdk/egress` and the
+- [x] Read all required planning docs.
+- [x] Implement the static-response `Executor` and the example worker `main.go` using only `sdk/egress` and the
       standard library.
-- [ ] Write the README with run instructions and the operator-obligation section.
-- [ ] Add the integration test: register, receive an assignment, return the static page, and assert the response
+- [x] Write the README with run instructions and the operator-obligation section.
+- [x] Add the integration test: register, receive an assignment, return the static page, and assert the response
       reaches the Control side of the test harness.
-- [ ] Verify the example imports no `internal/*` packages.
-- [ ] Optionally run the example against the compose stack and drive a request through Control to it.
-- [ ] Run focused tests, then `make check`.
-- [ ] Write a handoff note.
+- [x] Verify the example imports no `internal/*` packages.
+- [ ] Optionally run the example against the compose stack and drive a request through Control to it. (skipped;
+      optional step, no compose stack running this session — see handoff Remaining Work)
+- [x] Run focused tests, then `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 
