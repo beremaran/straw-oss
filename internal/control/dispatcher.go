@@ -73,6 +73,13 @@ type PipelineError struct {
 	AssignmentMs int64
 	EgressMs     int64
 	TotalMs      int64
+	// RouteID/PoolID/SelectedExecutor/ExecutorType carry the routing decision
+	// for request_events telemetry (empty when the failure occurred before a
+	// route was selected).
+	RouteID          string
+	PoolID           string
+	SelectedExecutor string
+	ExecutorType     string
 }
 
 // RequestDispatcherOptions wires the Control request pipeline.
@@ -242,25 +249,27 @@ func (d *DefaultRequestDispatcher) dispatch(ctx context.Context, in DispatchInpu
 
 	deadline := d.deadline(in.Request, snapshot)
 
-	result, assignmentMs, perr := d.executeAttemptOrFallback(ctx, in, route, snapshot, policy, deadline)
+	result, assignmentMs, perr, usedRoute := d.executeAttemptOrFallback(ctx, in, route, snapshot, policy, deadline)
 
 	if perr != nil {
 		perr = d.withTiming(perr, routingMs, assignmentMs, started)
 		perr.EgressMs = result.egressMs
+		setRouteFields(perr, usedRoute)
 
 		return SuccessResponse{}, perr
 	}
 
-	return d.finalizeDispatch(ctx, in, snapshot, result, routingMs, assignmentMs, started)
+	return d.finalizeDispatch(ctx, in, snapshot, result, usedRoute, routingMs, assignmentMs, started)
 }
 
 // finalizeDispatch runs the post-success steps: tee a large response body to
 // object storage (if selected), record quota usage, and build the response.
-func (d *DefaultRequestDispatcher) finalizeDispatch(ctx context.Context, in DispatchInput, snapshot config.TenantSnapshot, result dispatchResult, routingMs, assignmentMs int64, started time.Time) (SuccessResponse, *PipelineError) {
+func (d *DefaultRequestDispatcher) finalizeDispatch(ctx context.Context, in DispatchInput, snapshot config.TenantSnapshot, result dispatchResult, route RouteOutcome, routingMs, assignmentMs int64, started time.Time) (SuccessResponse, *PipelineError) {
 	if result.useBodyRef {
 		if perr := d.teeResponseBody(ctx, in, &result); perr != nil {
 			perr = d.withTiming(perr, routingMs, assignmentMs, started)
 			perr.EgressMs = result.egressMs
+			setRouteFields(perr, route)
 
 			return SuccessResponse{}, perr
 		}
@@ -271,7 +280,28 @@ func (d *DefaultRequestDispatcher) finalizeDispatch(ctx context.Context, in Disp
 		_ = d.opts.QuotaAdmission.AddBandwidth(ctx, in.Identity.TenantID, requestBodySize(in.Request)+int64(len(result.body)))
 	}
 
-	return successFromDispatch(in.RequestID, result, routingMs, assignmentMs, millisSince(started, d.opts.Now())), nil
+	resp := successFromDispatch(in.RequestID, result, routingMs, assignmentMs, millisSince(started, d.opts.Now()))
+	setRouteFieldsOnResponse(&resp, route)
+
+	return resp, nil
+}
+
+// setRouteFields copies the selected route's identity onto a PipelineError
+// for request_events telemetry (docs/tasks/p0/32 follow-up: route_id/pool_id/
+// selected_executor/executor_type were computed at dispatch but dropped
+// before reaching the telemetry row).
+func setRouteFields(perr *PipelineError, route RouteOutcome) {
+	perr.RouteID = route.RuleID
+	perr.PoolID = route.PoolID
+	perr.SelectedExecutor = route.WorkerID
+	perr.ExecutorType = route.ExecutorType
+}
+
+func setRouteFieldsOnResponse(resp *SuccessResponse, route RouteOutcome) {
+	resp.RouteID = route.RuleID
+	resp.PoolID = route.PoolID
+	resp.SelectedExecutor = route.WorkerID
+	resp.ExecutorType = route.ExecutorType
 }
 
 // teeResponseBody uploads the completed response body to object storage and
@@ -335,11 +365,24 @@ func (d *DefaultRequestDispatcher) dispatchRaw(ctx context.Context, in DispatchI
 	deadline := d.deadline(in.Request, snapshot)
 
 	result, assignmentMs, perr, wroteHeader := d.executeRawAttempt(ctx, in, route, policy, snapshot.ConfigVersion, deadline, w)
+
+	return d.finalizeRawDispatch(ctx, in, snapshot, route, result, perr, routingMs, assignmentMs, started, wroteHeader)
+}
+
+// finalizeRawDispatch mirrors finalizeDispatch for the raw-response path:
+// record quota usage on success, and stamp the routing decision onto
+// whichever of SuccessResponse/PipelineError applies for request_events
+// telemetry.
+func (d *DefaultRequestDispatcher) finalizeRawDispatch(ctx context.Context, in DispatchInput, snapshot config.TenantSnapshot, route RouteOutcome, result dispatchResult, perr *PipelineError, routingMs, assignmentMs int64, started time.Time, wroteHeader bool) (SuccessResponse, *PipelineError, bool) {
 	if perr != nil {
 		perr = d.withTiming(perr, routingMs, assignmentMs, started)
 		perr.EgressMs = result.egressMs
+		setRouteFields(perr, route)
 
-		return rawSuccessFromDispatch(in.RequestID, result, routingMs, assignmentMs, millisSince(started, d.opts.Now())), perr, wroteHeader
+		resp := rawSuccessFromDispatch(in.RequestID, result, routingMs, assignmentMs, millisSince(started, d.opts.Now()))
+		setRouteFieldsOnResponse(&resp, route)
+
+		return resp, perr, wroteHeader
 	}
 
 	if d.opts.QuotaAdmission != nil {
@@ -347,7 +390,10 @@ func (d *DefaultRequestDispatcher) dispatchRaw(ctx context.Context, in DispatchI
 		_ = d.opts.QuotaAdmission.AddBandwidth(ctx, in.Identity.TenantID, requestBodySize(in.Request)+int64FromUint64(result.size))
 	}
 
-	return rawSuccessFromDispatch(in.RequestID, result, routingMs, assignmentMs, millisSince(started, d.opts.Now())), nil, wroteHeader
+	resp := rawSuccessFromDispatch(in.RequestID, result, routingMs, assignmentMs, millisSince(started, d.opts.Now()))
+	setRouteFieldsOnResponse(&resp, route)
+
+	return resp, nil, wroteHeader
 }
 
 // withTiming annotates perr with whatever partial phase timing the
@@ -466,22 +512,22 @@ func (d *DefaultRequestDispatcher) routeWithWorkers(in DispatchInput, snapshot c
 	})
 }
 
-func (d *DefaultRequestDispatcher) executeAttemptOrFallback(ctx context.Context, in DispatchInput, route RouteOutcome, snapshot config.TenantSnapshot, policy *DestinationPolicyResult, deadline time.Time) (dispatchResult, int64, *PipelineError) {
+func (d *DefaultRequestDispatcher) executeAttemptOrFallback(ctx context.Context, in DispatchInput, route RouteOutcome, snapshot config.TenantSnapshot, policy *DestinationPolicyResult, deadline time.Time) (dispatchResult, int64, *PipelineError, RouteOutcome) {
 	result, assignmentMs, perr := d.executeAttempt(ctx, in, route, policy, snapshot.ConfigVersion, deadline)
 	if perr == nil || !canFallbackBeforeRequestStart(perr.Code) {
-		return result, assignmentMs, perr
+		return result, assignmentMs, perr, route
 	}
 
 	routeFailure(d.opts.Workers, route.WorkerID)
 
 	fallback := d.routeWithWorkers(in, snapshot, excludeWorkers{base: d.opts.Workers, workerID: route.WorkerID})
 	if !fallback.OK {
-		return result, assignmentMs, perr
+		return result, assignmentMs, perr, route
 	}
 
 	fallbackResult, fallbackAssignmentMs, fallbackErr := d.executeAttempt(ctx, in, fallback, policy, snapshot.ConfigVersion, deadline)
 
-	return fallbackResult, assignmentMs + fallbackAssignmentMs, fallbackErr
+	return fallbackResult, assignmentMs + fallbackAssignmentMs, fallbackErr, fallback
 }
 
 type excludeWorkers struct {

@@ -501,6 +501,7 @@ type PoolCandidate struct {
 	WorkerID       string
 	SessionID      string
 	AssignSubject  string
+	ExecutorType   string
 	Degraded       bool
 	Tags           []string
 	Countries      []string
@@ -554,6 +555,7 @@ func (r *WorkerRegistry) CandidatesForPool(tenantID, poolID string) []PoolCandid
 			WorkerID:       workerID,
 			SessionID:      s.sessionID,
 			AssignSubject:  subject,
+			ExecutorType:   s.executorType,
 			Degraded:       state == RuntimeDegraded,
 			Tags:           s.tags,
 			Countries:      s.countries,

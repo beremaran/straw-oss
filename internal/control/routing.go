@@ -77,6 +77,7 @@ type RouteOutcome struct {
 	RuleID        string
 	PoolID        string
 	WorkerID      string
+	ExecutorType  string
 	SessionID     string
 	AssignSubject string
 	Sticky        bool
@@ -153,7 +154,8 @@ func (rt *Router) Evaluate(req RouteRequest) RouteOutcome {
 		if picked, ok := rt.selectExecutor(req.TenantID, rule.TargetPoolID, candidates); ok {
 			return RouteOutcome{
 				OK: true, RuleID: rule.ID, PoolID: rule.TargetPoolID,
-				WorkerID: picked.WorkerID, SessionID: picked.SessionID, AssignSubject: picked.AssignSubject,
+				WorkerID: picked.WorkerID, ExecutorType: picked.ExecutorType,
+				SessionID: picked.SessionID, AssignSubject: picked.AssignSubject,
 			}
 		}
 	}
@@ -174,7 +176,8 @@ func (rt *Router) evaluateSticky(req RouteRequest, rule RoutingRule, candidates 
 
 				return RouteOutcome{
 					OK: true, RuleID: rule.ID, PoolID: rule.TargetPoolID,
-					WorkerID: c.WorkerID, SessionID: c.SessionID, AssignSubject: c.AssignSubject, Sticky: true,
+					WorkerID: c.WorkerID, ExecutorType: c.ExecutorType,
+					SessionID: c.SessionID, AssignSubject: c.AssignSubject, Sticky: true,
 				}, true
 			}
 		}
@@ -194,7 +197,8 @@ func (rt *Router) evaluateSticky(req RouteRequest, rule RoutingRule, candidates 
 
 	return RouteOutcome{
 		OK: true, RuleID: rule.ID, PoolID: rule.TargetPoolID,
-		WorkerID: picked.WorkerID, SessionID: picked.SessionID, AssignSubject: picked.AssignSubject, Sticky: true,
+		WorkerID: picked.WorkerID, ExecutorType: picked.ExecutorType,
+		SessionID: picked.SessionID, AssignSubject: picked.AssignSubject, Sticky: true,
 	}, true
 }
 

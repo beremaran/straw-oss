@@ -218,6 +218,13 @@ func buildRequestEvent(requestID string, identity Identity, request *ValidatedRe
 		event.TargetURL = sanitizeTargetURL(request.URL, policy)
 	}
 
+	if request != nil {
+		event.Country = request.Routing.Country
+		event.Region = request.Routing.Region
+		event.IPType = request.Routing.IPType
+		event.Tags = request.Routing.Tags
+	}
+
 	return event
 }
 
@@ -236,6 +243,10 @@ func applyRequestOutcome(event RequestEvent, resp SuccessResponse, perr *Pipelin
 		event.AssignmentMS = uint32OrMax(resp.Timing.AssignmentMs)
 		event.EgressMS = uint32OrMax(resp.Timing.EgressMs)
 		event.TotalMS = uint32OrMax(resp.Timing.TotalMs)
+		event.RouteID = resp.RouteID
+		event.PoolID = resp.PoolID
+		event.SelectedExecutor = resp.SelectedExecutor
+		event.ExecutorType = resp.ExecutorType
 
 		return event
 	}
@@ -253,6 +264,10 @@ func applyRequestOutcome(event RequestEvent, resp SuccessResponse, perr *Pipelin
 	event.AssignmentMS = uint32OrMax(perr.AssignmentMs)
 	event.EgressMS = uint32OrMax(perr.EgressMs)
 	event.TotalMS = uint32OrMax(perr.TotalMs)
+	event.RouteID = perr.RouteID
+	event.PoolID = perr.PoolID
+	event.SelectedExecutor = perr.SelectedExecutor
+	event.ExecutorType = perr.ExecutorType
 
 	return event
 }
