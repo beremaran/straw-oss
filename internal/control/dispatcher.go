@@ -83,6 +83,7 @@ type RequestDispatcherOptions struct {
 	NATS                       *natsx.Connection
 	RateLimitAdmission         *RateLimitAdmission
 	QuotaAdmission             *QuotaAdmission
+	BodyTransport              config.ControlBodyTransportConfig
 	MaxInlineResponseBodyBytes uint64
 	MaxFrameDataBytes          uint64
 	MaxTimeoutMs               uint64
@@ -137,6 +138,8 @@ func NewDefaultRequestDispatcher(opts RequestDispatcherOptions) *DefaultRequestD
 	if opts.FrameIdleTimeout == 0 {
 		opts.FrameIdleTimeout = defaultFrameIdleTimeout
 	}
+
+	opts.BodyTransport = opts.BodyTransport.Normalized()
 
 	if opts.Sticky == nil {
 		opts.Sticky = NewStickyStore(opts.Now)
@@ -993,7 +996,16 @@ func acceptedResponseFrame(outcome natsx.FrameOutcome) (bool, bool, *PipelineErr
 
 func (d *DefaultRequestDispatcher) acceptResponseData(data *strawpb.DataFrame, result *dispatchResult, validator *natsx.StreamValidator, c2eSubject string, in DispatchInput, deadline time.Time, c2eSeq *uint64) (bool, *PipelineError) {
 	result.body = append(result.body, data.GetData()...)
-	if len(result.body) <= responseBodyLimit(d.opts.MaxInlineResponseBodyBytes) {
+	selection, perr := SelectBodyTransport(d.opts.BodyTransport, BodyTransportSelectionRequest{
+		Direction:        BodyTransportDirectionResponse,
+		SizeBytes:        uint64FromInt(len(result.body)),
+		InlineLimitBytes: d.opts.MaxInlineResponseBodyBytes,
+	})
+	if perr != nil {
+		return true, perr
+	}
+
+	if selection.Transport == BodyTransportDataFrames {
 		bytes := uint64FromInt(len(data.GetData()))
 		*c2eSeq = d.sendDownloadCredit(c2eSubject, in, deadline, *c2eSeq, bytes)
 		validator.GrantCredit(bytes)
@@ -1001,13 +1013,7 @@ func (d *DefaultRequestDispatcher) acceptResponseData(data *strawpb.DataFrame, r
 		return false, nil
 	}
 
-	return true, &PipelineError{
-		Code: BodyTooLarge,
-		Details: map[string]string{
-			errorDetailDirectionKey:  "response",
-			errorDetailLimitBytesKey: strconv.FormatUint(d.opts.MaxInlineResponseBodyBytes, 10),
-		},
-	}
+	return true, bodyRefUnavailableError(BodyTransportDirectionResponse, selection.Transport)
 }
 
 func (d *DefaultRequestDispatcher) executorError(route RouteOutcome, frame *strawpb.ErrorFrame) *PipelineError {
@@ -1264,15 +1270,6 @@ func frameChunkSize(bodyLen int, limit uint64) int {
 	n, err := strconv.Atoi(strconv.FormatUint(limit, 10))
 	if err != nil || n > bodyLen {
 		return bodyLen
-	}
-
-	return n
-}
-
-func responseBodyLimit(limit uint64) int {
-	n, err := strconv.Atoi(strconv.FormatUint(limit, 10))
-	if err != nil {
-		return math.MaxInt
 	}
 
 	return n

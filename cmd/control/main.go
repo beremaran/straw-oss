@@ -1085,6 +1085,7 @@ func buildControlMux(controlConfig config.ControlConfig, apiKeyStore control.API
 		NATS:                       natsConn,
 		RateLimitAdmission:         rateLimitAdmission,
 		QuotaAdmission:             quotaAdmission,
+		BodyTransport:              controlConfig.BodyTransport,
 		MaxInlineResponseBodyBytes: controlConfig.Request.MaxInlineResponseBodyBytes,
 		MaxFrameDataBytes:          controlConfig.Transport.MaxFrameDataBytes,
 		MaxTimeoutMs:               controlConfig.Request.MaxTimeoutMs,
