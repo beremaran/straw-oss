@@ -8,16 +8,19 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"fmt"
 	"io"
 	"math/big"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"golang.org/x/net/http2"
 
 	"github.com/beremaran/straw/v2/internal/config"
 	"github.com/beremaran/straw/v2/internal/control"
@@ -26,6 +29,8 @@ import (
 const (
 	testControlHost  = "127.0.0.1"
 	testMITMLeafHost = "example.com"
+	testProtoH2      = "h2"
+	testProtoHTTP11  = "http/1.1"
 )
 
 func TestOpenRedisMissingURLEnvFails(t *testing.T) {
@@ -207,7 +212,7 @@ func TestConfigureMITMServerUsesAuthenticatedConnectBootstrap(t *testing.T) {
 	leafLookup := func(_ *http.Request, _ control.Identity, sni, _ string) (*tls.Certificate, error) {
 		return generateMITMLeaf(ca, sni, time.Hour)
 	}
-	server := httptest.NewServer(configureMITMServer(mitm, leafLookup, nil))
+	server := httptest.NewServer(configureMITMServer(mitm, leafLookup, nil, false))
 	defer server.Close()
 
 	directTLS, err := (&tls.Dialer{Config: &tls.Config{RootCAs: x509.NewCertPool(), ServerName: testMITMLeafHost}}).DialContext(context.Background(), "tcp", strings.TrimPrefix(server.URL, "http://"))
@@ -262,6 +267,52 @@ func TestConfigureMITMServerUsesAuthenticatedConnectBootstrap(t *testing.T) {
 	}
 }
 
+func TestConfigureMITMServerHTTP2ALPN(t *testing.T) {
+	t.Parallel()
+
+	tlsConn := dialTestMITMTunnel(t, false, true, []string{testProtoH2, testProtoHTTP11})
+	defer func() { _ = tlsConn.Close() }()
+
+	if got := tlsConn.ConnectionState().NegotiatedProtocol; got != testProtoHTTP11 {
+		t.Fatalf("disabled negotiated protocol = %q, want %s", got, testProtoHTTP11)
+	}
+
+	tlsConn = dialTestMITMTunnel(t, true, false, []string{testProtoH2, testProtoHTTP11})
+	defer func() { _ = tlsConn.Close() }()
+
+	if got := tlsConn.ConnectionState().NegotiatedProtocol; got != testProtoHTTP11 {
+		t.Fatalf("policy-denied negotiated protocol = %q, want %s", got, testProtoHTTP11)
+	}
+
+	tlsConn = dialTestMITMTunnel(t, true, true, []string{testProtoH2, testProtoHTTP11})
+	defer func() { _ = tlsConn.Close() }()
+
+	if got := tlsConn.ConnectionState().NegotiatedProtocol; got != testProtoH2 {
+		t.Fatalf("enabled negotiated protocol = %q, want %s", got, testProtoH2)
+	}
+
+	client := &http.Client{Transport: &http2.Transport{
+		DialTLSContext: func(context.Context, string, string, *tls.Config) (net.Conn, error) {
+			return tlsConn, nil
+		},
+	}}
+
+	var wg sync.WaitGroup
+	errs := make(chan error, 2)
+	for range 2 {
+		wg.Go(func() {
+			errs <- assertTestMITMH2GET(client)
+		})
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func TestBuildMITMLeafLookupRequiresTenantIdentity(t *testing.T) {
 	t.Parallel()
 
@@ -295,6 +346,88 @@ type testBufferedConn struct {
 
 func (c *testBufferedConn) Read(p []byte) (int, error) {
 	return c.r.Read(p)
+}
+
+func dialTestMITMTunnel(t *testing.T, http2Enabled bool, mitmPolicy bool, nextProtos []string) *tls.Conn {
+	t.Helper()
+
+	ca := newTestMITMCA(t)
+	mitm, token := newTestMainMITMHandler(t)
+	if mitmPolicy {
+		mitm.SetConfigCache(newTestMITMConfigCache(t))
+	}
+	leafLookup := func(_ *http.Request, _ control.Identity, sni, _ string) (*tls.Certificate, error) {
+		return generateMITMLeaf(ca, sni, time.Hour)
+	}
+	server := httptest.NewServer(configureMITMServer(mitm, leafLookup, nil, http2Enabled))
+	t.Cleanup(server.Close)
+
+	conn, err := (&net.Dialer{}).DialContext(context.Background(), "tcp", strings.TrimPrefix(server.URL, "http://"))
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+
+	_, err = io.WriteString(conn, "CONNECT "+testMITMLeafHost+":443 HTTP/1.1\r\nHost: "+testMITMLeafHost+":443\r\nProxy-Authorization: Bearer "+token+"\r\n\r\n")
+	if err != nil {
+		t.Fatalf("write CONNECT: %v", err)
+	}
+	br := bufio.NewReader(conn)
+	resp, err := http.ReadResponse(br, &http.Request{Method: http.MethodConnect})
+	if err != nil {
+		t.Fatalf("read CONNECT: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("CONNECT status = %d, want 200", resp.StatusCode)
+	}
+
+	pool := x509.NewCertPool()
+	pool.AddCert(ca.cert)
+	tlsConn := tls.Client(&testBufferedConn{Conn: conn, r: br}, &tls.Config{RootCAs: pool, ServerName: testMITMLeafHost, NextProtos: nextProtos})
+	err = tlsConn.HandshakeContext(context.Background())
+	if err != nil {
+		t.Fatalf("inner TLS handshake: %v", err)
+	}
+
+	return tlsConn
+}
+
+func assertTestMITMH2GET(client *http.Client) error {
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://"+testMITMLeafHost+"/", nil)
+	if err != nil {
+		return err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK || resp.ProtoMajor != 2 {
+		return fmt.Errorf("h2 inner response = %d %s, want 200 HTTP/2", resp.StatusCode, resp.Proto)
+	}
+
+	return nil
+}
+
+func newTestMITMConfigCache(t *testing.T) *control.ConfigCache {
+	t.Helper()
+
+	store := control.NewInMemorySnapshotStore()
+	snapshot := config.NewTenantSnapshot("ten_main_mitm", 1, nil)
+	snapshot.RoutingRules = []config.RoutingRule{{
+		ID:           "route_mitm",
+		Enabled:      true,
+		TargetPoolID: "pool_mitm",
+		Match:        config.MatchConditions{IngressType: control.IngressTypeMITM},
+	}}
+	_, err := store.SaveTenantSnapshot(context.Background(), snapshot, 0)
+	if err != nil {
+		t.Fatalf("SaveTenantSnapshot() error = %v", err)
+	}
+
+	return control.NewConfigCache(store, nil)
 }
 
 func newTestMainMITMHandler(t *testing.T) (*control.MITMHandler, string) {

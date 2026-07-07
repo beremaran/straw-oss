@@ -384,7 +384,7 @@ func serveMITMHTTP(ctx context.Context, controlConfig config.ControlConfig, hand
 		Addr:              addr,
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
-	server.Handler = configureMITMServer(handler, leafLookup, leafPreflight)
+	server.Handler = configureMITMServer(handler, leafLookup, leafPreflight, controlConfig.HTTP2.Enabled)
 
 	go func() {
 		serveErr := server.ListenAndServe()
@@ -406,7 +406,7 @@ func serveMITMHTTP(ctx context.Context, controlConfig config.ControlConfig, hand
 	}
 }
 
-func configureMITMServer(handler http.Handler, leafLookup control.MITMLeafLookup, leafPreflight control.MITMLeafPreflight) http.Handler {
+func configureMITMServer(handler http.Handler, leafLookup control.MITMLeafLookup, leafPreflight control.MITMLeafPreflight, http2Enabled bool) http.Handler {
 	mitm, ok := handler.(*control.MITMHandler)
 	if !ok {
 		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -416,6 +416,8 @@ func configureMITMServer(handler http.Handler, leafLookup control.MITMLeafLookup
 
 	connect := control.NewMITMConnectHandler(mitm.Authenticator(), handler, leafLookup)
 	connect.SetLeafPreflight(leafPreflight)
+	connect.SetHTTP2Enabled(http2Enabled)
+	connect.SetHTTP2Policy(mitm.AllowsHTTP2)
 
 	return connect
 }
