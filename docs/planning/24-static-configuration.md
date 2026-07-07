@@ -19,6 +19,8 @@ these full paths.
 | `control.server.mitm_ca_cert_file`                      | —          | 17, 24                             |
 | `control.server.mitm_ca_key_file`                       | —          | 17, 24                             |
 | `control.server.mitm_cert_validity_days`                | `30`       | 17, 24                             |
+| `control.server.mitm_leaf_kms_provider`                 | —          | 17, 24                             |
+| `control.server.mitm_leaf_kms_key_id`                   | —          | 17, 24                             |
 | `control.request.default_timeout_ms`                    | `60000`    | 24                                 |
 | `control.request.max_timeout_ms`                        | `300000`   | 24                                 |
 | `control.request.max_inline_request_body_bytes`         | `1048576`  | 24                                 |
@@ -287,6 +289,8 @@ All variables use `STRAW_`, never `STROW_`.
 Canonical examples:
 
 - `STRAW_MITM_CERT_VALIDITY_DAYS`,
+- `STRAW_MITM_LEAF_KMS_PROVIDER`,
+- `STRAW_MITM_LEAF_KMS_KEY_ID`,
 - `STRAW_BODY_OBJECT_STORAGE_ENABLED`,
 - `STRAW_UPSTREAM_PROXY_USERNAME`,
 - `STRAW_UPSTREAM_PROXY_PASSWORD`,

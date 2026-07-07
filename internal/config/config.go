@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"strconv"
+	"strings"
 	"syscall"
 )
 
@@ -37,6 +38,8 @@ var (
 	errInvalidServerMITMPort    = errors.New("server.mitm_port must be 8083 when mitm_enabled is true")
 	errMITMCAFilesRequired      = errors.New("server.mitm_ca_cert_file and server.mitm_ca_key_file are required when mitm_enabled is true")
 	errInvalidMITMValidityDays  = errors.New("server.mitm_cert_validity_days must be positive")
+	errMITMLeafKMSSplitConfig   = errors.New("server.mitm_leaf_kms_provider and server.mitm_leaf_kms_key_id must be supplied together")
+	errMITMLeafKMSUnsafeConfig  = errors.New("server.mitm_leaf_kms_provider must not be plaintext or static-key")
 	errInvalidEgressHealthPort  = errors.New("health_port must be between 1 and 65535")
 	errEgressPoolRefIncomplete  = errors.New("allowed_pools entries require both tenant_id and pool_id")
 	errInvalidEgressPoolConfig  = errors.New("upstream_connection_pool values must be positive when enabled")
@@ -99,6 +102,8 @@ type ControlServerConfig struct {
 	MITMCACertFile       string `json:"mitm_ca_cert_file,omitempty"`
 	MITMCAKeyFile        string `json:"mitm_ca_key_file,omitempty"`
 	MITMCertValidityDays int    `json:"mitm_cert_validity_days,omitempty"`
+	MITMLeafKMSProvider  string `json:"mitm_leaf_kms_provider,omitempty"`
+	MITMLeafKMSKeyID     string `json:"mitm_leaf_kms_key_id,omitempty"`
 }
 
 // ControlRequestConfig configures request body and timeout limits.
@@ -428,6 +433,14 @@ func (s *ControlServerConfig) applyMITMDefaults() {
 		}
 	}
 
+	if raw := os.Getenv("STRAW_MITM_LEAF_KMS_PROVIDER"); raw != "" {
+		s.MITMLeafKMSProvider = raw
+	}
+
+	if raw := os.Getenv("STRAW_MITM_LEAF_KMS_KEY_ID"); raw != "" {
+		s.MITMLeafKMSKeyID = raw
+	}
+
 	if s.MITMEnabled && s.MITMCertValidityDays == 0 {
 		s.MITMCertValidityDays = 30
 	}
@@ -566,7 +579,20 @@ func (s ControlServerConfig) validateMITM() error {
 		return errInvalidMITMValidityDays
 	}
 
-	return nil
+	return s.validateMITMLeafKMS()
+}
+
+func (s ControlServerConfig) validateMITMLeafKMS() error {
+	if (s.MITMLeafKMSProvider == "") != (s.MITMLeafKMSKeyID == "") {
+		return errMITMLeafKMSSplitConfig
+	}
+
+	switch strings.ToLower(strings.TrimSpace(s.MITMLeafKMSProvider)) {
+	case "plaintext", "static", "static-key", "deployment-key":
+		return errMITMLeafKMSUnsafeConfig
+	default:
+		return nil
+	}
 }
 
 func (e *EgressConfig) validate() error {

@@ -113,6 +113,26 @@ func TestBuildMITMHandlerOnlyWhenEnabled(t *testing.T) {
 	}
 }
 
+func TestBuildMITMLeafBundleProviderConfig(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.ControlConfig{}
+	got, err := buildMITMLeafBundleProviderConfig(cfg)
+	if err != nil || got != nil {
+		t.Fatalf("buildMITMLeafBundleProviderConfig(empty) = %+v, %v; want nil, nil", got, err)
+	}
+
+	cfg.Server.MITMLeafKMSProvider = "aws-kms"
+	cfg.Server.MITMLeafKMSKeyID = "arn:test"
+	got, err = buildMITMLeafBundleProviderConfig(cfg)
+	if err != nil {
+		t.Fatalf("buildMITMLeafBundleProviderConfig() error = %v", err)
+	}
+	if got.ProviderName != "aws-kms" || got.KeyID != "arn:test" {
+		t.Fatalf("provider config = %+v", got)
+	}
+}
+
 func TestGenerateMITMLeafSignsServerCertificate(t *testing.T) {
 	t.Parallel()
 
