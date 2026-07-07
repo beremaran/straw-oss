@@ -1,6 +1,6 @@
 # 12 - Egress SDK Protocol Foundation
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -49,18 +49,18 @@ safe task, so follow-on tasks 22-24 own the rebase, enum rename, and conformance
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Define `sdk/egress.Executor` from the existing `Execute(ctx, start, body, attempt, send)` seam.
-- [ ] Move or wrap the public-safe identity, capability, registration-request, heartbeat, capacity, and assignment
+- [x] Read all required planning docs.
+- [x] Define `sdk/egress.Executor` from the existing `Execute(ctx, start, body, attempt, send)` seam.
+- [x] Move or wrap the public-safe identity, capability, registration-request, heartbeat, capacity, and assignment
       admission helpers into `sdk/egress`.
-- [ ] Expose SDK-safe subject and envelope helpers required for custom workers without importing `internal/*`
+- [x] Expose SDK-safe subject and envelope helpers required for custom workers without importing `internal/*`
       packages.
-- [ ] Keep the official worker behavior unchanged; any `internal/egress` edits must be mechanical reuse of the new
+- [x] Keep the official worker behavior unchanged; any `internal/egress` edits must be mechanical reuse of the new
       public helpers.
-- [ ] Add focused SDK foundation tests.
-- [ ] Verify `sdk/egress` imports no `internal/*` packages.
-- [ ] Run focused tests, then `make check`.
-- [ ] Write a handoff note.
+- [x] Add focused SDK foundation tests.
+- [x] Verify `sdk/egress` imports no `internal/*` packages.
+- [x] Run focused tests, then `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 
