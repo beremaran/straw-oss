@@ -551,7 +551,7 @@ const (
 	DestinationResolutionMode_DESTINATION_RESOLUTION_MODE_UNSPECIFIED      DestinationResolutionMode = 0
 	DestinationResolutionMode_DESTINATION_RESOLUTION_DIRECT_LOCAL          DestinationResolutionMode = 1
 	DestinationResolutionMode_DESTINATION_RESOLUTION_UPSTREAM_PROXY_REMOTE DestinationResolutionMode = 2
-	DestinationResolutionMode_DESTINATION_RESOLUTION_PROVIDER_ADAPTER      DestinationResolutionMode = 3
+	DestinationResolutionMode_DESTINATION_RESOLUTION_EXECUTOR_DELEGATED    DestinationResolutionMode = 3
 )
 
 // Enum value maps for DestinationResolutionMode.
@@ -560,13 +560,13 @@ var (
 		0: "DESTINATION_RESOLUTION_MODE_UNSPECIFIED",
 		1: "DESTINATION_RESOLUTION_DIRECT_LOCAL",
 		2: "DESTINATION_RESOLUTION_UPSTREAM_PROXY_REMOTE",
-		3: "DESTINATION_RESOLUTION_PROVIDER_ADAPTER",
+		3: "DESTINATION_RESOLUTION_EXECUTOR_DELEGATED",
 	}
 	DestinationResolutionMode_value = map[string]int32{
 		"DESTINATION_RESOLUTION_MODE_UNSPECIFIED":      0,
 		"DESTINATION_RESOLUTION_DIRECT_LOCAL":          1,
 		"DESTINATION_RESOLUTION_UPSTREAM_PROXY_REMOTE": 2,
-		"DESTINATION_RESOLUTION_PROVIDER_ADAPTER":      3,
+		"DESTINATION_RESOLUTION_EXECUTOR_DELEGATED":    3,
 	}
 )
 
@@ -3421,12 +3421,12 @@ const file_straw_v1_straw_proto_rawDesc = "" +
 	"\x17SNI_HOST_MISMATCH_ALLOW\x10\x02*R\n" +
 	"\x0eRedirectPolicy\x12\x1d\n" +
 	"\x19REDIRECT_POLICY_NO_FOLLOW\x10\x00\x12!\n" +
-	"\x1dREDIRECT_POLICY_FOLLOW_STRICT\x10\x01*\xd0\x01\n" +
+	"\x1dREDIRECT_POLICY_FOLLOW_STRICT\x10\x01*\xfb\x01\n" +
 	"\x19DestinationResolutionMode\x12+\n" +
 	"'DESTINATION_RESOLUTION_MODE_UNSPECIFIED\x10\x00\x12'\n" +
 	"#DESTINATION_RESOLUTION_DIRECT_LOCAL\x10\x01\x120\n" +
-	",DESTINATION_RESOLUTION_UPSTREAM_PROXY_REMOTE\x10\x02\x12+\n" +
-	"'DESTINATION_RESOLUTION_PROVIDER_ADAPTER\x10\x03B:Z8github.com/beremaran/straw/v2/api/proto/straw/v1;strawpbb\x06proto3"
+	",DESTINATION_RESOLUTION_UPSTREAM_PROXY_REMOTE\x10\x02\x12-\n" +
+	")DESTINATION_RESOLUTION_EXECUTOR_DELEGATED\x10\x03*'DESTINATION_RESOLUTION_PROVIDER_ADAPTERB:Z8github.com/beremaran/straw/v2/api/proto/straw/v1;strawpbb\x06proto3"
 
 var (
 	file_straw_v1_straw_proto_rawDescOnce sync.Once

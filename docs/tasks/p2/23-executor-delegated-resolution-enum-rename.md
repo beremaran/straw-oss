@@ -1,6 +1,6 @@
 # 23 - Executor-Delegated Resolution Enum Rename
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -44,15 +44,15 @@ this compatibility-sensitive rename with the SDK extraction; this task owns it s
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Rename `DESTINATION_RESOLUTION_PROVIDER_ADAPTER` to executor-delegated naming while keeping value `3`.
-- [ ] Reserve the old enum value name per the protobuf contract.
-- [ ] Regenerate protobuf code.
-- [ ] Update validation and planning docs to use the new enum name and remove the "rename owned by" parenthetical.
-- [ ] Run Buf lint/breaking checks and focused protobuf tests.
-- [ ] Verify non-generated Provider Adapter references are either the reserved proto name or historical decision text.
-- [ ] Run focused tests, then `make check`.
-- [ ] Write a handoff note.
+- [x] Read all required planning docs.
+- [x] Rename `DESTINATION_RESOLUTION_PROVIDER_ADAPTER` to executor-delegated naming while keeping value `3`.
+- [x] Reserve the old enum value name per the protobuf contract.
+- [x] Regenerate protobuf code.
+- [x] Update validation and planning docs to use the new enum name and remove the "rename owned by" parenthetical.
+- [x] Run Buf lint/breaking checks and focused protobuf tests.
+- [x] Verify non-generated Provider Adapter references are either the reserved proto name or historical decision text.
+- [x] Run focused tests, then `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

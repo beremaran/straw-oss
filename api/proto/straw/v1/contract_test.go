@@ -40,6 +40,15 @@ func TestAssignRequestCreditFieldsExist(t *testing.T) {
 	}
 }
 
+func TestExecutorDelegatedDestinationResolutionKeepsWireNumber(t *testing.T) {
+	if got := strawpb.DestinationResolutionMode_DESTINATION_RESOLUTION_EXECUTOR_DELEGATED.Number(); got != 3 {
+		t.Fatalf("expected executor-delegated resolution wire number 3, got %d", got)
+	}
+	if !strawpb.DestinationResolutionMode_DESTINATION_RESOLUTION_EXECUTOR_DELEGATED.Valid() {
+		t.Fatal("expected executor-delegated resolution mode to validate")
+	}
+}
+
 func TestValidateRejectsUnknownEnums(t *testing.T) {
 	t.Run("error response", func(t *testing.T) {
 		msg := &strawpb.ErrorResponse{
