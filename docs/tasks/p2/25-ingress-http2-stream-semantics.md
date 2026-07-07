@@ -1,6 +1,6 @@
 # 25 - Ingress HTTP/2 Stream Identity and Cancellation
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -53,16 +53,16 @@ connection-fanout tests.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Build a coverage table for the stream-identity, cancellation, and connection-fanout rows in
+- [x] Read all required planning docs.
+- [x] Build a coverage table for the stream-identity, cancellation, and connection-fanout rows in
       `docs/planning/c-http2-semantics.md` (leave header/trailer and flow-control rows to tasks 29 and 30).
-- [ ] Prove each HTTP/2 stream maps to one unique Straw `request_id` through Control admission and dispatch.
-- [ ] Implement and test client stream reset/disconnect mapping to NATS `CancelFrame` for the affected request only,
+- [x] Prove each HTTP/2 stream maps to one unique Straw `request_id` through Control admission and dispatch.
+- [x] Implement and test client stream reset/disconnect mapping to NATS `CancelFrame` for the affected request only,
       leaving sibling streams uncancelled.
-- [ ] Implement and test that a client HTTP/2 connection-level failure cancels all active streams and publishes a
+- [x] Implement and test that a client HTTP/2 connection-level failure cancels all active streams and publishes a
       per-request cancel for each.
-- [ ] Run focused tests, then `make check`.
-- [ ] Write a handoff note.
+- [x] Run focused tests, then `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 
