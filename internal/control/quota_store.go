@@ -30,6 +30,7 @@ var ErrQuotaVersionConflict = errors.New("quota config version conflict")
 // include expected_config_version. Version mismatch returns conflict.").
 type QuotaStore interface {
 	Get(ctx context.Context, tenantID string) (QuotaConfig, error)
+	List(ctx context.Context) ([]QuotaConfig, error)
 	Put(ctx context.Context, quota QuotaConfig, expectedVersion uint64) (QuotaConfig, error)
 }
 
@@ -57,6 +58,19 @@ func (s *InMemoryQuotaStore) Get(_ context.Context, tenantID string) (QuotaConfi
 	}
 
 	return q, nil
+}
+
+// List returns all configured tenant quotas.
+func (s *InMemoryQuotaStore) List(_ context.Context) ([]QuotaConfig, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	quotas := make([]QuotaConfig, 0, len(s.byTid))
+	for _, quota := range s.byTid {
+		quotas = append(quotas, quota)
+	}
+
+	return quotas, nil
 }
 
 // Put updates a tenant quota config with optimistic concurrency.

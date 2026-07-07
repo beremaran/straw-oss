@@ -113,12 +113,10 @@ func TestQuotaAdmissionRedisFailurePolicy(t *testing.T) {
 	}
 }
 
-// TestQuotaAdmissionNotBillingGrade documents the P0 boundary
-// (docs/planning/20, docs/planning/33 "Quota Accuracy"): quota counters are
-// operational Redis hot counters with no durable reconciliation. A lost
-// Redis key silently resets usage to zero rather than being repaired from
-// ClickHouse, proving P0 does not claim billing-grade accuracy.
-func TestQuotaAdmissionNotBillingGrade(t *testing.T) {
+// TestQuotaAdmissionAloneDoesNotRepairRedisLoss documents the boundary between
+// hot-counter admission and the P2 reconciler: admission itself still only
+// reads Redis and does not query ClickHouse on the request path.
+func TestQuotaAdmissionAloneDoesNotRepairRedisLoss(t *testing.T) {
 	client := newTestRedisClient(t)
 	q := NewQuotaAdmission(client, nil)
 

@@ -194,6 +194,18 @@ CREATE TABLE IF NOT EXISTS quota_configs (
     PRIMARY KEY (tenant_id, quota_period)
 );
 
+CREATE TABLE IF NOT EXISTS quota_usage_snapshots (
+    tenant_id uuid NOT NULL REFERENCES tenants(id),
+    quota_period text NOT NULL,
+    request_count bigint NOT NULL,
+    bandwidth_bytes bigint NOT NULL,
+    accurate_through timestamptz NOT NULL,
+    source text NOT NULL,
+    aggregation_key_version text NOT NULL,
+    reconciled_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (tenant_id, quota_period)
+);
+
 CREATE TABLE IF NOT EXISTS config_audit_source (
     id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     tenant_id uuid REFERENCES tenants(id),
