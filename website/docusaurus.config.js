@@ -79,6 +79,7 @@ const config = {
             title: 'Guides & SDK',
             items: [
               {label: 'Quickstart Guide', to: '/docs/quickstart'},
+              {label: 'Proxy & Ingress Modes', to: '/docs/ingress_modes'},
               {label: 'Go SDK Integration', to: '/docs/sdk'},
               {label: 'CLI Reference', to: '/docs/cli'},
               {label: 'Egress Worker Setup', to: '/docs/egress_worker'},

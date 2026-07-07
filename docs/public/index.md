@@ -8,32 +8,34 @@ Straw is a secure, distributed HTTP/HTTPS egress proxy control plane and worker 
 
 Straw isolates egress traffic control into two distinct operational layers:
 
-1. **Control Plane (`control`)**: Serves the REST API for request forwarding and resource configuration. It evaluates access control, routes requests based on rules, coordinates workload assignments via NATS, stores config in Postgres, manages rate-limits in Redis, and asynchronously writes event logs to ClickHouse.
+1. **Control Plane (`control`)**: Serves multi-protocol ingress listeners (REST API on port 8080, HTTP Forward Proxy on 8081, HTTP CONNECT Tunnel on 8082, and MITM TLS Inspection Proxy on 8083) and resource configuration APIs. It evaluates access control, routes requests based on rules, coordinates workload assignments via NATS, stores config in Postgres, manages rate-limits in Redis, and asynchronously writes event logs to ClickHouse.
 2. **Egress Workers (`egress`)**: Dedicated worker instances that pull request assignments from NATS, apply TLS fingerprinting profiles, inject authorized headers, enforce tenant deny-rules, execute the HTTP/HTTPS request to the public internet, and stream back the response.
 
 ```
-                    +--------------------+
-                    |   REST API Client  |
-                    +--------------------+
-                               | (POST /api/v1/requests)
-                               v
-                    +--------------------+
-                    |    Control Plane   | <----> Postgres (Durable Config)
-                    +--------------------+ <----> Redis (Transient state, limits)
-                               |
+                    +-----------------------------+
+                    |  REST / HTTP / CONNECT /    |
+                    |        MITM Clients         |
+                    +-----------------------------+
+                              | (Ports: 8080 / 8081 / 8082 / 8083)
+                              v
+                    +-----------------------------+
+                    |        Control Plane        | <----> Postgres (Durable Config)
+                    +-----------------------------+ <----> Redis (Transient state, limits)
+                              |
                     +---------+---------+
-                    |  NATS (Scheduling) |
+                    |   NATS (Scheduling)   |
                     +---------+---------+
-                               |
-                      +--------+--------+
-                      | Egress Worker 1 | ---> Internet (Upstream destination)
-                      +-----------------+
+                              |
+                      +-------+--------+
+                      | Egress Worker  | ---> Internet (Upstream destination)
+                      +----------------+
 ```
 
 ---
 
 ## Core Capabilities
 
+- **Multi-Protocol Egress Ingress**: Support for REST JSON envelopes, plaintext HTTP proxies, TCP CONNECT tunnels, and TLS-terminating MITM inspection proxies.
 - **Multi-Tenant Configuration**: Dynamic creation of tenants, custom routing rules, header injection policies, deny rules, and quota allocation.
 - **Worker Isolation & Security**: Secure Ed25519-signed registration and Redis-backed replay protection for all active Egress workers.
 - **Session Stickiness**: Direct related egress requests to the same worker using tenant-supplied session identifiers.
@@ -46,6 +48,7 @@ Straw isolates egress traffic control into two distinct operational layers:
 ## Table of Contents
 
 - [Quickstart Guide](quickstart.md) — Set up a local development cluster using Docker Compose and send your first egress request.
+- [Proxy & Ingress Modes](ingress_modes.md) — Configure standard HTTP proxies, HTTP CONNECT tunnels, and MITM TLS inspection with CA management.
 - [Go SDK Guide](sdk.md) — Integrate your Go applications using Straw's native public API client library.
 - [CLI Reference](cli.md) — Send requests and manage configuration from the terminal with the `straw` command.
 - [Egress Worker Guide](egress_worker.md) — Install, configure, and manage Egress execution worker instances.

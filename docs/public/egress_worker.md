@@ -54,7 +54,7 @@ The config file uses a `v1` schema envelope containing a nested `egress` configu
       }
     ],
     "capabilities": {
-      "supported_ingress_modes": ["rest", "mitm"],
+      "supported_ingress_modes": ["rest", "http_proxy", "connect", "mitm"],
       "ip_types": ["datacenter"],
       "countries": ["US"],
       "regions": ["us-west-1"],
@@ -88,7 +88,7 @@ The config file uses a `v1` schema envelope containing a nested `egress` configu
 | **allowed_pools** | `array` | Yes | List of pool mapping objects the worker claims membership in. Each entry must provide `tenant_id` and `pool_id`. Control will only route requests matching these pool IDs to this worker. |
 | **capabilities** | `object` | No | Declared worker capabilities validated against Postgres on registration. |
 | **capabilities.max_concurrency** | `integer` | No | Maximum number of concurrent request executions allowed on this worker (default `4`). |
-| **capabilities.supported_ingress_modes**| `array` | No | List of supported proxy styles. Valid values: `rest`, `mitm`, `connect` (default `["rest"]`). When `mitm` is enabled, clients fetch and rotate the worker's TLS-terminating CA cert via the Control plane's [MITM CA Distribution API](api/config.md#13-mitm-ca-distribution). |
+| **capabilities.supported_ingress_modes**| `array` | No | List of supported proxy styles. Valid values: `rest`, `http_proxy`, `connect`, `mitm` (default `["rest"]`). See [Proxy & Ingress Modes](ingress_modes.md) for details. When `mitm` is enabled, clients fetch and rotate the worker's TLS-terminating CA cert via the Control plane's [MITM CA Distribution API](api/config.md#13-mitm-ca-distribution). |
 | **capabilities.ip_types** | `array` | No | Worker IP categorization, e.g. `["datacenter"]` or `["residential"]`. |
 | **upstream_connection_pool** | `object` | No | Optional local HTTP connection pool reuse settings for upstream requests. |
 | **upstream_connection_pool.enabled**| `boolean` | No | If `true`, reuse connections to remote servers. If `false`, establish a new connection per request. |
