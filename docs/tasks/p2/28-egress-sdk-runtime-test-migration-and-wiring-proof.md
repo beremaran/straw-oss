@@ -1,6 +1,6 @@
 # 28 - Egress SDK Runtime Test Migration and Wiring Proof
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -44,14 +44,14 @@ and 31 are complete.
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Move or delete stale internal protocol-runtime tests after confirming equivalent SDK tests exist.
-- [ ] Keep internal executor tests for outbound HTTP execution behavior.
-- [ ] Add/finish a `cmd/egress` wiring test proving the binary path constructs `sdk/egress.Run` with the official
+- [x] Read all required planning docs.
+- [x] Move or delete stale internal protocol-runtime tests after confirming equivalent SDK tests exist.
+- [x] Keep internal executor tests for outbound HTTP execution behavior.
+- [x] Add/finish a `cmd/egress` wiring test proving the binary path constructs `sdk/egress.Run` with the official
       executor.
-- [ ] Verify `sdk/egress` imports no `internal/*` packages.
-- [ ] Run focused tests, then `make check`.
-- [ ] Write a handoff note.
+- [x] Verify `sdk/egress` imports no `internal/*` packages.
+- [x] Run focused tests, then `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 

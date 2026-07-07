@@ -27,6 +27,8 @@ const xProtoHeader = "X-Proto"
 
 const unitTestHost = "unit.test"
 
+const testTenantA = "ten_a"
+
 func TestExecutorEmitsSuccessfulHTTPFramesAndAppliesInjection(t *testing.T) {
 	t.Parallel()
 
