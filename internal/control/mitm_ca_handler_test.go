@@ -1,7 +1,15 @@
 package control
 
 import (
+	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/json"
+	"encoding/pem"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -13,6 +21,11 @@ import (
 )
 
 const mitmCATestTenant = "ten_mitm"
+
+const (
+	mitmCATestCertPEMField = "cert_pem"
+	mitmCATestKeyPEMField  = "key_pem"
+)
 
 func TestMITMCAHandlerServesPublicCertificateOnly(t *testing.T) {
 	t.Parallel()
@@ -134,6 +147,134 @@ func TestMITMCAHandlerRequiresMITMAllowedRoute(t *testing.T) {
 	}
 }
 
+func TestMITMCAHandlerRotatesCAForTenantAdmin(t *testing.T) {
+	t.Parallel()
+
+	certPEM, keyPEM := newMITMCATestPEM(t)
+	certFile := writeMITMCATestFile(t, "old-cert")
+	keyFile := writeMITMCATestFile(t, "old-key")
+	h, token := newTestMITMCAHandler(t, certFile, RoleTenantAdmin)
+	h.KeyFile = keyFile
+	h.Audit = NewInMemoryAuditStore()
+
+	body := map[string]string{mitmCATestCertPEMField: string(certPEM), mitmCATestKeyPEMField: string(keyPEM)}
+	req := newMITMCARotateRequest(t, token, body)
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", w.Code, http.StatusOK, w.Body.String())
+	}
+	getReq := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/mitm/ca.pem", nil)
+	getReq.Header.Set("Authorization", "Bearer "+token)
+	getResp := httptest.NewRecorder()
+	h.ServeHTTP(getResp, getReq)
+	if got := getResp.Body.String(); got != string(certPEM) {
+		t.Fatalf("downloaded cert = %q, want rotated cert", got)
+	}
+
+	keyInfo, err := os.Stat(keyFile)
+	if err != nil {
+		t.Fatalf("stat key file: %v", err)
+	}
+	if keyInfo.Size() != int64(len(keyPEM)) {
+		t.Fatalf("key file size = %d, want %d", keyInfo.Size(), len(keyPEM))
+	}
+	if strings.Contains(w.Body.String(), "PRIVATE KEY") {
+		t.Fatal("response exposed private key material")
+	}
+
+	records, err := h.Audit.ListTenant(context.Background(), mitmCATestTenant)
+	if err != nil {
+		t.Fatalf("ListTenant() error = %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("audit records = %d, want 1", len(records))
+	}
+	if strings.Contains(records[0].NewValueJSON, "PRIVATE KEY") {
+		t.Fatal("audit row exposed private key material")
+	}
+}
+
+func TestMITMCAHandlerRotateRejectsNonAdmins(t *testing.T) {
+	t.Parallel()
+
+	certPEM, keyPEM := newMITMCATestPEM(t)
+	for _, role := range []Role{RoleRequester, RoleViewer, RoleOperator} {
+		t.Run(string(role), func(t *testing.T) {
+			t.Parallel()
+
+			h, token := newTestMITMCAHandler(t, writeMITMCATestFile(t, "old-cert"), role)
+			h.KeyFile = writeMITMCATestFile(t, "old-key")
+			req := newMITMCARotateRequest(t, token, map[string]string{mitmCATestCertPEMField: string(certPEM), mitmCATestKeyPEMField: string(keyPEM)})
+			w := httptest.NewRecorder()
+
+			h.ServeHTTP(w, req)
+
+			if w.Code != http.StatusForbidden {
+				t.Fatalf("status = %d, want %d; body=%s", w.Code, http.StatusForbidden, w.Body.String())
+			}
+		})
+	}
+}
+
+func TestMITMCAHandlerRotateRejectsPlatformKey(t *testing.T) {
+	t.Parallel()
+
+	store := NewInMemoryAPIKeyStore()
+	pepper := []byte("test-pepper")
+	generated, err := GenerateAPIKey()
+	if err != nil {
+		t.Fatalf("GenerateAPIKey() error = %v", err)
+	}
+	err = store.Create(context.Background(), APIKeyRecord{
+		ID:         "key_mitm_ca_platform",
+		ScopeType:  ScopePlatform,
+		Role:       RoleSystemAdmin,
+		Prefix:     generated.Prefix,
+		SecretHash: HashAPIKeySecret(generated.Secret, pepper),
+		Status:     APIKeyStatusActive,
+		CreatedAt:  time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("store.Create() error = %v", err)
+	}
+
+	certPEM, keyPEM := newMITMCATestPEM(t)
+	h := &MITMCAHandler{
+		Authenticator: NewAuthenticator(store, pepper),
+		CertFile:      writeMITMCATestFile(t, "old-cert"),
+		KeyFile:       writeMITMCATestFile(t, "old-key"),
+	}
+	req := newMITMCARotateRequest(t, generated.Secret, map[string]string{mitmCATestCertPEMField: string(certPEM), mitmCATestKeyPEMField: string(keyPEM)})
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body=%s", w.Code, http.StatusForbidden, w.Body.String())
+	}
+}
+
+func TestMITMCAHandlerRotateRejectsInvalidMaterial(t *testing.T) {
+	t.Parallel()
+
+	h, token := newTestMITMCAHandler(t, writeMITMCATestFile(t, "old-cert"), RoleTenantAdmin)
+	h.KeyFile = writeMITMCATestFile(t, "old-key")
+	req := newMITMCARotateRequest(t, token, map[string]string{mitmCATestCertPEMField: "not pem", mitmCATestKeyPEMField: "secret private-key"})
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body=%s", w.Code, http.StatusBadRequest, w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), "private-key") {
+		t.Fatal("error response exposed submitted key material")
+	}
+}
+
 func newTestMITMCAHandler(t *testing.T, certFile string, role Role) (*MITMCAHandler, string) {
 	t.Helper()
 
@@ -191,4 +332,48 @@ func writeMITMCATestFile(t *testing.T, contents string) string {
 	}
 
 	return path
+}
+
+func newMITMCARotateRequest(t *testing.T, token string, body map[string]string) *http.Request {
+	t.Helper()
+
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPut, "/api/v1/mitm/ca", bytes.NewReader(raw))
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	return req
+}
+
+func newMITMCATestPEM(t *testing.T) ([]byte, []byte) {
+	t.Helper()
+
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() error = %v", err)
+	}
+	tpl := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "Straw Test CA"},
+		NotBefore:             time.Now().Add(-time.Minute),
+		NotAfter:              time.Now().Add(time.Hour),
+		KeyUsage:              x509.KeyUsageCertSign,
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+	}
+	certDER, err := x509.CreateCertificate(rand.Reader, tpl, tpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatalf("CreateCertificate() error = %v", err)
+	}
+	keyDER, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		t.Fatalf("MarshalPKCS8PrivateKey() error = %v", err)
+	}
+
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER})
+
+	return certPEM, keyPEM
 }
