@@ -22,6 +22,9 @@ import (
 	"syscall"
 	"time"
 
+	fhttp "github.com/bogdanfinn/fhttp"
+	tlsclient "github.com/bogdanfinn/tls-client"
+	"github.com/bogdanfinn/tls-client/profiles"
 	"golang.org/x/net/dns/dnsmessage"
 	"golang.org/x/net/http2"
 
@@ -54,6 +57,7 @@ const (
 	opRemove                = "remove"
 	defaultHTTPPort         = "80"
 	defaultHTTPSPort        = "443"
+	defaultFingerprintName  = "default"
 	responseFrameDataBytes  = 32 << 10
 	defaultPoolIdleTimeout  = 30 * time.Second
 	defaultPoolMaxLifetime  = 5 * time.Minute
@@ -481,6 +485,15 @@ func (e *Executor) doRequestWithRetry(ctx context.Context, tenantID string, targ
 }
 
 func (e *Executor) attemptRequest(ctx context.Context, tenantID string, target target, start *strawpb.RequestStart, body []byte, attemptIdx int, isReplayable bool) (*http.Response, bool, *executionError) {
+	if schemeFromURL(start.GetUrl()) == schemeHTTPS && (start.GetFingerprintInstruction() != "" || !e.http2Enabled) {
+		resp, err := e.doTLSClientRequest(ctx, target, start, body)
+		if err != nil {
+			return nil, false, mapHTTPError(ctx, err)
+		}
+
+		return resp, false, nil
+	}
+
 	tr, client, pooled, key, hasKey := e.httpClient(ctx, tenantID, target, start)
 
 	req, buildFailure := buildHTTPRequest(ctx, start, body)
@@ -530,6 +543,58 @@ func (e *Executor) handleDoError(ctx context.Context, err error, host string, at
 	}
 
 	return false, execErr
+}
+
+func (e *Executor) doTLSClientRequest(ctx context.Context, target target, start *strawpb.RequestStart, body []byte) (*http.Response, error) {
+	profile, ok := fingerprintProfile(start.GetFingerprintInstruction())
+	if !ok {
+		return nil, executorFailure(strawpb.ErrorCode_ERROR_CODE_UNSUPPORTED_FINGERPRINT, unsupportedFingerprint)
+	}
+
+	options := []tlsclient.HttpClientOption{
+		tlsclient.WithClientProfile(profile),
+		tlsclient.WithDialContext(func(ctx context.Context, network, address string) (net.Conn, error) {
+			return e.dialValidated(ctx, network, address, start.GetDestinationPolicy())
+		}),
+		tlsclient.WithDisableHttp3(),
+		tlsclient.WithNotFollowRedirects(),
+		tlsclient.WithTimeoutMilliseconds(0),
+		tlsclient.WithTransportOptions(&tlsclient.TransportOptions{
+			RootCAs:           e.rootCAs,
+			DisableKeepAlives: true,
+		}),
+	}
+	if e.insecureSkipVerify {
+		options = append(options, tlsclient.WithInsecureSkipVerify())
+	}
+
+	client, err := tlsclient.NewHttpClient(tlsclient.NewNoopLogger(), options...)
+	if err != nil {
+		return nil, fmt.Errorf("tls client setup failed: %w", err)
+	}
+	defer client.CloseIdleConnections()
+
+	req, failure := buildTLSClientRequest(ctx, start, body)
+	if failure != nil {
+		return nil, failure
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("tls client request: %w", err)
+	}
+
+	return stdHTTPResponse(resp, target), nil
+}
+
+func fingerprintProfile(name string) (profiles.ClientProfile, bool) {
+	if name == "" || name == defaultFingerprintName {
+		return profiles.Chrome_120, true
+	}
+
+	profile, ok := profiles.MappedTLSClients[name]
+
+	return profile, ok
 }
 
 // openTunnel validates and opens one raw CONNECT upstream connection using
@@ -1037,7 +1102,9 @@ func validateStart(start *strawpb.RequestStart) *executionError {
 	}
 
 	if start.GetFingerprintInstruction() != "" {
-		return executorFailure(strawpb.ErrorCode_ERROR_CODE_UNSUPPORTED_FINGERPRINT, unsupportedFingerprint)
+		if _, ok := fingerprintProfile(start.GetFingerprintInstruction()); !ok {
+			return executorFailure(strawpb.ErrorCode_ERROR_CODE_UNSUPPORTED_FINGERPRINT, unsupportedFingerprint)
+		}
 	}
 
 	if strings.EqualFold(start.GetMethod(), http.MethodConnect) {
@@ -1103,7 +1170,66 @@ func buildHTTPRequest(ctx context.Context, start *strawpb.RequestStart, body []b
 	return req, nil
 }
 
+func buildTLSClientRequest(ctx context.Context, start *strawpb.RequestStart, body []byte) (*fhttp.Request, *executionError) {
+	var reader io.Reader
+	if body != nil {
+		reader = bytes.NewReader(body)
+	}
+
+	req, err := fhttp.NewRequestWithContext(ctx, start.GetMethod(), start.GetUrl(), reader)
+	if err != nil {
+		return nil, executorFailure(strawpb.ErrorCode_ERROR_CODE_EXECUTOR_INTERNAL_ERROR, invalidRequestStartFact)
+	}
+
+	for _, h := range start.GetHeaders() {
+		if !safeOutboundHeader(h.GetName(), h.GetValue()) {
+			return nil, executorFailure(strawpb.ErrorCode_ERROR_CODE_EXECUTOR_INTERNAL_ERROR, injectionFactFailed)
+		}
+
+		req.Header.Add(h.GetName(), string(h.GetValue()))
+	}
+
+	failure := applyTLSClientInjection(req.Header, start.GetInjectionOperations())
+	if failure != nil {
+		return nil, failure
+	}
+
+	return req, nil
+}
+
 func applyInjection(headers http.Header, ops []*strawpb.InjectionOperation) *executionError {
+	seenSet := map[string]struct{}{}
+
+	for _, op := range ops {
+		name := op.GetHeaderName()
+		if !safeOutboundHeader(name, op.GetValue()) {
+			return executorFailure(strawpb.ErrorCode_ERROR_CODE_EXECUTOR_INTERNAL_ERROR, injectionFactFailed)
+		}
+
+		key := strings.ToLower(name)
+
+		switch op.GetOp() {
+		case opSet:
+			if _, ok := seenSet[key]; ok {
+				return executorFailure(strawpb.ErrorCode_ERROR_CODE_EXECUTOR_INTERNAL_ERROR, injectionFactFailed)
+			}
+
+			seenSet[key] = struct{}{}
+
+			headers.Set(name, string(op.GetValue()))
+		case opAppend:
+			headers.Add(name, string(op.GetValue()))
+		case opRemove:
+			headers.Del(name)
+		default:
+			return executorFailure(strawpb.ErrorCode_ERROR_CODE_EXECUTOR_INTERNAL_ERROR, injectionFactFailed)
+		}
+	}
+
+	return nil
+}
+
+func applyTLSClientInjection(headers fhttp.Header, ops []*strawpb.InjectionOperation) *executionError {
 	seenSet := map[string]struct{}{}
 
 	for _, op := range ops {
@@ -1206,6 +1332,34 @@ func responseHeaders(headers http.Header) []*strawpb.Header {
 		for _, value := range headers.Values(name) {
 			out = append(out, &strawpb.Header{Name: name, Value: []byte(value)})
 		}
+	}
+
+	return out
+}
+
+func stdHTTPResponse(resp *fhttp.Response, target target) *http.Response {
+	return &http.Response{
+		Status:           resp.Status,
+		StatusCode:       resp.StatusCode,
+		Header:           stdHTTPHeader(resp.Header),
+		Body:             resp.Body,
+		ContentLength:    resp.ContentLength,
+		TransferEncoding: append([]string(nil), resp.TransferEncoding...),
+		Close:            resp.Close,
+		Uncompressed:     resp.Uncompressed,
+		Request: &http.Request{
+			Method: resp.Request.Method,
+			URL:    (*url.URL)(resp.Request.URL),
+			Host:   target.host,
+		},
+		Trailer: stdHTTPHeader(resp.Trailer),
+	}
+}
+
+func stdHTTPHeader(headers fhttp.Header) http.Header {
+	out := make(http.Header, len(headers))
+	for name, values := range headers {
+		out[name] = append([]string(nil), values...)
 	}
 
 	return out
