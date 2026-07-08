@@ -8,5 +8,4 @@ RUN CGO_ENABLED=0 go build -o /out/egress ./cmd/egress
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/egress /egress
-COPY deploy/docker/egress.json /etc/straw/egress.json
 ENTRYPOINT ["/egress", "-config", "/etc/straw/egress.json"]
