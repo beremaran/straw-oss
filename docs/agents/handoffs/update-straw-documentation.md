@@ -40,6 +40,9 @@ Result: Formatting checked successfully. Linter reports: `0 issues`.
 
 ### Automated Tests
 - `go test ./...` failed on a pre-existing unrelated test (`TestGrafanaProvisioningMatchesComposeMounts` in `deploy/observability`). No files in that package or directory were modified or introduced in this task.
+  [Update 2026-07-08 sweep: resolved by `docs/tasks/p1/30-grafana-dashboard-mount-path-consistency.md`; the stale
+  test expectations now match the shipped Grafana provider and compose mount paths, and that task's handoff records
+  `make check` passing.]
 
 ## Reviewer Start Points
 

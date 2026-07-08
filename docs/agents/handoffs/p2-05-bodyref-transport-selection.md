@@ -62,10 +62,9 @@ Result: `0 issues`, all Go tests pass.
 
 ## Remaining Work
 
-- None for task 05's scope. The "executor streams through Control while teeing to object storage" runtime is a scoped
-  deferral to `docs/tasks/p2/06-object-storage-foundation.md` (client) and `docs/tasks/p2/08-bodyref-response-body-flow.md`
-  (tee flow); large response bodies currently return `body_ref_unavailable` until those land, which matches Section 18
-  when no large-body transport is enabled.
+- None for task 05's scope. The "executor streams through Control while teeing to object storage" runtime was completed
+  by `docs/tasks/p2/06-object-storage-foundation.md` (client) and
+  `docs/tasks/p2/08-bodyref-response-body-flow.md` (tee flow).
 
 ## Blockers
 

@@ -50,6 +50,9 @@ For each task file:
 4. Read the handoff in `docs/agents/handoffs/`. For every deferral / Remaining Work / Known limitation entry:
    - Does it name an owning task file? Does that file exist and is it still open?
    - Self-referential deferrals ("owned by this task if pursued" on a done task) are UNOWNED.
+   - Assigning a *new* regression/deferral to a **`done`** sibling task is UNOWNED — a completed task cannot own a
+     gap introduced by a later commit. (2026-07-08: `p1-29`'s handoff pinned a `TestGrafanaProvisioning...` failure
+     from commit `aba1602a` on the `done` task `p1/13`; the sweep re-owned it as `p1/30`.)
    - Is the flag stale — did a later task already fix it? Verify in code; stale flags are findings too.
 5. Note criteria satisfied only by tests/fakes with no live-path reachability.
 

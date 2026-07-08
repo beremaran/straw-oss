@@ -80,8 +80,8 @@ make check                                         # fmt-check, test, lint: all 
 ## Remaining Work
 
 - Assignment runtime (registration/heartbeat loop wired to a live session, subscription-ordering enforcement,
-  stream frame reading, executor invocation, credit-based backpressure) — owned by
-  `docs/tasks/p2/32b-python-egress-sdk-assignment-runtime.md`. Not a stub in this diff; simply not yet built.
+  stream frame reading, executor invocation, credit-based backpressure) was completed by
+  `docs/tasks/p2/32b-python-egress-sdk-assignment-runtime.md`.
 - Grep for `InMemory`/`stub`/`fake`/`synthetic`/`TODO` in the diff surfaced only `_FakeNATSServer` in
   `python/tests/test_egress_natsclient.py:13` — a test-only loopback NATS simulator used to exercise wire framing
   without a real NATS server binary, exactly as the task's Steps asked for ("fake or local NATS wire harness"). Not

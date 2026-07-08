@@ -52,7 +52,7 @@ Result:
 
 ## Remaining Work
 
-- Full ingress HTTP/2 stream semantics are owned by [docs/tasks/p2/25-ingress-http2-stream-semantics.md](file:///Users/beremaran/projects/wiseshopper/straw/docs/tasks/p2/25-ingress-http2-stream-semantics.md).
+- Full ingress HTTP/2 stream semantics were completed by [docs/tasks/p2/25-ingress-http2-stream-semantics.md](file:///Users/beremaran/projects/wiseshopper/straw/docs/tasks/p2/25-ingress-http2-stream-semantics.md).
 
 ## Blockers
 

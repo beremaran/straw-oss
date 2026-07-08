@@ -73,8 +73,8 @@ Result: `0 issues`, all Go tests pass (`go test ./internal/objectstore/ ./intern
 
 ## Remaining Work
 
-- None for task 06's scope. Runtime construction of `objectstore.Client` at Control startup and its use in the request
-  path is intentionally deferred to `docs/tasks/p2/07-bodyref-request-body-flow.md` (request upload),
+- None for task 06's scope. Runtime construction of `objectstore.Client` at Control startup and its request-path uses
+  were completed by `docs/tasks/p2/07-bodyref-request-body-flow.md` (request upload),
   `docs/tasks/p2/08-bodyref-response-body-flow.md` (response tee), and `docs/tasks/p2/11-payload-capture-storage.md`
   (capture bodies). No fakes/stubs/TODOs introduced (grep clean); SigV4 signing is real stdlib crypto validated
   against an AWS vector.

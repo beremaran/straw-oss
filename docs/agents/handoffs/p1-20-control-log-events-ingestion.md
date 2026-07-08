@@ -65,7 +65,7 @@ not touch dispatcher or rate-limit code.
 
 ## Remaining Work
 
-- Egress log transport over NATS to Control-backed ClickHouse remains owned by
+- Egress log transport over NATS to Control-backed ClickHouse was completed by
   `docs/tasks/p1/27-egress-log-events-nats-transport.md`.
 
 ## Blockers
