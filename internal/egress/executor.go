@@ -485,7 +485,7 @@ func (e *Executor) doRequestWithRetry(ctx context.Context, tenantID string, targ
 }
 
 func (e *Executor) attemptRequest(ctx context.Context, tenantID string, target target, start *strawpb.RequestStart, body []byte, attemptIdx int, isReplayable bool) (*http.Response, bool, *executionError) {
-	if schemeFromURL(start.GetUrl()) == schemeHTTPS && (start.GetFingerprintInstruction() != "" || !e.http2Enabled) {
+	if shouldUseTLSClient(start) {
 		resp, err := e.doTLSClientRequest(ctx, target, start, body)
 		if err != nil {
 			return nil, false, mapHTTPError(ctx, err)
@@ -517,6 +517,10 @@ func (e *Executor) attemptRequest(ctx context.Context, tenantID string, target t
 	}
 
 	return resp, false, nil
+}
+
+func shouldUseTLSClient(start *strawpb.RequestStart) bool {
+	return schemeFromURL(start.GetUrl()) == schemeHTTPS
 }
 
 func (e *Executor) handleDoError(ctx context.Context, err error, host string, attemptIdx int, isReplayable bool, pooled bool, tr *http.Transport, hasKey bool, key upstreamPoolKey) (bool, *executionError) {
