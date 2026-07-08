@@ -1007,7 +1007,7 @@ func stableWorkerRef(tenantID, workerID string) string {
 var (
 	requestSelectColumns = []string{telemetryFieldTimestamp, telemetryFieldRequestID, telemetryFieldTraceID, "api_key_id", telemetryFieldIngressType, telemetryFieldMethod, string(RateLimitDimTargetHost), "target_url", telemetryFieldRouteID, telemetryFieldPoolID, telemetryFieldExecutorType, telemetryFieldCountry, telemetryFieldRegion, string(RateLimitDimIPType), telemetryFieldTags, "attempt", telemetryFieldUpstreamStatus, telemetryFieldClientStatus, metricLabelErrorCode, telemetryFieldErrorCategory, telemetryFieldTimeoutType, "request_size_bytes", "response_size_bytes", "routing_ms", "assignment_ms", "egress_ms", "total_ms", telemetryFieldCaptureDecision}
 	requestListColumns   = []string{
-		"max(timestamp) AS timestamp", telemetryFieldRequestID, "argMax(trace_id, timestamp) AS trace_id", "argMax(api_key_id, timestamp) AS api_key_id",
+		"max(timestamp) AS request_timestamp", telemetryFieldRequestID, "argMax(trace_id, timestamp) AS trace_id", "argMax(api_key_id, timestamp) AS api_key_id",
 		"argMax(ingress_type, timestamp) AS ingress_type", "argMax(method, timestamp) AS method", "argMax(target_host, timestamp) AS target_host",
 		"argMax(target_url, timestamp) AS target_url", "argMax(route_id, timestamp) AS route_id", "argMax(pool_id, timestamp) AS pool_id",
 		"argMax(executor_type, timestamp) AS executor_type", "argMax(country, timestamp) AS country", "argMax(region, timestamp) AS region",
@@ -1019,7 +1019,7 @@ var (
 		"argMax(total_ms, timestamp) AS total_ms", "argMax(capture_decision, timestamp) AS capture_decision",
 	}
 	requestSelectAliases = []string{
-		telemetryFieldTimestamp, telemetryFieldRequestID, telemetryFieldTraceID, "api_key_id", telemetryFieldIngressType, telemetryFieldMethod,
+		"request_timestamp AS " + telemetryFieldTimestamp, telemetryFieldRequestID, telemetryFieldTraceID, "api_key_id", telemetryFieldIngressType, telemetryFieldMethod,
 		string(RateLimitDimTargetHost), "target_url", telemetryFieldRouteID, telemetryFieldPoolID, telemetryFieldExecutorType, telemetryFieldCountry,
 		telemetryFieldRegion, string(RateLimitDimIPType), telemetryFieldTags, "attempt_count", telemetryFieldUpstreamStatus, telemetryFieldClientStatus,
 		metricLabelErrorCode, telemetryFieldErrorCategory, telemetryFieldTimeoutType, "request_size_bytes", "response_size_bytes", "routing_ms",

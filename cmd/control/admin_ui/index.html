@@ -171,10 +171,10 @@
   </div>
   <script>
     const views = [
-      { id: "requests", label: "Requests", endpoint: "/api/v1/telemetry/requests", detailEndpoint: row => `/api/v1/telemetry/requests/${encodeURIComponent(row.request_id)}`, columns: ["client_status", "method", "target_host", "total_ms", "request_id"], actions: row => [{ label: "Cancel request", method: "POST", endpoint: `/api/v1/admin/requests/${encodeURIComponent(row.request_id)}/cancel`, danger: true }] },
+      { id: "tenants", label: "Tenants", endpoint: "/api/v1/config/tenants", columns: ["id", "name", "status", "default_timeout_ms", "max_timeout_ms", "config_version"] },
+      { id: "requests", label: "Requests", endpoint: "/api/v1/telemetry/requests", needsTenant: true, detailEndpoint: row => `/api/v1/telemetry/requests/${encodeURIComponent(row.request_id)}`, columns: ["client_status", "method", "target_host", "total_ms", "request_id"], actions: row => [{ label: "Cancel request", method: "POST", endpoint: `/api/v1/admin/requests/${encodeURIComponent(row.request_id)}/cancel`, danger: true }] },
       { id: "workers", label: "Workers", endpoint: "/api/v1/admin/workers", columns: ["worker_id", "worker_ref", "runtime_state", "health", "active_requests", "available_capacity"], actions: row => workerActions(row) },
       { id: "audit", label: "Audit", endpoint: "/api/v1/config/changes", columns: ["created_at", "resource_type", "resource_id", "action", "actor_type"] },
-      { id: "tenants", label: "Tenants", endpoint: "/api/v1/config/tenants", columns: ["id", "name", "status", "default_timeout_ms", "max_timeout_ms", "config_version"] },
       { id: "routes", label: "Routes", endpoint: "/api/v1/config/routing-rules", columns: ["id", "tenant_id", "priority", "enabled", "target_pool_id", "config_version"] },
       { id: "deny", label: "Deny rules", endpoint: "/api/v1/config/deny-rules", columns: ["id", "tenant_id", "enabled", "type", "value", "action"] },
       { id: "injection", label: "Injection", endpoint: "/api/v1/config/injection-policies", columns: ["id", "tenant_id", "enabled", "max_operations", "config_version"] }
@@ -231,15 +231,17 @@
       message.textContent = "Loading...";
       try {
         const url = new URL(state.view.endpoint, location.origin);
-        if (state.view.endpoint.includes("telemetry")) url.searchParams.set("limit", limit.value);
-        else url.searchParams.set("limit", limit.value);
+        url.searchParams.set("limit", limit.value);
+        const tenantID = selectedTenantID();
+        if (state.view.needsTenant && tenantID) url.searchParams.set("tenant_id", tenantID);
         const data = await request(url.pathname + url.search);
         state.rows = normalizeRows(data);
         state.selected = state.rows[0] || null;
+        rememberTenant(state.selected);
         state.detail = null;
         state.error = "";
         if (state.selected && state.view.detailEndpoint) {
-          state.detail = await request(state.view.detailEndpoint(state.selected));
+          state.detail = await request(withTenant(state.view.detailEndpoint(state.selected)));
         }
         message.textContent = `${state.rows.length} row${state.rows.length === 1 ? "" : "s"}`;
       } catch (err) {
@@ -292,8 +294,9 @@
       list.querySelectorAll("tr[data-index]").forEach(tr => {
         tr.addEventListener("click", async () => {
           state.selected = rows[Number(tr.dataset.index)];
+          rememberTenant(state.selected);
           if (state.view.detailEndpoint) {
-            state.detail = await request(state.view.detailEndpoint(state.selected));
+            state.detail = await request(withTenant(state.view.detailEndpoint(state.selected)));
           } else {
             state.detail = null;
           }
@@ -341,6 +344,23 @@
 
     function publicRow(row) {
       return Object.fromEntries(Object.entries(row || {}).filter(([key]) => !hiddenFields.has(key)));
+    }
+
+    function rememberTenant(row) {
+      const tenantID = row && (row.tenant_id || (state.view.id === "tenants" && row.id));
+      if (tenantID) localStorage.setItem("straw.admin.tenant_id", tenantID);
+    }
+
+    function selectedTenantID() {
+      return localStorage.getItem("straw.admin.tenant_id") || "";
+    }
+
+    function withTenant(endpoint) {
+      const tenantID = selectedTenantID();
+      if (!tenantID) return endpoint;
+      const url = new URL(endpoint, location.origin);
+      url.searchParams.set("tenant_id", tenantID);
+      return url.pathname + url.search;
     }
 
     function nested(row, key) {
@@ -404,6 +424,9 @@
       localStorage.setItem("straw.admin.api_key", "sk_live_smoke");
       apiKey.value = "sk_live_smoke";
       updateAuthStatus();
+      await loadView();
+      await waitFor(() => document.body.innerText.includes("Tenant A"));
+      expect(document.body.innerText.includes("Tenant A"), "tenant row not rendered");
 
       await clickNav("Workers");
       await waitFor(() => document.body.innerText.includes("worker_1"));
