@@ -16,9 +16,9 @@ external users of Straw — people who did not read the planning docs and never 
    intent; several planned P0 surfaces shipped late or narrower than specced (deny-rule taxonomy, pool capability
    fields). If a planning doc and the code disagree, the code is what users get: document the code, and flag the
    divergence to the user separately instead of publishing the aspiration.
-2. **Phase-gate the content.** Features from open tasks or later phases (`docs/tasks/*`,
-   `docs/planning/02-phase-boundaries.md`) do not appear in public docs — not even as "coming soon" unless the user
-   explicitly asks for a roadmap page.
+2. **Phase-gate the content.** Features from open SpecKit tasks, legacy task archives (`docs/tasks/*`), or later
+   phases (`docs/planning/02-phase-boundaries.md`) do not appear in public docs — not even as "coming soon" unless
+   the user explicitly asks for a roadmap page.
 3. **Run every example.** curl/API examples must be executed against the local compose stack
    (`deploy/docker/README.md` has bootstrap/startup) before publication; paste real (sanitized) responses. An
    example you did not run is a guess wearing a code fence.
