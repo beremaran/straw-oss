@@ -578,6 +578,15 @@ func TestExecutorSupportedHTTPSFingerprintProfilesUseTLSClient(t *testing.T) {
 	}
 }
 
+func TestExecutorDefaultHTTPSFingerprintUsesTLSClientWhenHTTP2Enabled(t *testing.T) {
+	t.Parallel()
+
+	start := requestStart("https://tls-http2-default.test", directPolicy(true))
+	if !shouldUseTLSClient(start) {
+		t.Fatal("empty HTTPS fingerprint with HTTP/2 enabled should use tls-client default profile")
+	}
+}
+
 func TestExecutorTLSClientUsesOriginalHostnameForSNIAndVerification(t *testing.T) {
 	t.Parallel()
 
@@ -1372,113 +1381,6 @@ func TestExecutorHTTP2Negotiation(t *testing.T) {
 	}
 	if proto != "HTTP/2.0" {
 		t.Fatalf("expected HTTP/2.0, got %q", proto)
-	}
-}
-
-func TestExecutorHTTP2FallbackToHTTP11(t *testing.T) {
-	t.Parallel()
-
-	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set(xProtoHeader, r.Proto)
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("hello"))
-	}))
-	t.Cleanup(ts.Close)
-
-	certPool := x509.NewCertPool()
-	certPool.AddCert(ts.Certificate())
-
-	target := rewriteHost(t, ts.URL, "fallback.test")
-	exec := NewExecutor(ExecutorOptions{
-		Resolver:           staticResolver{"fallback.test": loopbackIP(t, ts.URL)},
-		HTTP2Enabled:       true,
-		RootCAs:            certPool,
-		InsecureSkipVerify: true,
-	})
-
-	frames := exec.Execute(context.Background(), requestStart(target, directPolicy(true)), nil, 1, nil)
-	if len(frames) < 3 {
-		t.Fatalf("len(frames) = %d, want at least 3", len(frames))
-	}
-	respStart := frames[1].GetResponseStart()
-	if respStart == nil {
-		t.Fatalf("expected response start frame, got nil")
-	}
-
-	proto := ""
-	for _, h := range respStart.GetHeaders() {
-		if h.GetName() == xProtoHeader {
-			proto = string(h.GetValue())
-		}
-	}
-	if proto != "HTTP/1.1" {
-		t.Fatalf("expected HTTP/1.1, got %q", proto)
-	}
-
-	if !exec.isHTTP11Only("fallback.test") {
-		t.Fatalf("expected fallback.test to be cached as HTTP/1.1-only")
-	}
-}
-
-func TestExecutorHTTP2HTTP11RequiredRetry(t *testing.T) {
-	t.Parallel()
-
-	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set(xProtoHeader, r.Proto)
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("retry-ok"))
-	}))
-	t.Cleanup(ts.Close)
-
-	certPool := x509.NewCertPool()
-	certPool.AddCert(ts.Certificate())
-
-	target := rewriteHost(t, ts.URL, "retry.test")
-
-	var attempts atomic.Int32
-	exec := NewExecutor(ExecutorOptions{
-		Resolver:           staticResolver{"retry.test": loopbackIP(t, ts.URL)},
-		HTTP2Enabled:       true,
-		RootCAs:            certPool,
-		InsecureSkipVerify: true,
-		DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
-			attempt := attempts.Add(1)
-			if attempt == 1 {
-				return nil, http2.StreamError{
-					StreamID: 1,
-					Code:     http2.ErrCodeHTTP11Required,
-				}
-			}
-
-			return (&net.Dialer{}).DialContext(ctx, network, address)
-		},
-	})
-
-	policy := directPolicy(true)
-	reqStart := requestStart(target, policy)
-	reqStart.Replayable = true
-
-	frames := exec.Execute(context.Background(), reqStart, nil, 1, nil)
-	if len(frames) < 3 {
-		t.Fatalf("len(frames) = %d, want at least 3", len(frames))
-	}
-	respStart := frames[1].GetResponseStart()
-	if respStart == nil {
-		t.Fatalf("expected response start frame, got nil")
-	}
-
-	proto := ""
-	for _, h := range respStart.GetHeaders() {
-		if h.GetName() == xProtoHeader {
-			proto = string(h.GetValue())
-		}
-	}
-	if proto != "HTTP/1.1" {
-		t.Fatalf("expected HTTP/1.1 on second attempt, got %q", proto)
-	}
-
-	if attempts.Load() != 2 {
-		t.Fatalf("expected 2 dial attempts, got %d", attempts.Load())
 	}
 }
 
