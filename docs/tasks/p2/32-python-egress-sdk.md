@@ -1,6 +1,6 @@
 # 32 - Python Egress SDK
 
-Status: not started
+Status: superseded
 
 ## Objective
 
@@ -104,8 +104,14 @@ only in Go:
 
 ## Handoff Notes
 
-- Record the Python package path, public executor shape, protobuf generation choice, NATS client choice, exact Python
-  test command used, and any incompatibility found between the Go SDK contract and a non-Go implementation.
+- Superseded 2026-07-08: this task was split, with user approval, into
+  `docs/tasks/p2/32a-python-egress-sdk-protocol-foundation.md` (protobuf generation, subjects, signing, minimal NATS
+  wire client) and `docs/tasks/p2/32b-python-egress-sdk-assignment-runtime.md` (assignment runtime, streaming,
+  conformance tests, usage docs), because the combined scope was sized close to the entire Go Egress SDK
+  (`sdk/egress/`, ~3500 lines) and required a protobuf/NATS-dependency decision (resolved: add `protobuf` as a new
+  Python dependency, generated via `grpcio-tools`' bundled `protoc`) that needed explicit user sign-off before any
+  code was written. 32a and 32b are the owning tasks for all remaining work originally scoped here; this task file is
+  not picked up as open work.
 
 ## Stop Conditions
 
