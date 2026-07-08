@@ -156,7 +156,8 @@ func TestTelemetryClickHouseSQLUsesTenantLimitsAndAliases(t *testing.T) {
 	sql := buildRequestListSQL(q)
 	for _, want := range []string{
 		"tenant_id = 'ten_a'",
-		"max(timestamp) AS timestamp",
+		"max(timestamp) AS request_timestamp",
+		"request_timestamp AS timestamp",
 		"count() AS attempt_count",
 		"has(tags, 'blue')",
 		"GROUP BY request_id",
