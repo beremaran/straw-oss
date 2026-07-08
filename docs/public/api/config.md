@@ -425,7 +425,7 @@ Rate limiting is enforced with a Redis-backed sliding-window log per `(dimension
 
 ## 9. Fingerprint Profiles (Read-Only)
 
-Fingerprint profiles are built-in presets seeded in the database. The public API exposes a read-only list; there is no write endpoint. The seeded profile names are: `default`, `chrome_120`, `firefox_121`, `safari_17` — pass one of these as `fingerprint_profile` on a [request](requests.md).
+Fingerprint profiles are built-in presets seeded in the database. The public API exposes a read-only list; there is no write endpoint. The seeded profile names are: `default`, `chrome_120`, `firefox_120`, `safari_16_0` — pass one of these as `fingerprint_profile` on a [request](requests.md).
 
 ### List Profiles
 - **Endpoint**: `GET /api/v1/config/fingerprint-profiles`

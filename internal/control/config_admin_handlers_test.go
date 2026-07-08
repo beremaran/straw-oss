@@ -625,14 +625,42 @@ func TestFingerprintProfilesReadOnly(t *testing.T) {
 		t.Fatal("profiles empty, want seeded built-ins")
 	}
 
-	found := false
+	foundDefault := false
+	foundFirefox120 := false
+	foundSafari16 := false
+	foundLegacyFirefox := false
+	foundLegacySafari := false
+
 	for _, p := range profiles {
-		if p.Name == defaultFingerprintProfileName && p.ScopeType == fingerprintProfileScopeGlobal {
-			found = true
+		switch p.Name {
+		case defaultFingerprintProfileName:
+			if p.ScopeType == fingerprintProfileScopeGlobal {
+				foundDefault = true
+			}
+		case "firefox_120":
+			foundFirefox120 = true
+		case "safari_16_0":
+			foundSafari16 = true
+		case "firefox_121":
+			foundLegacyFirefox = true
+		case "safari_17":
+			foundLegacySafari = true
 		}
 	}
-	if !found {
+	if !foundDefault {
 		t.Fatalf("profiles = %+v, want built-in default global profile", profiles)
+	}
+	if !foundFirefox120 {
+		t.Fatalf("profiles = %+v, missing firefox_120", profiles)
+	}
+	if !foundSafari16 {
+		t.Fatalf("profiles = %+v, missing safari_16_0", profiles)
+	}
+	if foundLegacyFirefox {
+		t.Fatalf("profiles = %+v, should not contain legacy firefox_121", profiles)
+	}
+	if foundLegacySafari {
+		t.Fatalf("profiles = %+v, should not contain legacy safari_17", profiles)
 	}
 
 	// No handler exists for a write path in P0: AdminHandlers exposes no
