@@ -1,6 +1,6 @@
 # 32b - Python Egress SDK Assignment Runtime
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -65,26 +65,26 @@ The Go reference contract this task must be behaviorally compatible with:
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Implement the registration + heartbeat loop using 32a's `protocol.py` and NATS wire client.
-- [ ] Implement the assignment flow with correct subscription ordering: subscribe to the request-scoped `c2e` subject
+- [x] Read all required planning docs.
+- [x] Implement the registration + heartbeat loop using 32a's `protocol.py` and NATS wire client.
+- [x] Implement the assignment flow with correct subscription ordering: subscribe to the request-scoped `c2e` subject
       and flush it before publishing `AssignAck`, per the Assignment Flow subscription-ordering rules.
-- [ ] Implement reading of `RequestStart`/`DataFrame`/`CreditFrame`/`CancelFrame` on `c2e` with `stream_seq`
+- [x] Implement reading of `RequestStart`/`DataFrame`/`CreditFrame`/`CancelFrame` on `c2e` with `stream_seq`
       validation (accept only the next expected sequence; ignore late duplicates; treat gaps/high sequence as
       protocol errors).
-- [ ] Implement a small executor callable seam (decoded HTTP request in, response iterator/callable out) that a
+- [x] Implement a small executor callable seam (decoded HTTP request in, response iterator/callable out) that a
       custom Python worker process supplies.
-- [ ] Implement sequenced `ResponseStart`/`DataFrame`/`EndFrame` publishing on `e2c` without buffering the full
+- [x] Implement sequenced `ResponseStart`/`DataFrame`/`EndFrame` publishing on `e2c` without buffering the full
       response, and `ErrorFrame` publishing on executor error.
-- [ ] Implement credit-based backpressure: honor initial upload/download credit and max in-flight byte limits from
+- [x] Implement credit-based backpressure: honor initial upload/download credit and max in-flight byte limits from
       `AssignRequest`, and stop/slow sending when credit reaches zero.
-- [ ] Add the tests listed in Expected Files using a fake/local NATS wire harness; do not rely on Go `internal/*`
+- [x] Add the tests listed in Expected Files using a fake/local NATS wire harness; do not rely on Go `internal/*`
       test helpers.
-- [ ] Add Python Egress SDK usage docs (protocol + runtime) and operator-obligation notes for destination-policy
+- [x] Add Python Egress SDK usage docs (protocol + runtime) and operator-obligation notes for destination-policy
       enforcement and public-safe execution facts.
-- [ ] Mark `docs/tasks/p2/32-python-egress-sdk.md` superseded by 32a/32b in its own Status/Handoff Notes.
-- [ ] Run focused Python tests, focused Go SDK tests if shared behavior changed, then `make check`.
-- [ ] Write a handoff note.
+- [x] Mark `docs/tasks/p2/32-python-egress-sdk.md` superseded by 32a/32b in its own Status/Handoff Notes.
+- [x] Run focused Python tests, focused Go SDK tests if shared behavior changed, then `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 
@@ -109,9 +109,25 @@ The Go reference contract this task must be behaviorally compatible with:
 
 ## Handoff Notes
 
-- Record the executor callable's public shape, the credit/backpressure implementation approach, the exact Python test
-  command used, and any incompatibility found between the Go SDK contract and the Python runtime.
-- Confirm task 32's Status/Handoff Notes were updated to `superseded` in this same run.
+- Executor callable shape: `Callable[[DecodedRequest], DecodedResponse]`. `DecodedRequest` carries
+  `method`/`url`/`headers`/`body`/`attempt`; `DecodedResponse` carries `status`/`headers` plus `body: Iterable[bytes]`
+  — a generator streams without buffering the full response since the runtime pulls and publishes one chunk at a
+  time (`python/straw/egress/runtime.py:433-442`). Raising from the callable or while iterating `body` is caught and
+  mapped to an `ErrorFrame` (`ERROR_CODE_EXECUTOR_INTERNAL_ERROR`) instead of an `EndFrame`.
+- Credit/backpressure: `_CreditGate` (`runtime.py:483-520`) tracks the current e2c byte grant; when exhausted it
+  blocks reading the request's `c2e` subscription for a `CreditFrame` (or a `CancelFrame`, which aborts), applying
+  the same `_StreamValidator` used for the request body so stream_seq/attempt/offset rules are shared across both
+  reads on `c2e`.
+- Test command: `python3 -m unittest discover python/tests` (also `python3 -m unittest tests.test_egress_runtime -v`
+  from `python/` for just the new suite). Ran 3x in a row with no flakiness after fixing two test-harness races (see
+  Remaining Work notes below — both in test code, not runtime.py).
+- Go/Python incompatibility found: none in the wire contract. The intentional behavioral narrowing vs.
+  `sdk/egress/assignment.go` is scope, not a defect: decoded HTTP only (no raw tunnel/BodyRef), and one assignment
+  served at a time per session instead of the Go SDK's per-session concurrency — documented as a `ponytail:` comment
+  at the top of `runtime.py` and in `python/README.md`'s Egress SDK section, with the upgrade path named (a
+  per-request worker pool, or use the Go SDK for concurrent/other-mode workers).
+- Task 32's Status/Handoff Notes were already `superseded` naming 32a/32b before this run (set during 32a); no change
+  needed this run — confirmed unchanged in the diff.
 
 ## Stop Conditions
 
