@@ -51,7 +51,7 @@ Result:
 
 ## Remaining Work
 
-- None for task 29. Task 30 owns ingress HTTP/2 upload flow control and live compose proof.
+- None for task 29. Ingress HTTP/2 upload flow control and live compose proof were completed by task 30.
 
 ## Blockers
 

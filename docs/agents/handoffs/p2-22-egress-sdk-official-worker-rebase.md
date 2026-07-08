@@ -72,10 +72,13 @@ Result:
 
 ## Remaining Work
 
-- `docs/tasks/p2/26-egress-sdk-decoded-stream-runtime-rebase.md`: move decoded assignment and stream runtime.
-- `docs/tasks/p2/27-egress-sdk-raw-tunnel-runtime-rebase.md`: move raw tunnel runtime hooks; `docs/tasks/p2/31-egress-sdk-bodyref-runtime-rebase.md`: move BodyRef runtime hooks.
-- `docs/tasks/p2/28-egress-sdk-runtime-test-migration-and-wiring-proof.md`: finish runtime test migration and wiring proof cleanup.
-- `docs/tasks/p2/24-egress-sdk-conformance-and-live-verification.md`: SDK-only conformance and live compose verification.
+- Decoded assignment and stream runtime were completed by `docs/tasks/p2/26-egress-sdk-decoded-stream-runtime-rebase.md`.
+- Raw tunnel runtime hooks were completed by `docs/tasks/p2/27-egress-sdk-raw-tunnel-runtime-rebase.md`; BodyRef
+  runtime hooks were completed by `docs/tasks/p2/31-egress-sdk-bodyref-runtime-rebase.md`.
+- Runtime test migration and wiring proof cleanup were completed by
+  `docs/tasks/p2/28-egress-sdk-runtime-test-migration-and-wiring-proof.md`.
+- SDK-only conformance and live compose verification were completed by
+  `docs/tasks/p2/24-egress-sdk-conformance-and-live-verification.md`.
 
 ## Blockers
 

@@ -89,10 +89,10 @@ Out of scope for task 18 (identity stores only); each has an owning task:
   [Update 2026-07-07 sweep: resolved by `docs/tasks/p0/29-tenant-lifecycle-and-status-enforcement.md` and
   `docs/tasks/p0/46-tenant-p0-schema-fields.md`; `TenantStore` now persists name/status/soft-deletion,
   timeout defaults, metadata storage policy, and `rate_limit_ceiling`.]
-- The DSN-gated integration tests are not exercised by `make check` (no DSN in CI). Wiring compose + running them in
-  CI is `docs/tasks/p0/25-p0-test-matrix-and-compose.md`.
-  [Update 2026-07-07 sweep: owned/covered by `docs/tasks/p0/25-p0-test-matrix-and-compose.md`; the DSN-gated tests
-  still intentionally skip unless `STRAW_TEST_POSTGRES_DSN` is set.]
+- The DSN-gated integration tests are not exercised by plain `make check`; they intentionally skip unless
+  `STRAW_TEST_POSTGRES_DSN` is set. `docs/tasks/p0/25-p0-test-matrix-and-compose.md` added the compose stack, and
+  `docs/tasks/p0/39-test-suite-live-database-guard.md` added the guarded `straw_test` path documented in
+  `deploy/docker/README.md`.
 
 Minor, no owning-task action needed (documented here):
 

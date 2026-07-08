@@ -51,8 +51,8 @@ Result:
 
 ## Remaining Work
 
-- Implementation of outbound HTTP/2, owned by [docs/tasks/p2/15-outbound-http2.md](file:///Users/beremaran/projects/wiseshopper/straw/docs/tasks/p2/15-outbound-http2.md).
-- Implementation of ingress HTTP/2 and MITM ALPN, owned by [docs/tasks/p2/16-ingress-http2-and-mitm-alpn.md](file:///Users/beremaran/projects/wiseshopper/straw/docs/tasks/p2/16-ingress-http2-and-mitm-alpn.md).
+- Outbound HTTP/2 was completed by [docs/tasks/p2/15-outbound-http2.md](file:///Users/beremaran/projects/wiseshopper/straw/docs/tasks/p2/15-outbound-http2.md).
+- Ingress HTTP/2 and MITM ALPN were completed by [docs/tasks/p2/16-ingress-http2-and-mitm-alpn.md](file:///Users/beremaran/projects/wiseshopper/straw/docs/tasks/p2/16-ingress-http2-and-mitm-alpn.md).
 
 ## Blockers
 

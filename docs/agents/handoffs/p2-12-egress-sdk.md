@@ -74,7 +74,7 @@ Result:
 ## Remaining Work
 
 - None for this task. Official worker rebase, enum/doc cleanup, SDK conformance/live verification, and the example
-  custom implementation are owned by tasks 22, 23, 24, and 13 as listed above.
+  custom implementation were completed by tasks 22, 23, 24, and 13 as listed above.
 
 ## Blockers
 

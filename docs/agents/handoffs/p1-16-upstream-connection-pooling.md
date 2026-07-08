@@ -61,7 +61,7 @@ Result:
 
 ## Remaining Work
 
-- Pooling implementation is owned by `docs/tasks/p1/26-upstream-connection-pooling-implementation.md`.
+- Pooling implementation was completed by `docs/tasks/p1/26-upstream-connection-pooling-implementation.md`.
 
 ## Blockers
 

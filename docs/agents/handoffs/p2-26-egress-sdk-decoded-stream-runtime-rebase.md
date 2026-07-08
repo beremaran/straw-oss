@@ -58,9 +58,10 @@ Result:
 
 ## Remaining Work
 
-- Raw tunnel runtime movement remains owned by `docs/tasks/p2/27-egress-sdk-raw-tunnel-runtime-rebase.md`.
-- BodyRef request-body runtime rebase remains owned by `docs/tasks/p2/31-egress-sdk-bodyref-runtime-rebase.md`.
-- Final SDK conformance and live compose verification remain owned by `docs/tasks/p2/24-egress-sdk-conformance-and-live-verification.md` after tasks 27, 31, and 28.
+- Raw tunnel runtime movement was completed by `docs/tasks/p2/27-egress-sdk-raw-tunnel-runtime-rebase.md`.
+- BodyRef request-body runtime rebase was completed by `docs/tasks/p2/31-egress-sdk-bodyref-runtime-rebase.md`.
+- Final SDK conformance and live compose verification were completed by
+  `docs/tasks/p2/24-egress-sdk-conformance-and-live-verification.md`.
 
 ## Blockers
 

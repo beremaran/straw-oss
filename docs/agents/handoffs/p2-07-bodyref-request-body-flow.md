@@ -80,10 +80,10 @@ Result: green (`go test ./...` all pass; `golangci-lint` 0 issues).
 
 ## Remaining Work
 
-- Bucket-level lifecycle-rule backstop that expires objects orphaned by a Control crash (planning doc 18 step 9):
-  deferred to `docs/tasks/p2/21-object-storage-lifecycle-retention.md`. Explicit per-object DELETE/abort cleanup is
-  implemented in this task; only the crash-path retention rule (shared by tasks 07/08/11) is deferred.
-- Object storage is not yet in the compose stack; standing it up for live verification is owned by task 21.
+- Bucket-level lifecycle-rule backstop that expires objects orphaned by a Control crash (planning doc 18 step 9) was
+  completed by `docs/tasks/p2/21-object-storage-lifecycle-retention.md`. Explicit per-object DELETE/abort cleanup is
+  implemented in this task.
+- Object-storage lifecycle behavior for compose/production was documented by task 21.
 
 ## Blockers
 
