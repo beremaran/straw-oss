@@ -1,6 +1,6 @@
 # 29 - Python Client SDK
 
-Status: not started
+Status: done
 
 ## Objective
 
@@ -53,21 +53,21 @@ exists:
 
 ## Steps
 
-- [ ] Read all required planning docs.
-- [ ] Mirror the existing Go SDK's request/response/error data shape in Python using stdlib types or small dataclasses.
-- [ ] Implement a blocking request method that posts JSON to `/api/v1/requests`, sets bearer auth when provided, parses
+- [x] Read all required planning docs.
+- [x] Mirror the existing Go SDK's request/response/error data shape in Python using stdlib types or small dataclasses.
+- [x] Implement a blocking request method that posts JSON to `/api/v1/requests`, sets bearer auth when provided, parses
       successful response envelopes, parses non-200 public `ErrorResponse` bodies, and documents that upstream status is
       inside the response envelope.
-- [ ] Implement a streaming request method that posts JSON to `/api/v1/requests:stream`, requests
+- [x] Implement a streaming request method that posts JSON to `/api/v1/requests:stream`, requests
       `application/vnd.straw.request-stream.v1+binary`, reads the 1-byte type plus 4-byte big-endian length frame format
       incrementally, and yields metadata, body, trailers, end, and error frames without buffering the whole response body.
-- [ ] Preserve `replayable=true` defaults for `GET`, `HEAD`, and `OPTIONS` before submission.
-- [ ] Add tests for JSON request encoding, bearer auth, canonical error parsing, replayable defaults, upstream status
+- [x] Preserve `replayable=true` defaults for `GET`, `HEAD`, and `OPTIONS` before submission.
+- [x] Add tests for JSON request encoding, bearer auth, canonical error parsing, replayable defaults, upstream status
       handling, stream frame parsing, malformed/truncated frames, and no full-response buffering before body chunks are
       yielded.
-- [ ] Add minimal Python usage docs only for the implemented endpoints.
-- [ ] Run focused Python tests, focused Go SDK tests if shared docs/contracts changed, then `make check`.
-- [ ] Write a handoff note.
+- [x] Add minimal Python usage docs only for the implemented endpoints.
+- [x] Run focused Python tests, focused Go SDK tests if shared docs/contracts changed, then `make check`.
+- [x] Write a handoff note.
 
 ## Tests
 
