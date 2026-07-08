@@ -596,6 +596,8 @@ func fingerprintProfile(name string) (profiles.ClientProfile, bool) {
 		return profiles.Chrome_120, true
 	}
 
+	// MappedTLSClients natively maps firefox_120 and safari_16_0 (v1.15.1 presets),
+	// but returns !ok for legacy unsupported firefox_121 and safari_17.
 	profile, ok := profiles.MappedTLSClients[name]
 
 	return profile, ok

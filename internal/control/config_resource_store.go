@@ -437,7 +437,7 @@ const fingerprintProfileScopeGlobal = "global"
 // NewInMemoryFingerprintProfileStore builds a store seeded with P0's built-in
 // global profiles.
 func NewInMemoryFingerprintProfileStore() *InMemoryFingerprintProfileStore {
-	names := []string{defaultFingerprintProfileName, "chrome_120", "firefox_121", "safari_17"}
+	names := []string{defaultFingerprintProfileName, "chrome_120", "firefox_120", "safari_16_0"}
 	profiles := make([]FingerprintProfileRecord, 0, len(names))
 
 	for _, name := range names {
