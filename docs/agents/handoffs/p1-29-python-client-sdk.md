@@ -65,11 +65,11 @@ Result:
     sub-agent: commit `aba1602a` ("chore: stuff") changed `docker-compose.yml:192` and
     `deploy/observability/grafana/provisioning/dashboards/straw.yml:11` from
     `/etc/grafana/provisioning/dashboards/straw` to `/etc/grafana/dashboards/straw` consistently, but never updated
-    this test's expected-string list. This is a regression against task `docs/tasks/p1/13-observability-dashboards.md`
-    (status `done`), which already owns this test and this compose mount (see
-    `docs/agents/handoffs/p1-13-observability-dashboards.md:20`). Not an unowned gap — flagging here per Gap
-    Ownership so it doesn't go unnoticed; the fix is a one-line revert of the two paths back to
-    `/etc/grafana/provisioning/dashboards/straw`, out of scope for this Python SDK task.
+    this test's expected-string list. Out of scope for this Python SDK task. **[Update 2026-07-08: originally
+    attributed to the `done` task `docs/tasks/p1/13-observability-dashboards.md` with a suggested revert of the two
+    config paths; both were wrong — a done task cannot own a later regression, and the config/compose paths agreed
+    with each other (only the test was stale). Owned and fixed by
+    `docs/tasks/p1/30-grafana-dashboard-mount-path-consistency.md`, which updated the test to the shipped paths.]**
   - `TestMITMHTTP2StreamCancelIsIsolated` (`internal/control`) is flaky under full-suite parallelism — failed once,
     passed on immediate re-run both standalone and as part of the full suite. Also reproduces on the pre-diff tree,
     so unrelated to this task.
@@ -84,9 +84,13 @@ Result:
 
 ## Remaining Work
 
-- None owned by this task. Pre-existing, unrelated `TestGrafanaProvisioningMatchesComposeMounts` regression is
-  owned by `docs/tasks/p1/13-observability-dashboards.md` (see Verification section above) — not created as a new
-  task since an owning task already exists and is simply out of sync with a later unrelated commit.
+- None owned by this task. The pre-existing, unrelated `TestGrafanaProvisioningMatchesComposeMounts` regression
+  (commit `aba1602a` moved the Grafana dashboard path in the config/compose but not the test) is owned by
+  `docs/tasks/p1/30-grafana-dashboard-mount-path-consistency.md`.
+  **[Update 2026-07-08 sweep: re-owned. This handoff originally assigned the regression to
+  `docs/tasks/p1/13-observability-dashboards.md`, but that task is `done` and cannot own a regression from a later
+  commit; the 2026-07-08 handoff sweep created task 30 as the real owner and confirmed the failure still reproduces
+  on the current tree.]**
 
 ## Blockers
 
