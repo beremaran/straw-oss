@@ -1,11 +1,12 @@
 ---
 name: sync-straw-linear
-description: Sync Straw repository planning and task docs to Linear for the WiseShopper team and Straw project. Use when asked to publish, mirror, reconcile, backfill, or update local docs/planning and docs/tasks content in Linear issues or documents, especially for keeping Straw phase boards, task files, and planning docs aligned with Linear.
+description: Sync Straw planning docs and legacy task archives to Linear for the WiseShopper team and Straw project. Use when asked to publish, mirror, reconcile, backfill, or update local docs/planning and archived docs/tasks content in Linear.
 ---
 
 # Sync Straw Linear
 
-Sync local Straw docs to Linear without creating duplicates.
+Sync local Straw docs to Linear without creating duplicates. Active Straw implementation work now lives in root
+SpecKit artifacts under `specs/<feature>/`; `docs/tasks` sync is for legacy archive/backfill only.
 
 Defaults:
 
@@ -13,13 +14,13 @@ Defaults:
 - Linear project: `Straw`
 - Source repo root: `/Users/beremaran/projects/wiseshopper/straw`
 - Planning docs: `docs/planning/*.md`
-- Task boards: `docs/tasks/p0.md`, `docs/tasks/p1.md`, `docs/tasks/p2.md`
-- Task files: `docs/tasks/p0/*.md`, `docs/tasks/p1/*.md`, `docs/tasks/p2/*.md`
+- Legacy task boards: `docs/tasks/p0.md`, `docs/tasks/p1.md`, `docs/tasks/p2.md`
+- Legacy task files: `docs/tasks/p0/*.md`, `docs/tasks/p1/*.md`, `docs/tasks/p2/*.md`
 
 ## Workflow
 
-1. Read `AGENTS.md` and the local docs requested by the user. If no subset is named, sync task boards and task
-   files first; sync planning docs only when requested or needed for issue context.
+1. Read `AGENTS.md` and the local docs requested by the user. If no subset is named, ask whether the user wants
+   legacy task archives, planning docs, or current SpecKit feature artifacts synced.
 2. Use the Linear plugin/app. If Linear tools are not available, ask the user to connect Linear and stop.
 3. Verify or locate the Linear project with search terms like `"Straw" "WiseShopper"`. Create the project only if
    the user explicitly asked for bootstrap and search finds no existing project.
@@ -31,7 +32,7 @@ Defaults:
    matches inside project `Straw`.
 6. Upsert Linear documents for long-lived docs:
    - one document per planning doc, titled `Straw Planning: <filename stem>`;
-   - one document per phase board, titled `Straw Tasks: P0`, `P1`, or `P2`;
+   - one document per legacy phase board, titled `Straw Tasks: P0`, `P1`, or `P2`;
    - include `Source: docs/...` near the top.
 7. Upsert Linear issues for task files:
    - title format: `Straw <phase>-<number>: <task title>`;
@@ -63,8 +64,8 @@ If multiple Linear records plausibly match one source file, stop that item and r
 
 ## Large Bodies
 
-Use Linear documents for large planning docs and phase boards. Keep issue descriptions bounded to the task contract,
-not every cited planning paragraph.
+Use Linear documents for large planning docs and legacy phase boards. Keep issue descriptions bounded to the task
+contract, not every cited planning paragraph.
 
 If a sync requires sending many large docs or preserving full document bodies beyond what the Linear plugin can
 reliably accept, ask the user for one of:
