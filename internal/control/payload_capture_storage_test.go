@@ -322,7 +322,7 @@ func TestHTTPClickHouseSinkPayloadCaptureNon2xx(t *testing.T) {
 }
 
 func TestPayloadCaptureSchemaRetentionAndRefs(t *testing.T) {
-	b, err := os.ReadFile("../../deploy/docker/clickhouse-schema.sql")
+	b, err := os.ReadFile("../../../infra/clickhouse-schema.sql")
 	if err != nil {
 		t.Fatalf("read clickhouse schema: %v", err)
 	}

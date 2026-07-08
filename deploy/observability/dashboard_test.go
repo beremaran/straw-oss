@@ -8,7 +8,7 @@ import (
 )
 
 func TestStrawOperationalDashboardCoversPlanningSignals(t *testing.T) {
-	raw, err := os.ReadFile("grafana/dashboards/straw-operational-overview.json")
+	raw, err := os.ReadFile("../../../infra/observability/grafana/dashboards/straw-operational-overview.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,27 +57,27 @@ func TestStrawOperationalDashboardCoversPlanningSignals(t *testing.T) {
 }
 
 func TestGrafanaProvisioningMatchesComposeMounts(t *testing.T) {
-	dashboardProvider, err := os.ReadFile("grafana/provisioning/dashboards/straw.yml")
+	dashboardProvider, err := os.ReadFile("../../../infra/observability/grafana/provisioning/dashboards/straw.yml")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	datasource, err := os.ReadFile("grafana/provisioning/datasources/prometheus.yml")
+	datasource, err := os.ReadFile("../../../infra/observability/grafana/provisioning/datasources/prometheus.yml")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	compose, err := os.ReadFile("../../docker-compose.yml")
+	compose, err := os.ReadFile("../../../infra/docker-compose.yml")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	prometheusConfig, err := os.ReadFile("prometheus.yml")
+	prometheusConfig, err := os.ReadFile("../../../infra/observability/prometheus.yml")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	blackboxConfig, err := os.ReadFile("blackbox.yml")
+	blackboxConfig, err := os.ReadFile("../../../infra/observability/blackbox.yml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,11 +86,11 @@ func TestGrafanaProvisioningMatchesComposeMounts(t *testing.T) {
 		"/etc/grafana/dashboards/straw",
 		"Prometheus",
 		"http://prometheus:9090",
-		"./deploy/observability/grafana/dashboards:/etc/grafana/dashboards/straw:ro",
-		"./deploy/observability/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro",
-		"./deploy/observability/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro",
-		"./deploy/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro",
-		"./deploy/observability/blackbox.yml:/etc/blackbox_exporter/config.yml:ro",
+		"./observability/grafana/dashboards:/etc/grafana/dashboards/straw:ro",
+		"./observability/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro",
+		"./observability/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro",
+		"./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro",
+		"./observability/blackbox.yml:/etc/blackbox_exporter/config.yml:ro",
 		"control:9090",
 		"blackbox:9115",
 		"backend-outage-probes",
