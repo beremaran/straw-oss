@@ -64,3 +64,43 @@ as they arrive instead of being buffered until the response completes.
 ```sh
 python3 -m unittest discover python/tests
 ```
+
+## Egress SDK (protocol foundation)
+
+`straw.egress` gives a custom Python worker the wire-compatible pieces needed to talk to Control over Core
+NATS, mirroring the Go SDK (`sdk/egress`): canonical subject construction, `Envelope` build/marshal, and
+signed registration/heartbeat requests. Unlike the client above, this package depends on `protobuf` (for
+`straw.proto.straw.v1.straw_pb2`, generated from `api/proto/straw/v1/straw.proto`) and includes its own
+minimal Core NATS wire client (`straw.egress.NATSClient`) since no NATS client dependency was available to
+approve at the time this was built.
+
+**This is the protocol foundation only.** The assignment runtime that actually serves a decoded HTTP
+request (subscription-ordering, streaming a response, executor invocation) is a separate package
+addition — see `docs/tasks/p2/32b-python-egress-sdk-assignment-runtime.md`. `straw.egress` alone can
+register and heartbeat, but cannot yet accept an assignment.
+
+```python
+import os
+
+from straw.egress import Capabilities, Identity, build_register_request, register_envelope, marshal_envelope
+
+identity = Identity(
+    worker_id="worker-1",
+    credential_id="cred-1",
+    executor_type="http",
+    private_key=os.urandom(32),  # persist this seed; it is the worker's Ed25519 identity key
+)
+caps = Capabilities(max_concurrency=8, software_version="0.1.0")
+
+req = build_register_request(identity, caps)  # already signed
+raw = marshal_envelope(register_envelope(req))
+# raw is ready to publish on straw.egress.registration_subject() over straw.egress.NATSClient
+```
+
+### Operator obligations
+
+A custom Egress implementation built on this SDK assumes the same executor-side obligations the official
+Go worker enforces: equivalent destination-policy enforcement (`docs/planning/27-security-controls.md`)
+and reporting only constrained, public-safe execution facts back to Control. This SDK does not enforce
+destination policy for you — that remains the custom implementation's responsibility once the assignment
+runtime (32b) is in place.

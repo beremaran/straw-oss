@@ -1,9 +1,11 @@
 [project]
 name = "straw-sdk"
 version = "0.1.0"
-description = "Minimal Python client for Straw's public REST request transport."
+description = "Minimal Python client for Straw's public REST request transport, plus the Python Egress SDK."
 requires-python = ">=3.9"
-dependencies = []
+dependencies = [
+    "protobuf>=5.26,<8",
+]
 
 [build-system]
 requires = ["setuptools>=61"]
