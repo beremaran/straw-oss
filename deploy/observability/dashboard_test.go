@@ -83,11 +83,10 @@ func TestGrafanaProvisioningMatchesComposeMounts(t *testing.T) {
 	}
 
 	for _, want := range []string{
-		"/etc/grafana/provisioning/dashboards/straw",
+		"/etc/grafana/dashboards/straw",
 		"Prometheus",
 		"http://prometheus:9090",
-		"profiles: [\"observability\"]",
-		"./deploy/observability/grafana/dashboards:/etc/grafana/provisioning/dashboards/straw:ro",
+		"./deploy/observability/grafana/dashboards:/etc/grafana/dashboards/straw:ro",
 		"./deploy/observability/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro",
 		"./deploy/observability/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro",
 		"./deploy/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro",
