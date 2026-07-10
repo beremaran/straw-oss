@@ -3,6 +3,13 @@
 Feature: `specs/002-straw-fingerprint-profiles/`
 Task: `specs/002-straw-fingerprint-profiles/tasks.md#T006`
 
+## Resolution Update (2026-07-10)
+
+The red baseline and remaining-work entries below are historical snapshots. T007-T008 closed the wire and signing
+gaps, and T025/T034/T039/T042-T043 closed integration and live verification. Final evidence:
+`002-straw-fingerprint-profiles-complete.md` and
+`specs/002-straw-fingerprint-profiles/evidence/live-coles.md`.
+
 ## Changed
 
 - Added reflection-based protobuf contract tests for the additive `RegisterRequest.supported_fingerprint_profiles = 19` and `OutboundStartFrame.executed_fingerprint_profile = 6` fields, including legacy registration-byte preservation and wire round trips.
@@ -36,7 +43,7 @@ cd straw && go test ./api/proto/straw/v1 -run 'Test(StreamFrameBodyRefCompiles|A
 - `api/proto/straw/v1/registration_sign_test.go:13`
 - `api/proto/straw/v1/registration_sign_test.go:35`
 
-## Remaining Work
+## Remaining Work at Handoff (Historical; Resolved)
 
 - T007 — add fields 19 and 6, increment the official worker protocol minor, regenerate bindings, and synchronize the canonical contract.
 - T008 — implement legacy-byte-preserving and new-minor capability signing/verification.

@@ -3,6 +3,12 @@
 Feature: `specs/002-straw-fingerprint-profiles/`  
 Task: `specs/002-straw-fingerprint-profiles/tasks.md#T040-T046`
 
+## Resolution Update (2026-07-10)
+
+This handoff was complete for T040-T046. The later cleanup gate discovered two convergence issues, subsequently closed
+by T047-T048. Current final evidence is in `002-straw-fingerprint-profiles-t047-t048.md`; the historical verdicts below
+remain valid for their original scope.
+
 ## Changed
 
 - Synchronized canonical protobuf, error, Egress, ClickHouse, observability, config API, security, testing, public
@@ -54,9 +60,11 @@ markers, and one correlated requested/selected/executed `chrome_120` row.
 - `infra/scripts/check-clickhouse-migrations.sh`
 - `specs/002-straw-fingerprint-profiles/evidence/live-coles.md`
 
-## Remaining Work
+## Remaining Work at Handoff (Historical; Resolved)
 
 - None.
+
+Current remaining work after T047-T048: none.
 
 ## Blockers
 

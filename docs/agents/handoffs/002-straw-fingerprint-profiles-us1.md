@@ -3,6 +3,12 @@
 Feature: `specs/002-straw-fingerprint-profiles/`  
 Task: `specs/002-straw-fingerprint-profiles/tasks.md#T017-T025`
 
+## Resolution Update (2026-07-10)
+
+The environment-gated/open T043 and later-story entries below are historical snapshots of the bounded US1 run.
+T026-T034 closed US2, T035-T039 closed US3, and T043 closed the clean-stack Coles run. Final evidence is in
+`002-straw-fingerprint-profiles-complete.md` and `specs/002-straw-fingerprint-profiles/evidence/live-coles.md`.
+
 ## Changed
 
 - Control now applies exact named-profile capability filtering after ordinary tenant, route, sticky, health, pool, and capacity eligibility; buffered, raw, and tunnel preparation paths carry the request intent.
@@ -23,7 +29,7 @@ Fresh verifier: focused package tests, adjacent package tests, protobuf checks, 
 | Runtime wire behavior equals the committed fixture and differs from baseline | VERIFIED | `internal/egress/profile_conformance_test.go:43` | `TestProfileConformanceChrome120MatchesGoldenOnLocalWireAndDiffersFromBaseline` |
 | Requested/selected/executed evidence is correlated and redacted | VERIFIED | `internal/control/request_metadata.go:182`, `internal/control/request_metadata.go:283` | `TestRequestEventProfileEvidenceAndRedaction`, `TestRequestEventCarriesProfileEvidenceOnTransportFailure` |
 | Static/adjacent US1 verification is complete | VERIFIED | `specs/002-straw-fingerprint-profiles/quickstart.md` | Commands below |
-| Unified-stack Coles first-attempt live acceptance | OPEN — environment-gated | `specs/002-straw-fingerprint-profiles/tasks.md#T043` | Not run in this bounded local slice; later T043 owns the live gate |
+| Unified-stack Coles first-attempt live acceptance | HISTORICAL OPEN — resolved by T043 | `specs/002-straw-fingerprint-profiles/evidence/live-coles.md` | Not run in this bounded local slice; T043 later recorded the clean-stack pass |
 
 ## Planning-Doc Coverage
 
@@ -35,7 +41,7 @@ Fresh verifier: focused package tests, adjacent package tests, protobuf checks, 
 | Wire execution evidence and selected/executed invariant | implemented | `internal/egress/executor.go:406`, `internal/control/dispatcher.go:1371`, `internal/control/lifecycle.go:82`; T023 |
 | Request-event evidence and redaction | implemented | `internal/control/request_metadata.go:241`; T024 |
 | Local conformance observer and normalized golden comparison | implemented | `internal/egress/profile_conformance_test.go:43`; T022 |
-| Live Coles acceptance | open, owned | T043; no unowned deferral |
+| Live Coles acceptance | historical open state; resolved | T043; final evidence in `specs/002-straw-fingerprint-profiles/evidence/live-coles.md` |
 
 ## Verification
 
@@ -57,7 +63,8 @@ Result:
 - Protobuf lint/build: passed.
 - Straw check: passed (`go test ./...`, formatting, and `golangci-lint`; lint reported 0 issues).
 - Postgres-backed tests: not exercised; this slice does not change Postgres surfaces or migrations.
-- Live compose verification: not run; Docker/requester credentials/Coles are environment-gated and the live step remains `Open` under T043.
+- Live compose verification: not run in this historical slice; T043 later closed the gate in
+  `specs/002-straw-fingerprint-profiles/evidence/live-coles.md`.
 
 ## Reviewer Start Points
 
@@ -67,11 +74,11 @@ Result:
 - `internal/control/dispatcher.go`
 - `internal/control/request_metadata.go`
 
-## Remaining Work
+## Remaining Work at Handoff (Historical; Resolved)
 
 - T017–T025 are implemented and independently verified.
 - Later US2/US3 and completion tasks remain outside this selected US1 slice.
-- The live Coles acceptance is explicitly open and owned by T043.
+- The live Coles acceptance was open and owned by T043 at handoff; T043 later closed it with the final live evidence.
 
 ## Blockers
 

@@ -3,6 +3,12 @@
 Feature: `specs/002-straw-fingerprint-profiles/`
 Task: `specs/002-straw-fingerprint-profiles/tasks.md#T013`
 
+## Resolution Update (2026-07-10)
+
+The intentionally empty fixture and T014/T022 remaining-work entries below are historical snapshots. T014 closed the
+registry/fixture and T022 closed independent conformance; final verification is recorded in
+`002-straw-fingerprint-profiles-complete.md` and `specs/002-straw-fingerprint-profiles/evidence/live-coles.md`.
+
 ## Changed
 
 - Added a red executable-registry contract requiring the sole advertised name to map semantically to `profiles.Chrome_120` and explicitly excluding baseline aliases and unplanned browser presets.
@@ -47,7 +53,7 @@ Result:
 - `internal/egress/profile_registry_test.go:51`
 - `internal/egress/testdata/chrome_120_v1_15_1.json`
 
-## Remaining Work
+## Remaining Work at Handoff (Historical; Resolved)
 
 - T014 owns the compile-time registry and complete normalized fixture required to turn these tests green.
 - T022 owns the independent local observer that compares live normalized observations with this fixture and baseline.

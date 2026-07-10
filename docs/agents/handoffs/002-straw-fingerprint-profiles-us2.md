@@ -3,6 +3,12 @@
 Feature: `specs/002-straw-fingerprint-profiles/`  
 Task: `specs/002-straw-fingerprint-profiles/tasks.md#T030-T034`
 
+## Resolution Update (2026-07-10)
+
+The later US3 and T040-T046 entries below are historical snapshots of the bounded US2 run. T035-T039 closed US3 and
+T040-T046 closed documentation, governance, full-stack/live acceptance, analysis, and completion. Final evidence is in
+`002-straw-fingerprint-profiles-complete.md` and `specs/002-straw-fingerprint-profiles/evidence/live-coles.md`.
+
 ## Changed
 
 - Implemented duplicate-member, non-string, malformed-UTF-8, exact-value, and literal-`baseline` request validation in `internal/control/request.go`; REST and stream ingress share this validator, while proxy ingress remains baseline-only.
@@ -67,7 +73,7 @@ Result:
 - `internal/egress/profiled_transport.go:35`
 - `internal/control/request_metadata.go:283`
 
-## Remaining Work
+## Remaining Work at Handoff (Historical; Resolved)
 
 - T035-T039 remain as the separately owned US3 baseline/regression slice.
 - T040-T046 remain as later documentation, governance, full-stack, live acceptance, analysis, and completion tasks.

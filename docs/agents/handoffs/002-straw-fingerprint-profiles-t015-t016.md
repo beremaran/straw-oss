@@ -5,6 +5,13 @@ Tasks: `specs/002-straw-fingerprint-profiles/tasks.md#T015-T016`
 Revision under test: `4820efa` on `main` plus the uncommitted T015-T016 diff
 Verified: `2026-07-10T12:19:27Z`
 
+## Resolution Update (2026-07-10)
+
+The later-behavior and open-task entries below are historical snapshots. T024/T026/T029-T030/T033 closed runtime and
+rejection evidence, and T042-T046 closed full checks, live acceptance, reviews, and completion. Final evidence:
+`002-straw-fingerprint-profiles-complete.md` and
+`specs/002-straw-fingerprint-profiles/evidence/live-coles.md`.
+
 ## Changed
 
 - Added requested, selected, and executed fingerprint-profile fields to the shared `RequestEvent` JSON/ClickHouse row.
@@ -68,7 +75,8 @@ Results:
 - Existing running Compose volume migration: PASS; one-shot service exited 0 and all three exact columns/defaults were observed.
 - `make check-straw`: PASS; all Go tests and `golangci-lint` completed with 0 issues.
 - Postgres-backed tests: not exercised; this diff does not touch Postgres surfaces.
-- Live request verification: not run; T043 owns the rebuilt end-to-end Coles request after the story runtime paths exist.
+- Live request verification: not run in this historical slice; resolved by T043 with final evidence in
+  `specs/002-straw-fingerprint-profiles/evidence/live-coles.md`.
 
 ## Reviewer Start Points
 
@@ -77,14 +85,15 @@ Results:
 - `straw/internal/control/request_metadata_test.go`
 - `infra/docker-compose.yml`
 
-## Remaining Work
+## Remaining Work at Handoff (Historical; Resolved)
 
 - T024 owns success/transport-failure runtime population of the shared fields.
 - T026 and T030 own attacker-controlled requested-value projection and validation.
 - T029 and T033 own unsupported-rejection event population.
 - T042-T046 own full-feature gates, the live Coles run, final reviews, and completion evidence.
 
-No work required by T015-T016 is stubbed or deferred, and every later behavior above has an open owning task.
+No work required by T015-T016 was stubbed or deferred. Every later behavior above was closed by its named task; final
+evidence is in `002-straw-fingerprint-profiles-complete.md`.
 
 ## Blockers
 

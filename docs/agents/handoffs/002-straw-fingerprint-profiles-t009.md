@@ -3,6 +3,12 @@
 Feature: `specs/002-straw-fingerprint-profiles/`
 Task: `specs/002-straw-fingerprint-profiles/tasks.md#T009`
 
+## Resolution Update (2026-07-10)
+
+The failing-test and T010 production-work entries below are historical snapshots. T010 closed every listed production
+gap; final verification is recorded in `002-straw-fingerprint-profiles-complete.md` and
+`specs/002-straw-fingerprint-profiles/evidence/live-coles.md`.
+
 ## Changed
 
 - Added the SDK registration-copying red test in `sdk/egress/types_test.go`.
@@ -51,7 +57,7 @@ Result:
 - `internal/control/worker_registry_test.go:265`
 - `internal/control/worker_runtime_redis_test.go:9`
 
-## Remaining Work
+## Remaining Work at Handoff (Historical; Resolved)
 
 - T010 owns the production propagation required to make these tests green.
 

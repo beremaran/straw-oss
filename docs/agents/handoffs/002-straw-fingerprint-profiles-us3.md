@@ -3,6 +3,12 @@
 Feature: `specs/002-straw-fingerprint-profiles/`
 Task: `specs/002-straw-fingerprint-profiles/tasks.md#T035-T039`
 
+## Resolution Update (2026-07-10)
+
+The later T040-T046 polish/live entries below are historical snapshots of the bounded US3 run. T040-T046 closed all
+listed feature-level work; final evidence is in `002-straw-fingerprint-profiles-complete.md` and
+`specs/002-straw-fingerprint-profiles/evidence/live-coles.md`.
+
 ## Changed
 
 - `straw/internal/control/destination_policy.go`: canonicalizes omitted/`default` requests to `baseline` after validating the compatibility catalog entry.
@@ -57,7 +63,7 @@ Result:
 - `straw/internal/control/dispatcher_test.go:471`
 - `straw/internal/egress/executor_test.go:85`
 
-## Remaining Work
+## Remaining Work at Handoff (Historical; Resolved)
 
 - None within User Story 3. Feature-level polish/live work remains explicitly owned by T040–T046.
 

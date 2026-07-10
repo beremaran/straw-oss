@@ -3,6 +3,12 @@
 Feature: `specs/002-straw-fingerprint-profiles/`
 Task: `specs/002-straw-fingerprint-profiles/tasks.md#T012`
 
+## Resolution Update (2026-07-10)
+
+The T031 pending/remaining-work entry below is a historical snapshot. T031 closed runtime capability filtering and
+availability diagnostics; final verification is recorded in `002-straw-fingerprint-profiles-complete.md` and
+`specs/002-straw-fingerprint-profiles/evidence/live-coles.md`.
+
 ## Changed
 
 - Added migration `0012_executable_fingerprint_profiles.sql`, which preserves seeded rows for audit history, makes `chrome_120` the enabled executable descriptor, and retires `default`, `firefox_121`, and `safari_17`.
@@ -24,7 +30,7 @@ Task: `specs/002-straw-fingerprint-profiles/tasks.md#T012`
 |---------------|--------|------------------------|
 | Durable seeded catalog retains audit history and exactly identifies the executable Chrome 120 definition. | implemented | `migrations/postgres/0012_executable_fingerprint_profiles.sql:5` |
 | Baseline compatibility alias is distinct from named profiles. | implemented | `internal/control/config_admin_handlers.go:1146` |
-| Runtime session capability filtering and precise availability calculation. | pending | `specs/002-straw-fingerprint-profiles/tasks.md#T031` |
+| Runtime session capability filtering and precise availability calculation. | historical pending state; resolved by T031 | `002-straw-fingerprint-profiles-complete.md`; `specs/002-straw-fingerprint-profiles/evidence/live-coles.md` |
 
 ## Verification
 
@@ -41,7 +47,7 @@ Result: all passed; `make check` completed with zero lint issues. Postgres-backe
 - `migrations/postgres/0012_executable_fingerprint_profiles.sql`
 - `internal/control/config_admin_handlers.go:1127`
 
-## Remaining Work
+## Remaining Work at Handoff (Historical; Resolved)
 
 - T031 owns runtime capability filtering and dynamic availability reasons.
 

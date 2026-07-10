@@ -3,6 +3,12 @@
 Feature: `specs/002-straw-fingerprint-profiles/`
 Task: `specs/002-straw-fingerprint-profiles/tasks.md#T007`
 
+## Resolution Update (2026-07-10)
+
+The intentionally red T008 assertion and T008/T010 remaining-work entries below are historical snapshots. T008 and
+T010 closed them; final verification is recorded in `002-straw-fingerprint-profiles-complete.md` and
+`specs/002-straw-fingerprint-profiles/evidence/live-coles.md`.
+
 ## Changed
 
 - Added `RegisterRequest.supported_fingerprint_profiles` at field 19 and
@@ -51,7 +57,7 @@ tests and live compose verification were not exercised because T007 changes only
 - `api/proto/straw/v1/straw.proto:344`
 - `docs/planning/13-protobuf-contract.md:243`
 
-## Remaining Work
+## Remaining Work at Handoff (Historical; Resolved)
 
 - T008 implements registration capability signing.
 - T010 propagates protocol 1.1 and capabilities through the official worker/runtime path.
