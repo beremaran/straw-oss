@@ -22,7 +22,13 @@ P0 metrics:
 - `straw_quota_rejections_total`.
 
 Label cardinality must be controlled. Do not label high-cardinality URLs directly in Prometheus. Use `target_host`,
-`tenant_id`, `route_id`, and `error_code`; full URLs belong in ClickHouse/logs.
+`tenant_id`, `route_id`, `error_code`, and bounded profile names; full URLs belong in ClickHouse/logs.
+
+Request events also record `requested_fingerprint_profile`, `selected_fingerprint_profile`, and
+`executed_fingerprint_profile`. The requested value is a safe catalog/default token or a bounded hash/length
+projection; arbitrary values, URLs, headers, credentials, bodies, worker/session IDs, and raw library errors are not
+stored. Omitted/default requests are evidenced as selected/executed `baseline`; named execution records the exact
+`chrome_120` value only after local Egress registry resolution.
 
 ### Egress Metrics
 

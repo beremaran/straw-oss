@@ -7,6 +7,7 @@ P0 must include contract-mapped tests.
 | Protobuf      | `buf lint`, `buf breaking`, BodyRefFrame compiles, AssignRequest credit fields present, unknown enum rejection |
 | NATS subjects | exact assignment subject, no pool queue dispatch, safe token validation, max payload validation                |
 | Registration  | valid registration, invalid signature, out-of-scope pool, incompatible version, duplicate session              |
+| Fingerprints  | exact signed capability list, legacy signing bytes, tenant-scoped named routing, baseline/default alias, selected/executed equality, local registry drift, no-upstream rejection, redaction, Chrome 120 conformance |
 | Heartbeat     | ready/degraded/unhealthy, unavailable after 15s, dead after 30s, stale session ignored                         |
 | Worker state  | global disable precedence, tenant disable isolation, draining exclusion, cooldown, duplicate replacement       |
 | Routing       | priority order, hard client hints, tenant isolation, degraded pool policy, no match, sticky success/failure    |
@@ -24,11 +25,11 @@ P0 must include contract-mapped tests.
 | Quotas        | request count, bandwidth accounting, admission policy, Redis loss behavior, no billing-grade claim             |
 | Deny rules    | domain, CIDR, private IP, metadata IP, DNS rebinding, redirect target future test, IDNA normalization          |
 | Egress policy | RequestStart carries DestinationPolicy; Egress enforces resolved-IP deny without querying Control DBs          |
-| HTTP behavior | P0 disables CONNECT, outbound HTTP/2, and upstream keep-alives unless explicit tested feature flag is enabled  |
+| HTTP behavior | P0 rejects CONNECT; baseline retains existing HTTP/1/pooling behavior; named `chrome_120` proves its TLS/HTTP2 contract, disables HTTP/3/redirects, and has request-scoped cleanup |
 | Redaction     | URL userinfo rejected; query dropped by default; auth/cookie headers absent from logs/ClickHouse               |
 | Config API    | endpoint phase labels, expected version conflict, tenant version increment, config/admin path separation       |
 | Invalidation  | Redis pub/sub invalidation, missed pub/sub corrected by version check, API key revocation invalidates cache    |
-| ClickHouse    | async write success, outage, bounded queue drop, sanitized target_url                                          |
+| ClickHouse    | async write success, outage, bounded queue drop, sanitized target_url, additive requested/selected/executed profile columns on clean and existing volumes |
 | Load          | routing p50/p99, assignment latency, active request limit, worker capacity behavior                            |
 | Auth          | platform key lifecycle, platform key cannot execute requests, tenant key cannot create tenants, revocation, quota write requires platform key, worker-credential create rejects foreign tenant scope |
 | Audit         | actor API key recorded, injection secret values redacted in Postgres/ClickHouse, API key secret never logged   |
@@ -39,6 +40,11 @@ P0 must include contract-mapped tests.
 | NATS ordering | subscriber flush proves RequestStart not lost; stream subject publish before subscribe fails in test harness   |
 | SSRF          | local DNS validation connects only to validated IP; DNS rebinding between validation and dial is blocked       |
 | Timeout       | total deadline wins over phase timeout when simultaneous; phase timeouts bounded by remaining deadline         |
+
+Feature closure commands for the unified local stack are run from the repository root:
+`make infra-up`, `make check-protos`, `make clickhouse-migrations-check`, `make check-straw`, and `cd straw && make check`.
+The fixed Coles acceptance request is first-attempt only; an origin denial, challenge, or changed page is recorded as
+`Open`/`Fail`, never as a substituted pass.
 
 P1/P2 add proxy, CONNECT, MITM, BodyRef, payload capture, Egress SDK, telemetry read APIs, connection pooling,
 and HTTP/2 test rows before those features ship.

@@ -55,6 +55,11 @@ execute, or complete the request.
 |  501 | `executor_internal_error`     | EGRESS    |     502 |     Maybe | Unexpected executor failure                          |
 |  502 | `cancelled`                   | CLIENT    | 499/400 |        No | Client/admin cancellation; status depends on ingress |
 
+`unsupported_fingerprint` is terminal and non-retryable. Control emits it for an unknown, disabled, unavailable, or
+malformed named request after ordinary route/tenant eligibility is evaluated; Egress emits the same code for a local
+registry miss or capability drift. Neither path assigns a worker transport or performs DNS/connect work, and no
+executed profile is recorded for these rejections.
+
 There is no separate `response_body_too_large` code. Use `body_too_large` with public-safe ErrorResponse details:
 
 ```json

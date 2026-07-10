@@ -28,6 +28,9 @@ CREATE TABLE straw.request_events
     pool_id             String,
     executor_type       LowCardinality(String),
     selected_executor   String,
+    requested_fingerprint_profile LowCardinality(String) DEFAULT '',
+    selected_fingerprint_profile  LowCardinality(String) DEFAULT '',
+    executed_fingerprint_profile  LowCardinality(String) DEFAULT '',
     country             LowCardinality(String),
     region              LowCardinality(String),
     ip_type             LowCardinality(String),
@@ -50,6 +53,11 @@ PARTITION BY toYYYYMM(timestamp)
 ORDER BY (tenant_id, timestamp, request_id)
 TTL timestamp + INTERVAL 90 DAY;
 ```
+
+Fingerprint evidence is additive and redacted: safe catalog/default tokens are stored literally; unsafe submitted
+values are projected as `sha256:<16 hex>:len=<bytes>`. `executed_fingerprint_profile` is empty when Egress was never
+reached, including unsupported-profile rejection. Existing volumes must receive these columns through the idempotent
+ClickHouse migration before the schema check is considered complete.
 
 ### `worker_events`
 

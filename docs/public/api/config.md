@@ -425,22 +425,30 @@ Rate limiting is enforced with a Redis-backed sliding-window log per `(dimension
 
 ## 9. Fingerprint Profiles (Read-Only)
 
-Fingerprint profiles are built-in presets seeded in the database. The public API exposes a read-only list; there is no write endpoint. The seeded profile names are: `default`, `chrome_120`, `firefox_121`, `safari_17` — pass one of these as `fingerprint_profile` on a [request](requests.md).
+Fingerprint profiles are built-in presets seeded in the database. The public API exposes a read-only list; there is no write endpoint. `chrome_120` is the only advertised executable profile in this release. `default` is a compatibility alias for the unprofiled `baseline` transport and is returned separately from executable profiles; historical `firefox_121` and `safari_17` rows remain disabled/unavailable and are not requestable.
 
 ### List Profiles
 - **Endpoint**: `GET /api/v1/config/fingerprint-profiles`
 - **Role**: `tenant_admin`, `operator`, or `viewer`
 - **Response Body**:
   ```json
-  [
-    {
-      "name": "chrome_120",
-      "scope_type": "global",
-      "supported_by_worker": true,
-      "enabled": true,
-      "config_version": 1
+  {
+    "profiles": [
+      {
+        "name": "chrome_120",
+        "scope_type": "global",
+        "profile_ref": "builtin:chrome_120",
+        "executor_type": "official_egress",
+        "availability": "supported",
+        "supported_by_worker": true,
+        "enabled": true,
+        "config_version": 1
+      }
+    ],
+    "aliases": {
+      "default": "baseline"
     }
-  ]
+  }
   ```
 
 ---

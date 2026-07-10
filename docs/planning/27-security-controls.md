@@ -30,6 +30,11 @@ The worker signs a registration token containing:
 - issued-at timestamp,
 - protocol version.
 
+For protocol minor `1`, the canonical signed payload additionally contains a count and length-prefixed, deterministically
+sorted unique `supported_fingerprint_profiles` list. Minor `0` and empty-list registrations preserve the legacy bytes.
+Control validates the list against the exact catalog and credential subset before creating the immutable runtime session;
+the Egress registry remains the final execution authority.
+
 Control verifies signature using stored public key and rejects stale timestamps/nonces according to policy.
 
 **Registration nonce replay protection**: Nonces are stored in Redis with TTL, scoped by `credential_id`. If Redis is
@@ -92,6 +97,11 @@ Deny-rule evaluation must normalize:
 
 Private/link-local/metadata IP blocks are denied by default unless a tenant admin explicitly allows them for a tenant or
 deployment.
+
+Named `chrome_120` execution is a request-scoped `tls-client` client with explicit timeout, redirect, HTTP/3, dialer,
+and cleanup controls. It retains the original hostname for SNI/certificate verification while dialing only the
+validated IP. Unsupported profile instructions fail closed before DNS, and baseline requests retain the existing
+transport path.
 
 ### SSRF Enforcement by Resolution Mode
 
