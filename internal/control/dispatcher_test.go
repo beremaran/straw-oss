@@ -148,6 +148,31 @@ func TestDispatcherRoutePoolCapabilityRestriction(t *testing.T) {
 	}
 }
 
+func TestDispatcherNamedFingerprintUsesCapableSessionAfterOrdinaryEligibility(t *testing.T) {
+	t.Parallel()
+
+	incapable := dispatchCandidate()
+	incapable.WorkerID = "worker_dispatch_incapable"
+	incapable.SessionID = "session_dispatch_incapable"
+	incapable.AssignSubject = "straw.v1.executor." + incapable.WorkerID + "." + incapable.SessionID + ".assign"
+
+	capable := dispatchCandidate()
+	capable.WorkerID = "worker_dispatch_capable"
+	capable.SessionID = "session_dispatch_capable"
+	capable.AssignSubject = "straw.v1.executor." + capable.WorkerID + "." + capable.SessionID + ".assign"
+	capable.SupportedFingerprintProfiles = []string{fingerprintProfileChrome120}
+
+	snapshot := dispatchSnapshot([]config.RoutingRule{dispatchRule()})
+	d := newTestDispatcherWithSnapshot(t, snapshot, dispatchCandidates{incapable, capable})
+	req := validatedDispatchRequest(t, "https://example.com/")
+	req.Fingerprint = fingerprintProfileChrome120
+
+	outcome := d.route(dispatchInput(req), snapshot)
+	if !outcome.OK || outcome.WorkerID != capable.WorkerID {
+		t.Fatalf("route outcome = %+v, want capable worker %s", outcome, capable.WorkerID)
+	}
+}
+
 func TestDispatcherRoutesUsingRequestIngressType(t *testing.T) {
 	t.Parallel()
 
@@ -396,6 +421,33 @@ func TestDispatcherControlNATSEgressRoundTrip(t *testing.T) {
 	}
 	if len(resp.Headers) == 0 {
 		t.Fatal("headers empty, want upstream headers")
+	}
+}
+
+func TestDispatcherNamedFingerprintBufferedRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	d, stop := newLiveDispatchHarness(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("profiled body"))
+	}))
+	defer stop()
+
+	capable := dispatchCandidate()
+	capable.SupportedFingerprintProfiles = []string{fingerprintProfileChrome120}
+	d.opts.Workers = dispatchCandidates{capable}
+
+	req := validatedDispatchRequest(t, rewriteDispatchHost(t, d.upstreamURL, "dispatch.test"))
+	req.Fingerprint = fingerprintProfileChrome120
+
+	resp, perr := d.Dispatch(context.Background(), dispatchInput(req))
+	if perr != nil {
+		t.Fatalf("Dispatch error = %#v", perr)
+	}
+	if got := string(respBodyBytes(t, resp)); got != "profiled body" {
+		t.Fatalf("body = %q, want profiled body", got)
+	}
+	if resp.SelectedFingerprintProfile != fingerprintProfileChrome120 || resp.ExecutedFingerprintProfile != fingerprintProfileChrome120 {
+		t.Fatalf("profile evidence = selected %q executed %q, want chrome_120/chrome_120", resp.SelectedFingerprintProfile, resp.ExecutedFingerprintProfile)
 	}
 }
 
@@ -730,6 +782,35 @@ func TestDispatcherRawResponseStreamsPastInlineLimit(t *testing.T) {
 	}
 }
 
+func TestDispatcherNamedFingerprintRawRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	d, stop := newLiveDispatchHarness(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte("raw profiled body"))
+	}))
+	defer stop()
+
+	capable := dispatchCandidate()
+	capable.SupportedFingerprintProfiles = []string{fingerprintProfileChrome120}
+	d.opts.Workers = dispatchCandidates{capable}
+
+	req := validatedDispatchRequest(t, rewriteDispatchHost(t, d.upstreamURL, "dispatch.test"))
+	req.Fingerprint = fingerprintProfileChrome120
+	w := httptest.NewRecorder()
+
+	resp, perr, wroteHeader := d.DispatchRaw(context.Background(), dispatchInput(req), w)
+	if perr != nil {
+		t.Fatalf("DispatchRaw error = %#v", perr)
+	}
+	if !wroteHeader || w.Code != http.StatusAccepted || w.Body.String() != "raw profiled body" {
+		t.Fatalf("raw response = wroteHeader %v status %d body %q", wroteHeader, w.Code, w.Body.String())
+	}
+	if resp.SelectedFingerprintProfile != fingerprintProfileChrome120 || resp.ExecutedFingerprintProfile != fingerprintProfileChrome120 {
+		t.Fatalf("profile evidence = selected %q executed %q, want chrome_120/chrome_120", resp.SelectedFingerprintProfile, resp.ExecutedFingerprintProfile)
+	}
+}
+
 func TestRawResponseHeaderAndTrailerFiltering(t *testing.T) {
 	t.Parallel()
 
@@ -1023,6 +1104,7 @@ func dispatchSnapshot(rules []config.RoutingRule) config.TenantSnapshot {
 		RoutingRules:  rules,
 		FingerprintProfiles: []config.FingerprintProfile{
 			{Name: "default", ScopeType: "global", Enabled: true, SupportedByWorker: true},
+			{Name: fingerprintProfileChrome120, ScopeType: "global", Enabled: true, SupportedByWorker: true},
 		},
 		Quota: config.QuotaConfig{Enabled: false, CountOnAdmission: true, FailPolicy: "open"},
 	}

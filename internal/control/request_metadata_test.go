@@ -261,14 +261,16 @@ func TestRequestEventProfileEvidenceAndRedaction(t *testing.T) {
 	}
 
 	event := buildRequestEvent("req_profile", Identity{}, &ValidatedRequest{
-		Method:   http.MethodPost,
-		URL:      u,
-		Headers:  []HeaderPair{{Name: testAuthorizationHeader, Value: "Bearer header-secret"}},
-		BodyData: []byte("body-secret"),
+		Method:      http.MethodPost,
+		URL:         u,
+		Headers:     []HeaderPair{{Name: testAuthorizationHeader, Value: "Bearer header-secret"}},
+		BodyData:    []byte("body-secret"),
+		Fingerprint: fingerprintProfileChrome120,
 	}, defaultTenantPolicy())
-	event.RequestedFingerprintProfile = fingerprintProfileChrome120
-	event.SelectedFingerprintProfile = fingerprintProfileChrome120
-	event.ExecutedFingerprintProfile = fingerprintProfileChrome120
+	event = applyRequestOutcome(event, SuccessResponse{
+		SelectedFingerprintProfile: fingerprintProfileChrome120,
+		ExecutedFingerprintProfile: fingerprintProfileChrome120,
+	}, nil)
 
 	encoded, err := json.Marshal(event)
 	if err != nil {
@@ -295,6 +297,41 @@ func TestRequestEventProfileEvidenceAndRedaction(t *testing.T) {
 		if strings.Contains(string(encoded), secret) {
 			t.Errorf("request event contains sensitive value %q: %s", secret, encoded)
 		}
+	}
+}
+
+func TestRequestEventCarriesProfileEvidenceOnTransportFailure(t *testing.T) {
+	t.Parallel()
+
+	u, err := url.Parse("https://example.com/products/milk")
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	event := buildRequestEvent("req_profile_failure", Identity{}, &ValidatedRequest{
+		Method:      http.MethodGet,
+		URL:         u,
+		Fingerprint: fingerprintProfileChrome120,
+	}, defaultTenantPolicy())
+	got := applyRequestOutcome(event, SuccessResponse{}, &PipelineError{
+		Code:                       UnsupportedFingerprint,
+		SelectedFingerprintProfile: fingerprintProfileChrome120,
+		ExecutedFingerprintProfile: fingerprintProfileChrome120,
+	})
+
+	if got.RequestedFingerprintProfile != fingerprintProfileChrome120 {
+		t.Fatalf("requested profile = %q, want %q", got.RequestedFingerprintProfile, fingerprintProfileChrome120)
+	}
+	if got.SelectedFingerprintProfile != fingerprintProfileChrome120 || got.ExecutedFingerprintProfile != fingerprintProfileChrome120 {
+		t.Fatalf("profile evidence = selected %q executed %q, want chrome_120", got.SelectedFingerprintProfile, got.ExecutedFingerprintProfile)
+	}
+	if got.ErrorCode != ErrorRegistry[UnsupportedFingerprint].Code {
+		t.Fatalf("error code = %q, want %q", got.ErrorCode, ErrorRegistry[UnsupportedFingerprint].Code)
+	}
+	unsafe := "tenant secret/profile"
+	redacted := buildRequestEvent("req_profile_redacted", Identity{}, &ValidatedRequest{Fingerprint: unsafe}, defaultTenantPolicy())
+	if redacted.RequestedFingerprintProfile == unsafe || !strings.HasPrefix(redacted.RequestedFingerprintProfile, "sha256:") {
+		t.Fatalf("unsafe requested profile evidence = %q, want redacted sha256 projection", redacted.RequestedFingerprintProfile)
 	}
 }
 

@@ -27,7 +27,7 @@ func mustURL(t *testing.T, raw string) *url.URL {
 func fingerprintSnapshot() []config.FingerprintProfile {
 	return []config.FingerprintProfile{
 		{Name: defaultFingerprintProfileName, ScopeType: fingerprintProfileScopeGlobal, Enabled: true, SupportedByWorker: true},
-		{Name: "chrome_120", ScopeType: fingerprintProfileScopeGlobal, Enabled: true, SupportedByWorker: true},
+		{Name: fingerprintProfileChrome120, ScopeType: fingerprintProfileScopeGlobal, Enabled: true, SupportedByWorker: true},
 		{Name: "disabled_profile", ScopeType: fingerprintProfileScopeGlobal, Enabled: false, SupportedByWorker: true},
 	}
 }
@@ -313,6 +313,21 @@ func TestResolveDestinationPolicy_FingerprintMismatch(t *testing.T) {
 	_, verr := ResolveDestinationPolicy(req)
 	if verr == nil || verr.Code != errorCodeUnsupportedFingerprint {
 		t.Fatalf("verr = %+v, want unsupported_fingerprint", verr)
+	}
+}
+
+func TestFingerprintProfileDestinationPolicyAcceptsEnabledNamedProfile(t *testing.T) {
+	result, verr := ResolveDestinationPolicy(DestinationPolicyRequest{
+		Snapshot:                    config.TenantSnapshot{FingerprintProfiles: fingerprintSnapshot()},
+		TargetURL:                   mustURL(t, "https://example.com/"),
+		RequestedFingerprintProfile: fingerprintProfileChrome120,
+		MaxInjectedHeaderBytes:      1024,
+	})
+	if verr != nil {
+		t.Fatalf("unexpected error: %+v", verr)
+	}
+	if result.FingerprintProfile != fingerprintProfileChrome120 {
+		t.Fatalf("fingerprint = %q, want chrome_120", result.FingerprintProfile)
 	}
 }
 

@@ -57,6 +57,11 @@ var executorEmittableCodes = map[strawpb.ErrorCode]struct{}{
 	strawpb.ErrorCode_ERROR_CODE_EXECUTOR_INTERNAL_ERROR:     {},
 }
 
+const (
+	baselineFingerprintEvidence        = "baseline"
+	executedFingerprintMismatchMessage = "executed fingerprint profile mismatch"
+)
+
 // ValidateExecutorError maps an ErrorFrame code to the outcome code Control
 // records. In-set codes pass through unchanged; any out-of-set code (including
 // UNSPECIFIED) maps to executor_internal_error and is flagged as a protocol
@@ -68,6 +73,26 @@ func ValidateExecutorError(code strawpb.ErrorCode) (strawpb.ErrorCode, bool) {
 	}
 
 	return strawpb.ErrorCode_ERROR_CODE_EXECUTOR_INTERNAL_ERROR, true
+}
+
+// validateExecutedFingerprint enforces the wire invariant that a named
+// profile emitted by Egress must be the exact profile Control selected. Empty
+// executed values remain accepted for the legacy baseline-only workers; the
+// official worker emits "baseline" for new baseline executions.
+func validateExecutedFingerprint(selected, executed string) bool {
+	if selected == baselineFingerprintEvidence && executed == "" {
+		return true
+	}
+
+	return selected == executed
+}
+
+func selectedFingerprintForRequest(req *ValidatedRequest) string {
+	if req == nil || req.Fingerprint == "" || req.Fingerprint == defaultFingerprintProfileName {
+		return baselineFingerprintEvidence
+	}
+
+	return req.Fingerprint
 }
 
 // Assignment tracks the Control-side lifecycle of a single assignment attempt:

@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestBuildRegisterRequestAdvertisesFingerprintProfiles(t *testing.T) {
+func TestFingerprintProfileRegistrationAdvertisesCapabilities(t *testing.T) {
 	t.Parallel()
 
 	_, priv, err := ed25519.GenerateKey(nil)

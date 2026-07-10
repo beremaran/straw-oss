@@ -226,6 +226,7 @@ func buildRequestEvent(requestID string, identity Identity, request *ValidatedRe
 		event.Region = request.Routing.Region
 		event.IPType = request.Routing.IPType
 		event.Tags = request.Routing.Tags
+		event.RequestedFingerprintProfile = projectFingerprintEvidence(request.Fingerprint)
 	}
 
 	return event
@@ -250,6 +251,8 @@ func applyRequestOutcome(event RequestEvent, resp SuccessResponse, perr *Pipelin
 		event.PoolID = resp.PoolID
 		event.SelectedExecutor = resp.SelectedExecutor
 		event.ExecutorType = resp.ExecutorType
+		event.SelectedFingerprintProfile = resp.SelectedFingerprintProfile
+		event.ExecutedFingerprintProfile = resp.ExecutedFingerprintProfile
 
 		return event
 	}
@@ -271,8 +274,36 @@ func applyRequestOutcome(event RequestEvent, resp SuccessResponse, perr *Pipelin
 	event.PoolID = perr.PoolID
 	event.SelectedExecutor = perr.SelectedExecutor
 	event.ExecutorType = perr.ExecutorType
+	event.SelectedFingerprintProfile = perr.SelectedFingerprintProfile
+	event.ExecutedFingerprintProfile = perr.ExecutedFingerprintProfile
 
 	return event
+}
+
+func projectFingerprintEvidence(value string) string {
+	if value == "" {
+		return ""
+	}
+
+	if len(value) <= 64 && safeFingerprintEvidenceToken(value) {
+		return value
+	}
+
+	sum := sha256.Sum256([]byte(value))
+
+	return fmt.Sprintf("sha256:%s:len=%d", hex.EncodeToString(sum[:8]), len(value))
+}
+
+func safeFingerprintEvidenceToken(value string) bool {
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_' {
+			continue
+		}
+
+		return false
+	}
+
+	return true
 }
 
 // uint16OrMax converts an int to uint16, clamping to [0, MaxUint16] instead

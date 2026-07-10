@@ -158,3 +158,24 @@ func TestTunnelNATSDisconnectSynthesizesTransportUnavailable(t *testing.T) {
 		t.Fatalf("nats_errors_total = %v, want 1", got)
 	}
 }
+
+func TestFingerprintProfileTunnelPreparationCarriesNamedProfileThroughPolicy(t *testing.T) {
+	t.Parallel()
+
+	candidate := dispatchCandidate()
+	candidate.IngressModes = []string{IngressTypeConnect}
+	candidate.SupportedFingerprintProfiles = []string{fingerprintProfileChrome120}
+	snapshot := dispatchSnapshot([]config.RoutingRule{dispatchRule()})
+	d := newTestDispatcherWithSnapshot(t, snapshot, dispatchCandidates{candidate})
+	req := validatedDispatchRequest(t, "https://example.com/")
+	req.IngressType = IngressTypeConnect
+	req.Fingerprint = fingerprintProfileChrome120
+
+	prep, perr := d.prepareTunnelDispatch(context.Background(), dispatchInput(req), time.Now())
+	if perr != nil {
+		t.Fatalf("prepareTunnelDispatch() error = %#v", perr)
+	}
+	if prep.policy == nil || prep.policy.FingerprintProfile != fingerprintProfileChrome120 {
+		t.Fatalf("prepared fingerprint = %#v, want chrome_120", prep.policy)
+	}
+}

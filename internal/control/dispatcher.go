@@ -76,10 +76,12 @@ type PipelineError struct {
 	// RouteID/PoolID/SelectedExecutor/ExecutorType carry the routing decision
 	// for request_events telemetry (empty when the failure occurred before a
 	// route was selected).
-	RouteID          string
-	PoolID           string
-	SelectedExecutor string
-	ExecutorType     string
+	RouteID                    string
+	PoolID                     string
+	SelectedExecutor           string
+	ExecutorType               string
+	SelectedFingerprintProfile string
+	ExecutedFingerprintProfile string
 }
 
 // RequestDispatcherOptions wires the Control request pipeline.
@@ -270,6 +272,7 @@ func (d *DefaultRequestDispatcher) finalizeDispatch(ctx context.Context, in Disp
 			perr = d.withTiming(perr, routingMs, assignmentMs, started)
 			perr.EgressMs = result.egressMs
 			setRouteFields(perr, route)
+			setProfileFields(perr, result)
 
 			return SuccessResponse{}, perr
 		}
@@ -282,6 +285,7 @@ func (d *DefaultRequestDispatcher) finalizeDispatch(ctx context.Context, in Disp
 
 	resp := successFromDispatch(in.RequestID, result, routingMs, assignmentMs, millisSince(started, d.opts.Now()))
 	setRouteFieldsOnResponse(&resp, route)
+	setProfileFieldsOnResponse(&resp, result)
 
 	return resp, nil
 }
@@ -302,6 +306,16 @@ func setRouteFieldsOnResponse(resp *SuccessResponse, route RouteOutcome) {
 	resp.PoolID = route.PoolID
 	resp.SelectedExecutor = route.WorkerID
 	resp.ExecutorType = route.ExecutorType
+}
+
+func setProfileFields(perr *PipelineError, result dispatchResult) {
+	perr.SelectedFingerprintProfile = result.selectedFingerprintProfile
+	perr.ExecutedFingerprintProfile = result.executedFingerprintProfile
+}
+
+func setProfileFieldsOnResponse(resp *SuccessResponse, result dispatchResult) {
+	resp.SelectedFingerprintProfile = result.selectedFingerprintProfile
+	resp.ExecutedFingerprintProfile = result.executedFingerprintProfile
 }
 
 // teeResponseBody uploads the completed response body to object storage and
@@ -378,9 +392,11 @@ func (d *DefaultRequestDispatcher) finalizeRawDispatch(ctx context.Context, in D
 		perr = d.withTiming(perr, routingMs, assignmentMs, started)
 		perr.EgressMs = result.egressMs
 		setRouteFields(perr, route)
+		setProfileFields(perr, result)
 
 		resp := rawSuccessFromDispatch(in.RequestID, result, routingMs, assignmentMs, millisSince(started, d.opts.Now()))
 		setRouteFieldsOnResponse(&resp, route)
+		setProfileFieldsOnResponse(&resp, result)
 
 		return resp, perr, wroteHeader
 	}
@@ -392,6 +408,7 @@ func (d *DefaultRequestDispatcher) finalizeRawDispatch(ctx context.Context, in D
 
 	resp := rawSuccessFromDispatch(in.RequestID, result, routingMs, assignmentMs, millisSince(started, d.opts.Now()))
 	setRouteFieldsOnResponse(&resp, route)
+	setProfileFieldsOnResponse(&resp, result)
 
 	return resp, nil, wroteHeader
 }
@@ -419,7 +436,9 @@ func successFromDispatch(requestID string, result dispatchResult, routingMs, ass
 			EgressMs:     result.egressMs,
 			TotalMs:      totalMs,
 		},
-		ResponseSizeBytes: uint64(len(result.body)),
+		ResponseSizeBytes:          uint64(len(result.body)),
+		SelectedFingerprintProfile: result.selectedFingerprintProfile,
+		ExecutedFingerprintProfile: result.executedFingerprintProfile,
 	}
 }
 
@@ -455,7 +474,9 @@ func rawSuccessFromDispatch(requestID string, result dispatchResult, routingMs, 
 			EgressMs:     result.egressMs,
 			TotalMs:      totalMs,
 		},
-		ResponseSizeBytes: result.size,
+		ResponseSizeBytes:          result.size,
+		SelectedFingerprintProfile: result.selectedFingerprintProfile,
+		ExecutedFingerprintProfile: result.executedFingerprintProfile,
 	}
 }
 
@@ -501,14 +522,15 @@ func (d *DefaultRequestDispatcher) routeWithWorkers(in DispatchInput, snapshot c
 	)
 
 	return router.Evaluate(RouteRequest{
-		TenantID:        in.Identity.TenantID,
-		Tags:            in.Request.Routing.Tags,
-		Country:         in.Request.Routing.Country,
-		Region:          in.Request.Routing.Region,
-		IPType:          in.Request.Routing.IPType,
-		IngressType:     in.Request.IngressType,
-		TargetHost:      strings.ToLower(in.Request.URL.Hostname()),
-		StickySessionID: in.Request.StickySessionID,
+		TenantID:           in.Identity.TenantID,
+		Tags:               in.Request.Routing.Tags,
+		Country:            in.Request.Routing.Country,
+		Region:             in.Request.Routing.Region,
+		IPType:             in.Request.Routing.IPType,
+		IngressType:        in.Request.IngressType,
+		TargetHost:         strings.ToLower(in.Request.URL.Hostname()),
+		StickySessionID:    in.Request.StickySessionID,
+		FingerprintProfile: in.Request.Fingerprint,
 	})
 }
 
@@ -1045,7 +1067,7 @@ func (d *DefaultRequestDispatcher) readResponse(ctx context.Context, frames <-ch
 		c2eSeq:        c2eSeq,
 		upload:        upload,
 		uploadErr:     uploadErrorChan(upload),
-		result:        dispatchResult{status: http.StatusOK},
+		result:        dispatchResult{status: http.StatusOK, selectedFingerprintProfile: selectedFingerprintForRequest(in.Request)},
 		egressStarted: time.Time{},
 	}
 	defer closeUploadGate(upload)
@@ -1056,7 +1078,7 @@ func (d *DefaultRequestDispatcher) readResponse(ctx context.Context, frames <-ch
 	for {
 		done, perr := state.next(ctx, ticker.C, frames)
 		if perr != nil {
-			return dispatchResult{}, perr
+			return state.result, perr
 		}
 
 		if done {
@@ -1129,7 +1151,7 @@ func (d *DefaultRequestDispatcher) streamRawResponse(ctx context.Context, frames
 		in:         in,
 		c2eSeq:     c2eSeq,
 		w:          w,
-		result:     dispatchResult{status: http.StatusOK},
+		result:     dispatchResult{status: http.StatusOK, selectedFingerprintProfile: selectedFingerprintForRequest(in.Request)},
 	}
 	if upload != nil {
 		state.upload = upload
@@ -1224,7 +1246,7 @@ func (s *rawResponseStreamState) accept(frame *strawpb.StreamFrame, validator *n
 
 	switch p := frame.GetPayload().(type) {
 	case *strawpb.StreamFrame_OutboundStart:
-		s.egressStart = s.dispatcher.opts.Now()
+		return s.acceptOutboundStart(p.OutboundStart)
 	case *strawpb.StreamFrame_ResponseStart:
 		s.result.status = p.ResponseStart.GetStatus()
 		s.result.headers = p.ResponseStart.GetHeaders()
@@ -1350,6 +1372,11 @@ func (d *DefaultRequestDispatcher) acceptResponseProgress(frame *strawpb.StreamF
 	switch p := frame.GetPayload().(type) {
 	case *strawpb.StreamFrame_OutboundStart:
 		*egressStarted = d.opts.Now()
+		result.executedFingerprintProfile = p.OutboundStart.GetExecutedFingerprintProfile()
+
+		if !validateExecutedFingerprint(result.selectedFingerprintProfile, result.executedFingerprintProfile) {
+			return true, &PipelineError{Code: ProtocolError, Message: executedFingerprintMismatchMessage}
+		}
 	case *strawpb.StreamFrame_ResponseStart:
 		result.status = p.ResponseStart.GetStatus()
 		result.headers = p.ResponseStart.GetHeaders()
@@ -1385,6 +1412,17 @@ func (d *DefaultRequestDispatcher) acceptResponseTerminal(frame *strawpb.StreamF
 
 		return true, &PipelineError{Code: ProtocolError}
 	}
+}
+
+func (s *rawResponseStreamState) acceptOutboundStart(frame *strawpb.OutboundStartFrame) (bool, *PipelineError) {
+	s.egressStart = s.dispatcher.opts.Now()
+	s.result.executedFingerprintProfile = frame.GetExecutedFingerprintProfile()
+
+	if !validateExecutedFingerprint(s.result.selectedFingerprintProfile, s.result.executedFingerprintProfile) {
+		return true, &PipelineError{Code: ProtocolError, Message: executedFingerprintMismatchMessage}
+	}
+
+	return false, nil
 }
 
 func acceptedResponseFrame(outcome natsx.FrameOutcome) (bool, bool, *PipelineError) {
@@ -1565,11 +1603,13 @@ func effectiveDefaultTimeout(staticMax, tenantDefault uint64) uint64 {
 }
 
 type dispatchResult struct {
-	status   uint32
-	headers  []*strawpb.Header
-	body     []byte
-	size     uint64
-	egressMs int64
+	status                     uint32
+	headers                    []*strawpb.Header
+	body                       []byte
+	size                       uint64
+	egressMs                   int64
+	selectedFingerprintProfile string
+	executedFingerprintProfile string
 	// useBodyRef is set once the buffered response body exceeds the inline
 	// threshold and object storage is enabled: Control keeps streaming and tees
 	// the completed body to object storage instead of inlining it.
@@ -1663,6 +1703,8 @@ func routeError(code string) *PipelineError {
 		return &PipelineError{Code: StickySessionUnavailable}
 	case RouteErrCapacityExhausted:
 		return &PipelineError{Code: ExecutorCapacityExhausted}
+	case RouteErrUnsupportedFingerprint:
+		return &PipelineError{Code: UnsupportedFingerprint}
 	default:
 		return &PipelineError{Code: RouteUnavailable}
 	}

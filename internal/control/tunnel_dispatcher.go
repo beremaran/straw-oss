@@ -99,11 +99,12 @@ func (d *DefaultRequestDispatcher) prepareTunnelDispatch(ctx context.Context, in
 	}
 
 	policy, verr := ResolveDestinationPolicy(DestinationPolicyRequest{
-		Snapshot:               snapshot,
-		TargetURL:              in.Request.URL,
-		MaxInjectedHeaderBytes: d.opts.MaxFrameDataBytes,
-		UpstreamProxyEnabled:   false,
-		UpstreamProxyTrusted:   false,
+		Snapshot:                    snapshot,
+		TargetURL:                   in.Request.URL,
+		RequestedFingerprintProfile: in.Request.Fingerprint,
+		MaxInjectedHeaderBytes:      d.opts.MaxFrameDataBytes,
+		UpstreamProxyEnabled:        false,
+		UpstreamProxyTrusted:        false,
 	})
 	if verr != nil {
 		return tunnelDispatchPreparation{}, d.withTiming(validationPipelineError(verr), routingMs, 0, started)
@@ -175,7 +176,7 @@ func (d *DefaultRequestDispatcher) streamTunnel(ctx context.Context, frames <-ch
 		dispatcher: d,
 		route:      route,
 		rw:         rw,
-		result:     dispatchResult{status: connectEstablishedStatus},
+		result:     dispatchResult{status: connectEstablishedStatus, selectedFingerprintProfile: selectedFingerprintForRequest(in.Request)},
 		upload:     newTunnelUploadGate(d.opts.InitialUploadCreditBytes),
 		c2e:        &c2eStreamSender{dispatcher: d, subject: c2eSubject, in: in, deadline: deadline, seq: c2eSeq},
 	}
@@ -244,6 +245,11 @@ func (s *tunnelStreamState) accept(frame *strawpb.StreamFrame, validator *natsx.
 	switch p := frame.GetPayload().(type) {
 	case *strawpb.StreamFrame_OutboundStart:
 		s.egressStart = s.dispatcher.opts.Now()
+		s.result.executedFingerprintProfile = p.OutboundStart.GetExecutedFingerprintProfile()
+
+		if !validateExecutedFingerprint(s.result.selectedFingerprintProfile, s.result.executedFingerprintProfile) {
+			return true, &PipelineError{Code: ProtocolError, Message: executedFingerprintMismatchMessage}
+		}
 	case *strawpb.StreamFrame_ResponseStart:
 		return s.acceptResponseStart(p.ResponseStart)
 	case *strawpb.StreamFrame_Data:
