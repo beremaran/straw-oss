@@ -34,10 +34,9 @@ Start with these planning inputs when creating or reviewing Straw specs:
   inputs only. Do not add new active work there unless the user explicitly revives the old board workflow.
 - Use the standard SpecKit skills directly. Do not create or use Straw-specific wrapper skills for the normal
   SpecKit workflow.
-- Keep one owning agent responsible for the selected SpecKit task or story slice, final edits, verification, task
-  checkbox updates, and handoff. Sub-agents research and verify; they never edit or mark tasks complete.
-- When spawning Codex sub-agents, set `model` to `gpt-5.6-luna` and `reasoning_effort` to `max` unless the user
-  explicitly asks for a different sub-agent model.
+- The triggering agent decides each sub-agent's scope and authority. Sub-agents may research, implement, verify,
+  update task artifacts, and write handoffs when delegated; the triggering agent coordinates integration and final
+  acceptance.
 - Read only the planning docs named by the selected SpecKit artifacts before editing.
 - Keep work inside the feature's declared scope. Do not build later-phase Straw behavior unless the SpecKit feature
   explicitly includes it.
