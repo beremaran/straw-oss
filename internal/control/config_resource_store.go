@@ -425,7 +425,7 @@ func (s *InMemoryInjectionPolicyStore) DeleteInjectionPolicy(_ context.Context, 
 }
 
 // InMemoryFingerprintProfileStore is a handler-test double seeded with the
-// same built-in profile names Postgres seeds via migration 0002.
+// executable catalog state Postgres establishes in migration 0012.
 type InMemoryFingerprintProfileStore struct {
 	profiles []FingerprintProfileRecord
 }
@@ -434,19 +434,23 @@ type InMemoryFingerprintProfileStore struct {
 // tenant (docs/planning/21: "P0 rows are seeded built-ins only").
 const fingerprintProfileScopeGlobal = "global"
 
+const (
+	fingerprintProfileChrome120 = "chrome_120"
+	fingerprintProfileFirefox   = "firefox_121"
+	fingerprintProfileSafari    = "safari_17"
+)
+
 // NewInMemoryFingerprintProfileStore builds a store seeded with P0's built-in
 // global profiles.
 func NewInMemoryFingerprintProfileStore() *InMemoryFingerprintProfileStore {
-	names := []string{defaultFingerprintProfileName, "chrome_120", "firefox_121", "safari_17"}
-	profiles := make([]FingerprintProfileRecord, 0, len(names))
-
-	for _, name := range names {
-		profiles = append(profiles, FingerprintProfileRecord{
-			FingerprintProfile: config.FingerprintProfile{
-				Name: name, ScopeType: fingerprintProfileScopeGlobal, SupportedByWorker: true, Enabled: true,
-			},
-			ConfigVersion: 1,
-		})
+	profiles := []FingerprintProfileRecord{
+		{FingerprintProfile: config.FingerprintProfile{
+			Name: fingerprintProfileChrome120, ScopeType: fingerprintProfileScopeGlobal, SupportedByWorker: true, Enabled: true,
+			ExecutorType: errorCategoryEgress, ProfileRef: "tls-client/v1.15.1:profiles.Chrome_120", ContractRevision: "chrome_120_v1_15_1",
+		}, ConfigVersion: 1},
+		{FingerprintProfile: config.FingerprintProfile{Name: defaultFingerprintProfileName, ScopeType: fingerprintProfileScopeGlobal}, ConfigVersion: 1},
+		{FingerprintProfile: config.FingerprintProfile{Name: fingerprintProfileFirefox, ScopeType: fingerprintProfileScopeGlobal}, ConfigVersion: 1},
+		{FingerprintProfile: config.FingerprintProfile{Name: fingerprintProfileSafari, ScopeType: fingerprintProfileScopeGlobal}, ConfigVersion: 1},
 	}
 
 	return &InMemoryFingerprintProfileStore{profiles: profiles}
@@ -454,7 +458,7 @@ func NewInMemoryFingerprintProfileStore() *InMemoryFingerprintProfileStore {
 
 // ListFingerprintProfiles implements FingerprintProfileStore.
 func (s *InMemoryFingerprintProfileStore) ListFingerprintProfiles(_ context.Context, _ string) ([]FingerprintProfileRecord, error) {
-	return s.profiles, nil
+	return append([]FingerprintProfileRecord(nil), s.profiles...), nil
 }
 
 func currentVersionOf[T any](entry *inMemoryResource[T]) uint64 {

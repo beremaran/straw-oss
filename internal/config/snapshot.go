@@ -115,6 +115,9 @@ type FingerprintProfile struct {
 	ScopeType         string
 	SupportedByWorker bool
 	Enabled           bool
+	ExecutorType      string
+	ProfileRef        string
+	ContractRevision  string
 }
 
 // RateLimitRule is one rate-limit dimension's configured limit (docs/planning/20).

@@ -139,7 +139,8 @@ func TestPostgresFingerprintProfileMigrationPreservesExistingRows(t *testing.T) 
 	if err != nil {
 		t.Fatalf("read executable fingerprint profile migration: %v", err)
 	}
-	if _, err = pool.Exec(ctx, string(migration)); err != nil {
+	_, err = pool.Exec(ctx, string(migration))
+	if err != nil {
 		t.Fatalf("apply executable fingerprint profile migration: %v", err)
 	}
 
@@ -158,19 +159,21 @@ func TestPostgresFingerprintProfileMigrationPreservesExistingRows(t *testing.T) 
 	for rows.Next() {
 		var name string
 		var state profileState
-		if err := rows.Scan(&name, &state.enabled, &state.profileRef); err != nil {
+		err = rows.Scan(&name, &state.enabled, &state.profileRef)
+		if err != nil {
 			t.Fatalf("scan migrated fingerprint profile: %v", err)
 		}
 		states[name] = state
 	}
-	if err := rows.Err(); err != nil {
+	err = rows.Err()
+	if err != nil {
 		t.Fatalf("iterate migrated fingerprint profiles: %v", err)
 	}
 
-	if got := states["chrome_120"]; !got.enabled || got.profileRef != "tls-client/v1.15.1:profiles.Chrome_120" {
+	if got := states[fingerprintProfileChrome120]; !got.enabled || got.profileRef != "tls-client/v1.15.1:profiles.Chrome_120" {
 		t.Fatalf("chrome_120 = %+v, want enabled immutable Chrome 120 descriptor", got)
 	}
-	for _, retired := range []string{"firefox_121", "safari_17"} {
+	for _, retired := range []string{fingerprintProfileFirefox, fingerprintProfileSafari} {
 		if got, ok := states[retired]; !ok || got.enabled {
 			t.Fatalf("%s = %+v present=%v, want preserved disabled audit row", retired, got, ok)
 		}

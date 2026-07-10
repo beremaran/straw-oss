@@ -1107,11 +1107,20 @@ func (h *AdminHandlers) DeleteInjectionPolicy(w http.ResponseWriter, r *http.Req
 
 type fingerprintProfileResponse struct {
 	Name              string `json:"name"`
-	ScopeType         string `json:"scope_type"`
-	SupportedByWorker bool   `json:"supported_by_worker"`
 	Enabled           bool   `json:"enabled"`
-	ConfigVersion     uint64 `json:"config_version"`
+	ExecutorType      string `json:"executor_type"`
+	ProfileRef        string `json:"profile_ref"`
+	Availability      string `json:"availability"`
+	UnavailableReason string `json:"unavailable_reason,omitempty"`
 }
+
+type fingerprintProfilesResponse struct {
+	SupportedProfiles   []fingerprintProfileResponse `json:"supported_profiles"`
+	UnavailableProfiles []fingerprintProfileResponse `json:"unavailable_profiles"`
+	Aliases             map[string]string            `json:"aliases"`
+}
+
+const fingerprintUnavailableNoActiveCapableWorker = "no_active_capable_worker"
 
 // ListFingerprintProfiles handles GET /api/v1/config/fingerprint-profiles.
 // P0 has no write path: profiles are seeded built-ins (docs/planning/26).
@@ -1134,12 +1143,27 @@ func (h *AdminHandlers) ListFingerprintProfiles(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	out := make([]fingerprintProfileResponse, 0, len(records))
+	out := fingerprintProfilesResponse{
+		SupportedProfiles:   make([]fingerprintProfileResponse, 0, len(records)),
+		UnavailableProfiles: make([]fingerprintProfileResponse, 0, len(records)),
+		Aliases:             map[string]string{defaultFingerprintProfileName: "baseline"},
+	}
 	for _, rec := range records {
-		out = append(out, fingerprintProfileResponse{
-			Name: rec.Name, ScopeType: rec.ScopeType, SupportedByWorker: rec.SupportedByWorker,
-			Enabled: rec.Enabled, ConfigVersion: rec.ConfigVersion,
-		})
+		if rec.Name == defaultFingerprintProfileName {
+			continue
+		}
+
+		profile := fingerprintProfileResponse{
+			Name: rec.Name, Enabled: rec.Enabled, ExecutorType: rec.ExecutorType, ProfileRef: rec.ProfileRef,
+			Availability: "unavailable",
+		}
+		if !rec.Enabled {
+			profile.UnavailableReason = "disabled"
+		} else {
+			profile.UnavailableReason = fingerprintUnavailableNoActiveCapableWorker
+		}
+
+		out.UnavailableProfiles = append(out.UnavailableProfiles, profile)
 	}
 
 	writeJSON(w, http.StatusOK, out)

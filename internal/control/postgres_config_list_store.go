@@ -468,15 +468,19 @@ func unmarshalInjectionOperations(opsJSON []byte) ([]config.InjectionOperation, 
 
 // ---- Fingerprint profiles (read-only in P0) ----
 
-// ListFingerprintProfiles returns every enabled fingerprint profile visible to
-// a tenant: global built-ins plus any tenant-scoped rows. P0 seeds only global
-// profiles and exposes no write path (docs/planning/26).
+// ListFingerprintProfiles returns every fingerprint profile visible to a
+// tenant, including retired rows so the read-only catalog can retain audit
+// history without advertising them.
 func (s *PostgresConfigStore) ListFingerprintProfiles(ctx context.Context, tenantID string) ([]FingerprintProfileRecord, error) {
 	rows, err := s.pool.Query(
 		ctx,
-		`SELECT name, scope_type, supported_by_worker, enabled, created_at, config_version
+		`SELECT name, scope_type, supported_by_worker, enabled,
+		        COALESCE(profile_jsonb ->> 'executor_type', ''),
+		        COALESCE(profile_jsonb ->> 'profile_ref', ''),
+		        COALESCE(profile_jsonb ->> 'contract_revision', ''),
+		        created_at, config_version
 		 FROM fingerprint_profiles
-		 WHERE (scope_type = 'global' OR tenant_id = $1) AND enabled = true
+		 WHERE scope_type = 'global' OR tenant_id = $1
 		 ORDER BY name`,
 		tenantID,
 	)
@@ -495,7 +499,7 @@ func (s *PostgresConfigStore) ListFingerprintProfiles(ctx context.Context, tenan
 		)
 
 		scanErr := rows.Scan(&record.Name, &record.ScopeType, &record.SupportedByWorker, &record.Enabled,
-			&record.CreatedAt, &version)
+			&record.ExecutorType, &record.ProfileRef, &record.ContractRevision, &record.CreatedAt, &version)
 		if scanErr != nil {
 			return nil, fmt.Errorf("scan fingerprint profile: %w", scanErr)
 		}
