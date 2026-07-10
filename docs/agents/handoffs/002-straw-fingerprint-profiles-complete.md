@@ -5,9 +5,11 @@ Task: `specs/002-straw-fingerprint-profiles/tasks.md#T040-T046`
 
 ## Resolution Update (2026-07-10)
 
-This handoff was complete for T040-T046. The later cleanup gate discovered two convergence issues, subsequently closed
-by T047-T048. Current final evidence is in `002-straw-fingerprint-profiles-t047-t048.md`; the historical verdicts below
-remain valid for their original scope.
+This handoff was complete for T040-T046. T047-T048 closed the first convergence issues, TD001-TD003 closed the later
+runtime tech-debt findings, and T049 refreshed the complete live/adjacent evidence on runtime commit
+`f1a2e4d4318a55e8d9f29312f04a257cb053b0c8`. Current live evidence is in
+`specs/002-straw-fingerprint-profiles/evidence/live-coles.md`; T050 owns the remaining cleanup-report and governance
+reconciliation.
 
 ## Changed
 
@@ -16,6 +18,8 @@ remain valid for their original scope.
   contracts.
 - Updated governance/security evidence, ADR status, quality-scenario verdicts, parity verification, live evidence, and
   this completion handoff.
+- Refreshed the complete quickstart after TD001-TD003: profile availability transitions, first-attempt Coles status
+  200 and both markers, exactly one correlated ClickHouse row, and pre/post-live full checks all passed on `f1a2e4d`.
 
 ## Acceptance Criteria Verdicts
 
@@ -28,6 +32,7 @@ remain valid for their original scope.
 | T044 agent-surface parity | VERIFIED | `parity/agent-surface-parity.md` | `cmp -s AGENTS.md CLAUDE.md`; `cmp -s straw/AGENTS.md straw/CLAUDE.md` |
 | T045 SpecKit/Architecture Guard analysis | VERIFIED with no blocking finding | analysis and architecture review/verification recorded in this handoff; no architecture constitution file exists in `.specify/memory/` | prerequisites, `git diff --check`, full Straw/lint gates |
 | T046 final handoff and zero unowned code deferrals | VERIFIED | this file; live acceptance is now proven and no deferrals remain | task/evidence cross-check |
+| T049 refreshed completion evidence after TD001-TD003 | VERIFIED | `specs/002-straw-fingerprint-profiles/evidence/live-coles.md`; `002-straw-fingerprint-profiles-t049.md` | complete quickstart, first-attempt Coles request, correlated ClickHouse query, pre/post-live full gates |
 
 ## Verification
 
@@ -48,7 +53,16 @@ make infra-up                                         # PASS: clean rebuild with
 
 `make check-straw` invokes `cd straw && make check`; the exact output and timestamps are captured in
 `specs/002-straw-fingerprint-profiles/evidence/live-coles.md`. The live request returned status 200, both fixed product
-markers, and one correlated requested/selected/executed `chrome_120` row.
+markers, and one correlated requested/selected/executed `chrome_120` row. T049 refreshed this result on
+`f1a2e4d4318a55e8d9f29312f04a257cb053b0c8` with request `req_1783697758593758126`.
+
+T049's current evidence set ran from 2026-07-10T15:29:49Z through 2026-07-10T15:36:48Z
+(2026-07-10T23:29:49+0800 through 2026-07-10T23:36:48+0800). The live request completed at
+2026-07-10T15:35:59Z with status 200, both markers, and exactly one attempt-1 ClickHouse row. Compose images were
+Control `sha256:bce161e31195936ae391f25a6c8be81f3239723d6219a7409b76dfcfe9f2e339`, Egress
+`sha256:49450e57375b936fc5e0f7cdfb91af4b82c73b1b87ee94682b8b3e08a71eff3f`, and ClickHouse
+`sha256:d4006648d4666e2d4e087657609789931ef7f3db9838b5e5d7a0eacc2b15f8e9`. Exact commands and timestamps are in
+`specs/002-straw-fingerprint-profiles/evidence/live-coles.md`.
 
 ## Reviewer Start Points
 
@@ -64,8 +78,9 @@ markers, and one correlated requested/selected/executed `chrome_120` row.
 
 - None.
 
-Current remaining work after T047-T048: none.
+Current remaining work: T050 owns cleanup-report and final governance reconciliation after TD001-TD003/T049. No
+T049 gap is unowned.
 
 ## Blockers
 
-- None. No commit was created.
+- None. No commit was created for T049.
