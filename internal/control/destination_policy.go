@@ -421,9 +421,10 @@ func resolveDestinationMode(upstreamProxyEnabled, upstreamProxyTrusted bool) (st
 }
 
 // resolveFingerprintProfile validates the requested (or tenant-default)
-// fingerprint profile against the snapshot's enabled, worker-supported
-// profiles, mapping any mismatch to unsupported_fingerprint
-// (docs/planning/16 "Control never asks Egress to guess a fingerprint").
+// fingerprint profile against the snapshot's enabled catalog entries. Worker
+// capability is deliberately not consulted here: routing must first compute
+// the ordinary tenant/route/session candidate set and then apply the exact
+// capability filter so route, sticky, and capacity errors retain precedence.
 func resolveFingerprintProfile(profiles []config.FingerprintProfile, requested string) (string, *ValidationError) {
 	name := requested
 	if name == "" {
@@ -431,7 +432,7 @@ func resolveFingerprintProfile(profiles []config.FingerprintProfile, requested s
 	}
 
 	for _, p := range profiles {
-		if p.Name == name && p.Enabled && p.SupportedByWorker {
+		if p.Name == name && p.Enabled {
 			return name, nil
 		}
 	}

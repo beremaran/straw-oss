@@ -179,3 +179,17 @@ func TestFingerprintProfileTunnelPreparationCarriesNamedProfileThroughPolicy(t *
 		t.Fatalf("prepared fingerprint = %#v, want chrome_120", prep.policy)
 	}
 }
+
+func TestFingerprintProfileTunnelPreparationPreservesRouteNoMatch(t *testing.T) {
+	t.Parallel()
+
+	d := newTestDispatcher(t, nil, dispatchCandidates{dispatchCandidate()})
+	req := validatedDispatchRequest(t, "https://example.com/")
+	req.IngressType = IngressTypeConnect
+	req.Fingerprint = fingerprintProfileChrome120
+
+	_, perr := d.prepareTunnelDispatch(context.Background(), dispatchInput(req), time.Now())
+	if perr == nil || perr.Code != RouteNoMatch {
+		t.Fatalf("prepareTunnelDispatch() error = %#v, want route_no_match before fingerprint capability filtering", perr)
+	}
+}

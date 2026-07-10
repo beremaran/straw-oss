@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/beremaran/straw/v2/internal/config"
 )
 
 const (
@@ -15,6 +17,12 @@ const (
 	testCNAMESuffix  = "internal.svc.cluster.local"
 	testPrivateRange = "172.16.0.0/12"
 )
+
+type staticFingerprintProfileStore []FingerprintProfileRecord
+
+func (s staticFingerprintProfileStore) ListFingerprintProfiles(context.Context, string) ([]FingerprintProfileRecord, error) {
+	return append([]FingerprintProfileRecord(nil), s...), nil
+}
 
 func createRoutingRule(t *testing.T, ta *testAdmin, token, body string) (*httptest.ResponseRecorder, routingRuleResponse) {
 	t.Helper()
@@ -660,6 +668,71 @@ func TestFingerprintProfilesReadOnly(t *testing.T) {
 
 	// No handler exists for a write path in P0: AdminHandlers exposes no
 	// Create/Update/Delete fingerprint-profile method to route to.
+}
+
+func TestFingerprintProfilesReadOnlySeparatesSupportedAndUnavailableReasons(t *testing.T) {
+	t.Parallel()
+
+	ta := newTestAdmin(t)
+	viewer := ta.seedTenantKey(t, "key_fp_supported_viewer", adminTestTenantA, RoleViewer)
+	ta.h.FingerprintProfiles = staticFingerprintProfileStore{
+		{FingerprintProfile: config.FingerprintProfile{
+			Name:              fingerprintProfileChrome120,
+			ScopeType:         fingerprintProfileScopeGlobal,
+			Enabled:           true,
+			SupportedByWorker: true,
+			ExecutorType:      errorCategoryEgress,
+			ProfileRef:        fingerprintProfileChrome120Ref,
+		}},
+		{FingerprintProfile: config.FingerprintProfile{
+			Name:              fingerprintProfileFirefox,
+			ScopeType:         fingerprintProfileScopeGlobal,
+			Enabled:           true,
+			SupportedByWorker: false,
+			ExecutorType:      errorCategoryEgress,
+			ProfileRef:        "retired",
+		}},
+		{FingerprintProfile: config.FingerprintProfile{
+			Name:      testDisabledFingerprintProfile,
+			ScopeType: fingerprintProfileScopeGlobal,
+			Enabled:   false,
+		}},
+	}
+
+	w := httptest.NewRecorder()
+	ta.h.ListFingerprintProfiles(w, newAdminRequest(http.MethodGet, "/api/v1/config/fingerprint-profiles", viewer, ""))
+	if w.Code != http.StatusOK {
+		t.Fatalf("list status = %d, want 200", w.Code)
+	}
+
+	var response struct {
+		SupportedProfiles []struct {
+			Name string `json:"name"`
+		} `json:"supported_profiles"`
+		UnavailableProfiles []struct {
+			Name              string `json:"name"`
+			UnavailableReason string `json:"unavailable_reason"`
+		} `json:"unavailable_profiles"`
+	}
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	if err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if len(response.SupportedProfiles) != 1 || response.SupportedProfiles[0].Name != fingerprintProfileChrome120 {
+		t.Fatalf("supported profiles = %+v, want only chrome_120", response.SupportedProfiles)
+	}
+
+	gotReasons := map[string]string{}
+	for _, profile := range response.UnavailableProfiles {
+		gotReasons[profile.Name] = profile.UnavailableReason
+	}
+	if gotReasons[fingerprintProfileFirefox] != "no_executable_definition" {
+		t.Fatalf("firefox unavailable reason = %q, want no_executable_definition", gotReasons[fingerprintProfileFirefox])
+	}
+	if gotReasons[testDisabledFingerprintProfile] != fingerprintUnavailableDisabled {
+		t.Fatalf("disabled profile reason = %q, want disabled", gotReasons[testDisabledFingerprintProfile])
+	}
 }
 
 func TestInMemoryFingerprintProfileStoreSeedsExecutableCatalogOnly(t *testing.T) {

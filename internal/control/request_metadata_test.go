@@ -27,6 +27,7 @@ const (
 	requestMetadataTestTenantActor     = "ten_actor"
 	requestMetadataTestLogFirst        = "first"
 	requestMetadataTestLogStarted      = "started"
+	testFutureFingerprint              = "future_safe_token"
 )
 
 type recordingRequestEventSink struct {
@@ -332,6 +333,78 @@ func TestRequestEventCarriesProfileEvidenceOnTransportFailure(t *testing.T) {
 	redacted := buildRequestEvent("req_profile_redacted", Identity{}, &ValidatedRequest{Fingerprint: unsafe}, defaultTenantPolicy())
 	if redacted.RequestedFingerprintProfile == unsafe || !strings.HasPrefix(redacted.RequestedFingerprintProfile, "sha256:") {
 		t.Fatalf("unsafe requested profile evidence = %q, want redacted sha256 projection", redacted.RequestedFingerprintProfile)
+	}
+}
+
+func TestProjectFingerprintEvidenceClassifiesValues(t *testing.T) {
+	t.Parallel()
+
+	malformed := string([]byte{0xff, 'a'})
+	overlong := strings.Repeat("a", 65)
+
+	tests := []struct {
+		name       string
+		value      string
+		want       string
+		wantPrefix string
+	}{
+		{name: "empty omitted", value: "", want: ""},
+		{name: "default alias", value: defaultFingerprintProfileName, want: defaultFingerprintProfileName},
+		{name: "baseline literal", value: baselineFingerprintEvidence, want: baselineFingerprintEvidence},
+		{name: "unknown safe token", value: testFutureFingerprint, want: testFutureFingerprint},
+		{name: "case variant", value: "Chrome_120", wantPrefix: requestMetadataHashPrefix},
+		{name: "malformed utf8", value: malformed, wantPrefix: requestMetadataHashPrefix},
+		{name: "overlong attacker value", value: overlong, wantPrefix: requestMetadataHashPrefix},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := projectFingerprintEvidence(tt.value)
+			if tt.want != "" || tt.value == "" {
+				if tt.want != "" || got == "" {
+					if got != tt.want && tt.wantPrefix == "" {
+						t.Fatalf("projectFingerprintEvidence(%q) = %q, want %q", tt.value, got, tt.want)
+					}
+				}
+			}
+			if tt.wantPrefix != "" {
+				if !strings.HasPrefix(got, tt.wantPrefix) {
+					t.Fatalf("projectFingerprintEvidence(%q) = %q, want prefix %q", tt.value, got, tt.wantPrefix)
+				}
+				if len(got) > 64 {
+					t.Fatalf("projectFingerprintEvidence(%q) length = %d, want <= 64", tt.value, len(got))
+				}
+			}
+		})
+	}
+}
+
+func TestApplyRequestOutcomeUnsupportedFingerprintKeepsExecutedProfileEmpty(t *testing.T) {
+	t.Parallel()
+
+	event := buildRequestEvent("req_profile_drift", Identity{}, &ValidatedRequest{
+		Method:      http.MethodGet,
+		Fingerprint: fingerprintProfileChrome120,
+	}, defaultTenantPolicy())
+
+	got := applyRequestOutcome(event, SuccessResponse{}, &PipelineError{
+		Code:                       UnsupportedFingerprint,
+		SelectedFingerprintProfile: fingerprintProfileChrome120,
+	})
+
+	if got.RequestedFingerprintProfile != fingerprintProfileChrome120 {
+		t.Fatalf("requested profile = %q, want %q", got.RequestedFingerprintProfile, fingerprintProfileChrome120)
+	}
+	if got.SelectedFingerprintProfile != fingerprintProfileChrome120 {
+		t.Fatalf("selected profile = %q, want %q", got.SelectedFingerprintProfile, fingerprintProfileChrome120)
+	}
+	if got.ExecutedFingerprintProfile != "" {
+		t.Fatalf("executed profile = %q, want empty on unsupported rejection", got.ExecutedFingerprintProfile)
+	}
+	if got.ErrorCode != ErrorRegistry[UnsupportedFingerprint].Code {
+		t.Fatalf("error code = %q, want %q", got.ErrorCode, ErrorRegistry[UnsupportedFingerprint].Code)
 	}
 }
 

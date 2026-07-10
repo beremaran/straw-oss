@@ -1169,6 +1169,49 @@ func (bodyCaptureDispatcher) Dispatch(_ context.Context, in DispatchInput) (Succ
 	}, nil
 }
 
+type unsupportedFingerprintDispatcher struct{}
+
+func (unsupportedFingerprintDispatcher) Dispatch(_ context.Context, _ DispatchInput) (SuccessResponse, *PipelineError) {
+	return SuccessResponse{}, &PipelineError{Code: UnsupportedFingerprint}
+}
+
+func TestHandlerUnsupportedFingerprintRecordsSingleCorrelatedEvent(t *testing.T) {
+	t.Parallel()
+
+	recorder := &captureRequestMetadataRecorder{}
+	h, token := newTestHandler(t)
+	h.metadataWriter = recorder
+	h.SetDispatcher(unsupportedFingerprintDispatcher{})
+
+	payload := `{"method":"GET","url":"` + handlerTestReqURL + `","fingerprint_profile":"` + testFutureFingerprint + `"}`
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/requests", strings.NewReader(payload))
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", w.Code)
+	}
+
+	if len(recorder.events) != 1 {
+		t.Fatalf("recorded events = %d, want exactly 1", len(recorder.events))
+	}
+	event := recorder.events[0]
+	if event.RequestedFingerprintProfile != testFutureFingerprint {
+		t.Fatalf("requested profile = %q, want %s", event.RequestedFingerprintProfile, testFutureFingerprint)
+	}
+	if event.SelectedFingerprintProfile != "" {
+		t.Fatalf("selected profile = %q, want empty for control-local rejection", event.SelectedFingerprintProfile)
+	}
+	if event.ExecutedFingerprintProfile != "" {
+		t.Fatalf("executed profile = %q, want empty for control-local rejection", event.ExecutedFingerprintProfile)
+	}
+	if event.ErrorCode != ErrorRegistry[UnsupportedFingerprint].Code {
+		t.Fatalf("error code = %q, want %q", event.ErrorCode, ErrorRegistry[UnsupportedFingerprint].Code)
+	}
+}
+
 type staticPayloadCapturePolicyStore struct {
 	policy PayloadCapturePolicy
 }

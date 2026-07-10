@@ -33,6 +33,11 @@ var errProfiledDialTargetRejected = errors.New("profiled dial target rejected")
 // Straw before the tls-client dial hook is installed; the hook only accepts
 // the original host/port and always dials the selected validated IP.
 func (e *Executor) doProfiledRequest(ctx context.Context, target target, start *strawpb.RequestStart, body []byte) (profiledResponse, func(), *executionError) {
+	profile, ok := executableFingerprintProfiles[start.GetFingerprintInstruction()]
+	if !ok {
+		return profiledResponse{}, func() {}, executorFailure(strawpb.ErrorCode_ERROR_CODE_UNSUPPORTED_FINGERPRINT, unsupportedFingerprint)
+	}
+
 	ips, failure := e.validatedIPs(ctx, target.host, start.GetDestinationPolicy())
 	if failure != nil {
 		return profiledResponse{}, func() {}, failure
@@ -40,11 +45,6 @@ func (e *Executor) doProfiledRequest(ctx context.Context, target target, start *
 
 	if len(ips) == 0 {
 		return profiledResponse{}, func() {}, executorFailure(strawpb.ErrorCode_ERROR_CODE_UPSTREAM_DNS_FAILURE, dnsNoRecordsFact)
-	}
-
-	profile, ok := executableFingerprintProfiles[start.GetFingerprintInstruction()]
-	if !ok {
-		return profiledResponse{}, func() {}, executorFailure(strawpb.ErrorCode_ERROR_CODE_UNSUPPORTED_FINGERPRINT, unsupportedFingerprint)
 	}
 
 	dial := e.profiledDialContext(ctx, target, ips[0])

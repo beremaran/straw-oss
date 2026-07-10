@@ -11,7 +11,10 @@ import (
 	"github.com/beremaran/straw/v2/internal/config"
 )
 
-const testInjectionHeaderName = "X-Foo"
+const (
+	testInjectionHeaderName        = "X-Foo"
+	testDisabledFingerprintProfile = "disabled_profile"
+)
 
 func mustURL(t *testing.T, raw string) *url.URL {
 	t.Helper()
@@ -28,7 +31,7 @@ func fingerprintSnapshot() []config.FingerprintProfile {
 	return []config.FingerprintProfile{
 		{Name: defaultFingerprintProfileName, ScopeType: fingerprintProfileScopeGlobal, Enabled: true, SupportedByWorker: true},
 		{Name: fingerprintProfileChrome120, ScopeType: fingerprintProfileScopeGlobal, Enabled: true, SupportedByWorker: true},
-		{Name: "disabled_profile", ScopeType: fingerprintProfileScopeGlobal, Enabled: false, SupportedByWorker: true},
+		{Name: testDisabledFingerprintProfile, ScopeType: fingerprintProfileScopeGlobal, Enabled: false, SupportedByWorker: true},
 	}
 }
 
@@ -335,13 +338,35 @@ func TestResolveDestinationPolicy_FingerprintDisabledProfileRejected(t *testing.
 	req := DestinationPolicyRequest{
 		Snapshot:                    config.TenantSnapshot{FingerprintProfiles: fingerprintSnapshot()},
 		TargetURL:                   mustURL(t, "https://example.com/"),
-		RequestedFingerprintProfile: "disabled_profile",
+		RequestedFingerprintProfile: testDisabledFingerprintProfile,
 		MaxInjectedHeaderBytes:      1024,
 	}
 
 	_, verr := ResolveDestinationPolicy(req)
 	if verr == nil || verr.Code != errorCodeUnsupportedFingerprint {
 		t.Fatalf("verr = %+v, want unsupported_fingerprint", verr)
+	}
+}
+
+func TestResolveDestinationPolicyEnabledNamedProfileDoesNotDependOnWorkerAvailability(t *testing.T) {
+	t.Parallel()
+
+	req := DestinationPolicyRequest{
+		Snapshot: config.TenantSnapshot{FingerprintProfiles: []config.FingerprintProfile{
+			{Name: defaultFingerprintProfileName, ScopeType: fingerprintProfileScopeGlobal, Enabled: true, SupportedByWorker: true},
+			{Name: fingerprintProfileChrome120, ScopeType: fingerprintProfileScopeGlobal, Enabled: true, SupportedByWorker: false},
+		}},
+		TargetURL:                   mustURL(t, "https://example.com/path"),
+		RequestedFingerprintProfile: fingerprintProfileChrome120,
+		MaxInjectedHeaderBytes:      1024,
+	}
+
+	result, verr := ResolveDestinationPolicy(req)
+	if verr != nil {
+		t.Fatalf("ResolveDestinationPolicy() error = %+v, want enabled named profile to survive until ordinary routing/capability filtering", verr)
+	}
+	if result.FingerprintProfile != fingerprintProfileChrome120 {
+		t.Fatalf("fingerprint = %q, want %q", result.FingerprintProfile, fingerprintProfileChrome120)
 	}
 }
 

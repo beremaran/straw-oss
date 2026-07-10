@@ -257,6 +257,7 @@ func (d *DefaultRequestDispatcher) dispatch(ctx context.Context, in DispatchInpu
 		perr = d.withTiming(perr, routingMs, assignmentMs, started)
 		perr.EgressMs = result.egressMs
 		setRouteFields(perr, usedRoute)
+		setProfileFields(perr, result)
 
 		return SuccessResponse{}, perr
 	}
