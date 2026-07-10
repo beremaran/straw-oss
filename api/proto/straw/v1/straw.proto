@@ -164,6 +164,7 @@ message RegisterRequest {
   bool initial_draining = 16;
   bytes nonce = 17;
   int64 issued_at_unix_ms = 18;
+  repeated string supported_fingerprint_profiles = 19;
 }
 
 message RegisterAck {
@@ -340,6 +341,7 @@ message OutboundStartFrame {
   string upstream_proxy_id = 3;
   uint32 attempt = 4;
   int64 worker_timestamp_ms = 5;
+  string executed_fingerprint_profile = 6;
 }
 
 message ResponseStart {

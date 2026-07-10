@@ -10,6 +10,8 @@ Source: proto/straw/v1/straw.proto
 
 ### Compatibility
 
+- The official worker protocol version is `1.1`. Minor `1` adds signed fingerprint-profile capabilities and
+  executed-profile evidence while retaining major-version compatibility with baseline-only `1.0` workers.
 - proto3 syntax,
 - no protobuf `required` fields,
 - mandatory business fields validated after decode,
@@ -164,6 +166,7 @@ message RegisterRequest {
   bool initial_draining = 16;
   bytes nonce = 17;
   int64 issued_at_unix_ms = 18;
+  repeated string supported_fingerprint_profiles = 19;
 }
 
 message RegisterAck {
@@ -236,6 +239,16 @@ message DataFrame {
   bytes data = 2;
 }
 ```
+
+### Worker Protocol and Fingerprint Capabilities
+
+Official workers use protocol `1.1`. `RegisterRequest.supported_fingerprint_profiles` contains exact, unique catalog
+names in deterministic order; it excludes `baseline` and `default`. Omission means the worker is baseline-only.
+
+For protocol minor `1`, registration signing appends a count and length-prefixed, sorted unique profile list. Minor
+`0` registrations and registrations with an empty list retain the legacy signing bytes. Control rejects duplicate,
+unsorted, malformed, or unknown capabilities before creating a worker session. Replacement sessions supersede rather
+than merge capabilities from older sessions.
 
 ### Headers
 
@@ -320,9 +333,24 @@ facts back to Control.
 - target port,
 - selected upstream proxy ID if any,
 - attempt,
-- timestamp from worker for diagnostics only.
+- timestamp from worker for diagnostics only,
+- executed fingerprint profile (`baseline` or the exact locally resolved named profile).
 
 Control does not use worker timestamps for deadlines or liveness.
+
+Egress emits the frame only after resolving the fingerprint instruction locally. An unsupported non-empty instruction
+produces no `OutboundStartFrame`. Control treats any non-empty selected/executed profile mismatch as a protocol error.
+
+```protobuf
+message OutboundStartFrame {
+  string target_host = 1;
+  uint32 target_port = 2;
+  string upstream_proxy_id = 3;
+  uint32 attempt = 4;
+  int64 worker_timestamp_ms = 5;
+  string executed_fingerprint_profile = 6;
+}
+```
 
 ### BodyRef
 
