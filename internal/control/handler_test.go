@@ -28,6 +28,7 @@ const (
 	handlerTestMessage            = "test"
 	handlerTestTenantID           = "ten_test"
 	handlerTestUpstreamTrailer    = "X-Upstream-Trailer"
+	handlerTestMalformedUTF8      = "malformed utf8"
 	testExampleHost               = "example.com"
 )
 
@@ -1173,6 +1174,90 @@ type unsupportedFingerprintDispatcher struct{}
 
 func (unsupportedFingerprintDispatcher) Dispatch(_ context.Context, _ DispatchInput) (SuccessResponse, *PipelineError) {
 	return SuccessResponse{}, &PipelineError{Code: UnsupportedFingerprint}
+}
+
+type countingValidationDispatcher struct {
+	calls int
+}
+
+func (d *countingValidationDispatcher) Dispatch(_ context.Context, _ DispatchInput) (SuccessResponse, *PipelineError) {
+	d.calls++
+
+	return SuccessResponse{}, nil
+}
+
+func (d *countingValidationDispatcher) DispatchRaw(_ context.Context, _ DispatchInput, _ http.ResponseWriter) (SuccessResponse, *PipelineError, bool) {
+	d.calls++
+
+	return SuccessResponse{}, nil, false
+}
+
+func TestUnsupportedFingerprintValidationRecordsOneEventWithoutDispatch(t *testing.T) {
+	t.Parallel()
+
+	malformed := append([]byte(`{"method":"GET","url":"https://example.com/","fingerprint_profile":"`), 0xff)
+	malformed = append(malformed, []byte(`","timeout_ms":5000}`)...)
+
+	tests := []struct {
+		name          string
+		body          []byte
+		wantRequested string
+	}{
+		{name: "literal baseline", body: []byte(`{"method":"GET","url":"https://example.com/","fingerprint_profile":"baseline","timeout_ms":5000}`), wantRequested: baselineFingerprintEvidence},
+		{name: handlerTestMalformedUTF8, body: malformed, wantRequested: projectFingerprintEvidence(string([]byte{0xff}))},
+	}
+
+	for _, tt := range tests {
+		for _, endpoint := range []struct {
+			name  string
+			serve func(*RequestHandler, http.ResponseWriter, *http.Request)
+		}{
+			{name: "rest", serve: func(h *RequestHandler, w http.ResponseWriter, r *http.Request) { h.ServeHTTP(w, r) }},
+			{name: "stream", serve: func(h *RequestHandler, w http.ResponseWriter, r *http.Request) { h.ServeStreamHTTP(w, r) }},
+		} {
+			t.Run(tt.name+"/"+endpoint.name, func(t *testing.T) {
+				recorder := &captureRequestMetadataRecorder{}
+				dispatcher := &countingValidationDispatcher{}
+				h, token := newTestHandler(t)
+				h.metadataWriter = recorder
+				h.SetDispatcher(dispatcher)
+
+				req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/requests", strings.NewReader(string(tt.body)))
+				req.Header.Set("Authorization", "Bearer "+token)
+				w := httptest.NewRecorder()
+
+				endpoint.serve(h, w, req)
+
+				if dispatcher.calls != 0 {
+					t.Fatalf("dispatch calls = %d, want zero", dispatcher.calls)
+				}
+				var response ErrorResponse
+				err := json.Unmarshal(w.Body.Bytes(), &response)
+				if err != nil {
+					t.Fatalf("unmarshal response: %v", err)
+				}
+				if response.Code != errorCodeUnsupportedFingerprint {
+					t.Fatalf("response code = %q, want unsupported_fingerprint", response.Code)
+				}
+				if len(recorder.events) != 1 {
+					t.Fatalf("recorded events = %d, want exactly 1", len(recorder.events))
+				}
+				event := recorder.events[0]
+				if event.RequestID != response.RequestID {
+					t.Fatalf("event request_id = %q, response request_id = %q", event.RequestID, response.RequestID)
+				}
+				if event.RequestedFingerprintProfile != tt.wantRequested {
+					t.Fatalf("requested profile = %q, want %q", event.RequestedFingerprintProfile, tt.wantRequested)
+				}
+				if event.SelectedFingerprintProfile != "" || event.ExecutedFingerprintProfile != "" {
+					t.Fatalf("selected/executed profiles = %q/%q, want empty/empty", event.SelectedFingerprintProfile, event.ExecutedFingerprintProfile)
+				}
+				if event.ErrorCode != errorCodeUnsupportedFingerprint {
+					t.Fatalf("event error code = %q, want unsupported_fingerprint", event.ErrorCode)
+				}
+			})
+		}
+	}
 }
 
 func TestHandlerUnsupportedFingerprintRecordsSingleCorrelatedEvent(t *testing.T) {

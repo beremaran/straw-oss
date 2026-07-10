@@ -306,6 +306,73 @@ func TestRegisterFingerprintCapabilitySubset(t *testing.T) {
 	}
 }
 
+func TestRegisterRejectsNonCanonicalFingerprintCapabilitiesBeforeSessionCreation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		minor      uint32
+		profiles   []string
+		wantReason string
+	}{
+		{name: "duplicate", minor: 1, profiles: []string{workerRegTestChrome120, workerRegTestChrome120}, wantReason: RejectCapabilityScope},
+		{name: "unsorted", minor: 1, profiles: []string{workerRegTestChrome120, "aardvark"}, wantReason: RejectCapabilityScope},
+		{name: handlerTestMalformedUTF8, minor: 1, profiles: []string{string([]byte{0xff})}, wantReason: RejectCapabilityScope},
+		{name: baselineFingerprintProfileName, minor: 1, profiles: []string{baselineFingerprintProfileName}, wantReason: RejectCapabilityScope},
+		{name: defaultFingerprintProfileName, minor: 1, profiles: []string{defaultFingerprintProfileName}, wantReason: RejectCapabilityScope},
+		{name: "unknown", minor: 1, profiles: []string{"future_profile"}, wantReason: RejectCapabilityScope},
+		{name: "legacy minor cannot claim unsigned profiles", profiles: []string{workerRegTestChrome120}, wantReason: RejectIncompatibleProto},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := newRegHarness(t, defaultCred())
+			req := h.signedRegister(workerRegTestWorker1, func(r *strawpb.RegisterRequest) {
+				r.ProtocolMinor = tt.minor
+				r.SupportedFingerprintProfiles = append([]string(nil), tt.profiles...)
+				r.SignedToken = strawpb.SignRegistration(h.priv, r)
+			})
+
+			out, err := h.reg.Register(context.Background(), req)
+			if err != nil {
+				t.Fatalf("Register error: %v", err)
+			}
+			if out.OK || out.Reason != tt.wantReason {
+				t.Fatalf("outcome = %+v, want rejection %q", out, tt.wantReason)
+			}
+			if got := h.reg.RuntimeState(workerRegTestWorker1); got != RuntimeUnregistered {
+				t.Fatalf("runtime state = %s, want unregistered", got)
+			}
+		})
+	}
+}
+
+func TestRegisterPreservesLegacyBaselineAndAcceptsCanonicalProfileClaim(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		minor    uint32
+		profiles []string
+	}{
+		{name: "legacy baseline"},
+		{name: "canonical chrome 120", minor: 1, profiles: []string{workerRegTestChrome120}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := newRegHarness(t, defaultCred())
+			req := h.signedRegister(workerRegTestWorker1, func(r *strawpb.RegisterRequest) {
+				r.ProtocolMinor = tt.minor
+				r.SupportedFingerprintProfiles = append([]string(nil), tt.profiles...)
+				r.SignedToken = strawpb.SignRegistration(h.priv, r)
+			})
+
+			h.mustRegister(t, req)
+		})
+	}
+}
+
 func TestRegisterMultiTenantCredentialScope(t *testing.T) {
 	t.Parallel()
 	cred := defaultCred()

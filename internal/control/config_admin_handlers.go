@@ -1152,7 +1152,7 @@ func (h *AdminHandlers) ListFingerprintProfiles(w http.ResponseWriter, r *http.R
 	out := fingerprintProfilesResponse{
 		SupportedProfiles:   make([]fingerprintProfileResponse, 0, len(records)),
 		UnavailableProfiles: make([]fingerprintProfileResponse, 0, len(records)),
-		Aliases:             map[string]string{defaultFingerprintProfileName: "baseline"},
+		Aliases:             map[string]string{defaultFingerprintProfileName: baselineFingerprintProfileName},
 	}
 	for _, rec := range records {
 		if rec.Name == defaultFingerprintProfileName {

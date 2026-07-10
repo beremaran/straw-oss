@@ -196,7 +196,7 @@ func ValidateRequestWithCapturePolicy(raw []byte, maxRequestBodyBytes, maxTimeou
 // turn null into an empty string.
 func validateFingerprintProfileJSON(raw []byte) *ValidationError {
 	if !utf8.Valid(raw) {
-		return &ValidationError{Code: errorCodeInvalidRequest, Message: "fingerprint_profile must contain valid UTF-8"}
+		return invalidUTF8RequestError(raw)
 	}
 
 	dec := json.NewDecoder(bytes.NewReader(raw))
@@ -263,16 +263,76 @@ func invalidRequestJSONError() *ValidationError {
 	return &ValidationError{Code: errorCodeInvalidRequest, Message: "invalid request JSON"}
 }
 
+func invalidUTF8RequestError(raw []byte) *ValidationError {
+	if evidence := malformedFingerprintProfileEvidence(raw); evidence != "" {
+		return unsupportedFingerprintValidationError(evidence)
+	}
+
+	return &ValidationError{Code: errorCodeInvalidRequest, Message: "fingerprint_profile must contain valid UTF-8"}
+}
+
+func malformedFingerprintProfileEvidence(raw []byte) string {
+	const key = `"fingerprint_profile"`
+
+	_, value, found := bytes.Cut(raw, []byte(key))
+	if !found {
+		return ""
+	}
+
+	_, value, found = bytes.Cut(value, []byte{':'})
+	if !found {
+		return ""
+	}
+
+	value = bytes.TrimSpace(value)
+	if len(value) == 0 || value[0] != '"' {
+		return ""
+	}
+
+	value = fingerprintJSONValue(value[1:])
+	if utf8.Valid(value) {
+		return ""
+	}
+
+	return projectFingerprintEvidence(string(value))
+}
+
+func fingerprintJSONValue(value []byte) []byte {
+	escaped := false
+
+	for i, b := range value {
+		if b == '"' && !escaped {
+			return value[:i]
+		}
+
+		if b == '\\' && !escaped {
+			escaped = true
+		} else {
+			escaped = false
+		}
+	}
+
+	return value
+}
+
 func validateFingerprintProfileValue(value string) *ValidationError {
 	if !utf8.ValidString(value) {
-		return &ValidationError{Code: errorCodeInvalidRequest, Message: "fingerprint_profile must contain valid UTF-8"}
+		return unsupportedFingerprintValidationError(projectFingerprintEvidence(value))
 	}
 
 	if value == baselineFingerprintEvidence {
-		return &ValidationError{Code: errorCodeInvalidRequest, Message: "baseline is not a fingerprint profile alias"}
+		return unsupportedFingerprintValidationError(projectFingerprintEvidence(value))
 	}
 
 	return nil
+}
+
+func unsupportedFingerprintValidationError(evidence string) *ValidationError {
+	return &ValidationError{
+		Code:                        errorCodeUnsupportedFingerprint,
+		Message:                     ErrorRegistry[UnsupportedFingerprint].Message,
+		RequestedFingerprintProfile: evidence,
+	}
 }
 
 func validateRequestComponents(env RequestEnvelope, maxRequestBodyBytes, maxTimeoutMs uint64) (*url.URL, []HeaderPair, []byte, uint64, error) {
@@ -540,9 +600,10 @@ func validateCaptureHint(hint string, policy PayloadCapturePolicy) error {
 
 // ValidationError is a structured validation error.
 type ValidationError struct {
-	Code    string            `json:"code"`
-	Message string            `json:"message"`
-	Details map[string]string `json:"details,omitempty"`
+	Code                        string            `json:"code"`
+	Message                     string            `json:"message"`
+	Details                     map[string]string `json:"details,omitempty"`
+	RequestedFingerprintProfile string            `json:"-"`
 }
 
 func (e *ValidationError) Error() string {

@@ -31,8 +31,8 @@ func TestValidateRequestRejectsLiteralBaselineFingerprintProfile(t *testing.T) {
 		"timeout_ms":5000
 	}`), 1<<20, 5000)
 	var verr *ValidationError
-	if !errors.As(err, &verr) || verr.Code != errorCodeInvalidRequest {
-		t.Fatalf("ValidateRequest() error = %#v, want invalid_request for literal baseline", err)
+	if !errors.As(err, &verr) || verr.Code != errorCodeUnsupportedFingerprint {
+		t.Fatalf("ValidateRequest() error = %#v, want unsupported_fingerprint for literal baseline", err)
 	}
 }
 
@@ -44,8 +44,8 @@ func TestValidateRequestRejectsMalformedUTF8FingerprintProfile(t *testing.T) {
 
 	_, err := ValidateRequest(raw, 1<<20, 5000)
 	var verr *ValidationError
-	if !errors.As(err, &verr) || verr.Code != errorCodeInvalidRequest {
-		t.Fatalf("ValidateRequest() error = %#v, want invalid_request for malformed UTF-8 fingerprint_profile", err)
+	if !errors.As(err, &verr) || verr.Code != errorCodeUnsupportedFingerprint {
+		t.Fatalf("ValidateRequest() error = %#v, want unsupported_fingerprint for malformed UTF-8 fingerprint_profile", err)
 	}
 }
 

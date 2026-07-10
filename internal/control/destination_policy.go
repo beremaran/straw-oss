@@ -71,7 +71,7 @@ var metadataIPs = []netip.Addr{
 type DestinationPolicyRequest struct {
 	Snapshot                    config.TenantSnapshot
 	TargetURL                   *url.URL
-	RequestedFingerprintProfile string // empty means "use tenant default"
+	RequestedFingerprintProfile string // empty means baseline transport
 
 	// UpstreamProxyEnabled/UpstreamProxyTrusted describe deployment config;
 	// P0 has no upstream-proxy config surface anywhere in this repo, so P0
@@ -435,13 +435,7 @@ func resolveFingerprintProfile(profiles []config.FingerprintProfile, requested s
 	}
 
 	if name == defaultFingerprintProfileName {
-		for _, p := range profiles {
-			if p.Name == name && p.Enabled {
-				return baselineFingerprintProfileName, nil
-			}
-		}
-
-		return "", &ValidationError{Code: errorCodeUnsupportedFingerprint, Message: ErrorRegistry[UnsupportedFingerprint].Message}
+		return baselineFingerprintProfileName, nil
 	}
 
 	for _, p := range profiles {

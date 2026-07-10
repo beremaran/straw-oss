@@ -612,6 +612,10 @@ func rejectRegisterRequestScope(cred WorkerCredential, req *strawpb.RegisterRequ
 }
 
 func rejectRegisterRequestCapabilities(cred WorkerCredential, req *strawpb.RegisterRequest) string {
+	if reason := rejectFingerprintProfileCapabilities(req); reason != "" {
+		return reason
+	}
+
 	caps := cred.AllowedCapabilities
 	if !subset(req.GetTags(), caps.Tags) ||
 		!subset(req.GetCountries(), caps.Countries) ||
@@ -619,6 +623,23 @@ func rejectRegisterRequestCapabilities(cred WorkerCredential, req *strawpb.Regis
 		!subset(req.GetIpTypes(), caps.IPTypes) ||
 		!subset(req.GetSupportedIngressModes(), caps.SupportedIngressModes) ||
 		!subset(req.GetSupportedFingerprintProfiles(), caps.SupportedFingerprintProfiles) {
+		return RejectCapabilityScope
+	}
+
+	return ""
+}
+
+func rejectFingerprintProfileCapabilities(req *strawpb.RegisterRequest) string {
+	profiles := req.GetSupportedFingerprintProfiles()
+	if len(profiles) == 0 {
+		return ""
+	}
+
+	if req.GetProtocolMinor() < 1 {
+		return RejectIncompatibleProto
+	}
+
+	if len(profiles) != 1 || profiles[0] != fingerprintProfileChrome120 {
 		return RejectCapabilityScope
 	}
 
