@@ -61,7 +61,7 @@ Egress clients forward outbound requests by submitting a JSON envelope to the RE
 | **routing.region** | `string` | No | Region constraint (e.g. `us-west-1`). |
 | **routing.ip_type** | `string` | No | Required worker IP type (`datacenter`, `residential`, etc.). |
 | **routing.sticky_session_id** | `string` | No | Session identifier. Requests with the same identifier will prefer the same worker instance while it remains available. |
-| **fingerprint_profile** | `string` | No | Handshake fingerprint preset name (e.g. `chrome_120`). If omitted, the tenant's default is used. |
+| **fingerprint_profile** | `string` | No | `chrome_120` for the supported named transport. Omit the field or send `default` to use the unchanged `baseline` transport. Other non-empty values are rejected with `unsupported_fingerprint`. |
 | **timeout_ms** | `integer` | No | Request execution timeout in milliseconds. Minimum is `1000`. Cannot exceed the tenant or control plane configuration limits. |
 | **replayable** | `boolean` | No | Defaults to `false`. Indicates if the request is safe to retry by the client/control plane upon connection drops. |
 | **capture_hint** | `string` | No | Omit this field or set it to `none`. Other capture modes are rejected. |
@@ -90,6 +90,11 @@ Straw applies strict validation checks to all incoming request envelopes before 
    - Must be at least `1000` ms and cannot exceed `max_timeout_ms` (default `120000` ms / 120 seconds).
 6. **Strict Mode**:
    - Any unknown fields in the JSON envelope will result in an immediate `invalid_request` validation failure.
+7. **Fingerprint profile**:
+   - `chrome_120` is the only advertised executable profile in this release.
+   - Omission and `default` are compatibility aliases for `baseline`; `baseline` is not a valid request value.
+   - Named execution is admitted only to a tenant-visible, eligible worker advertising the exact profile capability.
+   - Unknown, disabled, unavailable, case-variant, duplicated, malformed, or overlong values fail closed before DNS or upstream connection.
 
 ---
 

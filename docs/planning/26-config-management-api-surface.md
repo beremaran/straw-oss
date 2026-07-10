@@ -82,8 +82,10 @@ Rate limits remain tenant self-protection controls managed by `tenant_admin`, bo
 referencing any other tenant. Multi-tenant worker credentials are a platform-scoped (`system_admin`) operation
 deferred to P1.
 
-P0 fingerprint profiles are built-in and seeded; there is no P0 write API for `fingerprint_profiles`. Tenant-authored
-profiles, if added, are a P1 config surface.
+P0 fingerprint profiles are built-in and seeded; there is no P0 write API for `fingerprint_profiles`. `chrome_120` is
+the only enabled executable descriptor. Historical `firefox_121` and `safari_17` rows remain disabled/unavailable,
+and `default` is a separate alias to `baseline`, never an executable profile. Tenant-authored profiles, if added, are
+a P1 config surface.
 | P1    | POST   | `/rollback`                       | `tenant_admin`                       | Roll back config          |
 | P2    | GET    | `/payload-capture`                | `tenant_admin`, `operator`, `viewer` | Get capture policy        |
 | P2    | PUT    | `/payload-capture`                | `tenant_admin`                       | Update capture policy     |
@@ -224,7 +226,9 @@ The `secret` is returned only at creation time. Stored records contain only a se
 ```
 
 P0 fingerprint profiles are named presets. Control sends the resolved preset name to Egress. P0 does not expose
-arbitrary JA3/JA4/TLS parameter authoring through the public config API.
+arbitrary JA3/JA4/TLS parameter authoring through the public config API. Availability is computed from enabled catalog
+state plus currently eligible tenant-visible sessions advertising the exact signed capability; the read model reports
+`supported`, `disabled`, `no_executable_definition`, or `no_active_capable_worker` without exposing worker/session IDs.
 
 #### Routing Rule
 

@@ -23,8 +23,9 @@ The repository includes a ready-to-run `docker-compose.yml` that sets up:
 To start the stack, define a bootstrap admin API key in the environment and run:
 
 ```bash
-# 1. Define the system administrator key and boot up the cluster
-STRAW_BOOTSTRAP_SYSTEM_ADMIN_KEY=sk_example_admin_local docker compose up -d --build
+# 1. From the repository root, define the system administrator key and boot up the cluster
+cd /path/to/wiseshopper-monorepo-migration
+STRAW_BOOTSTRAP_SYSTEM_ADMIN_KEY=sk_example_admin_local make infra-up
 ```
 
 You can verify that the Control plane is healthy by querying its readiness endpoint:
@@ -83,6 +84,10 @@ curl -s -H "Authorization: Bearer sk_example_requester_secret_returned_once" \
   -d '{"method":"GET","url":"https://example.com/","timeout_ms":15000}' \
   http://localhost:8080/api/v1/requests
 ```
+
+To exercise the named transport, add `"fingerprint_profile":"chrome_120"` to the request. Omit the field or use
+`"fingerprint_profile":"default"` to preserve the baseline transport. The named request is accepted only when the
+registered Egress worker advertises `chrome_120`.
 
 The response contains a wrapper envelope carrying the upstream status, headers, and base64-encoded body:
 
@@ -149,3 +154,13 @@ The control plane buffers metadata about request outcomes and drains it asynchro
 curl -s http://localhost:8123/ \
   --data-binary 'SELECT * FROM straw.request_events FORMAT Vertical'
 ```
+
+For the profile proof, inspect only the redacted evidence columns:
+
+```bash
+curl -fsS http://localhost:8123/ --data-binary \
+  "SELECT request_id, requested_fingerprint_profile, selected_fingerprint_profile, executed_fingerprint_profile, upstream_status, error_code FROM straw.request_events ORDER BY timestamp DESC LIMIT 1 FORMAT Vertical"
+```
+
+The repository-level equivalents for the final gate are `make check-protos`, `make clickhouse-migrations-check`,
+`make check-straw`, and `cd straw && make check`.

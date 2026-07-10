@@ -247,8 +247,12 @@ names in deterministic order; it excludes `baseline` and `default`. Omission mea
 
 For protocol minor `1`, registration signing appends a count and length-prefixed, sorted unique profile list. Minor
 `0` registrations and registrations with an empty list retain the legacy signing bytes. Control rejects duplicate,
-unsorted, malformed, or unknown capabilities before creating a worker session. Replacement sessions supersede rather
-than merge capabilities from older sessions.
+ unsorted, malformed, or unknown capabilities before creating a worker session. Replacement sessions supersede rather
+ than merge capabilities from older sessions.
+
+The initial executable catalog contains only `chrome_120`, mapped to the pinned `tls-client` v1.15.1
+`profiles.Chrome_120` contract. Capability lists are immutable for a session; changing them requires a new signed
+registration and session.
 
 ### Headers
 

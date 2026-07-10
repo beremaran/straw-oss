@@ -10,8 +10,10 @@ or fails with `unsupported_fingerprint`.
 
 ### P0 Transport Defaults
 
-P0 Egress disables outbound HTTP/2 and upstream keep-alives by default to avoid promising HTTP/2 or connection-pool
-semantics before they are specified and tested.
+P0 baseline Egress disables outbound HTTP/2 and upstream keep-alives by default to preserve the established transport
+semantics. The explicitly named `chrome_120` path is the tested exception: its request-scoped `tls-client` transport
+uses the preset's TLS/HTTP2 contract, disables HTTP/3 and redirects, and closes the client after streaming so named
+connections and TLS state cannot cross request, tenant, profile, or validated-IP boundaries.
 
 P0 may still reuse local process objects such as DNS resolvers, TLS profile definitions, and bounded worker pools. It
 must not rely on cross-request upstream connection reuse for correctness or performance claims.
