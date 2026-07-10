@@ -117,6 +117,69 @@ func seedTenant(t *testing.T, pool *pgxpool.Pool, id string) {
 	}
 }
 
+// TestPostgresFingerprintProfileMigrationPreservesExistingRows proves the
+// catalog migration is safe for databases that already contain the P0 seeded
+// rows. It preserves those audit records, retires the two unimplemented
+// browser profiles, and removes default from the named executable catalog.
+func TestPostgresFingerprintProfileMigrationPreservesExistingRows(t *testing.T) {
+	pool := newIdentityTestPool(t)
+	ctx := context.Background()
+
+	// Make the legacy rows explicit so the assertion covers an existing volume,
+	// rather than only the clean-schema seed path.
+	_, err := pool.Exec(ctx, `UPDATE fingerprint_profiles
+		SET enabled = true, supported_by_worker = true,
+			profile_jsonb = jsonb_build_object('profile_ref', 'builtin:' || name)
+		WHERE scope_type = 'global'`)
+	if err != nil {
+		t.Fatalf("prepare legacy fingerprint rows: %v", err)
+	}
+
+	migration, err := migrations.Postgres.ReadFile("postgres/0012_executable_fingerprint_profiles.sql")
+	if err != nil {
+		t.Fatalf("read executable fingerprint profile migration: %v", err)
+	}
+	if _, err = pool.Exec(ctx, string(migration)); err != nil {
+		t.Fatalf("apply executable fingerprint profile migration: %v", err)
+	}
+
+	type profileState struct {
+		enabled    bool
+		profileRef string
+	}
+	states := make(map[string]profileState)
+	rows, err := pool.Query(ctx, `SELECT name, enabled, profile_jsonb ->> 'profile_ref'
+		FROM fingerprint_profiles WHERE scope_type = 'global' ORDER BY name`)
+	if err != nil {
+		t.Fatalf("query migrated fingerprint profiles: %v", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var name string
+		var state profileState
+		if err := rows.Scan(&name, &state.enabled, &state.profileRef); err != nil {
+			t.Fatalf("scan migrated fingerprint profile: %v", err)
+		}
+		states[name] = state
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate migrated fingerprint profiles: %v", err)
+	}
+
+	if got := states["chrome_120"]; !got.enabled || got.profileRef != "tls-client/v1.15.1:profiles.Chrome_120" {
+		t.Fatalf("chrome_120 = %+v, want enabled immutable Chrome 120 descriptor", got)
+	}
+	for _, retired := range []string{"firefox_121", "safari_17"} {
+		if got, ok := states[retired]; !ok || got.enabled {
+			t.Fatalf("%s = %+v present=%v, want preserved disabled audit row", retired, got, ok)
+		}
+	}
+	if got, ok := states[defaultFingerprintProfileName]; !ok || got.enabled {
+		t.Fatalf("default = %+v present=%v, want preserved non-advertised alias row", got, ok)
+	}
+}
+
 func TestPostgresTenantStorePersistence(t *testing.T) {
 	pool := newIdentityTestPool(t)
 	store := NewPostgresTenantStore(pool)
