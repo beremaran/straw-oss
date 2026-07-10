@@ -3,6 +3,13 @@
 Feature: `specs/002-straw-fingerprint-profiles/`
 Task: `specs/002-straw-fingerprint-profiles/tasks.md#T010`
 
+## Resolution Update (2026-07-10)
+
+The T014 registry and later story/live entries below are historical snapshots. T014 closed the registry source,
+T025/T034/T039 closed story acceptance, and T042-T043 closed full/live verification. Final evidence:
+`002-straw-fingerprint-profiles-complete.md` and
+`specs/002-straw-fingerprint-profiles/evidence/live-coles.md`.
+
 ## Changed
 
 - Added the SDK protocol 1.1 capability field and immutable registration copy.
@@ -55,7 +62,7 @@ Result:
 - `internal/control/worker_registry.go:156`
 - `internal/control/worker_runtime_redis.go:107`
 
-## Remaining Work
+## Remaining Work at Handoff (Historical; Resolved)
 
 - T014 replaces the bounded official capability source with the compile-time executable preset registry before named execution is enabled.
 

@@ -3,6 +3,12 @@
 Feature: `specs/002-straw-fingerprint-profiles/`
 Task: `specs/002-straw-fingerprint-profiles/tasks.md#T008`
 
+## Resolution Update (2026-07-10)
+
+The T010 propagation and later integration/live entries below are historical snapshots. T010 closed propagation and
+T025/T034/T039/T042-T043 closed integration/live verification; final evidence is in
+`002-straw-fingerprint-profiles-complete.md` and `specs/002-straw-fingerprint-profiles/evidence/live-coles.md`.
+
 ## Changed
 
 - Extended registration signing for protocol minor 1 and later with a counted, byte-length-prefixed capability list.
@@ -53,7 +59,7 @@ the user authorized the mechanical test lint cleanup, and the complete final `ma
 - `api/proto/straw/v1/registration_sign_test.go:17`
 - `api/proto/straw/v1/registration_sign_test.go:39`
 
-## Remaining Work
+## Remaining Work at Handoff (Historical; Resolved)
 
 - T010 propagates protocol 1.1 capabilities through worker registration, validation, sessions, and Redis state.
 

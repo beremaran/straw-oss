@@ -48,15 +48,15 @@ func (e *Executor) doProfiledRequest(ctx context.Context, target target, start *
 	}
 
 	dial := e.profiledDialContext(ctx, target, ips[0])
+
 	client, err := e.newProfiledClient(profile, dial)
-	//nolint:wsl_v5
 	if err != nil {
 		return profiledResponse{}, func() {}, executorFailure(strawpb.ErrorCode_ERROR_CODE_EXECUTOR_INTERNAL_ERROR, executorInternalFact)
 	}
 
 	closeClient := func() { client.CloseIdleConnections() }
+
 	req, requestFailure := buildProfiledRequest(ctx, start, body)
-	//nolint:wsl_v5
 	if requestFailure != nil {
 		closeClient()
 
@@ -65,7 +65,6 @@ func (e *Executor) doProfiledRequest(ctx context.Context, target target, start *
 
 	resp, err := client.Do(req)
 	if err != nil {
-		//nolint:wsl_v5
 		closeClient()
 
 		return profiledResponse{}, func() {}, mapHTTPError(ctx, err)

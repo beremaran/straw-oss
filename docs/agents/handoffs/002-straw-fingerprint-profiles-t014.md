@@ -3,6 +3,12 @@
 Feature: `specs/002-straw-fingerprint-profiles/`
 Task: `specs/002-straw-fingerprint-profiles/tasks.md#T014`
 
+## Resolution Update (2026-07-10)
+
+The T022/T043 live-conformance ownership entry below is a historical snapshot. T022 closed local conformance and T043
+closed the clean-stack live run; final evidence is in `002-straw-fingerprint-profiles-complete.md` and
+`specs/002-straw-fingerprint-profiles/evidence/live-coles.md`.
+
 ## Changed
 
 - Added the exact compile-time Egress registry mapping `chrome_120` to `profiles.Chrome_120`.
@@ -47,7 +53,7 @@ Result: all commands passed; `golangci-lint` reported `0 issues`.
 - `straw/internal/egress/testdata/chrome_120_v1_15_1.json`
 - `straw/internal/egress/profile_registry_test.go`
 
-## Remaining Work
+## Remaining Work at Handoff (Historical; Resolved)
 
 - None for T014.
 
