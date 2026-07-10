@@ -339,7 +339,10 @@ func (rt *Router) eligibleCandidates(req RouteRequest, rule RoutingRule, policy 
 			continue
 		}
 
-		if c.AvailableCap == 0 && c.MaxConcurrency > 0 && c.ActiveRequests >= c.MaxConcurrency {
+		// AvailableCap is the worker's authoritative admission signal. A
+		// zero value means the session cannot accept an assignment even when
+		// the reported active/max pair has not caught up yet.
+		if c.AvailableCap == 0 {
 			continue
 		}
 

@@ -650,7 +650,7 @@ func TestListWorkersForTenantScoping(t *testing.T) {
 		t.Fatalf("create other cred: %v", err)
 	}
 	otherReq := &strawpb.RegisterRequest{
-		WorkerId: "worker-2", ExecutorType: "egress", CredentialId: "wcred_other",
+		WorkerId: "worker-2", ExecutorType: errorCategoryEgress, CredentialId: "wcred_other",
 		ProtocolMajor:  ProtocolMajor,
 		AllowedPools:   []*strawpb.RegisterRequest_PoolRef{{TenantId: workerRegTestTenantC, PoolId: routingTestPool1}},
 		Nonce:          newTestNonce(),

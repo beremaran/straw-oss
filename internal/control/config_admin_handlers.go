@@ -1120,7 +1120,13 @@ type fingerprintProfilesResponse struct {
 	Aliases             map[string]string            `json:"aliases"`
 }
 
-const fingerprintUnavailableNoActiveCapableWorker = "no_active_capable_worker"
+const (
+	fingerprintUnavailableDisabled               = "disabled"
+	fingerprintUnavailableNoExecutableDefinition = "no_executable_definition"
+	fingerprintUnavailableNoActiveCapableWorker  = "no_active_capable_worker"
+	fingerprintAvailabilitySupported             = "supported"
+	fingerprintProfileListLimit                  = 1000
+)
 
 // ListFingerprintProfiles handles GET /api/v1/config/fingerprint-profiles.
 // P0 has no write path: profiles are seeded built-ins (docs/planning/26).
@@ -1153,20 +1159,165 @@ func (h *AdminHandlers) ListFingerprintProfiles(w http.ResponseWriter, r *http.R
 			continue
 		}
 
-		profile := fingerprintProfileResponse{
-			Name: rec.Name, Enabled: rec.Enabled, ExecutorType: rec.ExecutorType, ProfileRef: rec.ProfileRef,
-			Availability: "unavailable",
-		}
-		if !rec.Enabled {
-			profile.UnavailableReason = "disabled"
-		} else {
-			profile.UnavailableReason = fingerprintUnavailableNoActiveCapableWorker
-		}
+		profile, supported := h.fingerprintProfileResponse(r.Context(), identity.TenantID, rec)
 
-		out.UnavailableProfiles = append(out.UnavailableProfiles, profile)
+		if supported {
+			out.SupportedProfiles = append(out.SupportedProfiles, profile)
+		} else {
+			out.UnavailableProfiles = append(out.UnavailableProfiles, profile)
+		}
 	}
 
 	writeJSON(w, http.StatusOK, out)
+}
+
+func (h *AdminHandlers) fingerprintProfileResponse(ctx context.Context, tenantID string, rec FingerprintProfileRecord) (fingerprintProfileResponse, bool) {
+	profile := fingerprintProfileResponse{
+		Name: rec.Name, Enabled: rec.Enabled, ExecutorType: rec.ExecutorType, ProfileRef: rec.ProfileRef,
+		Availability: "unavailable",
+	}
+
+	var reason string
+
+	switch {
+	case !rec.Enabled:
+		reason = fingerprintUnavailableDisabled
+	case !rec.SupportedByWorker:
+		reason = fingerprintUnavailableNoExecutableDefinition
+	default:
+		reason = h.fingerprintProfileAvailability(ctx, tenantID, rec.FingerprintProfile)
+	}
+
+	if reason == fingerprintAvailabilitySupported {
+		profile.Availability = fingerprintAvailabilitySupported
+
+		return profile, true
+	}
+
+	profile.UnavailableReason = reason
+
+	return profile, false
+}
+
+// fingerprintProfileAvailability reconciles the durable executable-definition
+// flag with the current tenant-visible worker sessions. The registry check is
+// intentionally separate from request routing: a profile can be configured
+// and executable while no assignable worker is currently alive.
+func (h *AdminHandlers) fingerprintProfileAvailability(ctx context.Context, tenantID string, profile config.FingerprintProfile) string {
+	if h.Workers == nil {
+		return h.fingerprintAvailabilityWithoutRegistry()
+	}
+
+	if h.ExecutorPools != nil {
+		if reason, ok := h.fingerprintAvailabilityFromPools(ctx, tenantID, profile); ok {
+			return reason
+		}
+	}
+
+	return h.fingerprintAvailabilityFromWorkers(tenantID, profile)
+}
+
+func (h *AdminHandlers) fingerprintAvailabilityWithoutRegistry() string {
+	if _, ok := h.FingerprintProfiles.(*InMemoryFingerprintProfileStore); ok {
+		return fingerprintUnavailableNoActiveCapableWorker
+	}
+
+	return fingerprintAvailabilitySupported
+}
+
+func (h *AdminHandlers) fingerprintAvailabilityFromPools(ctx context.Context, tenantID string, profile config.FingerprintProfile) (string, bool) {
+	pools, err := h.ExecutorPools.ListExecutorPools(ctx, tenantID, fingerprintProfileListLimit, 0)
+	if err != nil {
+		return "", false
+	}
+
+	ordinary, capable := false, false
+
+	for _, pool := range pools {
+		if !fingerprintPoolMatches(pool, profile) {
+			continue
+		}
+
+		poolOrdinary, poolCapable := h.fingerprintPoolAvailability(tenantID, pool.ID, profile)
+		ordinary = ordinary || poolOrdinary
+		capable = capable || poolCapable
+	}
+
+	return fingerprintAvailabilityReason(ordinary, capable), true
+}
+
+func fingerprintPoolMatches(pool ExecutorPoolRecord, profile config.FingerprintProfile) bool {
+	if !pool.Enabled {
+		return false
+	}
+
+	return profile.ExecutorType == "" || pool.ExecutorType == "" || pool.ExecutorType == profile.ExecutorType
+}
+
+func (h *AdminHandlers) fingerprintPoolAvailability(tenantID, poolID string, profile config.FingerprintProfile) (bool, bool) {
+	ordinary, capable := false, false
+
+	for _, candidate := range h.Workers.CandidatesForPool(tenantID, poolID) {
+		if profile.ExecutorType != "" && candidate.ExecutorType != profile.ExecutorType {
+			continue
+		}
+
+		ordinary = true
+		capable = capable || containsString(candidate.SupportedFingerprintProfiles, profile.Name)
+	}
+
+	return ordinary, capable
+}
+
+func (h *AdminHandlers) fingerprintAvailabilityFromWorkers(tenantID string, profile config.FingerprintProfile) string {
+	ordinary, capable := false, false
+
+	for _, worker := range h.Workers.ListWorkersForTenant(tenantID) {
+		if !tenantWorkerMatches(worker, tenantID, profile) {
+			continue
+		}
+
+		ordinary = true
+		capable = capable || containsString(worker.SupportedFingerprintProfiles, profile.Name)
+	}
+
+	return fingerprintAvailabilityReason(ordinary, capable)
+}
+
+func tenantWorkerMatches(worker WorkerView, tenantID string, profile config.FingerprintProfile) bool {
+	if profile.ExecutorType != "" && worker.ExecutorType != profile.ExecutorType {
+		return false
+	}
+
+	return tenantWorkerAssignable(worker, tenantID)
+}
+
+func fingerprintAvailabilityReason(ordinary, capable bool) string {
+	if capable {
+		return fingerprintAvailabilitySupported
+	}
+
+	if ordinary {
+		return fingerprintUnavailableNoExecutableDefinition
+	}
+
+	return fingerprintUnavailableNoActiveCapableWorker
+}
+
+func tenantWorkerAssignable(worker WorkerView, tenantID string) bool {
+	if worker.RuntimeState != RuntimeReady && worker.RuntimeState != RuntimeDegraded {
+		return false
+	}
+
+	if worker.GlobalAdminState == AdminDisabled || worker.GlobalDraining {
+		return false
+	}
+
+	if worker.TenantAdmin[tenantID] == AdminDisabled || worker.TenantDrain[tenantID] {
+		return false
+	}
+
+	return true
 }
 
 // ---- config change history ----

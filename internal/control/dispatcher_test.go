@@ -173,6 +173,23 @@ func TestDispatcherNamedFingerprintUsesCapableSessionAfterOrdinaryEligibility(t 
 	}
 }
 
+func TestDispatcherNamedFingerprintPreservesOrdinaryRouteUnavailable(t *testing.T) {
+	t.Parallel()
+
+	incapable := dispatchCandidate()
+	incapable.AvailableCap = 0
+	incapable.SupportedFingerprintProfiles = []string{fingerprintProfileChrome120}
+
+	d := newTestDispatcherWithSnapshot(t, dispatchSnapshot([]config.RoutingRule{dispatchRule()}), dispatchCandidates{incapable})
+	req := validatedDispatchRequest(t, "https://example.com/")
+	req.Fingerprint = fingerprintProfileChrome120
+
+	_, perr := d.Dispatch(context.Background(), dispatchInput(req))
+	if perr == nil || perr.Code != RouteUnavailable {
+		t.Fatalf("Dispatch error = %#v, want route_unavailable before unsupported_fingerprint when no ordinary candidate exists", perr)
+	}
+}
+
 func TestDispatcherRoutesUsingRequestIngressType(t *testing.T) {
 	t.Parallel()
 

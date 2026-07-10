@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"golang.org/x/net/idna"
 )
@@ -131,6 +132,11 @@ func ValidateRequest(raw []byte, maxRequestBodyBytes, maxTimeoutMs uint64) (*Val
 
 // ValidateRequestWithCapturePolicy validates a request against tenant capture policy.
 func ValidateRequestWithCapturePolicy(raw []byte, maxRequestBodyBytes, maxTimeoutMs uint64, capturePolicy PayloadCapturePolicy) (*ValidatedRequest, error) {
+	profileErr := validateFingerprintProfileJSON(raw)
+	if profileErr != nil {
+		return nil, profileErr
+	}
+
 	var env RequestEnvelope
 
 	dec := json.NewDecoder(bytes.NewReader(raw))
@@ -147,9 +153,14 @@ func ValidateRequestWithCapturePolicy(raw []byte, maxRequestBodyBytes, maxTimeou
 		return nil, err
 	}
 
-	err = validateCaptureHint(env.CaptureHint, capturePolicy)
-	if err != nil {
-		return nil, err
+	profileValueErr := validateFingerprintProfileValue(env.FingerprintProto)
+	if profileValueErr != nil {
+		return nil, profileValueErr
+	}
+
+	captureErr := validateCaptureHint(env.CaptureHint, capturePolicy)
+	if captureErr != nil {
+		return nil, captureErr
 	}
 
 	decision := env.CaptureHint
@@ -176,6 +187,92 @@ func ValidateRequestWithCapturePolicy(raw []byte, maxRequestBodyBytes, maxTimeou
 		StickySessionID: routing.StickySessionID,
 		CaptureDecision: decision,
 	}, nil
+}
+
+// validateFingerprintProfileJSON applies the profile-specific JSON rules that
+// encoding/json does not enforce by default. In particular, it rejects
+// duplicate members (including case variants accepted by encoding/json) and
+// non-string values before the decoder can silently keep the last value or
+// turn null into an empty string.
+func validateFingerprintProfileJSON(raw []byte) *ValidationError {
+	if !utf8.Valid(raw) {
+		return &ValidationError{Code: errorCodeInvalidRequest, Message: "fingerprint_profile must contain valid UTF-8"}
+	}
+
+	dec := json.NewDecoder(bytes.NewReader(raw))
+
+	token, err := dec.Token()
+	if err != nil {
+		return invalidRequestJSONError()
+	}
+
+	delim, ok := token.(json.Delim)
+	if !ok || delim != '{' {
+		return nil
+	}
+
+	seen := false
+
+	for dec.More() {
+		keyToken, err := dec.Token()
+		if err != nil {
+			return invalidRequestJSONError()
+		}
+
+		key, ok := keyToken.(string)
+		if !ok {
+			return invalidRequestJSONError()
+		}
+
+		var value json.RawMessage
+
+		valueErr := dec.Decode(&value)
+		if valueErr != nil {
+			return invalidRequestJSONError()
+		}
+
+		memberErr := validateFingerprintProfileJSONMember(key, value, &seen)
+		if memberErr != nil {
+			return memberErr
+		}
+	}
+
+	return nil
+}
+
+func validateFingerprintProfileJSONMember(key string, value json.RawMessage, seen *bool) *ValidationError {
+	if !strings.EqualFold(key, "fingerprint_profile") {
+		return nil
+	}
+
+	if *seen {
+		return &ValidationError{Code: errorCodeInvalidRequest, Message: "fingerprint_profile must not be repeated"}
+	}
+
+	*seen = true
+
+	trimmed := bytes.TrimSpace(value)
+	if len(trimmed) == 0 || trimmed[0] != '"' {
+		return &ValidationError{Code: errorCodeInvalidRequest, Message: "fingerprint_profile must be a string"}
+	}
+
+	return nil
+}
+
+func invalidRequestJSONError() *ValidationError {
+	return &ValidationError{Code: errorCodeInvalidRequest, Message: "invalid request JSON"}
+}
+
+func validateFingerprintProfileValue(value string) *ValidationError {
+	if !utf8.ValidString(value) {
+		return &ValidationError{Code: errorCodeInvalidRequest, Message: "fingerprint_profile must contain valid UTF-8"}
+	}
+
+	if value == baselineFingerprintEvidence {
+		return &ValidationError{Code: errorCodeInvalidRequest, Message: "baseline is not a fingerprint profile alias"}
+	}
+
+	return nil
 }
 
 func validateRequestComponents(env RequestEnvelope, maxRequestBodyBytes, maxTimeoutMs uint64) (*url.URL, []HeaderPair, []byte, uint64, error) {

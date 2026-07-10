@@ -170,7 +170,7 @@ func TestPostgresFingerprintProfileMigrationPreservesExistingRows(t *testing.T) 
 		t.Fatalf("iterate migrated fingerprint profiles: %v", err)
 	}
 
-	if got := states[fingerprintProfileChrome120]; !got.enabled || got.profileRef != "tls-client/v1.15.1:profiles.Chrome_120" {
+	if got := states[fingerprintProfileChrome120]; !got.enabled || got.profileRef != fingerprintProfileChrome120Ref {
 		t.Fatalf("chrome_120 = %+v, want enabled immutable Chrome 120 descriptor", got)
 	}
 	for _, retired := range []string{fingerprintProfileFirefox, fingerprintProfileSafari} {

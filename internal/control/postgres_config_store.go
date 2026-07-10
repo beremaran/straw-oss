@@ -901,7 +901,7 @@ func nonNilStrings(in []string) []string {
 
 func defaultExecutorType(t string) string {
 	if t == "" {
-		return "egress"
+		return errorCategoryEgress
 	}
 
 	return t

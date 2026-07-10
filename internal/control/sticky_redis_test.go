@@ -107,8 +107,8 @@ func TestRouterUsesRedisStickyStore(t *testing.T) {
 	pools := NewStaticPoolPolicyProvider(nil)
 	candidates := &fakeCandidateSource{
 		candidates: []PoolCandidate{
-			{WorkerID: "worker_a", SessionID: "sess_a", AssignSubject: "subj_a", MaxConcurrency: 10},
-			{WorkerID: "worker_b", SessionID: "sess_b", AssignSubject: "subj_b", MaxConcurrency: 10},
+			{WorkerID: "worker_a", SessionID: "sess_a", AssignSubject: "subj_a", MaxConcurrency: 10, AvailableCap: 10},
+			{WorkerID: "worker_b", SessionID: "sess_b", AssignSubject: "subj_b", MaxConcurrency: 10, AvailableCap: 10},
 		},
 	}
 

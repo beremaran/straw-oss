@@ -125,6 +125,14 @@ func TestFingerprintProfileExecutedMismatchRejected(t *testing.T) {
 	}
 }
 
+func TestFingerprintProfileBaselineAllowsEmptyExecutedValue(t *testing.T) {
+	t.Parallel()
+
+	if !validateExecutedFingerprint(baselineFingerprintEvidence, "") {
+		t.Fatal("baseline selection rejected empty executed profile")
+	}
+}
+
 func TestAssignmentFallbackBoundaryAndAdminCancel(t *testing.T) {
 	t.Parallel()
 

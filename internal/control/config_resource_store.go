@@ -435,9 +435,10 @@ type InMemoryFingerprintProfileStore struct {
 const fingerprintProfileScopeGlobal = "global"
 
 const (
-	fingerprintProfileChrome120 = "chrome_120"
-	fingerprintProfileFirefox   = "firefox_121"
-	fingerprintProfileSafari    = "safari_17"
+	fingerprintProfileChrome120    = "chrome_120"
+	fingerprintProfileChrome120Ref = "tls-client/v1.15.1:profiles.Chrome_120"
+	fingerprintProfileFirefox      = "firefox_121"
+	fingerprintProfileSafari       = "safari_17"
 )
 
 // NewInMemoryFingerprintProfileStore builds a store seeded with P0's built-in
@@ -446,7 +447,7 @@ func NewInMemoryFingerprintProfileStore() *InMemoryFingerprintProfileStore {
 	profiles := []FingerprintProfileRecord{
 		{FingerprintProfile: config.FingerprintProfile{
 			Name: fingerprintProfileChrome120, ScopeType: fingerprintProfileScopeGlobal, SupportedByWorker: true, Enabled: true,
-			ExecutorType: errorCategoryEgress, ProfileRef: "tls-client/v1.15.1:profiles.Chrome_120", ContractRevision: "chrome_120_v1_15_1",
+			ExecutorType: errorCategoryEgress, ProfileRef: fingerprintProfileChrome120Ref, ContractRevision: "chrome_120_v1_15_1",
 		}, ConfigVersion: 1},
 		{FingerprintProfile: config.FingerprintProfile{Name: defaultFingerprintProfileName, ScopeType: fingerprintProfileScopeGlobal}, ConfigVersion: 1},
 		{FingerprintProfile: config.FingerprintProfile{Name: fingerprintProfileFirefox, ScopeType: fingerprintProfileScopeGlobal}, ConfigVersion: 1},
