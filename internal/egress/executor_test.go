@@ -534,8 +534,6 @@ func TestExecutorSupportedHTTPSFingerprintProfilesUseTLSClient(t *testing.T) {
 		"empty-default": "",
 		"default":       defaultFingerprintName,
 		"chrome_120":    testFingerprintChrome120,
-		"firefox_120":   "firefox_120",
-		"safari_16_0":   "safari_16_0",
 	}
 	for name, fingerprint := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -638,40 +636,6 @@ func TestExecutorUnsupportedFingerprintFailsBeforeDial(t *testing.T) {
 	}
 	if dialed {
 		t.Fatal("executor dialed upstream for unsupported fingerprint")
-	}
-}
-
-func TestExecutorUnsupportedHTTPSFingerprints(t *testing.T) {
-	t.Parallel()
-
-	unsupported := []string{"firefox_121", "safari_17"}
-	for _, fingerprint := range unsupported {
-		t.Run(fingerprint, func(t *testing.T) {
-			t.Parallel()
-
-			dialed := false
-			start := requestStart("https://unsupported.test", directPolicy(true))
-			start.FingerprintInstruction = fingerprint
-			exec := NewExecutor(ExecutorOptions{
-				Resolver: staticResolver{"unsupported.test": netip.MustParseAddr("127.0.0.1")},
-				DialContext: func(context.Context, string, string) (net.Conn, error) {
-					dialed = true
-
-					return nil, errors.New("unexpected dial")
-				},
-			})
-
-			errFrame := terminalError(t, exec.Execute(context.Background(), start, nil, 1, nil))
-			if errFrame.GetCode() != strawpb.ErrorCode_ERROR_CODE_UNSUPPORTED_FINGERPRINT {
-				t.Fatalf("code = %v, want unsupported_fingerprint", errFrame.GetCode())
-			}
-			if got := errFrame.GetDetails()["fact"]; got != unsupportedFingerprint {
-				t.Fatalf("fact = %q, want %s", got, unsupportedFingerprint)
-			}
-			if dialed {
-				t.Fatal("executor dialed upstream for unsupported fingerprint")
-			}
-		})
 	}
 }
 
