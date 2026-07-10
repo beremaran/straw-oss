@@ -3,14 +3,9 @@ package egress
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/tls"
 	"crypto/x509"
-	"crypto/x509/pkix"
 	"errors"
 	"io"
-	"math/big"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -33,8 +28,6 @@ const xProtoHeader = "X-Proto"
 const unitTestHost = "unit.test"
 
 const testTenantA = "ten_a"
-
-const testFingerprintChrome120 = "chrome_120"
 
 func TestExecutorEmitsSuccessfulHTTPFramesAndAppliesInjection(t *testing.T) {
 	t.Parallel()
@@ -527,180 +520,6 @@ func TestExecutorDoesNotFollowRedirects(t *testing.T) {
 	}
 }
 
-func TestExecutorSupportedHTTPSFingerprintProfilesUseTLSClient(t *testing.T) {
-	t.Parallel()
-
-	tests := map[string]string{
-		"empty-default": "",
-		"default":       defaultFingerprintName,
-		"chrome_120":    testFingerprintChrome120,
-	}
-	for name, fingerprint := range tests {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
-			ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.Header.Get("X-Set") != "two" {
-					t.Fatalf("X-Set = %q, want two", r.Header.Get("X-Set"))
-				}
-				body, err := io.ReadAll(r.Body)
-				if err != nil {
-					t.Fatalf("read body: %v", err)
-				}
-				if string(body) != "payload" {
-					t.Fatalf("body = %q, want payload", body)
-				}
-
-				w.Header().Set("X-Upstream", fingerprint)
-				w.WriteHeader(http.StatusCreated)
-				_, _ = w.Write([]byte("tls-ok"))
-			}))
-			t.Cleanup(ts.Close)
-
-			start := requestStart(rewriteHost(t, ts.URL, "tls-profile.test"), directPolicy(true))
-			start.FingerprintInstruction = fingerprint
-			exec := NewExecutor(ExecutorOptions{
-				Resolver:           staticResolver{"tls-profile.test": loopbackIP(t, ts.URL)},
-				InsecureSkipVerify: true,
-			})
-
-			frames := exec.Execute(context.Background(), start, []byte("payload"), 1, nil)
-			if errFrame := terminalErrorOrNil(frames); errFrame != nil {
-				t.Fatalf("unexpected error frame: %+v", errFrame)
-			}
-			if got := frames[1].GetResponseStart().GetStatus(); got != http.StatusCreated {
-				t.Fatalf("status = %d, want %d", got, http.StatusCreated)
-			}
-			if got := string(frames[2].GetData().GetData()); got != "tls-ok" {
-				t.Fatalf("data = %q, want tls-ok", got)
-			}
-		})
-	}
-}
-
-func TestExecutorTLSClientUsesOriginalHostnameForSNIAndVerification(t *testing.T) {
-	t.Parallel()
-
-	ts, pool := newTLSServerForHost(t, "sni.test", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if got := r.TLS.ServerName; got != "sni.test" {
-			t.Fatalf("SNI = %q, want sni.test", got)
-		}
-
-		_, _ = w.Write([]byte("sni-ok"))
-	}))
-	t.Cleanup(ts.Close)
-
-	start := requestStart(rewriteHost(t, ts.URL, "sni.test"), directPolicy(true))
-	start.FingerprintInstruction = testFingerprintChrome120
-	exec := NewExecutor(ExecutorOptions{
-		Resolver: staticResolver{"sni.test": loopbackIP(t, ts.URL)},
-		RootCAs:  pool,
-	})
-
-	frames := exec.Execute(context.Background(), start, nil, 1, nil)
-	if errFrame := terminalErrorOrNil(frames); errFrame != nil {
-		t.Fatalf("unexpected error frame: %+v", errFrame)
-	}
-}
-
-func TestExecutorUnsupportedFingerprintFailsBeforeDial(t *testing.T) {
-	t.Parallel()
-
-	dialed := false
-	start := requestStart("https://unsupported.test", directPolicy(true))
-	start.FingerprintInstruction = "not_a_browser"
-	exec := NewExecutor(ExecutorOptions{
-		Resolver: staticResolver{"unsupported.test": netip.MustParseAddr("127.0.0.1")},
-		DialContext: func(context.Context, string, string) (net.Conn, error) {
-			dialed = true
-
-			return nil, errors.New("unexpected dial")
-		},
-	})
-
-	errFrame := terminalError(t, exec.Execute(context.Background(), start, nil, 1, nil))
-	if errFrame.GetCode() != strawpb.ErrorCode_ERROR_CODE_UNSUPPORTED_FINGERPRINT {
-		t.Fatalf("code = %v, want unsupported_fingerprint", errFrame.GetCode())
-	}
-	if got := errFrame.GetDetails()["fact"]; got != unsupportedFingerprint {
-		t.Fatalf("fact = %q, want %s", got, unsupportedFingerprint)
-	}
-	if dialed {
-		t.Fatal("executor dialed upstream for unsupported fingerprint")
-	}
-}
-
-func TestExecutorTLSClientEnforcesDeadline(t *testing.T) {
-	t.Parallel()
-
-	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		time.Sleep(80 * time.Millisecond)
-		_, _ = w.Write([]byte("late"))
-	}))
-	t.Cleanup(ts.Close)
-
-	start := requestStart(rewriteHost(t, ts.URL, "tls-deadline.test"), directPolicy(true))
-	start.DeadlineUnixMs = time.Now().Add(20 * time.Millisecond).UnixMilli()
-	start.FingerprintInstruction = testFingerprintChrome120
-	exec := NewExecutor(ExecutorOptions{
-		Resolver:           staticResolver{"tls-deadline.test": loopbackIP(t, ts.URL)},
-		InsecureSkipVerify: true,
-	})
-
-	errFrame := terminalError(t, exec.Execute(context.Background(), start, nil, 1, nil))
-	if errFrame.GetCode() != strawpb.ErrorCode_ERROR_CODE_TIMEOUT_EXCEEDED {
-		t.Fatalf("code = %v, want timeout_exceeded", errFrame.GetCode())
-	}
-}
-
-func TestExecutorTLSClientStreamsResponseFramesBeforeUpstreamCompletes(t *testing.T) {
-	t.Parallel()
-
-	release := make(chan struct{})
-	firstData := make(chan struct{})
-	body := bytes.Repeat([]byte("x"), responseFrameDataBytes+1)
-	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write(body)
-		w.(http.Flusher).Flush()
-		<-release
-	}))
-	t.Cleanup(ts.Close)
-
-	start := requestStart(rewriteHost(t, ts.URL, "tls-stream.test"), directPolicy(true))
-	start.FingerprintInstruction = "default"
-	exec := NewExecutor(ExecutorOptions{
-		Resolver:           staticResolver{"tls-stream.test": loopbackIP(t, ts.URL)},
-		InsecureSkipVerify: true,
-	})
-	done := make(chan []*strawpb.StreamFrame, 1)
-
-	go func() {
-		done <- exec.Execute(context.Background(), start, nil, 1, func(frame *strawpb.StreamFrame) {
-			if frame.GetData() != nil {
-				select {
-				case <-firstData:
-				default:
-					close(firstData)
-				}
-			}
-		})
-	}()
-
-	select {
-	case <-firstData:
-	case <-time.After(time.Second):
-		t.Fatal("executor did not send TLS response data before upstream handler completed")
-	}
-
-	close(release)
-
-	frames := <-done
-	if len(frames) != 1 || frames[0].GetEnd() == nil {
-		t.Fatalf("returned frames = %#v, want terminal EndFrame only", frames)
-	}
-}
-
 func TestP0TransportDefaults(t *testing.T) {
 	t.Parallel()
 
@@ -787,7 +606,7 @@ func TestExecutorUpstreamConnectionPoolReusesExactKey(t *testing.T) {
 	}
 
 	start := requestStart(target, directPolicy(true))
-	start.FingerprintInstruction = "not_a_browser"
+	start.FingerprintInstruction = "chrome_120"
 	frames = exec.ExecuteWithTenant(context.Background(), testTenantA, start, nil, 1, nil)
 	if got := terminalError(t, frames).GetCode(); got != strawpb.ErrorCode_ERROR_CODE_UNSUPPORTED_FINGERPRINT {
 		t.Fatalf("code = %v, want unsupported_fingerprint", got)
@@ -1292,44 +1111,6 @@ func loopbackIP(t *testing.T, raw string) netip.Addr {
 	}
 
 	return addr
-}
-
-func newTLSServerForHost(t *testing.T, host string, handler http.Handler) (*httptest.Server, *x509.CertPool) {
-	t.Helper()
-
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		t.Fatalf("generate key: %v", err)
-	}
-
-	template := &x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject:      pkix.Name{CommonName: host},
-		NotBefore:    time.Now().Add(-time.Hour),
-		NotAfter:     time.Now().Add(time.Hour),
-		DNSNames:     []string{host},
-		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-	}
-	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
-	if err != nil {
-		t.Fatalf("create certificate: %v", err)
-	}
-
-	cert := tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}
-	parsed, err := x509.ParseCertificate(der)
-	if err != nil {
-		t.Fatalf("parse certificate: %v", err)
-	}
-
-	pool := x509.NewCertPool()
-	pool.AddCert(parsed)
-
-	ts := httptest.NewUnstartedServer(handler)
-	ts.TLS = &tls.Config{Certificates: []tls.Certificate{cert}}
-	ts.StartTLS()
-
-	return ts, pool
 }
 
 func TestExecutorHTTP2Negotiation(t *testing.T) {
