@@ -215,14 +215,15 @@ func buildCapabilities(cfg config.EgressConfig) sdkegress.Capabilities {
 	}
 
 	return sdkegress.Capabilities{
-		SoftwareVersion:       "dev",
-		MaxConcurrency:        maxConcurrency,
-		AllowedPools:          pools,
-		Tags:                  cfg.Capabilities.Tags,
-		Countries:             cfg.Capabilities.Countries,
-		Regions:               cfg.Capabilities.Regions,
-		IPTypes:               cfg.Capabilities.IPTypes,
-		SupportedIngressModes: cfg.Capabilities.SupportedIngressModes,
+		SoftwareVersion:              "dev",
+		MaxConcurrency:               maxConcurrency,
+		AllowedPools:                 pools,
+		Tags:                         cfg.Capabilities.Tags,
+		Countries:                    cfg.Capabilities.Countries,
+		Regions:                      cfg.Capabilities.Regions,
+		IPTypes:                      cfg.Capabilities.IPTypes,
+		SupportedIngressModes:        cfg.Capabilities.SupportedIngressModes,
+		SupportedFingerprintProfiles: internalegress.SupportedFingerprintProfiles(),
 	}
 }
 

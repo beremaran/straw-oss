@@ -105,26 +105,27 @@ type workerRuntimeRecord struct {
 }
 
 type runtimeSessionRecord struct {
-	SessionID      string        `json:"session_id"`
-	ExecutorType   string        `json:"executor_type"`
-	CredentialID   string        `json:"credential_id"`
-	TenantScope    []string      `json:"tenant_scope"`
-	Pools          []AllowedPool `json:"pools,omitempty"`
-	Tags           []string      `json:"tags,omitempty"`
-	Countries      []string      `json:"countries,omitempty"`
-	Regions        []string      `json:"regions,omitempty"`
-	IPTypes        []string      `json:"ip_types,omitempty"`
-	IngressModes   []string      `json:"ingress_modes,omitempty"`
-	MaxConcurrency uint32        `json:"max_concurrency"`
-	Health         int32         `json:"health"`
-	HasHeartbeat   bool          `json:"has_heartbeat"`
-	ActiveRequests uint32        `json:"active_requests"`
-	AvailableCap   uint32        `json:"available_cap"`
-	Draining       bool          `json:"draining"`
-	RegisteredUnix int64         `json:"registered_unix"`
-	RegisteredNano int64         `json:"registered_nano"`
-	HeartbeatUnix  int64         `json:"heartbeat_unix"`
-	HeartbeatNano  int64         `json:"heartbeat_nano"`
+	SessionID                    string        `json:"session_id"`
+	ExecutorType                 string        `json:"executor_type"`
+	CredentialID                 string        `json:"credential_id"`
+	TenantScope                  []string      `json:"tenant_scope"`
+	Pools                        []AllowedPool `json:"pools,omitempty"`
+	Tags                         []string      `json:"tags,omitempty"`
+	Countries                    []string      `json:"countries,omitempty"`
+	Regions                      []string      `json:"regions,omitempty"`
+	IPTypes                      []string      `json:"ip_types,omitempty"`
+	IngressModes                 []string      `json:"ingress_modes,omitempty"`
+	SupportedFingerprintProfiles []string      `json:"supported_fingerprint_profiles,omitempty"`
+	MaxConcurrency               uint32        `json:"max_concurrency"`
+	Health                       int32         `json:"health"`
+	HasHeartbeat                 bool          `json:"has_heartbeat"`
+	ActiveRequests               uint32        `json:"active_requests"`
+	AvailableCap                 uint32        `json:"available_cap"`
+	Draining                     bool          `json:"draining"`
+	RegisteredUnix               int64         `json:"registered_unix"`
+	RegisteredNano               int64         `json:"registered_nano"`
+	HeartbeatUnix                int64         `json:"heartbeat_unix"`
+	HeartbeatNano                int64         `json:"heartbeat_nano"`
 }
 
 func workerRuntimeRecordFromEntry(e *workerEntry) workerRuntimeRecord {
@@ -152,26 +153,27 @@ func runtimeSessionRecordFromSession(s *runtimeSession) *runtimeSessionRecord {
 	}
 
 	return &runtimeSessionRecord{
-		SessionID:      s.sessionID,
-		ExecutorType:   s.executorType,
-		CredentialID:   s.credentialID,
-		TenantScope:    append([]string(nil), s.tenantScope...),
-		Pools:          append([]AllowedPool(nil), s.pools...),
-		Tags:           append([]string(nil), s.tags...),
-		Countries:      append([]string(nil), s.countries...),
-		Regions:        append([]string(nil), s.regions...),
-		IPTypes:        append([]string(nil), s.ipTypes...),
-		IngressModes:   append([]string(nil), s.ingressModes...),
-		MaxConcurrency: s.maxConcurrency,
-		Health:         int32(s.health),
-		HasHeartbeat:   s.hasHeartbeat,
-		ActiveRequests: s.activeRequests,
-		AvailableCap:   s.availableCap,
-		Draining:       s.draining,
-		RegisteredUnix: s.registeredAt.Unix(),
-		RegisteredNano: int64(s.registeredAt.Nanosecond()),
-		HeartbeatUnix:  s.lastHeartbeat.Unix(),
-		HeartbeatNano:  int64(s.lastHeartbeat.Nanosecond()),
+		SessionID:                    s.sessionID,
+		ExecutorType:                 s.executorType,
+		CredentialID:                 s.credentialID,
+		TenantScope:                  append([]string(nil), s.tenantScope...),
+		Pools:                        append([]AllowedPool(nil), s.pools...),
+		Tags:                         append([]string(nil), s.tags...),
+		Countries:                    append([]string(nil), s.countries...),
+		Regions:                      append([]string(nil), s.regions...),
+		IPTypes:                      append([]string(nil), s.ipTypes...),
+		IngressModes:                 append([]string(nil), s.ingressModes...),
+		SupportedFingerprintProfiles: append([]string(nil), s.supportedFingerprintProfiles...),
+		MaxConcurrency:               s.maxConcurrency,
+		Health:                       int32(s.health),
+		HasHeartbeat:                 s.hasHeartbeat,
+		ActiveRequests:               s.activeRequests,
+		AvailableCap:                 s.availableCap,
+		Draining:                     s.draining,
+		RegisteredUnix:               s.registeredAt.Unix(),
+		RegisteredNano:               int64(s.registeredAt.Nanosecond()),
+		HeartbeatUnix:                s.lastHeartbeat.Unix(),
+		HeartbeatNano:                int64(s.lastHeartbeat.Nanosecond()),
 	}
 }
 
@@ -204,23 +206,24 @@ func (r *runtimeSessionRecord) session() *runtimeSession {
 	}
 
 	return &runtimeSession{
-		sessionID:      r.SessionID,
-		executorType:   r.ExecutorType,
-		credentialID:   r.CredentialID,
-		tenantScope:    append([]string(nil), r.TenantScope...),
-		pools:          append([]AllowedPool(nil), r.Pools...),
-		tags:           append([]string(nil), r.Tags...),
-		countries:      append([]string(nil), r.Countries...),
-		regions:        append([]string(nil), r.Regions...),
-		ipTypes:        append([]string(nil), r.IPTypes...),
-		ingressModes:   append([]string(nil), r.IngressModes...),
-		maxConcurrency: r.MaxConcurrency,
-		health:         strawpb.WorkerHealth(r.Health),
-		hasHeartbeat:   r.HasHeartbeat,
-		activeRequests: r.ActiveRequests,
-		availableCap:   r.AvailableCap,
-		draining:       r.Draining,
-		registeredAt:   time.Unix(r.RegisteredUnix, r.RegisteredNano),
-		lastHeartbeat:  time.Unix(r.HeartbeatUnix, r.HeartbeatNano),
+		sessionID:                    r.SessionID,
+		executorType:                 r.ExecutorType,
+		credentialID:                 r.CredentialID,
+		tenantScope:                  append([]string(nil), r.TenantScope...),
+		pools:                        append([]AllowedPool(nil), r.Pools...),
+		tags:                         append([]string(nil), r.Tags...),
+		countries:                    append([]string(nil), r.Countries...),
+		regions:                      append([]string(nil), r.Regions...),
+		ipTypes:                      append([]string(nil), r.IPTypes...),
+		ingressModes:                 append([]string(nil), r.IngressModes...),
+		supportedFingerprintProfiles: append([]string(nil), r.SupportedFingerprintProfiles...),
+		maxConcurrency:               r.MaxConcurrency,
+		health:                       strawpb.WorkerHealth(r.Health),
+		hasHeartbeat:                 r.HasHeartbeat,
+		activeRequests:               r.ActiveRequests,
+		availableCap:                 r.AvailableCap,
+		draining:                     r.Draining,
+		registeredAt:                 time.Unix(r.RegisteredUnix, r.RegisteredNano),
+		lastHeartbeat:                time.Unix(r.HeartbeatUnix, r.HeartbeatNano),
 	}
 }

@@ -24,6 +24,14 @@ type Capabilities = sdkegress.Capabilities
 // Capacity describes the executor's current admission state when an AssignRequest arrives.
 type Capacity = sdkegress.Capacity
 
+const chrome120FingerprintProfile = "chrome_120"
+
+// SupportedFingerprintProfiles returns the exact named profiles executable by
+// the official Egress worker.
+func SupportedFingerprintProfiles() []string {
+	return []string{chrome120FingerprintProfile}
+}
+
 // BuildRegisterRequest assembles and signs a RegisterRequest for the worker.
 func BuildRegisterRequest(id Identity, caps Capabilities) (*strawpb.RegisterRequest, error) {
 	req, err := sdkegress.BuildRegisterRequest(id, caps)
