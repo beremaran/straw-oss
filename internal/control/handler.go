@@ -112,7 +112,7 @@ func (h *RequestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		var verr *ValidationError
 		if asValidationError(err, &verr) {
-			WriteValidationError(w, requestID, verr)
+			h.writeRequestValidationError(w, requestID, identity, policy, verr)
 
 			return
 		}
@@ -123,6 +123,20 @@ func (h *RequestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.dispatchValidated(w, r, requestID, identity, validated)
+}
+
+func (h *RequestHandler) writeRequestValidationError(w http.ResponseWriter, requestID string, identity Identity, policy TenantPolicy, verr *ValidationError) {
+	if verr.Code != errorCodeUnsupportedFingerprint {
+		WriteValidationError(w, requestID, verr)
+
+		return
+	}
+
+	event := buildRequestEvent(requestID, identity, nil, policy)
+	event.RequestedFingerprintProfile = verr.RequestedFingerprintProfile
+	perr := &PipelineError{Code: UnsupportedFingerprint}
+	h.recordOutcome(event, SuccessResponse{}, perr)
+	writePipelineError(w, requestID, perr)
 }
 
 func (h *RequestHandler) payloadCapturePolicy(ctx context.Context, tenantID string) PayloadCapturePolicy {

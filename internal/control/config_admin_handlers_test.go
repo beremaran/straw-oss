@@ -642,7 +642,7 @@ func TestFingerprintProfilesReadOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if response.Aliases[defaultFingerprintProfileName] != "baseline" {
+	if response.Aliases[defaultFingerprintProfileName] != baselineFingerprintProfileName {
 		t.Fatalf("aliases = %+v, want default -> baseline", response.Aliases)
 	}
 	for _, profile := range response.SupportedProfiles {

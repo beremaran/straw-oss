@@ -29,7 +29,7 @@ func mustURL(t *testing.T, raw string) *url.URL {
 
 func fingerprintSnapshot() []config.FingerprintProfile {
 	return []config.FingerprintProfile{
-		{Name: defaultFingerprintProfileName, ScopeType: fingerprintProfileScopeGlobal, Enabled: true, SupportedByWorker: true},
+		{Name: defaultFingerprintProfileName, ScopeType: fingerprintProfileScopeGlobal},
 		{Name: fingerprintProfileChrome120, ScopeType: fingerprintProfileScopeGlobal, Enabled: true, SupportedByWorker: true},
 		{Name: testDisabledFingerprintProfile, ScopeType: fingerprintProfileScopeGlobal, Enabled: false, SupportedByWorker: true},
 	}
@@ -59,6 +59,23 @@ func TestResolveDestinationPolicy_AllowsOrdinaryPublicHost(t *testing.T) {
 
 	if result.Policy.PolicyVersion != "3" {
 		t.Fatalf("policy version = %q, want 3", result.Policy.PolicyVersion)
+	}
+}
+
+func TestResolveDestinationPolicy_DefaultAliasUsesBaselineWithDisabledDurableRow(t *testing.T) {
+	t.Parallel()
+
+	result, verr := ResolveDestinationPolicy(DestinationPolicyRequest{
+		Snapshot:                    config.TenantSnapshot{FingerprintProfiles: fingerprintSnapshot()},
+		TargetURL:                   mustURL(t, "https://example.com/path"),
+		RequestedFingerprintProfile: defaultFingerprintProfileName,
+		MaxInjectedHeaderBytes:      1024,
+	})
+	if verr != nil {
+		t.Fatalf("unexpected error: %+v", verr)
+	}
+	if result.FingerprintProfile != baselineFingerprintProfileName {
+		t.Fatalf("fingerprint = %q, want baseline", result.FingerprintProfile)
 	}
 }
 

@@ -73,7 +73,7 @@ func (h *RequestHandler) ServeStreamHTTP(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		var verr *ValidationError
 		if asValidationError(err, &verr) {
-			WriteValidationError(w, requestID, verr)
+			h.writeRequestValidationError(w, requestID, identity, policy, verr)
 
 			return
 		}

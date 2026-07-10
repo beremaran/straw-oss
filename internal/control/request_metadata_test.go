@@ -353,7 +353,7 @@ func TestProjectFingerprintEvidenceClassifiesValues(t *testing.T) {
 		{name: "baseline literal", value: baselineFingerprintEvidence, want: baselineFingerprintEvidence},
 		{name: "unknown safe token", value: testFutureFingerprint, want: testFutureFingerprint},
 		{name: "case variant", value: "Chrome_120", wantPrefix: requestMetadataHashPrefix},
-		{name: "malformed utf8", value: malformed, wantPrefix: requestMetadataHashPrefix},
+		{name: handlerTestMalformedUTF8, value: malformed, wantPrefix: requestMetadataHashPrefix},
 		{name: "overlong attacker value", value: overlong, wantPrefix: requestMetadataHashPrefix},
 	}
 

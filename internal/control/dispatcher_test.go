@@ -472,7 +472,7 @@ func TestDispatcherBaselineAndDefaultUseEmptyWireInstruction(t *testing.T) {
 	t.Parallel()
 
 	for _, requested := range []string{"", defaultFingerprintProfileName} {
-		t.Run(map[string]string{"": "omitted", defaultFingerprintProfileName: "default"}[requested], func(t *testing.T) {
+		t.Run(map[string]string{"": "omitted", defaultFingerprintProfileName: defaultFingerprintProfileName}[requested], func(t *testing.T) {
 			d, stop := newLiveDispatchHarness(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				_, _ = w.Write([]byte("baseline body"))
 			}))
