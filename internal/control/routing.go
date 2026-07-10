@@ -59,15 +59,20 @@ type RouteRequest struct {
 	IngressType     string
 	TargetHost      string
 	StickySessionID string
+	// FingerprintProfile is the raw request intent. Empty and "default" are
+	// baseline compatibility values; every other non-empty value requires an
+	// exact capability match after ordinary eligibility filtering.
+	FingerprintProfile string
 }
 
 // Route error codes, matching the canonical ErrorCode registry
 // (internal/control/errors.go).
 const (
-	RouteErrNoMatch           = "route_no_match"
-	RouteErrUnavailable       = "route_unavailable"
-	RouteErrStickyUnavailable = "sticky_session_unavailable"
-	RouteErrCapacityExhausted = "executor_capacity_exhausted"
+	RouteErrNoMatch                = "route_no_match"
+	RouteErrUnavailable            = "route_unavailable"
+	RouteErrStickyUnavailable      = "sticky_session_unavailable"
+	RouteErrCapacityExhausted      = "executor_capacity_exhausted"
+	RouteErrUnsupportedFingerprint = "unsupported_fingerprint"
 )
 
 // RouteOutcome is the result of evaluating one RouteRequest.
@@ -139,9 +144,18 @@ func (rt *Router) Evaluate(req RouteRequest) RouteOutcome {
 		return RouteOutcome{ErrorCode: RouteErrNoMatch}
 	}
 
+	profileRejected := false
+
 	for _, rule := range rules {
 		policy := rt.policies.PoolPolicy(req.TenantID, rule.TargetPoolID)
-		candidates := rt.eligibleCandidates(req, rule, policy)
+		ordinary := rt.eligibleCandidates(req, rule, policy)
+
+		candidates := filterFingerprintCandidates(ordinary, req.FingerprintProfile)
+		if len(ordinary) > 0 && len(candidates) == 0 && namedFingerprintRequested(req.FingerprintProfile) {
+			profileRejected = true
+
+			continue
+		}
 
 		if req.StickySessionID != "" {
 			if outcome, handled := rt.evaluateSticky(req, rule, candidates); handled {
@@ -160,7 +174,30 @@ func (rt *Router) Evaluate(req RouteRequest) RouteOutcome {
 		}
 	}
 
+	if profileRejected {
+		return RouteOutcome{ErrorCode: RouteErrUnsupportedFingerprint}
+	}
+
 	return RouteOutcome{ErrorCode: RouteErrUnavailable}
+}
+
+func namedFingerprintRequested(profile string) bool {
+	return profile != "" && profile != defaultFingerprintProfileName
+}
+
+func filterFingerprintCandidates(candidates []PoolCandidate, requested string) []PoolCandidate {
+	if !namedFingerprintRequested(requested) {
+		return candidates
+	}
+
+	out := make([]PoolCandidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		if containsString(candidate.SupportedFingerprintProfiles, requested) {
+			out = append(out, candidate)
+		}
+	}
+
+	return out
 }
 
 // evaluateSticky handles one rule under a sticky session ID. handled=false

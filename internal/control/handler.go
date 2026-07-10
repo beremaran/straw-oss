@@ -353,10 +353,12 @@ type SuccessResponse struct {
 	ResponseSizeBytes uint64 `json:"-"`
 	// RouteID/PoolID/SelectedExecutor/ExecutorType carry the routing decision
 	// for request_events telemetry. Not part of the wire contract.
-	RouteID          string `json:"-"`
-	PoolID           string `json:"-"`
-	SelectedExecutor string `json:"-"`
-	ExecutorType     string `json:"-"`
+	RouteID                    string `json:"-"`
+	PoolID                     string `json:"-"`
+	SelectedExecutor           string `json:"-"`
+	ExecutorType               string `json:"-"`
+	SelectedFingerprintProfile string `json:"-"`
+	ExecutedFingerprintProfile string `json:"-"`
 }
 
 // ResponseBody carries the upstream response body. Mode is "inline_base64" for

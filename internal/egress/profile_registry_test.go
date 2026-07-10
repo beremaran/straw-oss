@@ -11,7 +11,7 @@ import (
 	"github.com/bogdanfinn/tls-client/profiles"
 )
 
-func TestExecutableFingerprintProfileRegistryIsExact(t *testing.T) {
+func TestProfileRegistryExecutableFingerprintIsExact(t *testing.T) {
 	t.Parallel()
 
 	if len(executableFingerprintProfiles) != 1 {

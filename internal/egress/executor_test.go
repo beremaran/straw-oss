@@ -170,6 +170,64 @@ func TestExecutorSendsOutboundStartBeforeConnect(t *testing.T) {
 	}
 }
 
+func TestProfileConformanceEmitsExecutedAfterLocalResolutionBeforeDNS(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("ok"))
+	}))
+	t.Cleanup(server.Close)
+
+	resolver := &profileOrderResolver{addr: loopbackIP(t, server.URL)}
+	exec := NewExecutor(ExecutorOptions{Resolver: resolver})
+	start := requestStart(rewriteHost(t, server.URL, "ordered.profile.test"), directPolicy(true))
+	start.FingerprintInstruction = chrome120FingerprintProfile
+
+	var sawOutbound bool
+	frames := exec.Execute(context.Background(), start, nil, 1, func(frame *strawpb.StreamFrame) {
+		if outbound := frame.GetOutboundStart(); outbound != nil {
+			sawOutbound = true
+			if got := outbound.GetExecutedFingerprintProfile(); got != chrome120FingerprintProfile {
+				t.Errorf("executed fingerprint = %q, want %q", got, chrome120FingerprintProfile)
+			}
+			if got := resolver.lookups.Load(); got != 0 {
+				t.Errorf("DNS lookups before OutboundStart = %d, want 0", got)
+			}
+		}
+	})
+	if errFrame := terminalErrorOrNil(frames); errFrame != nil {
+		t.Fatalf("profiled request error = %#v", errFrame)
+	}
+	if !sawOutbound {
+		t.Fatal("missing OutboundStart frame")
+	}
+}
+
+func TestExecutorRejectsUnknownFingerprintBeforeOutboundOrDNS(t *testing.T) {
+	t.Parallel()
+
+	resolver := &profileOrderResolver{addr: netip.MustParseAddr("127.0.0.1")}
+	exec := NewExecutor(ExecutorOptions{Resolver: resolver})
+	start := requestStart("http://unsupported.profile.test/", directPolicy(true))
+	start.FingerprintInstruction = "not_registered"
+
+	sawOutbound := false
+	frames := exec.Execute(context.Background(), start, nil, 1, func(frame *strawpb.StreamFrame) {
+		if frame.GetOutboundStart() != nil {
+			sawOutbound = true
+		}
+	})
+	if got := terminalError(t, frames).GetCode(); got != strawpb.ErrorCode_ERROR_CODE_UNSUPPORTED_FINGERPRINT {
+		t.Fatalf("error code = %v, want unsupported_fingerprint", got)
+	}
+	if sawOutbound {
+		t.Fatal("unsupported profile emitted OutboundStart")
+	}
+	if got := resolver.lookups.Load(); got != 0 {
+		t.Fatalf("DNS lookups = %d, want 0", got)
+	}
+}
+
 func TestExecutorStreamsResponseFramesBeforeUpstreamCompletes(t *testing.T) {
 	t.Parallel()
 
@@ -606,7 +664,7 @@ func TestExecutorUpstreamConnectionPoolReusesExactKey(t *testing.T) {
 	}
 
 	start := requestStart(target, directPolicy(true))
-	start.FingerprintInstruction = "chrome_120"
+	start.FingerprintInstruction = "not_registered"
 	frames = exec.ExecuteWithTenant(context.Background(), testTenantA, start, nil, 1, nil)
 	if got := terminalError(t, frames).GetCode(); got != strawpb.ErrorCode_ERROR_CODE_UNSUPPORTED_FINGERPRINT {
 		t.Fatalf("code = %v, want unsupported_fingerprint", got)

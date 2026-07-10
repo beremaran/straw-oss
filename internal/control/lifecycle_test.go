@@ -111,6 +111,20 @@ func TestAssignmentOutboundStartDoesNotRelaxFallbackBoundary(t *testing.T) {
 	}
 }
 
+func TestFingerprintProfileExecutedMismatchRejected(t *testing.T) {
+	t.Parallel()
+
+	if !validateExecutedFingerprint("chrome_120", "chrome_120") {
+		t.Fatal("matching executed profile was rejected")
+	}
+	if validateExecutedFingerprint("chrome_120", "firefox_121") {
+		t.Fatal("mismatched executed profile was accepted")
+	}
+	if validateExecutedFingerprint("chrome_120", "") {
+		t.Fatal("missing executed profile was accepted for named selection")
+	}
+}
+
 func TestAssignmentFallbackBoundaryAndAdminCancel(t *testing.T) {
 	t.Parallel()
 

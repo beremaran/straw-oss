@@ -22,6 +22,7 @@ import (
 	"syscall"
 	"time"
 
+	fhttphttp2 "github.com/bogdanfinn/fhttp/http2"
 	"golang.org/x/net/dns/dnsmessage"
 	"golang.org/x/net/http2"
 
@@ -410,16 +411,19 @@ func (e *Executor) ExecuteWithTenant(ctx context.Context, tenantID string, start
 		return []*strawpb.StreamFrame{frames.error(failure)}
 	}
 
-	emit := emitOrBatch(frames.outboundStart(target.host, target.port), send)
-
 	failure = validateStart(start)
 	if failure != nil {
-		return append(emit, frames.error(failure))
+		return []*strawpb.StreamFrame{frames.error(failure)}
+	}
+
+	executedProfile, failure := resolveFingerprintInstruction(start.GetFingerprintInstruction())
+	if failure != nil {
+		return []*strawpb.StreamFrame{frames.error(failure)}
 	}
 
 	failure = validateHostSuffixPolicy(target.host, start.GetDestinationPolicy())
 	if failure != nil {
-		return append(emit, frames.error(failure))
+		return []*strawpb.StreamFrame{frames.error(failure)}
 	}
 
 	reqCtx, cancel := e.deadlineContext(ctx, start.GetDeadlineUnixMs())
@@ -427,7 +431,13 @@ func (e *Executor) ExecuteWithTenant(ctx context.Context, tenantID string, start
 
 	err := reqCtx.Err()
 	if err != nil {
-		return append(emit, frames.error(timeoutFailure()))
+		return []*strawpb.StreamFrame{frames.error(timeoutFailure())}
+	}
+
+	emit := emitOrBatch(frames.outboundStart(target.host, target.port, executedProfile), send)
+
+	if start.GetFingerprintInstruction() != "" {
+		return e.executeProfiled(reqCtx, target, start, body, frames, emit, send)
 	}
 
 	resp, failure := e.doRequestWithRetry(reqCtx, tenantID, target, start, body)
@@ -444,7 +454,33 @@ func (e *Executor) ExecuteWithTenant(ctx context.Context, tenantID string, start
 
 	emit = emitOrAppend(emit, frames.responseStart(status, responseHeaders(resp.Header)), send)
 
-	emit, failure = streamResponseBody(reqCtx, resp, frames, emit, send)
+	emit, failure = streamResponseBody(reqCtx, resp.Body, func() []*strawpb.Header {
+		return responseHeaders(resp.Trailer)
+	}, frames, emit, send)
+	if failure != nil {
+		return append(emit, frames.error(failure))
+	}
+
+	return append(emit, frames.end())
+}
+
+func (e *Executor) executeProfiled(ctx context.Context, target target, start *strawpb.RequestStart, body []byte, frames *frameBuilder, emit []*strawpb.StreamFrame, send func(*strawpb.StreamFrame)) []*strawpb.StreamFrame {
+	resp, closeResponse, failure := e.doProfiledRequest(ctx, target, start, body)
+	if failure != nil {
+		return append(emit, frames.error(failure))
+	}
+	defer closeResponse()
+
+	status, failure := responseStatus(resp.statusCode)
+	if failure != nil {
+		return append(emit, frames.error(failure))
+	}
+
+	emit = emitOrAppend(emit, frames.responseStart(status, responseHeaders(resp.header)), send)
+
+	emit, failure = streamResponseBody(ctx, resp.body, func() []*strawpb.Header {
+		return responseHeaders(resp.trailer)
+	}, frames, emit, send)
 	if failure != nil {
 		return append(emit, frames.error(failure))
 	}
@@ -561,12 +597,12 @@ func (e *Executor) openTunnel(ctx context.Context, start *strawpb.RequestStart) 
 	return conn, target, nil
 }
 
-func streamResponseBody(ctx context.Context, resp *http.Response, frames *frameBuilder, emit []*strawpb.StreamFrame, send func(*strawpb.StreamFrame)) ([]*strawpb.StreamFrame, *executionError) {
+func streamResponseBody(ctx context.Context, body io.Reader, trailers func() []*strawpb.Header, frames *frameBuilder, emit []*strawpb.StreamFrame, send func(*strawpb.StreamFrame)) ([]*strawpb.StreamFrame, *executionError) {
 	buf := make([]byte, responseFrameDataBytes)
 	offset := uint64(0)
 
 	for {
-		n, err := resp.Body.Read(buf)
+		n, err := body.Read(buf)
 		if n > 0 {
 			chunk := append([]byte(nil), buf[:n]...)
 			emit = emitOrAppend(emit, frames.data(offset, chunk), send)
@@ -582,8 +618,11 @@ func streamResponseBody(ctx context.Context, resp *http.Response, frames *frameB
 		}
 	}
 
-	if len(resp.Trailer) > 0 {
-		emit = emitOrAppend(emit, frames.trailers(responseHeaders(resp.Trailer)), send)
+	if trailers != nil {
+		trailerHeaders := trailers()
+		if len(trailerHeaders) > 0 {
+			emit = emitOrAppend(emit, frames.trailers(trailerHeaders), send)
+		}
 	}
 
 	return emit, nil
@@ -1036,10 +1075,6 @@ func validateStart(start *strawpb.RequestStart) *executionError {
 		return executorFailure(strawpb.ErrorCode_ERROR_CODE_DESTINATION_DENIED, unsupportedModeFact)
 	}
 
-	if start.GetFingerprintInstruction() != "" {
-		return executorFailure(strawpb.ErrorCode_ERROR_CODE_UNSUPPORTED_FINGERPRINT, unsupportedFingerprint)
-	}
-
 	if strings.EqualFold(start.GetMethod(), http.MethodConnect) {
 		return executorFailure(strawpb.ErrorCode_ERROR_CODE_EXECUTOR_INTERNAL_ERROR, invalidRequestStartFact)
 	}
@@ -1069,7 +1104,11 @@ func validateTunnelStart(start *strawpb.RequestStart) *executionError {
 		return executorFailure(strawpb.ErrorCode_ERROR_CODE_DESTINATION_DENIED, unsupportedModeFact)
 	}
 
-	if start.GetFingerprintInstruction() != "" || len(start.GetInjectionOperations()) != 0 || len(start.GetHeaders()) != 0 {
+	if start.GetFingerprintInstruction() != "" {
+		return executorFailure(strawpb.ErrorCode_ERROR_CODE_UNSUPPORTED_FINGERPRINT, unsupportedFingerprint)
+	}
+
+	if len(start.GetInjectionOperations()) != 0 || len(start.GetHeaders()) != 0 {
 		return executorFailure(strawpb.ErrorCode_ERROR_CODE_EXECUTOR_INTERNAL_ERROR, invalidRequestStartFact)
 	}
 
@@ -1271,6 +1310,16 @@ func mapHTTPErrorOther(err error) *executionError {
 }
 
 func mapHTTP2Error(err error) (*executionError, bool) {
+	var profiledStreamErr fhttphttp2.StreamError
+	if errors.As(err, &profiledStreamErr) {
+		return mapProfiledHTTP2StreamError(profiledStreamErr.Code), true
+	}
+
+	var profiledStreamErrPtr *fhttphttp2.StreamError
+	if errors.As(err, &profiledStreamErrPtr) && profiledStreamErrPtr != nil {
+		return mapProfiledHTTP2StreamError(profiledStreamErrPtr.Code), true
+	}
+
 	var streamErr http2.StreamError
 	if errors.As(err, &streamErr) {
 		return mapHTTP2StreamError(streamErr.Code), true
@@ -1288,6 +1337,32 @@ func mapHTTP2Error(err error) (*executionError, bool) {
 	}
 
 	return nil, false
+}
+
+func mapProfiledHTTP2StreamError(code fhttphttp2.ErrCode) *executionError {
+	switch code {
+	case fhttphttp2.ErrCodeConnect:
+		return executorFailure(strawpb.ErrorCode_ERROR_CODE_UPSTREAM_CONNECTION_REFUSED, "upstream_connection_refused")
+	case fhttphttp2.ErrCodeInadequateSecurity:
+		return executorFailure(strawpb.ErrorCode_ERROR_CODE_UPSTREAM_TLS_FAILURE, "upstream_tls_failure")
+	case fhttphttp2.ErrCodeEnhanceYourCalm:
+		return executorFailure(strawpb.ErrorCode_ERROR_CODE_UPSTREAM_RESET, "enhance_your_calm")
+	case fhttphttp2.ErrCodeHTTP11Required:
+		return executorFailure(strawpb.ErrorCode_ERROR_CODE_UPSTREAM_RESET, "http_1_1_required")
+	case fhttphttp2.ErrCodeNo,
+		fhttphttp2.ErrCodeProtocol,
+		fhttphttp2.ErrCodeInternal,
+		fhttphttp2.ErrCodeFlowControl,
+		fhttphttp2.ErrCodeSettingsTimeout,
+		fhttphttp2.ErrCodeStreamClosed,
+		fhttphttp2.ErrCodeFrameSize,
+		fhttphttp2.ErrCodeRefusedStream,
+		fhttphttp2.ErrCodeCancel,
+		fhttphttp2.ErrCodeCompression:
+		return executorFailure(strawpb.ErrorCode_ERROR_CODE_UPSTREAM_RESET, "upstream_reset")
+	default:
+		return executorFailure(strawpb.ErrorCode_ERROR_CODE_UPSTREAM_RESET, "upstream_reset")
+	}
 }
 
 func mapHTTP2StreamError(code http2.ErrCode) *executionError {
@@ -1518,17 +1593,18 @@ func newFrameBuilder(attempt uint32) *frameBuilder {
 	return &frameBuilder{attempt: attempt}
 }
 
-func (b *frameBuilder) outboundStart(host string, port uint32) *strawpb.StreamFrame {
+func (b *frameBuilder) outboundStart(host string, port uint32, executedProfile string) *strawpb.StreamFrame {
 	b.seq++
 
 	return &strawpb.StreamFrame{
 		StreamSeq: b.seq,
 		Attempt:   b.attempt,
 		Payload: &strawpb.StreamFrame_OutboundStart{OutboundStart: &strawpb.OutboundStartFrame{
-			TargetHost:        host,
-			TargetPort:        port,
-			Attempt:           b.attempt,
-			WorkerTimestampMs: time.Now().UnixMilli(),
+			TargetHost:                 host,
+			TargetPort:                 port,
+			Attempt:                    b.attempt,
+			ExecutedFingerprintProfile: executedProfile,
+			WorkerTimestampMs:          time.Now().UnixMilli(),
 		}},
 	}
 }
