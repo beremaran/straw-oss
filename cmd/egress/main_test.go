@@ -43,6 +43,9 @@ func TestBuildCapabilitiesFromConfig(t *testing.T) {
 	if caps.MaxConcurrency != 100 {
 		t.Fatalf("MaxConcurrency = %d, want 100", caps.MaxConcurrency)
 	}
+	if !slices.Equal(caps.SupportedFingerprintProfiles, internalegress.SupportedFingerprintProfiles()) {
+		t.Fatalf("SupportedFingerprintProfiles = %v, want official Egress profiles", caps.SupportedFingerprintProfiles)
+	}
 
 	if len(caps.AllowedPools) != 1 || caps.AllowedPools[0].GetTenantId() != "ten_x" || caps.AllowedPools[0].GetPoolId() != "pool_y" {
 		t.Fatalf("AllowedPools = %+v, want [{ten_x pool_y}]", caps.AllowedPools)

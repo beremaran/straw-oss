@@ -155,17 +155,18 @@ type RegisterOutcome struct {
 
 // runtimeSession is one ephemeral worker session.
 type runtimeSession struct {
-	sessionID      string
-	executorType   string
-	credentialID   string
-	tenantScope    []string
-	pools          []AllowedPool
-	tags           []string
-	countries      []string
-	regions        []string
-	ipTypes        []string
-	ingressModes   []string
-	maxConcurrency uint32
+	sessionID                    string
+	executorType                 string
+	credentialID                 string
+	tenantScope                  []string
+	pools                        []AllowedPool
+	tags                         []string
+	countries                    []string
+	regions                      []string
+	ipTypes                      []string
+	ingressModes                 []string
+	supportedFingerprintProfiles []string
+	maxConcurrency               uint32
 
 	health         strawpb.WorkerHealth
 	hasHeartbeat   bool
@@ -356,20 +357,21 @@ func (r *WorkerRegistry) Register(ctx context.Context, req *strawpb.RegisterRequ
 // registration.
 func newRuntimeSession(sessionID string, cred WorkerCredential, req *strawpb.RegisterRequest, now time.Time) *runtimeSession {
 	return &runtimeSession{
-		sessionID:      sessionID,
-		executorType:   req.GetExecutorType(),
-		credentialID:   req.GetCredentialId(),
-		tenantScope:    append([]string(nil), cred.TenantScope...),
-		pools:          append([]AllowedPool(nil), poolRefsToAllowed(req.GetAllowedPools())...),
-		tags:           append([]string(nil), req.GetTags()...),
-		countries:      append([]string(nil), req.GetCountries()...),
-		regions:        append([]string(nil), req.GetRegions()...),
-		ipTypes:        append([]string(nil), req.GetIpTypes()...),
-		ingressModes:   append([]string(nil), req.GetSupportedIngressModes()...),
-		maxConcurrency: req.GetMaxConcurrency(),
-		health:         strawpb.WorkerHealth_WORKER_HEALTH_READY,
-		draining:       req.GetInitialDraining(),
-		registeredAt:   now,
+		sessionID:                    sessionID,
+		executorType:                 req.GetExecutorType(),
+		credentialID:                 req.GetCredentialId(),
+		tenantScope:                  append([]string(nil), cred.TenantScope...),
+		pools:                        append([]AllowedPool(nil), poolRefsToAllowed(req.GetAllowedPools())...),
+		tags:                         append([]string(nil), req.GetTags()...),
+		countries:                    append([]string(nil), req.GetCountries()...),
+		regions:                      append([]string(nil), req.GetRegions()...),
+		ipTypes:                      append([]string(nil), req.GetIpTypes()...),
+		ingressModes:                 append([]string(nil), req.GetSupportedIngressModes()...),
+		supportedFingerprintProfiles: append([]string(nil), req.GetSupportedFingerprintProfiles()...),
+		maxConcurrency:               req.GetMaxConcurrency(),
+		health:                       strawpb.WorkerHealth_WORKER_HEALTH_READY,
+		draining:                     req.GetInitialDraining(),
+		registeredAt:                 now,
 	}
 }
 
@@ -498,19 +500,20 @@ func (r *WorkerRegistry) EligibleForTenant(workerID, tenantID string) bool {
 // assignment in a specific tenant+pool, with the capability and load data
 // routing needs to filter and rank it.
 type PoolCandidate struct {
-	WorkerID       string
-	SessionID      string
-	AssignSubject  string
-	ExecutorType   string
-	Degraded       bool
-	Tags           []string
-	Countries      []string
-	Regions        []string
-	IPTypes        []string
-	IngressModes   []string
-	ActiveRequests uint32
-	MaxConcurrency uint32
-	AvailableCap   uint32
+	WorkerID                     string
+	SessionID                    string
+	AssignSubject                string
+	ExecutorType                 string
+	Degraded                     bool
+	Tags                         []string
+	Countries                    []string
+	Regions                      []string
+	IPTypes                      []string
+	IngressModes                 []string
+	SupportedFingerprintProfiles []string
+	ActiveRequests               uint32
+	MaxConcurrency               uint32
+	AvailableCap                 uint32
 }
 
 // CandidatesForPool returns every worker session eligible for tenantID and
@@ -552,19 +555,20 @@ func (r *WorkerRegistry) CandidatesForPool(tenantID, poolID string) []PoolCandid
 		}
 
 		out = append(out, PoolCandidate{
-			WorkerID:       workerID,
-			SessionID:      s.sessionID,
-			AssignSubject:  subject,
-			ExecutorType:   s.executorType,
-			Degraded:       state == RuntimeDegraded,
-			Tags:           s.tags,
-			Countries:      s.countries,
-			Regions:        s.regions,
-			IPTypes:        s.ipTypes,
-			IngressModes:   s.ingressModes,
-			ActiveRequests: s.activeRequests,
-			MaxConcurrency: s.maxConcurrency,
-			AvailableCap:   s.availableCap,
+			WorkerID:                     workerID,
+			SessionID:                    s.sessionID,
+			AssignSubject:                subject,
+			ExecutorType:                 s.executorType,
+			Degraded:                     state == RuntimeDegraded,
+			Tags:                         s.tags,
+			Countries:                    s.countries,
+			Regions:                      s.regions,
+			IPTypes:                      s.ipTypes,
+			IngressModes:                 s.ingressModes,
+			SupportedFingerprintProfiles: append([]string(nil), s.supportedFingerprintProfiles...),
+			ActiveRequests:               s.activeRequests,
+			MaxConcurrency:               s.maxConcurrency,
+			AvailableCap:                 s.availableCap,
 		})
 	}
 
@@ -613,7 +617,8 @@ func rejectRegisterRequestCapabilities(cred WorkerCredential, req *strawpb.Regis
 		!subset(req.GetCountries(), caps.Countries) ||
 		!subset(req.GetRegions(), caps.Regions) ||
 		!subset(req.GetIpTypes(), caps.IPTypes) ||
-		!subset(req.GetSupportedIngressModes(), caps.SupportedIngressModes) {
+		!subset(req.GetSupportedIngressModes(), caps.SupportedIngressModes) ||
+		!subset(req.GetSupportedFingerprintProfiles(), caps.SupportedFingerprintProfiles) {
 		return RejectCapabilityScope
 	}
 
@@ -877,8 +882,9 @@ type WorkerView struct {
 	// TenantAdmin/TenantDrain hold the full per-tenant maps for platform
 	// callers; the tenant-scoped listing collapses these to the caller's
 	// tenant only.
-	TenantAdmin map[string]AdminState
-	TenantDrain map[string]bool
+	TenantAdmin                  map[string]AdminState
+	TenantDrain                  map[string]bool
+	SupportedFingerprintProfiles []string
 	// Platform-only fields.
 	SessionID       string
 	ExecutorType    string
@@ -910,6 +916,7 @@ func (r *WorkerRegistry) ListWorkersPlatform() []WorkerView {
 			v.SessionID = e.current.sessionID
 
 			v.ExecutorType = e.current.executorType
+			v.SupportedFingerprintProfiles = append([]string(nil), e.current.supportedFingerprintProfiles...)
 
 			subject, err := natsx.AssignmentSubject(workerID, e.current.sessionID)
 			if err == nil {
@@ -943,13 +950,14 @@ func (r *WorkerRegistry) ListWorkersForTenant(tenantID string) []WorkerView {
 		// to see workers they can act on. We surface only this tenant's admin
 		// overrides and never a session_id or NATS subject.
 		v := WorkerView{
-			WorkerID:         workerID,
-			RuntimeState:     r.runtimeState(e, now),
-			GlobalAdminState: e.globalAdmin,
-			GlobalDraining:   e.globalDrain,
-			TenantAdmin:      map[string]AdminState{tenantID: tenantAdminState(e, tenantID)},
-			TenantDrain:      map[string]bool{tenantID: e.tenantDrain[tenantID]},
-			ExecutorType:     e.current.executorType,
+			WorkerID:                     workerID,
+			RuntimeState:                 r.runtimeState(e, now),
+			GlobalAdminState:             e.globalAdmin,
+			GlobalDraining:               e.globalDrain,
+			TenantAdmin:                  map[string]AdminState{tenantID: tenantAdminState(e, tenantID)},
+			TenantDrain:                  map[string]bool{tenantID: e.tenantDrain[tenantID]},
+			ExecutorType:                 e.current.executorType,
+			SupportedFingerprintProfiles: append([]string(nil), e.current.supportedFingerprintProfiles...),
 		}
 		out = append(out, v)
 	}

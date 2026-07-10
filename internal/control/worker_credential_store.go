@@ -34,11 +34,12 @@ type AllowedPool struct {
 // docs/planning/06-identity-roles-and-tenant-isolation.md and the
 // allowed_capabilities schema in docs/planning/26.
 type WorkerCapabilities struct {
-	Tags                  []string `json:"tags"`
-	Countries             []string `json:"countries"`
-	Regions               []string `json:"regions"`
-	IPTypes               []string `json:"ip_types"`
-	SupportedIngressModes []string `json:"supported_ingress_modes"`
+	Tags                         []string `json:"tags"`
+	Countries                    []string `json:"countries"`
+	Regions                      []string `json:"regions"`
+	IPTypes                      []string `json:"ip_types"`
+	SupportedIngressModes        []string `json:"supported_ingress_modes"`
+	SupportedFingerprintProfiles []string `json:"supported_fingerprint_profiles"`
 }
 
 // WorkerCredential mirrors the `worker_credentials` table. P0 creation

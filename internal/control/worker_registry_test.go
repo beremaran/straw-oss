@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -16,14 +17,15 @@ import (
 )
 
 const (
-	workerRegTestWcred1  = "wcred_1"
-	workerRegTestEgress  = "egress"
-	workerRegTestTenantA = "ten_a"
-	workerRegTestTenantB = "ten_b"
-	workerRegTestTenantC = "ten_c"
-	workerRegTestPool1   = "pool_1"
-	workerRegTestWorker1 = "worker-1"
-	workerRegTestWorker2 = "worker-2"
+	workerRegTestWcred1    = "wcred_1"
+	workerRegTestEgress    = "egress"
+	workerRegTestTenantA   = "ten_a"
+	workerRegTestTenantB   = "ten_b"
+	workerRegTestTenantC   = "ten_c"
+	workerRegTestPool1     = "pool_1"
+	workerRegTestChrome120 = "chrome_120"
+	workerRegTestWorker1   = "worker-1"
+	workerRegTestWorker2   = "worker-2"
 )
 
 // fakeClock is a controllable clock for deterministic state-timing tests.
@@ -261,6 +263,49 @@ func TestRegisterIngressCapabilityOutOfScope(t *testing.T) {
 	}
 }
 
+func TestRegisterFingerprintCapabilitySubset(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		allowed    []string
+		claimed    []string
+		wantReason string
+	}{
+		{name: "allowed exact capability", allowed: []string{workerRegTestChrome120}, claimed: []string{workerRegTestChrome120}},
+		{name: "empty allowlist is unrestricted", claimed: []string{workerRegTestChrome120}},
+		{name: "claim outside allowlist", allowed: []string{workerRegTestChrome120}, claimed: []string{"firefox_121"}, wantReason: RejectCapabilityScope},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cred := defaultCred()
+			cred.AllowedCapabilities.SupportedFingerprintProfiles = tt.allowed
+			h := newRegHarness(t, cred)
+			req := h.signedRegister(workerRegTestWorker1, func(r *strawpb.RegisterRequest) {
+				r.ProtocolMinor = 1
+				r.SupportedFingerprintProfiles = append([]string(nil), tt.claimed...)
+				r.SignedToken = strawpb.SignRegistration(h.priv, r)
+			})
+
+			out, err := h.reg.Register(context.Background(), req)
+			if err != nil {
+				t.Fatalf("Register error: %v", err)
+			}
+			if tt.wantReason == "" {
+				if !out.OK {
+					t.Fatalf("Register rejected: %s", out.Reason)
+				}
+
+				return
+			}
+			if out.OK || out.Reason != tt.wantReason {
+				t.Fatalf("outcome = %+v, want rejection %q", out, tt.wantReason)
+			}
+		})
+	}
+}
+
 func TestRegisterMultiTenantCredentialScope(t *testing.T) {
 	t.Parallel()
 	cred := defaultCred()
@@ -320,6 +365,87 @@ func TestRegisterDuplicateSessionReplacement(t *testing.T) {
 	}
 	if got := h.reg.RuntimeState("worker-1"); got != RuntimeReady {
 		t.Fatalf("runtime after stale heartbeat = %s, want ready (unchanged)", got)
+	}
+}
+
+func TestRegisterReplacementUsesOnlyNewFingerprintCapabilities(t *testing.T) {
+	t.Parallel()
+
+	h := newRegHarness(t, defaultCred())
+	firstReq := h.signedRegister(workerRegTestWorker1, func(r *strawpb.RegisterRequest) {
+		r.ProtocolMinor = 1
+		r.SupportedFingerprintProfiles = []string{workerRegTestChrome120}
+		r.SignedToken = strawpb.SignRegistration(h.priv, r)
+	})
+	first := h.mustRegister(t, firstReq)
+	firstReq.SupportedFingerprintProfiles[0] = "mutated_after_register"
+
+	secondReq := h.signedRegister(workerRegTestWorker1, func(r *strawpb.RegisterRequest) {
+		r.ProtocolMinor = 1
+		r.SignedToken = strawpb.SignRegistration(h.priv, r)
+	})
+	second := h.mustRegister(t, secondReq)
+
+	e := h.reg.workers[workerRegTestWorker1]
+	if e.current.sessionID != second || len(e.current.supportedFingerprintProfiles) != 0 {
+		t.Fatalf("current session = %+v, want new baseline-only session", e.current)
+	}
+	if e.superseded.sessionID != first || !slices.Equal(e.superseded.supportedFingerprintProfiles, []string{workerRegTestChrome120}) {
+		t.Fatalf("superseded session = %+v, want old session with immutable chrome_120", e.superseded)
+	}
+}
+
+func TestStaleSessionHeartbeatCannotRestoreFingerprintCapabilities(t *testing.T) {
+	t.Parallel()
+
+	h := newRegHarness(t, defaultCred())
+	first := h.mustRegister(t, h.signedRegister(workerRegTestWorker1, func(r *strawpb.RegisterRequest) {
+		r.ProtocolMinor = 1
+		r.SupportedFingerprintProfiles = []string{workerRegTestChrome120}
+		r.SignedToken = strawpb.SignRegistration(h.priv, r)
+	}))
+	second := h.mustRegister(t, h.signedRegister(workerRegTestWorker1, func(r *strawpb.RegisterRequest) {
+		r.ProtocolMinor = 1
+		r.SignedToken = strawpb.SignRegistration(h.priv, r)
+	}))
+
+	if ok, _ := h.reg.Heartbeat(readyHeartbeat(workerRegTestWorker1, first)); !ok {
+		t.Fatal("superseded-session heartbeat should be recognized")
+	}
+	e := h.reg.workers[workerRegTestWorker1]
+	if e.current.sessionID != second || len(e.current.supportedFingerprintProfiles) != 0 {
+		t.Fatalf("current session after stale heartbeat = %+v, want replacement capabilities unchanged", e.current)
+	}
+}
+
+func TestTenantViewsCopyFingerprintCapabilitiesWithoutSessionInternals(t *testing.T) {
+	t.Parallel()
+
+	h := newRegHarness(t, defaultCred())
+	sessionID := h.mustRegister(t, h.signedRegister(workerRegTestWorker1, func(r *strawpb.RegisterRequest) {
+		r.ProtocolMinor = 1
+		r.SupportedFingerprintProfiles = []string{workerRegTestChrome120}
+		r.SignedToken = strawpb.SignRegistration(h.priv, r)
+	}))
+	if ok, _ := h.reg.Heartbeat(readyHeartbeat(workerRegTestWorker1, sessionID)); !ok {
+		t.Fatal("current-session heartbeat should be accepted")
+	}
+
+	candidates := h.reg.CandidatesForPool(workerRegTestTenantA, workerRegTestPool1)
+	views := h.reg.ListWorkersForTenant(workerRegTestTenantA)
+	if len(candidates) != 1 || !slices.Equal(candidates[0].SupportedFingerprintProfiles, []string{workerRegTestChrome120}) {
+		t.Fatalf("tenant candidates = %+v, want copied chrome_120 capability", candidates)
+	}
+	if len(views) != 1 || views[0].SessionID != "" || views[0].AssignSubject != "" ||
+		!slices.Equal(views[0].SupportedFingerprintProfiles, []string{workerRegTestChrome120}) {
+		t.Fatalf("tenant views = %+v, want capability without session internals", views)
+	}
+
+	candidates[0].SupportedFingerprintProfiles[0] = "mutated_candidate"
+	views[0].SupportedFingerprintProfiles[0] = "mutated_view"
+	refreshed := h.reg.ListWorkersForTenant(workerRegTestTenantA)
+	if !slices.Equal(refreshed[0].SupportedFingerprintProfiles, []string{workerRegTestChrome120}) {
+		t.Fatalf("refreshed tenant profiles = %v, want immutable chrome_120", refreshed[0].SupportedFingerprintProfiles)
 	}
 }
 
