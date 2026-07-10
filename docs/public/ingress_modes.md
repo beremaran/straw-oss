@@ -101,7 +101,7 @@ When `server.mitm_enabled` is set to `true`, Straw operates a full TLS-terminati
 
 ### How It Works
 1. When an HTTPS client connects to port `8083`, Straw intercepts the TLS handshake and dynamically generates an ephemeral TLS certificate signed by Straw's internal Root Certificate Authority (CA).
-2. The Egress worker decrypts the request payload, applies any tenant-configured injection policies (e.g., adding API tokens or custom User-Agents), and applies browser TLS fingerprinting profiles (`chrome_120`, `firefox_120`, `safari_16_0`).
+2. The Egress worker decrypts the request payload, applies any tenant-configured injection policies (e.g., adding API tokens or custom User-Agents), and applies browser TLS fingerprinting profiles (`chrome_120`, `firefox_121`, `safari_17`).
 3. The Egress worker initiates an independent, clean TLS connection to the real upstream server, receives the response, records telemetry/payload capture data if configured, and re-encrypts the response back to the client.
 
 ### Authentication
@@ -163,7 +163,7 @@ Each registered Egress worker advertises its supported proxy modes in its regist
   "public_key_ed25519_base64": "...",
   "capabilities": {
     "supported_ingress_modes": ["rest", "http_proxy", "connect", "mitm"],
-    "supported_fingerprints": ["default", "chrome_120", "firefox_120", "safari_16_0"]
+    "supported_fingerprints": ["default", "chrome_120", "firefox_121", "safari_17"]
   }
 }
 ```
