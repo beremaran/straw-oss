@@ -8,7 +8,11 @@ import (
 	strawpb "github.com/beremaran/straw/v2/api/proto/straw/v1"
 )
 
-const profileCapabilityProtocolMinor uint32 = 1
+const (
+	profileCapabilityProtocolMinor uint32 = 1
+	chrome120Profile                      = "chrome_120"
+	additionalProfile                     = "additional_profile"
+)
 
 func TestRegistrationSigningPayloadPreservesLegacyBytesUntilNewMinorCapabilities(t *testing.T) {
 	t.Parallel()
@@ -21,7 +25,7 @@ func TestRegistrationSigningPayloadPreservesLegacyBytesUntilNewMinorCapabilities
 	}
 
 	profiles := requireStringField(t, req, "supported_fingerprint_profiles", 19)
-	setStringList(t, req, profiles, []string{"chrome_120"})
+	setStringList(t, req, profiles, []string{chrome120Profile})
 	if got := strawpb.RegistrationSigningPayload(req); !bytes.Equal(got, legacyPayload) {
 		t.Fatalf("legacy-minor profile capability changed signing bytes: got %q, want %q", got, legacyPayload)
 	}
@@ -38,8 +42,8 @@ func TestRegistrationSignatureCanonicalizesProfileOrderAndRejectsMutation(t *tes
 	first := signingRequest(profileCapabilityProtocolMinor)
 	second := signingRequest(profileCapabilityProtocolMinor)
 	profiles := requireStringField(t, first, "supported_fingerprint_profiles", 19)
-	setStringList(t, first, profiles, []string{"chrome_120", "additional_profile"})
-	setStringList(t, second, profiles, []string{"additional_profile", "chrome_120"})
+	setStringList(t, first, profiles, []string{chrome120Profile, additionalProfile})
+	setStringList(t, second, profiles, []string{additionalProfile, chrome120Profile})
 
 	firstPayload := strawpb.RegistrationSigningPayload(first)
 	secondPayload := strawpb.RegistrationSigningPayload(second)
@@ -57,7 +61,7 @@ func TestRegistrationSignatureCanonicalizesProfileOrderAndRejectsMutation(t *tes
 		t.Fatal("signature for an equivalent canonical capability set did not verify")
 	}
 
-	setStringList(t, second, profiles, []string{"additional_profile", "mutated_profile"})
+	setStringList(t, second, profiles, []string{additionalProfile, "mutated_profile"})
 	if strawpb.VerifyRegistrationSignature(publicKey, second, firstSignature) {
 		t.Fatal("signature remained valid after supported profile mutation")
 	}

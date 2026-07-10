@@ -5,9 +5,10 @@ import (
 	"slices"
 	"testing"
 
-	strawpb "github.com/beremaran/straw/v2/api/proto/straw/v1"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
+
+	strawpb "github.com/beremaran/straw/v2/api/proto/straw/v1"
 )
 
 func TestStreamFrameBodyRefCompiles(t *testing.T) {
@@ -103,30 +104,32 @@ func TestFingerprintProfileFieldsAreAdditiveAndRoundTrip(t *testing.T) {
 		t.Fatalf("legacy registration bytes changed: got %x, want %x", legacyWire, want)
 	}
 
-	setStringList(t, legacy, profiles, []string{"chrome_120"})
+	setStringList(t, legacy, profiles, []string{chrome120Profile})
 	profileWire, err := proto.Marshal(legacy)
 	if err != nil {
 		t.Fatalf("marshal registration with profile capability: %v", err)
 	}
 	var decoded strawpb.RegisterRequest
-	if err := proto.Unmarshal(profileWire, &decoded); err != nil {
+	err = proto.Unmarshal(profileWire, &decoded)
+	if err != nil {
 		t.Fatalf("unmarshal registration with profile capability: %v", err)
 	}
-	if got := stringList(&decoded, profiles); !slices.Equal(got, []string{"chrome_120"}) {
+	if got := stringList(&decoded, profiles); !slices.Equal(got, []string{chrome120Profile}) {
 		t.Fatalf("supported fingerprint profiles = %v, want [chrome_120]", got)
 	}
 
 	outbound := &strawpb.OutboundStartFrame{TargetHost: "example.test", Attempt: 1}
-	outbound.ProtoReflect().Set(executed, protoreflect.ValueOfString("chrome_120"))
+	outbound.ProtoReflect().Set(executed, protoreflect.ValueOfString(chrome120Profile))
 	outboundWire, err := proto.Marshal(outbound)
 	if err != nil {
 		t.Fatalf("marshal outbound start frame: %v", err)
 	}
 	var decodedOutbound strawpb.OutboundStartFrame
-	if err := proto.Unmarshal(outboundWire, &decodedOutbound); err != nil {
+	err = proto.Unmarshal(outboundWire, &decodedOutbound)
+	if err != nil {
 		t.Fatalf("unmarshal outbound start frame: %v", err)
 	}
-	if got := decodedOutbound.ProtoReflect().Get(executed).String(); got != "chrome_120" {
+	if got := decodedOutbound.ProtoReflect().Get(executed).String(); got != chrome120Profile {
 		t.Fatalf("executed fingerprint profile = %q, want chrome_120", got)
 	}
 }
