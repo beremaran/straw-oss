@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 func TestTenantSnapshotCloneDeepCopiesPolicySlices(t *testing.T) {
 	original := TenantSnapshot{
@@ -42,5 +45,38 @@ func TestTenantSnapshotCloneDeepCopiesPolicySlices(t *testing.T) {
 	}
 	if original.InjectionPolicies[0].Operations[0].ValueBase64 != "dmFsdWU=" {
 		t.Fatalf("original injection value mutated to %q", original.InjectionPolicies[0].Operations[0].ValueBase64)
+	}
+}
+
+func TestTenantSnapshotClonePreservesImmutableFingerprintProfileMetadata(t *testing.T) {
+	profile := FingerprintProfile{Name: "chrome_120", ScopeType: "global", Enabled: true, SupportedByWorker: true}
+	metadata := map[string]string{
+		"ExecutorType":     "egress",
+		"ProfileRef":       "tls-client/v1.15.1:profiles.Chrome_120",
+		"ContractRevision": "chrome_120_v1_15_1",
+	}
+	profileValue := reflect.ValueOf(&profile).Elem()
+	for field, value := range metadata {
+		fieldValue := profileValue.FieldByName(field)
+		if !fieldValue.IsValid() || !fieldValue.CanSet() || fieldValue.Kind() != reflect.String {
+			t.Fatalf("fingerprint profile missing immutable %s metadata", field)
+		}
+		fieldValue.SetString(value)
+	}
+	original := TenantSnapshot{FingerprintProfiles: []FingerprintProfile{profile}}
+
+	clone := original.Clone()
+	if len(clone.FingerprintProfiles) != 1 || clone.FingerprintProfiles[0].Name != "chrome_120" {
+		t.Fatalf("cloned profiles = %+v, want chrome_120 descriptor", clone.FingerprintProfiles)
+	}
+
+	for field, want := range metadata {
+		fieldValue := reflect.ValueOf(clone.FingerprintProfiles[0]).FieldByName(field)
+		if !fieldValue.IsValid() || fieldValue.Kind() != reflect.String {
+			t.Fatalf("cloned fingerprint profile missing immutable %s metadata", field)
+		}
+		if fieldValue.String() != want {
+			t.Fatalf("cloned fingerprint profile %s = %q, want %q", field, fieldValue.String(), want)
+		}
 	}
 }

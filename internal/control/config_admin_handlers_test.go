@@ -616,27 +616,75 @@ func TestFingerprintProfilesReadOnly(t *testing.T) {
 		t.Fatalf("list status = %d, want 200", w.Code)
 	}
 
-	var profiles []fingerprintProfileResponse
-	err := json.Unmarshal(w.Body.Bytes(), &profiles)
+	var response struct {
+		SupportedProfiles []struct {
+			Name       string `json:"name"`
+			Enabled    bool   `json:"enabled"`
+			ProfileRef string `json:"profile_ref"`
+		} `json:"supported_profiles"`
+		UnavailableProfiles []struct {
+			Name              string `json:"name"`
+			Enabled           bool   `json:"enabled"`
+			Availability      string `json:"availability"`
+			UnavailableReason string `json:"unavailable_reason"`
+		} `json:"unavailable_profiles"`
+		Aliases map[string]string `json:"aliases"`
+	}
+	err := json.Unmarshal(w.Body.Bytes(), &response)
 	if err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if len(profiles) == 0 {
-		t.Fatal("profiles empty, want seeded built-ins")
+	if response.Aliases[defaultFingerprintProfileName] != "baseline" {
+		t.Fatalf("aliases = %+v, want default -> baseline", response.Aliases)
 	}
-
-	found := false
-	for _, p := range profiles {
-		if p.Name == defaultFingerprintProfileName && p.ScopeType == fingerprintProfileScopeGlobal {
-			found = true
+	for _, profile := range response.SupportedProfiles {
+		if profile.Name == defaultFingerprintProfileName || profile.Name == "firefox_121" || profile.Name == "safari_17" {
+			t.Fatalf("supported profiles = %+v, must not advertise %q", response.SupportedProfiles, profile.Name)
 		}
 	}
-	if !found {
-		t.Fatalf("profiles = %+v, want built-in default global profile", profiles)
+
+	foundUnavailableChrome := false
+	for _, profile := range response.UnavailableProfiles {
+		if profile.Name == "chrome_120" {
+			foundUnavailableChrome = profile.Enabled && profile.Availability == "unavailable" &&
+				profile.UnavailableReason == "no_active_capable_worker"
+		}
+		if profile.UnavailableReason != "" && profile.UnavailableReason != "disabled" &&
+			profile.UnavailableReason != "no_executable_definition" && profile.UnavailableReason != "no_active_capable_worker" {
+			t.Fatalf("profile %q has unbounded unavailable reason %q", profile.Name, profile.UnavailableReason)
+		}
+	}
+	if !foundUnavailableChrome {
+		t.Fatalf("unavailable profiles = %+v, want chrome_120 with no_active_capable_worker", response.UnavailableProfiles)
 	}
 
 	// No handler exists for a write path in P0: AdminHandlers exposes no
 	// Create/Update/Delete fingerprint-profile method to route to.
+}
+
+func TestInMemoryFingerprintProfileStoreSeedsExecutableCatalogOnly(t *testing.T) {
+	store := NewInMemoryFingerprintProfileStore()
+	profiles, err := store.ListFingerprintProfiles(context.Background(), adminTestTenantA)
+	if err != nil {
+		t.Fatalf("ListFingerprintProfiles() error = %v", err)
+	}
+
+	byName := make(map[string]FingerprintProfileRecord, len(profiles))
+	for _, profile := range profiles {
+		byName[profile.Name] = profile
+	}
+
+	if profile, ok := byName["chrome_120"]; !ok || !profile.Enabled {
+		t.Fatalf("chrome_120 = %+v present=%v, want enabled catalog descriptor", profile, ok)
+	}
+	for _, retired := range []string{"firefox_121", "safari_17"} {
+		if profile, ok := byName[retired]; !ok || profile.Enabled {
+			t.Fatalf("%s = %+v present=%v, want retained disabled descriptor", retired, profile, ok)
+		}
+	}
+	if profile, ok := byName[defaultFingerprintProfileName]; ok && profile.Enabled {
+		t.Fatalf("default = %+v, want alias excluded from named profile catalog", profile)
+	}
 }
 
 func TestConfigWritesPublishInvalidation(t *testing.T) {

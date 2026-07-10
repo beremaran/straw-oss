@@ -169,8 +169,8 @@ func TestPostgresConfigStoreSnapshotAssembly(t *testing.T) {
 	if len(snap.TenantWorkerOverrides) != 1 || snap.TenantWorkerOverrides[0].WorkerID != "worker_tenant" {
 		t.Fatalf("tenant worker overrides = %+v, want worker_tenant", snap.TenantWorkerOverrides)
 	}
-	if !hasFingerprintProfile(snap.FingerprintProfiles, "default") {
-		t.Fatalf("fingerprint profiles = %+v, want seeded default profile", snap.FingerprintProfiles)
+	if !hasFingerprintProfile(snap.FingerprintProfiles, "chrome_120") {
+		t.Fatalf("fingerprint profiles = %+v, want seeded chrome_120 profile", snap.FingerprintProfiles)
 	}
 
 	_, err = store.LoadTenantSnapshot(ctx, pgTestTenantA, version-1)
