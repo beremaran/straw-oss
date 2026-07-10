@@ -3,12 +3,15 @@ package strawpb
 
 import (
 	"crypto/ed25519"
+	"slices"
 )
 
 // registrationSigningDomain is a fixed domain-separation prefix so a
 // registration signature can never be replayed as a signature over some
 // other Straw message type.
 const registrationSigningDomain = "straw.v1.register\n"
+
+const fingerprintProfileCapabilityProtocolMinor uint32 = 1
 
 // RegistrationSigningPayload returns the canonical bytes a worker signs to
 // prove possession of the private key bound to its worker credential. The
@@ -49,6 +52,23 @@ func RegistrationSigningPayload(req *RegisterRequest) []byte {
 	b = append(b, nonce...)
 	b = append(b, '\n')
 	b = appendInt64(b, req.GetIssuedAtUnixMs())
+
+	profiles := req.GetSupportedFingerprintProfiles()
+	if req.GetProtocolMinor() >= fingerprintProfileCapabilityProtocolMinor && len(profiles) > 0 {
+		profiles = slices.Clone(profiles)
+		slices.Sort(profiles)
+		profiles = slices.Compact(profiles)
+
+		b = append(b, '\n')
+		b = appendUint64(b, uint64(len(profiles)))
+
+		for _, profile := range profiles {
+			b = append(b, '\n')
+			b = appendUint64(b, uint64(len(profile)))
+			b = append(b, ':')
+			b = append(b, profile...)
+		}
+	}
 
 	return b
 }
