@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -248,6 +249,52 @@ func TestBuildRequestEventRecordsActorAndSanitizedTarget(t *testing.T) {
 	}
 	if ev.Timestamp.IsZero() {
 		t.Fatal("Timestamp is zero")
+	}
+}
+
+func TestRequestEventProfileEvidenceAndRedaction(t *testing.T) {
+	t.Parallel()
+
+	u, err := url.Parse("https://example.com/products/milk?token=query-secret")
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	event := buildRequestEvent("req_profile", Identity{}, &ValidatedRequest{
+		Method:   http.MethodPost,
+		URL:      u,
+		Headers:  []HeaderPair{{Name: testAuthorizationHeader, Value: "Bearer header-secret"}},
+		BodyData: []byte("body-secret"),
+	}, defaultTenantPolicy())
+	event.RequestedFingerprintProfile = fingerprintProfileChrome120
+	event.SelectedFingerprintProfile = fingerprintProfileChrome120
+	event.ExecutedFingerprintProfile = fingerprintProfileChrome120
+
+	encoded, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+
+	var row map[string]any
+	err = json.Unmarshal(encoded, &row)
+	if err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+
+	for field, want := range map[string]string{
+		"requested_fingerprint_profile": fingerprintProfileChrome120,
+		"selected_fingerprint_profile":  fingerprintProfileChrome120,
+		"executed_fingerprint_profile":  fingerprintProfileChrome120,
+	} {
+		if got, _ := row[field].(string); got != want {
+			t.Errorf("%s = %q, want %q", field, got, want)
+		}
+	}
+
+	for _, secret := range []string{"query-secret", "header-secret", "body-secret"} {
+		if strings.Contains(string(encoded), secret) {
+			t.Errorf("request event contains sensitive value %q: %s", secret, encoded)
+		}
 	}
 }
 
