@@ -274,7 +274,7 @@ func TestRegisterFingerprintCapabilitySubset(t *testing.T) {
 	}{
 		{name: "allowed exact capability", allowed: []string{workerRegTestChrome120}, claimed: []string{workerRegTestChrome120}},
 		{name: "empty allowlist is unrestricted", claimed: []string{workerRegTestChrome120}},
-		{name: "claim outside allowlist", allowed: []string{workerRegTestChrome120}, claimed: []string{"firefox_121"}, wantReason: RejectCapabilityScope},
+		{name: "claim outside allowlist", allowed: []string{workerRegTestChrome120}, claimed: []string{fingerprintProfileFirefox}, wantReason: RejectCapabilityScope},
 	}
 
 	for _, tt := range tests {

@@ -638,19 +638,19 @@ func TestFingerprintProfilesReadOnly(t *testing.T) {
 		t.Fatalf("aliases = %+v, want default -> baseline", response.Aliases)
 	}
 	for _, profile := range response.SupportedProfiles {
-		if profile.Name == defaultFingerprintProfileName || profile.Name == "firefox_121" || profile.Name == "safari_17" {
+		if profile.Name == defaultFingerprintProfileName || profile.Name == fingerprintProfileFirefox || profile.Name == fingerprintProfileSafari {
 			t.Fatalf("supported profiles = %+v, must not advertise %q", response.SupportedProfiles, profile.Name)
 		}
 	}
 
 	foundUnavailableChrome := false
 	for _, profile := range response.UnavailableProfiles {
-		if profile.Name == "chrome_120" {
+		if profile.Name == fingerprintProfileChrome120 {
 			foundUnavailableChrome = profile.Enabled && profile.Availability == "unavailable" &&
-				profile.UnavailableReason == "no_active_capable_worker"
+				profile.UnavailableReason == fingerprintUnavailableNoActiveCapableWorker
 		}
 		if profile.UnavailableReason != "" && profile.UnavailableReason != "disabled" &&
-			profile.UnavailableReason != "no_executable_definition" && profile.UnavailableReason != "no_active_capable_worker" {
+			profile.UnavailableReason != "no_executable_definition" && profile.UnavailableReason != fingerprintUnavailableNoActiveCapableWorker {
 			t.Fatalf("profile %q has unbounded unavailable reason %q", profile.Name, profile.UnavailableReason)
 		}
 	}

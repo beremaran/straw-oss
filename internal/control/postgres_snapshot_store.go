@@ -455,7 +455,10 @@ func readInjectionPolicies(ctx context.Context, tx pgx.Tx, tenantID string, snap
 
 func readFingerprintProfiles(ctx context.Context, tx pgx.Tx, tenantID string, snap *config.TenantSnapshot) error {
 	rows, err := tx.Query(ctx,
-		`SELECT name, scope_type, supported_by_worker, enabled
+		`SELECT name, scope_type, supported_by_worker, enabled,
+		        COALESCE(profile_jsonb ->> 'executor_type', ''),
+		        COALESCE(profile_jsonb ->> 'profile_ref', ''),
+		        COALESCE(profile_jsonb ->> 'contract_revision', '')
 		 FROM fingerprint_profiles
 		 WHERE (scope_type = 'global' OR tenant_id = $1) AND enabled = true
 		 ORDER BY name`,
@@ -470,7 +473,8 @@ func readFingerprintProfiles(ctx context.Context, tx pgx.Tx, tenantID string, sn
 	for rows.Next() {
 		var fp config.FingerprintProfile
 
-		err := rows.Scan(&fp.Name, &fp.ScopeType, &fp.SupportedByWorker, &fp.Enabled)
+		err := rows.Scan(&fp.Name, &fp.ScopeType, &fp.SupportedByWorker, &fp.Enabled,
+			&fp.ExecutorType, &fp.ProfileRef, &fp.ContractRevision)
 		if err != nil {
 			return fmt.Errorf("scan fingerprint profile: %w", err)
 		}
