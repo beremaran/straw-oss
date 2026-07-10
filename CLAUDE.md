@@ -36,7 +36,7 @@ Start with these planning inputs when creating or reviewing Straw specs:
   SpecKit workflow.
 - Keep one owning agent responsible for the selected SpecKit task or story slice, final edits, verification, task
   checkbox updates, and handoff. Sub-agents research and verify; they never edit or mark tasks complete.
-- When spawning Codex sub-agents, set `model` to `gpt-5.4-mini` and `reasoning_effort` to `medium` unless the user
+- When spawning Codex sub-agents, set `model` to `gpt-5.6-luna` and `reasoning_effort` to `max` unless the user
   explicitly asks for a different sub-agent model.
 - Read only the planning docs named by the selected SpecKit artifacts before editing.
 - Keep work inside the feature's declared scope. Do not build later-phase Straw behavior unless the SpecKit feature
