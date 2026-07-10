@@ -1,9 +1,13 @@
 package strawpb_test
 
 import (
+	"bytes"
+	"slices"
 	"testing"
 
 	strawpb "github.com/beremaran/straw/v2/api/proto/straw/v1"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
 func TestStreamFrameBodyRefCompiles(t *testing.T) {
@@ -78,4 +82,88 @@ func TestValidateRejectsUnknownEnums(t *testing.T) {
 			t.Fatal("expected unknown request enums to be rejected")
 		}
 	})
+}
+
+func TestFingerprintProfileFieldsAreAdditiveAndRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	profiles := requireStringField(t, &strawpb.RegisterRequest{}, "supported_fingerprint_profiles", 19)
+	executed := requireStringField(t, &strawpb.OutboundStartFrame{}, "executed_fingerprint_profile", 6)
+
+	legacy := &strawpb.RegisterRequest{
+		WorkerId:      "worker-1",
+		CredentialId:  "cred-1",
+		ProtocolMajor: 1,
+	}
+	legacyWire, err := proto.Marshal(legacy)
+	if err != nil {
+		t.Fatalf("marshal legacy registration: %v", err)
+	}
+	if want := []byte{0x0a, 0x08, 'w', 'o', 'r', 'k', 'e', 'r', '-', '1', 0x1a, 0x06, 'c', 'r', 'e', 'd', '-', '1', 0x28, 0x01}; !bytes.Equal(legacyWire, want) {
+		t.Fatalf("legacy registration bytes changed: got %x, want %x", legacyWire, want)
+	}
+
+	setStringList(t, legacy, profiles, []string{"chrome_120"})
+	profileWire, err := proto.Marshal(legacy)
+	if err != nil {
+		t.Fatalf("marshal registration with profile capability: %v", err)
+	}
+	var decoded strawpb.RegisterRequest
+	if err := proto.Unmarshal(profileWire, &decoded); err != nil {
+		t.Fatalf("unmarshal registration with profile capability: %v", err)
+	}
+	if got := stringList(&decoded, profiles); !slices.Equal(got, []string{"chrome_120"}) {
+		t.Fatalf("supported fingerprint profiles = %v, want [chrome_120]", got)
+	}
+
+	outbound := &strawpb.OutboundStartFrame{TargetHost: "example.test", Attempt: 1}
+	outbound.ProtoReflect().Set(executed, protoreflect.ValueOfString("chrome_120"))
+	outboundWire, err := proto.Marshal(outbound)
+	if err != nil {
+		t.Fatalf("marshal outbound start frame: %v", err)
+	}
+	var decodedOutbound strawpb.OutboundStartFrame
+	if err := proto.Unmarshal(outboundWire, &decodedOutbound); err != nil {
+		t.Fatalf("unmarshal outbound start frame: %v", err)
+	}
+	if got := decodedOutbound.ProtoReflect().Get(executed).String(); got != "chrome_120" {
+		t.Fatalf("executed fingerprint profile = %q, want chrome_120", got)
+	}
+}
+
+func requireStringField(t *testing.T, message proto.Message, name string, number protoreflect.FieldNumber) protoreflect.FieldDescriptor {
+	t.Helper()
+
+	field := message.ProtoReflect().Descriptor().Fields().ByName(protoreflect.Name(name))
+	if field == nil {
+		t.Fatalf("%s is missing required field %q", message.ProtoReflect().Descriptor().FullName(), name)
+	}
+	if field.Number() != number || field.Kind() != protoreflect.StringKind {
+		t.Fatalf("%s = number %d kind %s, want number %d string", name, field.Number(), field.Kind(), number)
+	}
+
+	return field
+}
+
+func setStringList(t *testing.T, message proto.Message, field protoreflect.FieldDescriptor, values []string) {
+	t.Helper()
+
+	if !field.IsList() {
+		t.Fatalf("%s is not repeated", field.FullName())
+	}
+	list := message.ProtoReflect().Mutable(field).List()
+	list.Truncate(0)
+	for _, value := range values {
+		list.Append(protoreflect.ValueOfString(value))
+	}
+}
+
+func stringList(message proto.Message, field protoreflect.FieldDescriptor) []string {
+	list := message.ProtoReflect().Get(field).List()
+	values := make([]string, list.Len())
+	for i := range list.Len() {
+		values[i] = list.Get(i).String()
+	}
+
+	return values
 }
