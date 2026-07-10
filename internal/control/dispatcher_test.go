@@ -468,6 +468,29 @@ func TestDispatcherNamedFingerprintBufferedRoundTrip(t *testing.T) {
 	}
 }
 
+func TestDispatcherBaselineAndDefaultUseEmptyWireInstruction(t *testing.T) {
+	t.Parallel()
+
+	for _, requested := range []string{"", defaultFingerprintProfileName} {
+		t.Run(map[string]string{"": "omitted", defaultFingerprintProfileName: "default"}[requested], func(t *testing.T) {
+			d, stop := newLiveDispatchHarness(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte("baseline body"))
+			}))
+			defer stop()
+
+			req := validatedDispatchRequest(t, rewriteDispatchHost(t, d.upstreamURL, "dispatch.test"))
+			req.Fingerprint = requested
+			resp, perr := d.Dispatch(context.Background(), dispatchInput(req))
+			if perr != nil {
+				t.Fatalf("Dispatch error = %#v", perr)
+			}
+			if resp.SelectedFingerprintProfile != baselineFingerprintEvidence || resp.ExecutedFingerprintProfile != baselineFingerprintEvidence {
+				t.Fatalf("profile evidence = selected %q executed %q, want baseline/baseline", resp.SelectedFingerprintProfile, resp.ExecutedFingerprintProfile)
+			}
+		})
+	}
+}
+
 func TestDispatcherSendsLargeRequestBodyRef(t *testing.T) {
 	t.Parallel()
 

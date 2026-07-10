@@ -1776,7 +1776,7 @@ func timeoutTypeName(t strawpb.TimeoutType) string {
 }
 
 func wireFingerprint(profile string) string {
-	if profile == defaultFingerprintProfileName {
+	if profile == baselineFingerprintProfileName {
 		return ""
 	}
 

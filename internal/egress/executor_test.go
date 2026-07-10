@@ -12,6 +12,7 @@ import (
 	"net/netip"
 	"net/url"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -19,6 +20,7 @@ import (
 	"time"
 
 	"golang.org/x/net/http2"
+	"google.golang.org/protobuf/proto"
 
 	strawpb "github.com/beremaran/straw/v2/api/proto/straw/v1"
 )
@@ -77,6 +79,72 @@ func TestExecutorEmitsSuccessfulHTTPFramesAndAppliesInjection(t *testing.T) {
 	}
 	if got := frames[3].GetEnd(); got == nil || !got.GetSuccess() {
 		t.Fatalf("end = %#v", got)
+	}
+}
+
+func TestExecutorBaselineRegressionMatrixPreservesOriginStatuses(t *testing.T) {
+	t.Parallel()
+
+	for _, status := range []int{http.StatusOK, http.StatusMultipleChoices, http.StatusBadRequest, http.StatusInternalServerError} {
+		t.Run(strconv.Itoa(status), func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(status)
+				_, _ = w.Write([]byte("baseline"))
+			}))
+			t.Cleanup(server.Close)
+
+			target := rewriteHost(t, server.URL, "baseline.test")
+			exec := NewExecutor(ExecutorOptions{Resolver: staticResolver{"baseline.test": loopbackIP(t, server.URL)}})
+			start := requestStart(target, directPolicy(true))
+			frames := exec.Execute(context.Background(), start, nil, 1, nil)
+			if errFrame := terminalErrorOrNil(frames); errFrame != nil {
+				t.Fatalf("baseline status %d error = %#v", status, errFrame)
+			}
+			if got := int(frames[1].GetResponseStart().GetStatus()); got != status {
+				t.Fatalf("status = %d, want %d", got, status)
+			}
+			if got := frames[0].GetOutboundStart().GetExecutedFingerprintProfile(); got != baselineFingerprintProfile {
+				t.Fatalf("executed profile = %q, want baseline", got)
+			}
+		})
+	}
+}
+
+func TestExecutorBaselineUsesExistingRetryAndPoolBoundaries(t *testing.T) {
+	t.Parallel()
+
+	resolver := hostResolver{unitTestHost: netip.MustParseAddr("203.0.113.10")}
+	exec := NewExecutor(ExecutorOptions{Resolver: resolver, Pool: UpstreamConnectionPoolOptions{Enabled: true}})
+	base := requestStart("http://unit.test:8080", &strawpb.DestinationPolicy{
+		AllowedCidrs:   []string{"203.0.113.0/24"},
+		RedirectPolicy: strawpb.RedirectPolicy_REDIRECT_POLICY_NO_FOLLOW,
+		ResolutionMode: strawpb.DestinationResolutionMode_DESTINATION_RESOLUTION_DIRECT_LOCAL,
+	})
+	target, failure := parseTarget(base)
+	if failure != nil {
+		t.Fatalf("parseTarget() failure = %v", failure)
+	}
+	emptyKey, failure := exec.poolKey(context.Background(), testTenantA, target, base)
+	if failure != nil {
+		t.Fatalf("empty baseline poolKey() failure = %v", failure)
+	}
+	defaultAlias := proto.Clone(base).(*strawpb.RequestStart)
+	defaultAlias.FingerprintInstruction = ""
+	defaultKey, failure := exec.poolKey(context.Background(), testTenantA, target, defaultAlias)
+	if failure != nil {
+		t.Fatalf("default baseline poolKey() failure = %v", failure)
+	}
+	if emptyKey != defaultKey {
+		t.Fatalf("baseline aliases split pool key: empty=%+v default=%+v", emptyKey, defaultKey)
+	}
+	named := proto.Clone(base).(*strawpb.RequestStart)
+	named.FingerprintInstruction = chrome120FingerprintProfile
+	namedKey, failure := exec.poolKey(context.Background(), testTenantA, target, named)
+	if failure != nil {
+		t.Fatalf("named poolKey() failure = %v", failure)
+	}
+	if namedKey == emptyKey {
+		t.Fatal("named and baseline requests share a pool key")
 	}
 }
 
