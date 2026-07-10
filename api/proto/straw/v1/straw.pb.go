@@ -956,27 +956,28 @@ func (x *LogEvent) GetExtra() map[string]string {
 }
 
 type RegisterRequest struct {
-	state                 protoimpl.MessageState     `protogen:"open.v1"`
-	WorkerId              string                     `protobuf:"bytes,1,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
-	ExecutorType          string                     `protobuf:"bytes,2,opt,name=executor_type,json=executorType,proto3" json:"executor_type,omitempty"`
-	CredentialId          string                     `protobuf:"bytes,3,opt,name=credential_id,json=credentialId,proto3" json:"credential_id,omitempty"`
-	SignedToken           []byte                     `protobuf:"bytes,4,opt,name=signed_token,json=signedToken,proto3" json:"signed_token,omitempty"`
-	ProtocolMajor         uint32                     `protobuf:"varint,5,opt,name=protocol_major,json=protocolMajor,proto3" json:"protocol_major,omitempty"`
-	ProtocolMinor         uint32                     `protobuf:"varint,6,opt,name=protocol_minor,json=protocolMinor,proto3" json:"protocol_minor,omitempty"`
-	SoftwareVersion       string                     `protobuf:"bytes,7,opt,name=software_version,json=softwareVersion,proto3" json:"software_version,omitempty"`
-	AllowedPools          []*RegisterRequest_PoolRef `protobuf:"bytes,8,rep,name=allowed_pools,json=allowedPools,proto3" json:"allowed_pools,omitempty"`
-	Tags                  []string                   `protobuf:"bytes,9,rep,name=tags,proto3" json:"tags,omitempty"`
-	Countries             []string                   `protobuf:"bytes,10,rep,name=countries,proto3" json:"countries,omitempty"`
-	Regions               []string                   `protobuf:"bytes,11,rep,name=regions,proto3" json:"regions,omitempty"`
-	IpTypes               []string                   `protobuf:"bytes,12,rep,name=ip_types,json=ipTypes,proto3" json:"ip_types,omitempty"`
-	SupportedIngressModes []string                   `protobuf:"bytes,13,rep,name=supported_ingress_modes,json=supportedIngressModes,proto3" json:"supported_ingress_modes,omitempty"`
-	StableEgressIdentity  string                     `protobuf:"bytes,14,opt,name=stable_egress_identity,json=stableEgressIdentity,proto3" json:"stable_egress_identity,omitempty"`
-	MaxConcurrency        uint32                     `protobuf:"varint,15,opt,name=max_concurrency,json=maxConcurrency,proto3" json:"max_concurrency,omitempty"`
-	InitialDraining       bool                       `protobuf:"varint,16,opt,name=initial_draining,json=initialDraining,proto3" json:"initial_draining,omitempty"`
-	Nonce                 []byte                     `protobuf:"bytes,17,opt,name=nonce,proto3" json:"nonce,omitempty"`
-	IssuedAtUnixMs        int64                      `protobuf:"varint,18,opt,name=issued_at_unix_ms,json=issuedAtUnixMs,proto3" json:"issued_at_unix_ms,omitempty"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	state                        protoimpl.MessageState     `protogen:"open.v1"`
+	WorkerId                     string                     `protobuf:"bytes,1,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
+	ExecutorType                 string                     `protobuf:"bytes,2,opt,name=executor_type,json=executorType,proto3" json:"executor_type,omitempty"`
+	CredentialId                 string                     `protobuf:"bytes,3,opt,name=credential_id,json=credentialId,proto3" json:"credential_id,omitempty"`
+	SignedToken                  []byte                     `protobuf:"bytes,4,opt,name=signed_token,json=signedToken,proto3" json:"signed_token,omitempty"`
+	ProtocolMajor                uint32                     `protobuf:"varint,5,opt,name=protocol_major,json=protocolMajor,proto3" json:"protocol_major,omitempty"`
+	ProtocolMinor                uint32                     `protobuf:"varint,6,opt,name=protocol_minor,json=protocolMinor,proto3" json:"protocol_minor,omitempty"`
+	SoftwareVersion              string                     `protobuf:"bytes,7,opt,name=software_version,json=softwareVersion,proto3" json:"software_version,omitempty"`
+	AllowedPools                 []*RegisterRequest_PoolRef `protobuf:"bytes,8,rep,name=allowed_pools,json=allowedPools,proto3" json:"allowed_pools,omitempty"`
+	Tags                         []string                   `protobuf:"bytes,9,rep,name=tags,proto3" json:"tags,omitempty"`
+	Countries                    []string                   `protobuf:"bytes,10,rep,name=countries,proto3" json:"countries,omitempty"`
+	Regions                      []string                   `protobuf:"bytes,11,rep,name=regions,proto3" json:"regions,omitempty"`
+	IpTypes                      []string                   `protobuf:"bytes,12,rep,name=ip_types,json=ipTypes,proto3" json:"ip_types,omitempty"`
+	SupportedIngressModes        []string                   `protobuf:"bytes,13,rep,name=supported_ingress_modes,json=supportedIngressModes,proto3" json:"supported_ingress_modes,omitempty"`
+	StableEgressIdentity         string                     `protobuf:"bytes,14,opt,name=stable_egress_identity,json=stableEgressIdentity,proto3" json:"stable_egress_identity,omitempty"`
+	MaxConcurrency               uint32                     `protobuf:"varint,15,opt,name=max_concurrency,json=maxConcurrency,proto3" json:"max_concurrency,omitempty"`
+	InitialDraining              bool                       `protobuf:"varint,16,opt,name=initial_draining,json=initialDraining,proto3" json:"initial_draining,omitempty"`
+	Nonce                        []byte                     `protobuf:"bytes,17,opt,name=nonce,proto3" json:"nonce,omitempty"`
+	IssuedAtUnixMs               int64                      `protobuf:"varint,18,opt,name=issued_at_unix_ms,json=issuedAtUnixMs,proto3" json:"issued_at_unix_ms,omitempty"`
+	SupportedFingerprintProfiles []string                   `protobuf:"bytes,19,rep,name=supported_fingerprint_profiles,json=supportedFingerprintProfiles,proto3" json:"supported_fingerprint_profiles,omitempty"`
+	unknownFields                protoimpl.UnknownFields
+	sizeCache                    protoimpl.SizeCache
 }
 
 func (x *RegisterRequest) Reset() {
@@ -1133,6 +1134,13 @@ func (x *RegisterRequest) GetIssuedAtUnixMs() int64 {
 		return x.IssuedAtUnixMs
 	}
 	return 0
+}
+
+func (x *RegisterRequest) GetSupportedFingerprintProfiles() []string {
+	if x != nil {
+		return x.SupportedFingerprintProfiles
+	}
+	return nil
 }
 
 type RegisterAck struct {
@@ -2812,14 +2820,15 @@ func (x *RequestStart) GetPolicyVersion() string {
 }
 
 type OutboundStartFrame struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	TargetHost        string                 `protobuf:"bytes,1,opt,name=target_host,json=targetHost,proto3" json:"target_host,omitempty"`
-	TargetPort        uint32                 `protobuf:"varint,2,opt,name=target_port,json=targetPort,proto3" json:"target_port,omitempty"`
-	UpstreamProxyId   string                 `protobuf:"bytes,3,opt,name=upstream_proxy_id,json=upstreamProxyId,proto3" json:"upstream_proxy_id,omitempty"`
-	Attempt           uint32                 `protobuf:"varint,4,opt,name=attempt,proto3" json:"attempt,omitempty"`
-	WorkerTimestampMs int64                  `protobuf:"varint,5,opt,name=worker_timestamp_ms,json=workerTimestampMs,proto3" json:"worker_timestamp_ms,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state                      protoimpl.MessageState `protogen:"open.v1"`
+	TargetHost                 string                 `protobuf:"bytes,1,opt,name=target_host,json=targetHost,proto3" json:"target_host,omitempty"`
+	TargetPort                 uint32                 `protobuf:"varint,2,opt,name=target_port,json=targetPort,proto3" json:"target_port,omitempty"`
+	UpstreamProxyId            string                 `protobuf:"bytes,3,opt,name=upstream_proxy_id,json=upstreamProxyId,proto3" json:"upstream_proxy_id,omitempty"`
+	Attempt                    uint32                 `protobuf:"varint,4,opt,name=attempt,proto3" json:"attempt,omitempty"`
+	WorkerTimestampMs          int64                  `protobuf:"varint,5,opt,name=worker_timestamp_ms,json=workerTimestampMs,proto3" json:"worker_timestamp_ms,omitempty"`
+	ExecutedFingerprintProfile string                 `protobuf:"bytes,6,opt,name=executed_fingerprint_profile,json=executedFingerprintProfile,proto3" json:"executed_fingerprint_profile,omitempty"`
+	unknownFields              protoimpl.UnknownFields
+	sizeCache                  protoimpl.SizeCache
 }
 
 func (x *OutboundStartFrame) Reset() {
@@ -2885,6 +2894,13 @@ func (x *OutboundStartFrame) GetWorkerTimestampMs() int64 {
 		return x.WorkerTimestampMs
 	}
 	return 0
+}
+
+func (x *OutboundStartFrame) GetExecutedFingerprintProfile() string {
+	if x != nil {
+		return x.ExecutedFingerprintProfile
+	}
+	return ""
 }
 
 type ResponseStart struct {
@@ -3141,7 +3157,7 @@ const file_straw_v1_straw_proto_rawDesc = "" +
 	"\n" +
 	"ExtraEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x87\x06\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xcd\x06\n" +
 	"\x0fRegisterRequest\x12\x1b\n" +
 	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x12#\n" +
 	"\rexecutor_type\x18\x02 \x01(\tR\fexecutorType\x12#\n" +
@@ -3161,7 +3177,8 @@ const file_straw_v1_straw_proto_rawDesc = "" +
 	"\x0fmax_concurrency\x18\x0f \x01(\rR\x0emaxConcurrency\x12)\n" +
 	"\x10initial_draining\x18\x10 \x01(\bR\x0finitialDraining\x12\x14\n" +
 	"\x05nonce\x18\x11 \x01(\fR\x05nonce\x12)\n" +
-	"\x11issued_at_unix_ms\x18\x12 \x01(\x03R\x0eissuedAtUnixMs\x1a?\n" +
+	"\x11issued_at_unix_ms\x18\x12 \x01(\x03R\x0eissuedAtUnixMs\x12D\n" +
+	"\x1esupported_fingerprint_profiles\x18\x13 \x03(\tR\x1csupportedFingerprintProfiles\x1a?\n" +
 	"\aPoolRef\x12\x1b\n" +
 	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x17\n" +
 	"\apool_id\x18\x02 \x01(\tR\x06poolId\"R\n" +
@@ -3317,7 +3334,7 @@ const file_straw_v1_straw_proto_rawDesc = "" +
 	"\x0epolicy_version\x18\x0f \x01(\tR\rpolicyVersion\x1aB\n" +
 	"\x14RoutingMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xcc\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x8e\x02\n" +
 	"\x12OutboundStartFrame\x12\x1f\n" +
 	"\vtarget_host\x18\x01 \x01(\tR\n" +
 	"targetHost\x12\x1f\n" +
@@ -3325,7 +3342,8 @@ const file_straw_v1_straw_proto_rawDesc = "" +
 	"targetPort\x12*\n" +
 	"\x11upstream_proxy_id\x18\x03 \x01(\tR\x0fupstreamProxyId\x12\x18\n" +
 	"\aattempt\x18\x04 \x01(\rR\aattempt\x12.\n" +
-	"\x13worker_timestamp_ms\x18\x05 \x01(\x03R\x11workerTimestampMs\"S\n" +
+	"\x13worker_timestamp_ms\x18\x05 \x01(\x03R\x11workerTimestampMs\x12@\n" +
+	"\x1cexecuted_fingerprint_profile\x18\x06 \x01(\tR\x1aexecutedFingerprintProfile\"S\n" +
 	"\rResponseStart\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\rR\x06status\x12*\n" +
 	"\aheaders\x18\x02 \x03(\v2\x10.straw.v1.HeaderR\aheaders\"\xf8\x03\n" +
