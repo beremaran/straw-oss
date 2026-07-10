@@ -14,7 +14,7 @@
     ],
     "nats": {
       "servers": ["nats://nats:4222"],
-      "max_payload_bytes": 12582912
+      "max_payload_bytes": 2000000
     }
   }
 }
