@@ -37,8 +37,6 @@ Start with these planning inputs when creating or reviewing Straw specs:
 - The triggering agent decides each sub-agent's scope and authority. Sub-agents may research, implement, verify,
   update task artifacts, and write handoffs when delegated; the triggering agent coordinates integration and final
   acceptance.
-- When spawning Codex sub-agents, set `model` to `gpt-5.6-luna` and `reasoning_effort` to `max` unless the user
-  explicitly asks for a different sub-agent model.
 - Read only the planning docs named by the selected SpecKit artifacts before editing.
 - Keep work inside the feature's declared scope. Do not build later-phase Straw behavior unless the SpecKit feature
   explicitly includes it.
