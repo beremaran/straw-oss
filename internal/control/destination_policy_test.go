@@ -53,8 +53,8 @@ func TestResolveDestinationPolicy_AllowsOrdinaryPublicHost(t *testing.T) {
 		t.Fatalf("resolution mode = %v, want DIRECT_LOCAL", result.Policy.ResolutionMode)
 	}
 
-	if result.FingerprintProfile != "default" {
-		t.Fatalf("fingerprint = %q, want default", result.FingerprintProfile)
+	if result.FingerprintProfile != baselineFingerprintProfileName {
+		t.Fatalf("fingerprint = %q, want baseline", result.FingerprintProfile)
 	}
 
 	if result.Policy.PolicyVersion != "3" {

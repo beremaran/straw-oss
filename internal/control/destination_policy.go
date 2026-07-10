@@ -26,7 +26,10 @@ import (
 // internal/egress/executor.go (task 26) enforces DeniedHostSuffixes and
 // DeniedCnameSuffixes downstream; this resolver only compiles them.
 
-const defaultFingerprintProfileName = "default"
+const (
+	defaultFingerprintProfileName  = "default"
+	baselineFingerprintProfileName = "baseline"
+)
 
 // defaultDeniedPrefixes and metadataIPs mirror
 // internal/egress/executor.go's default-deny set exactly
@@ -429,6 +432,16 @@ func resolveFingerprintProfile(profiles []config.FingerprintProfile, requested s
 	name := requested
 	if name == "" {
 		name = defaultFingerprintProfileName
+	}
+
+	if name == defaultFingerprintProfileName {
+		for _, p := range profiles {
+			if p.Name == name && p.Enabled {
+				return baselineFingerprintProfileName, nil
+			}
+		}
+
+		return "", &ValidationError{Code: errorCodeUnsupportedFingerprint, Message: ErrorRegistry[UnsupportedFingerprint].Message}
 	}
 
 	for _, p := range profiles {
