@@ -21,5 +21,5 @@ npm run build
 
 Generates static output into `build/`, deployable to any static host (GitHub Pages,
 Cloudflare Pages, Netlify, etc). `docusaurus.config.js` is currently set up for GitHub Pages
-at `beremaran.github.io/straw`; update `url`/`baseUrl`/`organizationName`/`projectName` there
+at `beremaran.github.io/straw-oss`; update `url`/`baseUrl`/`organizationName`/`projectName` there
 if hosting elsewhere.

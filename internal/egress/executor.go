@@ -99,10 +99,10 @@ type Executor struct {
 // UpstreamConnectionPoolOptions configures optional direct-local HTTP
 // connection reuse. Zero values keep pooling disabled.
 type UpstreamConnectionPoolOptions struct {
-	Enabled                   bool
-	MaxIdleConnsPerTenantHost int
-	IdleTimeout               time.Duration
-	MaxLifetime               time.Duration
+	Enabled             bool
+	MaxIdleConnsPerHost int
+	IdleTimeout         time.Duration
+	MaxLifetime         time.Duration
 }
 
 type defaultResolver struct{}
@@ -394,16 +394,16 @@ func (e *Executor) CloseIdleConnections() {
 // and returns the e2c stream frames for the attempt.
 //
 // send, when non-nil, is called with the OutboundStartFrame before DNS/connect
-// so Control can stamp the egress phase start in real time (docs/planning/09
+// so Control can stamp the egress phase start in real time (docs/public/architecture.md
 // step 19); a frame passed to send is excluded from the returned batch. With a
 // nil send every frame, OutboundStart included, is returned in the batch.
 func (e *Executor) Execute(ctx context.Context, start *strawpb.RequestStart, body []byte, attempt uint32, send func(*strawpb.StreamFrame)) []*strawpb.StreamFrame {
-	return e.ExecuteWithTenant(ctx, "", start, body, attempt, send)
+	return e.ExecuteWithDeployment(ctx, "", start, body, attempt, send)
 }
 
-// ExecuteWithTenant performs one outbound request with the tenant included in
-// the optional upstream connection-pool key.
-func (e *Executor) ExecuteWithTenant(ctx context.Context, tenantID string, start *strawpb.RequestStart, body []byte, attempt uint32, send func(*strawpb.StreamFrame)) []*strawpb.StreamFrame {
+// ExecuteWithDeployment performs one outbound request with the deployment
+// scope included in the optional upstream connection-pool key.
+func (e *Executor) ExecuteWithDeployment(ctx context.Context, deploymentID string, start *strawpb.RequestStart, body []byte, attempt uint32, send func(*strawpb.StreamFrame)) []*strawpb.StreamFrame {
 	frames := newFrameBuilder(attempt)
 
 	target, failure := parseTarget(start)
@@ -440,7 +440,7 @@ func (e *Executor) ExecuteWithTenant(ctx context.Context, tenantID string, start
 		return e.executeProfiled(reqCtx, target, start, body, frames, emit, send)
 	}
 
-	resp, failure := e.doRequestWithRetry(reqCtx, tenantID, target, start, body)
+	resp, failure := e.doRequestWithRetry(reqCtx, deploymentID, target, start, body)
 	if failure != nil {
 		return append(emit, frames.error(failure))
 	}
@@ -499,11 +499,11 @@ func (e *Executor) downloadBodyRef(ctx context.Context, frame *strawpb.BodyRefFr
 	return body, nil
 }
 
-func (e *Executor) doRequestWithRetry(ctx context.Context, tenantID string, target target, start *strawpb.RequestStart, body []byte) (*http.Response, *executionError) {
+func (e *Executor) doRequestWithRetry(ctx context.Context, deploymentID string, target target, start *strawpb.RequestStart, body []byte) (*http.Response, *executionError) {
 	isReplayable := start.GetReplayable()
 
 	for attemptIdx := range 2 {
-		resp, retry, execErr := e.attemptRequest(ctx, tenantID, target, start, body, attemptIdx, isReplayable)
+		resp, retry, execErr := e.attemptRequest(ctx, deploymentID, target, start, body, attemptIdx, isReplayable)
 		if execErr != nil {
 			return nil, execErr
 		}
@@ -516,8 +516,8 @@ func (e *Executor) doRequestWithRetry(ctx context.Context, tenantID string, targ
 	return nil, executorFailure(strawpb.ErrorCode_ERROR_CODE_EXECUTOR_INTERNAL_ERROR, "max_attempts_exceeded")
 }
 
-func (e *Executor) attemptRequest(ctx context.Context, tenantID string, target target, start *strawpb.RequestStart, body []byte, attemptIdx int, isReplayable bool) (*http.Response, bool, *executionError) {
-	tr, client, pooled, key, hasKey := e.httpClient(ctx, tenantID, target, start)
+func (e *Executor) attemptRequest(ctx context.Context, deploymentID string, target target, start *strawpb.RequestStart, body []byte, attemptIdx int, isReplayable bool) (*http.Response, bool, *executionError) {
+	tr, client, pooled, key, hasKey := e.httpClient(ctx, deploymentID, target, start)
 
 	req, buildFailure := buildHTTPRequest(ctx, start, body)
 	if buildFailure != nil {
@@ -628,9 +628,9 @@ func streamResponseBody(ctx context.Context, body io.Reader, trailers func() []*
 	return emit, nil
 }
 
-func (e *Executor) httpClient(ctx context.Context, tenantID string, target target, start *strawpb.RequestStart) (*http.Transport, *http.Client, bool, upstreamPoolKey, bool) {
+func (e *Executor) httpClient(ctx context.Context, deploymentID string, target target, start *strawpb.RequestStart) (*http.Transport, *http.Client, bool, upstreamPoolKey, bool) {
 	if e.pool != nil && e.pool.enabled {
-		key, failure := e.poolKey(ctx, tenantID, target, start)
+		key, failure := e.poolKey(ctx, deploymentID, target, start)
 		if failure == nil {
 			tr := e.pool.transport(key)
 
@@ -757,7 +757,7 @@ func (e *Executor) makeDialTLSContext(host string, onFallback func(), dialContex
 	}
 }
 
-func (e *Executor) poolKey(ctx context.Context, tenantID string, target target, start *strawpb.RequestStart) (upstreamPoolKey, *executionError) {
+func (e *Executor) poolKey(ctx context.Context, deploymentID string, target target, start *strawpb.RequestStart) (upstreamPoolKey, *executionError) {
 	ips, failure := e.validatedIPs(ctx, target.host, start.GetDestinationPolicy())
 	if failure != nil {
 		return upstreamPoolKey{}, failure
@@ -766,7 +766,7 @@ func (e *Executor) poolKey(ctx context.Context, tenantID string, target target, 
 	useHTTP2 := e.http2Enabled && schemeFromURL(start.GetUrl()) == schemeHTTPS && !e.isHTTP11Only(target.host)
 
 	key := upstreamPoolKey{
-		tenantID:           tenantID,
+		deploymentID:       deploymentID,
 		resolutionMode:     start.GetDestinationPolicy().GetResolutionMode(),
 		scheme:             schemeFromURL(start.GetUrl()),
 		host:               target.host,
@@ -918,7 +918,7 @@ func schemeFromURL(raw string) string {
 }
 
 type upstreamPoolKey struct {
-	tenantID           string
+	deploymentID       string
 	resolutionMode     strawpb.DestinationResolutionMode
 	scheme             string
 	host               string
@@ -949,8 +949,8 @@ func newUpstreamConnectionPool(opts UpstreamConnectionPoolOptions, dialContext f
 		return nil
 	}
 
-	if opts.MaxIdleConnsPerTenantHost <= 0 {
-		opts.MaxIdleConnsPerTenantHost = 2
+	if opts.MaxIdleConnsPerHost <= 0 {
+		opts.MaxIdleConnsPerHost = 2
 	}
 
 	if opts.IdleTimeout <= 0 {
@@ -964,7 +964,7 @@ func newUpstreamConnectionPool(opts UpstreamConnectionPoolOptions, dialContext f
 	return &upstreamConnectionPool{
 		enabled:     true,
 		dialContext: dialContext,
-		maxIdle:     opts.MaxIdleConnsPerTenantHost,
+		maxIdle:     opts.MaxIdleConnsPerHost,
 		idleTimeout: opts.IdleTimeout,
 		maxLifetime: opts.MaxLifetime,
 		transports:  map[upstreamPoolKey]pooledTransport{},
@@ -1048,7 +1048,7 @@ func (p *upstreamConnectionPool) closeIdleConnections() {
 }
 
 func (k upstreamPoolKey) samePoolExceptIP(other upstreamPoolKey) bool {
-	return k.tenantID == other.tenantID &&
+	return k.deploymentID == other.deploymentID &&
 		k.resolutionMode == other.resolutionMode &&
 		k.scheme == other.scheme &&
 		k.host == other.host &&

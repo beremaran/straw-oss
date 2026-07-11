@@ -3,7 +3,7 @@
 Mirrors the Go SDK's public contract (``sdk/egress/types.go``,
 ``api/proto/straw/v1/registration_sign.go``): subject construction, safe-token
 validation, Envelope construction, and registration/heartbeat signing. See
-``docs/planning/12-nats-protocol.md`` for the wire protocol this module
+``docs/public/architecture.md`` for the wire protocol this module
 implements.
 """
 
@@ -51,10 +51,6 @@ def heartbeat_subject() -> str:
     return "straw.v1.control.heartbeat"
 
 
-def log_telemetry_subject() -> str:
-    return "straw.v1.control.logs"
-
-
 def control_inbox_prefix() -> str:
     return "_INBOX.ctl"
 
@@ -96,7 +92,7 @@ class Identity:
 
 @dataclass
 class PoolRef:
-    tenant_id: str
+    deployment_id: str
     pool_id: str
 
 
@@ -164,7 +160,10 @@ def build_register_request(identity: Identity, caps: Optional[Capabilities] = No
         protocol_major=PROTOCOL_MAJOR,
         protocol_minor=0,
         software_version=caps.software_version,
-        allowed_pools=[pb.RegisterRequest.PoolRef(tenant_id=p.tenant_id, pool_id=p.pool_id) for p in caps.allowed_pools],
+        allowed_pools=[
+            pb.RegisterRequest.PoolRef(tenant_id=p.deployment_id, pool_id=p.pool_id)
+            for p in caps.allowed_pools
+        ],
         tags=caps.tags,
         countries=caps.countries,
         regions=caps.regions,

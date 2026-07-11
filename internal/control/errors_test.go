@@ -10,7 +10,7 @@ import (
 )
 
 // TestErrorRegistryRows pins the canonical category/HTTP/retryable mapping for
-// every row in docs/planning/14-canonical-error-registry.md. REST uses 404 for
+// every row in docs/public/architecture.md REST uses 404 for
 // route_no_match and 499 for cancelled.
 func TestErrorRegistryRows(t *testing.T) {
 	rows := []struct {
@@ -81,7 +81,7 @@ func TestErrorRegistryRows(t *testing.T) {
 
 // TestErrorResponseIsPublicSafe checks that the ErrorResponse envelope never
 // carries worker_id or session_id, that details are string-valued, and that
-// request_id is always present (docs/planning/14 "ErrorResponse JSON Format").
+// request_id is always present (docs/public/architecture.md "ErrorResponse JSON Format").
 func TestErrorResponseIsPublicSafe(t *testing.T) {
 	resp := ErrorResponseFromCode(BodyTooLarge, "req_abc123", map[string]string{
 		errorDetailDirectionKey:  "request",
@@ -154,8 +154,8 @@ func TestErrorResponseFallbackAndOmissions(t *testing.T) {
 
 // TestOriginStatusPassthroughIsNotErrorResponse asserts that upstream 4xx/5xx
 // origin statuses are carried in the SuccessResponse envelope's status field
-// and are never converted into a Straw ErrorResponse (docs/planning/15
-// "Origin Status Passthrough", docs/planning/30 "REST outcome" row).
+// and are never converted into a Straw ErrorResponse (docs/public/architecture.md
+// "Origin Status Passthrough", docs/public/architecture.md "REST outcome" row).
 func TestOriginStatusPassthroughIsNotErrorResponse(t *testing.T) {
 	for _, originStatus := range []int{404, 429, 500, 502} {
 		envelope := SuccessResponse{
@@ -191,9 +191,9 @@ func TestOriginStatusPassthroughIsNotErrorResponse(t *testing.T) {
 }
 
 // TestExecutorEmittableSetMatchesContract pins the executor-emittable code set
-// to exactly the list in docs/planning/13 "Executor Error Reporting". Any code
+// to exactly the list in docs/public/architecture.md "Executor Error Reporting". Any code
 // outside the set maps to executor_internal_error and is flagged as a protocol
-// violation for cooldown accounting (docs/planning/30 "Error mapping" row).
+// violation for cooldown accounting (docs/public/architecture.md "Error mapping" row).
 func TestExecutorEmittableSetMatchesContract(t *testing.T) {
 	want := map[strawpb.ErrorCode]struct{}{
 		strawpb.ErrorCode_ERROR_CODE_DESTINATION_DENIED:          {},

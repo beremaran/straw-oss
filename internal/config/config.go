@@ -99,10 +99,10 @@ type EgressCapabilities struct {
 
 // EgressUpstreamConnectionPoolConfig configures optional upstream reuse.
 type EgressUpstreamConnectionPoolConfig struct {
-	Enabled                   bool `json:"enabled"`
-	MaxIdleConnsPerTenantHost int  `json:"max_idle_conns_per_tenant_host"`
-	IdleTimeoutMS             int  `json:"idle_timeout_ms"`
-	MaxLifetimeMS             int  `json:"max_lifetime_ms"`
+	Enabled             bool `json:"enabled"`
+	MaxIdleConnsPerHost int  `json:"max_idle_conns_per_host"`
+	IdleTimeoutMS       int  `json:"idle_timeout_ms"`
+	MaxLifetimeMS       int  `json:"max_lifetime_ms"`
 }
 
 // EgressHTTP2Config configures outbound HTTP/2.
@@ -283,8 +283,8 @@ func (e *EgressConfig) applyDefaults() {
 	}
 
 	if e.UpstreamConnectionPool.Enabled {
-		if e.UpstreamConnectionPool.MaxIdleConnsPerTenantHost == 0 {
-			e.UpstreamConnectionPool.MaxIdleConnsPerTenantHost = 8
+		if e.UpstreamConnectionPool.MaxIdleConnsPerHost == 0 {
+			e.UpstreamConnectionPool.MaxIdleConnsPerHost = 8
 		}
 
 		if e.UpstreamConnectionPool.IdleTimeoutMS == 0 {

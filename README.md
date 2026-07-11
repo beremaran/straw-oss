@@ -1,41 +1,69 @@
 # Straw
 
-Straw is a secure, distributed HTTP/HTTPS egress proxy control plane and worker system. It lets platform teams route, inspect, validate, throttle, and audit outbound request traffic from internal workloads before it reaches the public internet.
+Straw is a small, self-hosted HTTP/HTTPS egress proxy. Your application sends a request to Control, Control assigns
+it over NATS to an Egress worker, and the worker makes the outbound request.
 
-**Full documentation: https://beremaran.github.io/straw/docs**
+One deployment is one trust boundary. Straw has no tenants, accounts, RBAC, billing, quotas, configuration database,
+or analytics database. NATS is the only required backing service.
 
-## Quick Start
+## Quickstart
 
-```bash
-make infra-up
-curl -fsS http://localhost:9090/readyz && echo "Control plane ready"
+Requirements: Docker with Compose v2 and `make`.
+
+```sh
+git clone https://github.com/beremaran/straw-oss.git
+cd straw
+make dev
 ```
 
-The command creates redacted local credentials under `deploy/local/.dev/`, starts the backing services, Control,
-Egress, telemetry, and documentation stack, and provisions a tenant-scoped requester key. See the
-[Quickstart Guide](docs/public/quickstart.md) for sending your first request.
+Then send a request:
 
-## Repository Layout
+```sh
+curl -sS \
+  -H 'Content-Type: application/json' \
+  -d '{"method":"GET","url":"https://example.com"}' \
+  http://localhost:8080/api/v1/requests
+```
 
-- `cmd/control`, `cmd/egress`, `cmd/straw` — Control plane, Egress worker, and CLI entrypoints.
-- `internal/` — Control, Egress, config, NATS/Postgres/Redis, and CLI implementation packages.
-- `sdk/` — Public Go client SDK ([SDK guide](docs/public/sdk.md)).
-- `deploy/docker/` — Control and Egress container build definitions.
-- `deploy/local/` — Standalone local Compose stack, backing-service configuration, observability, and bootstrap scripts.
-- `deploy/production/` — Production deployment templates and checks.
-- `docs/public/` — Source of the public documentation site (rendered by `website/`).
-- `docs/planning/`, `docs/features/`, `docs/security/`, `docs/implementation-history.md` — Architecture, durable
-  capability/security records, and consolidated implementation history; not part of the public site.
+The local stack contains exactly NATS, Control, and one Egress worker. It needs no credentials or provisioning.
+
+## Why Straw
+
+- separate the application-facing API from the network that performs egress;
+- scale outbound workers independently;
+- preserve ordered and duplicate headers;
+- bound request bodies, response bodies, and deadlines;
+- select supported outbound TLS fingerprint profiles;
+- operate with Prometheus metrics, health endpoints, and JSON logs;
+- deploy without an application database.
+
+## Documentation
+
+- [Full documentation](https://beremaran.github.io/straw-oss/docs)
+- [Quickstart](docs/public/quickstart.md)
+- [Architecture](docs/public/architecture.md)
+- [Request API](docs/public/api/requests.md)
+- [Configuration](docs/public/configuration.md)
+- [Deployment patterns](docs/public/deployment.md)
+- [Security](docs/public/security.md)
+- [Contributing](CONTRIBUTING.md)
 
 ## Development
 
-Coding agents and contributors working in this repo should start at [`CLAUDE.md`](CLAUDE.md), which indexes the internal planning docs and task boards.
-
-Run the full check suite before sending changes:
-
-```bash
+```sh
 make check
+make production-deploy-check
+make docs-website
 ```
 
-The repository is self-contained for proxy development. Applications that consume Straw—including scraper runtimes
-and browser/session harvesters—belong in their own repositories and connect through Straw's public API and SDKs.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and contribution conventions. The supported development stack is in
+`deploy/local`; `deploy/production` is a security-conscious example to adapt to your environment.
+
+## Project status
+
+Straw is pre-1.0. The REST request API is the primary supported surface; custom-worker protocol packages are more
+likely to change between minor releases. See [ROADMAP.md](ROADMAP.md) and [CHANGELOG.md](CHANGELOG.md).
+
+## License
+
+[MIT](LICENSE) © 2026 Berke Arslan.

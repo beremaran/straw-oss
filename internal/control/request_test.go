@@ -49,6 +49,24 @@ func TestValidateRequestRejectsMalformedUTF8FingerprintProfile(t *testing.T) {
 	}
 }
 
+func TestValidateRequestRejectsRemovedEnterpriseHints(t *testing.T) {
+	t.Parallel()
+
+	for name, raw := range map[string]string{
+		"routing": `{"method":"GET","url":"https://example.com/","routing":{"country":"AU"}}`,
+		"capture": `{"method":"GET","url":"https://example.com/","capture_hint":"all"}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := ValidateRequest([]byte(raw), 1<<20, 5000)
+			if err == nil {
+				t.Fatal("ValidateRequest() error = nil, want unknown-field rejection")
+			}
+		})
+	}
+}
+
 func TestValidateRequestAllowsDefaultFingerprintAlias(t *testing.T) {
 	t.Parallel()
 

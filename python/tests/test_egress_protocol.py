@@ -15,7 +15,6 @@ from straw.egress import (  # noqa: E402
     control_inbox_prefix,
     heartbeat_envelope,
     heartbeat_subject,
-    log_telemetry_subject,
     marshal_envelope,
     register_envelope,
     registration_subject,
@@ -51,7 +50,6 @@ class CanonicalSubjectTests(unittest.TestCase):
     def test_control_subjects(self):
         self.assertEqual(registration_subject(), "straw.v1.control.register")
         self.assertEqual(heartbeat_subject(), "straw.v1.control.heartbeat")
-        self.assertEqual(log_telemetry_subject(), "straw.v1.control.logs")
         self.assertEqual(control_inbox_prefix(), "_INBOX.ctl")
 
     def test_worker_inbox_prefix(self):
@@ -111,12 +109,12 @@ class RegistrationSigningTests(unittest.TestCase):
 
     def test_pool_refs_carried_through(self):
         identity = _identity()
-        caps = Capabilities(allowed_pools=[PoolRef(tenant_id="t1", pool_id="p1")])
+        caps = Capabilities(allowed_pools=[PoolRef(deployment_id="default", pool_id="p1")])
 
         req = build_register_request(identity, caps)
 
         self.assertEqual(len(req.allowed_pools), 1)
-        self.assertEqual(req.allowed_pools[0].tenant_id, "t1")
+        self.assertEqual(req.allowed_pools[0].tenant_id, "default")
         self.assertEqual(req.allowed_pools[0].pool_id, "p1")
 
 

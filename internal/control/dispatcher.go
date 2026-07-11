@@ -69,7 +69,7 @@ type PipelineError struct {
 	TimeoutType  string
 	// RoutingMs/AssignmentMs/EgressMs/TotalMs carry whatever partial phase
 	// timing the dispatcher measured before the failure, so a failed
-	// request_events row (docs/implementation-history.md#p0-32) still reports the real elapsed
+	// request_events row (docs/public/architecture.md) still reports the real elapsed
 	// time instead of zeros.
 	RoutingMs    int64
 	AssignmentMs int64
@@ -102,13 +102,9 @@ type RequestDispatcherOptions struct {
 	MaxInflightDownloadBytes   uint64
 	FrameIdleTimeout           time.Duration
 	Now                        func() time.Time
-	// InFlight registers each dispatched request's cancel function so an
-	// admin cancel (docs/implementation-history.md#p0-27) can reach it. Optional: nil disables
-	// admin cancellation without affecting client-disconnect/deadline
-	// cancellation, which is driven directly by ctx.
+	// InFlight tracks request-scoped cancellation and client disconnects.
 	InFlight *InFlightRegistry
-	// Metrics records the P0 Prometheus series (docs/planning/23). Optional:
-	// nil disables instrumentation.
+	// Metrics records Prometheus request and transport series.
 	Metrics *Metrics
 }
 
@@ -161,7 +157,7 @@ func NewDefaultRequestDispatcher(opts RequestDispatcherOptions) *DefaultRequestD
 // Dispatch runs admission, routing, assignment, streaming, and response
 // buffering for one REST request, recording the straw_active_requests,
 // straw_requests_total, and straw_request_duration_seconds metrics
-// (docs/planning/23) around the attempt.
+// (docs/public/architecture.md) around the attempt.
 func (d *DefaultRequestDispatcher) Dispatch(ctx context.Context, in DispatchInput) (SuccessResponse, *PipelineError) {
 	started := d.opts.Now()
 
@@ -210,7 +206,7 @@ func (d *DefaultRequestDispatcher) dispatch(ctx context.Context, in DispatchInpu
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	d.opts.InFlight.Register(ctx, in.RequestID, in.Identity.TenantID, cancel)
+	d.opts.InFlight.Register(ctx, in.RequestID, in.Identity.DeploymentID, cancel)
 	defer d.opts.InFlight.Deregister(ctx, in.RequestID)
 
 	snapshot := d.opts.ConfigCache.Snapshot()
@@ -263,7 +259,7 @@ func (d *DefaultRequestDispatcher) finalizeDispatch(_ context.Context, in Dispat
 }
 
 // setRouteFields copies the selected route's identity onto a PipelineError
-// for request_events telemetry (docs/implementation-history.md#p0-32 follow-up: route_id/pool_id/
+// for request_events telemetry (docs/public/architecture.md follow-up: route_id/pool_id/
 // selected_executor/executor_type were computed at dispatch but dropped
 // before reaching the telemetry row).
 func setRouteFields(perr *PipelineError, route RouteOutcome) {
@@ -298,7 +294,7 @@ func (d *DefaultRequestDispatcher) dispatchRaw(ctx context.Context, in DispatchI
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	d.opts.InFlight.Register(ctx, in.RequestID, in.Identity.TenantID, cancel)
+	d.opts.InFlight.Register(ctx, in.RequestID, in.Identity.DeploymentID, cancel)
 	defer d.opts.InFlight.Deregister(ctx, in.RequestID)
 
 	snapshot := d.opts.ConfigCache.Snapshot()
@@ -332,10 +328,8 @@ func (d *DefaultRequestDispatcher) dispatchRaw(ctx context.Context, in DispatchI
 	return d.finalizeRawDispatch(ctx, in, snapshot, route, result, perr, routingMs, assignmentMs, started, wroteHeader)
 }
 
-// finalizeRawDispatch mirrors finalizeDispatch for the raw-response path:
-// record quota usage on success, and stamp the routing decision onto
-// whichever of SuccessResponse/PipelineError applies for request_events
-// telemetry.
+// finalizeRawDispatch mirrors finalizeDispatch for the raw-response path and
+// attaches routing and timing details to the result.
 func (d *DefaultRequestDispatcher) finalizeRawDispatch(_ context.Context, in DispatchInput, _ config.Snapshot, route RouteOutcome, result dispatchResult, perr *PipelineError, routingMs, assignmentMs int64, started time.Time, wroteHeader bool) (SuccessResponse, *PipelineError, bool) {
 	if perr != nil {
 		perr = d.withTiming(perr, routingMs, assignmentMs, started)
@@ -358,7 +352,7 @@ func (d *DefaultRequestDispatcher) finalizeRawDispatch(_ context.Context, in Dis
 }
 
 // withTiming annotates perr with whatever partial phase timing the
-// dispatcher measured before the failure (docs/implementation-history.md#p0-32), so a failed
+// dispatcher measured before the failure (docs/public/architecture.md), so a failed
 // request_events row reports real elapsed time instead of zeros.
 func (d *DefaultRequestDispatcher) withTiming(perr *PipelineError, routingMs, assignmentMs int64, started time.Time) *PipelineError {
 	perr.RoutingMs = routingMs
@@ -417,15 +411,15 @@ func (d *DefaultRequestDispatcher) route(in DispatchInput, snapshot config.Snaps
 
 func (d *DefaultRequestDispatcher) routeWithWorkers(in DispatchInput, snapshot config.Snapshot, workers CandidateSource) RouteOutcome {
 	router := NewRouter(
-		snapshotRules{tenantID: in.Identity.TenantID, rules: snapshot.RoutingRules},
-		NewStaticPoolPolicyProvider(poolPoliciesFromSnapshot(in.Identity.TenantID, snapshot.ExecutorPools)),
+		snapshotRules{deploymentID: in.Identity.DeploymentID, rules: snapshot.RoutingRules},
+		NewStaticPoolPolicyProvider(poolPoliciesFromSnapshot(in.Identity.DeploymentID, snapshot.ExecutorPools)),
 		workers,
 		d.opts.Sticky,
 		d.opts.Now,
 	)
 
 	return router.Evaluate(RouteRequest{
-		TenantID:           in.Identity.TenantID,
+		DeploymentID:       in.Identity.DeploymentID,
 		Tags:               in.Request.Routing.Tags,
 		Country:            in.Request.Routing.Country,
 		Region:             in.Request.Routing.Region,
@@ -460,8 +454,8 @@ type excludeWorkers struct {
 	workerID string
 }
 
-func (e excludeWorkers) CandidatesForPool(tenantID, poolID string) []PoolCandidate {
-	candidates := e.base.CandidatesForPool(tenantID, poolID)
+func (e excludeWorkers) CandidatesForPool(deploymentID, poolID string) []PoolCandidate {
+	candidates := e.base.CandidatesForPool(deploymentID, poolID)
 
 	out := candidates[:0]
 	for _, candidate := range candidates {
@@ -473,16 +467,13 @@ func (e excludeWorkers) CandidatesForPool(tenantID, poolID string) []PoolCandida
 	return out
 }
 
-// poolPoliciesFromSnapshot converts a tenant snapshot's executor pools into
-// the flat PoolPolicy list StaticPoolPolicyProvider expects, so degraded-pool
-// routing policy (docs/planning/10) is sourced from the pools config admins
-// manage through /api/v1/config/executor-pools (docs/implementation-history.md#p0-30) instead of a
-// nil provider.
-func poolPoliciesFromSnapshot(tenantID string, pools []config.ExecutorPool) []PoolPolicy {
+// poolPoliciesFromSnapshot converts the deployment snapshot's executor pools
+// into the flat list StaticPoolPolicyProvider expects.
+func poolPoliciesFromSnapshot(deploymentID string, pools []config.ExecutorPool) []PoolPolicy {
 	out := make([]PoolPolicy, 0, len(pools))
 	for _, p := range pools {
 		out = append(out, PoolPolicy{
-			TenantID:             tenantID,
+			DeploymentID:         deploymentID,
 			PoolID:               p.ID,
 			AllowDegradedWorkers: p.AllowDegradedWorkers,
 			AllowedCountries:     p.AllowedCountries,
@@ -495,7 +486,7 @@ func poolPoliciesFromSnapshot(tenantID string, pools []config.ExecutorPool) []Po
 }
 
 // executeAttempt runs one assignment-and-stream attempt, recording the
-// straw_assignment_duration_seconds histogram (docs/planning/23) over the
+// straw_assignment_duration_seconds histogram (docs/public/architecture.md) over the
 // full attempt regardless of outcome.
 func (d *DefaultRequestDispatcher) executeAttempt(ctx context.Context, in DispatchInput, route RouteOutcome, policy *DestinationPolicyResult, configVersion uint64, deadline time.Time) (dispatchResult, int64, *PipelineError) {
 	result, assignmentMs, perr := d.executeAttemptUnmeasured(ctx, in, route, policy, configVersion, deadline)
@@ -628,7 +619,7 @@ func (d *DefaultRequestDispatcher) executeRawAttemptUnmeasured(ctx context.Conte
 func (d *DefaultRequestDispatcher) requestAssign(subject string, in DispatchInput, assign *strawpb.AssignRequest, deadline time.Time) (*strawpb.AssignAck, *PipelineError) {
 	env := &strawpb.Envelope{
 		RequestId:      in.RequestID,
-		TenantId:       in.Identity.TenantID,
+		TenantId:       in.Identity.DeploymentID,
 		DeadlineUnixMs: deadline.UnixMilli(),
 		ProtocolMajor:  ProtocolMajor,
 		Attempt:        defaultRequestAttempt,
@@ -981,7 +972,7 @@ func (e *requestStreamError) Error() string {
 func (d *DefaultRequestDispatcher) publishFrame(subject string, in DispatchInput, deadline time.Time, frame *strawpb.StreamFrame) error {
 	env := &strawpb.Envelope{
 		RequestId:      in.RequestID,
-		TenantId:       in.Identity.TenantID,
+		TenantId:       in.Identity.DeploymentID,
 		DeadlineUnixMs: deadline.UnixMilli(),
 		ProtocolMajor:  ProtocolMajor,
 		Attempt:        defaultRequestAttempt,
@@ -1267,7 +1258,7 @@ func (s *rawResponseStreamState) writeData(data *strawpb.DataFrame, validator *n
 }
 
 // sendCancel publishes a best-effort CancelFrame to the c2e subject.
-// Cancellation is best-effort per docs/planning/09; errors are silently
+// Cancellation is best-effort per docs/public/architecture.md; errors are silently
 // dropped.
 func (d *DefaultRequestDispatcher) sendCancel(c2eSubject string, in DispatchInput, deadline time.Time, seq uint64, reason string) {
 	if d.opts.NATS == nil {
@@ -1498,16 +1489,16 @@ func (d *DefaultRequestDispatcher) deadline(req *ValidatedRequest, snapshot conf
 	return d.opts.Now().Add(time.Duration(timeoutMs) * time.Millisecond)
 }
 
-func effectiveDefaultTimeout(staticMax, tenantDefault uint64) uint64 {
-	if tenantDefault == 0 {
-		tenantDefault = defaultRequestTimeoutMS
+func effectiveDefaultTimeout(staticMax, deploymentDefault uint64) uint64 {
+	if deploymentDefault == 0 {
+		deploymentDefault = defaultRequestTimeoutMS
 	}
 
-	if staticMax != 0 && tenantDefault > staticMax {
+	if staticMax != 0 && deploymentDefault > staticMax {
 		return staticMax
 	}
 
-	return tenantDefault
+	return deploymentDefault
 }
 
 type dispatchResult struct {
@@ -1521,12 +1512,12 @@ type dispatchResult struct {
 }
 
 type snapshotRules struct {
-	tenantID string
-	rules    []config.RoutingRule
+	deploymentID string
+	rules        []config.RoutingRule
 }
 
-func (s snapshotRules) RulesForTenant(tenantID string) []RoutingRule {
-	if tenantID != s.tenantID {
+func (s snapshotRules) RulesForDeployment(deploymentID string) []RoutingRule {
+	if deploymentID != s.deploymentID {
 		return nil
 	}
 
@@ -1534,7 +1525,7 @@ func (s snapshotRules) RulesForTenant(tenantID string) []RoutingRule {
 	for _, r := range s.rules {
 		out = append(out, RoutingRule{
 			ID:                      r.ID,
-			TenantID:                tenantID,
+			DeploymentID:            deploymentID,
 			Priority:                r.Priority,
 			Enabled:                 r.Enabled,
 			Match:                   matchFromSnapshot(r.Match),

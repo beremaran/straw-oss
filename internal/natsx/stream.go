@@ -7,7 +7,7 @@ import (
 )
 
 // FrameOutcome is the result of validating one StreamFrame against a
-// per-direction, per-attempt stream (docs/planning/12 "Stream Ordering and
+// per-direction, per-attempt stream (docs/public/architecture.md "Stream Ordering and
 // Sequencing"). Ignored/counted outcomes contribute to worker cooldown; the
 // caller is responsible for that accounting.
 type FrameOutcome int
@@ -45,7 +45,7 @@ func (o FrameOutcome) IsProtocolError() bool {
 }
 
 // StreamValidator enforces the ordering, offset, credit, and terminal rules
-// for a single stream direction and attempt (docs/planning/12). A validator
+// for a single stream direction and attempt (docs/public/architecture.md). A validator
 // models the receiving side of one byte stream: it holds the data-byte credit
 // it has granted to the sender and rejects DataFrames that exceed it.
 //
@@ -214,7 +214,7 @@ func (v *StreamValidator) acceptData(data *strawpb.DataFrame) FrameOutcome {
 }
 
 // isTerminalFrame reports whether f carries a terminal payload (EndFrame,
-// ErrorFrame, or CancelledFrame) per docs/planning/09 "Terminal Rule".
+// ErrorFrame, or CancelledFrame) per docs/public/architecture.md "Terminal Rule".
 func isTerminalFrame(f *strawpb.StreamFrame) bool {
 	switch f.GetPayload().(type) {
 	case *strawpb.StreamFrame_End, *strawpb.StreamFrame_Error, *strawpb.StreamFrame_Cancelled:

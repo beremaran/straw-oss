@@ -6,7 +6,7 @@ import (
 )
 
 // MatchConditions is a routing rule's match shape
-// (docs/planning/10-routing-model.md). Any non-empty field is a hard
+// (docs/public/architecture.md). Any non-empty field is a hard
 // constraint against the corresponding request hint; missing hints (empty
 // request field) mean no preference and always pass.
 type MatchConditions struct {
@@ -18,11 +18,11 @@ type MatchConditions struct {
 	TargetHost  string // exact host, or "*.example.com" suffix wildcard
 }
 
-// RoutingRule is one tenant-scoped routing rule from the immutable snapshot
+// RoutingRule is one deployment-scoped rule from the immutable snapshot
 // evaluated at request start.
 type RoutingRule struct {
 	ID                      string
-	TenantID                string
+	DeploymentID            string
 	Priority                int
 	Enabled                 bool
 	Match                   MatchConditions
@@ -32,14 +32,14 @@ type RoutingRule struct {
 	ConfigVersion           uint64
 }
 
-// PoolPolicy is the per-pool routing policy (docs/planning/10: "health is
+// PoolPolicy is the per-pool routing policy (docs/public/architecture.md: "health is
 // ready or degraded with pool policy allow_degraded_workers=true").
 // AllowedCountries/AllowedRegions/AllowedIPTypes are the pool's P0 capability
-// restrictions (docs/planning/26): a non-empty list requires every one of a
+// restrictions (docs/public/architecture.md): a non-empty list requires every one of a
 // candidate's claimed capability values to be in the list; empty means
 // unrestricted.
 type PoolPolicy struct {
-	TenantID             string
+	DeploymentID         string
 	PoolID               string
 	AllowDegradedWorkers bool
 	AllowedCountries     []string
@@ -51,7 +51,7 @@ type PoolPolicy struct {
 // request-derived attributes (ingress_type is always "rest" for P0 REST
 // transport; target_host comes from the request URL).
 type RouteRequest struct {
-	TenantID        string
+	DeploymentID    string
 	Tags            []string
 	Country         string
 	Region          string
@@ -88,22 +88,22 @@ type RouteOutcome struct {
 	Sticky        bool
 }
 
-// RuleProvider returns the immutable routing-rule snapshot for a tenant,
-// captured once at request start (docs/planning/10).
+// RuleProvider returns the immutable routing-rule snapshot for a deployment,
+// captured once at request start (docs/public/architecture.md).
 type RuleProvider interface {
-	RulesForTenant(tenantID string) []RoutingRule
+	RulesForDeployment(deploymentID string) []RoutingRule
 }
 
-// PoolPolicyProvider returns the routing policy for a tenant+pool. Unknown
+// PoolPolicyProvider returns the routing policy for a deployment and pool. Unknown
 // pools default to AllowDegradedWorkers=false.
 type PoolPolicyProvider interface {
-	PoolPolicy(tenantID, poolID string) PoolPolicy
+	PoolPolicy(deploymentID, poolID string) PoolPolicy
 }
 
-// CandidateSource returns eligible worker candidates for a tenant+pool
+// CandidateSource returns eligible worker candidates for a deployment and pool
 // (implemented by *WorkerRegistry).
 type CandidateSource interface {
-	CandidatesForPool(tenantID, poolID string) []PoolCandidate
+	CandidatesForPool(deploymentID, poolID string) []PoolCandidate
 }
 
 // Router evaluates routing rules and selects an eligible executor.
@@ -115,12 +115,11 @@ type Router struct {
 	now        func() time.Time
 
 	mu    sync.Mutex
-	rrIdx map[string]int // round-robin cursor per tenant+pool
+	rrIdx map[string]int // round-robin cursor per deployment and pool
 }
 
-// NewRouter builds a Router. sticky may be an in-process *StickyStore (tests,
-// no-Redis dev) or a *RedisStickyStore (P0 durable-ephemeral backing); now
-// may be nil (defaults to time.Now).
+// NewRouter builds a Router. sticky may be an in-process StickyStore; now may
+// be nil and defaults to time.Now.
 func NewRouter(rules RuleProvider, policies PoolPolicyProvider, candidates CandidateSource, sticky StickyBackend, now func() time.Time) *Router {
 	if now == nil {
 		now = time.Now
@@ -147,7 +146,7 @@ func (rt *Router) Evaluate(req RouteRequest) RouteOutcome {
 	profileRejected := false
 
 	for _, rule := range rules {
-		policy := rt.policies.PoolPolicy(req.TenantID, rule.TargetPoolID)
+		policy := rt.policies.PoolPolicy(req.DeploymentID, rule.TargetPoolID)
 		ordinary := rt.eligibleCandidates(req, rule, policy)
 
 		candidates := filterFingerprintCandidates(ordinary, req.FingerprintProfile)
@@ -165,7 +164,7 @@ func (rt *Router) Evaluate(req RouteRequest) RouteOutcome {
 			continue
 		}
 
-		if picked, ok := rt.selectExecutor(req.TenantID, rule.TargetPoolID, candidates); ok {
+		if picked, ok := rt.selectExecutor(req.DeploymentID, rule.TargetPoolID, candidates); ok {
 			return RouteOutcome{
 				OK: true, RuleID: rule.ID, PoolID: rule.TargetPoolID,
 				WorkerID: picked.WorkerID, ExecutorType: picked.ExecutorType,
@@ -205,11 +204,11 @@ func filterFingerprintCandidates(candidates []PoolCandidate, requested string) [
 // does not fall through once a rule has attempted a pin and exhausted
 // fallback; that returns a final outcome.
 func (rt *Router) evaluateSticky(req RouteRequest, rule RoutingRule, candidates []PoolCandidate) (RouteOutcome, bool) {
-	pinned, ok := rt.sticky.Get(req.TenantID, req.StickySessionID)
+	pinned, ok := rt.sticky.Get(req.DeploymentID, req.StickySessionID)
 	if ok {
 		for _, c := range candidates {
 			if c.WorkerID == pinned {
-				rt.sticky.Refresh(req.TenantID, req.StickySessionID, pinned, stickyTTL(rule))
+				rt.sticky.Refresh(req.DeploymentID, req.StickySessionID, pinned, stickyTTL(rule))
 
 				return RouteOutcome{
 					OK: true, RuleID: rule.ID, PoolID: rule.TargetPoolID,
@@ -225,12 +224,12 @@ func (rt *Router) evaluateSticky(req RouteRequest, rule RoutingRule, candidates 
 		// Fallback permitted: fall through to a fresh selection below.
 	}
 
-	picked, ok := rt.selectExecutor(req.TenantID, rule.TargetPoolID, candidates)
+	picked, ok := rt.selectExecutor(req.DeploymentID, rule.TargetPoolID, candidates)
 	if !ok {
 		return RouteOutcome{}, false
 	}
 
-	rt.sticky.Set(req.TenantID, req.StickySessionID, picked.WorkerID, stickyTTL(rule))
+	rt.sticky.Set(req.DeploymentID, req.StickySessionID, picked.WorkerID, stickyTTL(rule))
 
 	return RouteOutcome{
 		OK: true, RuleID: rule.ID, PoolID: rule.TargetPoolID,
@@ -243,14 +242,14 @@ func stickyTTL(rule RoutingRule) time.Duration {
 	return time.Duration(rule.StickySessionTTLSeconds) * time.Second
 }
 
-// matchingRules returns enabled rules for the tenant whose match conditions
+// matchingRules returns enabled rules for the deployment whose match conditions
 // are satisfied by req, in ascending priority order.
 func (rt *Router) matchingRules(req RouteRequest) []RoutingRule {
-	all := rt.rules.RulesForTenant(req.TenantID)
+	all := rt.rules.RulesForDeployment(req.DeploymentID)
 
 	out := make([]RoutingRule, 0, len(all))
 	for _, r := range all {
-		if r.TenantID != req.TenantID || !r.Enabled {
+		if r.DeploymentID != req.DeploymentID || !r.Enabled {
 			continue
 		}
 
@@ -320,10 +319,10 @@ func hostMatches(pattern, host string) bool {
 }
 
 // eligibleCandidates filters a pool's candidates by degraded policy and
-// request capability constraints (docs/planning/10 "capabilities satisfy
+// request capability constraints (docs/public/architecture.md "capabilities satisfy
 // all request constraints").
 func (rt *Router) eligibleCandidates(req RouteRequest, rule RoutingRule, policy PoolPolicy) []PoolCandidate {
-	all := rt.candidates.CandidatesForPool(req.TenantID, rule.TargetPoolID)
+	all := rt.candidates.CandidatesForPool(req.DeploymentID, rule.TargetPoolID)
 
 	out := make([]PoolCandidate, 0, len(all))
 	for _, c := range all {
@@ -365,7 +364,7 @@ func capabilitySatisfies(c PoolCandidate, req RouteRequest) bool {
 }
 
 // poolAllows reports whether a candidate's claimed capabilities fall within
-// the pool's restrictions (docs/planning/26 allowed_ip_types/allowed_countries/
+// the pool's restrictions (docs/public/architecture.md allowed_ip_types/allowed_countries/
 // allowed_regions): a non-empty restriction requires every value the
 // candidate claims for that dimension to be in the allowed list; an empty
 // restriction is unrestricted regardless of what the candidate claims.
@@ -380,9 +379,8 @@ func poolAllows(c PoolCandidate, policy PoolPolicy) bool {
 }
 
 // selectExecutor picks the least-loaded eligible candidate, with a
-// round-robin tie breaker per tenant+pool (docs/planning/10 "Executor
-// Selection").
-func (rt *Router) selectExecutor(tenantID, poolID string, candidates []PoolCandidate) (PoolCandidate, bool) {
+// round-robin tie breaker per deployment and pool.
+func (rt *Router) selectExecutor(deploymentID, poolID string, candidates []PoolCandidate) (PoolCandidate, bool) {
 	if len(candidates) == 0 {
 		return PoolCandidate{}, false
 	}
@@ -404,7 +402,7 @@ func (rt *Router) selectExecutor(tenantID, poolID string, candidates []PoolCandi
 	sortCandidatesByWorkerID(tied)
 
 	rt.mu.Lock()
-	key := tenantID + "\x00" + poolID
+	key := deploymentID + "\x00" + poolID
 	idx := rt.rrIdx[key] % len(tied)
 	rt.rrIdx[key] = idx + 1
 	rt.mu.Unlock()
@@ -431,30 +429,28 @@ func load(c PoolCandidate) float64 {
 
 // ---- rule/policy providers (P0 in-memory) ----
 
-// StaticRuleProvider serves an in-memory routing-rule set, grouped by
-// tenant. Tests and P0 wiring construct this directly; a Postgres-backed
-// snapshot provider is future work.
+// StaticRuleProvider serves deployment-scoped rules from memory.
 type StaticRuleProvider struct {
-	mu       sync.Mutex
-	byTenant map[string][]RoutingRule
+	mu           sync.Mutex
+	byDeployment map[string][]RoutingRule
 }
 
 // NewStaticRuleProvider builds a StaticRuleProvider from a flat rule list.
 func NewStaticRuleProvider(rules []RoutingRule) *StaticRuleProvider {
-	p := &StaticRuleProvider{byTenant: make(map[string][]RoutingRule)}
+	p := &StaticRuleProvider{byDeployment: make(map[string][]RoutingRule)}
 	for _, r := range rules {
-		p.byTenant[r.TenantID] = append(p.byTenant[r.TenantID], r)
+		p.byDeployment[r.DeploymentID] = append(p.byDeployment[r.DeploymentID], r)
 	}
 
 	return p
 }
 
-// RulesForTenant returns a copy of the rules registered for tenantID.
-func (p *StaticRuleProvider) RulesForTenant(tenantID string) []RoutingRule {
+// RulesForDeployment returns a copy of the registered deployment rules.
+func (p *StaticRuleProvider) RulesForDeployment(deploymentID string) []RoutingRule {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	rules := p.byTenant[tenantID]
+	rules := p.byDeployment[deploymentID]
 	out := make([]RoutingRule, len(rules))
 	copy(out, rules)
 
@@ -464,7 +460,7 @@ func (p *StaticRuleProvider) RulesForTenant(tenantID string) []RoutingRule {
 // StaticPoolPolicyProvider serves an in-memory pool-policy set.
 type StaticPoolPolicyProvider struct {
 	mu       sync.Mutex
-	policies map[string]PoolPolicy // key: tenantID + "\x00" + poolID
+	policies map[string]PoolPolicy // key: deploymentID + "\x00" + poolID
 }
 
 // NewStaticPoolPolicyProvider builds a StaticPoolPolicyProvider from a flat
@@ -472,28 +468,28 @@ type StaticPoolPolicyProvider struct {
 func NewStaticPoolPolicyProvider(policies []PoolPolicy) *StaticPoolPolicyProvider {
 	p := &StaticPoolPolicyProvider{policies: make(map[string]PoolPolicy)}
 	for _, pol := range policies {
-		p.policies[pol.TenantID+"\x00"+pol.PoolID] = pol
+		p.policies[pol.DeploymentID+"\x00"+pol.PoolID] = pol
 	}
 
 	return p
 }
 
-// PoolPolicy returns the registered policy for tenantID+poolID, or the zero
+// PoolPolicy returns the registered policy for deploymentID+poolID, or the zero
 // value (AllowDegradedWorkers=false) if none was registered.
-func (p *StaticPoolPolicyProvider) PoolPolicy(tenantID, poolID string) PoolPolicy {
+func (p *StaticPoolPolicyProvider) PoolPolicy(deploymentID, poolID string) PoolPolicy {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	return p.policies[tenantID+"\x00"+poolID]
+	return p.policies[deploymentID+"\x00"+poolID]
 }
 
 // ---- sticky session store ----
 
 // StickyBackend stores optional session-to-worker pins.
 type StickyBackend interface {
-	Get(tenantID, sessionID string) (string, bool)
-	Set(tenantID, sessionID, workerID string, ttl time.Duration)
-	Refresh(tenantID, sessionID, workerID string, ttl time.Duration)
+	Get(deploymentID, sessionID string) (string, bool)
+	Set(deploymentID, sessionID, workerID string, ttl time.Duration)
+	Refresh(deploymentID, sessionID, workerID string, ttl time.Duration)
 }
 
 type stickyEntry struct {
@@ -501,12 +497,7 @@ type stickyEntry struct {
 	expiresAt time.Time
 }
 
-// StickyStore is an in-process emulation of the canonical Redis sticky key
-// structure (docs/planning/10): key
-// straw:sticky:<tenant_id>:<sticky_session_id>, TTL from the matched rule,
-// refreshed on each use. It is used for tests and no-Redis dev; production
-// P0 wiring uses RedisStickyStore (sticky_redis.go), which shares the same
-// key shape and TTL-refresh semantics.
+// StickyStore keeps optional session-to-worker pins in process.
 type StickyStore struct {
 	mu      sync.Mutex
 	now     func() time.Time
@@ -523,16 +514,16 @@ func NewStickyStore(now func() time.Time) *StickyStore {
 	return &StickyStore{now: now, entries: make(map[string]stickyEntry)}
 }
 
-func stickyKey(tenantID, sessionID string) string {
-	return "straw:sticky:" + tenantID + ":" + sessionID
+func stickyKey(deploymentID, sessionID string) string {
+	return "straw:sticky:" + deploymentID + ":" + sessionID
 }
 
 // Get returns the pinned worker_id if present and unexpired.
-func (s *StickyStore) Get(tenantID, sessionID string) (string, bool) {
+func (s *StickyStore) Get(deploymentID, sessionID string) (string, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	e, ok := s.entries[stickyKey(tenantID, sessionID)]
+	e, ok := s.entries[stickyKey(deploymentID, sessionID)]
 	if !ok || s.now().After(e.expiresAt) {
 		return "", false
 	}
@@ -541,14 +532,14 @@ func (s *StickyStore) Get(tenantID, sessionID string) (string, bool) {
 }
 
 // Set pins sessionID to workerID with the given TTL.
-func (s *StickyStore) Set(tenantID, sessionID, workerID string, ttl time.Duration) {
+func (s *StickyStore) Set(deploymentID, sessionID, workerID string, ttl time.Duration) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.entries[stickyKey(tenantID, sessionID)] = stickyEntry{workerID: workerID, expiresAt: s.now().Add(ttl)}
+	s.entries[stickyKey(deploymentID, sessionID)] = stickyEntry{workerID: workerID, expiresAt: s.now().Add(ttl)}
 }
 
 // Refresh extends the TTL of an existing pin on use.
-func (s *StickyStore) Refresh(tenantID, sessionID, workerID string, ttl time.Duration) {
-	s.Set(tenantID, sessionID, workerID, ttl)
+func (s *StickyStore) Refresh(deploymentID, sessionID, workerID string, ttl time.Duration) {
+	s.Set(deploymentID, sessionID, workerID, ttl)
 }

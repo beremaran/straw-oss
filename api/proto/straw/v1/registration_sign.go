@@ -19,7 +19,7 @@ const fingerprintProfileCapabilityProtocolMinor uint32 = 1
 // version, a per-registration nonce, and an issued-at timestamp so a
 // signature captured for one worker cannot authorize another and a captured
 // request cannot be replayed outside its nonce/skew window
-// (docs/planning/27-security-controls.md "Worker Credential Signing"). The
+// (docs/public/architecture.md "Worker Credential Signing"). The
 // nonce travels inside the signed token itself, so Core NATS request/reply
 // needs no extra out-of-band channel; Control enforces replay protection via
 // a Redis-backed nonce store (see internal/control/worker_nonce.go).

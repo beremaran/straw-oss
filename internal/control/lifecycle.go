@@ -7,7 +7,7 @@ import (
 )
 
 // LifecycleState is the Control-side state of one assignment attempt
-// (docs/planning/09-canonical-request-lifecycle.md).
+// (docs/public/architecture.md).
 type LifecycleState int
 
 const (
@@ -37,7 +37,7 @@ const (
 )
 
 // executorEmittableCodes is the set of ErrorCodes an executor is permitted to
-// send in an ErrorFrame (docs/planning/13 "Executor Error Reporting"). Any
+// send in an ErrorFrame (docs/public/architecture.md "Executor Error Reporting"). Any
 // other code is a protocol violation mapped to executor_internal_error and
 // counted toward worker cooldown.
 var executorEmittableCodes = map[strawpb.ErrorCode]struct{}{
@@ -66,7 +66,7 @@ const (
 // records. In-set codes pass through unchanged; any out-of-set code (including
 // UNSPECIFIED) maps to executor_internal_error and is flagged as a protocol
 // violation the caller must count toward worker cooldown
-// (docs/planning/13, docs/planning/30 "Error mapping" row).
+// (docs/public/architecture.md, docs/public/architecture.md "Error mapping" row).
 func ValidateExecutorError(code strawpb.ErrorCode) (strawpb.ErrorCode, bool) {
 	if _, ok := executorEmittableCodes[code]; ok {
 		return code, false
@@ -100,18 +100,18 @@ func selectedFingerprintForRequest(req *ValidatedRequest) string {
 // frame handling, and cancellation. It is a pure state machine; NATS I/O is
 // the caller's responsibility. Not safe for concurrent use.
 type Assignment struct {
-	RequestID  string
-	TenantID   string
-	WorkerID   string
-	SessionID  string
-	Attempt    uint32
-	Replayable bool
+	RequestID    string
+	DeploymentID string
+	WorkerID     string
+	SessionID    string
+	Attempt      uint32
+	Replayable   bool
 
 	state    LifecycleState
 	terminal TerminalKind
 	// clientResponded records that Control has begun emitting a client-visible
 	// success envelope, which forbids fallback even for replayable requests
-	// (docs/planning/09 "Replay and Fallback Boundary").
+	// (docs/public/architecture.md "Replay and Fallback Boundary").
 	clientResponded bool
 	// fallbackAllowed preserves replay eligibility after the attempt has moved
 	// to a terminal state.
@@ -120,16 +120,16 @@ type Assignment struct {
 
 // NewAssignment builds an assignment in the Assigning state, immediately after
 // AssignRequest has been published to the exact-session assignment subject.
-func NewAssignment(requestID, tenantID, workerID, sessionID string, attempt uint32, replayable bool) *Assignment {
+func NewAssignment(requestID, deploymentID, workerID, sessionID string, attempt uint32, replayable bool) *Assignment {
 	return &Assignment{
-		RequestID:  requestID,
-		TenantID:   tenantID,
-		WorkerID:   workerID,
-		SessionID:  sessionID,
-		Attempt:    attempt,
-		Replayable: replayable,
-		state:      LifecycleAssigning,
-		terminal:   TerminalNone,
+		RequestID:    requestID,
+		DeploymentID: deploymentID,
+		WorkerID:     workerID,
+		SessionID:    sessionID,
+		Attempt:      attempt,
+		Replayable:   replayable,
+		state:        LifecycleAssigning,
+		terminal:     TerminalNone,
 	}
 }
 
@@ -197,7 +197,7 @@ func (a *Assignment) MarkClientResponded() {
 }
 
 // CanFallback reports whether Control may abandon this attempt and try another
-// executor without violating the P0 replay boundary (docs/planning/09):
+// executor without violating the P0 replay boundary (docs/public/architecture.md):
 // fallback is always allowed before RequestStart; after RequestStart it is
 // allowed only for replayable requests that have not yet emitted a client
 // response.
@@ -220,7 +220,7 @@ func (a *Assignment) CanFallback() bool {
 // RecordTerminal applies a terminal frame. The first terminal on an active
 // assignment is accepted and terminates it. Any later terminal (or any frame
 // once terminated) is a duplicate/late frame: ignored and counted toward
-// worker cooldown by the caller (docs/planning/09 "Terminal Rule"). Returns
+// worker cooldown by the caller (docs/public/architecture.md "Terminal Rule"). Returns
 // accepted=true only for the first terminal.
 func (a *Assignment) RecordTerminal(kind TerminalKind) bool {
 	if a.state == LifecycleTerminated {
@@ -266,7 +266,7 @@ func (a *Assignment) Cancel() (bool, bool) {
 }
 
 // ackDeadline is a small helper for callers enforcing the assignment ack
-// timeout bounded by the remaining total deadline (docs/planning/09 "Timeout
+// timeout bounded by the remaining total deadline (docs/public/architecture.md "Timeout
 // Hierarchy"). It returns the earlier of now+ackTimeout and the total deadline.
 func ackDeadline(now time.Time, ackTimeoutDuration time.Duration, totalDeadline time.Time) time.Time {
 	deadline, _ := ackTimeout(now, ackTimeoutDuration, totalDeadline)

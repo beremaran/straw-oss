@@ -1,7 +1,5 @@
 // Package main implements a static-response example Egress worker built
-// purely on sdk/egress and the standard library. It proves that a third
-// party can implement a custom Egress node with only the public SDK
-// (docs/implementation-history.md#p2-13); see README.md for the
+// purely on sdk/egress and the standard library. See README.md for the
 // operator obligations a custom implementation must uphold.
 package main
 
@@ -39,10 +37,8 @@ const (
 	// registration; it identifies the implementation, not a vendor.
 	executorType = "egress-static-example"
 
-	// privateKeyEnv names the environment variable holding the worker's
-	// persistent ed25519 identity key (base64-standard, 32-byte seed or
-	// 64-byte full key), matching cmd/egress's convention so the registered
-	// public key can be pre-seeded against a Control credential.
+	// privateKeyEnv names the environment variable holding an optional stable
+	// Ed25519 identity key (base64-standard, 32-byte seed or 64-byte key).
 	privateKeyEnv = "STRAW_EGRESS_STATIC_PRIVATE_KEY_B64"
 )
 

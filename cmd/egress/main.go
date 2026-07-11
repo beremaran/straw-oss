@@ -136,7 +136,7 @@ func runHealthcheck(cfg config.EgressConfig) error {
 }
 
 // serveHealthHTTP starts the /healthz and /readyz server on the health port
-// (docs/planning/23, docs/planning/28) and returns a stop function that
+// (docs/public/architecture.md, docs/public/architecture.md) and returns a stop function that
 // shuts it down.
 func serveHealthHTTP(ctx context.Context, cfg config.EgressConfig, ready *atomic.Bool) func() {
 	addr := fmt.Sprintf(":%d", cfg.HealthPort)
@@ -164,7 +164,7 @@ func serveHealthHTTP(ctx context.Context, cfg config.EgressConfig, ready *atomic
 
 // buildCapabilities maps the loaded egress static config onto the capability
 // claims sent in the worker's RegisterRequest
-// (docs/planning/24-static-configuration.md `egress.capabilities.*`).
+// (docs/public/architecture.md `egress.capabilities.*`).
 func buildCapabilities(cfg config.EgressConfig) sdkegress.Capabilities {
 	maxConcurrency := uint32(defaultConcurrency)
 	if cfg.Capabilities.MaxConcurrency > 0 {
@@ -208,10 +208,10 @@ func runWorker(ctx context.Context, natsConn *natsx.Connection, cfg config.Egres
 		HTTP2Enabled:     cfg.HTTP2.Enabled,
 		FallbackCacheTTL: time.Duration(cfg.HTTP2.FallbackCacheTTLMS) * time.Millisecond,
 		Pool: internalegress.UpstreamConnectionPoolOptions{
-			Enabled:                   pool.Enabled,
-			MaxIdleConnsPerTenantHost: pool.MaxIdleConnsPerTenantHost,
-			IdleTimeout:               time.Duration(pool.IdleTimeoutMS) * time.Millisecond,
-			MaxLifetime:               time.Duration(pool.MaxLifetimeMS) * time.Millisecond,
+			Enabled:             pool.Enabled,
+			MaxIdleConnsPerHost: pool.MaxIdleConnsPerHost,
+			IdleTimeout:         time.Duration(pool.IdleTimeoutMS) * time.Millisecond,
+			MaxLifetime:         time.Duration(pool.MaxLifetimeMS) * time.Millisecond,
 		},
 	})
 

@@ -5,28 +5,19 @@ const sidebars = {
   docsSidebar: [
     'index',
     'quickstart',
-    'ingress_modes',
-    'sdk',
-    'cli',
+    'architecture',
+    'configuration',
     {
       type: 'category',
-      label: 'API Reference',
-      items: [
-        'api/auth',
-        'api/requests',
-        'api/config',
-        'api/telemetry',
-        'api/admin',
-      ],
+      label: 'Use Straw',
+      items: ['api/requests', 'sdk', 'cli', 'egress_worker'],
     },
     {
       type: 'category',
-      label: 'Deployment & Operations',
-      items: [
-        'egress_worker',
-        'operations',
-      ],
+      label: 'Run Straw',
+      items: ['deployment', 'operations', 'security', 'troubleshooting'],
     },
+    'development',
   ],
 };
 
