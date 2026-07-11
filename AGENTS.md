@@ -76,7 +76,7 @@ This runs formatting checks, `go test ./...`, and golangci-lint with uncapped is
 go test ./internal/control -run TestName
 make postgres-migrations-check
 STRAW_TEST_POSTGRES_DSN='postgres://postgres:postgres@localhost:5432/straw_test?sslmode=disable' go test ./...
-python3 -m unittest discover python/tests
+uv run --all-packages --frozen python -m unittest discover straw/python/tests
 ```
 
 Postgres-backed tests run only when `STRAW_TEST_POSTGRES_DSN` is set. The harness refuses databases whose name does
