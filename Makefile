@@ -1,10 +1,10 @@
-.PHONY: check commit fmt-check test test-python postgres-migrations-check lint load-smoke production-deploy-check docs-website
+.PHONY: check commit fmt-check test test-python postgres-migrations-check clickhouse-migrations-check lint load-smoke production-deploy-check docs-website infra-up infra-status infra-reset infra-down infra-clean infra-logs
 
 test:
 	go test ./...
 
 test-python:
-	cd .. && uv run --all-packages --frozen python -m unittest discover straw/python/tests
+	uv run --all-packages --frozen python -m unittest discover python/tests
 
 fmt-check:
 	@files="$$(gofmt -l $$(find . -name '*.go' -not -path './.git/*'))"; \
@@ -29,6 +29,30 @@ check: fmt-check test test-python lint
 
 postgres-migrations-check:
 	./scripts/check-postgres-migrations.sh
+
+clickhouse-migrations-check:
+	./deploy/local/scripts/check-clickhouse-migrations.sh
+
+infra-up:
+	@if [ ! -f deploy/local/.dev/mitm-ca/ca.pem ] || [ ! -f deploy/local/.dev/mitm-ca/ca-key.pem ]; then \
+		./deploy/local/dev-mitm-ca.sh; \
+	fi
+	@./deploy/local/scripts/dev-up.sh
+
+infra-status:
+	@./deploy/local/scripts/dev-status.sh
+
+infra-reset:
+	@./deploy/local/scripts/dev-reset.sh
+
+infra-down:
+	docker compose -f deploy/local/docker-compose.yml down
+
+infra-clean:
+	docker compose -f deploy/local/docker-compose.yml down -v
+
+infra-logs:
+	docker compose -f deploy/local/docker-compose.yml logs -f
 
 commit:
 	opencode run --model llama.cpp/qwen-4b --thinking --title 'Committing changes' --pure --auto 'Commit all changes. If anything fails, stop, and let me know what is wrong'

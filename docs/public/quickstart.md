@@ -20,12 +20,12 @@ The repository includes a ready-to-run `docker-compose.yml` that sets up:
 - **NATS**: Real-time communication and work scheduling between Control and Egress.
 - **ClickHouse**: Storage for structured metadata events (e.g. audit history, request summaries).
 
-To start the stack, define a bootstrap admin API key in the environment and run:
+To start the stack and provision redacted local credentials, run:
 
 ```bash
-# 1. From the repository root, define the system administrator key and boot up the cluster
-cd /path/to/wiseshopper-monorepo-migration
-STRAW_BOOTSTRAP_SYSTEM_ADMIN_KEY=sk_example_admin_local make infra-up
+# 1. From the Straw repository root, boot the cluster
+cd /path/to/straw
+make infra-up
 ```
 
 You can verify that the Control plane is healthy by querying its readiness endpoint:
@@ -39,36 +39,18 @@ Once the stack is up, the Egress worker automatically registers itself with the 
 
 ---
 
-## Step 2: Mint a Tenant API Key
+## Step 2: Load the Local Tenant API Key
 
-A default development tenant `22222222-2222-4222-8222-222222222222` is automatically bootstrapped at startup. Use the system admin key you supplied at startup to generate a tenant-scoped `requester` API key.
+A default development tenant `22222222-2222-4222-8222-222222222222` is bootstrapped at startup. `make infra-up`
+provisions a tenant-scoped `requester` key once and stores it with owner-only permissions.
 
-Execute the following `curl` command:
+Load the local environment without printing its values:
 
 ```bash
-curl -s -H "Authorization: Bearer sk_example_admin_local" \
-  -H 'Content-Type: application/json' \
-  -d '{"role":"requester"}' \
-  http://localhost:8080/api/v1/config/tenants/22222222-2222-4222-8222-222222222222/api-keys
+set -a
+source deploy/local/.dev/local.env
+set +a
 ```
-
-You will receive a response containing the new API key secret:
-
-```json
-{
-  "id": "6168de90-dc29-4fbc-bdd2-bb42c47ec2f9",
-  "scope_type": "tenant",
-  "tenant_id": "22222222-2222-4222-8222-222222222222",
-  "role": "requester",
-  "prefix": "sk_example_req",
-  "secret": "sk_example_requester_secret_returned_once",
-  "created_at": "2026-07-05T14:11:23Z",
-  "config_version": 7
-}
-```
-
-> [!IMPORTANT]
-> The `secret` field is only returned once, at the moment of creation. Make sure to copy the secret value as it cannot be retrieved again later.
 
 ---
 
@@ -79,7 +61,7 @@ Now that you have a tenant-scoped API key, you can send an HTTP request to the f
 Send a `GET` request to `https://example.com/`:
 
 ```bash
-curl -s -H "Authorization: Bearer sk_example_requester_secret_returned_once" \
+curl -s -H "Authorization: Bearer ${STRAW_API_KEY}" \
   -H 'Content-Type: application/json' \
   -d '{"method":"GET","url":"https://example.com/","timeout_ms":15000}' \
   http://localhost:8080/api/v1/requests
@@ -162,5 +144,5 @@ curl -fsS http://localhost:8123/ --data-binary \
   "SELECT request_id, requested_fingerprint_profile, selected_fingerprint_profile, executed_fingerprint_profile, upstream_status, error_code FROM straw.request_events ORDER BY timestamp DESC LIMIT 1 FORMAT Vertical"
 ```
 
-The repository-level equivalents for the final gate are `make check-protos`, `make clickhouse-migrations-check`,
-`make check-straw`, and `cd straw && make check`.
+The repository-level verification commands are `make check`, `make postgres-migrations-check`, and
+`make clickhouse-migrations-check`.
