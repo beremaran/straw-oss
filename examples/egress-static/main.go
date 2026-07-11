@@ -1,7 +1,7 @@
 // Package main implements a static-response example Egress worker built
 // purely on sdk/egress and the standard library. It proves that a third
 // party can implement a custom Egress node with only the public SDK
-// (docs/tasks/p2/13-example-custom-egress.md); see README.md for the
+// (docs/implementation-history.md#p2-13); see README.md for the
 // operator obligations a custom implementation must uphold.
 package main
 

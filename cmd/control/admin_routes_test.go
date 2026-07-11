@@ -14,7 +14,7 @@ const routeConfigTenants = "/api/v1/config/tenants"
 // TestServeAdminRoutesCanonicalConfigPaths proves the identity and limits
 // config endpoints are registered only under the canonical /api/v1/config
 // base path (docs/planning/26), not the old bare root paths
-// (docs/tasks/p0/36-canonical-config-base-path.md).
+// (docs/implementation-history.md#p0-36).
 func TestServeAdminRoutesCanonicalConfigPaths(t *testing.T) {
 	t.Parallel()
 

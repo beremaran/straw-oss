@@ -2,9 +2,9 @@
 
 This appendix defines the P2 HTTP/2 protocol semantics consumed by:
 
-- [docs/tasks/p2/14-http2-semantics-spec.md](file:///Users/beremaran/projects/wiseshopper/straw/docs/tasks/p2/14-http2-semantics-spec.md)
-- [docs/tasks/p2/15-outbound-http2.md](file:///Users/beremaran/projects/wiseshopper/straw/docs/tasks/p2/15-outbound-http2.md)
-- [docs/tasks/p2/16-ingress-http2-and-mitm-alpn.md](file:///Users/beremaran/projects/wiseshopper/straw/docs/tasks/p2/16-ingress-http2-and-mitm-alpn.md)
+- [P2 task 14](../implementation-history.md#p2-14)
+- [P2 task 15](../implementation-history.md#p2-15)
+- [P2 task 16](../implementation-history.md#p2-16)
 
 HTTP/2 support is optional, feature-flagged, and must fail-safe back to HTTP/1.1 when unavailable or disabled.
 
@@ -188,15 +188,15 @@ Before any HTTP/2 code is merged, the following test coverage is required:
 
 | Area | Required Checks | Owning Task |
 |------|-----------------|-------------|
-| Disabled Default | Default config disables HTTP/2 ALPN and falls back to HTTP/1.1 | `docs/tasks/p2/15-outbound-http2.md` |
-| Multiplexing | Multiple concurrent requests are sent over a single TCP connection as separate HTTP/2 streams | `docs/tasks/p2/15-outbound-http2.md` |
-| Stream Cancellation | Client stream cancel sends `CancelFrame`; NATS `CancelFrame` sends `RST_STREAM` with `CANCEL` | `docs/tasks/p2/15-outbound-http2.md` |
-| Error Mapping | All HTTP/2 `RST_STREAM` codes map to the correct Straw `ErrorCode`s | `docs/tasks/p2/15-outbound-http2.md` |
-| Flow Control backpressure | NATS credit exhaustion stops HTTP/2 window updates; credit replenishment sends `WINDOW_UPDATE` | `docs/tasks/p2/15-outbound-http2.md` |
-| Pseudo-headers | `:method`, `:scheme`, `:authority`, and `:path` are mapped correctly; Host maps to `:authority`; custom pseudo-headers are rejected | `docs/tasks/p2/15-outbound-http2.md` |
-| Trailers | Upstream HTTP/2 trailers are mapped to NATS `TrailersFrame` and sent to client | `docs/tasks/p2/15-outbound-http2.md` |
-| Connection-level Error | A connection failure aborts all multiplexed streams and publishes NATS `ErrorFrame`s | `docs/tasks/p2/15-outbound-http2.md` |
-| ALPN Negotiation | MITM correctly negotiates client ALPN based on config/policy | `docs/tasks/p2/16-ingress-http2-and-mitm-alpn.md` |
-| Protocol Translation | HTTP/2 ingress stream translated to HTTP/1.1 egress; response translated back | `docs/tasks/p2/16-ingress-http2-and-mitm-alpn.md` |
-| Downgrade / ALPN Fallback | Egress falls back to HTTP/1.1 when ALPN negotiation fails to select `h2` | `docs/tasks/p2/15-outbound-http2.md` |
-| Downgrade / HTTP_1_1_REQUIRED | Stream reset with `HTTP_1_1_REQUIRED` evicts connection, caches state, and downgrades request | `docs/tasks/p2/15-outbound-http2.md` |
+| Disabled Default | Default config disables HTTP/2 ALPN and falls back to HTTP/1.1 | `../implementation-history.md#p2-15` |
+| Multiplexing | Multiple concurrent requests are sent over a single TCP connection as separate HTTP/2 streams | `../implementation-history.md#p2-15` |
+| Stream Cancellation | Client stream cancel sends `CancelFrame`; NATS `CancelFrame` sends `RST_STREAM` with `CANCEL` | `../implementation-history.md#p2-15` |
+| Error Mapping | All HTTP/2 `RST_STREAM` codes map to the correct Straw `ErrorCode`s | `../implementation-history.md#p2-15` |
+| Flow Control backpressure | NATS credit exhaustion stops HTTP/2 window updates; credit replenishment sends `WINDOW_UPDATE` | `../implementation-history.md#p2-15` |
+| Pseudo-headers | `:method`, `:scheme`, `:authority`, and `:path` are mapped correctly; Host maps to `:authority`; custom pseudo-headers are rejected | `../implementation-history.md#p2-15` |
+| Trailers | Upstream HTTP/2 trailers are mapped to NATS `TrailersFrame` and sent to client | `../implementation-history.md#p2-15` |
+| Connection-level Error | A connection failure aborts all multiplexed streams and publishes NATS `ErrorFrame`s | `../implementation-history.md#p2-15` |
+| ALPN Negotiation | MITM correctly negotiates client ALPN based on config/policy | `../implementation-history.md#p2-16` |
+| Protocol Translation | HTTP/2 ingress stream translated to HTTP/1.1 egress; response translated back | `../implementation-history.md#p2-16` |
+| Downgrade / ALPN Fallback | Egress falls back to HTTP/1.1 when ALPN negotiation fails to select `h2` | `../implementation-history.md#p2-15` |
+| Downgrade / HTTP_1_1_REQUIRED | Stream reset with `HTTP_1_1_REQUIRED` evicts connection, caches state, and downgrades request | `../implementation-history.md#p2-15` |

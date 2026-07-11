@@ -11,7 +11,7 @@ import (
 
 // TestRedisInFlightCoordinatorLive exercises the real RedisInFlightCoordinator
 // and RedisRequestCancelSubscriber against a live Redis, proving the actual
-// Set/Get/Del/Publish/Subscribe round-trip (docs/tasks/p1/23) — not the fake
+// Set/Get/Del/Publish/Subscribe round-trip (docs/implementation-history.md#p1-23) — not the fake
 // backend the pure-unit tests use. It only runs when STRAW_TEST_REDIS_URL is
 // set (e.g. the compose Redis at redis://localhost:6379/0); otherwise skipped.
 func TestRedisInFlightCoordinatorLive(t *testing.T) {

@@ -22,7 +22,7 @@ These must be decided before related implementation starts. Defaults already spe
 
 ### P1 Multiple Concurrent Control Replicas — Resolved 2026-07-07
 
-- **Blocked sections**: `docs/tasks/p1/23-multi-control-durable-cancellation-state.md` (its gate), Section 21
+- **Blocked sections**: `../implementation-history.md#p1-23` (its gate), Section 21
   runtime-state placement of cross-instance in-flight state.
 - **Decision**: Straw supports running more than one Control replica sharing one request plane. Cross-instance
   runtime coordination lives in the existing Redis runtime-state tier (Section 21), not a new datastore, and is

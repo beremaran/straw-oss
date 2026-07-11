@@ -193,7 +193,7 @@ func TestExecutorOpenTunnelAppliesDeniedIPPolicy(t *testing.T) {
 }
 
 // TestExecutorSendsOutboundStartBeforeConnect verifies the docs/planning/09
-// step 19 ordering that docs/tasks/p0/41 depends on: with a send callback the
+// step 19 ordering that docs/implementation-history.md#p0-41 depends on: with a send callback the
 // OutboundStartFrame is delivered before the upstream request is made, and is
 // excluded from the returned batch.
 func TestExecutorSendsOutboundStartBeforeConnect(t *testing.T) {

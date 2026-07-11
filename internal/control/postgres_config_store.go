@@ -48,7 +48,7 @@ var ErrConfigResourceVersionConflict = errors.New("config resource version confl
 
 // RoutingRuleRecord is a routing rule read from Postgres, carrying the
 // per-resource fields the admin API surface needs on top of the config-layer
-// config.RoutingRule (docs/tasks/p0/20).
+// config.RoutingRule (docs/implementation-history.md#p0-20).
 type RoutingRuleRecord struct {
 	config.RoutingRule
 	TenantID      string
@@ -84,7 +84,7 @@ type FingerprintProfileRecord struct {
 }
 
 // ExecutorPoolRecord is an executor pool read from Postgres with admin-API
-// fields (docs/tasks/p0/30).
+// fields (docs/implementation-history.md#p0-30).
 type ExecutorPoolRecord struct {
 	config.ExecutorPool
 	TenantID      string

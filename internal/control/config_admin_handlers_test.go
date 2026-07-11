@@ -239,7 +239,7 @@ func TestExecutorPoolCRUDAndRBAC(t *testing.T) {
 	}
 
 	// tenant_admin creates with a client-supplied stable ID and the P0
-	// capability restriction fields (docs/planning/26, docs/tasks/p0/42).
+	// capability restriction fields (docs/planning/26, docs/implementation-history.md#p0-42).
 	w, created := createExecutorPool(t, ta, tenantAdmin,
 		`{"id":"pool_crud_1","allow_degraded_workers":true,`+
 			`"allowed_ip_types":["`+ipTypeDatacenter+`"],"allowed_countries":["US"],"allowed_regions":["us-west-1"]}`)
@@ -429,7 +429,7 @@ func TestDenyRuleValidationAndRoleRestriction(t *testing.T) {
 	}
 }
 
-// TestDenyRuleLeadingDotNormalization is docs/tasks/p0/48's fix: a
+// TestDenyRuleLeadingDotNormalization is docs/implementation-history.md#p0-48's fix: a
 // host/host_suffix value written with a leading dot (".evil.example") must
 // enforce exactly like the dotless form instead of being stored verbatim and
 // silently never matching, and a value that normalizes to nothing (".") must
@@ -481,7 +481,7 @@ func TestDenyRuleLeadingDotNormalization(t *testing.T) {
 	}
 }
 
-// TestDenyRuleTaxonomyCRUD is docs/tasks/p0/43's CRUD-round-trip-per-type
+// TestDenyRuleTaxonomyCRUD is docs/implementation-history.md#p0-43's CRUD-round-trip-per-type
 // coverage: every docs/planning/26 P0 type/action accepted with a reason, and
 // the old narrower cname/ip/allow values rejected with a clear error.
 func TestDenyRuleTaxonomyCRUD(t *testing.T) {

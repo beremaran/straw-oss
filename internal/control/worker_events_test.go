@@ -10,7 +10,7 @@ import (
 )
 
 // captureWorkerEventRecorder is a fake WorkerEventRecorder for asserting
-// which worker_events rows (docs/tasks/p0/32) a registry transition emits.
+// which worker_events rows (docs/implementation-history.md#p0-32) a registry transition emits.
 type captureWorkerEventRecorder struct {
 	mu     sync.Mutex
 	events []WorkerEvent

@@ -160,7 +160,7 @@ func TestInFlightRegistryNilSafe(t *testing.T) {
 // fakeCluster simulates the shared Redis runtime-state tier for the
 // cross-instance in-flight tests: an ownership map (Record/Clear/Lookup) plus a
 // cancel signal broadcast to every attached replica, mirroring how the
-// Redis-backed coordinator + pub/sub subscriber (docs/tasks/p1/23) behave. It
+// Redis-backed coordinator + pub/sub subscriber (docs/implementation-history.md#p1-23) behave. It
 // also counts Lookup and SignalCancel calls so a test can prove the local fast
 // path never reaches the shared backend.
 type fakeCluster struct {

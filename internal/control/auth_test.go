@@ -186,7 +186,7 @@ func TestAuthenticateRejectsRevokedKey(t *testing.T) {
 	}
 }
 
-// ---- tenant status enforcement (docs/tasks/p0/29) ----
+// ---- tenant status enforcement (docs/implementation-history.md#p0-29) ----
 
 func TestAuthenticateRejectsSuspendedTenant(t *testing.T) {
 	t.Parallel()

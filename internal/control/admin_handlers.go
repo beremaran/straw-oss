@@ -33,12 +33,12 @@ type AdminHandlers struct {
 	// the Postgres store so disables survive restarts and reach snapshots.
 	WorkerAdmin WorkerAdminStore
 	// InFlight registers dispatched requests so CancelRequest
-	// (docs/tasks/p0/27) can reach a running dispatch. Optional: nil makes
+	// (docs/implementation-history.md#p0-27) can reach a running dispatch. Optional: nil makes
 	// CancelRequest respond control_internal_error instead of panicking.
 	InFlight *InFlightRegistry
 	Pepper   []byte
 
-	// Config admin API surface (docs/tasks/p0/20): routing rules, deny rules,
+	// Config admin API surface (docs/implementation-history.md#p0-20): routing rules, deny rules,
 	// injection policies, and read-only fingerprint profiles. The binary
 	// wires PostgresConfigStore for all four; unit tests may use the
 	// InMemory* doubles in config_resource_store.go or leave a field nil
@@ -49,10 +49,10 @@ type AdminHandlers struct {
 	InjectionPolicies   InjectionPolicyStore
 	FingerprintProfiles FingerprintProfileStore
 
-	// Runtime Redis-backed admission components (docs/tasks/p0/21). The
+	// Runtime Redis-backed admission components (docs/implementation-history.md#p0-21). The
 	// binary constructs these against a live Redis client; no admin handler
 	// in this task reads them. They exist here so the request dispatch
-	// pipeline (docs/tasks/p0/24) has a constructed instance to consume
+	// pipeline (docs/implementation-history.md#p0-24) has a constructed instance to consume
 	// instead of building its own. Nil in tests that do not need them.
 	RateLimiter        *RateLimiter
 	RateLimitAdmission *RateLimitAdmission

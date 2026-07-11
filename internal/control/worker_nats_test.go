@@ -203,7 +203,7 @@ func TestWorkerRunLoopAppearsInAdminWorkersAndDrainsOnCancel(t *testing.T) {
 	waitForWorkerState(t, h.h, platformToken, workerRegTestWorker2, string(RuntimeReady))
 
 	if !ready.Load() {
-		t.Fatalf("ready flag = false after registration, want true (docs/tasks/p0/38)")
+		t.Fatalf("ready flag = false after registration, want true (docs/implementation-history.md#p0-38)")
 	}
 
 	cancel()
@@ -213,7 +213,7 @@ func TestWorkerRunLoopAppearsInAdminWorkersAndDrainsOnCancel(t *testing.T) {
 	}
 
 	if ready.Load() {
-		t.Fatalf("ready flag = true after drain, want false (docs/tasks/p0/38)")
+		t.Fatalf("ready flag = true after drain, want false (docs/implementation-history.md#p0-38)")
 	}
 
 	waitForWorkerState(t, h.h, platformToken, workerRegTestWorker2, string(RuntimeDraining))

@@ -1,4 +1,4 @@
--- Widen deny_rules to the docs/planning/26 P0 taxonomy (docs/tasks/p0/43):
+-- Widen deny_rules to the docs/planning/26 P0 taxonomy (docs/implementation-history.md#p0-43):
 -- rule_type in ('cidr','host','host_suffix','cname_suffix','metadata_ip',
 -- 'private_range'), action in ('deny','allow_override'), plus a reason field.
 -- Existing rows are remapped so their effective behavior is unchanged:

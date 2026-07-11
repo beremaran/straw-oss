@@ -251,7 +251,7 @@ func effectiveMaxTimeout(staticMax, tenantMax uint64) uint64 {
 }
 
 // recordOutcome finalizes and enqueues the request_events row with the real
-// dispatch outcome (docs/tasks/p0/32), instead of the pre-dispatch
+// dispatch outcome (docs/implementation-history.md#p0-32), instead of the pre-dispatch
 // placeholder the writer previously emitted.
 func (h *RequestHandler) recordOutcome(event RequestEvent, resp SuccessResponse, perr *PipelineError) {
 	if h.metadataWriter == nil {
@@ -362,7 +362,7 @@ type SuccessResponse struct {
 	Body      ResponseBody  `json:"body"`
 	Timing    RequestTiming `json:"timing"`
 	// ResponseSizeBytes is the raw (pre-base64) upstream response body size,
-	// carried for request_events telemetry (docs/tasks/p0/32). Not part of
+	// carried for request_events telemetry (docs/implementation-history.md#p0-32). Not part of
 	// the wire contract.
 	ResponseSizeBytes uint64 `json:"-"`
 	// RouteID/PoolID/SelectedExecutor/ExecutorType carry the routing decision

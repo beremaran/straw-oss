@@ -612,7 +612,7 @@ func TestRequestHandlerQueuesSanitizedMetadata(t *testing.T) {
 		t.Fatalf("TargetHost = %q, want example.com", event.TargetHost)
 	}
 	if event.UpstreamStatus != http.StatusOK {
-		t.Fatalf("UpstreamStatus = %d, want 200 (docs/tasks/p0/32: real dispatch outcome)", event.UpstreamStatus)
+		t.Fatalf("UpstreamStatus = %d, want 200 (docs/implementation-history.md#p0-32: real dispatch outcome)", event.UpstreamStatus)
 	}
 	if event.ClientStatus != http.StatusOK {
 		t.Fatalf("ClientStatus = %d, want 200", event.ClientStatus)
@@ -620,7 +620,7 @@ func TestRequestHandlerQueuesSanitizedMetadata(t *testing.T) {
 }
 
 // fakeFailingRequestDispatcher always returns a canonical PipelineError, so
-// request_events finalization (docs/tasks/p0/32) can be tested against a
+// request_events finalization (docs/implementation-history.md#p0-32) can be tested against a
 // dispatch failure instead of only the success path.
 type fakeFailingRequestDispatcher struct{}
 
@@ -630,7 +630,7 @@ func (fakeFailingRequestDispatcher) Dispatch(context.Context, DispatchInput) (Su
 
 // TestRequestHandlerRecordsFailureOutcome verifies a failed dispatch produces
 // a request_events row with the canonical error code/category instead of the
-// pre-dispatch synthetic 200 the writer used to emit (docs/tasks/p0/32).
+// pre-dispatch synthetic 200 the writer used to emit (docs/implementation-history.md#p0-32).
 func TestRequestHandlerRecordsFailureOutcome(t *testing.T) {
 	t.Parallel()
 

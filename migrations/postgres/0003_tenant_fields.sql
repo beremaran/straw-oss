@@ -1,4 +1,4 @@
--- straw P0 tenant lifecycle fields (docs/tasks/p0/29).
+-- straw P0 tenant lifecycle fields (docs/implementation-history.md#p0-29).
 --
 -- Vocabulary reconciliation with docs/planning/26-config-management-api-surface.md:
 -- the tenant status enum is `active | suspended | deleted` (migration 0001 used

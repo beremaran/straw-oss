@@ -2,11 +2,11 @@
 
 This appendix defines the P2 MITM leaf-certificate policy consumed by:
 
-- `docs/tasks/p2/01-mitm-leaf-cert-design.md`
-- `docs/tasks/p2/02-mitm-ingress.md`
-- `docs/tasks/p2/03-mitm-ca-management.md`
-- `docs/tasks/p2/04-mitm-authenticated-connect-bootstrap.md`
-- `docs/tasks/p2/20-mitm-leaf-cert-cache.md`
+- `../implementation-history.md#p2-01`
+- `../implementation-history.md#p2-02`
+- `../implementation-history.md#p2-03`
+- `../implementation-history.md#p2-04`
+- `../implementation-history.md#p2-20`
 
 MITM leaf generation is disabled unless MITM is enabled for the deployment and tenant. Control is the only Straw
 process that can generate, read, decrypt, or serve generated leaf certificate bundles.
@@ -85,8 +85,8 @@ A direct TLS listener whose `GetCertificate` callback only receives ClientHello/
 or SNI-derived tenant in cache keys or KMS AAD. That path must be replaced by the authenticated CONNECT bootstrap before
 tenant-scoped cache storage ships, or it must fail closed without generating cached tenant-scoped bundles.
 
-That runtime replacement is owned by `docs/tasks/p2/04-mitm-authenticated-connect-bootstrap.md`; encrypted cache storage
-and flood controls are owned by `docs/tasks/p2/20-mitm-leaf-cert-cache.md`.
+That runtime replacement is owned by `../implementation-history.md#p2-04`; encrypted cache storage
+and flood controls are owned by `../implementation-history.md#p2-20`.
 
 ## 5. Required Tests Before Implementation Ships
 

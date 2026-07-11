@@ -38,7 +38,7 @@ func redisInFlightKey(requestID string) string {
 
 // RedisInFlightCoordinator implements InFlightCrossInstance over the Redis
 // runtime-state tier so an admin cancel reaches the Control instance that owns
-// an in-flight request (docs/tasks/p1/23). It records ownership as a
+// an in-flight request (docs/implementation-history.md#p1-23). It records ownership as a
 // TTL-bounded key and signals cancels over a pub/sub channel; the owning
 // instance applies the cancel to its local context via RedisRequestCancelSubscriber.
 type RedisInFlightCoordinator struct {

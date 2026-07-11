@@ -76,7 +76,7 @@ and includes its own minimal Core NATS wire client (`straw.egress.NATSClient`) s
 dependency was available to approve at the time this was built.
 
 **Scope**: decoded HTTP only — no raw CONNECT tunnel, BodyRef, MITM, or HTTP/2-specific behavior, and one
-assignment in flight per session (`docs/tasks/p2/32b-python-egress-sdk-assignment-runtime.md`). A worker
+assignment in flight per session (`docs/implementation-history.md#p2-32b`). A worker
 needing the Go SDK's per-session concurrency or the other request modes should use the Go SDK
 (`sdk/egress`) instead.
 

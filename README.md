@@ -21,7 +21,7 @@ See the [Quickstart Guide](docs/public/quickstart.md) for minting an API key and
 - `sdk/` — Public Go client SDK ([SDK guide](docs/public/sdk.md)).
 - `deploy/docker/` — Docker Compose stack for local development.
 - `docs/public/` — Source of the public documentation site (rendered by `website/`).
-- `docs/planning/`, `docs/tasks/` — Internal architecture and task-tracking docs for contributors; not part of the public site.
+- `docs/planning/`, `docs/implementation-history.md` — Internal architecture and consolidated implementation history; not part of the public site.
 
 ## Development
 

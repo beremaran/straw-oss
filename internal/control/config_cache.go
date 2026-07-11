@@ -116,7 +116,7 @@ func (c *ConfigCache) Save(ctx context.Context, snapshot config.TenantSnapshot, 
 // PublishInvalidation notifies the invalidation publisher and advances the
 // locally tracked version for writes made directly against the durable store
 // outside Save (e.g. the routing/deny/injection resource writes in
-// docs/tasks/p0/20, each already transactionally bumping the tenant version).
+// docs/implementation-history.md#p0-20, each already transactionally bumping the tenant version).
 // A nil publisher (pre-task-21) makes this a cache-only version bump.
 func (c *ConfigCache) PublishInvalidation(ctx context.Context, tenantID string, version uint64) {
 	c.ApplyInvalidation(tenantID, version)

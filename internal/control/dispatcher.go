@@ -67,7 +67,7 @@ type PipelineError struct {
 	TimeoutType  string
 	// RoutingMs/AssignmentMs/EgressMs/TotalMs carry whatever partial phase
 	// timing the dispatcher measured before the failure, so a failed
-	// request_events row (docs/tasks/p0/32) still reports the real elapsed
+	// request_events row (docs/implementation-history.md#p0-32) still reports the real elapsed
 	// time instead of zeros.
 	RoutingMs    int64
 	AssignmentMs int64
@@ -106,7 +106,7 @@ type RequestDispatcherOptions struct {
 	FrameIdleTimeout           time.Duration
 	Now                        func() time.Time
 	// InFlight registers each dispatched request's cancel function so an
-	// admin cancel (docs/tasks/p0/27) can reach it. Optional: nil disables
+	// admin cancel (docs/implementation-history.md#p0-27) can reach it. Optional: nil disables
 	// admin cancellation without affecting client-disconnect/deadline
 	// cancellation, which is driven directly by ctx.
 	InFlight *InFlightRegistry
@@ -292,7 +292,7 @@ func (d *DefaultRequestDispatcher) finalizeDispatch(ctx context.Context, in Disp
 }
 
 // setRouteFields copies the selected route's identity onto a PipelineError
-// for request_events telemetry (docs/tasks/p0/32 follow-up: route_id/pool_id/
+// for request_events telemetry (docs/implementation-history.md#p0-32 follow-up: route_id/pool_id/
 // selected_executor/executor_type were computed at dispatch but dropped
 // before reaching the telemetry row).
 func setRouteFields(perr *PipelineError, route RouteOutcome) {
@@ -415,7 +415,7 @@ func (d *DefaultRequestDispatcher) finalizeRawDispatch(ctx context.Context, in D
 }
 
 // withTiming annotates perr with whatever partial phase timing the
-// dispatcher measured before the failure (docs/tasks/p0/32), so a failed
+// dispatcher measured before the failure (docs/implementation-history.md#p0-32), so a failed
 // request_events row reports real elapsed time instead of zeros.
 func (d *DefaultRequestDispatcher) withTiming(perr *PipelineError, routingMs, assignmentMs int64, started time.Time) *PipelineError {
 	perr.RoutingMs = routingMs
@@ -574,7 +574,7 @@ func (e excludeWorkers) CandidatesForPool(tenantID, poolID string) []PoolCandida
 // poolPoliciesFromSnapshot converts a tenant snapshot's executor pools into
 // the flat PoolPolicy list StaticPoolPolicyProvider expects, so degraded-pool
 // routing policy (docs/planning/10) is sourced from the pools config admins
-// manage through /api/v1/config/executor-pools (docs/tasks/p0/30) instead of a
+// manage through /api/v1/config/executor-pools (docs/implementation-history.md#p0-30) instead of a
 // nil provider.
 func poolPoliciesFromSnapshot(tenantID string, pools []config.ExecutorPool) []PoolPolicy {
 	out := make([]PoolPolicy, 0, len(pools))

@@ -18,7 +18,7 @@ Outbound TLS fingerprint libraries may block or leak resources. Egress must isol
 ### Quota Accuracy
 
 Redis-only quota counters are not durable. P0 quotas are operational admission controls. Section 32 selects
-billing-grade P2 reconciliation, so task `docs/tasks/p2/17-quota-reconciliation.md` must define and test the durable
+billing-grade P2 reconciliation, so task `../implementation-history.md#p2-17` must define and test the durable
 usage-event source, aggregation, idempotency, late-event handling, corrections, and user-visible display semantics.
 
 ### Config Staleness
