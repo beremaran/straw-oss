@@ -37,10 +37,8 @@ var (
 	errMissingControlSection    = errors.New("missing control section")
 	errMissingEgressSection     = errors.New("missing egress section")
 	errUnexpectedTrailingJSON   = errors.New("unexpected trailing JSON data")
+	errLegacyWorkerCredential   = errors.New("egress.credential is no longer supported")
 	errServerHostRequired       = errors.New("server.host is required")
-	errWorkerIDRequired         = errors.New("worker_id is required")
-	errCredentialIDRequired     = errors.New("credential_id is required")
-	errPrivateKeyEnvRequired    = errors.New("private_key_ed25519_env is required")
 	errInvalidConfigVersion     = errors.New("invalid config_version")
 	errControlDeploymentIDReq   = errors.New("control.deployment_id is required when mitm_enabled is true")
 	errInvalidServerAPIPort     = errors.New("server.api_port must be between 1 and 65535")
@@ -303,6 +301,10 @@ func (e *EgressConfig) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("decode egress config: %w", err)
 	}
 
+	if len(raw.Credential) > 0 {
+		return errLegacyWorkerCredential
+	}
+
 	return nil
 }
 
@@ -331,6 +333,15 @@ func LoadControl(path string) (ControlConfig, error) {
 	return *file.Control, nil
 }
 
+// DefaultControl returns a local-development configuration that connects to
+// NATS on the standard loopback port.
+func DefaultControl() ControlConfig {
+	cfg := ControlConfig{NATS: NATSConfig{Servers: []string{"nats://127.0.0.1:4222"}}}
+	cfg.applyDefaults()
+
+	return cfg
+}
+
 // LoadEgress reads and validates an egress config file.
 func LoadEgress(path string) (EgressConfig, error) {
 	file, err := loadFile(path)
@@ -348,6 +359,14 @@ func LoadEgress(path string) (EgressConfig, error) {
 	}
 
 	return *file.Egress, nil
+}
+
+// DefaultEgress returns a local-development worker configuration.
+func DefaultEgress() EgressConfig {
+	cfg := EgressConfig{NATS: NATSConfig{Servers: []string{"nats://127.0.0.1:4222"}}}
+	_ = cfg.validate()
+
+	return cfg
 }
 
 func loadFile(path string) (File, error) {
@@ -518,6 +537,18 @@ func (o BodyObjectStorageConfig) complete() bool {
 }
 
 func (s *ControlServerConfig) applyDefaults() {
+	if s.Host == "" {
+		s.Host = "0.0.0.0"
+	}
+
+	if s.APIPort == 0 {
+		s.APIPort = 8080
+	}
+
+	if s.MetricsPort == 0 {
+		s.MetricsPort = 9090
+	}
+
 	if s.ProxyEnabled && s.ProxyPort == 0 {
 		s.ProxyPort = 8081
 	}
@@ -729,15 +760,7 @@ func (s ControlServerConfig) validateMITMLeafKMS() error {
 
 func (e *EgressConfig) validate() error {
 	if e.WorkerID == "" {
-		return errWorkerIDRequired
-	}
-
-	if e.CredentialID == "" {
-		return errCredentialIDRequired
-	}
-
-	if e.PrivateKeyEd25519Env == "" {
-		return errPrivateKeyEnvRequired
+		e.WorkerID = "egress-1"
 	}
 
 	if e.HeartbeatIntervalMs <= 0 {
@@ -757,6 +780,10 @@ func (e *EgressConfig) validate() error {
 	err := e.UpstreamConnectionPool.validate()
 	if err != nil {
 		return err
+	}
+
+	if len(e.AllowedPools) == 0 {
+		e.AllowedPools = []EgressPoolRef{{TenantID: DefaultDeploymentID, PoolID: DefaultPoolID}}
 	}
 
 	err = validateEgressPoolRefs(e.AllowedPools)

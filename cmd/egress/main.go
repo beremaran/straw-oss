@@ -46,6 +46,15 @@ var (
 // match a pre-seeded credential's public key (docs/planning/27); Control
 // verifies every registration against the credential's stored public key.
 func loadWorkerPrivateKey(cfg config.EgressConfig) (ed25519.PrivateKey, error) {
+	if cfg.PrivateKeyEd25519Env == "" {
+		_, privateKey, err := ed25519.GenerateKey(nil)
+		if err != nil {
+			return nil, fmt.Errorf("generate ephemeral worker key: %w", err)
+		}
+
+		return privateKey, nil
+	}
+
 	encoded := os.Getenv(cfg.PrivateKeyEd25519Env)
 	if encoded == "" {
 		return nil, fmt.Errorf("%w: %s", errPrivateKeyEnvUnset, cfg.PrivateKeyEd25519Env)
@@ -134,8 +143,7 @@ func loadEgressConfig() (config.EgressConfig, bool, error) {
 	flag.Parse()
 
 	if *configPath == "" {
-		fmt.Fprintln(os.Stderr, "missing required -config flag")
-		os.Exit(exitUsage)
+		return config.DefaultEgress(), *healthcheck, nil
 	}
 
 	egressConfig, err := config.LoadEgress(*configPath)

@@ -1,21 +1,39 @@
-# Standalone local infrastructure
+# Local development stack
 
-This directory owns Straw's complete local proxy stack: Redis, NATS, PostgreSQL, ClickHouse, Control, Egress, the
-development KMS endpoint, documentation, Prometheus, Blackbox, and Grafana. It intentionally contains no scraper,
-browser-harvester, retailer, or application-specific service.
+The default Compose stack runs only NATS, Straw Control, and one Egress worker.
 
-Run lifecycle commands from the Straw repository root:
+From the repository root:
 
 ```sh
-make infra-up
-make infra-status
-make infra-down
-make infra-reset
+make dev
 ```
 
-`make infra-up` creates owner-only local credentials and development MITM CA material under `deploy/local/.dev/`.
-Those files are ignored by Git and must never be used in production.
+No credentials or provisioning are required. Send a request with:
 
-Consumer repositories may include `docker-compose.yml` and attach an application service to the internal
-`straw_clients` network. Straw defines the network as a generic client boundary and has no dependency on any
-particular application, scraper, or browser service.
+```sh
+curl -sS \
+  -H 'Content-Type: application/json' \
+  -d '{"method":"GET","url":"https://example.com"}' \
+  http://localhost:8080/api/v1/requests
+```
+
+Useful commands:
+
+```sh
+make dev-status
+make dev-logs
+make dev-down
+make dev-reset
+```
+
+If a default host port is occupied, override it for the command:
+
+```sh
+STRAW_NATS_PORT=14222 \
+STRAW_NATS_MONITOR_PORT=18222 \
+STRAW_CONTROL_API_PORT=18080 \
+STRAW_CONTROL_METRICS_PORT=19090 \
+make dev
+```
+
+These variables change host port mappings only; containers continue to use the standard internal ports.

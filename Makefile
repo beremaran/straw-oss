@@ -1,4 +1,4 @@
-.PHONY: check commit fmt-check test test-python postgres-migrations-check clickhouse-migrations-check lint load-smoke production-deploy-check docs-website infra-up infra-status infra-reset infra-down infra-clean infra-logs
+.PHONY: check commit fmt-check test test-python postgres-migrations-check lint load-smoke production-deploy-check docs-website dev dev-status dev-reset dev-down dev-logs infra-up infra-status infra-reset infra-down infra-clean infra-logs
 
 test:
 	go test ./...
@@ -30,29 +30,28 @@ check: fmt-check test test-python lint
 postgres-migrations-check:
 	./scripts/check-postgres-migrations.sh
 
-clickhouse-migrations-check:
-	./deploy/local/scripts/check-clickhouse-migrations.sh
-
-infra-up:
-	@if [ ! -f deploy/local/.dev/mitm-ca/ca.pem ] || [ ! -f deploy/local/.dev/mitm-ca/ca-key.pem ]; then \
-		./deploy/local/dev-mitm-ca.sh; \
-	fi
+dev:
 	@./deploy/local/scripts/dev-up.sh
 
-infra-status:
+dev-status:
 	@./deploy/local/scripts/dev-status.sh
 
-infra-reset:
+dev-reset:
 	@./deploy/local/scripts/dev-reset.sh
 
-infra-down:
+dev-down:
 	docker compose -f deploy/local/docker-compose.yml down
 
-infra-clean:
-	docker compose -f deploy/local/docker-compose.yml down -v
-
-infra-logs:
+dev-logs:
 	docker compose -f deploy/local/docker-compose.yml logs -f
+
+# Backward-compatible aliases for contributors with older scripts.
+infra-up: dev
+infra-status: dev-status
+infra-reset: dev-reset
+infra-down: dev-down
+infra-clean: dev-reset
+infra-logs: dev-logs
 
 commit:
 	opencode run --model llama.cpp/qwen-4b --thinking --title 'Committing changes' --pure --auto 'Commit all changes. If anything fails, stop, and let me know what is wrong'

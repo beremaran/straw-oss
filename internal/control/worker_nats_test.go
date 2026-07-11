@@ -55,7 +55,7 @@ func TestWorkerDiscoveryOverNATSDuplicateSessionAndTimeouts(t *testing.T) {
 	controlConn := mustConnectNATS(t, srv.URL())
 	t.Cleanup(controlConn.Close)
 
-	err = SetupWorkerDiscoverySubscriptions(controlConn, reg)
+	err = SetupWorkerDiscoverySubscriptions(context.Background(), controlConn, reg)
 	if err != nil {
 		t.Fatalf("setup worker discovery: %v", err)
 	}
@@ -166,7 +166,7 @@ func TestWorkerRunLoopAppearsInAdminWorkersAndDrainsOnCancel(t *testing.T) {
 	controlConn := mustConnectNATS(t, srv.URL())
 	t.Cleanup(controlConn.Close)
 
-	err = SetupWorkerDiscoverySubscriptions(controlConn, reg)
+	err = SetupWorkerDiscoverySubscriptions(context.Background(), controlConn, reg)
 	if err != nil {
 		t.Fatalf("setup worker discovery: %v", err)
 	}

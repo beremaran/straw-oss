@@ -1,140 +1,42 @@
 services:
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-    restart: unless-stopped
-
   nats:
-    image: nats:alpine
+    image: nats:2-alpine
     command: ["--config", "/etc/nats/nats-server.conf"]
     ports:
-      - "4222:4222"
-      - "8222:8222"
+      - "${STRAW_NATS_PORT:-4222}:4222"
+      - "${STRAW_NATS_MONITOR_PORT:-8222}:8222"
     volumes:
-      - nats_data:/data
       - ./nats-server.conf:/etc/nats/nats-server.conf:ro
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8222/healthz"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
+      interval: 2s
+      timeout: 2s
+      retries: 20
     restart: unless-stopped
-
-  postgres:
-    image: postgres:16-alpine
-    ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      POSTGRES_DB: ${POSTGRES_DB:-straw}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./postgres-init.sql:/docker-entrypoint-initdb.d/10-straw-test.sql:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-straw}"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-    restart: unless-stopped
-
-  clickhouse:
-    image: clickhouse/clickhouse-server:24-alpine
-    ports:
-      - "8123:8123"
-    ulimits:
-      nofile:
-        soft: 262144
-        hard: 262144
-    volumes:
-      - clickhouse_data:/var/lib/clickhouse
-      - ./clickhouse-schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8123/ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-    restart: unless-stopped
-
-  clickhouse-migrate:
-    image: clickhouse/clickhouse-server:24-alpine
-    command: ["bash", "/migrate-clickhouse.sh"]
-    environment:
-      CLICKHOUSE_HOST: clickhouse
-      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
-      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-}
-    volumes:
-      - ./scripts/migrate-clickhouse.sh:/migrate-clickhouse.sh:ro
-    depends_on:
-      clickhouse:
-        condition: service_healthy
-    restart: "no"
 
   control:
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile.control
     ports:
-      - "8080:8080"
-      - "8083:8083"
-      - "9090:9090"
-    environment:
-      STRAW_POSTGRES_DSN: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-straw}?sslmode=disable
-      STRAW_REDIS_URL: redis://redis:6379/0
-      STRAW_CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
-      STRAW_CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-}
-      STRAW_API_KEY_PEPPER: ${STRAW_API_KEY_PEPPER:-local-dev-pepper}
-      STRAW_BOOTSTRAP_SYSTEM_ADMIN_KEY: ${STRAW_BOOTSTRAP_SYSTEM_ADMIN_KEY:-}
-      AWS_ACCESS_KEY_ID: local-dev
-      AWS_SECRET_ACCESS_KEY: local-dev-secret
-      AWS_REGION: us-east-1
-      STRAW_MITM_LEAF_KMS_ENDPOINT: http://kms-mock:8088/
-      STRAW_BOOTSTRAP_WORKER_CREDENTIAL_ID: "11111111-1111-4111-8111-111111111111"
-      STRAW_BOOTSTRAP_WORKER_PUBLIC_KEY_ED25519_BASE64: "pRt97w+OVIQlr+uYeiECfFepc3WjylxQw/edkmcfprQ="
-      STRAW_BOOTSTRAP_DEV_TENANT_ID: "22222222-2222-4222-8222-222222222222"
-      STRAW_BOOTSTRAP_DEV_POOL_ID: "dev-pool"
+      - "${STRAW_CONTROL_API_PORT:-8080}:8080"
+      - "${STRAW_CONTROL_METRICS_PORT:-9090}:9090"
     volumes:
-      - ./.dev/mitm-ca:/etc/straw/mitm-ca:ro
       - ./control.json:/etc/straw/control.json:ro
-    networks:
-      default: {}
-      straw_clients:
-        aliases:
-          - control
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
       nats:
-        condition: service_healthy
-      clickhouse:
-        condition: service_healthy
-      clickhouse-migrate:
-        condition: service_completed_successfully
-      kms-mock:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "/control", "-config", "/etc/straw/control.json", "-healthcheck"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
+      interval: 2s
+      timeout: 2s
+      retries: 20
     restart: unless-stopped
 
   egress:
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile.egress
-    environment:
-      STRAW_WORKER_PRIVATE_KEY_ED25519_BASE64: "j/eBWp+t1HoYi16+4lNQV7anaDFMCb9PuEoZdFnGgNGlG33vD45UhCWv65h6IQJ8V6lzdaPKXFDD952SZx+mtA=="
     volumes:
       - ./egress.json:/etc/straw/egress.json:ro
     depends_on:
@@ -144,98 +46,7 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "/egress", "-config", "/etc/straw/egress.json", "-healthcheck"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
+      interval: 2s
+      timeout: 2s
+      retries: 20
     restart: unless-stopped
-
-  kms-mock:
-    image: python:3.12-alpine
-    command: ["python", "/app/kms-mock.py"]
-    volumes:
-      - ./kms-mock.py:/app/kms-mock.py:ro
-    healthcheck:
-      test: ["CMD", "python", "-c", "import socket; s = socket.create_connection(('127.0.0.1', 8088), 1); s.close()"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-    restart: unless-stopped
-
-  docs:
-    image: node:20-alpine
-    working_dir: /site
-    command: ["sh", "-c", "npm ci && npm start -- --host 0.0.0.0"]
-    ports:
-      - "3001:3000"
-    volumes:
-      - ../../website:/site
-      - ../../docs:/docs:ro
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000/"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-    restart: unless-stopped
-
-  prometheus:
-    image: prom/prometheus:v2.54.1
-    ports:
-      - "9091:9090"
-    volumes:
-      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-    depends_on:
-      control:
-        condition: service_healthy
-      blackbox:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:9090/-/ready"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-    restart: unless-stopped
-
-  blackbox:
-    image: prom/blackbox-exporter:v0.25.0
-    volumes:
-      - ./observability/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:9115/metrics"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-    restart: unless-stopped
-
-  grafana:
-    image: grafana/grafana:11.2.0
-    ports:
-      - "3000:3000"
-    environment:
-      GF_AUTH_ANONYMOUS_ENABLED: "true"
-      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
-      GF_AUTH_DISABLE_LOGIN_FORM: "true"
-    volumes:
-      - grafana_data:/var/lib/grafana
-      - ./observability/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
-      - ./observability/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
-      - ./observability/grafana/dashboards:/etc/grafana/dashboards/straw:ro
-    depends_on:
-      prometheus:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000/api/health"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-    restart: unless-stopped
-
-volumes:
-  redis_data:
-  nats_data:
-  postgres_data:
-  clickhouse_data:
-  grafana_data:
-
-networks:
-  straw_clients:
-    internal: true

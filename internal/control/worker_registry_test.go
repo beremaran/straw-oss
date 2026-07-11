@@ -17,6 +17,7 @@ import (
 )
 
 const (
+	deploymentWorkerID     = "local-worker"
 	workerRegTestWcred1    = "wcred_1"
 	workerRegTestEgress    = "egress"
 	workerRegTestTenantA   = "ten_a"
@@ -45,6 +46,34 @@ func (c *fakeClock) Advance(d time.Duration) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.t = c.t.Add(d)
+}
+
+func TestDeploymentWorkerRegistryAcceptsWorkerWithoutProvisionedCredential(t *testing.T) {
+	t.Parallel()
+
+	registry := NewDeploymentWorkerRegistry(DefaultWorkerTimings(), nil)
+	outcome, err := registry.Register(context.Background(), &strawpb.RegisterRequest{
+		WorkerId:       deploymentWorkerID,
+		ExecutorType:   "egress",
+		ProtocolMajor:  ProtocolMajor,
+		ProtocolMinor:  1,
+		MaxConcurrency: 4,
+	})
+	if err != nil || !outcome.OK {
+		t.Fatalf("Register() = %+v, %v; want success", outcome, err)
+	}
+	ok, err := registry.Heartbeat(&strawpb.HeartbeatRequest{
+		WorkerId: deploymentWorkerID, SessionId: outcome.SessionID,
+		Health: strawpb.WorkerHealth_WORKER_HEALTH_READY,
+	})
+	if err != nil || !ok {
+		t.Fatalf("Heartbeat() = %v, %v; want success", ok, err)
+	}
+
+	candidates := registry.CandidatesForPool("default", "default")
+	if len(candidates) != 1 || candidates[0].WorkerID != deploymentWorkerID {
+		t.Fatalf("CandidatesForPool() = %+v, want local-worker", candidates)
+	}
 }
 
 // regHarness bundles a registry with its credential store and the worker

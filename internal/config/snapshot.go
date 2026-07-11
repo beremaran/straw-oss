@@ -1,6 +1,12 @@
 package config
 
 const (
+	// DefaultDeploymentID is the internal routing namespace for a single Straw deployment.
+	// It is not exposed as a tenant or user-selectable scope.
+	DefaultDeploymentID = "default"
+	// DefaultPoolID is used when no explicit worker pool is configured.
+	DefaultPoolID = "default"
+
 	defaultTenantDefaultTimeoutMs = 60000
 	defaultTenantMaxTimeoutMs     = 300000
 	defaultMetadataQueryStorage   = "drop"

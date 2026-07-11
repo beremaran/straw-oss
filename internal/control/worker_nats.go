@@ -20,7 +20,7 @@ var (
 
 // SetupWorkerDiscoverySubscriptions wires the live NATS worker discovery
 // subjects into the registry and flushes the subscriptions before returning.
-func SetupWorkerDiscoverySubscriptions(conn *natsx.Connection, reg *WorkerRegistry) error {
+func SetupWorkerDiscoverySubscriptions(ctx context.Context, conn *natsx.Connection, reg *WorkerRegistry) error {
 	if conn == nil {
 		return fmt.Errorf("setup worker discovery: %w", errSetupConnRequired)
 	}
@@ -32,7 +32,7 @@ func SetupWorkerDiscoverySubscriptions(conn *natsx.Connection, reg *WorkerRegist
 	var err error
 
 	_, err = conn.QueueSubscribe(natsx.RegistrationSubject(), "control", func(msg *nats.Msg) {
-		replyWorkerRegister(reg, msg)
+		replyWorkerRegister(ctx, reg, msg)
 	})
 	if err != nil {
 		return fmt.Errorf("subscribe register: %w", err)
@@ -53,12 +53,12 @@ func SetupWorkerDiscoverySubscriptions(conn *natsx.Connection, reg *WorkerRegist
 	return nil
 }
 
-func replyWorkerRegister(reg *WorkerRegistry, msg *nats.Msg) {
+func replyWorkerRegister(ctx context.Context, reg *WorkerRegistry, msg *nats.Msg) {
 	ack := &strawpb.RegisterAck{Ok: false, Error: workerNATSInvalidMessage}
 
 	env, err := natsx.UnmarshalEnvelope(msg.Data)
 	if err == nil {
-		handleRegister(reg, ack, env)
+		handleRegister(ctx, reg, ack, env)
 	}
 
 	reply := buildReplyEnvelope(env, &strawpb.Envelope{
@@ -70,13 +70,13 @@ func replyWorkerRegister(reg *WorkerRegistry, msg *nats.Msg) {
 	replyEnvelope(msg, reply)
 }
 
-func handleRegister(reg *WorkerRegistry, ack *strawpb.RegisterAck, env *strawpb.Envelope) {
+func handleRegister(ctx context.Context, reg *WorkerRegistry, ack *strawpb.RegisterAck, env *strawpb.Envelope) {
 	req := env.GetRegisterRequest()
 	if req == nil {
 		return
 	}
 
-	outcome, regErr := reg.Register(context.Background(), req)
+	outcome, regErr := reg.Register(ctx, req)
 	if regErr != nil {
 		ack.Error = errorCodeControlInternalError
 
