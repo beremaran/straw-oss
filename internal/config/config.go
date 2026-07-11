@@ -67,6 +67,8 @@ type ControlTransportConfig struct {
 type NATSConfig struct {
 	Servers             []string `json:"servers"`
 	UserCredentialsFile string   `json:"user_credentials_file,omitempty"`
+	UsernameEnv         string   `json:"username_env,omitempty"`
+	PasswordEnv         string   `json:"password_env,omitempty"`
 	ReconnectAttempts   int      `json:"reconnect_attempts,omitempty"`
 	ReconnectWaitMS     int      `json:"reconnect_wait_ms,omitempty"`
 	PingIntervalMS      int      `json:"ping_interval_ms,omitempty"`

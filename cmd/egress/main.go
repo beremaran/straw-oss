@@ -60,6 +60,8 @@ func run() error {
 	natsConn, err := natsx.Connect(natsx.ConnectOptions{
 		Servers:             egressConfig.NATS.Servers,
 		UserCredentialsFile: egressConfig.NATS.UserCredentialsFile,
+		Username:            os.Getenv(egressConfig.NATS.UsernameEnv),
+		Password:            os.Getenv(egressConfig.NATS.PasswordEnv),
 		ReconnectAttempts:   egressConfig.NATS.ReconnectAttempts,
 		ReconnectWait:       time.Duration(egressConfig.NATS.ReconnectWaitMS) * time.Millisecond,
 		PingInterval:        time.Duration(egressConfig.NATS.PingIntervalMS) * time.Millisecond,
@@ -79,11 +81,6 @@ func run() error {
 			}
 		}
 	}()
-
-	logPublisher := logging.NewNATSLogPublisher(natsConn, natsx.LogTelemetrySubject(), logging.DefaultNATSLogQueueEntries)
-	defer logPublisher.Close()
-
-	slog.SetDefault(slog.New(logging.NewTeeHandler(logging.NewHandler(os.Stdout), logPublisher)).With("service", "egress"))
 
 	slog.Info("connected to nats", "url", natsConn.ConnectedUrlRedacted())
 

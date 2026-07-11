@@ -1,4 +1,4 @@
-.PHONY: check commit fmt-check test test-python lint load-smoke production-deploy-check docs-website dev dev-status dev-reset dev-down dev-logs infra-up infra-status infra-reset infra-down infra-clean infra-logs
+.PHONY: check commit fmt-check test test-python lint production-deploy-check docs-website dev dev-status dev-reset dev-down dev-logs infra-up infra-status infra-reset infra-down infra-clean infra-logs
 
 test:
 	go test ./...
@@ -12,12 +12,6 @@ fmt-check:
 
 lint:
 	golangci-lint run --max-issues-per-linter 0 --max-same-issues 0
-
-load-smoke:
-	go test ./internal/loadtest
-	go test ./internal/control -run 'TestDispatcher(ControlNATSEgressRoundTrip|EgressPhaseTiming|RateLimitRetryAfter)|TestRateLimiter(MemoryGuardrailFallback|RedisFailurePolicy)|TestQuotaAdmissionRedisFailurePolicy'
-	go test ./internal/egress -run 'Test(EvaluateAssignmentPrecedence|WorkerRejectsAssignmentAtCapacity|WorkerCreditExhaustionAbortsWithoutPublishing|WorkerDownloadCreditGatesResponseData)'
-	go test ./internal/natsx -run 'TestStreamValidator'
 
 production-deploy-check:
 	./deploy/production/check-compose.sh

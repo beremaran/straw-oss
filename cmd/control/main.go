@@ -63,6 +63,8 @@ func run() error {
 	natsConn, err := natsx.Connect(natsx.ConnectOptions{
 		Servers:             cfg.NATS.Servers,
 		UserCredentialsFile: cfg.NATS.UserCredentialsFile,
+		Username:            os.Getenv(cfg.NATS.UsernameEnv),
+		Password:            os.Getenv(cfg.NATS.PasswordEnv),
 		ReconnectAttempts:   cfg.NATS.ReconnectAttempts,
 		ReconnectWait:       time.Duration(cfg.NATS.ReconnectWaitMS) * time.Millisecond,
 		PingInterval:        time.Duration(cfg.NATS.PingIntervalMS) * time.Millisecond,

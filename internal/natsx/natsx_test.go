@@ -31,10 +31,6 @@ func TestSubjects(t *testing.T) {
 	if want := "straw.v1.req.request-99.worker-01.session_02.e2c"; e2c != want {
 		t.Fatalf("TerminalSubject() = %q, want %q", e2c, want)
 	}
-
-	if want := "straw.v1.control.logs"; LogTelemetrySubject() != want {
-		t.Fatalf("LogTelemetrySubject() = %q, want %q", LogTelemetrySubject(), want)
-	}
 }
 
 func TestValidateSubjectToken(t *testing.T) {
