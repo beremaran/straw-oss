@@ -1,7 +1,10 @@
-.PHONY: check commit fmt-check test postgres-migrations-check lint load-smoke production-deploy-check docs-website
+.PHONY: check commit fmt-check test test-python postgres-migrations-check lint load-smoke production-deploy-check docs-website
 
 test:
 	go test ./...
+
+test-python:
+	cd .. && uv run --all-packages --frozen python -m unittest discover straw/python/tests
 
 fmt-check:
 	@files="$$(gofmt -l $$(find . -name '*.go' -not -path './.git/*'))"; \
@@ -22,7 +25,7 @@ production-deploy-check:
 docs-website:
 	cd website && npm run build
 
-check: fmt-check test lint
+check: fmt-check test test-python lint
 
 postgres-migrations-check:
 	./scripts/check-postgres-migrations.sh

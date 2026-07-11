@@ -61,8 +61,10 @@ as they arrive instead of being buffered until the response completes.
 
 ## Running tests
 
+Use the repository's root workspace environment:
+
 ```sh
-python3 -m unittest discover python/tests
+uv run --all-packages --frozen python -m unittest discover straw/python/tests
 ```
 
 ## Egress SDK
