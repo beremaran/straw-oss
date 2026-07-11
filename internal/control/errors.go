@@ -25,7 +25,6 @@ const (
 	statusUnauthorized          = http.StatusUnauthorized
 	statusForbidden             = http.StatusForbidden
 	statusNotFound              = http.StatusNotFound
-	statusConflict              = http.StatusConflict
 	statusTooManyRequests       = http.StatusTooManyRequests
 	statusInternalServerError   = http.StatusInternalServerError
 	statusBadGateway            = http.StatusBadGateway
@@ -49,14 +48,9 @@ const (
 	errorCategoryControl   = "control"
 
 	errorCodeAuthFailure               = "auth_failure"
-	errorCodeTenantNotFound            = "tenant_not_found"
-	errorCodeInsufficientPermissions   = "insufficient_permissions"
-	errorCodeRateLimitExceeded         = "rate_limit_exceeded"
-	errorCodeQuotaExhausted            = "quota_exhausted"
 	errorCodeInvalidRequest            = "invalid_request"
 	errorCodeDestinationDenied         = "destination_denied"
 	errorCodeHeaderInjectionFailed     = "header_injection_failed"
-	errorCodeConflict                  = "conflict"
 	errorCodeUnsupportedIngressMode    = "unsupported_ingress_mode"
 	errorCodeRouteNoMatch              = "route_no_match"
 	errorCodeRouteUnavailable          = "route_unavailable"
@@ -76,7 +70,6 @@ const (
 	errorCodeUpstreamProxyFailure      = "upstream_proxy_failure"
 	errorCodeStreamUploadAborted       = "stream_upload_aborted"
 	errorCodeStreamDownloadAborted     = "stream_download_aborted"
-	errorCodeBodyRefUnavailable        = "body_ref_unavailable"
 	errorCodeBodyTooLarge              = "body_too_large"
 	errorCodeControlInternalError      = "control_internal_error"
 	errorCodeExecutorInternalError     = "executor_internal_error"
@@ -86,22 +79,12 @@ const (
 const (
 	// AuthFailure is returned when a bearer token is invalid or revoked.
 	AuthFailure ErrorCode = 1
-	// TenantNotFound is returned when a key references a missing tenant.
-	TenantNotFound ErrorCode = 2
-	// InsufficientPermissions is returned when RBAC denies the request.
-	InsufficientPermissions ErrorCode = 3
-	// RateLimitExceeded is returned when a tenant exceeds request rate.
-	RateLimitExceeded ErrorCode = 4
-	// QuotaExhausted is returned when a tenant exceeds configured quota.
-	QuotaExhausted ErrorCode = 5
 	// InvalidRequest is returned when the request is malformed or incomplete.
 	InvalidRequest ErrorCode = 6
 	// DestinationDenied is returned when a deny rule matches the request.
 	DestinationDenied ErrorCode = 7
 	// HeaderInjectionFailed is returned when a Control-resolved injection operation is invalid.
 	HeaderInjectionFailed ErrorCode = 8
-	// Conflict is returned when a versioned write collides with a newer value.
-	Conflict ErrorCode = 9
 	// UnsupportedIngressMode is returned when the endpoint rejects the mode.
 	UnsupportedIngressMode ErrorCode = 10
 	// RouteNoMatch is returned when no routing rule matches the request.
@@ -140,8 +123,6 @@ const (
 	StreamUploadAborted ErrorCode = 400
 	// StreamDownloadAborted is returned when a download stream is interrupted.
 	StreamDownloadAborted ErrorCode = 401
-	// BodyRefUnavailable is returned when a referenced body object is unavailable.
-	BodyRefUnavailable ErrorCode = 402
 	// BodyTooLarge is returned when inline content exceeds the configured maximum.
 	BodyTooLarge ErrorCode = 403
 	// ControlInternalError is returned for unexpected control-plane failures.
@@ -155,14 +136,9 @@ const (
 // ErrorRegistry maps ErrorCode to ErrorResponse fields.
 var ErrorRegistry = map[ErrorCode]ErrorEntry{
 	AuthFailure:               {Category: errorCategoryClient, Code: errorCodeAuthFailure, Message: "Invalid API key", Retryable: false, HTTPStatus: statusUnauthorized},
-	TenantNotFound:            {Category: errorCategoryClient, Code: errorCodeTenantNotFound, Message: "Key references missing or deleted tenant", Retryable: false, HTTPStatus: statusUnauthorized},
-	InsufficientPermissions:   {Category: errorCategoryClient, Code: errorCodeInsufficientPermissions, Message: "RBAC failure", Retryable: false, HTTPStatus: statusForbidden},
-	RateLimitExceeded:         {Category: errorCategoryClient, Code: errorCodeRateLimitExceeded, Message: "Rate limit exceeded", Retryable: true, HTTPStatus: statusTooManyRequests},
-	QuotaExhausted:            {Category: errorCategoryClient, Code: errorCodeQuotaExhausted, Message: "Quota exhausted", Retryable: true, HTTPStatus: statusTooManyRequests},
 	InvalidRequest:            {Category: errorCategoryClient, Code: errorCodeInvalidRequest, Message: "Malformed request or missing business fields", Retryable: false, HTTPStatus: statusBadRequest},
 	DestinationDenied:         {Category: errorCategoryClient, Code: errorCodeDestinationDenied, Message: "Deny rule matched", Retryable: false, HTTPStatus: statusForbidden},
 	HeaderInjectionFailed:     {Category: errorCategoryClient, Code: errorCodeHeaderInjectionFailed, Message: "Resolved injection invalid", Retryable: false, HTTPStatus: statusBadRequest},
-	Conflict:                  {Category: errorCategoryClient, Code: errorCodeConflict, Message: "Config version conflict", Retryable: false, HTTPStatus: statusConflict},
 	UnsupportedIngressMode:    {Category: errorCategoryClient, Code: errorCodeUnsupportedIngressMode, Message: "Unsupported mode for endpoint or route", Retryable: false, HTTPStatus: statusBadRequest},
 	RouteNoMatch:              {Category: errorCategoryRouting, Code: errorCodeRouteNoMatch, Message: "No rule matched", Retryable: false, HTTPStatus: statusNotFound},
 	RouteUnavailable:          {Category: errorCategoryRouting, Code: errorCodeRouteUnavailable, Message: "Rule matched but no eligible executor", Retryable: true, HTTPStatus: statusServiceUnavailable},
@@ -182,7 +158,6 @@ var ErrorRegistry = map[ErrorCode]ErrorEntry{
 	UpstreamProxyFailure:      {Category: errorCategoryEgress, Code: errorCodeUpstreamProxyFailure, Message: "Configured upstream proxy failed", Retryable: true, HTTPStatus: statusBadGateway},
 	StreamUploadAborted:       {Category: errorCategoryStreaming, Code: errorCodeStreamUploadAborted, Message: "Upload interrupted", Retryable: false, HTTPStatus: statusBadGateway},
 	StreamDownloadAborted:     {Category: errorCategoryStreaming, Code: errorCodeStreamDownloadAborted, Message: "Download interrupted", Retryable: false, HTTPStatus: statusBadGateway},
-	BodyRefUnavailable:        {Category: errorCategoryStreaming, Code: errorCodeBodyRefUnavailable, Message: "BodyRef object unavailable", Retryable: true, HTTPStatus: statusBadGateway},
 	BodyTooLarge:              {Category: errorCategoryStreaming, Code: errorCodeBodyTooLarge, Message: "Request or response exceeds configured limit", Retryable: false, HTTPStatus: http.StatusRequestEntityTooLarge},
 	ControlInternalError:      {Category: errorCategoryControl, Code: errorCodeControlInternalError, Message: "Unexpected internal failure", Retryable: false, HTTPStatus: statusInternalServerError},
 	ExecutorInternalError:     {Category: errorCategoryEgress, Code: errorCodeExecutorInternalError, Message: "Unexpected executor failure", Retryable: false, HTTPStatus: statusBadGateway},

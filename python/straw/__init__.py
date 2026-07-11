@@ -1,19 +1,7 @@
-"""Straw's minimal Python client SDK.
-
-Supported endpoints:
-  - POST /api/v1/requests
-  - POST /api/v1/requests:stream
-"""
+"""Python client and Egress SDK for Straw."""
 
 from .client import (
-    FRAME_BODY,
-    FRAME_END,
-    FRAME_ERROR,
-    FRAME_METADATA,
-    FRAME_TRAILERS,
     REQUESTS_PATH,
-    REQUESTS_STREAM_CONTENT_TYPE,
-    REQUESTS_STREAM_PATH,
     APIError,
     Client,
     ErrorResponse,
@@ -22,24 +10,11 @@ from .client import (
     RequestBody,
     Response,
     ResponseBody,
-    RoutingHints,
-    Stream,
-    StreamEnd,
-    StreamFrame,
-    StreamMetadata,
-    StreamTrailers,
     Timing,
 )
 
 __all__ = [
-    "FRAME_BODY",
-    "FRAME_END",
-    "FRAME_ERROR",
-    "FRAME_METADATA",
-    "FRAME_TRAILERS",
     "REQUESTS_PATH",
-    "REQUESTS_STREAM_CONTENT_TYPE",
-    "REQUESTS_STREAM_PATH",
     "APIError",
     "Client",
     "ErrorResponse",
@@ -48,11 +23,5 @@ __all__ = [
     "RequestBody",
     "Response",
     "ResponseBody",
-    "RoutingHints",
-    "Stream",
-    "StreamEnd",
-    "StreamFrame",
-    "StreamMetadata",
-    "StreamTrailers",
     "Timing",
 ]

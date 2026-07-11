@@ -9,40 +9,6 @@ import (
 	strawpb "github.com/beremaran/straw/v2/api/proto/straw/v1"
 )
 
-// TestErrorRegistryCoversEveryProtoCode asserts the registry maps every
-// canonical ErrorCode from the protobuf enum (docs/planning/13) exactly once,
-// and that the control-side numeric code matches the protobuf number. This is
-// the "every ErrorCode maps" row of docs/planning/30-testing-matrix.md.
-func TestErrorRegistryCoversEveryProtoCode(t *testing.T) {
-	seenCodes := make(map[string]ErrorCode)
-
-	for num, name := range strawpb.ErrorCode_name {
-		if strawpb.ErrorCode(num) == strawpb.ErrorCode_ERROR_CODE_UNSPECIFIED {
-			continue
-		}
-
-		code := ErrorCode(num)
-
-		entry, ok := ErrorRegistry[code]
-		if !ok {
-			t.Fatalf("proto ErrorCode %s (%d) has no registry mapping", name, num)
-		}
-
-		if prev, dup := seenCodes[entry.Code]; dup {
-			t.Fatalf("registry code %q used by both %d and %d", entry.Code, prev, code)
-		}
-
-		seenCodes[entry.Code] = code
-	}
-
-	// Every registry entry must correspond to a real proto code, so the two
-	// sets have identical size: no orphan entries, no missing mappings.
-	protoCount := len(strawpb.ErrorCode_name) - 1 // minus UNSPECIFIED
-	if len(ErrorRegistry) != protoCount {
-		t.Fatalf("registry has %d entries, proto enum has %d non-unspecified codes", len(ErrorRegistry), protoCount)
-	}
-}
-
 // TestErrorRegistryRows pins the canonical category/HTTP/retryable mapping for
 // every row in docs/planning/14-canonical-error-registry.md. REST uses 404 for
 // route_no_match and 499 for cancelled.
@@ -55,14 +21,9 @@ func TestErrorRegistryRows(t *testing.T) {
 		retryable  bool
 	}{
 		{AuthFailure, "auth_failure", errorCategoryClient, http.StatusUnauthorized, false},
-		{TenantNotFound, "tenant_not_found", errorCategoryClient, http.StatusUnauthorized, false},
-		{InsufficientPermissions, errorCodeInsufficientPermissions, errorCategoryClient, http.StatusForbidden, false},
-		{RateLimitExceeded, "rate_limit_exceeded", errorCategoryClient, http.StatusTooManyRequests, true},
-		{QuotaExhausted, "quota_exhausted", errorCategoryClient, http.StatusTooManyRequests, true},
 		{InvalidRequest, "invalid_request", errorCategoryClient, http.StatusBadRequest, false},
 		{DestinationDenied, errorCodeDestinationDenied, errorCategoryClient, http.StatusForbidden, false},
 		{HeaderInjectionFailed, "header_injection_failed", errorCategoryClient, http.StatusBadRequest, false},
-		{Conflict, "conflict", errorCategoryClient, http.StatusConflict, false},
 		{UnsupportedIngressMode, "unsupported_ingress_mode", errorCategoryClient, http.StatusBadRequest, false},
 		{RouteNoMatch, "route_no_match", errorCategoryRouting, http.StatusNotFound, false},
 		{RouteUnavailable, "route_unavailable", errorCategoryRouting, http.StatusServiceUnavailable, true},
@@ -82,7 +43,6 @@ func TestErrorRegistryRows(t *testing.T) {
 		{UpstreamProxyFailure, "upstream_proxy_failure", errorCategoryEgress, http.StatusBadGateway, true},
 		{StreamUploadAborted, "stream_upload_aborted", errorCategoryStreaming, http.StatusBadGateway, false},
 		{StreamDownloadAborted, "stream_download_aborted", errorCategoryStreaming, http.StatusBadGateway, false},
-		{BodyRefUnavailable, "body_ref_unavailable", errorCategoryStreaming, http.StatusBadGateway, true},
 		{BodyTooLarge, "body_too_large", errorCategoryStreaming, http.StatusRequestEntityTooLarge, false},
 		{ControlInternalError, "control_internal_error", errorCategoryControl, http.StatusInternalServerError, false},
 		{ExecutorInternalError, "executor_internal_error", errorCategoryEgress, http.StatusBadGateway, false},

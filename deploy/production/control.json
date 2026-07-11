@@ -1,49 +1,11 @@
 {
   "config_version": "v1",
   "control": {
-    "server": {
-      "host": "0.0.0.0",
-      "api_port": 8080,
-      "metrics_port": 9090,
-      "proxy_enabled": true,
-      "proxy_port": 8081,
-      "connect_enabled": true,
-      "connect_port": 8082,
-      "egress_metrics_enabled": true
-    },
-    "request": {
-      "max_inline_request_body_bytes": 1048576,
-      "max_inline_response_body_bytes": 1048576,
-      "max_timeout_ms": 120000
-    },
-    "worker": {
-      "registration_clock_skew_ms": 60000,
-      "registration_nonce_ttl_ms": 300000,
-      "registration_fail_open_on_redis_outage": false
-    },
-    "transport": {
-      "max_frame_data_bytes": 1048576
-    },
     "nats": {
       "servers": ["nats://nats:4222"],
+      "username_env": "STRAW_NATS_USER",
+      "password_env": "STRAW_NATS_PASSWORD",
       "max_payload_bytes": 2000000
-    },
-    "database": {
-      "postgres": {
-        "dsn_env": "STRAW_POSTGRES_DSN"
-      },
-      "redis": {
-        "url_env": "STRAW_REDIS_URL"
-      },
-      "clickhouse": {
-        "endpoint": "http://clickhouse:8123",
-        "database": "straw",
-        "user_env": "STRAW_CLICKHOUSE_USER",
-        "password_env": "STRAW_CLICKHOUSE_PASSWORD",
-        "max_queue_entries": 100000,
-        "batch_size": 1000,
-        "flush_interval_ms": 1000
-      }
     }
   }
 }

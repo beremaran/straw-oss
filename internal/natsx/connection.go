@@ -28,6 +28,8 @@ var (
 type ConnectOptions struct {
 	Servers             []string
 	UserCredentialsFile string
+	Username            string
+	Password            string
 	ReconnectAttempts   int
 	ReconnectWait       time.Duration
 	PingInterval        time.Duration
@@ -67,6 +69,10 @@ func Connect(opts ConnectOptions) (*Connection, error) {
 
 	if opts.UserCredentialsFile != "" {
 		natsOpts = append(natsOpts, nats.UserCredentials(opts.UserCredentialsFile))
+	}
+
+	if opts.Username != "" || opts.Password != "" {
+		natsOpts = append(natsOpts, nats.UserInfo(opts.Username, opts.Password))
 	}
 
 	conn, err := nats.Connect(joinServers(opts.Servers), natsOpts...)

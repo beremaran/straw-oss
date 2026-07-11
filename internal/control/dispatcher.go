@@ -175,7 +175,7 @@ func (d *DefaultRequestDispatcher) Dispatch(ctx context.Context, in DispatchInpu
 		code = perr.Code
 	}
 
-	d.opts.Metrics.ObserveRequest(in.Identity.TenantID, errorCodeLabel(code), d.opts.Now().Sub(started))
+	d.opts.Metrics.ObserveRequest(errorCodeLabel(code), d.opts.Now().Sub(started))
 
 	return resp, perr
 }
@@ -197,7 +197,7 @@ func (d *DefaultRequestDispatcher) DispatchRaw(ctx context.Context, in DispatchI
 		code = perr.Code
 	}
 
-	d.opts.Metrics.ObserveRequest(in.Identity.TenantID, errorCodeLabel(code), d.opts.Now().Sub(started))
+	d.opts.Metrics.ObserveRequest(errorCodeLabel(code), d.opts.Now().Sub(started))
 
 	return resp, perr, wroteHeader
 }
