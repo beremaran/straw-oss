@@ -14,9 +14,9 @@ import (
 
 	"github.com/nats-io/nats.go"
 
-	strawpb "github.com/beremaran/straw/v2/api/proto/straw/v1"
-	"github.com/beremaran/straw/v2/internal/testutil"
-	sdkegress "github.com/beremaran/straw/v2/sdk/egress"
+	strawpb "github.com/beremaran/straw-oss/v2/api/proto/straw/v1"
+	"github.com/beremaran/straw-oss/v2/internal/testutil"
+	sdkegress "github.com/beremaran/straw-oss/v2/sdk/egress"
 )
 
 const (

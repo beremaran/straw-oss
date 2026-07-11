@@ -15,12 +15,12 @@ import (
 	"syscall"
 	"time"
 
-	strawpb "github.com/beremaran/straw/v2/api/proto/straw/v1"
-	"github.com/beremaran/straw/v2/internal/config"
-	internalegress "github.com/beremaran/straw/v2/internal/egress"
-	"github.com/beremaran/straw/v2/internal/logging"
-	"github.com/beremaran/straw/v2/internal/natsx"
-	sdkegress "github.com/beremaran/straw/v2/sdk/egress"
+	strawpb "github.com/beremaran/straw-oss/v2/api/proto/straw/v1"
+	"github.com/beremaran/straw-oss/v2/internal/config"
+	internalegress "github.com/beremaran/straw-oss/v2/internal/egress"
+	"github.com/beremaran/straw-oss/v2/internal/logging"
+	"github.com/beremaran/straw-oss/v2/internal/natsx"
+	sdkegress "github.com/beremaran/straw-oss/v2/sdk/egress"
 )
 
 const (

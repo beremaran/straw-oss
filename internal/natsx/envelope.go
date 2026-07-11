@@ -6,7 +6,7 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	strawpb "github.com/beremaran/straw/v2/api/proto/straw/v1"
+	strawpb "github.com/beremaran/straw-oss/v2/api/proto/straw/v1"
 )
 
 // ErrNilEnvelope is returned when a nil envelope is passed to MarshalEnvelope.

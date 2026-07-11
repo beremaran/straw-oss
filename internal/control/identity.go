@@ -6,7 +6,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/beremaran/straw/v2/internal/config"
+	"github.com/beremaran/straw-oss/v2/internal/config"
 )
 
 const deploymentIdentityID = "deployment"

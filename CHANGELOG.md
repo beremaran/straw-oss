@@ -14,6 +14,7 @@ are tagged.
 - Converted production Compose assets into a small, explicit deployment pattern.
 - Simplified the CLI and public Go/Python clients around `POST /api/v1/requests`.
 - Rebuilt public documentation and repository community guidance for open-source use.
+- Aligned the Go module and install examples with `github.com/beremaran/straw-oss/v2`.
 
 ### Removed
 

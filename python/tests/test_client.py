@@ -46,6 +46,8 @@ class ClientTests(unittest.TestCase):
                 "body": {"mode": "inline_base64", "truncated": False}, "timing": {}
             }).encode()
             request.send_response(200)
+            request.send_header("Content-Type", "application/json")
+            request.send_header("Content-Length", str(len(payload)))
             request.end_headers()
             request.wfile.write(payload)
 
@@ -60,9 +62,14 @@ class ClientTests(unittest.TestCase):
 
     def test_api_error(self):
         def handler(request):
+            length = int(request.headers.get("Content-Length", 0))
+            request.rfile.read(length)
+            payload = json.dumps({"code": "auth_failure", "message": "Authentication failed"}).encode()
             request.send_response(401)
+            request.send_header("Content-Type", "application/json")
+            request.send_header("Content-Length", str(len(payload)))
             request.end_headers()
-            request.wfile.write(json.dumps({"code": "auth_failure", "message": "Authentication failed"}).encode())
+            request.wfile.write(payload)
 
         server = _Server(handler)
         self.addCleanup(server.close)
