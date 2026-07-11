@@ -3,63 +3,41 @@
 Control is the only public-facing runtime service. All clients enter through Control. Control owns:
 
 - ingress protocols,
-- authentication,
-- authorization,
-- tenant resolution,
+- optional deployment-scoped client authentication,
 - routing decisions,
-- quota/rate-limit admission,
 - destination policy checks,
 - worker selection,
 - request IDs and trace propagation,
 - NATS dispatch,
-- config APIs,
-- durable config access,
-- observability aggregation.
+- static configuration loading,
+- Prometheus metrics and structured logs.
 
-Executors own outbound execution. Executors are not allowed to query Postgres, Redis, or ClickHouse. They receive
-resolved per-request instructions from Control and report constrained results/failures back to Control.
+Executors own outbound execution. They receive resolved per-request instructions from Control and report constrained
+results or failures to Control.
 
 ```mermaid
 flowchart LR
-  subgraph Clients
-    REST[REST clients]
-    SDK[SDKs]
-    CLI[CLI]
-    UI[UI]
-    Proxy[HTTP / CONNECT / MITM clients]
-  end
-
-  Control[Control\nIngress, auth, routing, config, coordination]
-  PG[(Postgres\nDurable config)]
-  Redis[(Redis\nEphemeral runtime state)]
-  CH[(ClickHouse\nOperational analytics)]
-  NATS[NATS\nCore request/reply + transient streams]
+  Clients[REST, SDK, CLI, or proxy clients]
+  Control[Control service]
+  NATS[NATS]
 
   subgraph Executors
-    Egress[Egress Workers]
-    Custom[Custom Egress implementations\nP2: built on the Egress SDK]
+    Egress[Official Egress workers]
+    Custom[Custom SDK workers]
   end
 
-  Body[Large-body transport\nP2: object storage or direct stream]
   Targets[Target sites]
-  Vendors[Upstream proxies / vendors]
+  Vendors[Upstream proxies]
 
-  REST --> Control
-  SDK --> Control
-  CLI --> Control
-  UI --> Control
-  Proxy --> Control
-  Control <--> PG
-  Control <--> Redis
-  Control --> CH
+  Clients --> Control
   Control <--> NATS
   NATS <--> Egress
   NATS <--> Custom
-  Control -. P2 .- Body
-  Egress -. P2 .- Body
-  Custom -. P2 .- Body
   Egress --> Targets
   Egress --> Vendors
-  Custom --> Vendors
   Custom --> Targets
+  Custom --> Vendors
 ```
+
+NATS is the only required backing service. Operators may collect `/metrics` and structured logs using their existing
+observability stack; Straw does not require a database or bundled analytics platform.
