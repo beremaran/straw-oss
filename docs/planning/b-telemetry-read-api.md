@@ -2,9 +2,9 @@
 
 This appendix defines the P1 tenant-facing telemetry read contract consumed by:
 
-- `docs/tasks/p1/12-telemetry-read-apis.md`
-- `docs/tasks/p1/13-observability-dashboards.md`
-- `docs/tasks/p1/14-minimal-admin-ui.md`
+- `../implementation-history.md#p1-12`
+- `../implementation-history.md#p1-13`
+- `../implementation-history.md#p1-14`
 
 The APIs expose ClickHouse metadata from Section 22 without exposing internal worker/session topology. Production
 handlers must apply these rules at the API layer, even when the underlying ClickHouse rows contain more fields.
@@ -274,10 +274,10 @@ Before P1 telemetry implementation is marked complete, task 12 must cover at lea
 
 | Area | Required checks | Owning task |
 |------|-----------------|-------------|
-| Tenant isolation | Requests, worker events, and audit events from another tenant are never returned by list, detail, or cursor continuation queries. | `docs/tasks/p1/12-telemetry-read-apis.md` |
-| Topology redaction | Public responses omit raw `worker_id`, `session_id`, and `selected_executor`; worker filters use only `worker_ref`. | `docs/tasks/p1/12-telemetry-read-apis.md` |
-| URL and secret redaction | Request telemetry returns sanitized `target_url`; audit telemetry preserves `[redacted]` secret values and does not expose credential secrets. | `docs/tasks/p1/12-telemetry-read-apis.md` |
-| Query bounds | Over-wide windows, bad timestamps, bad limits, unsupported sorts, and mismatched cursors fail before broad ClickHouse scans. | `docs/tasks/p1/12-telemetry-read-apis.md` |
-| Pagination | Limit, sort direction, tie-break ordering, and cursor continuation are stable and tenant-bound. | `docs/tasks/p1/12-telemetry-read-apis.md` |
-| Detail lookup | Request detail applies tenant scope before returning attempts or `404`. | `docs/tasks/p1/12-telemetry-read-apis.md` |
-| ClickHouse limits | Query timeout and read-limit failures return public errors without leaking ClickHouse internals. | `docs/tasks/p1/12-telemetry-read-apis.md` |
+| Tenant isolation | Requests, worker events, and audit events from another tenant are never returned by list, detail, or cursor continuation queries. | `../implementation-history.md#p1-12` |
+| Topology redaction | Public responses omit raw `worker_id`, `session_id`, and `selected_executor`; worker filters use only `worker_ref`. | `../implementation-history.md#p1-12` |
+| URL and secret redaction | Request telemetry returns sanitized `target_url`; audit telemetry preserves `[redacted]` secret values and does not expose credential secrets. | `../implementation-history.md#p1-12` |
+| Query bounds | Over-wide windows, bad timestamps, bad limits, unsupported sorts, and mismatched cursors fail before broad ClickHouse scans. | `../implementation-history.md#p1-12` |
+| Pagination | Limit, sort direction, tie-break ordering, and cursor continuation are stable and tenant-bound. | `../implementation-history.md#p1-12` |
+| Detail lookup | Request detail applies tenant scope before returning attempts or `404`. | `../implementation-history.md#p1-12` |
+| ClickHouse limits | Query timeout and read-limit failures return public errors without leaking ClickHouse internals. | `../implementation-history.md#p1-12` |

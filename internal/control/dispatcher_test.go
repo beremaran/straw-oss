@@ -65,7 +65,7 @@ func TestDispatcherRouteUnavailable(t *testing.T) {
 
 // TestDispatcherFailureCarriesPartialTiming verifies a PipelineError from a
 // post-routing failure still carries the routing phase timing it actually
-// measured (docs/tasks/p0/32), instead of leaving request_events with all-zero
+// measured (docs/implementation-history.md#p0-32), instead of leaving request_events with all-zero
 // timings on failure.
 func TestDispatcherFailureCarriesPartialTiming(t *testing.T) {
 	t.Parallel()
@@ -86,7 +86,7 @@ func TestDispatcherFailureCarriesPartialTiming(t *testing.T) {
 }
 
 // TestDispatcherRoutePoolPolicyFromSnapshot verifies degraded-pool policy is
-// sourced from the tenant snapshot's executor pools (docs/tasks/p0/30)
+// sourced from the tenant snapshot's executor pools (docs/implementation-history.md#p0-30)
 // instead of the previous NewStaticPoolPolicyProvider(nil) that always
 // rejected degraded workers.
 func TestDispatcherRoutePoolPolicyFromSnapshot(t *testing.T) {
@@ -119,7 +119,7 @@ func TestDispatcherRoutePoolPolicyFromSnapshot(t *testing.T) {
 }
 
 // TestDispatcherRoutePoolCapabilityRestriction verifies a pool's
-// allowed_countries restriction (docs/planning/26, docs/tasks/p0/42) excludes
+// allowed_countries restriction (docs/planning/26, docs/implementation-history.md#p0-42) excludes
 // a candidate whose claimed country is outside the restriction and admits a
 // matching candidate.
 func TestDispatcherRoutePoolCapabilityRestriction(t *testing.T) {
@@ -757,7 +757,7 @@ func TestDispatcherControlNATSEgressRoundTripIDNAHost(t *testing.T) {
 }
 
 // TestDispatcherEgressPhaseTiming reproduces the 2026-07-05 live-stack gap
-// (docs/tasks/p0/41): a successful dispatch against an upstream with a real
+// (docs/implementation-history.md#p0-41): a successful dispatch against an upstream with a real
 // delay must record egress_ms reflecting that delay, not 0, and the phase
 // timings must sum consistently toward total_ms.
 func TestDispatcherEgressPhaseTiming(t *testing.T) {
@@ -1744,7 +1744,7 @@ func TestDispatcherCancellation(t *testing.T) {
 	}
 }
 
-// TestDispatcherAdminCancelEndToEnd verifies the docs/tasks/p0/27 wiring:
+// TestDispatcherAdminCancelEndToEnd verifies the docs/implementation-history.md#p0-27 wiring:
 // registering the request with InFlightRegistry lets an admin-initiated
 // cancel (the same path CancelRequest drives) terminate a running Dispatch
 // with the canonical cancelled outcome and publish a CancelFrame the

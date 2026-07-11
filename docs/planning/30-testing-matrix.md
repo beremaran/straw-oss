@@ -57,12 +57,12 @@ fallback.
 P2 HTTP/2 semantics are specified in `docs/planning/c-http2-semantics.md`. Before implementation ships, tests must prove the disabled default, multiplexing, stream cancellation mapping, error mapping, flow control backpressure, pseudo-header mapping/rejection, trailers, connection-level error handling, ALPN negotiation, protocol translation, and HTTP/1.1 fallback/downgrade rules.
 
 P2 large-body transport (BodyRef) is specified in `docs/planning/18-large-body-transport-p2.md`. Transport selection
-(task `docs/tasks/p2/05-bodyref-transport-selection.md`) must prove the Section 18 table: small bodies stay on NATS
+(task `../implementation-history.md#p2-05`) must prove the Section 18 table: small bodies stay on NATS
 DataFrames, bodies over `large_body_threshold_bytes` select S3 BodyRef when object storage is enabled and
 DirectStreamRef when direct streaming is enabled (object storage taking precedence when both are on), no enabled
 large-body transport maps to `body_too_large` with `direction`/`limit_bytes`, disabled/unavailable BodyRef variants
 map to `body_ref_unavailable`, and only the resolved `stream_through_control_tee_object_storage` response-body mode
-validates. The object-storage foundation (task `docs/tasks/p2/06-object-storage-foundation.md`) must prove tenant/request-scoped
+validates. The object-storage foundation (task `../implementation-history.md#p2-06`) must prove tenant/request-scoped
 object keys with high-entropy nonces, rejection of identifiers that could escape the tenant prefix, SigV4 presigned
 URLs bound to one object key and method with short/clamped expiry, server-side encryption signed into upload URLs, no
 bucket-listing surface, retention defaults/maximums (1–3 days), and the object-storage-unavailable sentinel that maps

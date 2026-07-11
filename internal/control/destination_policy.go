@@ -14,7 +14,7 @@ import (
 )
 
 // This file implements the P0 Control-side destination-policy resolver
-// (docs/tasks/p0/22, docs/planning/27-security-controls.md,
+// (docs/implementation-history.md#p0-22, docs/planning/27-security-controls.md,
 // docs/planning/16-egress-execution.md). It evaluates the immutable tenant
 // snapshot captured at request start and produces the strawpb.DestinationPolicy
 // bundle, resolved header-injection operations, and resolved fingerprint
@@ -200,7 +200,7 @@ func normalizeTargetHost(u *url.URL) (string, netip.Addr, bool, *ValidationError
 
 // compileDenyRules partitions the tenant's deny rules into the bundle fields
 // Egress consumes. cidr/metadata_ip/private_range all compile into the same
-// denied/allowed CIDR sets (docs/tasks/p0/43: they differ from "cidr" only in
+// denied/allowed CIDR sets (docs/implementation-history.md#p0-43: they differ from "cidr" only in
 // admin-facing label, not enforcement). host/host_suffix and cname_suffix
 // compile into suffix lists; an allow_override rule for the same normalized
 // value cancels the matching deny entry out of the compiled list, since

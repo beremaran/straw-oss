@@ -92,7 +92,7 @@ func NewAuthenticator(store APIKeyStore, pepper []byte) *Authenticator {
 
 // SetTenantStore wires tenant status enforcement into Authenticate: a
 // tenant-scoped key whose tenant is not active fails with
-// ErrTenantNotFound (docs/tasks/p0/29). A nil tenants store (the default)
+// ErrTenantNotFound (docs/implementation-history.md#p0-29). A nil tenants store (the default)
 // skips this check, matching pre-task-29 behavior for callers that only
 // need API-key validity (e.g. platform-only auth in tests).
 func (a *Authenticator) SetTenantStore(tenants TenantStore) *Authenticator {
@@ -147,7 +147,7 @@ func (a *Authenticator) Authenticate(ctx context.Context, authorizationHeader st
 }
 
 // checkTenantActive enforces tenant status for a tenant-scoped candidate
-// key (docs/tasks/p0/29). A nil tenants store skips the check. Missing,
+// key (docs/implementation-history.md#p0-29). A nil tenants store skips the check. Missing,
 // suspended, and deleted tenants all collapse to ErrTenantNotFound so
 // callers cannot probe tenant state.
 func (a *Authenticator) checkTenantActive(ctx context.Context, candidate APIKeyRecord) error {

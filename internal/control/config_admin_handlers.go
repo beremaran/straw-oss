@@ -15,7 +15,7 @@ import (
 
 // This file implements the P0 config-management HTTP surface for routing
 // rules, deny rules, injection policies, and read-only fingerprint profiles
-// (docs/tasks/p0/20, docs/planning/26-config-management-api-surface.md). Every
+// (docs/implementation-history.md#p0-20, docs/planning/26-config-management-api-surface.md). Every
 // handler authenticates, enforces RBAC, and — for mutating endpoints —
 // increments the tenant config version and publishes invalidation through
 // AdminHandlers.ConfigCache, matching the existing API-key/worker-credential
@@ -1333,7 +1333,7 @@ type configChangeResponse struct {
 }
 
 // ListChanges handles GET /api/v1/config/changes. Rows are already redacted
-// at write time (docs/tasks/p0/19), so this is a read-only exposure of the
+// at write time (docs/implementation-history.md#p0-19), so this is a read-only exposure of the
 // config_audit_source table with no secret material to strip.
 func (h *AdminHandlers) ListChanges(w http.ResponseWriter, r *http.Request) {
 	identity, ok := h.authorizeConfig(w, r, RoleTenantAdmin, RoleOperator, RoleViewer)

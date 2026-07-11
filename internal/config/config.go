@@ -108,7 +108,7 @@ type ControlServerConfig struct {
 	MetricsPort          int    `json:"metrics_port"`
 	EgressMetricsEnabled bool   `json:"egress_metrics_enabled,omitempty"`
 	// MultiControlEnabled turns on cross-Control-instance admin cancellation
-	// (docs/tasks/p1/23): Control advertises each in-flight request's ownership
+	// (docs/implementation-history.md#p1-23): Control advertises each in-flight request's ownership
 	// in Redis and routes a cancel for a request owned by a sibling replica to
 	// that replica. Default off so a single-Control deployment pays no extra
 	// Redis round-trips (docs/planning/32 "Multiple Concurrent Control Replicas").

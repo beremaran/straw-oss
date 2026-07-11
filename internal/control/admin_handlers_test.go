@@ -334,7 +334,7 @@ func TestSystemAdminCanCreateTenants(t *testing.T) {
 	}
 }
 
-// ---- tenant lifecycle (docs/tasks/p0/29) ----
+// ---- tenant lifecycle (docs/implementation-history.md#p0-29) ----
 
 func createTenantForTest(t *testing.T, ta *testAdmin, adminToken, name string) string {
 	t.Helper()

@@ -25,7 +25,7 @@ type inflightEntry struct {
 // with a TTL, plus an ephemeral cancel pub/sub channel). When an
 // InFlightRegistry has no cross-instance collaborator (the default), it stays
 // pure in-process and single-Control exactly as P0 task 27 left it
-// (docs/tasks/p1/23).
+// (docs/implementation-history.md#p1-23).
 type InFlightCrossInstance interface {
 	// Record advertises that this instance owns requestID for tenantID so a
 	// sibling instance can authorize and route a cancel to it. Best-effort:
@@ -42,9 +42,9 @@ type InFlightCrossInstance interface {
 
 // InFlightRegistry maps a running request_id to its owning tenant and the
 // context cancel function that drives Control-initiated cancellation. It is
-// in-process by default (docs/tasks/p0/27): registrations do not survive a
+// in-process by default (docs/implementation-history.md#p0-27): registrations do not survive a
 // Control restart. When a cross-instance collaborator is attached
-// (docs/tasks/p1/23), a cancel for a request_id not owned locally is routed
+// (docs/implementation-history.md#p1-23), a cancel for a request_id not owned locally is routed
 // to the sibling Control instance that owns it; the local in-process path is
 // unchanged and never touches the shared backend.
 type InFlightRegistry struct {
@@ -59,7 +59,7 @@ func NewInFlightRegistry() *InFlightRegistry {
 }
 
 // SetCrossInstance attaches the cross-Control-instance resolver
-// (docs/tasks/p1/23). With it set, Register/Deregister advertise and clear
+// (docs/implementation-history.md#p1-23). With it set, Register/Deregister advertise and clear
 // ownership in the shared backend and Cancel falls back to it for request_ids
 // not owned locally. Nil keeps the registry pure in-process/single-Control.
 func (r *InFlightRegistry) SetCrossInstance(cross InFlightCrossInstance) {
@@ -118,7 +118,7 @@ func (r *InFlightRegistry) Deregister(ctx context.Context, requestID string) {
 // unknown request_id receives ErrRequestNotFound.
 //
 // When the request is not owned locally and a cross-instance collaborator is
-// attached (docs/tasks/p1/23), Cancel resolves the owning tenant from the
+// attached (docs/implementation-history.md#p1-23), Cancel resolves the owning tenant from the
 // shared backend, applies the same authorization, and signals the owning
 // Control instance to tear the request down. The local path is the fast path
 // and never touches the shared backend.
@@ -157,7 +157,7 @@ func (r *InFlightRegistry) Cancel(ctx context.Context, identity Identity, reques
 }
 
 // cancelViaCrossInstance authorizes and signals a cancel for a request owned by
-// a sibling Control instance (docs/tasks/p1/23). Authorization uses the owning
+// a sibling Control instance (docs/implementation-history.md#p1-23). Authorization uses the owning
 // tenant resolved from the shared backend and is unchanged from the local path.
 func cancelViaCrossInstance(ctx context.Context, cross InFlightCrossInstance, identity Identity, tenantID, requestID string) error {
 	err := AuthorizeAdminCancel(identity, tenantID)
@@ -175,7 +175,7 @@ func cancelViaCrossInstance(ctx context.Context, cross InFlightCrossInstance, id
 
 // cancelLocal cancels a locally-owned request without re-authorizing. It is
 // applied by the cross-instance cancel subscriber to a cancel a sibling
-// instance already authorized (docs/tasks/p1/23); it is a no-op when this
+// instance already authorized (docs/implementation-history.md#p1-23); it is a no-op when this
 // instance does not own the request. Returns true if this instance owned it.
 func (r *InFlightRegistry) cancelLocal(requestID string) bool {
 	if r == nil {

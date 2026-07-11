@@ -1,4 +1,4 @@
--- straw P0 tenant canonical timeout and metadata-storage fields (docs/tasks/p0/46).
+-- straw P0 tenant canonical timeout and metadata-storage fields (docs/implementation-history.md#p0-46).
 
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS default_timeout_ms bigint NOT NULL DEFAULT 60000;
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS max_timeout_ms bigint NOT NULL DEFAULT 300000;

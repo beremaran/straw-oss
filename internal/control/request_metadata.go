@@ -233,7 +233,7 @@ func buildRequestEvent(requestID string, identity Identity, request *ValidatedRe
 }
 
 // applyRequestOutcome finalizes a pre-built RequestEvent with the real
-// dispatch result (docs/tasks/p0/32): on success it fills the actual
+// dispatch result (docs/implementation-history.md#p0-32): on success it fills the actual
 // upstream status, sizes, and per-phase timings; on failure it fills the
 // canonical error_code/error_category/timeout_type instead of a synthetic
 // 200, using whatever partial timing the dispatcher measured before it
@@ -443,13 +443,13 @@ func (s *HTTPClickHouseSink) WriteRequestEvents(ctx context.Context, events []Re
 }
 
 // WriteWorkerEvents posts JSONEachRow records to ClickHouse's worker_events
-// table (docs/tasks/p0/32).
+// table (docs/implementation-history.md#p0-32).
 func (s *HTTPClickHouseSink) WriteWorkerEvents(ctx context.Context, events []WorkerEvent) error {
 	return insertClickHouseRows(ctx, s, workerEventsTable, events)
 }
 
 // WriteConfigAuditEvents posts JSONEachRow records to ClickHouse's
-// config_audit_events table (docs/tasks/p0/32).
+// config_audit_events table (docs/implementation-history.md#p0-32).
 func (s *HTTPClickHouseSink) WriteConfigAuditEvents(ctx context.Context, events []ConfigAuditEvent) error {
 	return insertClickHouseRows(ctx, s, configAuditEventsTable, events)
 }

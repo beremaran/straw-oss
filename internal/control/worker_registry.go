@@ -256,7 +256,7 @@ func (r *WorkerRegistry) SetRuntimeStore(store WorkerRuntimeStore) {
 	r.refreshRuntimeLocked()
 }
 
-// SetEventRecorder wires the worker_events ClickHouse sink (docs/tasks/p0/32).
+// SetEventRecorder wires the worker_events ClickHouse sink (docs/implementation-history.md#p0-32).
 // Optional: nil (the default) disables worker_events emission without
 // affecting registration/heartbeat/admin behavior.
 func (r *WorkerRegistry) SetEventRecorder(rec WorkerEventRecorder) {

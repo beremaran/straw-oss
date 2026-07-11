@@ -4,7 +4,7 @@ package main
 // against the repo's test NATS harness (internal/testutil.FakeNATSServer,
 // playing the Control role by hand), dispatches one decoded-HTTP assignment,
 // and asserts the static page reaches the Control side of the harness
-// (docs/tasks/p2/13-example-custom-egress.md).
+// (docs/implementation-history.md#p2-13).
 
 import (
 	"context"

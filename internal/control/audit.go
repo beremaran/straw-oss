@@ -15,7 +15,7 @@ import (
 )
 
 // auditFieldPathAll is the documented whole-object field_path sentinel
-// (docs/tasks/p0/50): call sites pass it for whole-object mutations, and
+// (docs/implementation-history.md#p0-50): call sites pass it for whole-object mutations, and
 // recordAudit refines it into the dotted paths of the fields that actually
 // differ when both old and new values are present. It stays "*" when the
 // change is not diffable (create, delete, or non-object payloads).
@@ -339,7 +339,7 @@ func redactAndMarshal(v any) (string, error) {
 }
 
 // auditStoreWithEvents wraps an AuditStore so every successful Record also
-// mirrors into the config_audit_events ClickHouse sink (docs/tasks/p0/32),
+// mirrors into the config_audit_events ClickHouse sink (docs/implementation-history.md#p0-32),
 // covering every recordAudit call site (tenant, API key, worker credential,
 // routing/deny/injection/pool config, worker admin, request cancel) from one
 // choke point. AuditRecord carries config_version and redacted old/new value

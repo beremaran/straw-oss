@@ -127,7 +127,7 @@ these full paths.
 
 `egress.worker_id`, `egress.credential_id`, and `egress.private_key_ed25519_env` are the canonical flat worker
 identity and credential keys under `egress`; the old nested `egress.credential.*` shape was reconciled by
-`docs/tasks/p1/22-egress-credential-config-schema-reconciliation.md`.
+`../implementation-history.md#p1-22`.
 
 ### Control Config Example
 

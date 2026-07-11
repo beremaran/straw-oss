@@ -13,7 +13,7 @@ import (
 
 // This file adds the read paths (single-resource Get and paginated List) the
 // config admin API surface needs on top of the write paths in
-// postgres_config_store.go (docs/tasks/p0/20). Sorting matches the shared
+// postgres_config_store.go (docs/implementation-history.md#p0-20). Sorting matches the shared
 // contract in docs/planning/26: created_at descending, then id ascending.
 
 const (

@@ -2,12 +2,12 @@
 
 This appendix defines the P1 HTTP forward proxy contract consumed by:
 
-- `docs/tasks/p1/02-http-proxy-ingress.md`
-- `docs/tasks/p1/03-raw-streaming-response-path.md`
-- `docs/tasks/p1/04-routing-ingress-type-and-worker-capability.md`
-- `docs/tasks/p1/05-raw-connect-tunnel.md`
-- `docs/tasks/p1/06-rest-streaming-endpoint.md`
-- `docs/tasks/p1/18-load-and-backpressure-testing.md`
+- `../implementation-history.md#p1-02`
+- `../implementation-history.md#p1-03`
+- `../implementation-history.md#p1-04`
+- `../implementation-history.md#p1-05`
+- `../implementation-history.md#p1-06`
+- `../implementation-history.md#p1-18`
 
 ## Listener
 
@@ -15,7 +15,7 @@ The HTTP forward proxy listens on the P1 proxy port from Section 28, port `8081`
 configuration. P0 REST/config/admin APIs stay on port `8080`.
 
 The forward proxy accepts absolute-form HTTP/1.1 proxy requests for `http://` and `https://` upstream URLs. It rejects
-`CONNECT`; raw CONNECT is owned by `docs/tasks/p1/05-raw-connect-tunnel.md`.
+`CONNECT`; raw CONNECT is owned by `../implementation-history.md#p1-05`.
 
 ## Authentication
 
@@ -108,7 +108,7 @@ framing can legally carry them.
   validation rules used for response headers.
 - Fixed-length or connection-close downstream response: do not forward trailers; record trailer names and aggregate
   trailer byte count in request metadata, with sensitive values redacted.
-- HTTP/2 downstream proxy semantics are out of scope until `docs/tasks/p2/14-http2-semantics-spec.md` specifies them.
+- HTTP/2 downstream proxy semantics are out of scope until `../implementation-history.md#p2-14` specifies them.
 
 `Transfer-Encoding`, `Content-Length`, `Connection`, `Proxy-Authorization`, and `X-Straw-*` trailers are never forwarded.
 
@@ -118,13 +118,13 @@ Before P1 implementation starts, the consuming tasks must cover at least these r
 
 | Area | Required checks | Owning task |
 |------|-----------------|-------------|
-| Proxy authentication | valid `Proxy-Authorization: Bearer`; missing credentials; malformed credentials; revoked or unauthorized key; `Authorization` forwarded only as an upstream header | `docs/tasks/p1/02-http-proxy-ingress.md` |
-| Header sanitization | `Proxy-Authorization`, `X-Straw-*`, hop-by-hop headers, `Connection`-named headers, caller `Host`, `Content-Length`, and `Transfer-Encoding` do not reach Egress as forwarded headers | `docs/tasks/p1/02-http-proxy-ingress.md` |
-| Request mapping | absolute-form HTTP and HTTPS targets become decoded requests; invalid method, fragment, userinfo, empty host, IPv6 zone ID, bad header name, and bare CR/LF are rejected before routing | `docs/tasks/p1/02-http-proxy-ingress.md` |
-| Routing input | proxy requests set `ingress_type=http_proxy`; route matching can distinguish `rest`, `http_proxy`, `connect`, and `mitm`; incompatible workers are ineligible | `docs/tasks/p1/04-routing-ingress-type-and-worker-capability.md` |
-| Raw response rendering | upstream `2xx`, `3xx`, `4xx`, and `5xx` stream without JSON envelopes; pre-header Straw errors render canonical JSON error bodies with proxy HTTP status rules | `docs/tasks/p1/03-raw-streaming-response-path.md` |
-| Post-header failure | upstream or transport failure after headers closes the stream, records terminal metadata, and does not attempt a second HTTP response | `docs/tasks/p1/03-raw-streaming-response-path.md` |
-| Backpressure | a slow client prevents unbounded Control buffering; credit is withheld until writes progress; deadline or idle timeout cancels stalled streams | `docs/tasks/p1/03-raw-streaming-response-path.md` and `docs/tasks/p1/18-load-and-backpressure-testing.md` |
-| Client cancellation | proxy client disconnect sends `CancelFrame` and releases request-scoped resources | `docs/tasks/p1/03-raw-streaming-response-path.md` |
-| Trailers | chunked downstream responses forward allowed trailers; non-trailer-capable responses metadata-capture trailer names/byte counts and drop values according to redaction rules | `docs/tasks/p1/03-raw-streaming-response-path.md` |
-| CONNECT separation | forward proxy listener rejects `CONNECT`; raw tunnel behavior is implemented only by the CONNECT task | `docs/tasks/p1/05-raw-connect-tunnel.md` |
+| Proxy authentication | valid `Proxy-Authorization: Bearer`; missing credentials; malformed credentials; revoked or unauthorized key; `Authorization` forwarded only as an upstream header | `../implementation-history.md#p1-02` |
+| Header sanitization | `Proxy-Authorization`, `X-Straw-*`, hop-by-hop headers, `Connection`-named headers, caller `Host`, `Content-Length`, and `Transfer-Encoding` do not reach Egress as forwarded headers | `../implementation-history.md#p1-02` |
+| Request mapping | absolute-form HTTP and HTTPS targets become decoded requests; invalid method, fragment, userinfo, empty host, IPv6 zone ID, bad header name, and bare CR/LF are rejected before routing | `../implementation-history.md#p1-02` |
+| Routing input | proxy requests set `ingress_type=http_proxy`; route matching can distinguish `rest`, `http_proxy`, `connect`, and `mitm`; incompatible workers are ineligible | `../implementation-history.md#p1-04` |
+| Raw response rendering | upstream `2xx`, `3xx`, `4xx`, and `5xx` stream without JSON envelopes; pre-header Straw errors render canonical JSON error bodies with proxy HTTP status rules | `../implementation-history.md#p1-03` |
+| Post-header failure | upstream or transport failure after headers closes the stream, records terminal metadata, and does not attempt a second HTTP response | `../implementation-history.md#p1-03` |
+| Backpressure | a slow client prevents unbounded Control buffering; credit is withheld until writes progress; deadline or idle timeout cancels stalled streams | `../implementation-history.md#p1-03` and `../implementation-history.md#p1-18` |
+| Client cancellation | proxy client disconnect sends `CancelFrame` and releases request-scoped resources | `../implementation-history.md#p1-03` |
+| Trailers | chunked downstream responses forward allowed trailers; non-trailer-capable responses metadata-capture trailer names/byte counts and drop values according to redaction rules | `../implementation-history.md#p1-03` |
+| CONNECT separation | forward proxy listener rejects `CONNECT`; raw tunnel behavior is implemented only by the CONNECT task | `../implementation-history.md#p1-05` |

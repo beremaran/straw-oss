@@ -2,7 +2,7 @@
 
 This appendix defines the P1 upstream connection-pooling contract consumed by:
 
-- `docs/tasks/p1/16-upstream-connection-pooling.md`
+- `../implementation-history.md#p1-16`
 
 Pooling is optional, disabled by default, and never required for request correctness.
 
@@ -81,10 +81,10 @@ Before code implementation starts, the consuming task must cover at least these 
 
 | Area | Required checks | Owning task |
 |------|-----------------|-------------|
-| Disabled default | default config keeps `DisableKeepAlives=true`, outbound HTTP/2 disabled, and opens no reusable upstream connection | `docs/tasks/p1/26-upstream-connection-pooling-implementation.md` |
-| Enabled reuse | enabled config reuses a connection only for the same tenant, scheme, hostname, port, validated IP, and fingerprint profile | `docs/tasks/p1/26-upstream-connection-pooling-implementation.md` |
-| Tenant isolation | two tenants targeting the same host never share a pooled connection | `docs/tasks/p1/26-upstream-connection-pooling-implementation.md` |
-| DNS rebinding and SSRF | every request resolves and validates before reuse; a pooled connection is discarded when its dial IP is absent from the current validated set | `docs/tasks/p1/26-upstream-connection-pooling-implementation.md` |
-| Second-resolution guard | the outbound transport dials only validated IPs and does not let the HTTP/TLS library resolve the hostname independently | `docs/tasks/p1/26-upstream-connection-pooling-implementation.md` |
-| Eviction and shutdown | idle timeout, max lifetime, protocol/TLS/body errors, and worker shutdown close reusable connections without leaking goroutines | `docs/tasks/p1/26-upstream-connection-pooling-implementation.md` |
-| Failure fallback | stale or closed pooled connections fall back to a fresh validated dial when deadline permits and surface canonical errors when it does not | `docs/tasks/p1/26-upstream-connection-pooling-implementation.md` |
+| Disabled default | default config keeps `DisableKeepAlives=true`, outbound HTTP/2 disabled, and opens no reusable upstream connection | `../implementation-history.md#p1-26` |
+| Enabled reuse | enabled config reuses a connection only for the same tenant, scheme, hostname, port, validated IP, and fingerprint profile | `../implementation-history.md#p1-26` |
+| Tenant isolation | two tenants targeting the same host never share a pooled connection | `../implementation-history.md#p1-26` |
+| DNS rebinding and SSRF | every request resolves and validates before reuse; a pooled connection is discarded when its dial IP is absent from the current validated set | `../implementation-history.md#p1-26` |
+| Second-resolution guard | the outbound transport dials only validated IPs and does not let the HTTP/TLS library resolve the hostname independently | `../implementation-history.md#p1-26` |
+| Eviction and shutdown | idle timeout, max lifetime, protocol/TLS/body errors, and worker shutdown close reusable connections without leaking goroutines | `../implementation-history.md#p1-26` |
+| Failure fallback | stale or closed pooled connections fall back to a fresh validated dial when deadline permits and surface canonical errors when it does not | `../implementation-history.md#p1-26` |

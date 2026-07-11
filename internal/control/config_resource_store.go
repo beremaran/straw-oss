@@ -13,7 +13,7 @@ import (
 // used by handler unit tests. PostgresConfigStore (postgres_config_store.go,
 // postgres_config_list_store.go) implements all three interfaces against
 // Postgres; the running binary wires that, never these in-memory doubles
-// (docs/tasks/p0/20).
+// (docs/implementation-history.md#p0-20).
 
 // RoutingRuleStore persists tenant-scoped routing rules with a client-supplied
 // stable ID and optimistic concurrency on each rule's own config_version.
@@ -26,7 +26,7 @@ type RoutingRuleStore interface {
 
 // ExecutorPoolStore persists tenant-scoped executor pools with a
 // client-supplied stable ID and optimistic concurrency on each pool's own
-// config_version (docs/tasks/p0/30).
+// config_version (docs/implementation-history.md#p0-30).
 type ExecutorPoolStore interface {
 	ListExecutorPools(ctx context.Context, tenantID string, limit, offset int) ([]ExecutorPoolRecord, error)
 	GetExecutorPool(ctx context.Context, tenantID, id string) (ExecutorPoolRecord, error)

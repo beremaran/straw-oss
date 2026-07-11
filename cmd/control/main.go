@@ -870,7 +870,7 @@ func wireConfigInvalidation(ctx context.Context, configStore *control.PostgresCo
 // server.multi_control_enabled is set (docs/planning/32 "Multiple Concurrent
 // Control Replicas"), it attaches the Redis-backed cross-instance coordinator
 // so a cancel for a request owned by a sibling Control replica reaches that
-// replica (docs/tasks/p1/23), and starts the pub/sub subscriber that applies
+// replica (docs/implementation-history.md#p1-23), and starts the pub/sub subscriber that applies
 // sibling-authorized cancels to this replica's local contexts. Disabled (the
 // default) leaves the registry pure in-process/single-Control.
 func wireInFlightRegistry(ctx context.Context, controlConfig config.ControlConfig, redisClient *redis.Client) *control.InFlightRegistry {
@@ -1330,9 +1330,9 @@ func buildMITMHandler(controlConfig config.ControlConfig, authenticator *control
 
 // buildAdminHandlers constructs the AdminHandlers with the Postgres-backed
 // stores and the Redis-backed runtime admission components
-// (docs/tasks/p0/21). These are the admin-surface instances; the request path
+// (docs/implementation-history.md#p0-21). These are the admin-surface instances; the request path
 // consumes its own rate limiter/quota/sticky instances wired into the
-// dispatcher (docs/tasks/p0/24).
+// dispatcher (docs/implementation-history.md#p0-24).
 func buildAdminHandlers(apiKeyStore control.APIKeyStore, pepper []byte, workerRegistry *control.WorkerRegistry, workerCreds control.WorkerCredentialStore, pool *pgxpool.Pool, configStore *control.PostgresConfigStore, configCache *control.ConfigCache, redisClient *redis.Client, inflight *control.InFlightRegistry, tenantStore control.TenantStore, configAuditEvents *control.ConfigAuditEventWriter, clickHouseSink *control.HTTPClickHouseSink) *control.AdminHandlers {
 	rateLimiter := control.NewRateLimiter(redisClient, control.DefaultRateLimitGuardrails(), nil)
 

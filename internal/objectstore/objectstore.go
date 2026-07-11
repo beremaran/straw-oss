@@ -7,9 +7,9 @@
 //
 // This package is the foundation only. The request/response upload and download
 // flows that construct a Client and call it live in
-// docs/tasks/p2/07-bodyref-request-body-flow.md and
-// docs/tasks/p2/08-bodyref-response-body-flow.md; payload-capture storage lives
-// in docs/tasks/p2/11-payload-capture-storage.md.
+// docs/implementation-history.md#p2-07 and
+// docs/implementation-history.md#p2-08; payload-capture storage lives
+// in docs/implementation-history.md#p2-11.
 package objectstore
 
 import (
