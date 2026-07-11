@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -29,6 +30,7 @@ const (
 	defaultPayloadCaptureDecision = "none"
 	defaultMaxFrameDataBytes      = 1048576
 	defaultRequestTimeoutFallback = 120000
+	defaultRequestTimeoutMS       = 60000
 	responseFrameCheckInterval    = 100 * time.Millisecond
 	timeoutTypeAssignment         = "assignment_timeout"
 	timeoutTypeTotalDeadline      = "total_deadline_timeout"
@@ -90,11 +92,6 @@ type RequestDispatcherOptions struct {
 	Workers                    CandidateSource
 	Sticky                     StickyBackend
 	NATS                       *natsx.Connection
-	RateLimitAdmission         *RateLimitAdmission
-	QuotaAdmission             *QuotaAdmission
-	BodyTransport              config.ControlBodyTransportConfig
-	BodyObjectStore            RequestBodyRefStore
-	ResponseObjectStore        ResponseBodyRefStore
 	MaxInlineResponseBodyBytes uint64
 	MaxFrameDataBytes          uint64
 	MaxTimeoutMs               uint64
@@ -149,8 +146,6 @@ func NewDefaultRequestDispatcher(opts RequestDispatcherOptions) *DefaultRequestD
 	if opts.FrameIdleTimeout == 0 {
 		opts.FrameIdleTimeout = defaultFrameIdleTimeout
 	}
-
-	opts.BodyTransport = opts.BodyTransport.Normalized()
 
 	if opts.Sticky == nil {
 		opts.Sticky = NewStickyStore(opts.Now)
@@ -218,14 +213,7 @@ func (d *DefaultRequestDispatcher) dispatch(ctx context.Context, in DispatchInpu
 	d.opts.InFlight.Register(ctx, in.RequestID, in.Identity.TenantID, cancel)
 	defer d.opts.InFlight.Deregister(ctx, in.RequestID)
 
-	snapshot, err := d.opts.ConfigCache.Snapshot(ctx, in.Identity.TenantID)
-	if err != nil {
-		return SuccessResponse{}, d.withTiming(&PipelineError{Code: ControlInternalError}, 0, 0, started)
-	}
-
-	if perr := d.admit(ctx, in, snapshot); perr != nil {
-		return SuccessResponse{}, d.withTiming(perr, 0, 0, started)
-	}
+	snapshot := d.opts.ConfigCache.Snapshot()
 
 	routeStart := d.opts.Now()
 	route := d.route(in, snapshot)
@@ -265,25 +253,8 @@ func (d *DefaultRequestDispatcher) dispatch(ctx context.Context, in DispatchInpu
 	return d.finalizeDispatch(ctx, in, snapshot, result, usedRoute, routingMs, assignmentMs, started)
 }
 
-// finalizeDispatch runs the post-success steps: tee a large response body to
-// object storage (if selected), record quota usage, and build the response.
-func (d *DefaultRequestDispatcher) finalizeDispatch(ctx context.Context, in DispatchInput, snapshot config.TenantSnapshot, result dispatchResult, route RouteOutcome, routingMs, assignmentMs int64, started time.Time) (SuccessResponse, *PipelineError) {
-	if result.useBodyRef {
-		if perr := d.teeResponseBody(ctx, in, &result); perr != nil {
-			perr = d.withTiming(perr, routingMs, assignmentMs, started)
-			perr.EgressMs = result.egressMs
-			setRouteFields(perr, route)
-			setProfileFields(perr, result)
-
-			return SuccessResponse{}, perr
-		}
-	}
-
-	if d.opts.QuotaAdmission != nil {
-		_ = d.opts.QuotaAdmission.RecordSuccess(ctx, quotaFromSnapshot(in.Identity.TenantID, snapshot.Quota))
-		_ = d.opts.QuotaAdmission.AddBandwidth(ctx, in.Identity.TenantID, requestBodySize(in.Request)+int64(len(result.body)))
-	}
-
+// finalizeDispatch builds the buffered response envelope.
+func (d *DefaultRequestDispatcher) finalizeDispatch(_ context.Context, in DispatchInput, _ config.Snapshot, result dispatchResult, route RouteOutcome, routingMs, assignmentMs int64, started time.Time) (SuccessResponse, *PipelineError) {
 	resp := successFromDispatch(in.RequestID, result, routingMs, assignmentMs, millisSince(started, d.opts.Now()))
 	setRouteFieldsOnResponse(&resp, route)
 	setProfileFieldsOnResponse(&resp, result)
@@ -319,22 +290,6 @@ func setProfileFieldsOnResponse(resp *SuccessResponse, result dispatchResult) {
 	resp.ExecutedFingerprintProfile = result.executedFingerprintProfile
 }
 
-// teeResponseBody uploads the completed response body to object storage and
-// records the resulting BodyRef on result. It runs only after the synchronous
-// stream from the executor has finished, so a cancelled or errored request
-// never reaches here and never orphans an object. An object-storage outage
-// maps to body_ref_unavailable, matching the docs/planning/29 outage row.
-func (d *DefaultRequestDispatcher) teeResponseBody(ctx context.Context, in DispatchInput, result *dispatchResult) *PipelineError {
-	frame, err := d.opts.ResponseObjectStore.UploadResponseBody(ctx, in.Identity.TenantID, in.RequestID, result.body)
-	if err != nil {
-		return bodyRefUnavailableError(BodyTransportDirectionResponse, BodyTransportS3BodyRef)
-	}
-
-	result.bodyRef = frame
-
-	return nil
-}
-
 func (d *DefaultRequestDispatcher) dispatchRaw(ctx context.Context, in DispatchInput, w http.ResponseWriter, started time.Time) (SuccessResponse, *PipelineError, bool) {
 	if in.Request == nil || d.opts.ConfigCache == nil || d.opts.Workers == nil {
 		return SuccessResponse{}, d.withTiming(&PipelineError{Code: ControlInternalError}, 0, 0, started), false
@@ -346,14 +301,7 @@ func (d *DefaultRequestDispatcher) dispatchRaw(ctx context.Context, in DispatchI
 	d.opts.InFlight.Register(ctx, in.RequestID, in.Identity.TenantID, cancel)
 	defer d.opts.InFlight.Deregister(ctx, in.RequestID)
 
-	snapshot, err := d.opts.ConfigCache.Snapshot(ctx, in.Identity.TenantID)
-	if err != nil {
-		return SuccessResponse{}, d.withTiming(&PipelineError{Code: ControlInternalError}, 0, 0, started), false
-	}
-
-	if perr := d.admit(ctx, in, snapshot); perr != nil {
-		return SuccessResponse{}, d.withTiming(perr, 0, 0, started), false
-	}
+	snapshot := d.opts.ConfigCache.Snapshot()
 
 	routeStart := d.opts.Now()
 	route := d.route(in, snapshot)
@@ -388,7 +336,7 @@ func (d *DefaultRequestDispatcher) dispatchRaw(ctx context.Context, in DispatchI
 // record quota usage on success, and stamp the routing decision onto
 // whichever of SuccessResponse/PipelineError applies for request_events
 // telemetry.
-func (d *DefaultRequestDispatcher) finalizeRawDispatch(ctx context.Context, in DispatchInput, snapshot config.TenantSnapshot, route RouteOutcome, result dispatchResult, perr *PipelineError, routingMs, assignmentMs int64, started time.Time, wroteHeader bool) (SuccessResponse, *PipelineError, bool) {
+func (d *DefaultRequestDispatcher) finalizeRawDispatch(_ context.Context, in DispatchInput, _ config.Snapshot, route RouteOutcome, result dispatchResult, perr *PipelineError, routingMs, assignmentMs int64, started time.Time, wroteHeader bool) (SuccessResponse, *PipelineError, bool) {
 	if perr != nil {
 		perr = d.withTiming(perr, routingMs, assignmentMs, started)
 		perr.EgressMs = result.egressMs
@@ -400,11 +348,6 @@ func (d *DefaultRequestDispatcher) finalizeRawDispatch(ctx context.Context, in D
 		setProfileFieldsOnResponse(&resp, result)
 
 		return resp, perr, wroteHeader
-	}
-
-	if d.opts.QuotaAdmission != nil {
-		_ = d.opts.QuotaAdmission.RecordSuccess(ctx, quotaFromSnapshot(in.Identity.TenantID, snapshot.Quota))
-		_ = d.opts.QuotaAdmission.AddBandwidth(ctx, in.Identity.TenantID, requestBodySize(in.Request)+int64FromUint64(result.size))
 	}
 
 	resp := rawSuccessFromDispatch(in.RequestID, result, routingMs, assignmentMs, millisSince(started, d.opts.Now()))
@@ -444,19 +387,6 @@ func successFromDispatch(requestID string, result dispatchResult, routingMs, ass
 }
 
 func responseBodyFromDispatch(result dispatchResult) ResponseBody {
-	if ref := result.bodyRef; ref != nil {
-		return ResponseBody{
-			Mode: "body_ref",
-			BodyRef: &ResponseBodyRef{
-				ObjectKey:     ref.GetS3().GetObjectKey(),
-				SignedURL:     ref.GetS3().GetSignedUrl(),
-				ExpiresUnixMs: ref.GetS3().GetExpiresUnixMs(),
-				SizeBytes:     ref.GetExpectedSizeBytes(),
-				Sha256Hex:     ref.GetSha256Hex(),
-			},
-		}
-	}
-
 	return ResponseBody{
 		Mode:       "inline_base64",
 		DataBase64: base64.StdEncoding.EncodeToString(result.body),
@@ -481,39 +411,11 @@ func rawSuccessFromDispatch(requestID string, result dispatchResult, routingMs, 
 	}
 }
 
-func (d *DefaultRequestDispatcher) admit(ctx context.Context, in DispatchInput, snapshot config.TenantSnapshot) *PipelineError {
-	if d.opts.RateLimitAdmission != nil {
-		decision := d.opts.RateLimitAdmission.Check(ctx, rateLimitFromSnapshot(in.Identity.TenantID, snapshot.RateLimits), RateLimitRequest{
-			TenantID:   in.Identity.TenantID,
-			APIKeyID:   in.Identity.APIKeyID,
-			TargetHost: strings.ToLower(in.Request.URL.Hostname()),
-			IPType:     in.Request.Routing.IPType,
-		})
-		if !decision.Allowed {
-			return &PipelineError{Code: RateLimitExceeded, RetryAfterMs: decision.RetryAfterMs}
-		}
-	}
-
-	if d.opts.QuotaAdmission != nil {
-		decision := d.opts.QuotaAdmission.CheckAdmission(ctx, quotaFromSnapshot(in.Identity.TenantID, snapshot.Quota))
-		if !decision.Allowed {
-			details := map[string]string{}
-			if decision.Reason != "" {
-				details["reason"] = decision.Reason
-			}
-
-			return &PipelineError{Code: QuotaExhausted, Details: details}
-		}
-	}
-
-	return nil
-}
-
-func (d *DefaultRequestDispatcher) route(in DispatchInput, snapshot config.TenantSnapshot) RouteOutcome {
+func (d *DefaultRequestDispatcher) route(in DispatchInput, snapshot config.Snapshot) RouteOutcome {
 	return d.routeWithWorkers(in, snapshot, d.opts.Workers)
 }
 
-func (d *DefaultRequestDispatcher) routeWithWorkers(in DispatchInput, snapshot config.TenantSnapshot, workers CandidateSource) RouteOutcome {
+func (d *DefaultRequestDispatcher) routeWithWorkers(in DispatchInput, snapshot config.Snapshot, workers CandidateSource) RouteOutcome {
 	router := NewRouter(
 		snapshotRules{tenantID: in.Identity.TenantID, rules: snapshot.RoutingRules},
 		NewStaticPoolPolicyProvider(poolPoliciesFromSnapshot(in.Identity.TenantID, snapshot.ExecutorPools)),
@@ -535,7 +437,7 @@ func (d *DefaultRequestDispatcher) routeWithWorkers(in DispatchInput, snapshot c
 	})
 }
 
-func (d *DefaultRequestDispatcher) executeAttemptOrFallback(ctx context.Context, in DispatchInput, route RouteOutcome, snapshot config.TenantSnapshot, policy *DestinationPolicyResult, deadline time.Time) (dispatchResult, int64, *PipelineError, RouteOutcome) {
+func (d *DefaultRequestDispatcher) executeAttemptOrFallback(ctx context.Context, in DispatchInput, route RouteOutcome, snapshot config.Snapshot, policy *DestinationPolicyResult, deadline time.Time) (dispatchResult, int64, *PipelineError, RouteOutcome) {
 	result, assignmentMs, perr := d.executeAttempt(ctx, in, route, policy, snapshot.ConfigVersion, deadline)
 	if perr == nil || !canFallbackBeforeRequestStart(perr.Code) {
 		return result, assignmentMs, perr, route
@@ -777,7 +679,7 @@ func (d *DefaultRequestDispatcher) requestAssign(subject string, in DispatchInpu
 // sendRequestStart publishes RequestStart and inline body DataFrames on the c2e
 // subject and returns the next c2e stream_seq (i.e. the seq a subsequent
 // CancelFrame should use).
-func (d *DefaultRequestDispatcher) sendRequestStart(ctx context.Context, subject string, in DispatchInput, route RouteOutcome, policy *DestinationPolicyResult, configVersion uint64, deadline time.Time) (uint64, error) {
+func (d *DefaultRequestDispatcher) sendRequestStart(_ context.Context, subject string, in DispatchInput, route RouteOutcome, policy *DestinationPolicyResult, configVersion uint64, deadline time.Time) (uint64, error) {
 	start := &strawpb.RequestStart{
 		Mode:                   requestMode(in.Request),
 		Method:                 in.Request.Method,
@@ -806,9 +708,8 @@ func (d *DefaultRequestDispatcher) sendRequestStart(ctx context.Context, subject
 		return 0, err
 	}
 
-	var uploaded *strawpb.BodyRefFrame
 	if in.Request.BodyReader == nil {
-		seq, uploaded, err = d.sendRequestBody(ctx, subject, in, deadline, seq)
+		seq, err = d.sendRequestBody(subject, in, deadline, seq)
 		if err != nil {
 			return 0, err
 		}
@@ -816,8 +717,6 @@ func (d *DefaultRequestDispatcher) sendRequestStart(ctx context.Context, subject
 
 	err = d.opts.NATS.Flush()
 	if err != nil {
-		d.deleteUploadedRequestBody(ctx, uploaded)
-
 		return 0, fmt.Errorf("flush request stream: %w", err)
 	}
 
@@ -828,6 +727,107 @@ type requestBodyUpload struct {
 	gate *tunnelUploadGate
 	err  <-chan error
 	c2e  *c2eStreamSender
+}
+
+type tunnelUploadGate struct {
+	mu     sync.Mutex
+	credit uint64
+	wake   chan struct{}
+	closed bool
+}
+
+func newTunnelUploadGate(initial uint64) *tunnelUploadGate {
+	return &tunnelUploadGate{credit: initial, wake: make(chan struct{}, 1)}
+}
+
+func (g *tunnelUploadGate) grant(bytes uint64) {
+	if bytes == 0 {
+		return
+	}
+
+	g.mu.Lock()
+	g.credit += bytes
+	g.mu.Unlock()
+
+	select {
+	case g.wake <- struct{}{}:
+	default:
+	}
+}
+
+func (g *tunnelUploadGate) takeMax(maxBytes uint64) (uint64, bool) {
+	for {
+		g.mu.Lock()
+		if g.closed {
+			g.mu.Unlock()
+
+			return 0, false
+		}
+
+		if g.credit > 0 {
+			bytes := min(g.credit, maxBytes)
+			g.credit -= bytes
+			g.mu.Unlock()
+
+			return bytes, true
+		}
+		g.mu.Unlock()
+
+		<-g.wake
+	}
+}
+
+func (g *tunnelUploadGate) close() {
+	g.mu.Lock()
+	g.closed = true
+	g.mu.Unlock()
+
+	select {
+	case g.wake <- struct{}{}:
+	default:
+	}
+}
+
+type c2eStreamSender struct {
+	mu         sync.Mutex
+	dispatcher *DefaultRequestDispatcher
+	subject    string
+	in         DispatchInput
+	deadline   time.Time
+	seq        uint64
+}
+
+func (s *c2eStreamSender) data(offset uint64, data []byte) {
+	s.publish(func(seq uint64) *strawpb.StreamFrame {
+		return &strawpb.StreamFrame{
+			StreamSeq: seq,
+			Attempt:   defaultRequestAttempt,
+			Payload:   &strawpb.StreamFrame_Data{Data: &strawpb.DataFrame{Offset: offset, Data: data}},
+		}
+	})
+}
+
+func (s *c2eStreamSender) credit(bytes uint64) {
+	if bytes == 0 {
+		return
+	}
+
+	s.publish(func(seq uint64) *strawpb.StreamFrame {
+		return &strawpb.StreamFrame{
+			StreamSeq: seq,
+			Attempt:   defaultRequestAttempt,
+			Payload:   &strawpb.StreamFrame_Credit{Credit: &strawpb.CreditFrame{DownloadCreditBytes: bytes}},
+		}
+	})
+}
+
+func (s *c2eStreamSender) publish(build func(uint64) *strawpb.StreamFrame) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	frame := build(s.seq)
+	_ = s.dispatcher.publishFrame(s.subject, s.in, s.deadline, frame)
+	s.seq++
 }
 
 func (d *DefaultRequestDispatcher) startStreamingRequestBody(ctx context.Context, subject string, in DispatchInput, deadline time.Time, seq uint64) *requestBodyUpload {
@@ -915,69 +915,13 @@ func streamingRequestBodyReadError(err error) error {
 	return &requestStreamError{perr: &PipelineError{Code: BodyTooLarge}, err: err}
 }
 
-func (d *DefaultRequestDispatcher) sendRequestBody(ctx context.Context, subject string, in DispatchInput, deadline time.Time, seq uint64) (uint64, *strawpb.BodyRefFrame, error) {
+func (d *DefaultRequestDispatcher) sendRequestBody(subject string, in DispatchInput, deadline time.Time, seq uint64) (uint64, error) {
 	body := in.Request.BodyData
 	if len(body) == 0 {
-		return seq, nil, nil
+		return seq, nil
 	}
 
-	selection, perr := SelectBodyTransport(d.opts.BodyTransport, BodyTransportSelectionRequest{
-		Direction:        BodyTransportDirectionRequest,
-		SizeBytes:        uint64FromInt(len(body)),
-		InlineLimitBytes: d.opts.MaxFrameDataBytes,
-	})
-	if perr != nil {
-		return 0, nil, &requestStreamError{perr: perr}
-	}
-
-	switch selection.Transport {
-	case BodyTransportDataFrames:
-		seq, err := d.sendRequestDataFrames(subject, in, deadline, seq, body)
-
-		return seq, nil, err
-	case BodyTransportS3BodyRef:
-		if d.opts.BodyObjectStore == nil {
-			return 0, nil, &requestStreamError{perr: bodyRefUnavailableError(BodyTransportDirectionRequest, BodyTransportS3BodyRef)}
-		}
-
-		ref, err := d.opts.BodyObjectStore.UploadRequestBody(ctx, in.Identity.TenantID, in.RequestID, body)
-		if err != nil {
-			return 0, nil, &requestStreamError{
-				perr: bodyRefUnavailableError(BodyTransportDirectionRequest, BodyTransportS3BodyRef),
-				err:  err,
-			}
-		}
-
-		seq++
-
-		err = d.publishFrame(subject, in, deadline, &strawpb.StreamFrame{
-			StreamSeq: seq,
-			Attempt:   defaultRequestAttempt,
-			Payload:   &strawpb.StreamFrame_BodyRef{BodyRef: ref},
-		})
-		if err != nil {
-			d.deleteUploadedRequestBody(ctx, ref)
-
-			return 0, nil, err
-		}
-
-		return seq, ref, nil
-	case BodyTransportDirectStreamRef:
-		return 0, nil, &requestStreamError{perr: bodyRefUnavailableError(BodyTransportDirectionRequest, BodyTransportDirectStreamRef)}
-	default:
-		return 0, nil, &requestStreamError{perr: bodyRefUnavailableError(BodyTransportDirectionRequest, selection.Transport)}
-	}
-}
-
-func (d *DefaultRequestDispatcher) deleteUploadedRequestBody(ctx context.Context, ref *strawpb.BodyRefFrame) {
-	if ref == nil || d.opts.BodyObjectStore == nil {
-		return
-	}
-
-	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
-	defer cancel()
-
-	_ = d.opts.BodyObjectStore.DeleteRequestBody(cleanupCtx, ref)
+	return d.sendRequestDataFrames(subject, in, deadline, seq, body)
 }
 
 func (d *DefaultRequestDispatcher) sendRequestDataFrames(subject string, in DispatchInput, deadline time.Time, seq uint64, body []byte) (uint64, error) {
@@ -1440,33 +1384,8 @@ func acceptedResponseFrame(outcome natsx.FrameOutcome) (bool, bool, *PipelineErr
 
 func (d *DefaultRequestDispatcher) acceptResponseData(data *strawpb.DataFrame, result *dispatchResult, validator *natsx.StreamValidator, c2eSubject string, in DispatchInput, deadline time.Time, c2eSeq *uint64, upload *requestBodyUpload) (bool, *PipelineError) {
 	result.body = append(result.body, data.GetData()...)
-
-	selection, perr := SelectBodyTransport(d.opts.BodyTransport, BodyTransportSelectionRequest{
-		Direction:        BodyTransportDirectionResponse,
-		SizeBytes:        uint64FromInt(len(result.body)),
-		InlineLimitBytes: d.opts.MaxInlineResponseBodyBytes,
-	})
-	if perr != nil {
-		return true, perr
-	}
-
-	switch selection.Transport {
-	case BodyTransportDataFrames:
-		// Still inlineable; keep streaming.
-	case BodyTransportS3BodyRef:
-		if d.opts.ResponseObjectStore == nil {
-			return true, bodyRefUnavailableError(BodyTransportDirectionResponse, BodyTransportS3BodyRef)
-		}
-
-		// Over the inline threshold with object storage enabled: keep streaming
-		// through Control and tee the completed body to object storage at End.
-		result.useBodyRef = true
-	case BodyTransportDirectStreamRef:
-		// DirectStreamRef is not implemented for responses (only one response
-		// BodyRef mode ships: the object-storage tee).
-		return true, bodyRefUnavailableError(BodyTransportDirectionResponse, selection.Transport)
-	default:
-		return true, bodyRefUnavailableError(BodyTransportDirectionResponse, selection.Transport)
+	if uint64FromInt(len(result.body)) > d.opts.MaxInlineResponseBodyBytes {
+		return true, &PipelineError{Code: BodyTooLarge}
 	}
 
 	bytes := uint64FromInt(len(data.GetData()))
@@ -1566,19 +1485,7 @@ func expectedUploadBytes(req *ValidatedRequest) int64 {
 	return int64(len(req.BodyData))
 }
 
-func requestBodySize(req *ValidatedRequest) int64 {
-	if req != nil && req.BodyReader != nil && req.BodySizeBytes >= 0 {
-		return req.BodySizeBytes
-	}
-
-	if req == nil {
-		return 0
-	}
-
-	return int64(len(req.BodyData))
-}
-
-func (d *DefaultRequestDispatcher) deadline(req *ValidatedRequest, snapshot config.TenantSnapshot) time.Time {
+func (d *DefaultRequestDispatcher) deadline(req *ValidatedRequest, snapshot config.Snapshot) time.Time {
 	timeoutMs := req.TimeoutMs
 	if timeoutMs == 0 {
 		timeoutMs = effectiveDefaultTimeout(d.opts.MaxTimeoutMs, snapshot.DefaultTimeoutMs)
@@ -1593,7 +1500,7 @@ func (d *DefaultRequestDispatcher) deadline(req *ValidatedRequest, snapshot conf
 
 func effectiveDefaultTimeout(staticMax, tenantDefault uint64) uint64 {
 	if tenantDefault == 0 {
-		tenantDefault = defaultTenantDefaultTimeoutMs
+		tenantDefault = defaultRequestTimeoutMS
 	}
 
 	if staticMax != 0 && tenantDefault > staticMax {
@@ -1611,12 +1518,6 @@ type dispatchResult struct {
 	egressMs                   int64
 	selectedFingerprintProfile string
 	executedFingerprintProfile string
-	// useBodyRef is set once the buffered response body exceeds the inline
-	// threshold and object storage is enabled: Control keeps streaming and tees
-	// the completed body to object storage instead of inlining it.
-	useBodyRef bool
-	// bodyRef holds the teed object reference after a successful upload.
-	bodyRef *strawpb.BodyRefFrame
 }
 
 type snapshotRules struct {
@@ -1654,45 +1555,6 @@ func matchFromSnapshot(m config.MatchConditions) MatchConditions {
 		IPType:      m.IPType,
 		IngressType: m.IngressType,
 		TargetHost:  m.TargetHost,
-	}
-}
-
-func rateLimitFromSnapshot(tenantID string, rules []config.RateLimitRule) RateLimitConfig {
-	out := RateLimitConfig{TenantID: tenantID}
-	for _, r := range rules {
-		out.Limits = append(out.Limits, RateLimitRule{
-			Dimension:     RateLimitDimension(r.Dimension),
-			Key:           r.Key,
-			WindowSeconds: r.WindowSeconds,
-			MaxRequests:   r.MaxRequests,
-			FailPolicy:    RateLimitFailPolicy(r.FailPolicy),
-		})
-	}
-
-	return out
-}
-
-func quotaFromSnapshot(tenantID string, q config.QuotaConfig) QuotaConfig {
-	policy := quotaRequestCountOnSuccess
-	if q.CountOnAdmission {
-		policy = quotaRequestCountOnAdmission
-	}
-
-	maxRequests := q.RequestCountLimit
-	maxBandwidth := q.BandwidthBytesLimit
-
-	if !q.Enabled {
-		maxRequests = 0
-		maxBandwidth = 0
-	}
-
-	return QuotaConfig{
-		TenantID:           tenantID,
-		Period:             quotaPeriodMonthly,
-		MaxRequests:        maxRequests,
-		MaxBandwidthBytes:  maxBandwidth,
-		RequestCountPolicy: policy,
-		RedisFailPolicy:    q.FailPolicy,
 	}
 }
 
@@ -1884,14 +1746,6 @@ func routeFailure(candidates CandidateSource, workerID string) {
 
 func millisSince(start, end time.Time) int64 {
 	return end.Sub(start).Milliseconds()
-}
-
-func int64FromUint64(v uint64) int64 {
-	if v > math.MaxInt64 {
-		return math.MaxInt64
-	}
-
-	return int64(v)
 }
 
 func uint64FromInt(v int) uint64 {

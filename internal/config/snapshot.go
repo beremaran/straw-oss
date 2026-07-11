@@ -1,50 +1,26 @@
 package config
 
+// Default deployment identifiers keep the existing wire protocol internal.
 const (
-	// DefaultDeploymentID is the internal routing namespace for a single Straw deployment.
-	// It is not exposed as a tenant or user-selectable scope.
 	DefaultDeploymentID = "default"
-	// DefaultPoolID is used when no explicit worker pool is configured.
-	DefaultPoolID = "default"
-
-	defaultTenantDefaultTimeoutMs = 60000
-	defaultTenantMaxTimeoutMs     = 300000
-	defaultMetadataQueryStorage   = "drop"
-	defaultMetadataPathStorage    = "hash"
+	DefaultPoolID       = "default"
+	defaultTimeoutMS    = 60_000
+	maximumTimeoutMS    = 300_000
 )
 
-// TenantSnapshot is the immutable tenant config view consumed by control-plane
-// admission and routing decisions. It is assembled from the Postgres config
-// stores keyed by (TenantID, ConfigVersion); in-flight requests keep the
-// snapshot they captured at request start even if config changes during
-// execution (docs/planning/25-dynamic-configuration.md).
-//
-// The carried policy types are config-layer data carriers, deliberately
-// separate from the control-package runtime types (control.RoutingRule, ...)
-// so this low-level package stays free of control imports. Tasks 22 and 24 map
-// these carriers into the runtime router/dispatch types when they consume the
-// snapshot.
-type TenantSnapshot struct {
-	TenantID             string
-	ConfigVersion        uint64
-	DefaultTimeoutMs     uint64
-	MaxTimeoutMs         uint64
-	MetadataQueryStorage string
-	MetadataPathStorage  string
-
-	RevokedAPIKeyIDs      []string
-	RoutingRules          []RoutingRule
-	ExecutorPools         []ExecutorPool
-	DenyRules             []DenyRule
-	InjectionPolicies     []InjectionPolicy
-	FingerprintProfiles   []FingerprintProfile
-	RateLimits            []RateLimitRule
-	Quota                 QuotaConfig
-	WorkerAdminStates     []WorkerAdminState
-	TenantWorkerOverrides []TenantWorkerOverride
+// Snapshot is the immutable policy used by one Straw deployment.
+type Snapshot struct {
+	ConfigVersion       uint64
+	DefaultTimeoutMs    uint64
+	MaxTimeoutMs        uint64
+	RoutingRules        []RoutingRule
+	ExecutorPools       []ExecutorPool
+	DenyRules           []DenyRule
+	InjectionPolicies   []InjectionPolicy
+	FingerprintProfiles []FingerprintProfile
 }
 
-// MatchConditions is a routing rule's match shape (docs/planning/10).
+// MatchConditions determines whether a route applies.
 type MatchConditions struct {
 	Tags        []string
 	Country     string
@@ -54,8 +30,7 @@ type MatchConditions struct {
 	TargetHost  string
 }
 
-// RoutingRule is one tenant-scoped routing rule (docs/planning/10). Deleted
-// rules are excluded from the snapshot.
+// RoutingRule selects a worker pool for matching requests.
 type RoutingRule struct {
 	ID                      string
 	Priority                int
@@ -66,12 +41,7 @@ type RoutingRule struct {
 	AllowStickyFallback     bool
 }
 
-// ExecutorPool is a tenant-visible pool (docs/planning/21). AllowDegradedWorkers
-// sources the degraded-pool routing policy (docs/planning/10): a pool with
-// this set to true lets Router select a degraded-health worker when no ready
-// worker is available. AllowedIPTypes/AllowedCountries/AllowedRegions restrict
-// which worker capabilities may serve this pool (docs/planning/26); an empty
-// list means unrestricted.
+// ExecutorPool describes an eligible worker group.
 type ExecutorPool struct {
 	ID                   string
 	ExecutorType         string
@@ -83,9 +53,7 @@ type ExecutorPool struct {
 	AllowedRegions       []string
 }
 
-// DenyRule is one deny/allow_override rule over the docs/planning/26 P0
-// taxonomy (cidr, host, host_suffix, cname_suffix, metadata_ip,
-// private_range).
+// DenyRule blocks or explicitly allows a destination pattern.
 type DenyRule struct {
 	ID             string
 	RuleType       string
@@ -99,23 +67,21 @@ type DenyRule struct {
 	NormalizedName string
 }
 
-// InjectionOperation is one ordered header operation. ValueBase64 is secret and
-// is redacted in audit events (docs/planning/21).
+// InjectionOperation changes one upstream request header.
 type InjectionOperation struct {
 	Op          string
 	HeaderName  string
 	ValueBase64 string
 }
 
-// InjectionPolicy is one tenant-scoped ordered set of header operations.
+// InjectionPolicy is an ordered group of header operations.
 type InjectionPolicy struct {
 	ID         string
 	Enabled    bool
 	Operations []InjectionOperation
 }
 
-// FingerprintProfile is an allowed profile name and worker compatibility. P0
-// rows are seeded built-in globals only; there is no P0 write path.
+// FingerprintProfile describes a supported outbound TLS profile.
 type FingerprintProfile struct {
 	Name              string
 	ScopeType         string
@@ -126,110 +92,51 @@ type FingerprintProfile struct {
 	ContractRevision  string
 }
 
-// RateLimitRule is one rate-limit dimension's configured limit (docs/planning/20).
-type RateLimitRule struct {
-	Dimension     string
-	Key           string
-	WindowSeconds uint32
-	MaxRequests   uint32
-	FailPolicy    string
+// NewSnapshot creates deployment policy with default timeouts.
+func NewSnapshot(version uint64) Snapshot {
+	return Snapshot{ConfigVersion: version, DefaultTimeoutMs: defaultTimeoutMS, MaxTimeoutMs: maximumTimeoutMS}
 }
 
-// QuotaConfig is the tenant's monthly quota (docs/planning/20). A zero value
-// means the tenant has no configured quota.
-type QuotaConfig struct {
-	Period              string
-	RequestCountLimit   int64
-	BandwidthBytesLimit int64
-	CountOnAdmission    bool
-	FailPolicy          string
-	Enabled             bool
-}
-
-// WorkerAdminState is a durable global worker disable (docs/planning/21).
-type WorkerAdminState struct {
-	WorkerID       string
-	Disabled       bool
-	DisabledReason string
-}
-
-// TenantWorkerOverride is a durable tenant worker routing override (disable
-// only in P0) (docs/planning/21).
-type TenantWorkerOverride struct {
-	WorkerID       string
-	Disabled       bool
-	DisabledReason string
-}
-
-// NewTenantSnapshot builds a snapshot with only identity, version, and revoked
-// keys set, copying the slice so callers can keep their input buffer mutable.
-// The richer policy fields are set directly by the Postgres assembler.
-func NewTenantSnapshot(tenantID string, configVersion uint64, revokedAPIKeyIDs []string) TenantSnapshot {
-	return TenantSnapshot{
-		TenantID:             tenantID,
-		ConfigVersion:        configVersion,
-		DefaultTimeoutMs:     defaultTenantDefaultTimeoutMs,
-		MaxTimeoutMs:         defaultTenantMaxTimeoutMs,
-		MetadataQueryStorage: defaultMetadataQueryStorage,
-		MetadataPathStorage:  defaultMetadataPathStorage,
-		RevokedAPIKeyIDs:     append([]string(nil), revokedAPIKeyIDs...),
-	}
-}
-
-// Clone returns a deep copy of the snapshot so cached snapshots never share
-// mutable backing arrays with callers.
-func (s TenantSnapshot) Clone() TenantSnapshot {
+// Clone returns a deep copy of the policy.
+func (s Snapshot) Clone() Snapshot {
 	out := s
-	out.RevokedAPIKeyIDs = append([]string(nil), s.RevokedAPIKeyIDs...)
 	out.RoutingRules = cloneRoutingRules(s.RoutingRules)
 	out.ExecutorPools = cloneExecutorPools(s.ExecutorPools)
 	out.DenyRules = append([]DenyRule(nil), s.DenyRules...)
 	out.InjectionPolicies = cloneInjectionPolicies(s.InjectionPolicies)
 	out.FingerprintProfiles = append([]FingerprintProfile(nil), s.FingerprintProfiles...)
-	out.RateLimits = append([]RateLimitRule(nil), s.RateLimits...)
-	out.WorkerAdminStates = append([]WorkerAdminState(nil), s.WorkerAdminStates...)
-	out.TenantWorkerOverrides = append([]TenantWorkerOverride(nil), s.TenantWorkerOverrides...)
 
 	return out
 }
 
 func cloneRoutingRules(in []RoutingRule) []RoutingRule {
-	if in == nil {
-		return nil
-	}
-
 	out := make([]RoutingRule, len(in))
-	for i, r := range in {
-		r.Match.Tags = append([]string(nil), r.Match.Tags...)
-		out[i] = r
+	for i, rule := range in {
+		rule.Match.Tags = append([]string(nil), rule.Match.Tags...)
+		out[i] = rule
 	}
 
 	return out
 }
 
 func cloneExecutorPools(in []ExecutorPool) []ExecutorPool {
-	if in == nil {
-		return nil
-	}
-
 	out := make([]ExecutorPool, len(in))
-	for i, p := range in {
-		p.Tags = append([]string(nil), p.Tags...)
-		out[i] = p
+	for i, pool := range in {
+		pool.Tags = append([]string(nil), pool.Tags...)
+		pool.AllowedIPTypes = append([]string(nil), pool.AllowedIPTypes...)
+		pool.AllowedCountries = append([]string(nil), pool.AllowedCountries...)
+		pool.AllowedRegions = append([]string(nil), pool.AllowedRegions...)
+		out[i] = pool
 	}
 
 	return out
 }
 
 func cloneInjectionPolicies(in []InjectionPolicy) []InjectionPolicy {
-	if in == nil {
-		return nil
-	}
-
 	out := make([]InjectionPolicy, len(in))
-	for i, p := range in {
-		p.Operations = append([]InjectionOperation(nil), p.Operations...)
-		out[i] = p
+	for i, policy := range in {
+		policy.Operations = append([]InjectionOperation(nil), policy.Operations...)
+		out[i] = policy
 	}
 
 	return out

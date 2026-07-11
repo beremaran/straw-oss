@@ -25,10 +25,7 @@ func runDeploymentControl(ctx context.Context, cfg config.ControlConfig, natsCon
 		return fmt.Errorf("setup worker discovery: %w", err)
 	}
 
-	configCache, err := newDeploymentConfigCache(ctx)
-	if err != nil {
-		return err
-	}
+	configCache := newDeploymentConfigCache()
 
 	metricsRegistry := prometheus.NewRegistry()
 	metrics := control.NewMetrics(metricsRegistry)
@@ -49,7 +46,6 @@ func runDeploymentControl(ctx context.Context, cfg config.ControlConfig, natsCon
 
 	requestHandler := control.NewRequestHandler(
 		cfg.Request.MaxInlineRequestBodyBytes,
-		cfg.Request.MaxInlineResponseBodyBytes,
 		cfg.Request.MaxTimeoutMs,
 		authenticator,
 	)
@@ -58,14 +54,12 @@ func runDeploymentControl(ctx context.Context, cfg config.ControlConfig, natsCon
 
 	mux := http.NewServeMux()
 	mux.Handle("POST /api/v1/requests", requestHandler)
-	mux.HandleFunc("POST /api/v1/requests:stream", requestHandler.ServeStreamHTTP)
 
 	return serveDeployment(ctx, cfg, mux, metricsRegistry)
 }
 
-func newDeploymentConfigCache(ctx context.Context) (*control.ConfigCache, error) {
-	store := control.NewInMemorySnapshotStore()
-	snapshot := config.NewTenantSnapshot(config.DefaultDeploymentID, 1, nil)
+func newDeploymentConfigCache() *control.ConfigCache {
+	snapshot := config.NewSnapshot(1)
 	snapshot.RoutingRules = []config.RoutingRule{{
 		ID:           "default",
 		Priority:     defaultRoutePriority,
@@ -85,10 +79,5 @@ func newDeploymentConfigCache(ctx context.Context) (*control.ConfigCache, error)
 		ProfileRef:        "chrome_120",
 	}}
 
-	_, err := store.SaveTenantSnapshot(ctx, snapshot, 0)
-	if err != nil {
-		return nil, fmt.Errorf("initialize deployment config: %w", err)
-	}
-
-	return control.NewConfigCache(store, nil), nil
+	return control.NewConfigCache(snapshot)
 }

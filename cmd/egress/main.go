@@ -4,7 +4,6 @@ package main
 import (
 	"context"
 	"crypto/ed25519"
-	"encoding/base64"
 	"errors"
 	"flag"
 	"fmt"
@@ -25,7 +24,6 @@ import (
 )
 
 const (
-	exitUsage               = 2
 	defaultConcurrency      = 4
 	readHeaderTimeout       = 5 * time.Second
 	healthShutdownTimeout   = 5 * time.Second
@@ -33,47 +31,6 @@ const (
 )
 
 var errHealthcheckNotReady = errors.New("healthcheck probe returned non-2xx status")
-
-var (
-	errPrivateKeyEnvUnset   = errors.New("configured private key environment variable is unset or empty")
-	errPrivateKeyInvalidLen = errors.New("invalid ed25519 key length")
-)
-
-// loadWorkerPrivateKey reads and decodes the worker's persistent ed25519
-// identity key from the environment variable named by cfg.PrivateKeyEd25519Env
-// (base64-standard-encoded 32-byte seed or 64-byte full private key). A
-// persistent, configured key is required so a live worker's signature can
-// match a pre-seeded credential's public key (docs/planning/27); Control
-// verifies every registration against the credential's stored public key.
-func loadWorkerPrivateKey(cfg config.EgressConfig) (ed25519.PrivateKey, error) {
-	if cfg.PrivateKeyEd25519Env == "" {
-		_, privateKey, err := ed25519.GenerateKey(nil)
-		if err != nil {
-			return nil, fmt.Errorf("generate ephemeral worker key: %w", err)
-		}
-
-		return privateKey, nil
-	}
-
-	encoded := os.Getenv(cfg.PrivateKeyEd25519Env)
-	if encoded == "" {
-		return nil, fmt.Errorf("%w: %s", errPrivateKeyEnvUnset, cfg.PrivateKeyEd25519Env)
-	}
-
-	raw, err := base64.StdEncoding.DecodeString(encoded)
-	if err != nil {
-		return nil, fmt.Errorf("decode %s: %w", cfg.PrivateKeyEd25519Env, err)
-	}
-
-	switch len(raw) {
-	case ed25519.SeedSize:
-		return ed25519.NewKeyFromSeed(raw), nil
-	case ed25519.PrivateKeySize:
-		return ed25519.PrivateKey(raw), nil
-	default:
-		return nil, fmt.Errorf("%s: %w: %d", cfg.PrivateKeyEd25519Env, errPrivateKeyInvalidLen, len(raw))
-	}
-}
 
 func main() {
 	slog.SetDefault(logging.New("egress"))
@@ -212,20 +169,18 @@ func serveHealthHTTP(ctx context.Context, cfg config.EgressConfig, ready *atomic
 // claims sent in the worker's RegisterRequest
 // (docs/planning/24-static-configuration.md `egress.capabilities.*`).
 func buildCapabilities(cfg config.EgressConfig) sdkegress.Capabilities {
-	pools := make([]*strawpb.RegisterRequest_PoolRef, 0, len(cfg.AllowedPools))
-	for _, p := range cfg.AllowedPools {
-		pools = append(pools, &strawpb.RegisterRequest_PoolRef{TenantId: p.TenantID, PoolId: p.PoolID})
-	}
-
 	maxConcurrency := uint32(defaultConcurrency)
 	if cfg.Capabilities.MaxConcurrency > 0 {
 		maxConcurrency = cfg.Capabilities.MaxConcurrency
 	}
 
 	return sdkegress.Capabilities{
-		SoftwareVersion:              "dev",
-		MaxConcurrency:               maxConcurrency,
-		AllowedPools:                 pools,
+		SoftwareVersion: "dev",
+		MaxConcurrency:  maxConcurrency,
+		AllowedPools: []*strawpb.RegisterRequest_PoolRef{{
+			TenantId: config.DefaultDeploymentID,
+			PoolId:   config.DefaultPoolID,
+		}},
 		Tags:                         cfg.Capabilities.Tags,
 		Countries:                    cfg.Capabilities.Countries,
 		Regions:                      cfg.Capabilities.Regions,
@@ -236,14 +191,13 @@ func buildCapabilities(cfg config.EgressConfig) sdkegress.Capabilities {
 }
 
 func runWorker(ctx context.Context, natsConn *natsx.Connection, cfg config.EgressConfig) error {
-	priv, err := loadWorkerPrivateKey(cfg)
+	_, priv, err := ed25519.GenerateKey(nil)
 	if err != nil {
-		return fmt.Errorf("load worker private key: %w", err)
+		return fmt.Errorf("generate worker identity: %w", err)
 	}
 
 	id := sdkegress.Identity{
 		WorkerID:     cfg.WorkerID,
-		CredentialID: cfg.CredentialID,
 		ExecutorType: "egress",
 		PrivateKey:   priv,
 	}

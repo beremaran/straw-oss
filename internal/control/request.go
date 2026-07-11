@@ -18,9 +18,26 @@ import (
 )
 
 const (
-	urlSchemeHTTP  = "http"
-	urlSchemeHTTPS = "https"
+	urlSchemeHTTP               = "http"
+	urlSchemeHTTPS              = "https"
+	maxFingerprintEvidenceBytes = 64
 )
+
+func projectFingerprintEvidence(value string) string {
+	if len(value) > maxFingerprintEvidenceBytes {
+		return ""
+	}
+
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_' {
+			continue
+		}
+
+		return ""
+	}
+
+	return value
+}
 
 // Ingress types used in routing and telemetry.
 const (
@@ -127,11 +144,6 @@ type ValidatedRequest struct {
 
 // ValidateRequest parses and validates a RequestEnvelope against config limits.
 func ValidateRequest(raw []byte, maxRequestBodyBytes, maxTimeoutMs uint64) (*ValidatedRequest, error) {
-	return ValidateRequestWithCapturePolicy(raw, maxRequestBodyBytes, maxTimeoutMs, defaultPayloadCapturePolicy(""))
-}
-
-// ValidateRequestWithCapturePolicy validates a request against tenant capture policy.
-func ValidateRequestWithCapturePolicy(raw []byte, maxRequestBodyBytes, maxTimeoutMs uint64, capturePolicy PayloadCapturePolicy) (*ValidatedRequest, error) {
 	profileErr := validateFingerprintProfileJSON(raw)
 	if profileErr != nil {
 		return nil, profileErr
@@ -158,15 +170,11 @@ func ValidateRequestWithCapturePolicy(raw []byte, maxRequestBodyBytes, maxTimeou
 		return nil, profileValueErr
 	}
 
-	captureErr := validateCaptureHint(env.CaptureHint, capturePolicy)
-	if captureErr != nil {
-		return nil, captureErr
+	if env.CaptureHint != "" && env.CaptureHint != "none" {
+		return nil, &ValidationError{Code: errorCodeInvalidRequest, Message: "capture_hint is not supported"}
 	}
 
-	decision := env.CaptureHint
-	if decision == "" {
-		decision = string(CaptureDecisionNone)
-	}
+	decision := "none"
 
 	routing := RoutingHints{}
 	if env.Routing != nil {
@@ -588,14 +596,6 @@ func validateTimeout(timeoutMs, maxTimeoutMs uint64) (uint64, error) {
 	}
 
 	return timeoutMs, nil
-}
-
-func validateCaptureHint(hint string, policy PayloadCapturePolicy) error {
-	if payloadCaptureAllows(hint, policy) {
-		return nil
-	}
-
-	return &ValidationError{Code: errorCodeInvalidRequest, Message: "capture_hint is not allowed by tenant payload capture policy"}
 }
 
 // ValidationError is a structured validation error.

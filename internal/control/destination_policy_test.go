@@ -39,7 +39,7 @@ func b64(s string) string { return base64.StdEncoding.EncodeToString([]byte(s)) 
 
 func TestResolveDestinationPolicy_AllowsOrdinaryPublicHost(t *testing.T) {
 	req := DestinationPolicyRequest{
-		Snapshot:               config.TenantSnapshot{ConfigVersion: 3, FingerprintProfiles: fingerprintSnapshot()},
+		Snapshot:               config.Snapshot{ConfigVersion: 3, FingerprintProfiles: fingerprintSnapshot()},
 		TargetURL:              mustURL(t, "https://example.com/path"),
 		MaxInjectedHeaderBytes: 1024,
 	}
@@ -66,7 +66,7 @@ func TestResolveDestinationPolicy_DefaultAliasUsesBaselineWithDisabledDurableRow
 	t.Parallel()
 
 	result, verr := ResolveDestinationPolicy(DestinationPolicyRequest{
-		Snapshot:                    config.TenantSnapshot{FingerprintProfiles: fingerprintSnapshot()},
+		Snapshot:                    config.Snapshot{FingerprintProfiles: fingerprintSnapshot()},
 		TargetURL:                   mustURL(t, "https://example.com/path"),
 		RequestedFingerprintProfile: defaultFingerprintProfileName,
 		MaxInjectedHeaderBytes:      1024,
@@ -80,7 +80,7 @@ func TestResolveDestinationPolicy_DefaultAliasUsesBaselineWithDisabledDurableRow
 }
 
 func TestResolveDestinationPolicy_HostDenyNormalization(t *testing.T) {
-	snap := config.TenantSnapshot{
+	snap := config.Snapshot{
 		FingerprintProfiles: fingerprintSnapshot(),
 		DenyRules: []config.DenyRule{
 			{RuleType: denyRuleTypeHost, Action: denyRuleActionDeny, Enabled: true, NormalizedHost: "blocked.example.com"},
@@ -102,7 +102,7 @@ func TestResolveDestinationPolicy_HostDenyNormalization(t *testing.T) {
 }
 
 func TestResolveDestinationPolicy_IDNAHostDenyNormalization(t *testing.T) {
-	snap := config.TenantSnapshot{
+	snap := config.Snapshot{
 		FingerprintProfiles: fingerprintSnapshot(),
 		DenyRules: []config.DenyRule{
 			{RuleType: denyRuleTypeHost, Action: denyRuleActionDeny, Enabled: true, NormalizedHost: "xn--pple-43d.com"},
@@ -130,7 +130,7 @@ func TestValidateRequestRejectsInvalidIDNAHost(t *testing.T) {
 }
 
 func TestResolveDestinationPolicy_HostAllowOverride(t *testing.T) {
-	snap := config.TenantSnapshot{
+	snap := config.Snapshot{
 		FingerprintProfiles: fingerprintSnapshot(),
 		DenyRules: []config.DenyRule{
 			{RuleType: denyRuleTypeHost, Action: denyRuleActionDeny, Enabled: true, NormalizedHost: "shared.example.com"},
@@ -148,7 +148,7 @@ func TestResolveDestinationPolicy_HostAllowOverride(t *testing.T) {
 
 func TestResolveDestinationPolicy_MetadataIPDefaultDenied(t *testing.T) {
 	req := DestinationPolicyRequest{
-		Snapshot:               config.TenantSnapshot{FingerprintProfiles: fingerprintSnapshot()},
+		Snapshot:               config.Snapshot{FingerprintProfiles: fingerprintSnapshot()},
 		TargetURL:              mustURL(t, "http://169.254.169.254/latest/meta-data"),
 		MaxInjectedHeaderBytes: 1024,
 	}
@@ -161,7 +161,7 @@ func TestResolveDestinationPolicy_MetadataIPDefaultDenied(t *testing.T) {
 
 func TestResolveDestinationPolicy_PrivateRangeDefaultDenied(t *testing.T) {
 	req := DestinationPolicyRequest{
-		Snapshot:               config.TenantSnapshot{FingerprintProfiles: fingerprintSnapshot()},
+		Snapshot:               config.Snapshot{FingerprintProfiles: fingerprintSnapshot()},
 		TargetURL:              mustURL(t, "http://10.0.0.5/"),
 		MaxInjectedHeaderBytes: 1024,
 	}
@@ -173,7 +173,7 @@ func TestResolveDestinationPolicy_PrivateRangeDefaultDenied(t *testing.T) {
 }
 
 func TestResolveDestinationPolicy_CIDRAllowOverridesPrivateDefault(t *testing.T) {
-	snap := config.TenantSnapshot{
+	snap := config.Snapshot{
 		FingerprintProfiles: fingerprintSnapshot(),
 		DenyRules: []config.DenyRule{
 			{RuleType: denyRuleTypeCIDR, Action: denyRuleActionAllowOverride, Enabled: true, NormalizedCIDR: "10.0.0.0/8"},
@@ -194,7 +194,7 @@ func TestResolveDestinationPolicy_CIDRAllowOverridesPrivateDefault(t *testing.T)
 
 func TestResolveDestinationPolicy_IPv4MappedIPv6Denied(t *testing.T) {
 	req := DestinationPolicyRequest{
-		Snapshot:               config.TenantSnapshot{FingerprintProfiles: fingerprintSnapshot()},
+		Snapshot:               config.Snapshot{FingerprintProfiles: fingerprintSnapshot()},
 		TargetURL:              mustURL(t, "http://[::ffff:169.254.169.254]/"),
 		MaxInjectedHeaderBytes: 1024,
 	}
@@ -206,7 +206,7 @@ func TestResolveDestinationPolicy_IPv4MappedIPv6Denied(t *testing.T) {
 }
 
 func TestResolveDestinationPolicy_CNameRuleCompiledNotEvaluated(t *testing.T) {
-	snap := config.TenantSnapshot{
+	snap := config.Snapshot{
 		FingerprintProfiles: fingerprintSnapshot(),
 		DenyRules: []config.DenyRule{
 			{RuleType: denyRuleTypeCNAMESuffix, Action: denyRuleActionDeny, Enabled: true, NormalizedName: testCNAMESuffix},
@@ -229,7 +229,7 @@ func TestResolveDestinationPolicy_CNameRuleCompiledNotEvaluated(t *testing.T) {
 }
 
 func TestResolveDestinationPolicy_HostSuffixDeniesSubdomain(t *testing.T) {
-	snap := config.TenantSnapshot{
+	snap := config.Snapshot{
 		FingerprintProfiles: fingerprintSnapshot(),
 		DenyRules: []config.DenyRule{
 			{RuleType: denyRuleTypeHostSuffix, Action: denyRuleActionDeny, Enabled: true, NormalizedHost: "blocked.example.net"},
@@ -245,7 +245,7 @@ func TestResolveDestinationPolicy_HostSuffixDeniesSubdomain(t *testing.T) {
 }
 
 func TestResolveDestinationPolicy_HostSuffixAllowOverrideCancelsBundleEntry(t *testing.T) {
-	snap := config.TenantSnapshot{
+	snap := config.Snapshot{
 		FingerprintProfiles: fingerprintSnapshot(),
 		DenyRules: []config.DenyRule{
 			{RuleType: denyRuleTypeHostSuffix, Action: denyRuleActionDeny, Enabled: true, NormalizedHost: "shared.example.net"},
@@ -266,7 +266,7 @@ func TestResolveDestinationPolicy_HostSuffixAllowOverrideCancelsBundleEntry(t *t
 }
 
 func TestResolveDestinationPolicy_CnameSuffixAllowOverrideCancelsBundleEntry(t *testing.T) {
-	snap := config.TenantSnapshot{
+	snap := config.Snapshot{
 		FingerprintProfiles: fingerprintSnapshot(),
 		DenyRules: []config.DenyRule{
 			{RuleType: denyRuleTypeCNAMESuffix, Action: denyRuleActionDeny, Enabled: true, NormalizedName: testCNAMESuffix},
@@ -287,7 +287,7 @@ func TestResolveDestinationPolicy_CnameSuffixAllowOverrideCancelsBundleEntry(t *
 }
 
 func TestResolveDestinationPolicy_MetadataIPTypeCompilesToDeniedCidrs(t *testing.T) {
-	snap := config.TenantSnapshot{
+	snap := config.Snapshot{
 		FingerprintProfiles: fingerprintSnapshot(),
 		DenyRules: []config.DenyRule{
 			{RuleType: denyRuleTypeMetadataIP, Action: denyRuleActionDeny, Enabled: true, NormalizedCIDR: "169.254.169.254/32"},
@@ -303,7 +303,7 @@ func TestResolveDestinationPolicy_MetadataIPTypeCompilesToDeniedCidrs(t *testing
 }
 
 func TestResolveDestinationPolicy_PrivateRangeAllowOverrideCompilesToAllowedCidrs(t *testing.T) {
-	snap := config.TenantSnapshot{
+	snap := config.Snapshot{
 		FingerprintProfiles: fingerprintSnapshot(),
 		DenyRules: []config.DenyRule{
 			{RuleType: denyRuleTypePrivateRange, Action: denyRuleActionAllowOverride, Enabled: true, NormalizedCIDR: testPrivateRange},
@@ -324,7 +324,7 @@ func TestResolveDestinationPolicy_PrivateRangeAllowOverrideCompilesToAllowedCidr
 
 func TestResolveDestinationPolicy_FingerprintMismatch(t *testing.T) {
 	req := DestinationPolicyRequest{
-		Snapshot:                    config.TenantSnapshot{FingerprintProfiles: fingerprintSnapshot()},
+		Snapshot:                    config.Snapshot{FingerprintProfiles: fingerprintSnapshot()},
 		TargetURL:                   mustURL(t, "https://example.com/"),
 		RequestedFingerprintProfile: "safari_99",
 		MaxInjectedHeaderBytes:      1024,
@@ -338,7 +338,7 @@ func TestResolveDestinationPolicy_FingerprintMismatch(t *testing.T) {
 
 func TestFingerprintProfileDestinationPolicyAcceptsEnabledNamedProfile(t *testing.T) {
 	result, verr := ResolveDestinationPolicy(DestinationPolicyRequest{
-		Snapshot:                    config.TenantSnapshot{FingerprintProfiles: fingerprintSnapshot()},
+		Snapshot:                    config.Snapshot{FingerprintProfiles: fingerprintSnapshot()},
 		TargetURL:                   mustURL(t, "https://example.com/"),
 		RequestedFingerprintProfile: fingerprintProfileChrome120,
 		MaxInjectedHeaderBytes:      1024,
@@ -353,7 +353,7 @@ func TestFingerprintProfileDestinationPolicyAcceptsEnabledNamedProfile(t *testin
 
 func TestResolveDestinationPolicy_FingerprintDisabledProfileRejected(t *testing.T) {
 	req := DestinationPolicyRequest{
-		Snapshot:                    config.TenantSnapshot{FingerprintProfiles: fingerprintSnapshot()},
+		Snapshot:                    config.Snapshot{FingerprintProfiles: fingerprintSnapshot()},
 		TargetURL:                   mustURL(t, "https://example.com/"),
 		RequestedFingerprintProfile: testDisabledFingerprintProfile,
 		MaxInjectedHeaderBytes:      1024,
@@ -369,7 +369,7 @@ func TestResolveDestinationPolicyEnabledNamedProfileDoesNotDependOnWorkerAvailab
 	t.Parallel()
 
 	req := DestinationPolicyRequest{
-		Snapshot: config.TenantSnapshot{FingerprintProfiles: []config.FingerprintProfile{
+		Snapshot: config.Snapshot{FingerprintProfiles: []config.FingerprintProfile{
 			{Name: defaultFingerprintProfileName, ScopeType: fingerprintProfileScopeGlobal, Enabled: true, SupportedByWorker: true},
 			{Name: fingerprintProfileChrome120, ScopeType: fingerprintProfileScopeGlobal, Enabled: true, SupportedByWorker: false},
 		}},
@@ -388,7 +388,7 @@ func TestResolveDestinationPolicyEnabledNamedProfileDoesNotDependOnWorkerAvailab
 }
 
 func TestResolveDestinationPolicy_InjectionOrderedAndSafe(t *testing.T) {
-	snap := config.TenantSnapshot{
+	snap := config.Snapshot{
 		FingerprintProfiles: fingerprintSnapshot(),
 		InjectionPolicies: []config.InjectionPolicy{
 			{ID: "b_second", Enabled: true, Operations: []config.InjectionOperation{
@@ -420,7 +420,7 @@ func TestResolveDestinationPolicy_InjectionOrderedAndSafe(t *testing.T) {
 }
 
 func TestResolveDestinationPolicy_InjectionDeniedHeaderRejected(t *testing.T) {
-	snap := config.TenantSnapshot{
+	snap := config.Snapshot{
 		FingerprintProfiles: fingerprintSnapshot(),
 		InjectionPolicies: []config.InjectionPolicy{
 			{ID: "p1", Enabled: true, Operations: []config.InjectionOperation{
@@ -438,7 +438,7 @@ func TestResolveDestinationPolicy_InjectionDeniedHeaderRejected(t *testing.T) {
 }
 
 func TestResolveDestinationPolicy_InjectionDuplicateSetRejected(t *testing.T) {
-	snap := config.TenantSnapshot{
+	snap := config.Snapshot{
 		FingerprintProfiles: fingerprintSnapshot(),
 		InjectionPolicies: []config.InjectionPolicy{
 			{ID: "p1", Enabled: true, Operations: []config.InjectionOperation{
@@ -459,7 +459,7 @@ func TestResolveDestinationPolicy_InjectionDuplicateSetRejected(t *testing.T) {
 }
 
 func TestResolveDestinationPolicy_InjectionCRLFRejected(t *testing.T) {
-	snap := config.TenantSnapshot{
+	snap := config.Snapshot{
 		FingerprintProfiles: fingerprintSnapshot(),
 		InjectionPolicies: []config.InjectionPolicy{
 			{ID: "p1", Enabled: true, Operations: []config.InjectionOperation{
@@ -477,7 +477,7 @@ func TestResolveDestinationPolicy_InjectionCRLFRejected(t *testing.T) {
 }
 
 func TestResolveDestinationPolicy_InjectionSizeBound(t *testing.T) {
-	snap := config.TenantSnapshot{
+	snap := config.Snapshot{
 		FingerprintProfiles: fingerprintSnapshot(),
 		InjectionPolicies: []config.InjectionPolicy{
 			{ID: "p1", Enabled: true, Operations: []config.InjectionOperation{
@@ -496,7 +496,7 @@ func TestResolveDestinationPolicy_InjectionSizeBound(t *testing.T) {
 
 func TestResolveDestinationPolicy_UpstreamProxyUntrustedRejected(t *testing.T) {
 	req := DestinationPolicyRequest{
-		Snapshot:               config.TenantSnapshot{FingerprintProfiles: fingerprintSnapshot()},
+		Snapshot:               config.Snapshot{FingerprintProfiles: fingerprintSnapshot()},
 		TargetURL:              mustURL(t, "https://example.com/"),
 		UpstreamProxyEnabled:   true,
 		UpstreamProxyTrusted:   false,
@@ -511,7 +511,7 @@ func TestResolveDestinationPolicy_UpstreamProxyUntrustedRejected(t *testing.T) {
 
 func TestResolveDestinationPolicy_UpstreamProxyTrustedResolvesRemoteMode(t *testing.T) {
 	req := DestinationPolicyRequest{
-		Snapshot:               config.TenantSnapshot{FingerprintProfiles: fingerprintSnapshot()},
+		Snapshot:               config.Snapshot{FingerprintProfiles: fingerprintSnapshot()},
 		TargetURL:              mustURL(t, "https://example.com/"),
 		UpstreamProxyEnabled:   true,
 		UpstreamProxyTrusted:   true,
@@ -530,7 +530,7 @@ func TestResolveDestinationPolicy_UpstreamProxyTrustedResolvesRemoteMode(t *test
 
 func TestResolveDestinationPolicy_UserinfoRejected(t *testing.T) {
 	req := DestinationPolicyRequest{
-		Snapshot:               config.TenantSnapshot{FingerprintProfiles: fingerprintSnapshot()},
+		Snapshot:               config.Snapshot{FingerprintProfiles: fingerprintSnapshot()},
 		TargetURL:              mustURL(t, "https://user:pass@example.com/"),
 		MaxInjectedHeaderBytes: 1024,
 	}
@@ -543,7 +543,7 @@ func TestResolveDestinationPolicy_UserinfoRejected(t *testing.T) {
 
 func TestResolveDestinationPolicy_NonASCIIHostRejected(t *testing.T) {
 	req := DestinationPolicyRequest{
-		Snapshot:               config.TenantSnapshot{FingerprintProfiles: fingerprintSnapshot()},
+		Snapshot:               config.Snapshot{FingerprintProfiles: fingerprintSnapshot()},
 		TargetURL:              &url.URL{Scheme: urlSchemeHTTPS, Host: "xn--\xc3\xa9.example.com"},
 		MaxInjectedHeaderBytes: 1024,
 	}
@@ -558,7 +558,7 @@ func TestResolveDestinationPolicy_NonASCIIHostRejected(t *testing.T) {
 // the raw target URL/host in their message or details.
 func TestResolveDestinationPolicy_PublicSafeErrorDetails(t *testing.T) {
 	req := DestinationPolicyRequest{
-		Snapshot:               config.TenantSnapshot{FingerprintProfiles: fingerprintSnapshot()},
+		Snapshot:               config.Snapshot{FingerprintProfiles: fingerprintSnapshot()},
 		TargetURL:              mustURL(t, "http://169.254.169.254/secret-path?token=abc"),
 		MaxInjectedHeaderBytes: 1024,
 	}

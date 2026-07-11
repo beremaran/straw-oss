@@ -1,7 +1,6 @@
 package control
 
 import (
-	"errors"
 	"testing"
 	"time"
 
@@ -133,7 +132,7 @@ func TestFingerprintProfileBaselineAllowsEmptyExecutedValue(t *testing.T) {
 	}
 }
 
-func TestAssignmentFallbackBoundaryAndAdminCancel(t *testing.T) {
+func TestAssignmentFallbackBoundary(t *testing.T) {
 	t.Parallel()
 
 	a := NewAssignment("req_1", "ten_a", "worker_1", "sess_1", 1, true)
@@ -154,19 +153,6 @@ func TestAssignmentFallbackBoundaryAndAdminCancel(t *testing.T) {
 	replayable.MarkClientResponded()
 	if replayable.CanFallback() {
 		t.Fatal("client-visible response should forbid replay fallback")
-	}
-
-	err := AuthorizeAdminCancel(Identity{ScopeType: ScopeTenant, TenantID: adminTestTenantA, Role: RoleTenantAdmin}, adminTestTenantA)
-	if err != nil {
-		t.Fatalf("tenant admin cancel own tenant error = %v", err)
-	}
-	err = AuthorizeAdminCancel(Identity{ScopeType: ScopeTenant, TenantID: adminTestTenantA, Role: RoleTenantAdmin}, adminTestTenantB)
-	if !errors.Is(err, ErrInsufficientPermissions) {
-		t.Fatalf("cross-tenant cancel error = %v, want ErrInsufficientPermissions", err)
-	}
-	err = AuthorizeAdminCancel(Identity{ScopeType: ScopePlatform, Role: RoleSystemAdmin}, "ten_b")
-	if err != nil {
-		t.Fatalf("system admin cancel error = %v", err)
 	}
 }
 
