@@ -8,7 +8,7 @@ import (
 )
 
 func TestStrawOperationalDashboardCoversPlanningSignals(t *testing.T) {
-	raw, err := os.ReadFile("../../../infra/observability/grafana/dashboards/straw-operational-overview.json")
+	raw, err := os.ReadFile("../local/observability/grafana/dashboards/straw-operational-overview.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,27 +57,27 @@ func TestStrawOperationalDashboardCoversPlanningSignals(t *testing.T) {
 }
 
 func TestGrafanaProvisioningMatchesComposeMounts(t *testing.T) {
-	dashboardProvider, err := os.ReadFile("../../../infra/observability/grafana/provisioning/dashboards/straw.yml")
+	dashboardProvider, err := os.ReadFile("../local/observability/grafana/provisioning/dashboards/straw.yml")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	datasource, err := os.ReadFile("../../../infra/observability/grafana/provisioning/datasources/prometheus.yml")
+	datasource, err := os.ReadFile("../local/observability/grafana/provisioning/datasources/prometheus.yml")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	compose, err := os.ReadFile("../../../infra/docker-compose.yml")
+	compose, err := os.ReadFile("../local/docker-compose.yml")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	prometheusConfig, err := os.ReadFile("../../../infra/observability/prometheus.yml")
+	prometheusConfig, err := os.ReadFile("../local/observability/prometheus.yml")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	blackboxConfig, err := os.ReadFile("../../../infra/observability/blackbox.yml")
+	blackboxConfig, err := os.ReadFile("../local/observability/blackbox.yml")
 	if err != nil {
 		t.Fatal(err)
 	}

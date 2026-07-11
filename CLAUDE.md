@@ -26,6 +26,10 @@ Start with the relevant canonical document under `docs/planning/`. The most comm
 boards. It is searchable history, not an active task system, and should only be read when current planning/code does
 not answer a historical question.
 
+Python SDK work uses Straw's root `uv` workspace, `uv.lock`, `.python-version`, and `.venv`. Run
+`uv sync --all-packages --frozen` from this repository root and invoke Python checks with root-discovered `uv run`.
+Do not create nested locks, pins, or virtual environments under `python/`.
+
 ## Working agreement
 
 - Follow the root `AGENTS.md` and the requested `ROADMAP.md` outcome.
@@ -55,7 +59,9 @@ The triggering agent defines any delegated sub-agent's scope and remains respons
 - `python`: public Python client and Egress SDKs.
 - `api/proto/straw/v1`: Protobuf contracts.
 - `migrations/postgres`: Postgres migrations.
-- `deploy/docker`: local Docker deployment.
+- `deploy/docker`: Control and Egress container build definitions.
+- `deploy/local`: standalone local Compose stack, backing-service configuration, observability, and lifecycle scripts.
+- `deploy/production`: production deployment templates and checks.
 - `docs/planning`: canonical architecture, protocol, security, and phase decisions.
 - `docs/public`: user-facing documentation sources.
 
