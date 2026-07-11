@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	strawpb "github.com/beremaran/straw/v2/api/proto/straw/v1"
+	strawpb "github.com/beremaran/straw-oss/v2/api/proto/straw/v1"
 )
 
 const localWorkerID = "local-worker"

@@ -8,7 +8,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 
-	strawpb "github.com/beremaran/straw/v2/api/proto/straw/v1"
+	strawpb "github.com/beremaran/straw-oss/v2/api/proto/straw/v1"
 )
 
 func TestStreamFrameBodyRefCompiles(t *testing.T) {

@@ -1,6 +1,6 @@
 package control
 
-import "github.com/beremaran/straw/v2/internal/config"
+import "github.com/beremaran/straw-oss/v2/internal/config"
 
 // ConfigCache holds the immutable configuration for this Control process.
 type ConfigCache struct {

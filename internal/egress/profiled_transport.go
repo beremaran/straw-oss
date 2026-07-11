@@ -17,7 +17,7 @@ import (
 	tlsclient "github.com/bogdanfinn/tls-client"
 	"github.com/bogdanfinn/tls-client/profiles"
 
-	strawpb "github.com/beremaran/straw/v2/api/proto/straw/v1"
+	strawpb "github.com/beremaran/straw-oss/v2/api/proto/straw/v1"
 )
 
 type profiledResponse struct {

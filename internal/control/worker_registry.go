@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	strawpb "github.com/beremaran/straw/v2/api/proto/straw/v1"
-	"github.com/beremaran/straw/v2/internal/config"
-	"github.com/beremaran/straw/v2/internal/natsx"
+	strawpb "github.com/beremaran/straw-oss/v2/api/proto/straw/v1"
+	"github.com/beremaran/straw-oss/v2/internal/config"
+	"github.com/beremaran/straw-oss/v2/internal/natsx"
 )
 
 const (

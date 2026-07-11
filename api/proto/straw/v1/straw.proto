@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package straw.v1;
 
-option go_package = "github.com/beremaran/straw/v2/api/proto/straw/v1;strawpb";
+option go_package = "github.com/beremaran/straw-oss/v2/api/proto/straw/v1;strawpb";
 
 enum ErrorCode {
   ERROR_CODE_UNSPECIFIED = 0;

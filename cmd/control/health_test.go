@@ -11,7 +11,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/beremaran/straw/v2/internal/control"
+	"github.com/beremaran/straw-oss/v2/internal/control"
 )
 
 // TestHealthzAlwaysOK proves /healthz reports liveness regardless of readiness.

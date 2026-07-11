@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/beremaran/straw/v2/internal/config"
-	internalegress "github.com/beremaran/straw/v2/internal/egress"
-	"github.com/beremaran/straw/v2/internal/natsx"
-	sdkegress "github.com/beremaran/straw/v2/sdk/egress"
+	"github.com/beremaran/straw-oss/v2/internal/config"
+	internalegress "github.com/beremaran/straw-oss/v2/internal/egress"
+	"github.com/beremaran/straw-oss/v2/internal/natsx"
+	sdkegress "github.com/beremaran/straw-oss/v2/sdk/egress"
 )
 
 func TestBuildCapabilitiesUsesDeploymentPool(t *testing.T) {

@@ -16,9 +16,9 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/beremaran/straw/v2/internal/config"
-	"github.com/beremaran/straw/v2/internal/logging"
-	"github.com/beremaran/straw/v2/internal/natsx"
+	"github.com/beremaran/straw-oss/v2/internal/config"
+	"github.com/beremaran/straw-oss/v2/internal/logging"
+	"github.com/beremaran/straw-oss/v2/internal/natsx"
 )
 
 const (
