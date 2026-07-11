@@ -4,7 +4,7 @@ package main
 // against the repo's test NATS harness (internal/testutil.FakeNATSServer,
 // playing the Control role by hand), dispatches one decoded-HTTP assignment,
 // and asserts the static page reaches the Control side of the harness
-// (docs/implementation-history.md#p2-13).
+// (docs/public/architecture.md).
 
 import (
 	"context"
@@ -159,7 +159,7 @@ func registerAndHeartbeatOnControl(t *testing.T, controlConn *nats.Conn) {
 }
 
 // runAssignment plays the Control side of one decoded-HTTP assignment: it
-// subscribes to e2c before assigning (per docs/planning/12-nats-protocol.md
+// subscribes to e2c before assigning (per docs/public/architecture.md
 // subscription ordering), sends AssignRequest, waits for ACCEPTED, publishes
 // RequestStart, and collects the response StreamFrames.
 func runAssignment(t *testing.T, controlConn *nats.Conn, assignSubject, sessionID, requestID string) []*strawpb.StreamFrame {

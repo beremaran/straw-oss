@@ -4,7 +4,7 @@ import {themes as prismThemes} from 'prism-react-renderer';
 /** @type {import('@docusaurus/types').Config} */
 const config = {
   title: 'Straw',
-  tagline: 'Distributed HTTP/HTTPS egress proxy control plane',
+  tagline: 'A small, self-hosted HTTP/HTTPS egress proxy',
   favicon: 'img/favicon.ico',
 
   future: {
@@ -12,10 +12,10 @@ const config = {
   },
 
   url: 'https://beremaran.github.io',
-  baseUrl: '/straw/',
+  baseUrl: '/straw-oss/',
 
   organizationName: 'beremaran',
-  projectName: 'straw',
+  projectName: 'straw-oss',
 
   onBrokenLinks: 'throw',
 
@@ -33,7 +33,7 @@ const config = {
           path: '../docs/public',
           routeBasePath: 'docs',
           sidebarPath: './sidebars.js',
-          editUrl: 'https://github.com/beremaran/straw/tree/master/docs/public/',
+          editUrl: 'https://github.com/beremaran/straw-oss/tree/master/docs/public/',
         },
         blog: false,
         theme: {
@@ -63,10 +63,10 @@ const config = {
             sidebarId: 'docsSidebar',
             docsPluginId: 'default',
             position: 'left',
-            label: 'SDK & API Docs',
+            label: 'Documentation',
           },
           {
-            href: 'https://github.com/beremaran/straw',
+            href: 'https://github.com/beremaran/straw-oss',
             label: 'GitHub',
             position: 'right',
           },
@@ -76,31 +76,32 @@ const config = {
         style: 'dark',
         links: [
           {
-            title: 'Guides & SDK',
+            title: 'Get started',
             items: [
               {label: 'Quickstart Guide', to: '/docs/quickstart'},
-              {label: 'Proxy & Ingress Modes', to: '/docs/ingress_modes'},
-              {label: 'Go SDK Integration', to: '/docs/sdk'},
+              {label: 'Architecture', to: '/docs/architecture'},
+              {label: 'Client SDKs', to: '/docs/sdk'},
               {label: 'CLI Reference', to: '/docs/cli'},
               {label: 'Egress Worker Setup', to: '/docs/egress_worker'},
             ],
           },
           {
-            title: 'APIs & Operations',
+            title: 'Run Straw',
             items: [
               {label: 'REST Request forwarding', to: '/docs/api/requests'},
-              {label: 'Telemetry Read APIs', to: '/docs/api/telemetry'},
+              {label: 'Deployment', to: '/docs/deployment'},
               {label: 'System Operations', to: '/docs/operations'},
+              {label: 'Security', to: '/docs/security'},
             ],
           },
           {
             title: 'More',
             items: [
-              {label: 'GitHub', href: 'https://github.com/beremaran/straw'},
+              {label: 'GitHub', href: 'https://github.com/beremaran/straw-oss'},
             ],
           },
         ],
-        copyright: `Copyright © ${new Date().getFullYear()} Straw.`,
+        copyright: `Copyright © ${new Date().getFullYear()} Berke Arslan. MIT licensed.`,
       },
       prism: {
         theme: prismThemes.github,

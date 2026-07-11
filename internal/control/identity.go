@@ -20,9 +20,9 @@ const ScopeDeployment ScopeType = "deployment"
 
 // Identity is the deployment identity attached to an accepted request.
 type Identity struct {
-	APIKeyID  string
-	ScopeType ScopeType
-	TenantID  string
+	APIKeyID     string
+	ScopeType    ScopeType
+	DeploymentID string
 }
 
 // ErrAuthFailure indicates a missing or incorrect deployment token.
@@ -58,8 +58,8 @@ func (a *Authenticator) Authenticate(_ context.Context, authorizationHeader stri
 	}
 
 	return Identity{
-		APIKeyID:  deploymentIdentityID,
-		ScopeType: ScopeDeployment,
-		TenantID:  config.DefaultDeploymentID,
+		APIKeyID:     deploymentIdentityID,
+		ScopeType:    ScopeDeployment,
+		DeploymentID: config.DefaultDeploymentID,
 	}, nil
 }

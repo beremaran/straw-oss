@@ -6,11 +6,11 @@ import (
 )
 
 // newHealthMux serves liveness/readiness probes on the egress health port
-// (docs/planning/23: "P0 should prefer direct local /healthz and /readyz"
-// for egress; docs/planning/28 port mapping). /healthz reports process
+// (docs/public/architecture.md: "P0 should prefer direct local /healthz and /readyz"
+// for egress; docs/public/architecture.md port mapping). /healthz reports process
 // liveness and is 200 for as long as the process runs. /readyz is 200 only
 // after successful worker registration and flips to 503 once draining
-// begins (docs/planning/29 "Worker Graceful Shutdown" step 1), mirroring
+// begins (docs/public/architecture.md "Worker Graceful Shutdown" step 1), mirroring
 // cmd/control/health.go.
 func newHealthMux(ready *atomic.Bool) *http.ServeMux {
 	mux := http.NewServeMux()

@@ -111,7 +111,7 @@ class NATSClient:
         """Sends PING and blocks until the matching PONG (or a -ERR) arrives,
         proving every prior PUB/SUB/UNSUB has been processed by the server —
         this is what the assignment flow's subscription-ordering rule relies
-        on (docs/planning/12-nats-protocol.md, "Assignment Flow").
+        on (docs/public/architecture.md, "Assignment Flow").
         """
         self._write(b"PING\r\n")
         deadline = time.monotonic() + timeout

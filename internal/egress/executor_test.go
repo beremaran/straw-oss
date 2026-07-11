@@ -192,8 +192,8 @@ func TestExecutorOpenTunnelAppliesDeniedIPPolicy(t *testing.T) {
 	}
 }
 
-// TestExecutorSendsOutboundStartBeforeConnect verifies the docs/planning/09
-// step 19 ordering that docs/implementation-history.md#p0-41 depends on: with a send callback the
+// TestExecutorSendsOutboundStartBeforeConnect verifies the docs/public/architecture.md
+// step 19 ordering that docs/public/architecture.md depends on: with a send callback the
 // OutboundStartFrame is delivered before the upstream request is made, and is
 // excluded from the returned batch.
 func TestExecutorSendsOutboundStartBeforeConnect(t *testing.T) {
@@ -693,26 +693,26 @@ func TestExecutorUpstreamConnectionPoolReusesExactKey(t *testing.T) {
 			return d.DialContext(ctx, network, address)
 		},
 		Pool: UpstreamConnectionPoolOptions{
-			Enabled:                   true,
-			MaxIdleConnsPerTenantHost: 2,
-			IdleTimeout:               time.Second,
-			MaxLifetime:               time.Minute,
+			Enabled:             true,
+			MaxIdleConnsPerHost: 2,
+			IdleTimeout:         time.Second,
+			MaxLifetime:         time.Minute,
 		},
 	})
 
 	for range 2 {
-		frames := exec.ExecuteWithTenant(context.Background(), testTenantA, requestStart(target, directPolicy(true)), nil, 1, nil)
+		frames := exec.ExecuteWithDeployment(context.Background(), testTenantA, requestStart(target, directPolicy(true)), nil, 1, nil)
 		if terminalErrorOrNil(frames) != nil {
-			t.Fatalf("ExecuteWithTenant() frames = %#v, want success", frames)
+			t.Fatalf("ExecuteWithDeployment() frames = %#v, want success", frames)
 		}
 	}
 	if got := newConns.Load(); got != 1 {
 		t.Fatalf("new connections = %d, want one reused connection", got)
 	}
 
-	frames := exec.ExecuteWithTenant(context.Background(), "ten_b", requestStart(target, directPolicy(true)), nil, 1, nil)
+	frames := exec.ExecuteWithDeployment(context.Background(), "ten_b", requestStart(target, directPolicy(true)), nil, 1, nil)
 	if terminalErrorOrNil(frames) != nil {
-		t.Fatalf("ExecuteWithTenant() tenant b frames = %#v, want success", frames)
+		t.Fatalf("ExecuteWithDeployment() tenant b frames = %#v, want success", frames)
 	}
 	if got := newConns.Load(); got != 2 {
 		t.Fatalf("new connections after tenant change = %d, want 2", got)
@@ -723,9 +723,9 @@ func TestExecutorUpstreamConnectionPoolReusesExactKey(t *testing.T) {
 		unitTestHost: loopbackIP(t, server.URL),
 		"other.test": loopbackIP(t, server.URL),
 	}
-	frames = exec.ExecuteWithTenant(context.Background(), testTenantA, requestStart(otherHostTarget, directPolicy(true)), nil, 1, nil)
+	frames = exec.ExecuteWithDeployment(context.Background(), testTenantA, requestStart(otherHostTarget, directPolicy(true)), nil, 1, nil)
 	if terminalErrorOrNil(frames) != nil {
-		t.Fatalf("ExecuteWithTenant() other host frames = %#v, want success", frames)
+		t.Fatalf("ExecuteWithDeployment() other host frames = %#v, want success", frames)
 	}
 	if got := newConns.Load(); got != 3 {
 		t.Fatalf("new connections after host change = %d, want 3", got)
@@ -733,7 +733,7 @@ func TestExecutorUpstreamConnectionPoolReusesExactKey(t *testing.T) {
 
 	start := requestStart(target, directPolicy(true))
 	start.FingerprintInstruction = "not_registered"
-	frames = exec.ExecuteWithTenant(context.Background(), testTenantA, start, nil, 1, nil)
+	frames = exec.ExecuteWithDeployment(context.Background(), testTenantA, start, nil, 1, nil)
 	if got := terminalError(t, frames).GetCode(); got != strawpb.ErrorCode_ERROR_CODE_UNSUPPORTED_FINGERPRINT {
 		t.Fatalf("code = %v, want unsupported_fingerprint", got)
 	}
@@ -787,19 +787,19 @@ func TestExecutorUpstreamConnectionPoolValidatesBeforeReuse(t *testing.T) {
 			return d.DialContext(ctx, network, address)
 		},
 		Pool: UpstreamConnectionPoolOptions{
-			Enabled:                   true,
-			MaxIdleConnsPerTenantHost: 2,
-			IdleTimeout:               time.Second,
-			MaxLifetime:               time.Minute,
+			Enabled:             true,
+			MaxIdleConnsPerHost: 2,
+			IdleTimeout:         time.Second,
+			MaxLifetime:         time.Minute,
 		},
 	})
 
-	frames := exec.ExecuteWithTenant(context.Background(), testTenantA, requestStart(target, directPolicy(true)), nil, 1, nil)
+	frames := exec.ExecuteWithDeployment(context.Background(), testTenantA, requestStart(target, directPolicy(true)), nil, 1, nil)
 	if terminalErrorOrNil(frames) != nil {
-		t.Fatalf("first ExecuteWithTenant() frames = %#v, want success", frames)
+		t.Fatalf("first ExecuteWithDeployment() frames = %#v, want success", frames)
 	}
 
-	frames = exec.ExecuteWithTenant(context.Background(), testTenantA, requestStart(target, &strawpb.DestinationPolicy{
+	frames = exec.ExecuteWithDeployment(context.Background(), testTenantA, requestStart(target, &strawpb.DestinationPolicy{
 		AllowedCidrs:   []string{"203.0.113.77/32"},
 		RedirectPolicy: strawpb.RedirectPolicy_REDIRECT_POLICY_NO_FOLLOW,
 		ResolutionMode: strawpb.DestinationResolutionMode_DESTINATION_RESOLUTION_DIRECT_LOCAL,
@@ -937,34 +937,34 @@ func TestExecutorUpstreamConnectionPoolEviction(t *testing.T) {
 	exec := NewExecutor(ExecutorOptions{
 		Resolver: staticResolver{unitTestHost: loopbackIP(t, server.URL)},
 		Pool: UpstreamConnectionPoolOptions{
-			Enabled:                   true,
-			MaxIdleConnsPerTenantHost: 2,
-			IdleTimeout:               10 * time.Millisecond,
-			MaxLifetime:               20 * time.Millisecond,
+			Enabled:             true,
+			MaxIdleConnsPerHost: 2,
+			IdleTimeout:         10 * time.Millisecond,
+			MaxLifetime:         20 * time.Millisecond,
 		},
 	})
 
-	frames := exec.ExecuteWithTenant(context.Background(), testTenantA, requestStart(target, directPolicy(true)), nil, 1, nil)
+	frames := exec.ExecuteWithDeployment(context.Background(), testTenantA, requestStart(target, directPolicy(true)), nil, 1, nil)
 	if terminalErrorOrNil(frames) != nil {
-		t.Fatalf("first ExecuteWithTenant() frames = %#v, want success", frames)
+		t.Fatalf("first ExecuteWithDeployment() frames = %#v, want success", frames)
 	}
 
 	time.Sleep(40 * time.Millisecond)
-	frames = exec.ExecuteWithTenant(context.Background(), testTenantA, requestStart(target, directPolicy(true)), nil, 1, nil)
+	frames = exec.ExecuteWithDeployment(context.Background(), testTenantA, requestStart(target, directPolicy(true)), nil, 1, nil)
 	if terminalErrorOrNil(frames) != nil {
-		t.Fatalf("second ExecuteWithTenant() frames = %#v, want success", frames)
+		t.Fatalf("second ExecuteWithDeployment() frames = %#v, want success", frames)
 	}
 	if got := newConns.Load(); got < 2 {
 		t.Fatalf("new connections = %d, want idle/lifetime eviction to force a fresh connection", got)
 	}
 
 	shortTarget := target + "/short"
-	frames = exec.ExecuteWithTenant(context.Background(), testTenantA, requestStart(shortTarget, directPolicy(true)), nil, 1, nil)
+	frames = exec.ExecuteWithDeployment(context.Background(), testTenantA, requestStart(shortTarget, directPolicy(true)), nil, 1, nil)
 	if got := terminalError(t, frames).GetCode(); got != strawpb.ErrorCode_ERROR_CODE_UPSTREAM_RESET {
 		t.Fatalf("code = %v, want upstream_reset", got)
 	}
 	before := newConns.Load()
-	frames = exec.ExecuteWithTenant(context.Background(), testTenantA, requestStart(target, directPolicy(true)), nil, 1, nil)
+	frames = exec.ExecuteWithDeployment(context.Background(), testTenantA, requestStart(target, directPolicy(true)), nil, 1, nil)
 	if terminalErrorOrNil(frames) != nil {
 		t.Fatalf("after body error frames = %#v, want success", frames)
 	}
@@ -973,12 +973,12 @@ func TestExecutorUpstreamConnectionPoolEviction(t *testing.T) {
 	}
 
 	badProtocolTarget := target + "/bad-protocol"
-	frames = exec.ExecuteWithTenant(context.Background(), testTenantA, requestStart(badProtocolTarget, directPolicy(true)), nil, 1, nil)
+	frames = exec.ExecuteWithDeployment(context.Background(), testTenantA, requestStart(badProtocolTarget, directPolicy(true)), nil, 1, nil)
 	if terminalErrorOrNil(frames) == nil {
 		t.Fatalf("bad protocol frames = %#v, want error", frames)
 	}
 	before = newConns.Load()
-	frames = exec.ExecuteWithTenant(context.Background(), testTenantA, requestStart(target, directPolicy(true)), nil, 1, nil)
+	frames = exec.ExecuteWithDeployment(context.Background(), testTenantA, requestStart(target, directPolicy(true)), nil, 1, nil)
 	if terminalErrorOrNil(frames) != nil {
 		t.Fatalf("after protocol error frames = %#v, want success", frames)
 	}
@@ -1024,15 +1024,15 @@ func TestExecutorUpstreamConnectionPoolTLSFailureIsNotReused(t *testing.T) {
 	exec := NewExecutor(ExecutorOptions{
 		Resolver: staticResolver{unitTestHost: loopbackIP(t, server.URL)},
 		Pool: UpstreamConnectionPoolOptions{
-			Enabled:                   true,
-			MaxIdleConnsPerTenantHost: 2,
-			IdleTimeout:               time.Second,
-			MaxLifetime:               time.Minute,
+			Enabled:             true,
+			MaxIdleConnsPerHost: 2,
+			IdleTimeout:         time.Second,
+			MaxLifetime:         time.Minute,
 		},
 	})
 
 	for range 2 {
-		frames := exec.ExecuteWithTenant(context.Background(), testTenantA, requestStart(target, directPolicy(true)), nil, 1, nil)
+		frames := exec.ExecuteWithDeployment(context.Background(), testTenantA, requestStart(target, directPolicy(true)), nil, 1, nil)
 		if got := terminalError(t, frames).GetCode(); got != strawpb.ErrorCode_ERROR_CODE_UPSTREAM_TLS_FAILURE {
 			t.Fatalf("code = %v, want upstream_tls_failure", got)
 		}
@@ -1061,16 +1061,16 @@ func TestWorkerShutdownClosesExecutorPool(t *testing.T) {
 	exec := NewExecutor(ExecutorOptions{
 		Resolver: staticResolver{unitTestHost: loopbackIP(t, server.URL)},
 		Pool: UpstreamConnectionPoolOptions{
-			Enabled:                   true,
-			MaxIdleConnsPerTenantHost: 2,
-			IdleTimeout:               time.Second,
-			MaxLifetime:               time.Minute,
+			Enabled:             true,
+			MaxIdleConnsPerHost: 2,
+			IdleTimeout:         time.Second,
+			MaxLifetime:         time.Minute,
 		},
 	})
 
-	frames := exec.ExecuteWithTenant(context.Background(), testTenantA, requestStart(target, directPolicy(true)), nil, 1, nil)
+	frames := exec.ExecuteWithDeployment(context.Background(), testTenantA, requestStart(target, directPolicy(true)), nil, 1, nil)
 	if terminalErrorOrNil(frames) != nil {
-		t.Fatalf("ExecuteWithTenant() frames = %#v, want success", frames)
+		t.Fatalf("ExecuteWithDeployment() frames = %#v, want success", frames)
 	}
 
 	exec.CloseIdleConnections()

@@ -13,7 +13,7 @@ func TestDeploymentAuthenticatorAllowsAnonymousLocalRequests(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Authenticate() error = %v", err)
 	}
-	if identity.TenantID != "default" || identity.ScopeType != ScopeDeployment {
+	if identity.DeploymentID != "default" || identity.ScopeType != ScopeDeployment {
 		t.Fatalf("identity = %+v, want deployment identity", identity)
 	}
 }

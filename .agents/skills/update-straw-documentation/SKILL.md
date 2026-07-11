@@ -1,59 +1,44 @@
 ---
 name: update-straw-documentation
-description: Write or update Straw's public-facing documentation under docs/public/ — user guides, API references, deployment/quickstart docs intended for publication on the web. Use when the user asks for public docs, a docs site page, API reference updates, or a quickstart/README aimed at external users.
+description: Write or update Straw's public documentation under docs/public for the self-hosted open-source proxy.
 ---
 
-# Update Straw Documentation
+# Update Straw documentation
 
-Public docs live under `docs/public/` (create it on first use, with an `index.md` table of contents). They target
-external users of Straw — people who did not read the planning docs and never will. Everything else under `docs/`
-(planning, tasks, handoffs, agent templates) is internal and is never published or linked from public docs.
+Use this skill for public guides, API references, quickstarts, deployment documentation, and other content published by
+the Docusaurus site.
 
-## Source-of-truth rules
+## Source of truth
 
-1. **Document only shipped, verified behavior.** Before describing any endpoint, flag, field, or behavior, verify it
-   in current code (`cmd/`, `internal/`, `migrations/`, `deploy/docker/`) — not in planning docs. Planning docs state
-   intent; several planned P0 surfaces shipped late or narrower than specced (deny-rule taxonomy, pool capability
-   fields). If a planning doc and the code disagree, the code is what users get: document the code, and flag the
-   divergence to the user separately instead of publishing the aspiration.
-2. **Phase-gate the content.** Unfinished roadmap work, historical implementation notes
-   (`docs/implementation-history.md`), or later phases (`docs/planning/02-phase-boundaries.md`) do not appear in
-   public docs—not even as "coming soon" unless the user explicitly asks for a roadmap page.
-3. **Run every example.** curl/API examples must be executed against the local compose stack
-   (`deploy/docker/README.md` has bootstrap/startup) before publication; paste real (sanitized) responses. An
-   example you did not run is a guess wearing a code fence.
-4. **No internal leakage.** Public docs never reference task numbers, handoffs, audits, agent workflows, internal
-   file paths, or `docs/planning/*`. They never contain credentials, peppers, example API keys that look real
-   (use `sk_example_...`-style placeholders), or internal hostnames.
+Document shipped behavior. Check the relevant implementation, tests, `deploy/local`, `deploy/production`, and
+`ROADMAP.md` before writing. One Straw deployment is one trust boundary and NATS is the only required backing
+service. Do not document tenants, RBAC, quotas, billing, administration APIs, or mandatory databases as supported.
 
-## What to cover (typical pages)
+## Public information architecture
 
-- `index.md` — what Straw is (proxy control plane + egress workers), current capability summary, TOC.
-- `quickstart.md` — compose up, bootstrap the first platform key, create a tenant + tenant key, send the first
-  request via `POST /api/v1/requests`, read the response envelope.
-- `api/` — one page per surface: requests, config resources (`/api/v1/config/...`: tenants, routing rules, deny
-  rules, injection policies, fingerprint profiles, executor pools, changes), admin (`/api/v1/admin/...`: workers,
-  request cancel), auth model (API keys, scopes, roles). Document request/response shapes from the actual handlers,
-  RBAC per endpoint, and the canonical ErrorResponse envelope with its error codes
-  (`internal/control/errors.go` is the registry).
-- `operations.md` — health endpoints (`/healthz`, `/readyz`, `/metrics` on both binaries' ports), configuration env
-  vars (`internal/config`), logging format, the P0 operational limits (buffered bodies, size caps, single-attempt
-  dispatch, REST-only ingress) stated plainly as current limitations.
+- `index.md`: product boundary and route into the manual
+- `quickstart.md`: clone, `make dev`, first request, stack lifecycle
+- `architecture.md`: Control, NATS, Egress, request lifecycle, trust boundary
+- `configuration.md`: versioned Control/Egress JSON and environment secrets
+- `api/requests.md`: the public REST request contract and error envelope
+- `sdk.md`, `cli.md`, `egress_worker.md`: integration surfaces
+- `deployment.md`, `operations.md`, `security.md`, `troubleshooting.md`: operating guidance
+- `development.md`: contributor and release workflow
+
+Update `website/sidebars.js` and `website/docusaurus.config.js` when pages or navigation change.
 
 ## Style
 
-- Second person, present tense, task-oriented headings ("Create a tenant", not "Tenant creation").
-- Every endpoint documented as: method + path, required role, request fields (name, type, required, meaning),
-  example request, example response, error codes it can return.
-- State limits and failure behavior honestly (rate-limit responses, quota rejections, what happens when a worker is
-  unavailable). Users trust docs that admit limits.
-- Keep pages self-contained; link between public pages only.
+Write from installation through operation. Use task-oriented headings, runnable examples, explicit prerequisites,
+defaults, limits, failure behavior, and security boundaries. Label production assets as adaptable examples, not a
+turnkey platform. Never use placeholder behavior that the repository does not ship.
 
-## Workflow
+## Verification
 
-1. Verify the feature set in code (grep routes in `cmd/control/main.go` / `cmd/egress/main.go` — the route
-   registrations are the authoritative public surface list).
-2. Draft or update the page(s) under `docs/public/`.
-3. Run the examples against the compose stack; paste sanitized output.
-4. Update `docs/public/index.md` TOC.
-5. Re-read as a stranger: does any sentence require internal context? Remove or explain it.
+Run examples against the local Compose stack when behavior changes. Build the site with:
+
+```sh
+make docs-website
+```
+
+Also run `make check` when documentation accompanies code or configuration changes.

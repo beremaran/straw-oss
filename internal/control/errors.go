@@ -34,7 +34,7 @@ const (
 	statusTooEarly              = http.StatusTooEarly
 	statusClientClosedRequest   = 499
 
-	// errorDetailReasonKey is the ErrorResponse.Details key admin handlers use
+	// errorDetailReasonKey is the ErrorResponse.Details reason key.
 	// to explain an invalid_request rejection.
 	errorDetailReasonKey     = "reason"
 	errorDetailDirectionKey  = "direction"
@@ -129,13 +129,13 @@ const (
 	ControlInternalError ErrorCode = 500
 	// ExecutorInternalError is returned for unexpected executor failures.
 	ExecutorInternalError ErrorCode = 501
-	// Cancelled is returned when a request is cancelled by the client or admin.
+	// Cancelled is returned when a request is cancelled.
 	Cancelled ErrorCode = 502
 )
 
 // ErrorRegistry maps ErrorCode to ErrorResponse fields.
 var ErrorRegistry = map[ErrorCode]ErrorEntry{
-	AuthFailure:               {Category: errorCategoryClient, Code: errorCodeAuthFailure, Message: "Invalid API key", Retryable: false, HTTPStatus: statusUnauthorized},
+	AuthFailure:               {Category: errorCategoryClient, Code: errorCodeAuthFailure, Message: "Invalid deployment token", Retryable: false, HTTPStatus: statusUnauthorized},
 	InvalidRequest:            {Category: errorCategoryClient, Code: errorCodeInvalidRequest, Message: "Malformed request or missing business fields", Retryable: false, HTTPStatus: statusBadRequest},
 	DestinationDenied:         {Category: errorCategoryClient, Code: errorCodeDestinationDenied, Message: "Deny rule matched", Retryable: false, HTTPStatus: statusForbidden},
 	HeaderInjectionFailed:     {Category: errorCategoryClient, Code: errorCodeHeaderInjectionFailed, Message: "Resolved injection invalid", Retryable: false, HTTPStatus: statusBadRequest},
@@ -161,7 +161,7 @@ var ErrorRegistry = map[ErrorCode]ErrorEntry{
 	BodyTooLarge:              {Category: errorCategoryStreaming, Code: errorCodeBodyTooLarge, Message: "Request or response exceeds configured limit", Retryable: false, HTTPStatus: http.StatusRequestEntityTooLarge},
 	ControlInternalError:      {Category: errorCategoryControl, Code: errorCodeControlInternalError, Message: "Unexpected internal failure", Retryable: false, HTTPStatus: statusInternalServerError},
 	ExecutorInternalError:     {Category: errorCategoryEgress, Code: errorCodeExecutorInternalError, Message: "Unexpected executor failure", Retryable: false, HTTPStatus: statusBadGateway},
-	Cancelled:                 {Category: errorCategoryClient, Code: errorCodeCancelled, Message: "Client or admin cancellation", Retryable: false, HTTPStatus: statusClientClosedRequest},
+	Cancelled:                 {Category: errorCategoryClient, Code: errorCodeCancelled, Message: "Request cancelled", Retryable: false, HTTPStatus: statusClientClosedRequest},
 }
 
 // ErrorEntry holds the metadata for a canonical error code.
@@ -211,11 +211,8 @@ func ErrorResponseFromCode(code ErrorCode, requestID string, extraDetails map[st
 	return resp
 }
 
-// ErrorResponseFromCodeWithRetry builds an ErrorResponse for a canonical
-// code, additionally setting retry_after_ms when computable
-// (docs/planning/20: "Breaches return rate_limit_exceeded with HTTP 429 and
-// retry_after_ms when computable"; docs/planning/14: "retry_after_ms is
-// omitted when zero or not computable").
+// ErrorResponseFromCodeWithRetry builds an ErrorResponse and includes a
+// positive retry delay when one is available.
 func ErrorResponseFromCodeWithRetry(code ErrorCode, requestID string, extraDetails map[string]string, retryAfterMs int64) ErrorResponse {
 	resp := ErrorResponseFromCode(code, requestID, extraDetails)
 	if retryAfterMs > 0 {

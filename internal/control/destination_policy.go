@@ -53,18 +53,9 @@ func denyRuleValue(rule config.DenyRule) string {
 	}
 }
 
-// This file implements the P0 Control-side destination-policy resolver
-// (docs/implementation-history.md#p0-22, docs/planning/27-security-controls.md,
-// docs/planning/16-egress-execution.md). It evaluates the immutable tenant
-// snapshot captured at request start and produces the strawpb.DestinationPolicy
-// bundle, resolved header-injection operations, and resolved fingerprint
-// profile name that task 24 attaches to RequestStart. It does not perform any
-// DNS resolution or dial: Egress remains solely responsible for final
-// resolved-IP validation immediately before connect (docs/planning/16 "Dial
-// target invariant").
-//
-// internal/egress/executor.go (task 26) enforces DeniedHostSuffixes and
-// DeniedCnameSuffixes downstream; this resolver only compiles them.
+// This file resolves the static deployment's destination safety policy.
+// Egress remains responsible for final resolved-IP validation immediately
+// before connect.
 
 const (
 	defaultFingerprintProfileName  = "default"
@@ -73,7 +64,7 @@ const (
 
 // defaultDeniedPrefixes and metadataIPs mirror
 // internal/egress/executor.go's default-deny set exactly
-// (docs/planning/27 "Default Denied CIDR Set") so Control's fail-fast
+// (docs/public/architecture.md "Default Denied CIDR Set") so Control's fail-fast
 // pre-dispatch check agrees with what Egress will actually enforce.
 // RFC1918/ULA private ranges, loopback, link-local, and multicast are
 // covered directly via netip.Addr predicates (IsPrivate, IsLoopback,
@@ -104,10 +95,7 @@ var metadataIPs = []netip.Addr{
 }
 
 // DestinationPolicyRequest is the input to ResolveDestinationPolicy. Snapshot
-// must be the immutable tenant config snapshot captured at request start
-// (docs/planning/10 "evaluated from an immutable snapshot captured at request
-// start"). TargetURL must already be validated by ValidateRequest (request.go):
-// scheme http/https, no fragment, no userinfo, non-empty host.
+// is captured at request start. TargetURL must already be validated.
 type DestinationPolicyRequest struct {
 	Snapshot                    config.Snapshot
 	TargetURL                   *url.URL
@@ -121,14 +109,14 @@ type DestinationPolicyRequest struct {
 	UpstreamProxyTrusted bool
 
 	// MaxInjectedHeaderBytes bounds the aggregate injected header name+value
-	// bytes (docs/planning/27 "Maximum injected header bytes is bounded by
+	// bytes (docs/public/architecture.md "Maximum injected header bytes is bounded by
 	// control.transport.max_frame_data_bytes"); callers pass
 	// ControlConfig.Transport.MaxFrameDataBytes.
 	MaxInjectedHeaderBytes uint64
 }
 
 // DestinationPolicyResult is the resolved bundle RequestStart carries to
-// Egress (docs/planning/13-protobuf-contract.md RequestStart fields
+// Egress (docs/public/architecture.md RequestStart fields
 // destination_policy, injection_operations, fingerprint_instruction).
 type DestinationPolicyResult struct {
 	Policy              *strawpb.DestinationPolicy
@@ -238,14 +226,14 @@ func normalizeTargetHost(u *url.URL) (string, netip.Addr, bool, *ValidationError
 	return hostname, parsed, isLiteralIP, nil
 }
 
-// compileDenyRules partitions the tenant's deny rules into the bundle fields
+// compileDenyRules partitions deployment deny rules into the bundle fields
 // Egress consumes. cidr/metadata_ip/private_range all compile into the same
-// denied/allowed CIDR sets (docs/implementation-history.md#p0-43: they differ from "cidr" only in
+// denied/allowed CIDR sets (docs/public/architecture.md: they differ from "cidr" only in
 // admin-facing label, not enforcement). host/host_suffix and cname_suffix
 // compile into suffix lists; an allow_override rule for the same normalized
 // value cancels the matching deny entry out of the compiled list, since
 // Egress's suffix lists (unlike allowed_cidrs) have no separate override
-// concept (docs/planning/16 "Egress performs final resolved-IP validation" —
+// concept (docs/public/architecture.md "Egress performs final resolved-IP validation" —
 // cname can only be evaluated post-resolution, so cname_suffix rules are
 // never evaluated Control-side the way host/host_suffix are in
 // evaluateHostDeny).
@@ -328,7 +316,7 @@ func compileCIDRDenyRule(r config.DenyRule, deniedCidrs, allowedCidrs []string) 
 
 // evaluateHostDeny rejects the request when host matches an enabled
 // host/host_suffix deny rule that has no matching enabled allow_override rule
-// (docs/planning/27 "Destination Deny Normalization"). host matches exactly;
+// (docs/public/architecture.md "Destination Deny Normalization"). host matches exactly;
 // host_suffix additionally matches subdomains, mirroring Egress's
 // hostMatchesSuffix (internal/egress/executor.go).
 func evaluateHostDeny(host string, rules []config.DenyRule) *ValidationError {
@@ -379,12 +367,10 @@ func hostMatchesSuffix(host, suffix string) bool {
 
 // evaluateLiteralIPDeny is Control's fail-fast pre-dispatch check for
 // IP-literal targets: private/link-local/multicast/metadata/default-denied
-// ranges are denied unless the tenant has an explicit allow-type deny rule
-// (allowedCidrs) covering the address, which is a true override
-// (docs/planning/27 "denied by default unless a tenant admin explicitly
-// allows them"). This is a pre-dispatch optimization only — Egress still
+// ranges are denied unless an explicit allowed CIDR covers the address. This
+// is a pre-dispatch optimization only — Egress still
 // performs the authoritative resolved-IP check after DNS resolution
-// (docs/planning/16 "Dial target invariant"). internal/egress/executor.go's
+// (docs/public/architecture.md "Dial target invariant"). internal/egress/executor.go's
 // validateResolvedIP (task 26) checks AllowedCidrs first, before denied_cidrs
 // or any default-deny predicate, matching this override precedence exactly.
 func evaluateLiteralIPDeny(addr netip.Addr, deniedCidrs, allowedCidrs []string) *ValidationError {
@@ -449,7 +435,7 @@ func destinationDeniedError() *ValidationError {
 }
 
 // resolveDestinationMode selects DIRECT_LOCAL or UPSTREAM_PROXY_REMOTE per
-// deployment config (docs/planning/27 "SSRF Enforcement by Resolution Mode").
+// deployment config (docs/public/architecture.md "SSRF Enforcement by Resolution Mode").
 // Untrusted upstream-proxy remote resolution is rejected before dispatch.
 func resolveDestinationMode(upstreamProxyEnabled, upstreamProxyTrusted bool) (strawpb.DestinationResolutionMode, *ValidationError) {
 	if !upstreamProxyEnabled {
@@ -463,10 +449,10 @@ func resolveDestinationMode(upstreamProxyEnabled, upstreamProxyTrusted bool) (st
 	return strawpb.DestinationResolutionMode_DESTINATION_RESOLUTION_UPSTREAM_PROXY_REMOTE, nil
 }
 
-// resolveFingerprintProfile validates the requested (or tenant-default)
+// resolveFingerprintProfile validates the requested (or deployment-default)
 // fingerprint profile against the snapshot's enabled catalog entries. Worker
 // capability is deliberately not consulted here: routing must first compute
-// the ordinary tenant/route/session candidate set and then apply the exact
+// the ordinary route/session candidate set and then apply the exact
 // capability filter so route, sticky, and capacity errors retain precedence.
 func resolveFingerprintProfile(profiles []config.FingerprintProfile, requested string) (string, *ValidationError) {
 	name := requested
@@ -487,16 +473,8 @@ func resolveFingerprintProfile(profiles []config.FingerprintProfile, requested s
 	return "", &ValidationError{Code: errorCodeUnsupportedFingerprint, Message: ErrorRegistry[UnsupportedFingerprint].Message}
 }
 
-// resolveInjectionOperations concatenates every enabled injection policy's
-// operations, ordered by policy ID for determinism, then re-validates the
-// combined ordered list against the Section 15 safety table plus the
-// resolve-time rules that policy-write-time validation
-// (config_admin_handlers.go validateInjectionOperation) does not already
-// cover: duplicate `set` rejection across policies, CR/LF in decoded values,
-// and the aggregate size bound. It does not re-check the tenant_admin-only
-// restriction on Authorization/Cookie: that is an actor-authorization rule
-// enforced at write time (config_admin_handlers.go), and the resolver has no
-// actor context for a stored snapshot.
+// resolveInjectionOperations concatenates enabled static injection policies,
+// orders them for determinism, and validates the combined list and size.
 func resolveInjectionOperations(policies []config.InjectionPolicy, maxBytes uint64) ([]*strawpb.InjectionOperation, *ValidationError) {
 	sorted := make([]config.InjectionPolicy, len(policies))
 	copy(sorted, policies)

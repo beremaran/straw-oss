@@ -34,7 +34,7 @@ func TestHealthzAlwaysOK(t *testing.T) {
 }
 
 // TestReadyzReflectsReadiness proves /readyz is 200 when ready and flips to 503
-// once drain clears the flag (docs/planning/29).
+// once drain clears the flag (docs/public/architecture.md).
 func TestReadyzReflectsReadiness(t *testing.T) {
 	t.Parallel()
 
@@ -57,7 +57,7 @@ func TestReadyzReflectsReadiness(t *testing.T) {
 }
 
 // TestMetricsServesRegisteredSeries proves /metrics on the metrics port
-// (docs/planning/23-observability.md) returns 200 with the registered P0
+// (docs/public/architecture.md) returns 200 with the registered P0
 // series exposed in Prometheus text format.
 func TestMetricsServesRegisteredSeries(t *testing.T) {
 	t.Parallel()
@@ -66,7 +66,7 @@ func TestMetricsServesRegisteredSeries(t *testing.T) {
 	metrics := control.NewMetrics(reg)
 	// straw_active_requests has no labels, so it is always present; verify
 	// via a metric with no dynamic labels rather than one of the
-	// tenant/error_code-vectored series, which (correctly, per Prometheus
+	// unbounded request-label series, which (correctly, per Prometheus
 	// client behavior) carry no series until first observed.
 	metrics.IncActiveRequests()
 

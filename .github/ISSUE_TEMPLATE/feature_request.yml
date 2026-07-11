@@ -1,0 +1,32 @@
+name: Feature request
+description: Propose a focused improvement within Straw's project boundary.
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What concrete self-hosted egress problem is difficult today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed outcome
+      description: Describe behavior and user experience, not only an implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: boundary
+    attributes:
+      label: Project boundary
+      options:
+        - label: This keeps NATS as the only required backing service.
+          required: true
+        - label: This does not require hosted multi-tenancy, billing, or tenant administration.
+          required: true

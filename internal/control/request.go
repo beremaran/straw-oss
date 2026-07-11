@@ -92,15 +92,13 @@ const (
 
 // RequestEnvelope is the JSON shape for POST /api/v1/requests.
 type RequestEnvelope struct {
-	Method           string        `json:"method"`
-	URL              string        `json:"url"`
-	Headers          []HeaderPair  `json:"headers,omitempty"`
-	Body             *RequestBody  `json:"body,omitempty"`
-	Routing          *RoutingHints `json:"routing,omitempty"`
-	FingerprintProto string        `json:"fingerprint_profile,omitempty"`
-	TimeoutMs        uint64        `json:"timeout_ms,omitempty"`
-	Replayable       bool          `json:"replayable"`
-	CaptureHint      string        `json:"capture_hint,omitempty"`
+	Method           string       `json:"method"`
+	URL              string       `json:"url"`
+	Headers          []HeaderPair `json:"headers,omitempty"`
+	Body             *RequestBody `json:"body,omitempty"`
+	FingerprintProto string       `json:"fingerprint_profile,omitempty"`
+	TimeoutMs        uint64       `json:"timeout_ms,omitempty"`
+	Replayable       bool         `json:"replayable"`
 }
 
 // HeaderPair preserves header order and duplicates.
@@ -109,14 +107,14 @@ type HeaderPair struct {
 	Value string `json:"value_base64"`
 }
 
-// RequestBody is the only P0 body mode.
+// RequestBody carries the supported inline base64 request body.
 type RequestBody struct {
 	Mode       string `json:"mode"`
 	DataBase64 string `json:"data_base64,omitempty"`
 	BodyRefID  string `json:"body_ref_id,omitempty"` // rejected in P0
 }
 
-// RoutingHints are client-supplied routing hints.
+// RoutingHints is the internal routing input used by the static deployment.
 type RoutingHints struct {
 	Tags            []string `json:"tags,omitempty"`
 	Country         string   `json:"country,omitempty"`
@@ -170,17 +168,7 @@ func ValidateRequest(raw []byte, maxRequestBodyBytes, maxTimeoutMs uint64) (*Val
 		return nil, profileValueErr
 	}
 
-	if env.CaptureHint != "" && env.CaptureHint != "none" {
-		return nil, &ValidationError{Code: errorCodeInvalidRequest, Message: "capture_hint is not supported"}
-	}
-
-	decision := "none"
-
 	routing := RoutingHints{}
-	if env.Routing != nil {
-		routing = *env.Routing
-		routing.Tags = append([]string(nil), env.Routing.Tags...)
-	}
 
 	return &ValidatedRequest{
 		Method:          env.Method,
@@ -193,7 +181,7 @@ func ValidateRequest(raw []byte, maxRequestBodyBytes, maxTimeoutMs uint64) (*Val
 		TimeoutMs:       timeoutMs,
 		Replayable:      env.Replayable,
 		StickySessionID: routing.StickySessionID,
-		CaptureDecision: decision,
+		CaptureDecision: "none",
 	}, nil
 }
 

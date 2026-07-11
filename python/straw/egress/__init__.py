@@ -2,7 +2,7 @@
 
 Lets a custom Python worker build wire-compatible registration/heartbeat
 requests and NATS subjects for the Straw Core NATS protocol
-(``docs/planning/12-nats-protocol.md``), and run a worker that registers,
+(``docs/public/architecture.md``), and run a worker that registers,
 heartbeats, and serves decoded-HTTP assignments (``runtime.py``).
 """
 
@@ -21,7 +21,6 @@ from .protocol import (
     control_inbox_prefix,
     heartbeat_envelope,
     heartbeat_subject,
-    log_telemetry_subject,
     marshal_envelope,
     register_envelope,
     registration_signing_payload,
@@ -65,7 +64,6 @@ __all__ = [
     "control_inbox_prefix",
     "heartbeat_envelope",
     "heartbeat_subject",
-    "log_telemetry_subject",
     "marshal_envelope",
     "register_envelope",
     "registration_signing_payload",

@@ -1,60 +1,39 @@
-# Straw Documentation Portal
-
-Straw is a secure, distributed HTTP/HTTPS egress proxy control plane and worker system. It enables platform teams to route, inspect, validate, throttle, and audit egress request traffic originating from internal workloads before forwarding it to the public internet.
-
+---
+sidebar_position: 1
+slug: /
 ---
 
-## System Architecture
+# Straw documentation
 
-Straw isolates egress traffic control into two distinct operational layers:
+Straw is a self-hosted HTTP/HTTPS egress proxy. Applications send an HTTP request to Control, Control assigns it to
+an Egress worker over NATS, and that worker makes the outbound request. The response comes back as JSON with the body
+encoded as base64.
 
-1. **Control Plane (`control`)**: Serves multi-protocol ingress listeners (REST API on port 8080, HTTP Forward Proxy on 8081, HTTP CONNECT Tunnel on 8082, and MITM TLS Inspection Proxy on 8083) and resource configuration APIs. It evaluates access control, routes requests based on rules, coordinates workload assignments via NATS, stores config in Postgres, manages rate-limits in Redis, and asynchronously writes event logs to ClickHouse.
-2. **Egress Workers (`egress`)**: Dedicated worker instances that pull request assignments from NATS, apply TLS fingerprinting profiles, inject authorized headers, enforce tenant deny-rules, execute the HTTP/HTTPS request to the public internet, and stream back the response.
+Straw is designed for one trusted deployment boundary. It does not include tenants, accounts, billing, quotas, a
+configuration database, or an analytics database. NATS is the only required backing service.
 
-```
-                    +-----------------------------+
-                    |  REST / HTTP / CONNECT /    |
-                    |        MITM Clients         |
-                    +-----------------------------+
-                              | (Ports: 8080 / 8081 / 8082 / 8083)
-                              v
-                    +-----------------------------+
-                    |        Control Plane        | <----> Postgres (Durable Config)
-                    +-----------------------------+ <----> Redis (Transient state, limits)
-                              |
-                    +---------+---------+
-                    |   NATS (Scheduling)   |
-                    +---------+---------+
-                              |
-                      +-------+--------+
-                      | Egress Worker  | ---> Internet (Upstream destination)
-                      +----------------+
-```
+## Start here
 
----
+1. Follow the [quickstart](quickstart.md) to run Straw locally and send a request.
+2. Read the [architecture](architecture.md) to understand the three services.
+3. Use the [request API](api/requests.md), [CLI](cli.md), or [SDKs](sdk.md) from your application.
+4. Review [configuration](configuration.md), [deployment](deployment.md), and [security](security.md) before exposing
+   Control outside a development machine.
 
-## Core Capabilities
+## What Straw does
 
-- **Multi-Protocol Egress Ingress**: Support for REST JSON envelopes, plaintext HTTP proxies, TCP CONNECT tunnels, and TLS-terminating MITM inspection proxies.
-- **Multi-Tenant Configuration**: Dynamic creation of tenants, custom routing rules, header injection policies, deny rules, and quota allocation.
-- **Worker Isolation & Security**: Secure Ed25519-signed registration and Redis-backed replay protection for all active Egress workers.
-- **Session Stickiness**: Direct related egress requests to the same worker using tenant-supplied session identifiers.
-- **Admission Guardrails**: Advanced rate-limiting dimensions and monthly bandwidth/request quota controls.
-- **Telemetry & Logs**: Asynchronous, non-blocking telemetry writes to ClickHouse and a Prometheus metrics registry.
-- **Connection Reuse**: Optional upstream HTTP connection pooling configured on Egress Workers.
+- forwards HTTP and HTTPS requests through independently scalable workers;
+- keeps workers off the public API network;
+- preserves duplicate and ordered request/response headers;
+- enforces request size and timeout limits;
+- supports an optional deployment-wide bearer token;
+- exposes Prometheus metrics, health endpoints, and structured JSON logs;
+- supports selectable outbound TLS fingerprint profiles.
 
----
+## What Straw does not do
 
-## Table of Contents
+Straw is not a forward-proxy socket, browser automation system, hosted proxy network, tenant management platform, or
+durable traffic archive. The public interface is `POST /api/v1/requests`. Deployment policy is static and belongs to
+the operator.
 
-- [Quickstart Guide](quickstart.md) — Set up a local development cluster using Docker Compose and send your first egress request.
-- [Proxy & Ingress Modes](ingress_modes.md) — Configure standard HTTP proxies, HTTP CONNECT tunnels, and MITM TLS inspection with CA management.
-- [Go SDK Guide](sdk.md) — Integrate your Go applications using Straw's native public API client library.
-- [CLI Reference](cli.md) — Send requests and manage configuration from the terminal with the `straw` command.
-- [Egress Worker Guide](egress_worker.md) — Install, configure, and manage Egress execution worker instances.
-- [Authentication & Roles](api/auth.md) — Learn about API key prefixes, scopes, and Role-Based Access Control (RBAC).
-- [REST Request Forwarding](api/requests.md) — Documenting the request-forwarding schema, validation normalizations, and canonical error codes.
-- [Configuration APIs](api/config.md) — Reference for managing tenants, API keys, worker credentials, pools, routing, and access rules.
-- [Telemetry & Observability](api/telemetry.md) — Query ClickHouse logs, trace request attempts, check worker heartbeats, and audit mutations.
-- [Runtime Administration](api/admin.md) — Monitor active worker status, globally or tenant-disable workers, and cancel in-flight requests.
-- [System Operations](operations.md) — Monitoring readiness, healthchecks, log structure, and current system limits.
+The source is available under the [MIT License](https://github.com/beremaran/straw-oss/blob/master/LICENSE).

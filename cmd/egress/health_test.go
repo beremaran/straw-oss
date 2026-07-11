@@ -29,7 +29,7 @@ func TestEgressHealthzAlwaysOK(t *testing.T) {
 }
 
 // TestEgressReadyzReflectsReadiness proves /readyz is 503 before readiness is
-// set and flips to 200 once it is (docs/planning/23, docs/planning/29).
+// set and flips to 200 once it is (docs/public/architecture.md, docs/public/architecture.md).
 func TestEgressReadyzReflectsReadiness(t *testing.T) {
 	t.Parallel()
 

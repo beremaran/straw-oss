@@ -8,7 +8,7 @@ assignments for one session at a time.
 Behavioral reference: ``sdk/egress/runtime.go`` (registration/heartbeat loop)
 and ``sdk/egress/assignment.go`` + ``sdk/egress/stream.go`` (assignment
 subscription ordering, stream_seq validation, credit-based backpressure).
-See ``docs/planning/12-nats-protocol.md`` for the wire protocol this module
+See ``docs/public/architecture.md`` for the wire protocol this module
 implements.
 
 ponytail: serves one assignment at a time (no concurrent in-session
@@ -477,7 +477,7 @@ class _SeqCounter:
 class _CreditGate:
     """Byte-credit backpressure for the e2c (response) direction: blocks for
     a CreditFrame on c2e when the current grant is exhausted, matching
-    ``docs/planning/12-nats-protocol.md``'s "Backpressure and Credit
+    ``docs/public/architecture.md``'s "Backpressure and Credit
     Semantics".
     """
 
