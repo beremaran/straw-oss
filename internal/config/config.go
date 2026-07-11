@@ -7,244 +7,85 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strconv"
-	"strings"
 	"syscall"
 )
 
-// Version is the canonical control-plane config file version.
-const Version = "v1"
-
-// defaultEgressHealthPort is used when egress.health_port is unset.
-const defaultEgressHealthPort = 8090
-
-// defaultIngressMode is the egress.capabilities.supported_ingress_modes
-// default from docs/planning/24-static-configuration.md.
-const defaultIngressMode = "rest"
-
-// P2 large-body transport defaults and the single resolved response-body mode
-// from docs/planning/18-large-body-transport-p2.md and Section 32.
+// Version is the supported configuration format version.
 const (
-	DefaultLargeBodyThresholdBytes = 1_048_576
-	DefaultBodyRetentionDays       = 1
-	MaxBodyRetentionDays           = 3
-	DefaultDirectStreamTimeoutMS   = 300_000
-
-	BodyResponseModeStreamThroughControlTeeObjectStorage = "stream_through_control_tee_object_storage"
+	Version                 = "v1"
+	defaultEgressHealthPort = 8090
+	defaultNATSServer       = "nats://127.0.0.1:4222"
 )
 
 var (
-	errMissingControlSection    = errors.New("missing control section")
-	errMissingEgressSection     = errors.New("missing egress section")
-	errUnexpectedTrailingJSON   = errors.New("unexpected trailing JSON data")
-	errLegacyWorkerCredential   = errors.New("egress.credential is no longer supported")
-	errServerHostRequired       = errors.New("server.host is required")
-	errInvalidConfigVersion     = errors.New("invalid config_version")
-	errControlDeploymentIDReq   = errors.New("control.deployment_id is required when mitm_enabled is true")
-	errInvalidServerAPIPort     = errors.New("server.api_port must be between 1 and 65535")
-	errInvalidServerMetricsPort = errors.New("server.metrics_port must be between 1 and 65535")
-	errInvalidServerProxyPort   = errors.New("server.proxy_port must be 8081 when proxy_enabled is true")
-	errInvalidServerConnectPort = errors.New("server.connect_port must be 8082 when connect_enabled is true")
-	errInvalidServerMITMPort    = errors.New("server.mitm_port must be 8083 when mitm_enabled is true")
-	errMITMCAFilesRequired      = errors.New("server.mitm_ca_cert_file and server.mitm_ca_key_file are required when mitm_enabled is true")
-	errInvalidMITMValidityDays  = errors.New("server.mitm_cert_validity_days must be positive")
-	errMITMLeafKMSRequired      = errors.New("server.mitm_leaf_kms_provider and server.mitm_leaf_kms_key_id are required when mitm_enabled is true")
-	errMITMLeafKMSSplitConfig   = errors.New("server.mitm_leaf_kms_provider and server.mitm_leaf_kms_key_id must be supplied together")
-	errMITMLeafKMSUnsafeConfig  = errors.New("server.mitm_leaf_kms_provider must not be plaintext or static-key")
-	errBodyThresholdRequired    = errors.New("body_transport.large_body_threshold_bytes must be positive")
-	errBodyResponseModeInvalid  = errors.New("body_transport.response_body_mode is unsupported")
-	errBodyRetentionInvalid     = errors.New("body_transport.object_storage.body_retention_days must be between 1 and 3")
-	errDirectStreamTimeout      = errors.New("body_transport.direct_stream.stream_timeout_ms must be positive when direct stream is enabled")
-	errObjectStorageIncomplete  = errors.New("body_transport.object_storage requires endpoint, bucket, region, access_key_env, and secret_key_env when enabled")
-	errInvalidEgressHealthPort  = errors.New("health_port must be between 1 and 65535")
-	errEgressPoolRefIncomplete  = errors.New("allowed_pools entries require both tenant_id and pool_id")
-	errInvalidEgressPoolConfig  = errors.New("upstream_connection_pool values must be positive when enabled")
+	errMissingControlSection  = errors.New("missing control section")
+	errMissingEgressSection   = errors.New("missing egress section")
+	errUnexpectedTrailingJSON = errors.New("unexpected trailing JSON data")
+	errInvalidConfigVersion   = errors.New("invalid config_version")
+	errInvalidAPIPort         = errors.New("server.api_port must be between 1 and 65535")
+	errInvalidMetricsPort     = errors.New("server.metrics_port must be between 1 and 65535")
+	errInvalidHealthPort      = errors.New("health_port must be between 1 and 65535")
+	errInvalidHeartbeat       = errors.New("heartbeat_interval_ms must be positive")
+	errOpenConfig             = errors.New("open config file")
 )
 
-// File is the top-level JSON envelope for config files.
+// File is the versioned top-level JSON configuration envelope.
 type File struct {
 	ConfigVersion string         `json:"config_version"`
 	Control       *ControlConfig `json:"control,omitempty"`
 	Egress        *EgressConfig  `json:"egress,omitempty"`
 }
 
-// ControlConfig is the control-service config block.
+// ControlConfig configures the Control service.
 type ControlConfig struct {
-	DeploymentID  string                     `json:"deployment_id,omitempty"`
-	Server        ControlServerConfig        `json:"server"`
-	Request       ControlRequestConfig       `json:"request"`
-	Transport     ControlTransportConfig     `json:"transport"`
-	BodyTransport ControlBodyTransportConfig `json:"body_transport"`
-	Worker        ControlWorkerConfig        `json:"worker"`
-	NATS          NATSConfig                 `json:"nats"`
-	Database      DatabaseConfig             `json:"database"`
-	HTTP2         ControlHTTP2Config         `json:"http2"`
+	Server    ControlServerConfig    `json:"server"`
+	Request   ControlRequestConfig   `json:"request"`
+	Transport ControlTransportConfig `json:"transport"`
+	NATS      NATSConfig             `json:"nats"`
 }
 
-// ControlWorkerConfig configures worker registration replay protection
-// (docs/planning/27-security-controls.md "Worker Credential Signing").
-type ControlWorkerConfig struct {
-	// RegistrationNonceTTLMS bounds how long a consumed registration nonce is
-	// remembered in Redis before it may be reused. Must comfortably exceed
-	// RegistrationClockSkewMS*2 so a nonce cannot expire and become
-	// replayable while still inside the accepted issued-at window.
-	RegistrationNonceTTLMS int `json:"registration_nonce_ttl_ms"`
-	// RegistrationClockSkewMS is the maximum allowed difference between a
-	// worker's issued-at timestamp and Control's receive time.
-	RegistrationClockSkewMS int `json:"registration_clock_skew_ms"`
-	// RegistrationFailOpenOnRedisOutage allows registration to proceed
-	// without nonce replay protection when Redis is unavailable. Disabled by
-	// default: docs/planning/27 requires registration to fail closed unless a
-	// deployment explicitly opts in.
-	RegistrationFailOpenOnRedisOutage bool `json:"registration_fail_open_on_redis_outage"`
-}
-
-// ControlServerConfig configures the control HTTP server.
+// ControlServerConfig configures Control's HTTP listeners.
 type ControlServerConfig struct {
-	Host                 string `json:"host"`
-	APIPort              int    `json:"api_port"`
-	MetricsPort          int    `json:"metrics_port"`
-	EgressMetricsEnabled bool   `json:"egress_metrics_enabled,omitempty"`
-	// MultiControlEnabled turns on cross-Control-instance admin cancellation
-	// (docs/implementation-history.md#p1-23): Control advertises each in-flight request's ownership
-	// in Redis and routes a cancel for a request owned by a sibling replica to
-	// that replica. Default off so a single-Control deployment pays no extra
-	// Redis round-trips (docs/planning/32 "Multiple Concurrent Control Replicas").
-	MultiControlEnabled  bool   `json:"multi_control_enabled,omitempty"`
-	ProxyEnabled         bool   `json:"proxy_enabled,omitempty"`
-	ProxyPort            int    `json:"proxy_port,omitempty"`
-	ConnectEnabled       bool   `json:"connect_enabled,omitempty"`
-	ConnectPort          int    `json:"connect_port,omitempty"`
-	MITMEnabled          bool   `json:"mitm_enabled,omitempty"`
-	MITMPort             int    `json:"mitm_port,omitempty"`
-	MITMCACertFile       string `json:"mitm_ca_cert_file,omitempty"`
-	MITMCAKeyFile        string `json:"mitm_ca_key_file,omitempty"`
-	MITMCertValidityDays int    `json:"mitm_cert_validity_days,omitempty"`
-	MITMLeafKMSProvider  string `json:"mitm_leaf_kms_provider,omitempty"`
-	MITMLeafKMSKeyID     string `json:"mitm_leaf_kms_key_id,omitempty"`
+	Host        string `json:"host"`
+	APIPort     int    `json:"api_port"`
+	MetricsPort int    `json:"metrics_port"`
 }
 
-// ControlRequestConfig configures request body and timeout limits.
+// ControlRequestConfig configures request limits.
 type ControlRequestConfig struct {
 	MaxInlineRequestBodyBytes  uint64 `json:"max_inline_request_body_bytes"`
 	MaxInlineResponseBodyBytes uint64 `json:"max_inline_response_body_bytes"`
 	MaxTimeoutMs               uint64 `json:"max_timeout_ms"`
 }
 
-// ControlTransportConfig configures the control transport limits.
+// ControlTransportConfig configures internal stream frames.
 type ControlTransportConfig struct {
 	MaxFrameDataBytes uint64 `json:"max_frame_data_bytes"`
 }
 
-// ControlBodyTransportConfig configures P2 large-body transport selection.
-type ControlBodyTransportConfig struct {
-	LargeBodyThresholdBytes uint64                  `json:"large_body_threshold_bytes,omitempty"`
-	ResponseBodyMode        string                  `json:"response_body_mode,omitempty"`
-	ObjectStorage           BodyObjectStorageConfig `json:"object_storage"`
-	DirectStream            BodyDirectStreamConfig  `json:"direct_stream"`
-}
-
-// BodyObjectStorageConfig configures the object-storage BodyRef transport.
-type BodyObjectStorageConfig struct {
-	Enabled           bool   `json:"enabled,omitempty"`
-	Endpoint          string `json:"endpoint,omitempty"`
-	Bucket            string `json:"bucket,omitempty"`
-	Region            string `json:"region,omitempty"`
-	AccessKeyEnv      string `json:"access_key_env,omitempty"`
-	SecretKeyEnv      string `json:"secret_key_env,omitempty"`
-	BodyRetentionDays int    `json:"body_retention_days,omitempty"`
-}
-
-// BodyDirectStreamConfig configures the direct stream BodyRef transport.
-type BodyDirectStreamConfig struct {
-	Enabled         bool   `json:"enabled,omitempty"`
-	Endpoint        string `json:"endpoint,omitempty"`
-	StreamTimeoutMS int    `json:"stream_timeout_ms,omitempty"`
-}
-
-// NATSConfig configures the NATS client connection.
+// NATSConfig configures a NATS connection.
 type NATSConfig struct {
 	Servers             []string `json:"servers"`
-	UserCredentialsFile string   `json:"user_credentials_file"`
-	ReconnectAttempts   int      `json:"reconnect_attempts"`
-	ReconnectWaitMS     int      `json:"reconnect_wait_ms"`
-	PingIntervalMS      int      `json:"ping_interval_ms"`
-	MaxPingFailures     int      `json:"max_ping_failures"`
-	MaxPayloadBytes     *uint64  `json:"max_payload_bytes"`
+	UserCredentialsFile string   `json:"user_credentials_file,omitempty"`
+	ReconnectAttempts   int      `json:"reconnect_attempts,omitempty"`
+	ReconnectWaitMS     int      `json:"reconnect_wait_ms,omitempty"`
+	PingIntervalMS      int      `json:"ping_interval_ms,omitempty"`
+	MaxPingFailures     int      `json:"max_ping_failures,omitempty"`
+	MaxPayloadBytes     *uint64  `json:"max_payload_bytes,omitempty"`
 }
 
-// PostgresConfig configures the Postgres connection pool.
-type PostgresConfig struct {
-	DSNEnv            string `json:"dsn_env"`
-	MaxOpenConns      int    `json:"max_open_conns"`
-	MaxIdleConns      int    `json:"max_idle_conns"`
-	ConnMaxLifetimeMS int    `json:"conn_max_lifetime_ms"`
-}
-
-// RedisConfig configures the Redis client connection used for rate limits,
-// quotas, sticky sessions, and config invalidation (docs/planning/21).
-type RedisConfig struct {
-	URLEnv         string `json:"url_env"`
-	DialTimeoutMS  int    `json:"dial_timeout_ms"`
-	ReadTimeoutMS  int    `json:"read_timeout_ms"`
-	WriteTimeoutMS int    `json:"write_timeout_ms"`
-}
-
-// ClickHouseConfig configures async telemetry writes (docs/planning/22). It is
-// optional: when Endpoint is empty, Control does not write telemetry (the
-// recorders stay no-op) and request transport is unaffected.
-type ClickHouseConfig struct {
-	Endpoint        string `json:"endpoint"`
-	Database        string `json:"database"`
-	UserEnv         string `json:"user_env"`
-	PasswordEnv     string `json:"password_env"`
-	MaxQueueEntries int    `json:"max_queue_entries"`
-	BatchSize       int    `json:"batch_size"`
-	FlushIntervalMS int    `json:"flush_interval_ms"`
-}
-
-// DatabaseConfig configures all database connections for control.
-type DatabaseConfig struct {
-	Postgres   PostgresConfig   `json:"postgres"`
-	Redis      RedisConfig      `json:"redis"`
-	ClickHouse ClickHouseConfig `json:"clickhouse"`
-}
-
-// EgressConfig is the egress-worker config block.
+// EgressConfig configures an Egress worker.
 type EgressConfig struct {
-	WorkerID string `json:"worker_id"`
-	// CredentialID identifies the worker_credentials row Control verifies
-	// PrivateKeyEd25519Env's matching public key against.
-	CredentialID string `json:"credential_id"`
-	// PrivateKeyEd25519Env is the name of an environment variable holding
-	// the worker's persistent ed25519 private key, base64-standard-encoded
-	// (32-byte seed or the full 64-byte private key). Secrets are never
-	// stored directly in the config file, matching every other credential
-	// field in this package (e.g. RedisConfig.URLEnv).
-	PrivateKeyEd25519Env string `json:"private_key_ed25519_env"`
-	HeartbeatIntervalMs  int    `json:"heartbeat_interval_ms"`
-	// HealthPort serves local /healthz and /readyz (docs/planning/23:
-	// "P0 should prefer direct local /healthz and /readyz" for egress).
+	WorkerID               string                             `json:"worker_id"`
+	HeartbeatIntervalMs    int                                `json:"heartbeat_interval_ms"`
 	HealthPort             int                                `json:"health_port"`
 	NATS                   NATSConfig                         `json:"nats"`
+	Capabilities           EgressCapabilities                 `json:"capabilities,omitzero"`
 	UpstreamConnectionPool EgressUpstreamConnectionPoolConfig `json:"upstream_connection_pool"`
-	// AllowedPools are the (tenant, pool) memberships the worker declares at
-	// registration. Control only routes a request to a worker whose declared
-	// pools include the request's target pool (worker_registry.CandidatesForPool),
-	// so a worker with no pools is never a dispatch candidate.
-	AllowedPools []EgressPoolRef `json:"allowed_pools,omitempty"`
-	// Capabilities are the capability claims the worker declares in its
-	// RegisterRequest (docs/planning/24-static-configuration.md
-	// `egress.capabilities.*`). Claims must be within the worker credential's
-	// allowed_capabilities scope or Control rejects the registration.
-	Capabilities EgressCapabilities `json:"capabilities,omitzero"`
-	HTTP2        EgressHTTP2Config  `json:"http2"`
+	HTTP2                  EgressHTTP2Config                  `json:"http2"`
 }
 
-// EgressCapabilities mirrors the `egress.capabilities.*` static config keys
-// from docs/planning/24-static-configuration.md. All lists default to empty;
-// SupportedIngressModes defaults to ["rest"] and MaxConcurrency falls back to
-// the binary's default when unset.
+// EgressCapabilities describes a worker's routing capabilities.
 type EgressCapabilities struct {
 	Tags                  []string `json:"tags,omitempty"`
 	Countries             []string `json:"countries,omitempty"`
@@ -254,9 +95,7 @@ type EgressCapabilities struct {
 	MaxConcurrency        uint32   `json:"max_concurrency,omitempty"`
 }
 
-// EgressUpstreamConnectionPoolConfig configures optional direct-local upstream
-// HTTP connection reuse. Disabled preserves P0 one-connection-per-request
-// transport behavior.
+// EgressUpstreamConnectionPoolConfig configures optional upstream reuse.
 type EgressUpstreamConnectionPoolConfig struct {
 	Enabled                   bool `json:"enabled"`
 	MaxIdleConnsPerTenantHost int  `json:"max_idle_conns_per_tenant_host"`
@@ -264,57 +103,13 @@ type EgressUpstreamConnectionPoolConfig struct {
 	MaxLifetimeMS             int  `json:"max_lifetime_ms"`
 }
 
-// ControlHTTP2Config configures Control HTTP/2 ALPN.
-type ControlHTTP2Config struct {
-	Enabled bool `json:"enabled"`
-}
-
-// EgressHTTP2Config configures egress HTTP/2 support.
+// EgressHTTP2Config configures outbound HTTP/2.
 type EgressHTTP2Config struct {
 	Enabled            bool `json:"enabled"`
 	FallbackCacheTTLMS int  `json:"fallback_cache_ttl_ms"`
 }
 
-func (h *EgressHTTP2Config) applyDefaults() {
-	if h.FallbackCacheTTLMS == 0 {
-		h.FallbackCacheTTLMS = 300_000 // 5 minutes
-	}
-}
-
-// UnmarshalJSON recognizes the retired nested credential object only so
-// validation reports the missing canonical flat fields instead of accepting it.
-func (e *EgressConfig) UnmarshalJSON(data []byte) error {
-	type egressConfig EgressConfig
-
-	var raw struct {
-		*egressConfig
-		Credential json.RawMessage `json:"credential,omitempty"`
-	}
-
-	raw.egressConfig = (*egressConfig)(e)
-
-	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.DisallowUnknownFields()
-
-	err := dec.Decode(&raw)
-	if err != nil {
-		return fmt.Errorf("decode egress config: %w", err)
-	}
-
-	if len(raw.Credential) > 0 {
-		return errLegacyWorkerCredential
-	}
-
-	return nil
-}
-
-// EgressPoolRef is one (tenant, pool) membership an egress worker declares.
-type EgressPoolRef struct {
-	TenantID string `json:"tenant_id"`
-	PoolID   string `json:"pool_id"`
-}
-
-// LoadControl reads and validates a control config file.
+// LoadControl reads a Control JSON configuration file.
 func LoadControl(path string) (ControlConfig, error) {
 	file, err := loadFile(path)
 	if err != nil {
@@ -325,6 +120,8 @@ func LoadControl(path string) (ControlConfig, error) {
 		return ControlConfig{}, errMissingControlSection
 	}
 
+	file.Control.applyDefaults()
+
 	err = file.Control.validate()
 	if err != nil {
 		return ControlConfig{}, err
@@ -333,16 +130,15 @@ func LoadControl(path string) (ControlConfig, error) {
 	return *file.Control, nil
 }
 
-// DefaultControl returns a local-development configuration that connects to
-// NATS on the standard loopback port.
+// DefaultControl returns the local Control defaults.
 func DefaultControl() ControlConfig {
-	cfg := ControlConfig{NATS: NATSConfig{Servers: []string{"nats://127.0.0.1:4222"}}}
+	cfg := ControlConfig{}
 	cfg.applyDefaults()
 
 	return cfg
 }
 
-// LoadEgress reads and validates an egress config file.
+// LoadEgress reads an Egress JSON configuration file.
 func LoadEgress(path string) (EgressConfig, error) {
 	file, err := loadFile(path)
 	if err != nil {
@@ -353,6 +149,8 @@ func LoadEgress(path string) (EgressConfig, error) {
 		return EgressConfig{}, errMissingEgressSection
 	}
 
+	file.Egress.applyDefaults()
+
 	err = file.Egress.validate()
 	if err != nil {
 		return EgressConfig{}, err
@@ -361,10 +159,10 @@ func LoadEgress(path string) (EgressConfig, error) {
 	return *file.Egress, nil
 }
 
-// DefaultEgress returns a local-development worker configuration.
+// DefaultEgress returns the local worker defaults.
 func DefaultEgress() EgressConfig {
-	cfg := EgressConfig{NATS: NATSConfig{Servers: []string{"nats://127.0.0.1:4222"}}}
-	_ = cfg.validate()
+	cfg := EgressConfig{}
+	cfg.applyDefaults()
 
 	return cfg
 }
@@ -375,90 +173,60 @@ func loadFile(path string) (File, error) {
 		return File{}, fmt.Errorf("read config file: %w", err)
 	}
 
-	f := os.NewFile(uintptr(fd), path)
-	if f == nil {
+	fileHandle := os.NewFile(uintptr(fd), path)
+	if fileHandle == nil {
 		_ = syscall.Close(fd)
 
-		return File{}, fmt.Errorf("read config file: %w", err)
+		return File{}, errOpenConfig
 	}
 
-	defer func() {
-		_ = f.Close()
-	}()
+	defer func() { _ = fileHandle.Close() }()
 
-	raw, err := io.ReadAll(f)
+	raw, err := io.ReadAll(fileHandle)
 	if err != nil {
 		return File{}, fmt.Errorf("read config file: %w", err)
 	}
 
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
 
 	var file File
 
-	err = dec.Decode(&file)
+	err = decoder.Decode(&file)
 	if err != nil {
-		return File{}, fmt.Errorf("decode config file: %w", err)
+		return File{}, fmt.Errorf("decode config: %w", err)
 	}
 
-	err = rejectTrailingJSON(dec)
-	if err != nil {
-		return File{}, fmt.Errorf("reject trailing json: %w", err)
+	var extra any
+
+	err = decoder.Decode(&extra)
+	if err == nil {
+		return File{}, errUnexpectedTrailingJSON
 	}
 
-	err = file.validateVersion()
-	if err != nil {
-		return File{}, err
+	if !errors.Is(err, io.EOF) {
+		return File{}, fmt.Errorf("decode trailing config: %w", err)
+	}
+
+	if file.ConfigVersion != Version {
+		return File{}, fmt.Errorf("%w: must be %q", errInvalidConfigVersion, Version)
 	}
 
 	return file, nil
 }
 
-func rejectTrailingJSON(dec *json.Decoder) error {
-	var extra any
-
-	err := dec.Decode(&extra)
-	if err == nil {
-		return errUnexpectedTrailingJSON
-	}
-
-	if errors.Is(err, io.EOF) {
-		return nil
-	}
-
-	return fmt.Errorf("decode trailing json: %w", err)
-}
-
-func (f File) validateVersion() error {
-	if f.ConfigVersion != Version {
-		return fmt.Errorf("%w: must be %q", errInvalidConfigVersion, Version)
-	}
-
-	return nil
-}
-
-func (c *ControlConfig) validate() error {
-	c.applyDefaults()
-
-	if c.Server.MITMEnabled && c.DeploymentID == "" {
-		return errControlDeploymentIDReq
-	}
-
-	err := c.Server.validate()
-	if err != nil {
-		return err
-	}
-
-	return c.BodyTransport.validate()
-}
-
 func (c *ControlConfig) applyDefaults() {
-	c.DeploymentID = strings.TrimSpace(c.DeploymentID)
-	if raw := os.Getenv("STRAW_CONTROL_DEPLOYMENT_ID"); raw != "" {
-		c.DeploymentID = strings.TrimSpace(raw)
+	if c.Server.Host == "" {
+		c.Server.Host = "0.0.0.0"
 	}
 
-	c.Server.applyDefaults()
+	if c.Server.APIPort == 0 {
+		c.Server.APIPort = 8080
+	}
+
+	if c.Server.MetricsPort == 0 {
+		c.Server.MetricsPort = 9090
+	}
 
 	if c.Request.MaxInlineRequestBodyBytes == 0 {
 		c.Request.MaxInlineRequestBodyBytes = 1_048_576
@@ -468,204 +236,84 @@ func (c *ControlConfig) applyDefaults() {
 		c.Request.MaxInlineResponseBodyBytes = 1_048_576
 	}
 
-	if c.Transport.MaxFrameDataBytes == 0 {
-		c.Transport.MaxFrameDataBytes = 1_048_576
-	}
-
-	c.BodyTransport.applyDefaults()
-
 	if c.Request.MaxTimeoutMs == 0 {
 		c.Request.MaxTimeoutMs = 120_000
 	}
 
-	c.Worker.applyDefaults()
+	if c.Transport.MaxFrameDataBytes == 0 {
+		c.Transport.MaxFrameDataBytes = 1_048_576
+	}
+
 	c.NATS.applyDefaults()
-	c.Database.applyDefaults()
 }
 
-// Normalized returns a config value with runtime defaults applied.
-func (c ControlBodyTransportConfig) Normalized() ControlBodyTransportConfig {
-	c.applyDefaults()
-
-	return c
-}
-
-func (c *ControlBodyTransportConfig) applyDefaults() {
-	if c.LargeBodyThresholdBytes == 0 {
-		c.LargeBodyThresholdBytes = DefaultLargeBodyThresholdBytes
+func (c ControlConfig) validate() error {
+	if c.Server.APIPort < 1 || c.Server.APIPort > 65535 {
+		return fmt.Errorf("%w: %d", errInvalidAPIPort, c.Server.APIPort)
 	}
 
-	if c.ResponseBodyMode == "" {
-		c.ResponseBodyMode = BodyResponseModeStreamThroughControlTeeObjectStorage
-	}
-
-	if c.ObjectStorage.BodyRetentionDays == 0 {
-		c.ObjectStorage.BodyRetentionDays = DefaultBodyRetentionDays
-	}
-
-	if c.DirectStream.Enabled && c.DirectStream.StreamTimeoutMS == 0 {
-		c.DirectStream.StreamTimeoutMS = DefaultDirectStreamTimeoutMS
-	}
-}
-
-func (c ControlBodyTransportConfig) validate() error {
-	if c.LargeBodyThresholdBytes == 0 {
-		return errBodyThresholdRequired
-	}
-
-	if c.ResponseBodyMode != BodyResponseModeStreamThroughControlTeeObjectStorage {
-		return fmt.Errorf("%w: %s", errBodyResponseModeInvalid, c.ResponseBodyMode)
-	}
-
-	if c.ObjectStorage.BodyRetentionDays < DefaultBodyRetentionDays || c.ObjectStorage.BodyRetentionDays > MaxBodyRetentionDays {
-		return errBodyRetentionInvalid
-	}
-
-	if c.ObjectStorage.Enabled && !c.ObjectStorage.complete() {
-		return errObjectStorageIncomplete
-	}
-
-	if c.DirectStream.Enabled && c.DirectStream.StreamTimeoutMS <= 0 {
-		return errDirectStreamTimeout
+	if c.Server.MetricsPort < 1 || c.Server.MetricsPort > 65535 {
+		return fmt.Errorf("%w: %d", errInvalidMetricsPort, c.Server.MetricsPort)
 	}
 
 	return nil
 }
 
-func (o BodyObjectStorageConfig) complete() bool {
-	return o.Endpoint != "" && o.Bucket != "" && o.Region != "" && o.AccessKeyEnv != "" && o.SecretKeyEnv != ""
-}
-
-func (s *ControlServerConfig) applyDefaults() {
-	if s.Host == "" {
-		s.Host = "0.0.0.0"
+func (e *EgressConfig) applyDefaults() {
+	if e.WorkerID == "" {
+		e.WorkerID = "egress-1"
 	}
 
-	if s.APIPort == 0 {
-		s.APIPort = 8080
+	if e.HeartbeatIntervalMs == 0 {
+		e.HeartbeatIntervalMs = 5000
 	}
 
-	if s.MetricsPort == 0 {
-		s.MetricsPort = 9090
+	if e.HealthPort == 0 {
+		e.HealthPort = defaultEgressHealthPort
 	}
 
-	if s.ProxyEnabled && s.ProxyPort == 0 {
-		s.ProxyPort = 8081
+	if len(e.Capabilities.SupportedIngressModes) == 0 {
+		e.Capabilities.SupportedIngressModes = []string{"rest"}
 	}
 
-	if s.ConnectEnabled && s.ConnectPort == 0 {
-		s.ConnectPort = 8082
+	if e.HTTP2.FallbackCacheTTLMS == 0 {
+		e.HTTP2.FallbackCacheTTLMS = 300_000
 	}
 
-	s.applyMITMDefaults()
-}
+	if e.UpstreamConnectionPool.Enabled {
+		if e.UpstreamConnectionPool.MaxIdleConnsPerTenantHost == 0 {
+			e.UpstreamConnectionPool.MaxIdleConnsPerTenantHost = 8
+		}
 
-func (s *ControlServerConfig) applyMITMDefaults() {
-	if s.MITMEnabled && s.MITMPort == 0 {
-		s.MITMPort = 8083
-	}
+		if e.UpstreamConnectionPool.IdleTimeoutMS == 0 {
+			e.UpstreamConnectionPool.IdleTimeoutMS = 30_000
+		}
 
-	if raw := os.Getenv("STRAW_MITM_CERT_VALIDITY_DAYS"); raw != "" {
-		days, err := strconv.Atoi(raw)
-		if err == nil {
-			s.MITMCertValidityDays = days
-		} else {
-			s.MITMCertValidityDays = -1
+		if e.UpstreamConnectionPool.MaxLifetimeMS == 0 {
+			e.UpstreamConnectionPool.MaxLifetimeMS = 300_000
 		}
 	}
 
-	if raw := os.Getenv("STRAW_MITM_LEAF_KMS_PROVIDER"); raw != "" {
-		s.MITMLeafKMSProvider = raw
-	}
-
-	if raw := os.Getenv("STRAW_MITM_LEAF_KMS_KEY_ID"); raw != "" {
-		s.MITMLeafKMSKeyID = raw
-	}
-
-	if s.MITMEnabled && s.MITMCertValidityDays == 0 {
-		s.MITMCertValidityDays = 30
-	}
+	e.NATS.applyDefaults()
 }
 
-func (w *ControlWorkerConfig) applyDefaults() {
-	if w.RegistrationClockSkewMS == 0 {
-		w.RegistrationClockSkewMS = 60_000
+func (e EgressConfig) validate() error {
+	if e.HealthPort < 1 || e.HealthPort > 65535 {
+		return fmt.Errorf("%w: %d", errInvalidHealthPort, e.HealthPort)
 	}
 
-	if w.RegistrationNonceTTLMS == 0 {
-		w.RegistrationNonceTTLMS = 300_000
-	}
-}
-
-func (d *DatabaseConfig) applyDefaults() {
-	d.Postgres.applyDefaults()
-	d.Redis.applyDefaults()
-	d.ClickHouse.applyDefaults()
-}
-
-func (c *ClickHouseConfig) applyDefaults() {
-	if c.Endpoint == "" {
-		return
+	if e.HeartbeatIntervalMs < 1 {
+		return errInvalidHeartbeat
 	}
 
-	if c.Database == "" {
-		c.Database = "straw"
-	}
-
-	if c.UserEnv == "" {
-		c.UserEnv = "STRAW_CLICKHOUSE_USER"
-	}
-
-	if c.PasswordEnv == "" {
-		c.PasswordEnv = "STRAW_CLICKHOUSE_PASSWORD"
-	}
-
-	if c.MaxQueueEntries == 0 {
-		c.MaxQueueEntries = 10_000
-	}
-
-	if c.BatchSize == 0 {
-		c.BatchSize = 500
-	}
-
-	if c.FlushIntervalMS == 0 {
-		c.FlushIntervalMS = 1000
-	}
-}
-
-func (p *PostgresConfig) applyDefaults() {
-	if p.MaxOpenConns == 0 {
-		p.MaxOpenConns = 20
-	}
-
-	if p.MaxIdleConns == 0 {
-		p.MaxIdleConns = 5
-	}
-
-	if p.ConnMaxLifetimeMS == 0 {
-		p.ConnMaxLifetimeMS = 1_800_000 // 30 minutes
-	}
-}
-
-func (r *RedisConfig) applyDefaults() {
-	if r.URLEnv == "" {
-		r.URLEnv = "STRAW_REDIS_URL"
-	}
-
-	if r.DialTimeoutMS == 0 {
-		r.DialTimeoutMS = 2000
-	}
-
-	if r.ReadTimeoutMS == 0 {
-		r.ReadTimeoutMS = 500
-	}
-
-	if r.WriteTimeoutMS == 0 {
-		r.WriteTimeoutMS = 500
-	}
+	return nil
 }
 
 func (n *NATSConfig) applyDefaults() {
+	if len(n.Servers) == 0 {
+		n.Servers = []string{defaultNATSServer}
+	}
+
 	if n.ReconnectAttempts == 0 {
 		n.ReconnectAttempts = 10
 	}
@@ -681,161 +329,4 @@ func (n *NATSConfig) applyDefaults() {
 	if n.MaxPingFailures == 0 {
 		n.MaxPingFailures = 3
 	}
-}
-
-func (s ControlServerConfig) validate() error {
-	if s.Host == "" {
-		return errServerHostRequired
-	}
-
-	if s.APIPort < 1 || s.APIPort > 65535 {
-		return fmt.Errorf("%w: %d", errInvalidServerAPIPort, s.APIPort)
-	}
-
-	if s.MetricsPort < 1 || s.MetricsPort > 65535 {
-		return fmt.Errorf("%w: %d", errInvalidServerMetricsPort, s.MetricsPort)
-	}
-
-	if s.ProxyEnabled && s.ProxyPort != 8081 {
-		return fmt.Errorf("%w: %d", errInvalidServerProxyPort, s.ProxyPort)
-	}
-
-	if s.ConnectEnabled && s.ConnectPort != 8082 {
-		return fmt.Errorf("%w: %d", errInvalidServerConnectPort, s.ConnectPort)
-	}
-
-	return s.validateMITM()
-}
-
-func (s ControlServerConfig) validateMITM() error {
-	err := s.validateMITMListener()
-	if err != nil {
-		return err
-	}
-
-	err = s.validateMITMLeafStorage()
-	if err != nil {
-		return err
-	}
-
-	return s.validateMITMLeafKMS()
-}
-
-func (s ControlServerConfig) validateMITMListener() error {
-	if s.MITMEnabled && s.MITMPort != 8083 {
-		return fmt.Errorf("%w: %d", errInvalidServerMITMPort, s.MITMPort)
-	}
-
-	if s.MITMEnabled && (s.MITMCACertFile == "" || s.MITMCAKeyFile == "") {
-		return errMITMCAFilesRequired
-	}
-
-	if s.MITMCertValidityDays < 0 || (s.MITMEnabled && s.MITMCertValidityDays == 0) {
-		return errInvalidMITMValidityDays
-	}
-
-	return nil
-}
-
-func (s ControlServerConfig) validateMITMLeafStorage() error {
-	if s.MITMEnabled && (s.MITMLeafKMSProvider == "" || s.MITMLeafKMSKeyID == "") {
-		return errMITMLeafKMSRequired
-	}
-
-	return nil
-}
-
-func (s ControlServerConfig) validateMITMLeafKMS() error {
-	if (s.MITMLeafKMSProvider == "") != (s.MITMLeafKMSKeyID == "") {
-		return errMITMLeafKMSSplitConfig
-	}
-
-	switch strings.ToLower(strings.TrimSpace(s.MITMLeafKMSProvider)) {
-	case "plaintext", "static", "static-key", "deployment-key":
-		return errMITMLeafKMSUnsafeConfig
-	default:
-		return nil
-	}
-}
-
-func (e *EgressConfig) validate() error {
-	if e.WorkerID == "" {
-		e.WorkerID = "egress-1"
-	}
-
-	if e.HeartbeatIntervalMs <= 0 {
-		e.HeartbeatIntervalMs = 5000
-	}
-
-	if e.HealthPort == 0 {
-		e.HealthPort = defaultEgressHealthPort
-	}
-
-	if e.HealthPort < 1 || e.HealthPort > 65535 {
-		return fmt.Errorf("%w: %d", errInvalidEgressHealthPort, e.HealthPort)
-	}
-
-	e.UpstreamConnectionPool.applyDefaults()
-
-	err := e.UpstreamConnectionPool.validate()
-	if err != nil {
-		return err
-	}
-
-	if len(e.AllowedPools) == 0 {
-		e.AllowedPools = []EgressPoolRef{{TenantID: DefaultDeploymentID, PoolID: DefaultPoolID}}
-	}
-
-	err = validateEgressPoolRefs(e.AllowedPools)
-	if err != nil {
-		return err
-	}
-
-	e.Capabilities.applyDefaults()
-	e.NATS.applyDefaults()
-	e.HTTP2.applyDefaults()
-
-	return nil
-}
-
-func (c *EgressCapabilities) applyDefaults() {
-	if len(c.SupportedIngressModes) == 0 {
-		c.SupportedIngressModes = []string{defaultIngressMode}
-	}
-}
-
-func (p *EgressUpstreamConnectionPoolConfig) applyDefaults() {
-	if p.MaxIdleConnsPerTenantHost == 0 {
-		p.MaxIdleConnsPerTenantHost = 2
-	}
-
-	if p.IdleTimeoutMS == 0 {
-		p.IdleTimeoutMS = 30_000
-	}
-
-	if p.MaxLifetimeMS == 0 {
-		p.MaxLifetimeMS = 300_000
-	}
-}
-
-func (p EgressUpstreamConnectionPoolConfig) validate() error {
-	if !p.Enabled {
-		return nil
-	}
-
-	if p.MaxIdleConnsPerTenantHost <= 0 || p.IdleTimeoutMS <= 0 || p.MaxLifetimeMS <= 0 {
-		return errInvalidEgressPoolConfig
-	}
-
-	return nil
-}
-
-func validateEgressPoolRefs(refs []EgressPoolRef) error {
-	for _, p := range refs {
-		if p.TenantID == "" || p.PoolID == "" {
-			return errEgressPoolRefIncomplete
-		}
-	}
-
-	return nil
 }

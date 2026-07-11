@@ -1,4 +1,4 @@
-.PHONY: check commit fmt-check test test-python postgres-migrations-check lint load-smoke production-deploy-check docs-website dev dev-status dev-reset dev-down dev-logs infra-up infra-status infra-reset infra-down infra-clean infra-logs
+.PHONY: check commit fmt-check test test-python lint load-smoke production-deploy-check docs-website dev dev-status dev-reset dev-down dev-logs infra-up infra-status infra-reset infra-down infra-clean infra-logs
 
 test:
 	go test ./...
@@ -26,9 +26,6 @@ docs-website:
 	cd website && npm run build
 
 check: fmt-check test test-python lint
-
-postgres-migrations-check:
-	./scripts/check-postgres-migrations.sh
 
 dev:
 	@./deploy/local/scripts/dev-up.sh

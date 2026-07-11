@@ -265,27 +265,6 @@ func (a *Assignment) Cancel() (bool, bool) {
 	return send, true
 }
 
-// AuthorizeAdminCancel enforces the admin-cancel authorization rule
-// (docs/planning task 10, docs/planning/30 "Worker admin" row): a system_admin
-// (platform scope) may cancel any request; a tenant-scoped caller may cancel
-// only a request that belongs to its own tenant. A mismatch returns
-// ErrInsufficientPermissions without confirming whether the request exists.
-func AuthorizeAdminCancel(identity Identity, requestTenantID string) error {
-	if identity.IsPlatform() {
-		if identity.Role != RoleSystemAdmin {
-			return ErrInsufficientPermissions
-		}
-
-		return nil
-	}
-
-	if identity.TenantID == "" || identity.TenantID != requestTenantID {
-		return ErrInsufficientPermissions
-	}
-
-	return nil
-}
-
 // ackDeadline is a small helper for callers enforcing the assignment ack
 // timeout bounded by the remaining total deadline (docs/planning/09 "Timeout
 // Hierarchy"). It returns the earlier of now+ackTimeout and the total deadline.

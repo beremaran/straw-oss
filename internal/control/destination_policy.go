@@ -13,6 +13,46 @@ import (
 	"github.com/beremaran/straw/v2/internal/config"
 )
 
+const (
+	denyRuleTypeHost              = "host"
+	denyRuleTypeHostSuffix        = "host_suffix"
+	denyRuleTypeCIDR              = "cidr"
+	denyRuleTypeCNAMESuffix       = "cname_suffix"
+	denyRuleTypeMetadataIP        = "metadata_ip"
+	denyRuleTypePrivateRange      = "private_range"
+	denyRuleActionDeny            = "deny"
+	denyRuleActionAllowOverride   = "allow_override"
+	injectionOpSet                = "set"
+	injectionOpAppend             = "append"
+	injectionOpRemove             = "remove"
+	deniedInjectionHeaderPrefix   = "x-straw-"
+	fingerprintProfileChrome120   = "chrome_120"
+	fingerprintProfileScopeGlobal = "global"
+)
+
+var (
+	denyRuleCIDRTypes            = map[string]bool{denyRuleTypeCIDR: true, denyRuleTypeMetadataIP: true, denyRuleTypePrivateRange: true}
+	denyRuleHostTypes            = map[string]bool{denyRuleTypeHost: true, denyRuleTypeHostSuffix: true}
+	alwaysDeniedInjectionHeaders = map[string]bool{
+		denyRuleTypeHost:             true,
+		headerNameContentLength:      true,
+		headerNameTransferEncoding:   true,
+		headerNameConnection:         true,
+		headerNameProxyAuthorization: true,
+	}
+)
+
+func denyRuleValue(rule config.DenyRule) string {
+	switch {
+	case denyRuleCIDRTypes[rule.RuleType]:
+		return rule.NormalizedCIDR
+	case rule.RuleType == denyRuleTypeCNAMESuffix:
+		return rule.NormalizedName
+	default:
+		return rule.NormalizedHost
+	}
+}
+
 // This file implements the P0 Control-side destination-policy resolver
 // (docs/implementation-history.md#p0-22, docs/planning/27-security-controls.md,
 // docs/planning/16-egress-execution.md). It evaluates the immutable tenant
@@ -69,7 +109,7 @@ var metadataIPs = []netip.Addr{
 // start"). TargetURL must already be validated by ValidateRequest (request.go):
 // scheme http/https, no fragment, no userinfo, non-empty host.
 type DestinationPolicyRequest struct {
-	Snapshot                    config.TenantSnapshot
+	Snapshot                    config.Snapshot
 	TargetURL                   *url.URL
 	RequestedFingerprintProfile string // empty means baseline transport
 

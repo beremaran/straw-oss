@@ -489,6 +489,13 @@ func (p *StaticPoolPolicyProvider) PoolPolicy(tenantID, poolID string) PoolPolic
 
 // ---- sticky session store ----
 
+// StickyBackend stores optional session-to-worker pins.
+type StickyBackend interface {
+	Get(tenantID, sessionID string) (string, bool)
+	Set(tenantID, sessionID, workerID string, ttl time.Duration)
+	Refresh(tenantID, sessionID, workerID string, ttl time.Duration)
+}
+
 type stickyEntry struct {
 	workerID  string
 	expiresAt time.Time
