@@ -382,3 +382,30 @@ func TestViewerCannotExecuteDataPlaneRequest(t *testing.T) {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusForbidden)
 	}
 }
+
+func TestDeploymentAuthenticatorAllowsAnonymousLocalRequests(t *testing.T) {
+	t.Parallel()
+
+	identity, err := NewDeploymentAuthenticator("").Authenticate(context.Background(), "")
+	if err != nil {
+		t.Fatalf("Authenticate() error = %v", err)
+	}
+	if identity.TenantID != "default" || !CanExecuteDataPlane(identity) {
+		t.Fatalf("identity = %+v, want deployment requester", identity)
+	}
+}
+
+func TestDeploymentAuthenticatorChecksConfiguredBearerToken(t *testing.T) {
+	t.Parallel()
+
+	auth := NewDeploymentAuthenticator("secret")
+	_, err := auth.Authenticate(context.Background(), "Bearer wrong")
+	if !errors.Is(err, ErrAuthFailure) {
+		t.Fatalf("wrong token error = %v, want ErrAuthFailure", err)
+	}
+
+	_, err = auth.Authenticate(context.Background(), "Bearer secret")
+	if err != nil {
+		t.Fatalf("correct token error = %v", err)
+	}
+}

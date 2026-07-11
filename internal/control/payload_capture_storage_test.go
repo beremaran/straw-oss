@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -318,25 +317,5 @@ func TestHTTPClickHouseSinkPayloadCaptureNon2xx(t *testing.T) {
 	err := sink.WritePayloadCaptureEvents(context.Background(), []PayloadCaptureEvent{{RequestID: "r1"}})
 	if err == nil {
 		t.Fatal("WritePayloadCaptureEvents() error = nil, want non-2xx error")
-	}
-}
-
-func TestPayloadCaptureSchemaRetentionAndRefs(t *testing.T) {
-	b, err := os.ReadFile("../../deploy/local/clickhouse-schema.sql")
-	if err != nil {
-		t.Fatalf("read clickhouse schema: %v", err)
-	}
-
-	schema := string(b)
-	for _, want := range []string{
-		"CREATE TABLE IF NOT EXISTS straw.payload_capture_events",
-		"request_body_ref  String",
-		"response_body_ref String",
-		"redacted_fields   Array(String)",
-		"TTL toDateTime(captured_at) + INTERVAL 7 DAY",
-	} {
-		if !strings.Contains(schema, want) {
-			t.Fatalf("payload_capture_events schema missing %q", want)
-		}
 	}
 }

@@ -1,47 +1,8 @@
 {
   "config_version": "v1",
   "control": {
-    "deployment_id": "local-dev",
-    "server": {
-      "host": "0.0.0.0",
-      "api_port": 8080,
-      "metrics_port": 9090,
-      "egress_metrics_enabled": true,
-      "mitm_enabled": true,
-      "mitm_port": 8083,
-      "mitm_ca_cert_file": "/etc/straw/mitm-ca/ca.pem",
-      "mitm_ca_key_file": "/etc/straw/mitm-ca/ca-key.pem",
-      "mitm_cert_validity_days": 30,
-      "mitm_leaf_kms_provider": "aws-kms",
-      "mitm_leaf_kms_key_id": "arn:aws:kms:us-east-1:000000000000:key/dev"
-    },
-    "http2": {
-      "enabled": true
-    },
-    "request": {
-      "max_inline_request_body_bytes": 1048576,
-      "max_inline_response_body_bytes": 1048576,
-      "max_timeout_ms": 120000
-    },
-    "transport": {
-      "max_frame_data_bytes": 1048576
-    },
     "nats": {
       "servers": ["nats://nats:4222"]
-    },
-    "database": {
-      "postgres": {
-        "dsn_env": "STRAW_POSTGRES_DSN"
-      },
-      "redis": {
-        "url_env": "STRAW_REDIS_URL"
-      },
-      "clickhouse": {
-        "endpoint": "http://clickhouse:8123",
-        "database": "straw",
-        "user_env": "STRAW_CLICKHOUSE_USER",
-        "password_env": "STRAW_CLICKHOUSE_PASSWORD"
-      }
     }
   }
 }

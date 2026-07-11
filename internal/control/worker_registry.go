@@ -12,6 +12,7 @@ import (
 	"time"
 
 	strawpb "github.com/beremaran/straw/v2/api/proto/straw/v1"
+	"github.com/beremaran/straw/v2/internal/config"
 	"github.com/beremaran/straw/v2/internal/natsx"
 )
 
@@ -215,15 +216,26 @@ type WorkerRuntimeStore interface {
 // state can be backed by Redis with TTLs while admin overrides remain durable
 // config rehydrated from Postgres.
 type WorkerRegistry struct {
-	mu        sync.Mutex
-	now       func() time.Time
-	timings   WorkerTimings
-	creds     WorkerCredentialStore
-	workers   map[string]*workerEntry
-	runtime   WorkerRuntimeStore
-	events    WorkerEventRecorder
-	nonces    WorkerNonceStore
-	regPolicy WorkerRegistrationPolicy
+	mu             sync.Mutex
+	now            func() time.Time
+	timings        WorkerTimings
+	creds          WorkerCredentialStore
+	workers        map[string]*workerEntry
+	runtime        WorkerRuntimeStore
+	events         WorkerEventRecorder
+	nonces         WorkerNonceStore
+	regPolicy      WorkerRegistrationPolicy
+	deploymentMode bool
+}
+
+// NewDeploymentWorkerRegistry builds a registry for a single self-hosted
+// deployment. Access to NATS is the worker trust boundary, so registration
+// does not require a database-provisioned credential.
+func NewDeploymentWorkerRegistry(timings WorkerTimings, now func() time.Time) *WorkerRegistry {
+	r := NewWorkerRegistry(nil, timings, now)
+	r.deploymentMode = true
+
+	return r
 }
 
 // NewWorkerRegistry builds a registry. now may be nil (defaults to
@@ -301,23 +313,20 @@ func (r *WorkerRegistry) Register(ctx context.Context, req *strawpb.RegisterRequ
 		return RegisterOutcome{Reason: RejectInvalidWorkerID}, nil
 	}
 
-	cred, err := r.creds.Get(ctx, req.GetCredentialId())
-	if err != nil {
-		return RegisterOutcome{Reason: RejectUnknownCredential}, nil
-	}
-
-	reason := rejectRegisterRequest(cred, req)
+	cred, reason := registrationCredential(ctx, r, req)
 	if reason != "" {
 		return RegisterOutcome{Reason: reason}, nil
 	}
 
-	reason, err = r.checkRegistrationReplay(ctx, cred.ID, req)
-	if err != nil {
-		return RegisterOutcome{}, err
-	}
+	if !r.deploymentMode {
+		reason, err = r.checkRegistrationReplay(ctx, cred.ID, req)
+		if err != nil {
+			return RegisterOutcome{}, err
+		}
 
-	if reason != "" {
-		return RegisterOutcome{Reason: reason}, nil
+		if reason != "" {
+			return RegisterOutcome{Reason: reason}, nil
+		}
 	}
 
 	sessionID, err := newSessionID()
@@ -353,15 +362,52 @@ func (r *WorkerRegistry) Register(ctx context.Context, req *strawpb.RegisterRequ
 	return RegisterOutcome{OK: true, SessionID: sessionID}, nil
 }
 
+func registrationCredential(ctx context.Context, r *WorkerRegistry, req *strawpb.RegisterRequest) (WorkerCredential, string) {
+	if r.deploymentMode {
+		if req.GetProtocolMajor() != ProtocolMajor {
+			return WorkerCredential{}, RejectIncompatibleProto
+		}
+
+		if reason := rejectFingerprintProfileCapabilities(req); reason != "" {
+			return WorkerCredential{}, reason
+		}
+
+		pools := poolRefsToAllowed(req.GetAllowedPools())
+		if len(pools) == 0 {
+			pools = []AllowedPool{{TenantID: config.DefaultDeploymentID, PoolID: config.DefaultPoolID}}
+		}
+
+		return WorkerCredential{
+			ID:           "deployment",
+			Status:       WorkerCredentialStatusActive,
+			ExecutorType: req.GetExecutorType(),
+			TenantScope:  []string{config.DefaultDeploymentID},
+			AllowedPools: pools,
+		}, ""
+	}
+
+	cred, err := r.creds.Get(ctx, req.GetCredentialId())
+	if err != nil {
+		return WorkerCredential{}, RejectUnknownCredential
+	}
+
+	return cred, rejectRegisterRequest(cred, req)
+}
+
 // newRuntimeSession builds the ephemeral session state for a successful
 // registration.
 func newRuntimeSession(sessionID string, cred WorkerCredential, req *strawpb.RegisterRequest, now time.Time) *runtimeSession {
+	pools := poolRefsToAllowed(req.GetAllowedPools())
+	if len(pools) == 0 {
+		pools = append([]AllowedPool(nil), cred.AllowedPools...)
+	}
+
 	return &runtimeSession{
 		sessionID:                    sessionID,
 		executorType:                 req.GetExecutorType(),
 		credentialID:                 req.GetCredentialId(),
 		tenantScope:                  append([]string(nil), cred.TenantScope...),
-		pools:                        append([]AllowedPool(nil), poolRefsToAllowed(req.GetAllowedPools())...),
+		pools:                        pools,
 		tags:                         append([]string(nil), req.GetTags()...),
 		countries:                    append([]string(nil), req.GetCountries()...),
 		regions:                      append([]string(nil), req.GetRegions()...),

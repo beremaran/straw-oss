@@ -2,8 +2,13 @@ package control
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
+
+	"github.com/beremaran/straw/v2/internal/config"
 )
+
+const deploymentIdentityID = "deployment"
 
 // ScopeType distinguishes platform-scoped credentials from tenant-scoped
 // credentials, per docs/planning/06-identity-roles-and-tenant-isolation.md.
@@ -78,9 +83,11 @@ var (
 // Authenticator resolves a bearer token into an Identity by prefix lookup
 // followed by constant-time secret comparison.
 type Authenticator struct {
-	store   APIKeyStore
-	pepper  []byte
-	tenants TenantStore
+	store           APIKeyStore
+	pepper          []byte
+	tenants         TenantStore
+	deploymentToken string
+	deploymentMode  bool
 }
 
 // NewAuthenticator builds an Authenticator backed by store. pepper may be
@@ -88,6 +95,13 @@ type Authenticator struct {
 // from a secret manager or environment variable.
 func NewAuthenticator(store APIKeyStore, pepper []byte) *Authenticator {
 	return &Authenticator{store: store, pepper: pepper}
+}
+
+// NewDeploymentAuthenticator authenticates the single deployment boundary.
+// An empty token allows unauthenticated requests for local development. A
+// non-empty token requires an exact Bearer token match.
+func NewDeploymentAuthenticator(token string) *Authenticator {
+	return &Authenticator{deploymentToken: token, deploymentMode: true}
 }
 
 // SetTenantStore wires tenant status enforcement into Authenticate: a
@@ -106,6 +120,10 @@ func (a *Authenticator) SetTenantStore(tenants TenantStore) *Authenticator {
 // "wrong secret" from "revoked key" — all such cases collapse to
 // ErrAuthFailure so callers cannot probe key validity.
 func (a *Authenticator) Authenticate(ctx context.Context, authorizationHeader string) (Identity, error) {
+	if a.deploymentMode {
+		return a.authenticateDeployment(authorizationHeader)
+	}
+
 	token, err := BearerToken(authorizationHeader)
 	if err != nil {
 		return Identity{}, ErrAuthFailure
@@ -144,6 +162,22 @@ func (a *Authenticator) Authenticate(ctx context.Context, authorizationHeader st
 	}
 
 	return Identity{}, ErrAuthFailure
+}
+
+func (a *Authenticator) authenticateDeployment(authorizationHeader string) (Identity, error) {
+	if a.deploymentToken != "" {
+		token, err := BearerToken(authorizationHeader)
+		if err != nil || len(token) != len(a.deploymentToken) || subtle.ConstantTimeCompare([]byte(token), []byte(a.deploymentToken)) != 1 {
+			return Identity{}, ErrAuthFailure
+		}
+	}
+
+	return Identity{
+		APIKeyID:  deploymentIdentityID,
+		ScopeType: ScopeTenant,
+		TenantID:  config.DefaultDeploymentID,
+		Role:      RoleRequester,
+	}, nil
 }
 
 // checkTenantActive enforces tenant status for a tenant-scoped candidate

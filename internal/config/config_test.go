@@ -53,7 +53,7 @@ func TestLoadControl(t *testing.T) {
 					"deployment_id": "dep_test",
 					"server": {
 						"host": "127.0.0.1",
-						"api_port": 0,
+						"api_port": -1,
 						"metrics_port": 9090
 					}
 				}
@@ -628,12 +628,11 @@ func TestLoadEgress(t *testing.T) {
 			}`,
 		},
 		{
-			name: "missing worker id",
+			name: "minimal local config",
 			config: `{
 				"config_version": "v1",
 				"egress": {}
 			}`,
-			wantErr: "worker_id is required",
 		},
 		{
 			name: "missing credential id",
@@ -643,7 +642,6 @@ func TestLoadEgress(t *testing.T) {
 					"worker_id": "egress-local-001"
 				}
 			}`,
-			wantErr: "credential_id is required",
 		},
 		{
 			name: "missing private key env",
@@ -654,7 +652,6 @@ func TestLoadEgress(t *testing.T) {
 					"credential_id": "wcred_test"
 				}
 			}`,
-			wantErr: "private_key_ed25519_env is required",
 		},
 		{
 			name: configTestUnknownField,
@@ -888,8 +885,8 @@ func TestLoadEgressCredentialKeysAreFlat(t *testing.T) {
 	}`)
 
 	_, err = LoadEgress(path)
-	if err == nil || !strings.Contains(err.Error(), "credential_id is required") {
-		t.Fatalf("LoadEgress() error = %v, want substring %q", err, "credential_id is required")
+	if err == nil || !strings.Contains(err.Error(), "egress.credential is no longer supported") {
+		t.Fatalf("LoadEgress() error = %v, want legacy credential rejection", err)
 	}
 }
 
