@@ -65,6 +65,8 @@ multi-tenant platform inside the open-source package.
 - `internal/natsx`: NATS connection and subjects
 - [`straw-protos`](https://github.com/beremaran/straw-protos): canonical language-neutral worker protocol
 - [`straw-protos-go`](https://github.com/beremaran/straw-protos-go): exact-tag Go bindings consumed by this runtime
+- [`straw-protos-python`](https://github.com/beremaran/straw-protos-python): exact-tag Python bindings consumed by the
+  Python SDK
 - [`straw-sdk-go`](https://github.com/beremaran/straw-sdk-go): Go client and common worker SDK machinery
 - [`straw-sdk-python`](https://github.com/beremaran/straw-sdk-python): Python client and common worker SDK machinery
 - `deploy/local`: supported development stack
