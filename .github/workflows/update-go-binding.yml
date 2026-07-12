@@ -25,7 +25,7 @@ jobs:
           app-id: ${{ vars.STRAW_RELEASE_APP_ID }}
           private-key: ${{ secrets.STRAW_RELEASE_APP_PRIVATE_KEY }}
           owner: beremaran
-          repositories: straw-protos-go,straw-oss
+          repositories: straw-protos-go,straw-protos-python,straw-sdk-go,straw-sdk-python,straw-oss
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           token: ${{ steps.app-token.outputs.token }}

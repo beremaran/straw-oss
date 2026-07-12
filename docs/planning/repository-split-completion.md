@@ -2,7 +2,7 @@
 
 Date: 2026-07-13
 
-Status: technical cutover complete; final `straw-oss` owner review, merge, and default-branch activation remain.
+Status: complete.
 
 All repositories and releases listed here are private. Public launch, external Python publication, public Go module
 proxy availability, long-term compatibility policy, and coordinated public versioning remain deferred.
@@ -16,7 +16,7 @@ proxy availability, long-term compatibility policy, and coordinated public versi
 | `beremaran/straw-protos-python` | distribution `straw-protos`, import `straw_protos` | `v0.3.0` | `8b5bd437ad9c6f5eb29ea84dbccb8c54bdb74007` |
 | `beremaran/straw-sdk-go` | `github.com/beremaran/straw-sdk-go` | `v0.1.0` | `db8916e994adb53f21978a30b28f7589b17e7d1c` |
 | `beremaran/straw-sdk-python` | distribution `straw-sdk`, import `straw` | `v0.1.0` | `a56ab2f6db6c53ed543b600fe96b73b0851bccce` |
-| `beremaran/straw-oss` | `github.com/beremaran/straw-oss` | independently versioned | repository-split pull request |
+| `beremaran/straw-oss` | `github.com/beremaran/straw-oss` | independently versioned | `2232b4a149ef5744eda248979ed83608e18a0983` |
 
 The Go `/v2` module path was corrected before extraction because it had never been released. The protocol repository
 is the only canonical protocol source. Generated repositories record source and generator provenance and reproduce
@@ -55,6 +55,8 @@ reported zero findings, file-boundary review found no unrelated cache or runtime
 - binding release workflows dispatch exact-tag consumer updates through the dedicated GitHub App;
 - manual idempotency runs of both SDK update workflows succeeded with `v0.3.0` and made no unnecessary pull request;
 - `straw-oss` owns the current-version cross-repository compatibility matrix and an exact-tag Go binding updater;
+- the complete matrix passed from the activated `main` branch, and the updater's same-tag run completed as an
+  idempotent no-op;
 - every third-party GitHub Action reference is pinned to a full commit SHA.
 
 The dedicated GitHub App is installed only on these six repositories. Its repository permissions are limited to
@@ -75,6 +77,6 @@ and no App permission to approve pull requests. The same account/repository comb
 Private Vulnerability Reporting. Each repository therefore includes `SECURITY.md` reporting instructions as the
 available private fallback.
 
-After the final owner-reviewed `straw-oss` pull request is merged, activation consists only of creating and selecting
-`main` as the default branch, applying the same repository settings, running the now-default compatibility and updater
-workflows once, and recording their green results. No repository may be made public during activation.
+The owner-reviewed cutover was squash-merged at `2232b4a149ef5744eda248979ed83608e18a0983`. `main` was created at that
+exact commit and selected as the default branch before the old remote `master` branch was retired. The default-branch
+compatibility matrix and updater were then exercised. All six repositories remained private throughout activation.
