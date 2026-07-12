@@ -14,7 +14,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/beremaran/straw-oss/v2/sdk"
+	"github.com/beremaran/straw-oss/sdk"
 )
 
 const (

@@ -1,4 +1,4 @@
-module github.com/beremaran/straw-oss/v2
+module github.com/beremaran/straw-oss
 
 go 1.26.4
 

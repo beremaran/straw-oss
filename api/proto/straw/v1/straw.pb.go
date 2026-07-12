@@ -3444,7 +3444,7 @@ const file_straw_v1_straw_proto_rawDesc = "" +
 	"'DESTINATION_RESOLUTION_MODE_UNSPECIFIED\x10\x00\x12'\n" +
 	"#DESTINATION_RESOLUTION_DIRECT_LOCAL\x10\x01\x120\n" +
 	",DESTINATION_RESOLUTION_UPSTREAM_PROXY_REMOTE\x10\x02\x12-\n" +
-	")DESTINATION_RESOLUTION_EXECUTOR_DELEGATED\x10\x03*'DESTINATION_RESOLUTION_PROVIDER_ADAPTERB>Z<github.com/beremaran/straw-oss/v2/api/proto/straw/v1;strawpbb\x06proto3"
+	")DESTINATION_RESOLUTION_EXECUTOR_DELEGATED\x10\x03*'DESTINATION_RESOLUTION_PROVIDER_ADAPTERB;Z9github.com/beremaran/straw-oss/api/proto/straw/v1;strawpbb\x06proto3"
 
 var (
 	file_straw_v1_straw_proto_rawDescOnce sync.Once

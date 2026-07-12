@@ -12,7 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	strawpb "github.com/beremaran/straw-oss/v2/api/proto/straw/v1"
+	strawpb "github.com/beremaran/straw-oss/api/proto/straw/v1"
 )
 
 const (

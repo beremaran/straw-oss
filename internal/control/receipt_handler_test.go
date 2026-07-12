@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/beremaran/straw-oss/v2/internal/objectstore"
-	"github.com/beremaran/straw-oss/v2/internal/receipt"
+	"github.com/beremaran/straw-oss/internal/objectstore"
+	"github.com/beremaran/straw-oss/internal/receipt"
 )
 
 func TestReceiptHandlerLifecycleAndSignedObjectBoundary(t *testing.T) {

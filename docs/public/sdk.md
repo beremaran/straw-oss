@@ -9,7 +9,7 @@ The REST API has small Go and Python clients. Both accept a base URL and optiona
 ## Go
 
 ```sh
-go get github.com/beremaran/straw-oss/v2
+go get github.com/beremaran/straw-oss
 ```
 
 ```go
@@ -20,7 +20,7 @@ import (
     "fmt"
     "log"
 
-    "github.com/beremaran/straw-oss/v2/sdk"
+    "github.com/beremaran/straw-oss/sdk"
 )
 
 func main() {

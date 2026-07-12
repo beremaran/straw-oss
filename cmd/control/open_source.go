@@ -10,11 +10,11 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/beremaran/straw-oss/v2/internal/config"
-	"github.com/beremaran/straw-oss/v2/internal/control"
-	"github.com/beremaran/straw-oss/v2/internal/natsx"
-	"github.com/beremaran/straw-oss/v2/internal/objectstore"
-	"github.com/beremaran/straw-oss/v2/internal/receipt"
+	"github.com/beremaran/straw-oss/internal/config"
+	"github.com/beremaran/straw-oss/internal/control"
+	"github.com/beremaran/straw-oss/internal/natsx"
+	"github.com/beremaran/straw-oss/internal/objectstore"
+	"github.com/beremaran/straw-oss/internal/receipt"
 )
 
 const defaultRoutePriority = 100

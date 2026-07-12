@@ -25,7 +25,7 @@ import (
 	fhttphttp2 "github.com/bogdanfinn/fhttp/http2"
 	fhttphpack "github.com/bogdanfinn/fhttp/http2/hpack"
 
-	strawpb "github.com/beremaran/straw-oss/v2/api/proto/straw/v1"
+	strawpb "github.com/beremaran/straw-oss/api/proto/straw/v1"
 )
 
 const (

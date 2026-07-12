@@ -5,7 +5,7 @@ import (
 	"context"
 	"os"
 
-	"github.com/beremaran/straw-oss/v2/internal/cli"
+	"github.com/beremaran/straw-oss/internal/cli"
 )
 
 func main() {

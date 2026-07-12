@@ -5,7 +5,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/beremaran/straw-oss/v2/internal/receipt"
+	"github.com/beremaran/straw-oss/internal/receipt"
 )
 
 const metricLabelErrorCode = "error_code"

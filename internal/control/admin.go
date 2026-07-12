@@ -13,7 +13,7 @@ import (
 
 	"github.com/nats-io/nats.go"
 
-	"github.com/beremaran/straw-oss/v2/internal/config"
+	"github.com/beremaran/straw-oss/internal/config"
 )
 
 const (

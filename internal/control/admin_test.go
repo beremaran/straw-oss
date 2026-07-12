@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	strawpb "github.com/beremaran/straw-oss/v2/api/proto/straw/v1"
-	"github.com/beremaran/straw-oss/v2/internal/config"
+	strawpb "github.com/beremaran/straw-oss/api/proto/straw/v1"
+	"github.com/beremaran/straw-oss/internal/config"
 )
 
 func adminTestSnapshot() config.Snapshot {

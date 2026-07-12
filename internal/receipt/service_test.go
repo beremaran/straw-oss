@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/beremaran/straw-oss/v2/internal/objectstore"
+	"github.com/beremaran/straw-oss/internal/objectstore"
 )
 
 func newTestService(t *testing.T, now *time.Time) *Service {

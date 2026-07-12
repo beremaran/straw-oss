@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/beremaran/straw-oss/v2/internal/receipt"
+	"github.com/beremaran/straw-oss/internal/receipt"
 )
 
 const (

@@ -3,9 +3,9 @@ package egress
 import (
 	"fmt"
 
-	strawpb "github.com/beremaran/straw-oss/v2/api/proto/straw/v1"
-	"github.com/beremaran/straw-oss/v2/internal/natsx"
-	sdkegress "github.com/beremaran/straw-oss/v2/sdk/egress"
+	strawpb "github.com/beremaran/straw-oss/api/proto/straw/v1"
+	"github.com/beremaran/straw-oss/internal/natsx"
+	sdkegress "github.com/beremaran/straw-oss/sdk/egress"
 )
 
 // Worker is the SDK-owned assignment runtime used by the official worker.
