@@ -1,0 +1,16 @@
+{
+  "seed_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "public_key_hex": "03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+  "request": {
+    "worker_id": "worker-fixture",
+    "credential_id": "credential-fixture",
+    "executor_type": "http",
+    "protocol_major": 1,
+    "protocol_minor": 1,
+    "nonce_hex": "00112233445566778899aabbccddeeff",
+    "issued_at_unix_ms": 1700000000123,
+    "supported_fingerprint_profiles": ["chrome_120"]
+  },
+  "payload_hex": "73747261772e76312e72656769737465720a776f726b65722d666978747572650a63726564656e7469616c2d666978747572650a687474700a312e310a31363a00112233445566778899aabbccddeeff0a313730303030303030303132330a310a31303a6368726f6d655f313230",
+  "signature_hex": "a2f5a5416cc4a0a12b1aacaa9875ee221b3a3e707f56221449c45a532cdb787c527b7686c51111763cfccaf295b1f0660b4ab119d3be022387007ef4ed231305"
+}

@@ -16,7 +16,7 @@ func TestBuildCapabilitiesUsesDeploymentPool(t *testing.T) {
 	t.Parallel()
 
 	caps := buildCapabilities(config.DefaultEgress())
-	if len(caps.AllowedPools) != 1 || caps.AllowedPools[0].GetTenantId() != config.DefaultDeploymentID || caps.AllowedPools[0].GetPoolId() != config.DefaultPoolID {
+	if len(caps.AllowedPools) != 1 || caps.AllowedPools[0].GetDeploymentId() != config.DefaultDeploymentID || caps.AllowedPools[0].GetPoolId() != config.DefaultPoolID {
 		t.Fatalf("AllowedPools = %+v, want deployment default", caps.AllowedPools)
 	}
 	if caps.MaxConcurrency != defaultConcurrency {

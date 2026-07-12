@@ -1,0 +1,24 @@
+{
+  "assignment_acknowledgement": ["ASSIGN_ACK_ACCEPTED", "ASSIGN_ACK_REJECTED_CAPACITY", "ASSIGN_ACK_REJECTED_DRAINING", "ASSIGN_ACK_REJECTED_UNSUPPORTED", "ASSIGN_ACK_REJECTED_ERROR"],
+  "valid_stream": [
+    {"seq": 1, "attempt": 1, "kind": "request_start"},
+    {"seq": 2, "attempt": 1, "kind": "data", "offset": 0, "data_hex": "68656c6c6f"},
+    {"seq": 3, "attempt": 1, "kind": "credit", "upload_bytes": 5, "download_bytes": 8},
+    {"seq": 4, "attempt": 1, "kind": "cancel", "reason": "fixture cancellation"},
+    {"seq": 5, "attempt": 1, "kind": "cancelled", "reason": "fixture cancellation"}
+  ],
+  "invalid_streams": [
+    {"name": "sequence-gap", "expected": "frameSequenceGap"},
+    {"name": "offset-mismatch", "expected": "frameOffsetMismatch"},
+    {"name": "upload-credit-exhausted", "expected": "frameCreditExhausted"},
+    {"name": "frame-after-terminal", "expected": "frameAfterTerminal"}
+  ],
+  "error": {"code": "ERROR_CODE_UPSTREAM_RESET", "category": "ERROR_CATEGORY_EGRESS", "retryable": true},
+  "body_reference": {
+    "object_key": "deployment/deployment-fixture/request/req-fixture/request/body",
+    "expected_size_bytes": 5,
+    "sha256_hex": "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+    "expires_unix_ms": 1700000060000,
+    "expired_at_unix_ms": 1700000060000
+  }
+}

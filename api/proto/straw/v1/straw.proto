@@ -5,12 +5,11 @@ package straw.v1;
 option go_package = "github.com/beremaran/straw-oss/api/proto/straw/v1;strawpb";
 
 enum ErrorCode {
+  reserved 2 to 5;
+  reserved "ERROR_CODE_TENANT_NOT_FOUND", "ERROR_CODE_INSUFFICIENT_PERMISSIONS", "ERROR_CODE_RATE_LIMIT_EXCEEDED", "ERROR_CODE_QUOTA_EXHAUSTED";
+
   ERROR_CODE_UNSPECIFIED = 0;
   ERROR_CODE_AUTH_FAILURE = 1;
-  ERROR_CODE_TENANT_NOT_FOUND = 2;
-  ERROR_CODE_INSUFFICIENT_PERMISSIONS = 3;
-  ERROR_CODE_RATE_LIMIT_EXCEEDED = 4;
-  ERROR_CODE_QUOTA_EXHAUSTED = 5;
   ERROR_CODE_INVALID_REQUEST = 6;
   ERROR_CODE_DESTINATION_DENIED = 7;
   ERROR_CODE_HEADER_INJECTION_FAILED = 8;
@@ -63,12 +62,14 @@ enum TimeoutType {
 }
 
 enum AssignAckCode {
+  reserved 5;
+  reserved "ASSIGN_ACK_REJECTED_AUTH_SCOPE";
+
   ASSIGN_ACK_CODE_UNSPECIFIED = 0;
   ASSIGN_ACK_ACCEPTED = 1;
   ASSIGN_ACK_REJECTED_CAPACITY = 2;
   ASSIGN_ACK_REJECTED_DRAINING = 3;
   ASSIGN_ACK_REJECTED_UNSUPPORTED = 4;
-  ASSIGN_ACK_REJECTED_AUTH_SCOPE = 5;
   ASSIGN_ACK_REJECTED_ERROR = 6;
 }
 
@@ -107,7 +108,7 @@ enum DestinationResolutionMode {
 
 message Envelope {
   string request_id = 1;
-  string tenant_id = 2;
+  string deployment_id = 2;
   string trace_id = 3;
   int64 deadline_unix_ms = 4;
   uint32 protocol_major = 5;
@@ -133,7 +134,7 @@ message LogEvent {
   string level = 3;
   string message = 4;
   string request_id = 5;
-  string tenant_id = 6;
+  string deployment_id = 6;
   string trace_id = 7;
   string worker_id = 8;
   string error_code = 9;
@@ -142,7 +143,7 @@ message LogEvent {
 
 message RegisterRequest {
   message PoolRef {
-    string tenant_id = 1;
+    string deployment_id = 1;
     string pool_id = 2;
   }
 

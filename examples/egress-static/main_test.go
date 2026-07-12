@@ -20,10 +20,10 @@ import (
 )
 
 const (
-	testWorkerID  = "wrk_egress_static_test"
-	testSessionID = "sess_egress_static_test"
-	testTenantID  = "ten_egress_static_test"
-	testStatus    = uint32(200)
+	testWorkerID     = "wrk_egress_static_test"
+	testSessionID    = "sess_egress_static_test"
+	testDeploymentID = "ten_egress_static_test"
+	testStatus       = uint32(200)
 )
 
 func TestStaticExecutorServesOneAssignment(t *testing.T) {
@@ -208,7 +208,7 @@ func runAssignment(t *testing.T, controlConn *nats.Conn, assignSubject, sessionI
 
 	assignEnv := &strawpb.Envelope{
 		RequestId:      requestID,
-		TenantId:       testTenantID,
+		DeploymentId:   testDeploymentID,
 		DeadlineUnixMs: deadline.UnixMilli(),
 		ProtocolMajor:  sdkegress.ProtocolMajor,
 		Attempt:        1,
@@ -240,7 +240,7 @@ func runAssignment(t *testing.T, controlConn *nats.Conn, assignSubject, sessionI
 
 	startEnv := &strawpb.Envelope{
 		RequestId:      requestID,
-		TenantId:       testTenantID,
+		DeploymentId:   testDeploymentID,
 		DeadlineUnixMs: deadline.UnixMilli(),
 		ProtocolMajor:  sdkegress.ProtocolMajor,
 		Attempt:        1,

@@ -353,7 +353,7 @@ class Worker:
     def _reply(self, msg: NATSMessage, env: "pb.Envelope", code: int) -> None:
         reply = pb.Envelope(
             request_id=env.request_id,
-            tenant_id=env.tenant_id,
+            deployment_id=env.deployment_id,
             trace_id=env.trace_id,
             deadline_unix_ms=env.deadline_unix_ms,
             protocol_major=protocol.PROTOCOL_MAJOR,
@@ -455,7 +455,7 @@ class Worker:
         frame.attempt = attempt
         out = pb.Envelope(
             request_id=env.request_id,
-            tenant_id=env.tenant_id,
+            deployment_id=env.deployment_id,
             trace_id=env.trace_id,
             deadline_unix_ms=env.deadline_unix_ms,
             protocol_major=protocol.PROTOCOL_MAJOR,

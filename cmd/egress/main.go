@@ -175,8 +175,8 @@ func buildCapabilities(cfg config.EgressConfig) sdkegress.Capabilities {
 		SoftwareVersion: "dev",
 		MaxConcurrency:  maxConcurrency,
 		AllowedPools: []*strawpb.RegisterRequest_PoolRef{{
-			TenantId: config.DefaultDeploymentID,
-			PoolId:   config.DefaultPoolID,
+			DeploymentId: config.DefaultDeploymentID,
+			PoolId:       config.DefaultPoolID,
 		}},
 		Tags:                         cfg.Capabilities.Tags,
 		Countries:                    cfg.Capabilities.Countries,

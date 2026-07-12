@@ -136,7 +136,7 @@ func buildReplyEnvelope(env *strawpb.Envelope, reply *strawpb.Envelope) *strawpb
 	}
 
 	reply.RequestId = env.GetRequestId()
-	reply.TenantId = env.GetTenantId()
+	reply.DeploymentId = env.GetDeploymentId()
 	reply.TraceId = env.GetTraceId()
 	reply.DeadlineUnixMs = env.GetDeadlineUnixMs()
 	reply.Attempt = env.GetAttempt()

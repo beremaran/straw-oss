@@ -1,0 +1,9 @@
+{
+  "supported": {"major": 1, "minor": 1},
+  "cases": [
+    {"name": "exact", "major": 1, "minor": 1, "accepted": true},
+    {"name": "older-minor", "major": 1, "minor": 0, "accepted": true},
+    {"name": "future-minor", "major": 1, "minor": 2, "accepted": false},
+    {"name": "different-major", "major": 2, "minor": 0, "accepted": false}
+  ]
+}

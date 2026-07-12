@@ -626,7 +626,7 @@ func (d *DefaultRequestDispatcher) executeRawAttemptUnmeasured(ctx context.Conte
 func (d *DefaultRequestDispatcher) requestAssign(subject string, in DispatchInput, assign *strawpb.AssignRequest, deadline time.Time) (*strawpb.AssignAck, *PipelineError) {
 	env := &strawpb.Envelope{
 		RequestId:      in.RequestID,
-		TenantId:       in.Identity.DeploymentID,
+		DeploymentId:   in.Identity.DeploymentID,
 		DeadlineUnixMs: deadline.UnixMilli(),
 		ProtocolMajor:  ProtocolMajor,
 		Attempt:        defaultRequestAttempt,
@@ -987,7 +987,7 @@ func (e *requestStreamError) Error() string {
 func (d *DefaultRequestDispatcher) publishFrame(subject string, in DispatchInput, deadline time.Time, frame *strawpb.StreamFrame) error {
 	env := &strawpb.Envelope{
 		RequestId:      in.RequestID,
-		TenantId:       in.Identity.DeploymentID,
+		DeploymentId:   in.Identity.DeploymentID,
 		DeadlineUnixMs: deadline.UnixMilli(),
 		ProtocolMajor:  ProtocolMajor,
 		Attempt:        defaultRequestAttempt,

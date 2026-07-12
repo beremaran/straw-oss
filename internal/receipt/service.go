@@ -654,7 +654,7 @@ func (s *Service) PrepareRequest(ctx context.Context, deploymentID, id, requestI
 		return nil, fmt.Errorf("encode receipt size: %w", sizeErr)
 	}
 
-	return &strawpb.BodyRefFrame{Ref: &strawpb.BodyRefFrame_S3{S3: &strawpb.S3BodyRef{ObjectKey: "tenant/" + deploymentID + "/request/" + requestID + "/request/" + id, SignedUrl: signedURL, ExpiresUnixMs: expires.UnixMilli()}}, ExpectedSizeBytes: expectedSize, Sha256Hex: record.SHA256Hex}, nil
+	return &strawpb.BodyRefFrame{Ref: &strawpb.BodyRefFrame_S3{S3: &strawpb.S3BodyRef{ObjectKey: "deployment/" + deploymentID + "/request/" + requestID + "/request/" + id, SignedUrl: signedURL, ExpiresUnixMs: expires.UnixMilli()}}, ExpectedSizeBytes: expectedSize, Sha256Hex: record.SHA256Hex}, nil
 }
 
 func releaseExpiredAssignment(s *Service, record *Record) {

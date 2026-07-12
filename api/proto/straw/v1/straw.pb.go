@@ -26,10 +26,6 @@ type ErrorCode int32
 const (
 	ErrorCode_ERROR_CODE_UNSPECIFIED                 ErrorCode = 0
 	ErrorCode_ERROR_CODE_AUTH_FAILURE                ErrorCode = 1
-	ErrorCode_ERROR_CODE_TENANT_NOT_FOUND            ErrorCode = 2
-	ErrorCode_ERROR_CODE_INSUFFICIENT_PERMISSIONS    ErrorCode = 3
-	ErrorCode_ERROR_CODE_RATE_LIMIT_EXCEEDED         ErrorCode = 4
-	ErrorCode_ERROR_CODE_QUOTA_EXHAUSTED             ErrorCode = 5
 	ErrorCode_ERROR_CODE_INVALID_REQUEST             ErrorCode = 6
 	ErrorCode_ERROR_CODE_DESTINATION_DENIED          ErrorCode = 7
 	ErrorCode_ERROR_CODE_HEADER_INJECTION_FAILED     ErrorCode = 8
@@ -65,10 +61,6 @@ var (
 	ErrorCode_name = map[int32]string{
 		0:   "ERROR_CODE_UNSPECIFIED",
 		1:   "ERROR_CODE_AUTH_FAILURE",
-		2:   "ERROR_CODE_TENANT_NOT_FOUND",
-		3:   "ERROR_CODE_INSUFFICIENT_PERMISSIONS",
-		4:   "ERROR_CODE_RATE_LIMIT_EXCEEDED",
-		5:   "ERROR_CODE_QUOTA_EXHAUSTED",
 		6:   "ERROR_CODE_INVALID_REQUEST",
 		7:   "ERROR_CODE_DESTINATION_DENIED",
 		8:   "ERROR_CODE_HEADER_INJECTION_FAILED",
@@ -101,10 +93,6 @@ var (
 	ErrorCode_value = map[string]int32{
 		"ERROR_CODE_UNSPECIFIED":                 0,
 		"ERROR_CODE_AUTH_FAILURE":                1,
-		"ERROR_CODE_TENANT_NOT_FOUND":            2,
-		"ERROR_CODE_INSUFFICIENT_PERMISSIONS":    3,
-		"ERROR_CODE_RATE_LIMIT_EXCEEDED":         4,
-		"ERROR_CODE_QUOTA_EXHAUSTED":             5,
 		"ERROR_CODE_INVALID_REQUEST":             6,
 		"ERROR_CODE_DESTINATION_DENIED":          7,
 		"ERROR_CODE_HEADER_INJECTION_FAILED":     8,
@@ -296,7 +284,6 @@ const (
 	AssignAckCode_ASSIGN_ACK_REJECTED_CAPACITY    AssignAckCode = 2
 	AssignAckCode_ASSIGN_ACK_REJECTED_DRAINING    AssignAckCode = 3
 	AssignAckCode_ASSIGN_ACK_REJECTED_UNSUPPORTED AssignAckCode = 4
-	AssignAckCode_ASSIGN_ACK_REJECTED_AUTH_SCOPE  AssignAckCode = 5
 	AssignAckCode_ASSIGN_ACK_REJECTED_ERROR       AssignAckCode = 6
 )
 
@@ -308,7 +295,6 @@ var (
 		2: "ASSIGN_ACK_REJECTED_CAPACITY",
 		3: "ASSIGN_ACK_REJECTED_DRAINING",
 		4: "ASSIGN_ACK_REJECTED_UNSUPPORTED",
-		5: "ASSIGN_ACK_REJECTED_AUTH_SCOPE",
 		6: "ASSIGN_ACK_REJECTED_ERROR",
 	}
 	AssignAckCode_value = map[string]int32{
@@ -317,7 +303,6 @@ var (
 		"ASSIGN_ACK_REJECTED_CAPACITY":    2,
 		"ASSIGN_ACK_REJECTED_DRAINING":    3,
 		"ASSIGN_ACK_REJECTED_UNSUPPORTED": 4,
-		"ASSIGN_ACK_REJECTED_AUTH_SCOPE":  5,
 		"ASSIGN_ACK_REJECTED_ERROR":       6,
 	}
 )
@@ -600,7 +585,7 @@ func (DestinationResolutionMode) EnumDescriptor() ([]byte, []int) {
 type Envelope struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	RequestId      string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
-	TenantId       string                 `protobuf:"bytes,2,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	DeploymentId   string                 `protobuf:"bytes,2,opt,name=deployment_id,json=deploymentId,proto3" json:"deployment_id,omitempty"`
 	TraceId        string                 `protobuf:"bytes,3,opt,name=trace_id,json=traceId,proto3" json:"trace_id,omitempty"`
 	DeadlineUnixMs int64                  `protobuf:"varint,4,opt,name=deadline_unix_ms,json=deadlineUnixMs,proto3" json:"deadline_unix_ms,omitempty"`
 	ProtocolMajor  uint32                 `protobuf:"varint,5,opt,name=protocol_major,json=protocolMajor,proto3" json:"protocol_major,omitempty"`
@@ -659,9 +644,9 @@ func (x *Envelope) GetRequestId() string {
 	return ""
 }
 
-func (x *Envelope) GetTenantId() string {
+func (x *Envelope) GetDeploymentId() string {
 	if x != nil {
-		return x.TenantId
+		return x.DeploymentId
 	}
 	return ""
 }
@@ -846,7 +831,7 @@ type LogEvent struct {
 	Level           string                 `protobuf:"bytes,3,opt,name=level,proto3" json:"level,omitempty"`
 	Message         string                 `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"`
 	RequestId       string                 `protobuf:"bytes,5,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
-	TenantId        string                 `protobuf:"bytes,6,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	DeploymentId    string                 `protobuf:"bytes,6,opt,name=deployment_id,json=deploymentId,proto3" json:"deployment_id,omitempty"`
 	TraceId         string                 `protobuf:"bytes,7,opt,name=trace_id,json=traceId,proto3" json:"trace_id,omitempty"`
 	WorkerId        string                 `protobuf:"bytes,8,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
 	ErrorCode       string                 `protobuf:"bytes,9,opt,name=error_code,json=errorCode,proto3" json:"error_code,omitempty"`
@@ -920,9 +905,9 @@ func (x *LogEvent) GetRequestId() string {
 	return ""
 }
 
-func (x *LogEvent) GetTenantId() string {
+func (x *LogEvent) GetDeploymentId() string {
 	if x != nil {
-		return x.TenantId
+		return x.DeploymentId
 	}
 	return ""
 }
@@ -3065,7 +3050,7 @@ func (x *ErrorResponse) GetDetails() map[string]string {
 
 type RegisterRequest_PoolRef struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	TenantId      string                 `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	DeploymentId  string                 `protobuf:"bytes,1,opt,name=deployment_id,json=deploymentId,proto3" json:"deployment_id,omitempty"`
 	PoolId        string                 `protobuf:"bytes,2,opt,name=pool_id,json=poolId,proto3" json:"pool_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -3101,9 +3086,9 @@ func (*RegisterRequest_PoolRef) Descriptor() ([]byte, []int) {
 	return file_straw_v1_straw_proto_rawDescGZIP(), []int{2, 0}
 }
 
-func (x *RegisterRequest_PoolRef) GetTenantId() string {
+func (x *RegisterRequest_PoolRef) GetDeploymentId() string {
 	if x != nil {
-		return x.TenantId
+		return x.DeploymentId
 	}
 	return ""
 }
@@ -3119,11 +3104,11 @@ var File_straw_v1_straw_proto protoreflect.FileDescriptor
 
 const file_straw_v1_straw_proto_rawDesc = "" +
 	"\n" +
-	"\x14straw/v1/straw.proto\x12\bstraw.v1\"\x98\x06\n" +
+	"\x14straw/v1/straw.proto\x12\bstraw.v1\"\xa0\x06\n" +
 	"\bEnvelope\x12\x1d\n" +
 	"\n" +
-	"request_id\x18\x01 \x01(\tR\trequestId\x12\x1b\n" +
-	"\ttenant_id\x18\x02 \x01(\tR\btenantId\x12\x19\n" +
+	"request_id\x18\x01 \x01(\tR\trequestId\x12#\n" +
+	"\rdeployment_id\x18\x02 \x01(\tR\fdeploymentId\x12\x19\n" +
 	"\btrace_id\x18\x03 \x01(\tR\atraceId\x12(\n" +
 	"\x10deadline_unix_ms\x18\x04 \x01(\x03R\x0edeadlineUnixMs\x12%\n" +
 	"\x0eprotocol_major\x18\x05 \x01(\rR\rprotocolMajor\x12%\n" +
@@ -3139,15 +3124,15 @@ const file_straw_v1_straw_proto_rawDesc = "" +
 	"assign_ack\x18\x19 \x01(\v2\x13.straw.v1.AssignAckH\x00R\tassignAck\x12:\n" +
 	"\fstream_frame\x18\x1a \x01(\v2\x15.straw.v1.StreamFrameH\x00R\vstreamFrame\x121\n" +
 	"\tlog_event\x18\x1b \x01(\v2\x12.straw.v1.LogEventH\x00R\blogEventB\t\n" +
-	"\apayload\"\x82\x03\n" +
+	"\apayload\"\x8a\x03\n" +
 	"\bLogEvent\x12*\n" +
 	"\x11timestamp_unix_ms\x18\x01 \x01(\x03R\x0ftimestampUnixMs\x12\x18\n" +
 	"\aservice\x18\x02 \x01(\tR\aservice\x12\x14\n" +
 	"\x05level\x18\x03 \x01(\tR\x05level\x12\x18\n" +
 	"\amessage\x18\x04 \x01(\tR\amessage\x12\x1d\n" +
 	"\n" +
-	"request_id\x18\x05 \x01(\tR\trequestId\x12\x1b\n" +
-	"\ttenant_id\x18\x06 \x01(\tR\btenantId\x12\x19\n" +
+	"request_id\x18\x05 \x01(\tR\trequestId\x12#\n" +
+	"\rdeployment_id\x18\x06 \x01(\tR\fdeploymentId\x12\x19\n" +
 	"\btrace_id\x18\a \x01(\tR\atraceId\x12\x1b\n" +
 	"\tworker_id\x18\b \x01(\tR\bworkerId\x12\x1d\n" +
 	"\n" +
@@ -3157,7 +3142,7 @@ const file_straw_v1_straw_proto_rawDesc = "" +
 	"\n" +
 	"ExtraEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xcd\x06\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xd5\x06\n" +
 	"\x0fRegisterRequest\x12\x1b\n" +
 	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x12#\n" +
 	"\rexecutor_type\x18\x02 \x01(\tR\fexecutorType\x12#\n" +
@@ -3178,9 +3163,9 @@ const file_straw_v1_straw_proto_rawDesc = "" +
 	"\x10initial_draining\x18\x10 \x01(\bR\x0finitialDraining\x12\x14\n" +
 	"\x05nonce\x18\x11 \x01(\fR\x05nonce\x12)\n" +
 	"\x11issued_at_unix_ms\x18\x12 \x01(\x03R\x0eissuedAtUnixMs\x12D\n" +
-	"\x1esupported_fingerprint_profiles\x18\x13 \x03(\tR\x1csupportedFingerprintProfiles\x1a?\n" +
-	"\aPoolRef\x12\x1b\n" +
-	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x17\n" +
+	"\x1esupported_fingerprint_profiles\x18\x13 \x03(\tR\x1csupportedFingerprintProfiles\x1aG\n" +
+	"\aPoolRef\x12#\n" +
+	"\rdeployment_id\x18\x01 \x01(\tR\fdeploymentId\x12\x17\n" +
 	"\apool_id\x18\x02 \x01(\tR\x06poolId\"R\n" +
 	"\vRegisterAck\x12\x0e\n" +
 	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x1d\n" +
@@ -3362,14 +3347,10 @@ const file_straw_v1_straw_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\x12\n" +
 	"\x10_upstream_statusB\x0f\n" +
-	"\r_timeout_type*\xdf\t\n" +
+	"\r_timeout_type*\xd5\t\n" +
 	"\tErrorCode\x12\x1a\n" +
 	"\x16ERROR_CODE_UNSPECIFIED\x10\x00\x12\x1b\n" +
-	"\x17ERROR_CODE_AUTH_FAILURE\x10\x01\x12\x1f\n" +
-	"\x1bERROR_CODE_TENANT_NOT_FOUND\x10\x02\x12'\n" +
-	"#ERROR_CODE_INSUFFICIENT_PERMISSIONS\x10\x03\x12\"\n" +
-	"\x1eERROR_CODE_RATE_LIMIT_EXCEEDED\x10\x04\x12\x1e\n" +
-	"\x1aERROR_CODE_QUOTA_EXHAUSTED\x10\x05\x12\x1e\n" +
+	"\x17ERROR_CODE_AUTH_FAILURE\x10\x01\x12\x1e\n" +
 	"\x1aERROR_CODE_INVALID_REQUEST\x10\x06\x12!\n" +
 	"\x1dERROR_CODE_DESTINATION_DENIED\x10\a\x12&\n" +
 	"\"ERROR_CODE_HEADER_INJECTION_FAILED\x10\b\x12\x17\n" +
@@ -3398,7 +3379,7 @@ const file_straw_v1_straw_proto_rawDesc = "" +
 	"\x19ERROR_CODE_BODY_TOO_LARGE\x10\x93\x03\x12&\n" +
 	"!ERROR_CODE_CONTROL_INTERNAL_ERROR\x10\xf4\x03\x12'\n" +
 	"\"ERROR_CODE_EXECUTOR_INTERNAL_ERROR\x10\xf5\x03\x12\x19\n" +
-	"\x14ERROR_CODE_CANCELLED\x10\xf6\x03*\xd9\x01\n" +
+	"\x14ERROR_CODE_CANCELLED\x10\xf6\x03\"\x04\b\x02\x10\x05*\x1bERROR_CODE_TENANT_NOT_FOUND*#ERROR_CODE_INSUFFICIENT_PERMISSIONS*\x1eERROR_CODE_RATE_LIMIT_EXCEEDED*\x1aERROR_CODE_QUOTA_EXHAUSTED*\xd9\x01\n" +
 	"\rErrorCategory\x12\x1e\n" +
 	"\x1aERROR_CATEGORY_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15ERROR_CATEGORY_CLIENT\x10\x01\x12\x1a\n" +
@@ -3415,15 +3396,14 @@ const file_straw_v1_straw_proto_rawDesc = "" +
 	"\x19TIMEOUT_TYPE_IDLE_TIMEOUT\x10\x04\x12\x1f\n" +
 	"\x1bTIMEOUT_TYPE_UPLOAD_TIMEOUT\x10\x05\x12!\n" +
 	"\x1dTIMEOUT_TYPE_DOWNLOAD_TIMEOUT\x10\x06\x12'\n" +
-	"#TIMEOUT_TYPE_TOTAL_DEADLINE_TIMEOUT\x10\a*\xf5\x01\n" +
+	"#TIMEOUT_TYPE_TOTAL_DEADLINE_TIMEOUT\x10\a*\xf7\x01\n" +
 	"\rAssignAckCode\x12\x1f\n" +
 	"\x1bASSIGN_ACK_CODE_UNSPECIFIED\x10\x00\x12\x17\n" +
 	"\x13ASSIGN_ACK_ACCEPTED\x10\x01\x12 \n" +
 	"\x1cASSIGN_ACK_REJECTED_CAPACITY\x10\x02\x12 \n" +
 	"\x1cASSIGN_ACK_REJECTED_DRAINING\x10\x03\x12#\n" +
-	"\x1fASSIGN_ACK_REJECTED_UNSUPPORTED\x10\x04\x12\"\n" +
-	"\x1eASSIGN_ACK_REJECTED_AUTH_SCOPE\x10\x05\x12\x1d\n" +
-	"\x19ASSIGN_ACK_REJECTED_ERROR\x10\x06*g\n" +
+	"\x1fASSIGN_ACK_REJECTED_UNSUPPORTED\x10\x04\x12\x1d\n" +
+	"\x19ASSIGN_ACK_REJECTED_ERROR\x10\x06\"\x04\b\x05\x10\x05*\x1eASSIGN_ACK_REJECTED_AUTH_SCOPE*g\n" +
 	"\vRequestMode\x12\x1c\n" +
 	"\x18REQUEST_MODE_UNSPECIFIED\x10\x00\x12\x1d\n" +
 	"\x19REQUEST_MODE_DECODED_HTTP\x10\x01\x12\x1b\n" +

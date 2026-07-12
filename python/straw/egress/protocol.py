@@ -19,6 +19,7 @@ from straw.proto.straw.v1 import straw_pb2 as pb
 
 # ProtocolMajor is the worker protocol major version this SDK speaks.
 PROTOCOL_MAJOR = 1
+PROTOCOL_MINOR = 1
 
 _REGISTRATION_NONCE_BYTES = 16
 _REGISTRATION_SIGNING_DOMAIN = b"straw.v1.register\n"
@@ -104,6 +105,7 @@ class Capabilities:
     regions: List[str] = field(default_factory=list)
     ip_types: List[str] = field(default_factory=list)
     supported_ingress_modes: List[str] = field(default_factory=list)
+    supported_fingerprint_profiles: List[str] = field(default_factory=list)
     max_concurrency: int = 0
     software_version: str = ""
     initial_draining: bool = False
@@ -135,6 +137,12 @@ def registration_signing_payload(req: "pb.RegisterRequest") -> bytes:
         b"\n",
         str(req.issued_at_unix_ms).encode(),
     ]
+    if req.protocol_minor >= 1 and req.supported_fingerprint_profiles:
+        profiles = sorted(set(req.supported_fingerprint_profiles))
+        parts.extend((b"\n", str(len(profiles)).encode()))
+        for profile in profiles:
+            encoded = profile.encode()
+            parts.extend((b"\n", str(len(encoded)).encode(), b":", encoded))
     return b"".join(parts)
 
 
@@ -158,10 +166,10 @@ def build_register_request(identity: Identity, caps: Optional[Capabilities] = No
         executor_type=identity.executor_type,
         credential_id=identity.credential_id,
         protocol_major=PROTOCOL_MAJOR,
-        protocol_minor=0,
+        protocol_minor=PROTOCOL_MINOR,
         software_version=caps.software_version,
         allowed_pools=[
-            pb.RegisterRequest.PoolRef(tenant_id=p.deployment_id, pool_id=p.pool_id)
+            pb.RegisterRequest.PoolRef(deployment_id=p.deployment_id, pool_id=p.pool_id)
             for p in caps.allowed_pools
         ],
         tags=caps.tags,
@@ -169,6 +177,7 @@ def build_register_request(identity: Identity, caps: Optional[Capabilities] = No
         regions=caps.regions,
         ip_types=caps.ip_types,
         supported_ingress_modes=caps.supported_ingress_modes,
+        supported_fingerprint_profiles=caps.supported_fingerprint_profiles,
         max_concurrency=caps.max_concurrency,
         initial_draining=caps.initial_draining,
         nonce=os.urandom(_REGISTRATION_NONCE_BYTES),
@@ -200,11 +209,11 @@ def build_heartbeat(
 
 
 def register_envelope(req: "pb.RegisterRequest") -> "pb.Envelope":
-    return pb.Envelope(protocol_major=PROTOCOL_MAJOR, protocol_minor=0, register_request=req)
+    return pb.Envelope(protocol_major=PROTOCOL_MAJOR, protocol_minor=PROTOCOL_MINOR, register_request=req)
 
 
 def heartbeat_envelope(hb: "pb.HeartbeatRequest") -> "pb.Envelope":
-    return pb.Envelope(protocol_major=PROTOCOL_MAJOR, protocol_minor=0, heartbeat_request=hb)
+    return pb.Envelope(protocol_major=PROTOCOL_MAJOR, protocol_minor=PROTOCOL_MINOR, heartbeat_request=hb)
 
 
 def marshal_envelope(env: "pb.Envelope") -> bytes:

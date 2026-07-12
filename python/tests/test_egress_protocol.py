@@ -114,7 +114,7 @@ class RegistrationSigningTests(unittest.TestCase):
         req = build_register_request(identity, caps)
 
         self.assertEqual(len(req.allowed_pools), 1)
-        self.assertEqual(req.allowed_pools[0].tenant_id, "default")
+        self.assertEqual(req.allowed_pools[0].deployment_id, "default")
         self.assertEqual(req.allowed_pools[0].pool_id, "p1")
 
 
@@ -173,7 +173,7 @@ class EnvelopeRoundTripTests(unittest.TestCase):
         )
         env = pb.Envelope(
             request_id="req-1",
-            tenant_id="tenant-1",
+            deployment_id="tenant-1",
             deadline_unix_ms=123456,
             protocol_major=1,
             attempt=1,
@@ -190,7 +190,7 @@ class EnvelopeRoundTripTests(unittest.TestCase):
             attempt=1,
             data=pb.DataFrame(offset=0, data=b"hello"),
         )
-        frame_env = pb.Envelope(request_id="req-1", tenant_id="tenant-1", attempt=1, stream_frame=frame)
+        frame_env = pb.Envelope(request_id="req-1", deployment_id="tenant-1", attempt=1, stream_frame=frame)
         decoded_frame = unmarshal_envelope(marshal_envelope(frame_env))
 
         self.assertEqual(decoded_frame.stream_frame.stream_seq, 1)

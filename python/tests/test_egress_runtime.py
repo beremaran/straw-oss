@@ -201,7 +201,7 @@ class RuntimeAssignmentTests(unittest.TestCase):
         reply_to = "_INBOX.ctl.assign.1"
         env = pb.Envelope(
             request_id=request_id,
-            tenant_id="tenant-1",
+            deployment_id="tenant-1",
             deadline_unix_ms=0,
             protocol_major=protocol.PROTOCOL_MAJOR,
             attempt=1,
@@ -231,7 +231,7 @@ class RuntimeAssignmentTests(unittest.TestCase):
 
     def _send_c2e(self, subject, sid, seq, attempt, **frame_kwargs):
         frame = pb.StreamFrame(stream_seq=seq, attempt=attempt, **frame_kwargs)
-        env = pb.Envelope(request_id="req-1", tenant_id="tenant-1", attempt=attempt, stream_frame=frame)
+        env = pb.Envelope(request_id="req-1", deployment_id="tenant-1", attempt=attempt, stream_frame=frame)
         self.control.send_msg(subject, sid, protocol.marshal_envelope(env))
 
     def test_streams_decoded_response_without_buffering(self):
