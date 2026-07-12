@@ -64,7 +64,7 @@ runtime coordination.
 Acceptance requires concurrent Control instances to route through the same worker fleet, survive the loss and return
 of one Control instance, and behave predictably during a temporary shared-state outage.
 
-### Object storage and receipt-and-check transport
+### Object storage and receipt-and-check transport — delivered
 
 **Outcome:** Straw can accept bodies larger than the inline transport limit using a durable receipt-and-check flow,
 without buffering an unbounded payload in Control or NATS.
@@ -88,7 +88,7 @@ documented.
 1. [x] Specify the deployment-scoped configuration model and API/UI action matrix.
 2. [x] Add durable configuration and runtime snapshot distribution.
 3. [x] Add shared runtime state and validate multi-Control HA behavior.
-4. Add receipt-and-check object transport on top of the versioned configuration and HA foundations.
+4. [x] Add receipt-and-check object transport on top of the versioned configuration and HA foundations.
 
 ## Later ideas
 

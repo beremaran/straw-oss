@@ -11,6 +11,10 @@ response = client.do(Request(method="GET", url="https://example.com"))
 print(response.status, response.request_id)
 ```
 
+For bodies above the inline limit, enable object storage and use `create_receipt`, `upload_receipt_part`, and
+`complete_receipt`. Pass the resulting ID with `RequestBody(mode="receipt", receipt_id=...)`; set
+`response_body_mode="receipt"` for stored responses.
+
 Pass the deployment token as the second argument outside local development:
 
 ```python

@@ -18,11 +18,14 @@ import (
 )
 
 const (
-	defaultBaseURL = "http://localhost:8080"
-	usage          = `Straw CLI
+	defaultBaseURL     = "http://localhost:8080"
+	commandRequest     = "request"
+	cliBodyModeReceipt = "receipt"
+	cliBodyModeInline  = "inline_base64"
+	usage              = `Straw CLI
 
 Usage:
-  straw request --url URL [--method METHOD] [--header "Name: value"] [--body-file PATH]
+  straw request --url URL [--method METHOD] [--header "Name: value"] [--body-file PATH | --receipt-id ID]
 
 Environment:
   STRAW_BASE_URL    Control base URL (default http://localhost:8080)
@@ -35,6 +38,7 @@ var (
 	errMethodURL    = errors.New("request requires --url")
 	errOpenBody     = errors.New("open body file")
 	errUnknownCmd   = errors.New("unknown command")
+	errBodyConflict = errors.New("--body-file and --receipt-id are mutually exclusive")
 )
 
 // Run executes the CLI and returns a process exit code.
@@ -59,7 +63,7 @@ func run(ctx context.Context, args []string, stdout io.Writer) error {
 		return nil
 	}
 
-	if args[0] != "request" {
+	if args[0] != commandRequest {
 		return fmt.Errorf("%w %q", errUnknownCmd, args[0])
 	}
 
@@ -67,13 +71,15 @@ func run(ctx context.Context, args []string, stdout io.Writer) error {
 }
 
 func runRequest(ctx context.Context, args []string, stdout io.Writer) error {
-	flags := flag.NewFlagSet("request", flag.ContinueOnError)
+	flags := flag.NewFlagSet(commandRequest, flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	baseURL := flags.String("base-url", envOr("STRAW_BASE_URL", defaultBaseURL), "Control base URL")
 	token := flags.String("token", os.Getenv("STRAW_AUTH_TOKEN"), "deployment bearer token")
 	method := flags.String("method", http.MethodGet, "upstream HTTP method")
 	targetURL := flags.String("url", "", "absolute upstream URL")
 	bodyFile := flags.String("body-file", "", "file to send as the upstream body")
+	receiptID := flags.String("receipt-id", "", "verified request receipt to send as the upstream body")
+	responseBodyMode := flags.String("response-body-mode", "", "inline_base64 or receipt")
 	timeoutMS := flags.Uint64("timeout-ms", 0, "request timeout in milliseconds")
 	fingerprint := flags.String("fingerprint-profile", "", "outbound TLS fingerprint profile")
 
@@ -91,7 +97,7 @@ func runRequest(ctx context.Context, args []string, stdout io.Writer) error {
 
 	request := sdk.Request{
 		Method: *method, URL: *targetURL, TimeoutMs: *timeoutMS,
-		FingerprintProfile: *fingerprint,
+		FingerprintProfile: *fingerprint, ResponseBodyMode: *responseBodyMode,
 	}
 
 	request.Headers, err = encodeHeaders(headers)
@@ -99,13 +105,9 @@ func runRequest(ctx context.Context, args []string, stdout io.Writer) error {
 		return err
 	}
 
-	if *bodyFile != "" {
-		body, readErr := readBody(*bodyFile)
-		if readErr != nil {
-			return fmt.Errorf("read body file: %w", readErr)
-		}
-
-		request.Body = &sdk.RequestBody{Mode: "inline_base64", DataBase64: base64.StdEncoding.EncodeToString(body)}
+	err = setRequestBody(&request, *bodyFile, *receiptID)
+	if err != nil {
+		return err
 	}
 
 	response, err := sdk.NewClient(*baseURL, *token).Do(ctx, request)
@@ -117,6 +119,31 @@ func runRequest(ctx context.Context, args []string, stdout io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("write response: %w", err)
 	}
+
+	return nil
+}
+
+func setRequestBody(request *sdk.Request, bodyFile, receiptID string) error {
+	if bodyFile != "" && receiptID != "" {
+		return errBodyConflict
+	}
+
+	if receiptID != "" {
+		request.Body = &sdk.RequestBody{Mode: cliBodyModeReceipt, ReceiptID: receiptID}
+
+		return nil
+	}
+
+	if bodyFile == "" {
+		return nil
+	}
+
+	body, err := readBody(bodyFile)
+	if err != nil {
+		return fmt.Errorf("read body file: %w", err)
+	}
+
+	request.Body = &sdk.RequestBody{Mode: cliBodyModeInline, DataBase64: base64.StdEncoding.EncodeToString(body)}
 
 	return nil
 }

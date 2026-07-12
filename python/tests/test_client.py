@@ -7,7 +7,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from straw import APIError, Client, Header, Request  # noqa: E402
+from straw import APIError, Client, Header, Request, RequestBody, ResponseBody  # noqa: E402
 
 
 class _Server:
@@ -34,6 +34,17 @@ class _Server:
 
 
 class ClientTests(unittest.TestCase):
+    def test_receipt_request_and_response_types(self):
+        request = Request(method="POST", url="https://example.com", body=RequestBody(
+            mode="receipt", receipt_id="rcpt_1"), response_body_mode="receipt")
+        self.assertEqual(request.to_json()["body"], {"mode": "receipt", "receipt_id": "rcpt_1"})
+        self.assertEqual(request.to_json()["response_body_mode"], "receipt")
+        body = ResponseBody.from_json({
+            "mode": "receipt", "receipt_id": "rcpt_2", "size_bytes": 42, "sha256_hex": "sum"
+        })
+        self.assertEqual(body.receipt_id, "rcpt_2")
+        self.assertEqual(body.size_bytes, 42)
+
     def test_request_and_response(self):
         captured = {}
 

@@ -15,11 +15,15 @@ import (
 	"unicode/utf8"
 
 	"golang.org/x/net/idna"
+
+	strawpb "github.com/beremaran/straw-oss/v2/api/proto/straw/v1"
 )
 
 const (
 	urlSchemeHTTP               = "http"
 	urlSchemeHTTPS              = "https"
+	bodyModeInlineBase64        = "inline_base64"
+	bodyModeReceipt             = "receipt"
 	maxFingerprintEvidenceBytes = 64
 )
 
@@ -99,6 +103,7 @@ type RequestEnvelope struct {
 	FingerprintProto string       `json:"fingerprint_profile,omitempty"`
 	TimeoutMs        uint64       `json:"timeout_ms,omitempty"`
 	Replayable       bool         `json:"replayable"`
+	ResponseBodyMode string       `json:"response_body_mode,omitempty"`
 }
 
 // HeaderPair preserves header order and duplicates.
@@ -107,11 +112,11 @@ type HeaderPair struct {
 	Value string `json:"value_base64"`
 }
 
-// RequestBody carries the supported inline base64 request body.
+// RequestBody carries an inline body or a previously verified receipt.
 type RequestBody struct {
 	Mode       string `json:"mode"`
 	DataBase64 string `json:"data_base64,omitempty"`
-	BodyRefID  string `json:"body_ref_id,omitempty"` // rejected in P0
+	ReceiptID  string `json:"receipt_id,omitempty"`
 }
 
 // RoutingHints is the internal routing input used by the static deployment.
@@ -125,19 +130,22 @@ type RoutingHints struct {
 
 // ValidatedRequest is the internal representation after validation.
 type ValidatedRequest struct {
-	Method          string
-	URL             *url.URL
-	Headers         []HeaderPair
-	BodyData        []byte
-	BodyReader      io.ReadCloser
-	BodySizeBytes   int64
-	Routing         RoutingHints
-	IngressType     string
-	Fingerprint     string
-	TimeoutMs       uint64
-	Replayable      bool
-	StickySessionID string
-	CaptureDecision string
+	Method           string
+	URL              *url.URL
+	Headers          []HeaderPair
+	BodyData         []byte
+	BodyReader       io.ReadCloser
+	BodySizeBytes    int64
+	BodyReceiptID    string
+	BodyRef          *strawpb.BodyRefFrame
+	Routing          RoutingHints
+	IngressType      string
+	Fingerprint      string
+	TimeoutMs        uint64
+	Replayable       bool
+	StickySessionID  string
+	CaptureDecision  string
+	ResponseBodyMode string
 }
 
 // ValidateRequest parses and validates a RequestEnvelope against config limits.
@@ -158,7 +166,7 @@ func ValidateRequest(raw []byte, maxRequestBodyBytes, maxTimeoutMs uint64) (*Val
 		return nil, fmt.Errorf("invalid request JSON: %w", err)
 	}
 
-	parsedURL, headers, bodyData, timeoutMs, err := validateRequestComponents(env, maxRequestBodyBytes, maxTimeoutMs)
+	parsedURL, headers, bodyData, bodyReceiptID, timeoutMs, err := validateRequestComponents(env, maxRequestBodyBytes, maxTimeoutMs)
 	if err != nil {
 		return nil, err
 	}
@@ -171,17 +179,19 @@ func ValidateRequest(raw []byte, maxRequestBodyBytes, maxTimeoutMs uint64) (*Val
 	routing := RoutingHints{}
 
 	return &ValidatedRequest{
-		Method:          env.Method,
-		URL:             parsedURL,
-		Headers:         headers,
-		BodyData:        bodyData,
-		Routing:         routing,
-		IngressType:     IngressTypeREST,
-		Fingerprint:     env.FingerprintProto,
-		TimeoutMs:       timeoutMs,
-		Replayable:      env.Replayable,
-		StickySessionID: routing.StickySessionID,
-		CaptureDecision: "none",
+		Method:           env.Method,
+		URL:              parsedURL,
+		Headers:          headers,
+		BodyData:         bodyData,
+		BodyReceiptID:    bodyReceiptID,
+		Routing:          routing,
+		IngressType:      IngressTypeREST,
+		Fingerprint:      env.FingerprintProto,
+		TimeoutMs:        timeoutMs,
+		Replayable:       env.Replayable,
+		StickySessionID:  routing.StickySessionID,
+		CaptureDecision:  "none",
+		ResponseBodyMode: env.ResponseBodyMode,
 	}, nil
 }
 
@@ -331,33 +341,37 @@ func unsupportedFingerprintValidationError(evidence string) *ValidationError {
 	}
 }
 
-func validateRequestComponents(env RequestEnvelope, maxRequestBodyBytes, maxTimeoutMs uint64) (*url.URL, []HeaderPair, []byte, uint64, error) {
+func validateRequestComponents(env RequestEnvelope, maxRequestBodyBytes, maxTimeoutMs uint64) (*url.URL, []HeaderPair, []byte, string, uint64, error) {
 	err := validateMethod(env.Method)
 	if err != nil {
-		return nil, nil, nil, 0, err
+		return nil, nil, nil, "", 0, err
 	}
 
 	parsedURL, err := validateURL(env.URL)
 	if err != nil {
-		return nil, nil, nil, 0, err
+		return nil, nil, nil, "", 0, err
 	}
 
 	headers, err := validateHeaders(env.Headers)
 	if err != nil {
-		return nil, nil, nil, 0, err
+		return nil, nil, nil, "", 0, err
 	}
 
-	bodyData, err := validateBody(env.Body, maxRequestBodyBytes)
+	bodyData, bodyReceiptID, err := validateBody(env.Body, maxRequestBodyBytes)
 	if err != nil {
-		return nil, nil, nil, 0, err
+		return nil, nil, nil, "", 0, err
+	}
+
+	if env.ResponseBodyMode != "" && env.ResponseBodyMode != bodyModeInlineBase64 && env.ResponseBodyMode != bodyModeReceipt {
+		return nil, nil, nil, "", 0, &ValidationError{Code: errorCodeInvalidRequest, Message: "response_body_mode must be inline_base64, receipt, or omitted"}
 	}
 
 	timeoutMs, err := validateTimeout(env.TimeoutMs, maxTimeoutMs)
 	if err != nil {
-		return nil, nil, nil, 0, err
+		return nil, nil, nil, "", 0, err
 	}
 
-	return parsedURL, headers, bodyData, timeoutMs, nil
+	return parsedURL, headers, bodyData, bodyReceiptID, timeoutMs, nil
 }
 
 func validateMethod(method string) error {
@@ -538,36 +552,53 @@ func isValidHTTPToken(s string) bool {
 	return true
 }
 
-func validateBody(body *RequestBody, maxBytes uint64) ([]byte, error) {
+func validateBody(body *RequestBody, maxBytes uint64) ([]byte, string, error) {
 	if body == nil {
-		return nil, nil
+		return nil, "", nil
 	}
 
-	if body.Mode != "" && body.Mode != "inline_base64" {
-		return nil, &ValidationError{Code: errorCodeInvalidRequest, Message: "body mode must be inline_base64 or omitted in P0"}
+	switch body.Mode {
+	case "":
+		if body.ReceiptID != "" {
+			return nil, "", &ValidationError{Code: errorCodeInvalidRequest, Message: "receipt_id requires receipt body mode"}
+		}
+
+		return nil, "", nil
+	case bodyModeReceipt:
+		return validateReceiptBody(body)
+	case bodyModeInlineBase64:
+		return validateInlineBody(body, maxBytes)
+	default:
+		return nil, "", &ValidationError{Code: errorCodeInvalidRequest, Message: "body mode must be inline_base64, receipt, or omitted"}
+	}
+}
+
+func validateReceiptBody(body *RequestBody) ([]byte, string, error) {
+	if body.ReceiptID == "" || body.DataBase64 != "" {
+		return nil, "", &ValidationError{Code: errorCodeInvalidRequest, Message: "receipt body requires receipt_id and no inline data"}
 	}
 
-	if body.BodyRefID != "" {
-		return nil, &ValidationError{Code: errorCodeInvalidRequest, Message: "BodyRef body is rejected in P0"}
-	}
+	return nil, body.ReceiptID, nil
+}
 
-	if body.Mode == "" {
-		return nil, nil
+func validateInlineBody(body *RequestBody, maxBytes uint64) ([]byte, string, error) {
+	if body.ReceiptID != "" {
+		return nil, "", &ValidationError{Code: errorCodeInvalidRequest, Message: "receipt_id requires receipt body mode"}
 	}
 
 	decoded, err := base64.StdEncoding.DecodeString(body.DataBase64)
 	if err != nil {
-		return nil, &ValidationError{Code: errorCodeInvalidRequest, Message: "body data is not valid base64"}
+		return nil, "", &ValidationError{Code: errorCodeInvalidRequest, Message: "body data is not valid base64"}
 	}
 
 	if uint64(len(decoded)) > maxBytes {
-		return nil, &ValidationError{Code: errorCodeBodyTooLarge, Message: requestBodyExceedsLimit, Details: map[string]string{
+		return nil, "", &ValidationError{Code: errorCodeBodyTooLarge, Message: requestBodyExceedsLimit, Details: map[string]string{
 			errorDetailDirectionKey:  "request",
 			errorDetailLimitBytesKey: strconv.FormatUint(maxBytes, 10),
 		}}
 	}
 
-	return decoded, nil
+	return decoded, "", nil
 }
 
 func validateTimeout(timeoutMs, maxTimeoutMs uint64) (uint64, error) {

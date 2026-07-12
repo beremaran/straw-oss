@@ -15,6 +15,10 @@ are tagged.
 - Added an opt-in Redis runtime-state backend for interchangeable Control instances, including fenced worker sessions,
   shared heartbeats/capacity/cooldowns/sticky routing, request ownership and remote cancellation, instance leases,
   configuration invalidation, HA readiness metrics, an HAProxy deployment example, and failure drills.
+- Added an opt-in durable receipt-and-check transport with local and S3-compatible object stores, resumable parts,
+  idempotent receipt creation, size/SHA-256 verification in Control and Egress, assignment-scoped signed references,
+  cancellation and retention cleanup, stored response receipts, lifecycle metrics, Go/Python client support, and
+  local/production deployment profiles.
 
 ### Changed
 
@@ -30,7 +34,8 @@ are tagged.
 ### Removed
 
 - Multi-tenancy, RBAC, quotas, rate limiting, and legacy account-scoped administration APIs.
-- Postgres, ClickHouse, object storage, and the previous mandatory Redis/multi-tenant coordination model.
+- Postgres, ClickHouse, the previous mandatory object-storage path, and the previous mandatory
+  Redis/multi-tenant coordination model.
 - Telemetry read APIs, payload capture, MITM, and load-test tooling.
 
 ## 0.1.0

@@ -4,6 +4,8 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/beremaran/straw-oss/v2/internal/receipt"
 )
 
 const metricLabelErrorCode = "error_code"
@@ -17,6 +19,28 @@ type Metrics struct {
 	assignmentDuration prometheus.Histogram
 	natsDuration       prometheus.Histogram
 	natsErrors         *prometheus.CounterVec
+}
+
+type receiptStatsSource interface{ Stats() receipt.Stats }
+
+// RegisterReceiptCollector exposes bounded receipt lifecycle counters.
+func RegisterReceiptCollector(registerer prometheus.Registerer, source receiptStatsSource) {
+	metrics := []struct {
+		name, help string
+		value      func(receipt.Stats) uint64
+	}{
+		{"straw_receipts_created_total", "Durable receipts created.", func(s receipt.Stats) uint64 { return s.Created }},
+		{"straw_receipt_parts_uploaded_total", "Receipt parts uploaded or replaced.", func(s receipt.Stats) uint64 { return s.Parts }},
+		{"straw_receipts_verified_total", "Receipts that passed size and checksum verification.", func(s receipt.Stats) uint64 { return s.Verified }},
+		{"straw_receipts_rejected_total", "Receipts rejected for size or checksum mismatch.", func(s receipt.Stats) uint64 { return s.Rejected }},
+		{"straw_receipt_assignments_total", "Assignment-scoped receipt references issued.", func(s receipt.Stats) uint64 { return s.Assigned }},
+		{"straw_receipts_consumed_total", "Request receipts consumed successfully.", func(s receipt.Stats) uint64 { return s.Consumed }},
+		{"straw_receipts_expired_total", "Expired receipts cleaned up.", func(s receipt.Stats) uint64 { return s.Expired }},
+	}
+	for _, metric := range metrics {
+		current := metric
+		registerer.MustRegister(prometheus.NewCounterFunc(prometheus.CounterOpts{Name: current.name, Help: current.help}, func() float64 { return float64(current.value(source.Stats())) }))
+	}
 }
 
 // NewMetrics registers and returns the Control metrics set.

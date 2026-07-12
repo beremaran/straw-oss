@@ -19,6 +19,8 @@ controls you would apply to an internal egress gateway.
 - Run separate deployments for workloads that must not share policy or credentials.
 - Pin container images and review configuration changes.
 - Keep destination DNS and outbound network controls appropriate to your environment.
+- When receipts are enabled, keep `STRAW_RECEIPT_SIGNING_KEY` and S3 credentials in a secret manager, require TLS at
+  Control, restrict bucket access, and enable configured server-side encryption.
 
 An empty Control token is intentionally supported for the default local stack. Do not use that setting on an
 untrusted network.
@@ -31,6 +33,11 @@ rules. TLS is verified by the worker's HTTP stack.
 
 Bearer tokens, NATS passwords, and the Redis URL are environment values in the production examples. URL-encode Redis
 credentials when necessary. Do not commit `.env` files or place secret values in JSON configuration.
+
+Receipt object URLs are short-lived bearer capabilities scoped to one deployment/request assignment. Egress never
+receives long-lived object-storage credentials and re-checks the declared size and SHA-256. Treat Control access,
+signed URLs in logs, and stored response download authorization as sensitive. Receipt expiry is retention, not a
+substitute for storage encryption or secure deletion guarantees.
 
 Runtime administration is deployment-scoped authorization, not RBAC. Anyone holding the admin token can change all
 deployment policy, control every worker, view active request IDs, cancel requests, and roll back configuration.

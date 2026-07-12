@@ -69,6 +69,21 @@ func TestLoadRejectsInvalidRuntimeState(t *testing.T) {
 	}
 }
 
+func TestLoadObjectStorageProfiles(t *testing.T) {
+	t.Parallel()
+	cfg, err := LoadControl(writeConfig(t, `{"config_version":"v1","control":{"object_storage":{"enabled":true,"backend":"s3","endpoint":"https://s3.example","bucket":"receipts","server_side_encryption":"AES256"}}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ObjectStorage.MaxObjectBytes != 1<<30 || cfg.ObjectStorage.SigningKeyEnv != "STRAW_RECEIPT_SIGNING_KEY" {
+		t.Fatalf("object storage defaults = %+v", cfg.ObjectStorage)
+	}
+	_, err = LoadControl(writeConfig(t, `{"config_version":"v1","control":{"object_storage":{"enabled":true,"backend":"s3"}}}`))
+	if !errors.Is(err, errInvalidObjectStorage) {
+		t.Fatalf("invalid S3 config = %v", err)
+	}
+}
+
 func writeConfig(t *testing.T, contents string) string {
 	t.Helper()
 

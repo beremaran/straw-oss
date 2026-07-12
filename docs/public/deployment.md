@@ -31,6 +31,10 @@ Combine it with `deploy/production/compose.runtime-admin.yml` to opt into durabl
 enables file-backed JetStream, mounts persistent storage, selects `control.runtime-admin.json`, and requires
 `STRAW_ADMIN_TOKEN`. Adapt NATS replication, snapshots, storage, and secret delivery before production use.
 
+Combine the base file with `compose.object-storage.yml` after adapting `control.object-storage.json` to opt into
+receipt transport. This profile requires a shared S3-compatible store and receipt signing key. The local
+`make dev-receipts` profile uses a private persistent filesystem volume instead.
+
 ```sh
 cp deploy/production/.env.example deploy/production/.env
 $EDITOR deploy/production/.env
@@ -51,7 +55,8 @@ Before real use:
 - run separate Straw deployments for separate trust or policy boundaries.
 
 The default profile has no application database to migrate or back up. Back up the JetStream bucket and storage when
-the runtime-administration profile is enabled.
+the runtime-administration profile is enabled, and back up or lifecycle-manage the object bucket when receipts are
+enabled.
 
 Validate the example with `make production-deploy-check`.
 

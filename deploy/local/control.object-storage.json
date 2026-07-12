@@ -1,0 +1,18 @@
+{
+  "config_version": "v1",
+  "control": {
+    "nats": {
+      "servers": ["nats://nats:4222"]
+    },
+    "object_storage": {
+      "enabled": true,
+      "backend": "local",
+      "local_directory": "/var/lib/straw/objects",
+      "download_base_url": "http://control:8080",
+      "max_object_bytes": 1073741824,
+      "max_part_bytes": 16777216,
+      "retention_seconds": 86400,
+      "assignment_ttl_seconds": 300
+    }
+  }
+}

@@ -2,12 +2,14 @@
 
 from .client import (
     REQUESTS_PATH,
+    RECEIPTS_PATH,
     APIError,
     Client,
     ErrorResponse,
     Header,
     Request,
     RequestBody,
+    Receipt,
     Response,
     ResponseBody,
     Timing,
@@ -15,12 +17,14 @@ from .client import (
 
 __all__ = [
     "REQUESTS_PATH",
+    "RECEIPTS_PATH",
     "APIError",
     "Client",
     "ErrorResponse",
     "Header",
     "Request",
     "RequestBody",
+    "Receipt",
     "Response",
     "ResponseBody",
     "Timing",

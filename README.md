@@ -4,8 +4,8 @@ Straw is a small, self-hosted HTTP/HTTPS egress proxy. Your application sends a 
 it over NATS to an Egress worker, and the worker makes the outbound request.
 
 One deployment is one trust boundary. Straw has no tenants, accounts, RBAC, billing, quotas, or analytics database.
-NATS is the only required backing service; optional JetStream and Redis profiles provide durable runtime configuration
-and multi-Control coordination respectively.
+NATS is the only required backing service; optional JetStream, Redis, and object-storage profiles provide durable
+runtime configuration, multi-Control coordination, and large-body receipts respectively.
 
 ## Quickstart
 
@@ -34,6 +34,7 @@ The local stack contains exactly NATS, Control, and one Egress worker. It needs 
 - scale outbound workers independently;
 - preserve ordered and duplicate headers;
 - bound request bodies, response bodies, and deadlines;
+- optionally move large request and response bodies through verified expiring receipts;
 - select supported outbound TLS fingerprint profiles;
 - operate with Prometheus metrics, health endpoints, and JSON logs;
 - deploy without an application database.
@@ -48,6 +49,7 @@ The local stack contains exactly NATS, Control, and one Egress worker. It needs 
 - [Deployment patterns](docs/public/deployment.md)
 - [Runtime administration](docs/public/runtime-administration.md)
 - [Highly available Control](docs/public/highly-available-control.md)
+- [Object storage and receipts](docs/public/object-storage-receipts.md)
 - [Security](docs/public/security.md)
 - [Contributing](CONTRIBUTING.md)
 

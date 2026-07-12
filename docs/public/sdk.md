@@ -38,6 +38,10 @@ func main() {
 
 Non-200 Straw responses are returned as `*sdk.APIError` with `HTTPStatus` and the parsed error envelope.
 
+For a large body, use `CreateReceipt`, one or more `UploadReceiptPart` calls, and `CompleteReceipt`; then set
+`RequestBody{Mode: "receipt", ReceiptID: receipt.ReceiptID}`. Set `ResponseBodyMode: "receipt"` to store a response,
+and open it with `DownloadReceipt`.
+
 ## Python
 
 From this repository:
@@ -55,5 +59,9 @@ print(response.status, response.request_id)
 ```
 
 Pass a token as the second `Client` argument. Non-200 Straw responses raise `straw.APIError`.
+
+The Python client provides matching `create_receipt`, `upload_receipt_part`, `complete_receipt`, `get_receipt`, and
+`download_receipt` methods. `RequestBody(mode="receipt", receipt_id=...)` and
+`Request(response_body_mode="receipt", ...)` select the receipt paths.
 
 The Python package also contains the lower-level worker SDK. See [custom workers](egress_worker.md).

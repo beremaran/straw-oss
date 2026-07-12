@@ -21,7 +21,8 @@ not silently change behavior. Without `-config`, both binaries use local default
     },
     "transport": {"max_frame_data_bytes": 1048576},
     "nats": {"servers": ["nats://127.0.0.1:4222"]},
-    "runtime_admin": {"enabled": false}
+    "runtime_admin": {"enabled": false},
+    "object_storage": {"enabled": false}
   }
 }
 ```
@@ -57,6 +58,17 @@ interchangeable. Redis credentials belong in the URL named by `redis_url_env` (d
 `request_ttl_ms` must exceed `request.max_timeout_ms`. Instance IDs must be unique NATS subject tokens; if the named
 environment variable is empty, Control generates a process-unique ID. See [Highly available Control](highly-available-control.md)
 for TTL and outage behavior.
+
+### Optional object storage
+
+`object_storage.enabled` defaults to `false`. The `local` backend defaults to `.straw/objects`; the `s3` backend
+requires `endpoint` and `bucket`. Common defaults are 1 GiB maximum objects, 16 MiB maximum parts, 24-hour retention,
+five-minute assignment URLs, and hourly cleanup. `download_base_url` must be reachable by Egress.
+
+Secrets are read from `signing_key_env` (`STRAW_RECEIPT_SIGNING_KEY`), `access_key_env`, `secret_key_env`, and
+`session_token_env`; never place their values in JSON. The signing key must contain at least 32 bytes. S3 server-side
+encryption accepts `AES256` or `aws:kms`; the latter also requires `kms_key_id`. See
+[Object storage and receipts](object-storage-receipts.md) for the full lifecycle and examples.
 
 ## Egress
 

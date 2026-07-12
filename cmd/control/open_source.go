@@ -13,11 +13,16 @@ import (
 	"github.com/beremaran/straw-oss/v2/internal/config"
 	"github.com/beremaran/straw-oss/v2/internal/control"
 	"github.com/beremaran/straw-oss/v2/internal/natsx"
+	"github.com/beremaran/straw-oss/v2/internal/objectstore"
+	"github.com/beremaran/straw-oss/v2/internal/receipt"
 )
 
 const defaultRoutePriority = 100
 
-var errSharedRuntimeStateURLRequired = errors.New("shared runtime state Redis URL is required")
+var (
+	errSharedRuntimeStateURLRequired = errors.New("shared runtime state Redis URL is required")
+	errS3CredentialsRequired         = errors.New("S3 credentials are required")
+)
 
 // runDeploymentControl wires the self-hosted deployment runtime. Runtime state
 // is local by default and shared through Redis only in the opt-in HA profile.
@@ -39,13 +44,12 @@ func runDeploymentControl(ctx context.Context, cfg config.ControlConfig, natsCon
 
 	configCache := newDeploymentConfigCache()
 
-	metricsRegistry := prometheus.NewRegistry()
-	metrics := control.NewMetrics(metricsRegistry)
-	control.RegisterWorkerCollector(metricsRegistry, registry)
-
-	if state != nil {
-		control.RegisterRuntimeStateCollector(metricsRegistry, state)
+	receipts, err := setupReceiptTransport(ctx, cfg)
+	if err != nil {
+		return err
 	}
+
+	metricsRegistry, metrics := newMetricsRegistry(registry, state, receipts)
 
 	inflight := control.NewInFlightRegistry()
 
@@ -62,10 +66,14 @@ func runDeploymentControl(ctx context.Context, cfg config.ControlConfig, natsCon
 		sticky = control.NewRedisStickyBackend(ctx, state)
 	}
 
-	requestHandler := newControlRequestHandler(cfg, natsConn, configCache, registry, sticky, inflight, metrics)
+	requestHandler := newControlRequestHandler(cfg, natsConn, configCache, registry, sticky, inflight, metrics, receipts)
 
 	mux := http.NewServeMux()
 	mux.Handle("POST /api/v1/requests", requestHandler)
+
+	if receipts != nil {
+		control.NewReceiptHandler(receipts, control.NewDeploymentAuthenticator(os.Getenv("STRAW_AUTH_TOKEN"))).Register(mux)
+	}
 
 	if cfg.RuntimeAdmin.Enabled {
 		err = setupRuntimeAdmin(ctx, cfg, natsConn, configCache, registry, inflight, mux)
@@ -74,27 +82,81 @@ func runDeploymentControl(ctx context.Context, cfg config.ControlConfig, natsCon
 		}
 	}
 
-	var extraReady func() bool
-	if state != nil {
-		extraReady = state.Available
-	}
-
-	return serveDeployment(ctx, cfg, mux, metricsRegistry, extraReady)
+	return serveDeployment(ctx, cfg, mux, metricsRegistry, runtimeReadiness(state))
 }
 
-func newControlRequestHandler(cfg config.ControlConfig, natsConn *natsx.Connection, configCache *control.ConfigCache, registry *control.WorkerRegistry, sticky control.StickyBackend, inflight *control.InFlightRegistry, metrics *control.Metrics) http.Handler {
+func newMetricsRegistry(registry *control.WorkerRegistry, state *control.RedisRuntimeState, receipts *receipt.Service) (*prometheus.Registry, *control.Metrics) {
+	metricsRegistry := prometheus.NewRegistry()
+	metrics := control.NewMetrics(metricsRegistry)
+	control.RegisterWorkerCollector(metricsRegistry, registry)
+
+	if receipts != nil {
+		control.RegisterReceiptCollector(metricsRegistry, receipts)
+	}
+
+	if state != nil {
+		control.RegisterRuntimeStateCollector(metricsRegistry, state)
+	}
+
+	return metricsRegistry, metrics
+}
+
+func runtimeReadiness(state *control.RedisRuntimeState) func() bool {
+	if state == nil {
+		return nil
+	}
+
+	return state.Available
+}
+
+func newControlRequestHandler(cfg config.ControlConfig, natsConn *natsx.Connection, configCache *control.ConfigCache, registry *control.WorkerRegistry, sticky control.StickyBackend, inflight *control.InFlightRegistry, metrics *control.Metrics, receipts *receipt.Service) http.Handler {
 	authenticator := control.NewDeploymentAuthenticator(os.Getenv("STRAW_AUTH_TOKEN"))
 	dispatcher := control.NewDefaultRequestDispatcher(control.RequestDispatcherOptions{
 		ConfigCache: configCache, Workers: registry, Sticky: sticky, NATS: natsConn,
 		MaxInlineResponseBodyBytes: cfg.Request.MaxInlineResponseBodyBytes,
 		MaxFrameDataBytes:          cfg.Transport.MaxFrameDataBytes, MaxTimeoutMs: cfg.Request.MaxTimeoutMs,
 		InFlight: inflight, Metrics: metrics,
+		Receipts: receipts,
 	})
 	requestHandler := control.NewRequestHandler(cfg.Request.MaxInlineRequestBodyBytes, cfg.Request.MaxTimeoutMs, authenticator)
 	requestHandler.SetConfigCache(configCache)
 	requestHandler.SetDispatcher(dispatcher)
 
+	if receipts != nil {
+		requestHandler.SetReceiptPreparer(receipts)
+	}
+
 	return requestHandler
+}
+
+func setupReceiptTransport(ctx context.Context, cfg config.ControlConfig) (*receipt.Service, error) {
+	storageCfg := cfg.ObjectStorage
+	if !storageCfg.Enabled {
+		return nil, nil
+	}
+
+	signingKey := []byte(os.Getenv(storageCfg.SigningKeyEnv))
+
+	var store objectstore.Store
+	if storageCfg.Backend == "local" {
+		store = objectstore.Local{Root: storageCfg.LocalDirectory}
+	} else {
+		accessKey, secretKey := os.Getenv(storageCfg.AccessKeyEnv), os.Getenv(storageCfg.SecretKeyEnv)
+		if accessKey == "" || secretKey == "" {
+			return nil, fmt.Errorf("setup object storage: %w", errS3CredentialsRequired)
+		}
+
+		store = objectstore.S3{Endpoint: storageCfg.Endpoint, Bucket: storageCfg.Bucket, Region: storageCfg.Region, AccessKey: accessKey, SecretKey: secretKey, SessionToken: os.Getenv(storageCfg.SessionTokenEnv), ServerSideEncryption: storageCfg.ServerSideEncryption, KMSKeyID: storageCfg.KMSKeyID}
+	}
+
+	service, err := receipt.New(store, receipt.Config{DownloadBaseURL: storageCfg.DownloadBaseURL, SigningKey: signingKey, MaxObjectBytes: storageCfg.MaxObjectBytes, MaxPartBytes: storageCfg.MaxPartBytes, Retention: time.Duration(storageCfg.RetentionSeconds) * time.Second, AssignmentTTL: time.Duration(storageCfg.AssignmentTTLSeconds) * time.Second})
+	if err != nil {
+		return nil, fmt.Errorf("setup receipt transport: %w", err)
+	}
+
+	go service.RunCleanup(ctx, time.Duration(storageCfg.CleanupIntervalSeconds)*time.Second)
+
+	return service, nil
 }
 
 func setupSharedRuntimeState(ctx context.Context, cfg config.ControlConfig) (*control.RedisRuntimeState, string, error) {
