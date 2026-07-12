@@ -1,0 +1,21 @@
+# Optional durable runtime-administration profile. Adapt NATS storage and backups.
+services:
+  nats:
+    command:
+      - --http_port=8222
+      - --max_payload=2MB
+      - --jetstream
+      - --store_dir=/data
+      - --user=${NATS_USER:?set NATS_USER}
+      - --pass=${NATS_PASSWORD:?set NATS_PASSWORD}
+    volumes:
+      - straw-runtime-data:/data
+
+  control:
+    environment:
+      STRAW_ADMIN_TOKEN: ${STRAW_ADMIN_TOKEN:?set STRAW_ADMIN_TOKEN}
+    volumes:
+      - ./control.runtime-admin.json:/etc/straw/control.json:ro
+
+volumes:
+  straw-runtime-data: {}

@@ -14,7 +14,7 @@ func TestDeploymentWorkerRegistryRoutesUnprovisionedWorker(t *testing.T) {
 
 	registry := NewDeploymentWorkerRegistry(DefaultWorkerTimings(), nil)
 	outcome, err := registry.Register(context.Background(), &strawpb.RegisterRequest{
-		WorkerId: localWorkerID, ExecutorType: "egress", ProtocolMajor: ProtocolMajor,
+		WorkerId: localWorkerID, ExecutorType: errorCategoryEgress, ProtocolMajor: ProtocolMajor,
 		ProtocolMinor: 1, MaxConcurrency: 4,
 	})
 	if err != nil || !outcome.OK {

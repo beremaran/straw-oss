@@ -5,6 +5,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -42,6 +44,7 @@ const (
 	RuntimeDraining    WorkerRuntimeState = "draining"
 	RuntimeCooldown    WorkerRuntimeState = "cooldown"
 	RuntimeUnhealthy   WorkerRuntimeState = "unhealthy"
+	RuntimeDisabled    WorkerRuntimeState = "disabled"
 )
 
 // WorkerTimings controls liveness and failure cooldown thresholds.
@@ -108,10 +111,11 @@ func (s *workerSession) lastSeen() time.Time {
 
 // WorkerRegistry tracks live worker sessions in memory.
 type WorkerRegistry struct {
-	mu      sync.Mutex
-	now     func() time.Time
-	timings WorkerTimings
-	workers map[string]*workerSession
+	mu       sync.Mutex
+	now      func() time.Time
+	timings  WorkerTimings
+	workers  map[string]*workerSession
+	settings map[string]config.WorkerSetting
 }
 
 // NewDeploymentWorkerRegistry creates the in-process worker registry.
@@ -120,7 +124,7 @@ func NewDeploymentWorkerRegistry(timings WorkerTimings, now func() time.Time) *W
 		now = time.Now
 	}
 
-	return &WorkerRegistry{now: now, timings: timings, workers: make(map[string]*workerSession)}
+	return &WorkerRegistry{now: now, timings: timings, workers: make(map[string]*workerSession), settings: make(map[string]config.WorkerSetting)}
 }
 
 // Register creates or replaces one worker session.
@@ -286,7 +290,7 @@ func (r *WorkerRegistry) CandidatesForPool(_ string, poolID string) []PoolCandid
 
 	candidates := make([]PoolCandidate, 0, len(r.workers))
 	for workerID, session := range r.workers {
-		state := runtimeStateForSession(r.timings, session, now)
+		state := r.runtimeState(workerID, session, now)
 		if state != RuntimeReady && state != RuntimeDegraded || !sessionInPool(session, poolID) {
 			continue
 		}
@@ -308,6 +312,61 @@ func (r *WorkerRegistry) CandidatesForPool(_ string, poolID string) []PoolCandid
 	}
 
 	return candidates
+}
+
+// ApplySnapshot replaces durable worker lifecycle overrides atomically with routing reads.
+func (r *WorkerRegistry) ApplySnapshot(snapshot config.Snapshot) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.settings = make(map[string]config.WorkerSetting, len(snapshot.WorkerSettings))
+	for _, setting := range snapshot.WorkerSettings {
+		r.settings[setting.WorkerID] = setting
+	}
+}
+
+// WorkerInfo is the administrative view of a registered worker.
+type WorkerInfo struct {
+	WorkerID          string             `json:"worker_id"`
+	SessionID         string             `json:"session_id"`
+	State             WorkerRuntimeState `json:"state"`
+	Enabled           bool               `json:"enabled"`
+	Draining          bool               `json:"draining"`
+	ExecutorType      string             `json:"executor_type"`
+	ActiveRequests    uint32             `json:"active_requests"`
+	AvailableCapacity uint32             `json:"available_capacity"`
+	MaxConcurrency    uint32             `json:"max_concurrency"`
+	LastSeen          time.Time          `json:"last_seen"`
+	Pools             []string           `json:"pools"`
+}
+
+// Workers returns a stable administrative snapshot of all registered workers.
+func (r *WorkerRegistry) Workers() []WorkerInfo {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	now := r.now()
+
+	out := make([]WorkerInfo, 0, len(r.workers))
+	for workerID, session := range r.workers {
+		setting, overridden := r.settings[workerID]
+
+		enabled, draining := true, session.draining
+		if overridden {
+			enabled, draining = setting.Enabled, setting.Draining || session.draining
+		}
+
+		pools := make([]string, 0, len(session.pools))
+		for _, pool := range session.pools {
+			pools = append(pools, pool.PoolID)
+		}
+
+		out = append(out, WorkerInfo{WorkerID: workerID, SessionID: session.sessionID, State: r.runtimeState(workerID, session, now), Enabled: enabled, Draining: draining, ExecutorType: session.executorType, ActiveRequests: session.activeRequests, AvailableCapacity: session.availableCapacity, MaxConcurrency: session.maxConcurrency, LastSeen: session.lastSeen(), Pools: pools})
+	}
+
+	slices.SortFunc(out, func(a, b WorkerInfo) int { return strings.Compare(a.WorkerID, b.WorkerID) })
+
+	return out
 }
 
 func sessionInPool(session *workerSession, poolID string) bool {
@@ -378,8 +437,8 @@ func (r *WorkerRegistry) Stats() WorkerRegistryStats {
 	now := r.now()
 
 	stats := WorkerRegistryStats{Sessions: len(r.workers)}
-	for _, session := range r.workers {
-		state := runtimeStateForSession(r.timings, session, now)
+	for workerID, session := range r.workers {
+		state := r.runtimeState(workerID, session, now)
 		if state == RuntimeReady || state == RuntimeDegraded {
 			stats.Available++
 		}
@@ -394,6 +453,20 @@ func (r *WorkerRegistry) Stats() WorkerRegistryStats {
 	}
 
 	return stats
+}
+
+func (r *WorkerRegistry) runtimeState(workerID string, session *workerSession, now time.Time) WorkerRuntimeState {
+	if setting, ok := r.settings[workerID]; ok {
+		if !setting.Enabled {
+			return RuntimeDisabled
+		}
+
+		if setting.Draining {
+			return RuntimeDraining
+		}
+	}
+
+	return runtimeStateForSession(r.timings, session, now)
 }
 
 func newWorkerSessionID() (string, error) {

@@ -26,6 +26,7 @@ var (
 	errInvalidMetricsPort     = errors.New("server.metrics_port must be between 1 and 65535")
 	errInvalidHealthPort      = errors.New("health_port must be between 1 and 65535")
 	errInvalidHeartbeat       = errors.New("heartbeat_interval_ms must be positive")
+	errInvalidRuntimeHistory  = errors.New("runtime_admin.history_limit must be between 1 and 64")
 	errOpenConfig             = errors.New("open config file")
 )
 
@@ -38,10 +39,19 @@ type File struct {
 
 // ControlConfig configures the Control service.
 type ControlConfig struct {
-	Server    ControlServerConfig    `json:"server"`
-	Request   ControlRequestConfig   `json:"request"`
-	Transport ControlTransportConfig `json:"transport"`
-	NATS      NATSConfig             `json:"nats"`
+	Server       ControlServerConfig    `json:"server"`
+	Request      ControlRequestConfig   `json:"request"`
+	Transport    ControlTransportConfig `json:"transport"`
+	NATS         NATSConfig             `json:"nats"`
+	RuntimeAdmin RuntimeAdminConfig     `json:"runtime_admin"`
+}
+
+// RuntimeAdminConfig enables the optional durable runtime-administration profile.
+type RuntimeAdminConfig struct {
+	Enabled      bool   `json:"enabled"`
+	TokenEnv     string `json:"token_env"`
+	Bucket       string `json:"bucket"`
+	HistoryLimit uint8  `json:"history_limit"`
 }
 
 // ControlServerConfig configures Control's HTTP listeners.
@@ -230,6 +240,8 @@ func (c *ControlConfig) applyDefaults() {
 		c.Server.MetricsPort = 9090
 	}
 
+	c.RuntimeAdmin.applyDefaults()
+
 	if c.Request.MaxInlineRequestBodyBytes == 0 {
 		c.Request.MaxInlineRequestBodyBytes = 1_048_576
 	}
@@ -249,6 +261,20 @@ func (c *ControlConfig) applyDefaults() {
 	c.NATS.applyDefaults()
 }
 
+func (r *RuntimeAdminConfig) applyDefaults() {
+	if r.TokenEnv == "" {
+		r.TokenEnv = "STRAW_ADMIN_TOKEN"
+	}
+
+	if r.Bucket == "" {
+		r.Bucket = "STRAW_RUNTIME_CONFIG"
+	}
+
+	if r.HistoryLimit == 0 {
+		r.HistoryLimit = 64
+	}
+}
+
 func (c ControlConfig) validate() error {
 	if c.Server.APIPort < 1 || c.Server.APIPort > 65535 {
 		return fmt.Errorf("%w: %d", errInvalidAPIPort, c.Server.APIPort)
@@ -256,6 +282,10 @@ func (c ControlConfig) validate() error {
 
 	if c.Server.MetricsPort < 1 || c.Server.MetricsPort > 65535 {
 		return fmt.Errorf("%w: %d", errInvalidMetricsPort, c.Server.MetricsPort)
+	}
+
+	if c.RuntimeAdmin.Enabled && (c.RuntimeAdmin.HistoryLimit < 1 || c.RuntimeAdmin.HistoryLimit > 64) {
+		return fmt.Errorf("%w: %d", errInvalidRuntimeHistory, c.RuntimeAdmin.HistoryLimit)
 	}
 
 	return nil

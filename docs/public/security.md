@@ -10,6 +10,8 @@ controls you would apply to an internal egress gateway.
 ## Required production controls
 
 - Set a long random `STRAW_AUTH_TOKEN` and send it only over TLS.
+- If runtime administration is enabled, set a different long random `STRAW_ADMIN_TOKEN`; restrict `/admin/` and
+  `/api/v1/admin/*` more tightly than the request endpoint.
 - Authenticate NATS and keep it off the public internet.
 - Restrict Control, metrics, NATS monitoring, and worker health listeners with network policy or firewalls.
 - Run separate deployments for workloads that must not share policy or credentials.
@@ -27,6 +29,9 @@ rules. TLS is verified by the worker's HTTP stack.
 
 Bearer tokens and NATS passwords are environment values in the production example. Do not commit `.env` files or
 place secret values in JSON configuration.
+
+Runtime administration is deployment-scoped authorization, not RBAC. Anyone holding the admin token can change all
+deployment policy, control every worker, view active request IDs, cancel requests, and roll back configuration.
 
 ## Reporting vulnerabilities
 

@@ -37,3 +37,13 @@ make dev
 ```
 
 These variables change host port mappings only; containers continue to use the standard internal ports.
+
+## Runtime-administration example
+
+```sh
+make dev-admin
+open http://localhost:8080/admin/
+```
+
+The development-only admin token defaults to `local-admin`. Set `STRAW_ADMIN_TOKEN` to override it. This opt-in
+overlay enables durable JetStream storage; see `docs/public/runtime-administration.md` for API examples and recovery.

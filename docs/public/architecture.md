@@ -12,14 +12,16 @@ Application --HTTP--> Control --NATS request/reply--> Egress worker --HTTP/HTTPS
                           +-- health, readiness, Prometheus metrics
 ```
 
-**Control** exposes the request API, validates authentication and input, applies the deployment's static policy,
-selects a healthy worker, and relays request and response frames.
+**Control** exposes the request API, validates authentication and input, applies the deployment policy, selects a
+healthy worker, and relays request and response frames. The optional runtime profile also exposes the Admin/Config API
+and dashboard.
 
 **Egress** registers with Control, advertises capacity, executes outbound requests, and streams responses back. Add
 workers when you need more concurrency or network locations.
 
-**NATS** provides discovery, assignment, and request/response transport. Straw stores no durable application state,
-so NATS does not need JetStream for Straw.
+**NATS** provides discovery, assignment, request/response transport, and runtime snapshot distribution. The default
+profile uses Core NATS only. The optional runtime-administration profile enables file-backed JetStream KV for current
+configuration and audit history.
 
 ## Request lifecycle
 
