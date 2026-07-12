@@ -9,7 +9,7 @@ import (
 	"github.com/beremaran/straw-oss/internal/config"
 	internalegress "github.com/beremaran/straw-oss/internal/egress"
 	"github.com/beremaran/straw-oss/internal/natsx"
-	sdkegress "github.com/beremaran/straw-oss/sdk/egress"
+	sdkegress "github.com/beremaran/straw-sdk-go/egress"
 )
 
 func TestBuildCapabilitiesUsesDeploymentPool(t *testing.T) {

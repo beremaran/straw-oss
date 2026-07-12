@@ -21,7 +21,7 @@ import (
 
 	"github.com/nats-io/nats.go"
 
-	sdkegress "github.com/beremaran/straw-oss/sdk/egress"
+	sdkegress "github.com/beremaran/straw-sdk-go/egress"
 )
 
 const (

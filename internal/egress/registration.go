@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/beremaran/straw-oss/internal/natsx"
-	sdkegress "github.com/beremaran/straw-oss/sdk/egress"
 	strawpb "github.com/beremaran/straw-protos-go/straw/v1"
+	sdkegress "github.com/beremaran/straw-sdk-go/egress"
 )
 
 // ProtocolMajor is the worker protocol major version this worker speaks.

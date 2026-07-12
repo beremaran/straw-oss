@@ -9,7 +9,7 @@ The REST API has small Go and Python clients. Both accept a base URL and optiona
 ## Go
 
 ```sh
-go get github.com/beremaran/straw-oss
+go get github.com/beremaran/straw-sdk-go@v0.1.0
 ```
 
 ```go
@@ -20,12 +20,12 @@ import (
     "fmt"
     "log"
 
-    "github.com/beremaran/straw-oss/sdk"
+    straw "github.com/beremaran/straw-sdk-go"
 )
 
 func main() {
-    client := sdk.NewClient("http://localhost:8080", "")
-    response, err := client.Do(context.Background(), sdk.Request{
+    client := straw.NewClient("http://localhost:8080", "")
+    response, err := client.Do(context.Background(), straw.Request{
         Method: "GET",
         URL:    "https://example.com",
     })
@@ -36,7 +36,7 @@ func main() {
 }
 ```
 
-Non-200 Straw responses are returned as `*sdk.APIError` with `HTTPStatus` and the parsed error envelope.
+Non-200 Straw responses are returned as `*straw.APIError` with `HTTPStatus` and the parsed error envelope.
 
 For a large body, use `CreateReceipt`, one or more `UploadReceiptPart` calls, and `CompleteReceipt`; then set
 `RequestBody{Mode: "receipt", ReceiptID: receipt.ReceiptID}`. Set `ResponseBodyMode: "receipt"` to store a response,

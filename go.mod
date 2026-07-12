@@ -4,6 +4,7 @@ go 1.26.4
 
 require (
 	github.com/beremaran/straw-protos-go v0.3.0
+	github.com/beremaran/straw-sdk-go v0.1.0
 	github.com/bogdanfinn/fhttp v0.6.8
 	github.com/bogdanfinn/tls-client v1.15.1
 	github.com/nats-io/nats.go v1.52.0

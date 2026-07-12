@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	"github.com/beremaran/straw-oss/internal/natsx"
-	sdkegress "github.com/beremaran/straw-oss/sdk/egress"
 	strawpb "github.com/beremaran/straw-protos-go/straw/v1"
+	sdkegress "github.com/beremaran/straw-sdk-go/egress"
 )
 
 // Worker is the SDK-owned assignment runtime used by the official worker.
