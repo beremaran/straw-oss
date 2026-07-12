@@ -29,25 +29,24 @@ These capabilities belong in the open-source project. They must be additive depl
 path continues to require only NATS, while operators opt into durable or highly available infrastructure when they
 need the corresponding behavior. The project will not reserve these features for a separate enterprise edition.
 
-### Runtime administration and configuration
+### Runtime administration and configuration — delivered
 
 **Outcome:** operators can inspect and change Control and Egress behavior at runtime, without editing files and
 restarting the deployment.
 
-- Add a deployment-scoped Admin and Config REST API for Control settings, worker settings, pools, routing, destination
-  policy, injection policy, fingerprint profiles, and other supported runtime controls.
-- Add a fully fledged web dashboard. Every supported administrative action must be available through the API and the
-  UI; the dashboard must not depend on private endpoints or provide only a read-only subset.
-- Support worker lifecycle operations such as inspect, drain, undrain, disable, enable, and safe request cancellation.
-- Validate changes before activation, distribute versioned snapshots to Control instances and Egress workers, expose
-  rollout status, and retain audit history and rollback.
-- Define optimistic concurrency and failure behavior so two operators cannot silently overwrite each other.
-- Use a durable open-source configuration backend, expected to be PostgreSQL, only when this profile is enabled.
-- Keep the model deployment-scoped. Runtime administration does not imply hosted tenants, billing, or account
-  management.
+- A deployment-scoped Admin and Config REST API covers Control settings, worker settings, pools, routing, destination
+  policy, injection policy, fingerprint profiles, and the supported runtime controls.
+- The web dashboard has action parity with the API and uses only the documented endpoints.
+- Worker lifecycle operations cover inspect, drain, undrain, disable, enable, and safe request cancellation.
+- Changes are validated before activation, versioned snapshots are atomically applied and distributed, rollout status
+  is exposed, and bounded audit history supports rollback into a new version.
+- ETag/`If-Match` optimistic concurrency prevents silent operator overwrites.
+- The opt-in durable backend is file-backed NATS JetStream KV. This replaces the initially expected PostgreSQL choice
+  so NATS remains the project's only backing service.
+- The model remains deployment-scoped and adds no hosted tenants, billing, or account management.
 
-Acceptance requires API/UI action parity, restart-safe configuration, documented recovery, authorization for
-administrative actions, and an end-to-end local example of changing worker behavior while requests continue.
+Acceptance is covered by API/UI action parity, restart-safe configuration, documented recovery, a separately
+authorized administrative surface, and an end-to-end local worker-drain example that lets active requests continue.
 
 ### Highly available Control
 
@@ -86,8 +85,8 @@ documented.
 
 ## Delivery order
 
-1. Specify the deployment-scoped configuration model and API/UI action matrix.
-2. Add durable configuration and runtime snapshot distribution.
+1. [x] Specify the deployment-scoped configuration model and API/UI action matrix.
+2. [x] Add durable configuration and runtime snapshot distribution.
 3. Add shared runtime state and validate multi-Control HA behavior.
 4. Add receipt-and-check object transport on top of the versioned configuration and HA foundations.
 

@@ -43,3 +43,7 @@ connections during normal shutdown.
 
 Read `CHANGELOG.md`, test the new version against a staging deployment, update workers before or with Control, and
 keep protocol-coupled custom workers pinned until verified.
+
+When the runtime-administration profile is enabled, include the NATS JetStream configuration bucket in backup and
+recovery drills. Inspect rollout status after upgrades; an official worker reports `applied` after receiving the
+current snapshot. See [Runtime administration](runtime-administration.md#back-up-and-recover).

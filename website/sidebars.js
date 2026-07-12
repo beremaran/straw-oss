@@ -15,7 +15,7 @@ const sidebars = {
     {
       type: 'category',
       label: 'Run Straw',
-      items: ['deployment', 'operations', 'security', 'troubleshooting'],
+      items: ['deployment', 'runtime-administration', 'operations', 'security', 'troubleshooting'],
     },
     'development',
   ],

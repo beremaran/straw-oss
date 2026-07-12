@@ -20,13 +20,20 @@ not silently change behavior. Without `-config`, both binaries use local default
       "max_timeout_ms": 120000
     },
     "transport": {"max_frame_data_bytes": 1048576},
-    "nats": {"servers": ["nats://127.0.0.1:4222"]}
+    "nats": {"servers": ["nats://127.0.0.1:4222"]},
+    "runtime_admin": {"enabled": false}
   }
 }
 ```
 
 Set `STRAW_AUTH_TOKEN` to require `Authorization: Bearer <token>` on requests. An unset token permits requests and is
 appropriate only for a loopback or otherwise trusted development network.
+
+### Optional runtime administration
+
+`runtime_admin.enabled` opts into durable runtime configuration. Its defaults are `token_env: "STRAW_ADMIN_TOKEN"`,
+`bucket: "STRAW_RUNTIME_CONFIG"`, and `history_limit: 64`. The named token environment variable must be non-empty,
+and NATS must have JetStream file storage enabled. See [Runtime administration](runtime-administration.md).
 
 ## Egress
 

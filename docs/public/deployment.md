@@ -27,6 +27,10 @@ These variables affect host mappings only.
 Control token, internal backend networking, loopback-bound public ports, health checks, read-only containers, and
 independently scalable workers.
 
+Combine it with `deploy/production/compose.runtime-admin.yml` to opt into durable runtime administration. The overlay
+enables file-backed JetStream, mounts persistent storage, selects `control.runtime-admin.json`, and requires
+`STRAW_ADMIN_TOKEN`. Adapt NATS replication, snapshots, storage, and secret delivery before production use.
+
 ```sh
 cp deploy/production/.env.example deploy/production/.env
 $EDITOR deploy/production/.env
@@ -46,6 +50,7 @@ Before real use:
 - set resource, file-descriptor, and log-retention limits;
 - run separate Straw deployments for separate trust or policy boundaries.
 
-Straw has no application database to migrate or back up. Back up only infrastructure and configuration you add.
+The default profile has no application database to migrate or back up. Back up the JetStream bucket and storage when
+the runtime-administration profile is enabled.
 
 Validate the example with `make production-deploy-check`.

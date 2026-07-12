@@ -10,86 +10,95 @@ const (
 
 // Snapshot is the immutable policy used by one Straw deployment.
 type Snapshot struct {
-	ConfigVersion       uint64
-	DefaultTimeoutMs    uint64
-	MaxTimeoutMs        uint64
-	RoutingRules        []RoutingRule
-	ExecutorPools       []ExecutorPool
-	DenyRules           []DenyRule
-	InjectionPolicies   []InjectionPolicy
-	FingerprintProfiles []FingerprintProfile
+	ConfigVersion       uint64               `json:"config_version"`
+	DefaultTimeoutMs    uint64               `json:"default_timeout_ms"`
+	MaxTimeoutMs        uint64               `json:"max_timeout_ms"`
+	RoutingRules        []RoutingRule        `json:"routing_rules"`
+	ExecutorPools       []ExecutorPool       `json:"executor_pools"`
+	DenyRules           []DenyRule           `json:"destination_policy"`
+	InjectionPolicies   []InjectionPolicy    `json:"injection_policies"`
+	FingerprintProfiles []FingerprintProfile `json:"fingerprint_profiles"`
+	WorkerSettings      []WorkerSetting      `json:"worker_settings"`
 }
 
 // MatchConditions determines whether a route applies.
 type MatchConditions struct {
-	Tags        []string
-	Country     string
-	Region      string
-	IPType      string
-	IngressType string
-	TargetHost  string
+	Tags        []string `json:"tags,omitempty"`
+	Country     string   `json:"country,omitempty"`
+	Region      string   `json:"region,omitempty"`
+	IPType      string   `json:"ip_type,omitempty"`
+	IngressType string   `json:"ingress_type,omitempty"`
+	TargetHost  string   `json:"target_host,omitempty"`
 }
 
 // RoutingRule selects a worker pool for matching requests.
 type RoutingRule struct {
-	ID                      string
-	Priority                int
-	Enabled                 bool
-	Match                   MatchConditions
-	TargetPoolID            string
-	StickySessionTTLSeconds uint32
-	AllowStickyFallback     bool
+	ID                      string          `json:"id"`
+	Priority                int             `json:"priority"`
+	Enabled                 bool            `json:"enabled"`
+	Match                   MatchConditions `json:"match"`
+	TargetPoolID            string          `json:"target_pool_id"`
+	StickySessionTTLSeconds uint32          `json:"sticky_session_ttl_seconds,omitempty"`
+	AllowStickyFallback     bool            `json:"allow_sticky_fallback,omitempty"`
 }
 
 // ExecutorPool describes an eligible worker group.
 type ExecutorPool struct {
-	ID                   string
-	ExecutorType         string
-	Tags                 []string
-	Enabled              bool
-	AllowDegradedWorkers bool
-	AllowedIPTypes       []string
-	AllowedCountries     []string
-	AllowedRegions       []string
+	ID                   string   `json:"id"`
+	ExecutorType         string   `json:"executor_type"`
+	Tags                 []string `json:"tags,omitempty"`
+	Enabled              bool     `json:"enabled"`
+	AllowDegradedWorkers bool     `json:"allow_degraded_workers,omitempty"`
+	AllowedIPTypes       []string `json:"allowed_ip_types,omitempty"`
+	AllowedCountries     []string `json:"allowed_countries,omitempty"`
+	AllowedRegions       []string `json:"allowed_regions,omitempty"`
 }
 
 // DenyRule blocks or explicitly allows a destination pattern.
 type DenyRule struct {
-	ID             string
-	RuleType       string
-	Action         string
-	Enabled        bool
-	Reason         string
-	RawPattern     string
-	NormalizedHost string
-	NormalizedCIDR string
-	NormalizedIP   string
-	NormalizedName string
+	ID             string `json:"id"`
+	RuleType       string `json:"rule_type"`
+	Action         string `json:"action"`
+	Enabled        bool   `json:"enabled"`
+	Reason         string `json:"reason,omitempty"`
+	RawPattern     string `json:"raw_pattern"`
+	NormalizedHost string `json:"normalized_host,omitempty"`
+	NormalizedCIDR string `json:"normalized_cidr,omitempty"`
+	NormalizedIP   string `json:"normalized_ip,omitempty"`
+	NormalizedName string `json:"normalized_name,omitempty"`
 }
 
 // InjectionOperation changes one upstream request header.
 type InjectionOperation struct {
-	Op          string
-	HeaderName  string
-	ValueBase64 string
+	Op          string `json:"op"`
+	HeaderName  string `json:"header_name"`
+	ValueBase64 string `json:"value_base64,omitempty"`
 }
 
 // InjectionPolicy is an ordered group of header operations.
 type InjectionPolicy struct {
-	ID         string
-	Enabled    bool
-	Operations []InjectionOperation
+	ID         string               `json:"id"`
+	Enabled    bool                 `json:"enabled"`
+	Operations []InjectionOperation `json:"operations"`
 }
 
 // FingerprintProfile describes a supported outbound TLS profile.
 type FingerprintProfile struct {
-	Name              string
-	ScopeType         string
-	SupportedByWorker bool
-	Enabled           bool
-	ExecutorType      string
-	ProfileRef        string
-	ContractRevision  string
+	Name              string `json:"name"`
+	ScopeType         string `json:"scope_type,omitempty"`
+	SupportedByWorker bool   `json:"supported_by_worker"`
+	Enabled           bool   `json:"enabled"`
+	ExecutorType      string `json:"executor_type"`
+	ProfileRef        string `json:"profile_ref"`
+	ContractRevision  string `json:"contract_revision,omitempty"`
+}
+
+// WorkerSetting is the durable administrative override for one worker.
+// Draining and disabled workers finish existing requests but receive no new assignments.
+type WorkerSetting struct {
+	WorkerID string `json:"worker_id"`
+	Enabled  bool   `json:"enabled"`
+	Draining bool   `json:"draining"`
 }
 
 // NewSnapshot creates deployment policy with default timeouts.
@@ -105,6 +114,7 @@ func (s Snapshot) Clone() Snapshot {
 	out.DenyRules = append([]DenyRule(nil), s.DenyRules...)
 	out.InjectionPolicies = cloneInjectionPolicies(s.InjectionPolicies)
 	out.FingerprintProfiles = append([]FingerprintProfile(nil), s.FingerprintProfiles...)
+	out.WorkerSettings = append([]WorkerSetting(nil), s.WorkerSettings...)
 
 	return out
 }

@@ -1,4 +1,4 @@
-.PHONY: check commit fmt-check test test-python lint production-deploy-check docs-website dev dev-status dev-reset dev-down dev-logs infra-up infra-status infra-reset infra-down infra-clean infra-logs
+.PHONY: check commit fmt-check test test-python lint production-deploy-check docs-website dev dev-admin dev-status dev-reset dev-down dev-logs infra-up infra-status infra-reset infra-down infra-clean infra-logs
 
 test:
 	go test ./...
@@ -23,6 +23,9 @@ check: fmt-check test test-python lint
 
 dev:
 	@./deploy/local/scripts/dev-up.sh
+
+dev-admin:
+	docker compose -f deploy/local/docker-compose.yml -f deploy/local/docker-compose.runtime-admin.yml up -d --build
 
 dev-status:
 	@./deploy/local/scripts/dev-status.sh

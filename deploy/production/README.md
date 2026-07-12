@@ -19,6 +19,16 @@ docker compose --env-file deploy/production/.env -f deploy/production/compose.ym
 
 Send `Authorization: Bearer <STRAW_AUTH_TOKEN>` with every Control request.
 
+To enable the optional runtime-administration profile, also set a distinct `STRAW_ADMIN_TOKEN` and combine the files:
+
+```sh
+docker compose --env-file deploy/production/.env \
+  -f deploy/production/compose.yml \
+  -f deploy/production/compose.runtime-admin.yml up -d --build
+```
+
+This enables file-backed JetStream. Adapt storage, replication, backup, and recovery before using the example.
+
 Scale workers independently:
 
 ```sh
@@ -34,7 +44,7 @@ docker compose --env-file deploy/production/.env \
 - Run NATS in the topology and availability model your environment requires.
 - Restrict metrics to your monitoring network.
 - Set CPU, memory, file-descriptor, and log-retention limits.
-- Add backups only for infrastructure you add; Straw itself has no durable database.
+- Back up JetStream when the runtime-administration profile is enabled.
 - Use separate NATS accounts/credentials when stronger Control/worker separation is required.
 
 Validate the checked-in example with:

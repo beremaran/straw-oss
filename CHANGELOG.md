@@ -5,6 +5,14 @@ are tagged.
 
 ## Unreleased
 
+### Added
+
+- Added an opt-in deployment-scoped Config and Admin REST API plus an API-parity web dashboard.
+- Added validated atomic runtime snapshots, JetStream KV persistence, optimistic concurrency, bounded audit history,
+  rollback, rollout status, and worker snapshot acknowledgement.
+- Added worker inspect, drain, undrain, disable, enable, active-request inspection, and safe cancellation operations.
+- Added local and adaptable production runtime-administration Compose profiles with recovery documentation.
+
 ### Changed
 
 - Refocused Straw as a single-deployment, self-hosted HTTP/HTTPS egress proxy.
@@ -18,9 +26,9 @@ are tagged.
 
 ### Removed
 
-- Multi-tenancy, RBAC, quotas, rate limiting, audit/rollback, and administration APIs.
+- Multi-tenancy, RBAC, quotas, rate limiting, and legacy account-scoped administration APIs.
 - Postgres, Redis, ClickHouse, object storage, and multi-Control coordination.
-- Telemetry read APIs, payload capture, MITM, load-test tooling, and embedded admin UI.
+- Telemetry read APIs, payload capture, MITM, and load-test tooling.
 
 ## 0.1.0
 

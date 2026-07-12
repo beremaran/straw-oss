@@ -55,7 +55,42 @@ func runDeploymentControl(ctx context.Context, cfg config.ControlConfig, natsCon
 	mux := http.NewServeMux()
 	mux.Handle("POST /api/v1/requests", requestHandler)
 
+	if cfg.RuntimeAdmin.Enabled {
+		err = setupRuntimeAdmin(ctx, cfg, natsConn, configCache, registry, inflight, mux)
+		if err != nil {
+			return err
+		}
+	}
+
 	return serveDeployment(ctx, cfg, mux, metricsRegistry)
+}
+
+func setupRuntimeAdmin(ctx context.Context, cfg config.ControlConfig, natsConn *natsx.Connection, configCache *control.ConfigCache, registry *control.WorkerRegistry, inflight *control.InFlightRegistry, mux *http.ServeMux) error {
+	store, err := control.NewNATSConfigStore(natsConn.Conn, cfg.RuntimeAdmin.Bucket, cfg.RuntimeAdmin.HistoryLimit, configCache.Snapshot())
+	if err != nil {
+		return fmt.Errorf("setup runtime configuration: %w", err)
+	}
+
+	adminAuth, err := control.NewAdminAuthenticator(os.Getenv(cfg.RuntimeAdmin.TokenEnv))
+	if err != nil {
+		return fmt.Errorf("setup runtime administration authorization: %w", err)
+	}
+
+	admin, err := control.NewAdminService(store, configCache, registry, inflight, natsConn)
+	if err != nil {
+		return fmt.Errorf("setup runtime administration: %w", err)
+	}
+
+	err = admin.SetupRolloutAcks(natsConn)
+	if err != nil {
+		return fmt.Errorf("setup runtime rollout status: %w", err)
+	}
+
+	go admin.RunRepublisher(ctx)
+
+	control.NewAdminHandler(admin, adminAuth).Register(mux)
+
+	return nil
 }
 
 func newDeploymentConfigCache() *control.ConfigCache {
