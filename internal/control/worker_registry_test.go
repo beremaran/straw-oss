@@ -21,7 +21,7 @@ func TestDeploymentWorkerRegistryRoutesUnprovisionedWorker(t *testing.T) {
 		t.Fatalf("Register() = %+v, %v; want success", outcome, err)
 	}
 
-	ok, err := registry.Heartbeat(&strawpb.HeartbeatRequest{
+	ok, err := registry.Heartbeat(context.Background(), &strawpb.HeartbeatRequest{
 		WorkerId: localWorkerID, SessionId: outcome.SessionID,
 		Health: strawpb.WorkerHealth_WORKER_HEALTH_READY,
 	})

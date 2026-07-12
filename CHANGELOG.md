@@ -12,6 +12,9 @@ are tagged.
   rollback, rollout status, and worker snapshot acknowledgement.
 - Added worker inspect, drain, undrain, disable, enable, active-request inspection, and safe cancellation operations.
 - Added local and adaptable production runtime-administration Compose profiles with recovery documentation.
+- Added an opt-in Redis runtime-state backend for interchangeable Control instances, including fenced worker sessions,
+  shared heartbeats/capacity/cooldowns/sticky routing, request ownership and remote cancellation, instance leases,
+  configuration invalidation, HA readiness metrics, an HAProxy deployment example, and failure drills.
 
 ### Changed
 
@@ -27,7 +30,7 @@ are tagged.
 ### Removed
 
 - Multi-tenancy, RBAC, quotas, rate limiting, and legacy account-scoped administration APIs.
-- Postgres, Redis, ClickHouse, object storage, and multi-Control coordination.
+- Postgres, ClickHouse, object storage, and the previous mandatory Redis/multi-tenant coordination model.
 - Telemetry read APIs, payload capture, MITM, and load-test tooling.
 
 ## 0.1.0

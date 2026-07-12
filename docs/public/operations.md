@@ -9,7 +9,7 @@ sidebar_position: 9
 Control exposes these endpoints on its metrics port (default `9090`):
 
 - `/healthz`: process liveness;
-- `/readyz`: NATS and service readiness;
+- `/readyz`: service readiness, including Redis reachability in HA mode;
 - `/metrics`: Prometheus text format.
 
 Egress exposes `/healthz` and `/readyz` on its health port (default `8090`).
@@ -25,6 +25,8 @@ Prometheus metrics use bounded labels. Key series include:
 - `straw_assignment_duration_seconds`;
 - `straw_nats_request_duration_seconds` and `straw_nats_errors_total`;
 - `straw_worker_sessions`, `straw_workers_available`, and `straw_worker_heartbeat_age_seconds`.
+- `straw_runtime_state_available`, `straw_runtime_state_operations_total`, and `straw_runtime_state_errors_total`
+  when Redis coordination is enabled.
 
 Expose metrics only to your monitoring network. No ClickHouse or telemetry database is required.
 
@@ -35,9 +37,9 @@ your environment. Request IDs connect client errors, Control logs, and worker ac
 
 ## Scaling and shutdown
 
-Scale Egress workers for outbound concurrency. A single Control is the simplest deployment; place a reverse proxy in
-front if you need TLS and connection management. Services handle SIGTERM, stop accepting new work, and drain NATS
-connections during normal shutdown.
+Scale Egress workers for outbound concurrency. A single Control is the simplest deployment. For Control HA, place at
+least two Redis-backed Controls behind a readiness-aware load balancer. On SIGTERM, Control fails readiness and gives
+active HTTP requests up to the configured maximum request timeout plus five seconds to finish before draining NATS.
 
 ## Upgrades
 

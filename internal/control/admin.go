@@ -265,14 +265,45 @@ func (s *AdminService) SetupRolloutAcks(conn rolloutSubscriber) error {
 	return nil
 }
 
+// SetupConfigInvalidation applies newer snapshots on every Control. The
+// durable store remains authoritative; this subject is only fast invalidation.
+func (s *AdminService) SetupConfigInvalidation(conn rolloutSubscriber) error {
+	_, err := conn.Subscribe(RuntimeSnapshotSubject, func(msg *nats.Msg) {
+		var snapshot config.Snapshot
+		if json.Unmarshal(msg.Data, &snapshot) != nil || config.ValidateSnapshot(snapshot) != nil {
+			return
+		}
+
+		if snapshot.ConfigVersion <= s.cache.Snapshot().ConfigVersion {
+			return
+		}
+
+		s.activate(snapshot)
+	})
+	if err != nil {
+		return fmt.Errorf("subscribe runtime configuration invalidation: %w", err)
+	}
+
+	err = conn.Flush()
+	if err != nil {
+		return fmt.Errorf("flush runtime configuration invalidation subscription: %w", err)
+	}
+
+	return nil
+}
+
 // Workers returns the administrative worker view.
 func (s *AdminService) Workers() []WorkerInfo { return s.workers.Workers() }
 
 // Requests returns active request identifiers.
-func (s *AdminService) Requests() []InFlightRequest { return s.inflight.Requests() }
+func (s *AdminService) Requests(ctx context.Context) []InFlightRequest {
+	return s.inflight.Requests(ctx)
+}
 
 // CancelRequest safely cancels an active request through its normal stream path.
-func (s *AdminService) CancelRequest(requestID string) bool { return s.inflight.Cancel(requestID) }
+func (s *AdminService) CancelRequest(ctx context.Context, requestID string) bool {
+	return s.inflight.Cancel(ctx, requestID)
+}
 
 // RunRepublisher makes rollout delivery resilient to worker startup and reconnects.
 func (s *AdminService) RunRepublisher(ctx context.Context) {
@@ -284,7 +315,12 @@ func (s *AdminService) RunRepublisher(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			s.publishCurrent()
+			record, err := s.store.Current()
+			if err == nil && record.Snapshot.ConfigVersion > s.cache.Snapshot().ConfigVersion {
+				s.activate(record.Snapshot)
+			} else {
+				s.publishCurrent()
+			}
 		}
 	}
 }
@@ -309,6 +345,7 @@ func applyWorkerAction(setting *config.WorkerSetting, action string) error {
 func (s *AdminService) activate(snapshot config.Snapshot) {
 	s.cache.Replace(snapshot)
 	s.workers.ApplySnapshot(snapshot)
+
 	s.publishCurrent()
 }
 

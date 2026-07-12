@@ -54,3 +54,7 @@ The default profile has no application database to migrate or back up. Back up t
 the runtime-administration profile is enabled.
 
 Validate the example with `make production-deploy-check`.
+
+For multiple interchangeable Controls, use the standalone `deploy/production/compose.ha.yml` example and read
+[Highly available Control](highly-available-control.md). It adds Redis and HAProxy while preserving the ordinary
+NATS-only local path.

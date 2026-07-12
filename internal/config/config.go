@@ -27,6 +27,8 @@ var (
 	errInvalidHealthPort      = errors.New("health_port must be between 1 and 65535")
 	errInvalidHeartbeat       = errors.New("heartbeat_interval_ms must be positive")
 	errInvalidRuntimeHistory  = errors.New("runtime_admin.history_limit must be between 1 and 64")
+	errInvalidRuntimeState    = errors.New("runtime_state backend must be memory or redis")
+	errInvalidRuntimeStateTTL = errors.New("runtime_state TTLs must be positive and request_ttl_ms must exceed max_timeout_ms")
 	errOpenConfig             = errors.New("open config file")
 )
 
@@ -44,6 +46,20 @@ type ControlConfig struct {
 	Transport    ControlTransportConfig `json:"transport"`
 	NATS         NATSConfig             `json:"nats"`
 	RuntimeAdmin RuntimeAdminConfig     `json:"runtime_admin"`
+	RuntimeState RuntimeStateConfig     `json:"runtime_state"`
+}
+
+// RuntimeStateConfig selects the local development state store or opt-in
+// Redis coordination used by interchangeable Control instances.
+type RuntimeStateConfig struct {
+	Backend            string `json:"backend"`
+	RedisURLEnv        string `json:"redis_url_env"`
+	KeyPrefix          string `json:"key_prefix"`
+	InstanceIDEnv      string `json:"instance_id_env"`
+	WorkerTTLMS        int    `json:"worker_ttl_ms"`
+	RequestTTLMS       int    `json:"request_ttl_ms"`
+	InstanceTTLMS      int    `json:"instance_ttl_ms"`
+	OperationTimeoutMS int    `json:"operation_timeout_ms"`
 }
 
 // RuntimeAdminConfig enables the optional durable runtime-administration profile.
@@ -241,6 +257,7 @@ func (c *ControlConfig) applyDefaults() {
 	}
 
 	c.RuntimeAdmin.applyDefaults()
+	c.RuntimeState.applyDefaults()
 
 	if c.Request.MaxInlineRequestBodyBytes == 0 {
 		c.Request.MaxInlineRequestBodyBytes = 1_048_576
@@ -259,6 +276,40 @@ func (c *ControlConfig) applyDefaults() {
 	}
 
 	c.NATS.applyDefaults()
+}
+
+func (r *RuntimeStateConfig) applyDefaults() {
+	if r.Backend == "" {
+		r.Backend = "memory"
+	}
+
+	if r.RedisURLEnv == "" {
+		r.RedisURLEnv = "STRAW_REDIS_URL"
+	}
+
+	if r.KeyPrefix == "" {
+		r.KeyPrefix = "straw"
+	}
+
+	if r.InstanceIDEnv == "" {
+		r.InstanceIDEnv = "STRAW_CONTROL_INSTANCE_ID"
+	}
+
+	if r.WorkerTTLMS == 0 {
+		r.WorkerTTLMS = 30000
+	}
+
+	if r.RequestTTLMS == 0 {
+		r.RequestTTLMS = 130000
+	}
+
+	if r.InstanceTTLMS == 0 {
+		r.InstanceTTLMS = 15000
+	}
+
+	if r.OperationTimeoutMS == 0 {
+		r.OperationTimeoutMS = 1000
+	}
 }
 
 func (r *RuntimeAdminConfig) applyDefaults() {
@@ -286,6 +337,22 @@ func (c ControlConfig) validate() error {
 
 	if c.RuntimeAdmin.Enabled && (c.RuntimeAdmin.HistoryLimit < 1 || c.RuntimeAdmin.HistoryLimit > 64) {
 		return fmt.Errorf("%w: %d", errInvalidRuntimeHistory, c.RuntimeAdmin.HistoryLimit)
+	}
+
+	return c.RuntimeState.validate(c.Request.MaxTimeoutMs)
+}
+
+func (r RuntimeStateConfig) validate(maxTimeoutMS uint64) error {
+	if r.Backend != "memory" && r.Backend != "redis" {
+		return fmt.Errorf("%w: %q", errInvalidRuntimeState, r.Backend)
+	}
+
+	if r.WorkerTTLMS < 1 || r.RequestTTLMS < 1 || r.InstanceTTLMS < 1 || r.OperationTimeoutMS < 1 {
+		return errInvalidRuntimeStateTTL
+	}
+
+	if uint64(r.RequestTTLMS) <= maxTimeoutMS {
+		return errInvalidRuntimeStateTTL
 	}
 
 	return nil

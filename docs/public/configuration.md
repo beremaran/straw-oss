@@ -35,6 +35,29 @@ appropriate only for a loopback or otherwise trusted development network.
 `bucket: "STRAW_RUNTIME_CONFIG"`, and `history_limit: 64`. The named token environment variable must be non-empty,
 and NATS must have JetStream file storage enabled. See [Runtime administration](runtime-administration.md).
 
+### Optional shared runtime state
+
+`runtime_state.backend` defaults to `memory`. Set it to `redis` only when multiple Control instances must be
+interchangeable. Redis credentials belong in the URL named by `redis_url_env` (default `STRAW_REDIS_URL`); both
+`redis://` and TLS-protected `rediss://` URLs are accepted.
+
+```json
+"runtime_state": {
+  "backend": "redis",
+  "redis_url_env": "STRAW_REDIS_URL",
+  "key_prefix": "straw",
+  "instance_id_env": "STRAW_CONTROL_INSTANCE_ID",
+  "worker_ttl_ms": 30000,
+  "request_ttl_ms": 130000,
+  "instance_ttl_ms": 15000,
+  "operation_timeout_ms": 1000
+}
+```
+
+`request_ttl_ms` must exceed `request.max_timeout_ms`. Instance IDs must be unique NATS subject tokens; if the named
+environment variable is empty, Control generates a process-unique ID. See [Highly available Control](highly-available-control.md)
+for TTL and outage behavior.
+
 ## Egress
 
 ```json

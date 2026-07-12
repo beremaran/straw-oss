@@ -48,7 +48,7 @@ restarting the deployment.
 Acceptance is covered by API/UI action parity, restart-safe configuration, documented recovery, a separately
 authorized administrative surface, and an end-to-end local worker-drain example that lets active requests continue.
 
-### Highly available Control
+### Highly available Control — delivered
 
 **Outcome:** operators can run multiple interchangeable Control instances behind a load balancer without losing
 runtime coordination.
@@ -87,7 +87,7 @@ documented.
 
 1. [x] Specify the deployment-scoped configuration model and API/UI action matrix.
 2. [x] Add durable configuration and runtime snapshot distribution.
-3. Add shared runtime state and validate multi-Control HA behavior.
+3. [x] Add shared runtime state and validate multi-Control HA behavior.
 4. Add receipt-and-check object transport on top of the versioned configuration and HA foundations.
 
 ## Later ideas

@@ -85,13 +85,13 @@ func TestWorkerLifecycleStopsNewRoutingWithoutCancellingActiveRequests(t *testin
 	t.Parallel()
 	fixture := newTestAdmin(t)
 	admin, workers := fixture.admin, fixture.workers
-	out, err := workers.Register(context.Background(), &strawpb.RegisterRequest{WorkerId: "worker-1", ExecutorType: errorCategoryEgress, ProtocolMajor: ProtocolMajor, MaxConcurrency: 2})
+	out, err := workers.Register(context.Background(), &strawpb.RegisterRequest{WorkerId: sharedTestWorkerID, ExecutorType: errorCategoryEgress, ProtocolMajor: ProtocolMajor, MaxConcurrency: 2})
 	if err != nil || !out.OK {
 		t.Fatalf("register = %+v, %v", out, err)
 	}
-	_, _ = workers.Heartbeat(&strawpb.HeartbeatRequest{WorkerId: "worker-1", SessionId: out.SessionID, Health: strawpb.WorkerHealth_WORKER_HEALTH_READY, AvailableCapacity: 1, ActiveRequests: 1})
+	_, _ = workers.Heartbeat(context.Background(), &strawpb.HeartbeatRequest{WorkerId: sharedTestWorkerID, SessionId: out.SessionID, Health: strawpb.WorkerHealth_WORKER_HEALTH_READY, AvailableCapacity: 1, ActiveRequests: 1})
 	current, _ := admin.Current()
-	_, err = admin.SetWorker(current.Revision, "worker-1", "drain", "operator")
+	_, err = admin.SetWorker(current.Revision, sharedTestWorkerID, "drain", "operator")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestAdminCancellationInvokesRegisteredCancel(t *testing.T) {
 	admin, inflight := fixture.admin, fixture.inflight
 	cancelled := false
 	inflight.Register(context.Background(), "req-1", config.DefaultDeploymentID, func() { cancelled = true })
-	if !admin.CancelRequest("req-1") || !cancelled {
+	if !admin.CancelRequest(context.Background(), "req-1") || !cancelled {
 		t.Fatal("CancelRequest did not invoke request cancellation")
 	}
 }

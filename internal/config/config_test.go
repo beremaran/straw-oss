@@ -50,6 +50,25 @@ func TestLoadRejectsTrailingJSON(t *testing.T) {
 	}
 }
 
+func TestLoadRedisRuntimeState(t *testing.T) {
+	t.Parallel()
+	cfg, err := LoadControl(writeConfig(t, `{"config_version":"v1","control":{"runtime_state":{"backend":"redis","redis_url_env":"REDIS_URL","key_prefix":"test"}}}`))
+	if err != nil {
+		t.Fatalf("LoadControl() error = %v", err)
+	}
+	if cfg.RuntimeState.Backend != "redis" || cfg.RuntimeState.RedisURLEnv != "REDIS_URL" || cfg.RuntimeState.WorkerTTLMS != 30000 {
+		t.Fatalf("runtime state defaults = %+v", cfg.RuntimeState)
+	}
+}
+
+func TestLoadRejectsInvalidRuntimeState(t *testing.T) {
+	t.Parallel()
+	_, err := LoadControl(writeConfig(t, `{"config_version":"v1","control":{"runtime_state":{"backend":"postgres"}}}`))
+	if !errors.Is(err, errInvalidRuntimeState) {
+		t.Fatalf("LoadControl() error = %v", err)
+	}
+}
+
 func writeConfig(t *testing.T, contents string) string {
 	t.Helper()
 

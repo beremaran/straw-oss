@@ -126,3 +126,19 @@ func RegisterWorkerCollector(registerer prometheus.Registerer, source workerStat
 		Name: "straw_worker_heartbeat_age_seconds", Help: "Age of the stalest worker heartbeat.",
 	}, func() float64 { return source.Stats().MaxHeartbeatAgeSeconds }))
 }
+
+type runtimeStateStatsSource interface{ Stats() RuntimeStateStats }
+
+// RegisterRuntimeStateCollector exposes Redis coordination availability and
+// cumulative operation/error counts without deployment-specific labels.
+func RegisterRuntimeStateCollector(registerer prometheus.Registerer, source runtimeStateStatsSource) {
+	registerer.MustRegister(prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: "straw_runtime_state_available", Help: "Whether shared runtime state is currently reachable."}, func() float64 {
+		if source.Stats().Available {
+			return 1
+		}
+
+		return 0
+	}))
+	registerer.MustRegister(prometheus.NewCounterFunc(prometheus.CounterOpts{Name: "straw_runtime_state_operations_total", Help: "Shared runtime-state operations."}, func() float64 { return float64(source.Stats().Operations) }))
+	registerer.MustRegister(prometheus.NewCounterFunc(prometheus.CounterOpts{Name: "straw_runtime_state_errors_total", Help: "Shared runtime-state operation errors."}, func() float64 { return float64(source.Stats().Errors) }))
+}
