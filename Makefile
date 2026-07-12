@@ -1,4 +1,4 @@
-.PHONY: check commit fmt-check test test-python lint production-deploy-check docs-website dev dev-admin dev-receipts dev-status dev-reset dev-down dev-logs infra-up infra-status infra-reset infra-down infra-clean infra-logs
+.PHONY: check commit dependency-check fmt-check test test-python lint production-deploy-check docs-website dev dev-admin dev-receipts dev-status dev-reset dev-down dev-logs infra-up infra-status infra-reset infra-down infra-clean infra-logs
 
 test:
 	go test ./...
@@ -19,7 +19,10 @@ production-deploy-check:
 docs-website:
 	cd website && npm run build
 
-check: fmt-check test test-python lint
+dependency-check:
+	./scripts/verify-dependency-direction.sh
+
+check: fmt-check test test-python lint dependency-check
 
 dev:
 	@./deploy/local/scripts/dev-up.sh
