@@ -1,16 +1,24 @@
 package control
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
+	"strconv"
 	"sync/atomic"
 	"time"
+
+	strawpb "github.com/beremaran/straw-protos-go/straw/v1"
 )
 
-const maxHandlerBodyBytes = 4 << 20
+const (
+	maxHandlerBodyBytes  = 4 << 20
+	receiptFinishTimeout = 5 * time.Second
+)
 
 var requestSequence atomic.Uint64
 
@@ -21,6 +29,13 @@ type RequestHandler struct {
 	authenticator       *Authenticator
 	dispatcher          RequestDispatcher
 	configCache         *ConfigCache
+	receipts            RequestReceiptPreparer
+}
+
+// RequestReceiptPreparer claims and releases verified request receipts.
+type RequestReceiptPreparer interface {
+	PrepareRequest(ctx context.Context, deploymentID, receiptID, requestID string) (*strawpb.BodyRefFrame, error)
+	FinishRequest(ctx context.Context, deploymentID, receiptID, requestID string, consumed bool) error
 }
 
 // NewRequestHandler creates the REST request handler.
@@ -37,6 +52,9 @@ func (h *RequestHandler) SetDispatcher(dispatcher RequestDispatcher) { h.dispatc
 
 // SetConfigCache attaches the immutable deployment policy.
 func (h *RequestHandler) SetConfigCache(cache *ConfigCache) { h.configCache = cache }
+
+// SetReceiptPreparer enables receipt request bodies.
+func (h *RequestHandler) SetReceiptPreparer(preparer RequestReceiptPreparer) { h.receipts = preparer }
 
 // ServeHTTP validates, dispatches, and returns one upstream response envelope.
 func (h *RequestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -74,18 +92,67 @@ func (h *RequestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	prepareErr := h.prepareReceipt(r.Context(), identity, requestID, validated)
+	if prepareErr != nil {
+		writePipelineError(w, requestID, prepareErr)
+
+		return
+	}
+
 	response, dispatchErr := h.dispatcher.Dispatch(r.Context(), DispatchInput{
 		RequestID: requestID,
 		Identity:  identity,
 		Request:   validated,
 	})
 	if dispatchErr != nil {
+		h.finishReceipt(r.Context(), identity, requestID, validated, false)
 		writePipelineError(w, requestID, dispatchErr)
 
 		return
 	}
 
+	h.finishReceipt(r.Context(), identity, requestID, validated, true)
 	writeSuccessResponse(w, response)
+}
+
+func (h *RequestHandler) prepareReceipt(ctx context.Context, identity Identity, requestID string, request *ValidatedRequest) *PipelineError {
+	if request.ResponseBodyMode == bodyModeReceipt && h.receipts == nil {
+		return &PipelineError{Code: BodyRefUnavailable, Message: "response receipts are not enabled"}
+	}
+
+	if request.BodyReceiptID == "" {
+		return nil
+	}
+
+	if h.receipts == nil {
+		return &PipelineError{Code: BodyRefUnavailable}
+	}
+
+	bodyRef, err := h.receipts.PrepareRequest(ctx, identity.DeploymentID, request.BodyReceiptID, requestID)
+	if err != nil || bodyRef.GetExpectedSizeBytes() > math.MaxInt64 {
+		return &PipelineError{Code: BodyRefUnavailable}
+	}
+
+	bodySize, sizeErr := strconv.ParseInt(strconv.FormatUint(bodyRef.GetExpectedSizeBytes(), 10), 10, 64)
+	if sizeErr != nil {
+		return &PipelineError{Code: BodyRefUnavailable}
+	}
+
+	request.BodyRef = bodyRef
+	request.BodySizeBytes = bodySize
+
+	return nil
+}
+
+func (h *RequestHandler) finishReceipt(ctx context.Context, identity Identity, requestID string, request *ValidatedRequest, consumed bool) {
+	if request.BodyReceiptID == "" || h.receipts == nil {
+		return
+	}
+
+	finishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), receiptFinishTimeout)
+	defer cancel()
+
+	_ = h.receipts.FinishRequest(finishCtx, identity.DeploymentID, request.BodyReceiptID, requestID, consumed)
 }
 
 func (h *RequestHandler) authenticate(r *http.Request) (Identity, error) {
@@ -188,6 +255,9 @@ type ResponseBody struct {
 	Mode       string `json:"mode"`
 	DataBase64 string `json:"data_base64,omitempty"`
 	Truncated  bool   `json:"truncated"`
+	ReceiptID  string `json:"receipt_id,omitempty"`
+	SizeBytes  uint64 `json:"size_bytes,omitempty"`
+	SHA256Hex  string `json:"sha256_hex,omitempty"`
 }
 
 // RequestTiming reports request pipeline phases in milliseconds.

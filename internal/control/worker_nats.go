@@ -7,8 +7,8 @@ import (
 
 	"github.com/nats-io/nats.go"
 
-	strawpb "github.com/beremaran/straw-oss/v2/api/proto/straw/v1"
-	"github.com/beremaran/straw-oss/v2/internal/natsx"
+	"github.com/beremaran/straw-oss/internal/natsx"
+	strawpb "github.com/beremaran/straw-protos-go/straw/v1"
 )
 
 const workerNATSInvalidMessage = "invalid_nats_message"
@@ -39,7 +39,7 @@ func SetupWorkerDiscoverySubscriptions(ctx context.Context, conn *natsx.Connecti
 	}
 
 	_, err = conn.QueueSubscribe(natsx.HeartbeatSubject(), "control", func(msg *nats.Msg) {
-		replyWorkerHeartbeat(reg, msg)
+		replyWorkerHeartbeat(ctx, reg, msg)
 	})
 	if err != nil {
 		return fmt.Errorf("subscribe heartbeat: %w", err)
@@ -92,12 +92,12 @@ func handleRegister(ctx context.Context, reg *WorkerRegistry, ack *strawpb.Regis
 	}
 }
 
-func replyWorkerHeartbeat(reg *WorkerRegistry, msg *nats.Msg) {
+func replyWorkerHeartbeat(ctx context.Context, reg *WorkerRegistry, msg *nats.Msg) {
 	ack := &strawpb.HeartbeatAck{Ok: false, Error: workerNATSInvalidMessage}
 
 	env, err := natsx.UnmarshalEnvelope(msg.Data)
 	if err == nil {
-		handleHeartbeat(reg, ack, env)
+		handleHeartbeat(ctx, reg, ack, env)
 	}
 
 	reply := buildReplyEnvelope(env, &strawpb.Envelope{
@@ -109,13 +109,13 @@ func replyWorkerHeartbeat(reg *WorkerRegistry, msg *nats.Msg) {
 	replyEnvelope(msg, reply)
 }
 
-func handleHeartbeat(reg *WorkerRegistry, ack *strawpb.HeartbeatAck, env *strawpb.Envelope) {
+func handleHeartbeat(ctx context.Context, reg *WorkerRegistry, ack *strawpb.HeartbeatAck, env *strawpb.Envelope) {
 	req := env.GetHeartbeatRequest()
 	if req == nil {
 		return
 	}
 
-	ok, regErr := reg.Heartbeat(req)
+	ok, regErr := reg.Heartbeat(ctx, req)
 	if regErr != nil {
 		ack.Error = errorCodeControlInternalError
 
@@ -136,7 +136,7 @@ func buildReplyEnvelope(env *strawpb.Envelope, reply *strawpb.Envelope) *strawpb
 	}
 
 	reply.RequestId = env.GetRequestId()
-	reply.TenantId = env.GetTenantId()
+	reply.DeploymentId = env.GetDeploymentId()
 	reply.TraceId = env.GetTraceId()
 	reply.DeadlineUnixMs = env.GetDeadlineUnixMs()
 	reply.Attempt = env.GetAttempt()

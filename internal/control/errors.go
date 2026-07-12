@@ -70,6 +70,7 @@ const (
 	errorCodeUpstreamProxyFailure      = "upstream_proxy_failure"
 	errorCodeStreamUploadAborted       = "stream_upload_aborted"
 	errorCodeStreamDownloadAborted     = "stream_download_aborted"
+	errorCodeBodyRefUnavailable        = "body_ref_unavailable"
 	errorCodeBodyTooLarge              = "body_too_large"
 	errorCodeControlInternalError      = "control_internal_error"
 	errorCodeExecutorInternalError     = "executor_internal_error"
@@ -123,6 +124,8 @@ const (
 	StreamUploadAborted ErrorCode = 400
 	// StreamDownloadAborted is returned when a download stream is interrupted.
 	StreamDownloadAborted ErrorCode = 401
+	// BodyRefUnavailable is returned when a receipt is missing, expired, or not eligible.
+	BodyRefUnavailable ErrorCode = 402
 	// BodyTooLarge is returned when inline content exceeds the configured maximum.
 	BodyTooLarge ErrorCode = 403
 	// ControlInternalError is returned for unexpected control-plane failures.
@@ -158,6 +161,7 @@ var ErrorRegistry = map[ErrorCode]ErrorEntry{
 	UpstreamProxyFailure:      {Category: errorCategoryEgress, Code: errorCodeUpstreamProxyFailure, Message: "Configured upstream proxy failed", Retryable: true, HTTPStatus: statusBadGateway},
 	StreamUploadAborted:       {Category: errorCategoryStreaming, Code: errorCodeStreamUploadAborted, Message: "Upload interrupted", Retryable: false, HTTPStatus: statusBadGateway},
 	StreamDownloadAborted:     {Category: errorCategoryStreaming, Code: errorCodeStreamDownloadAborted, Message: "Download interrupted", Retryable: false, HTTPStatus: statusBadGateway},
+	BodyRefUnavailable:        {Category: errorCategoryStreaming, Code: errorCodeBodyRefUnavailable, Message: "Receipt body is unavailable or not eligible", Retryable: false, HTTPStatus: http.StatusConflict},
 	BodyTooLarge:              {Category: errorCategoryStreaming, Code: errorCodeBodyTooLarge, Message: "Request or response exceeds configured limit", Retryable: false, HTTPStatus: http.StatusRequestEntityTooLarge},
 	ControlInternalError:      {Category: errorCategoryControl, Code: errorCodeControlInternalError, Message: "Unexpected internal failure", Retryable: false, HTTPStatus: statusInternalServerError},
 	ExecutorInternalError:     {Category: errorCategoryEgress, Code: errorCodeExecutorInternalError, Message: "Unexpected executor failure", Retryable: false, HTTPStatus: statusBadGateway},

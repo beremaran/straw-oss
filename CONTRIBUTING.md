@@ -46,14 +46,15 @@ make production-deploy-check
 make docs-website
 ```
 
-For Python:
+For tagged Python SDK integration:
 
 ```sh
-uv sync --all-packages --frozen
-uv run --all-packages --frozen python -m unittest discover python/tests
+uv sync --frozen
+uv run --frozen python -m unittest discover integration/python
 ```
 
-Use the root uv workspace. Do not create a lock file, version pin, or virtual environment under `python/`.
+The root lock pins the private Python SDK and binding tags used by the runtime compatibility matrix. Python SDK
+development belongs in `straw-sdk-python`.
 
 ## Pull requests
 

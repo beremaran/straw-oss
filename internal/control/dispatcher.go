@@ -15,9 +15,10 @@ import (
 
 	"github.com/nats-io/nats.go"
 
-	strawpb "github.com/beremaran/straw-oss/v2/api/proto/straw/v1"
-	"github.com/beremaran/straw-oss/v2/internal/config"
-	"github.com/beremaran/straw-oss/v2/internal/natsx"
+	"github.com/beremaran/straw-oss/internal/config"
+	"github.com/beremaran/straw-oss/internal/natsx"
+	"github.com/beremaran/straw-oss/internal/receipt"
+	strawpb "github.com/beremaran/straw-protos-go/straw/v1"
 )
 
 const (
@@ -106,6 +107,8 @@ type RequestDispatcherOptions struct {
 	InFlight *InFlightRegistry
 	// Metrics records Prometheus request and transport series.
 	Metrics *Metrics
+	// Receipts stores opt-in response bodies without retaining them in Control memory.
+	Receipts *receipt.Service
 }
 
 // DefaultRequestDispatcher is the P0 Control dispatch pipeline.
@@ -374,15 +377,19 @@ func successFromDispatch(requestID string, result dispatchResult, routingMs, ass
 			EgressMs:     result.egressMs,
 			TotalMs:      totalMs,
 		},
-		ResponseSizeBytes:          uint64(len(result.body)),
+		ResponseSizeBytes:          result.size,
 		SelectedFingerprintProfile: result.selectedFingerprintProfile,
 		ExecutedFingerprintProfile: result.executedFingerprintProfile,
 	}
 }
 
 func responseBodyFromDispatch(result dispatchResult) ResponseBody {
+	if result.responseReceiptID != "" {
+		return ResponseBody{Mode: bodyModeReceipt, ReceiptID: result.responseReceiptID, SizeBytes: result.size, SHA256Hex: result.responseReceiptSHA256}
+	}
+
 	return ResponseBody{
-		Mode:       "inline_base64",
+		Mode:       bodyModeInlineBase64,
 		DataBase64: base64.StdEncoding.EncodeToString(result.body),
 		Truncated:  false,
 	}
@@ -619,7 +626,7 @@ func (d *DefaultRequestDispatcher) executeRawAttemptUnmeasured(ctx context.Conte
 func (d *DefaultRequestDispatcher) requestAssign(subject string, in DispatchInput, assign *strawpb.AssignRequest, deadline time.Time) (*strawpb.AssignAck, *PipelineError) {
 	env := &strawpb.Envelope{
 		RequestId:      in.RequestID,
-		TenantId:       in.Identity.DeploymentID,
+		DeploymentId:   in.Identity.DeploymentID,
 		DeadlineUnixMs: deadline.UnixMilli(),
 		ProtocolMajor:  ProtocolMajor,
 		Attempt:        defaultRequestAttempt,
@@ -667,7 +674,8 @@ func (d *DefaultRequestDispatcher) requestAssign(subject string, in DispatchInpu
 	return reply.GetAssignAck(), nil
 }
 
-// sendRequestStart publishes RequestStart and inline body DataFrames on the c2e
+// sendRequestStart publishes RequestStart and either a receipt reference or
+// inline body DataFrames on the c2e
 // subject and returns the next c2e stream_seq (i.e. the seq a subsequent
 // CancelFrame should use).
 func (d *DefaultRequestDispatcher) sendRequestStart(_ context.Context, subject string, in DispatchInput, route RouteOutcome, policy *DestinationPolicyResult, configVersion uint64, deadline time.Time) (uint64, error) {
@@ -699,7 +707,14 @@ func (d *DefaultRequestDispatcher) sendRequestStart(_ context.Context, subject s
 		return 0, err
 	}
 
-	if in.Request.BodyReader == nil {
+	if in.Request.BodyRef != nil {
+		seq++
+
+		err = d.publishFrame(subject, in, deadline, &strawpb.StreamFrame{StreamSeq: seq, Attempt: defaultRequestAttempt, Payload: &strawpb.StreamFrame_BodyRef{BodyRef: in.Request.BodyRef}})
+		if err != nil {
+			return 0, err
+		}
+	} else if in.Request.BodyReader == nil {
 		seq, err = d.sendRequestBody(subject, in, deadline, seq)
 		if err != nil {
 			return 0, err
@@ -972,7 +987,7 @@ func (e *requestStreamError) Error() string {
 func (d *DefaultRequestDispatcher) publishFrame(subject string, in DispatchInput, deadline time.Time, frame *strawpb.StreamFrame) error {
 	env := &strawpb.Envelope{
 		RequestId:      in.RequestID,
-		TenantId:       in.Identity.DeploymentID,
+		DeploymentId:   in.Identity.DeploymentID,
 		DeadlineUnixMs: deadline.UnixMilli(),
 		ProtocolMajor:  ProtocolMajor,
 		Attempt:        defaultRequestAttempt,
@@ -993,6 +1008,21 @@ func (d *DefaultRequestDispatcher) publishFrame(subject string, in DispatchInput
 }
 
 func (d *DefaultRequestDispatcher) readResponse(ctx context.Context, frames <-chan *strawpb.StreamFrame, route RouteOutcome, deadline time.Time, c2eSubject string, in DispatchInput, c2eSeq uint64, upload *requestBodyUpload) (dispatchResult, *PipelineError) {
+	var responseUpload *receipt.ResponseUpload
+
+	if in.Request.ResponseBodyMode == bodyModeReceipt {
+		if d.opts.Receipts == nil {
+			return dispatchResult{}, &PipelineError{Code: BodyRefUnavailable, Message: "response receipts are not enabled"}
+		}
+
+		var err error
+
+		responseUpload, err = d.opts.Receipts.BeginResponse(ctx, in.Identity.DeploymentID)
+		if err != nil {
+			return dispatchResult{}, &PipelineError{Code: ControlInternalError}
+		}
+	}
+
 	state := decodedResponseStreamState{
 		dispatcher:    d,
 		validator:     natsx.NewStreamValidator(defaultRequestAttempt, d.initialDownloadCredit(), d.opts.FrameIdleTimeout, d.opts.Now),
@@ -1003,7 +1033,7 @@ func (d *DefaultRequestDispatcher) readResponse(ctx context.Context, frames <-ch
 		c2eSeq:        c2eSeq,
 		upload:        upload,
 		uploadErr:     uploadErrorChan(upload),
-		result:        dispatchResult{status: http.StatusOK, selectedFingerprintProfile: selectedFingerprintForRequest(in.Request)},
+		result:        dispatchResult{status: http.StatusOK, selectedFingerprintProfile: selectedFingerprintForRequest(in.Request), responseUpload: responseUpload},
 		egressStarted: time.Time{},
 	}
 	defer closeUploadGate(upload)
@@ -1014,13 +1044,42 @@ func (d *DefaultRequestDispatcher) readResponse(ctx context.Context, frames <-ch
 	for {
 		done, perr := state.next(ctx, ticker.C, frames)
 		if perr != nil {
+			if responseUpload != nil {
+				responseUpload.Abort(context.WithoutCancel(ctx))
+			}
+
 			return state.result, perr
 		}
 
-		if done {
-			return state.result, nil
+		if !done {
+			continue
 		}
+
+		return d.commitResponseReceipt(ctx, state.result, responseUpload)
 	}
+}
+
+func (d *DefaultRequestDispatcher) commitResponseReceipt(ctx context.Context, result dispatchResult, upload *receipt.ResponseUpload) (dispatchResult, *PipelineError) {
+	if upload == nil {
+		return result, nil
+	}
+
+	record, err := upload.Commit(ctx)
+	if err != nil {
+		return result, &PipelineError{Code: ControlInternalError}
+	}
+
+	responseSize, err := strconv.ParseUint(strconv.FormatInt(record.SizeBytes, 10), 10, 64)
+	if err != nil {
+		return result, &PipelineError{Code: ControlInternalError}
+	}
+
+	result.responseReceiptID = record.ID
+	result.responseReceiptSHA256 = record.SHA256Hex
+	result.size = responseSize
+	result.responseUpload = nil
+
+	return result, nil
 }
 
 type decodedResponseStreamState struct {
@@ -1374,12 +1433,20 @@ func acceptedResponseFrame(outcome natsx.FrameOutcome) (bool, bool, *PipelineErr
 }
 
 func (d *DefaultRequestDispatcher) acceptResponseData(data *strawpb.DataFrame, result *dispatchResult, validator *natsx.StreamValidator, c2eSubject string, in DispatchInput, deadline time.Time, c2eSeq *uint64, upload *requestBodyUpload) (bool, *PipelineError) {
-	result.body = append(result.body, data.GetData()...)
-	if uint64FromInt(len(result.body)) > d.opts.MaxInlineResponseBodyBytes {
-		return true, &PipelineError{Code: BodyTooLarge}
+	if result.responseUpload != nil {
+		err := result.responseUpload.Write(data.GetData())
+		if err != nil {
+			return true, &PipelineError{Code: BodyTooLarge}
+		}
+	} else {
+		result.body = append(result.body, data.GetData()...)
+		if uint64FromInt(len(result.body)) > d.opts.MaxInlineResponseBodyBytes {
+			return true, &PipelineError{Code: BodyTooLarge}
+		}
 	}
 
 	bytes := uint64FromInt(len(data.GetData()))
+	result.size += bytes
 
 	if upload != nil {
 		upload.c2e.credit(bytes)
@@ -1473,6 +1540,10 @@ func expectedUploadBytes(req *ValidatedRequest) int64 {
 		return req.BodySizeBytes
 	}
 
+	if req != nil && req.BodyRef != nil {
+		return req.BodySizeBytes
+	}
+
 	return int64(len(req.BodyData))
 }
 
@@ -1509,6 +1580,9 @@ type dispatchResult struct {
 	egressMs                   int64
 	selectedFingerprintProfile string
 	executedFingerprintProfile string
+	responseUpload             *receipt.ResponseUpload
+	responseReceiptID          string
+	responseReceiptSHA256      string
 }
 
 type snapshotRules struct {

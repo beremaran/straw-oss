@@ -21,7 +21,8 @@ not silently change behavior. Without `-config`, both binaries use local default
     },
     "transport": {"max_frame_data_bytes": 1048576},
     "nats": {"servers": ["nats://127.0.0.1:4222"]},
-    "runtime_admin": {"enabled": false}
+    "runtime_admin": {"enabled": false},
+    "object_storage": {"enabled": false}
   }
 }
 ```
@@ -34,6 +35,40 @@ appropriate only for a loopback or otherwise trusted development network.
 `runtime_admin.enabled` opts into durable runtime configuration. Its defaults are `token_env: "STRAW_ADMIN_TOKEN"`,
 `bucket: "STRAW_RUNTIME_CONFIG"`, and `history_limit: 64`. The named token environment variable must be non-empty,
 and NATS must have JetStream file storage enabled. See [Runtime administration](runtime-administration.md).
+
+### Optional shared runtime state
+
+`runtime_state.backend` defaults to `memory`. Set it to `redis` only when multiple Control instances must be
+interchangeable. Redis credentials belong in the URL named by `redis_url_env` (default `STRAW_REDIS_URL`); both
+`redis://` and TLS-protected `rediss://` URLs are accepted.
+
+```json
+"runtime_state": {
+  "backend": "redis",
+  "redis_url_env": "STRAW_REDIS_URL",
+  "key_prefix": "straw",
+  "instance_id_env": "STRAW_CONTROL_INSTANCE_ID",
+  "worker_ttl_ms": 30000,
+  "request_ttl_ms": 130000,
+  "instance_ttl_ms": 15000,
+  "operation_timeout_ms": 1000
+}
+```
+
+`request_ttl_ms` must exceed `request.max_timeout_ms`. Instance IDs must be unique NATS subject tokens; if the named
+environment variable is empty, Control generates a process-unique ID. See [Highly available Control](highly-available-control.md)
+for TTL and outage behavior.
+
+### Optional object storage
+
+`object_storage.enabled` defaults to `false`. The `local` backend defaults to `.straw/objects`; the `s3` backend
+requires `endpoint` and `bucket`. Common defaults are 1 GiB maximum objects, 16 MiB maximum parts, 24-hour retention,
+five-minute assignment URLs, and hourly cleanup. `download_base_url` must be reachable by Egress.
+
+Secrets are read from `signing_key_env` (`STRAW_RECEIPT_SIGNING_KEY`), `access_key_env`, `secret_key_env`, and
+`session_token_env`; never place their values in JSON. The signing key must contain at least 32 bytes. S3 server-side
+encryption accepts `AES256` or `aws:kms`; the latter also requires `kms_key_id`. See
+[Object storage and receipts](object-storage-receipts.md) for the full lifecycle and examples.
 
 ## Egress
 

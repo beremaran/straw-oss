@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"testing"
 
-	strawpb "github.com/beremaran/straw-oss/v2/api/proto/straw/v1"
+	strawpb "github.com/beremaran/straw-protos-go/straw/v1"
 )
 
 // TestErrorRegistryRows pins the canonical category/HTTP/retryable mapping for
@@ -43,6 +43,7 @@ func TestErrorRegistryRows(t *testing.T) {
 		{UpstreamProxyFailure, "upstream_proxy_failure", errorCategoryEgress, http.StatusBadGateway, true},
 		{StreamUploadAborted, "stream_upload_aborted", errorCategoryStreaming, http.StatusBadGateway, false},
 		{StreamDownloadAborted, "stream_download_aborted", errorCategoryStreaming, http.StatusBadGateway, false},
+		{BodyRefUnavailable, "body_ref_unavailable", errorCategoryStreaming, http.StatusConflict, false},
 		{BodyTooLarge, "body_too_large", errorCategoryStreaming, http.StatusRequestEntityTooLarge, false},
 		{ControlInternalError, "control_internal_error", errorCategoryControl, http.StatusInternalServerError, false},
 		{ExecutorInternalError, "executor_internal_error", errorCategoryEgress, http.StatusBadGateway, false},

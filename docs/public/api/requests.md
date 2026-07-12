@@ -27,13 +27,16 @@ curl -sS http://localhost:8080/api/v1/requests \
 | `method` | yes | HTTP method. |
 | `url` | yes | Absolute `http` or `https` URL. URL user info is rejected. |
 | `headers` | no | Ordered `{name,value_base64}` entries. Duplicate names are preserved. |
-| `body` | no | `{mode:"inline_base64",data_base64:"..."}`. |
+| `body` | no | Inline `{mode:"inline_base64",data_base64:"..."}` or verified `{mode:"receipt",receipt_id:"..."}`. |
+| `response_body_mode` | no | `inline_base64` (default) or `receipt` when the object-storage profile is enabled. |
 | `fingerprint_profile` | no | Supported profile name; the built-in deployment enables `chrome_120`. |
 | `timeout_ms` | no | Total deadline, from 1000 ms through the configured maximum. |
 | `replayable` | no | Permits safe transport retry. Clients default GET, HEAD, and OPTIONS to true. |
 
 Hop-by-hop headers, `Host`, `Content-Length`, and proxy authorization headers are managed or rejected by Straw.
 Request bodies default to a 1 MiB limit.
+That limit applies to inline bodies; receipt bodies use `object_storage.max_object_bytes` and must pass the receipt
+size/checksum flow before assignment. See [Object storage and receipts](../object-storage-receipts.md).
 
 ## Success
 
@@ -51,6 +54,9 @@ Control returns HTTP `200` when Straw transported the request, even if the desti
 
 `body.truncated` is reserved for compatibility and is currently false. If the upstream body exceeds
 `max_inline_response_body_bytes`, Straw returns `body_too_large` instead of a partial success.
+
+With `response_body_mode:"receipt"`, `body` instead contains `mode`, `receipt_id`, `size_bytes`, and `sha256_hex`.
+The authorized content endpoint and explicit expiry are returned by `GET /api/v1/receipts/{receipt_id}`.
 
 ## Errors
 
@@ -71,4 +77,4 @@ humans. Retry only when `retryable` is true and the original operation is safe t
 
 Common codes include `auth_failure`, `invalid_request`, `destination_denied`, `route_unavailable`,
 `assignment_timeout`, `connect_timeout`, `response_header_timeout`, `upstream_reset`, `body_too_large`, and
-`control_internal_error`.
+`body_ref_unavailable`, and `control_internal_error`.

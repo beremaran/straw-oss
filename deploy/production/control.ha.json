@@ -1,0 +1,22 @@
+{
+  "config_version": "v1",
+  "control": {
+    "nats": {
+      "servers": ["nats://nats:4222"],
+      "username_env": "STRAW_NATS_USER",
+      "password_env": "STRAW_NATS_PASSWORD",
+      "max_payload_bytes": 2000000
+    },
+    "runtime_admin": {"enabled": true},
+    "runtime_state": {
+      "backend": "redis",
+      "redis_url_env": "STRAW_REDIS_URL",
+      "instance_id_env": "STRAW_CONTROL_INSTANCE_ID",
+      "worker_ttl_ms": 30000,
+      "request_ttl_ms": 130000,
+      "instance_ttl_ms": 15000,
+      "operation_timeout_ms": 1000
+    }
+  }
+}
+

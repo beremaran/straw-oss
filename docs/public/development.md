@@ -14,14 +14,14 @@ make production-deploy-check
 make docs-website
 ```
 
-Python development uses the root uv workspace:
+Tagged Python SDK integration uses the root lock:
 
 ```sh
-uv sync --all-packages --frozen
-uv run --all-packages --frozen python -m unittest discover python/tests
+uv sync --frozen
+uv run --frozen python -m unittest discover integration/python
 ```
 
-Do not create a nested virtual environment or lock file under `python/`.
+Python SDK development and its independent lock live in `straw-sdk-python`.
 
 ## Release checklist
 
