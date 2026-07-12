@@ -21,8 +21,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	strawpb "github.com/beremaran/straw-oss/api/proto/straw/v1"
 	"github.com/beremaran/straw-oss/internal/objectstore"
+	strawpb "github.com/beremaran/straw-protos-go/straw/v1"
 )
 
 // Receipt directions and lifecycle states are stable public values.

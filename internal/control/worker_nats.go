@@ -7,8 +7,8 @@ import (
 
 	"github.com/nats-io/nats.go"
 
-	strawpb "github.com/beremaran/straw-oss/api/proto/straw/v1"
 	"github.com/beremaran/straw-oss/internal/natsx"
+	strawpb "github.com/beremaran/straw-protos-go/straw/v1"
 )
 
 const workerNATSInvalidMessage = "invalid_nats_message"

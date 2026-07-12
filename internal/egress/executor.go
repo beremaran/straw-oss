@@ -26,8 +26,8 @@ import (
 	"golang.org/x/net/dns/dnsmessage"
 	"golang.org/x/net/http2"
 
-	strawpb "github.com/beremaran/straw-oss/api/proto/straw/v1"
 	sdkegress "github.com/beremaran/straw-oss/sdk/egress"
+	strawpb "github.com/beremaran/straw-protos-go/straw/v1"
 )
 
 const (

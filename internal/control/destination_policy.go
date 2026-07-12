@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"strings"
 
-	strawpb "github.com/beremaran/straw-oss/api/proto/straw/v1"
 	"github.com/beremaran/straw-oss/internal/config"
+	strawpb "github.com/beremaran/straw-protos-go/straw/v1"
 )
 
 const (

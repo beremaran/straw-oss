@@ -3,7 +3,7 @@ package natsx
 import (
 	"time"
 
-	strawpb "github.com/beremaran/straw-oss/api/proto/straw/v1"
+	strawpb "github.com/beremaran/straw-protos-go/straw/v1"
 )
 
 // FrameOutcome is the result of validating one StreamFrame against a

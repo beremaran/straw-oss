@@ -63,6 +63,8 @@ multi-tenant platform inside the open-source package.
 - `cmd/control`, `internal/control`: public API and dispatch pipeline
 - `cmd/egress`, `internal/egress`: official worker and HTTP executor
 - `internal/natsx`: NATS connection and subjects
+- [`straw-protos`](https://github.com/beremaran/straw-protos): canonical language-neutral worker protocol
+- [`straw-protos-go`](https://github.com/beremaran/straw-protos-go): exact-tag Go bindings consumed by this runtime
 - `sdk`: Go client and worker SDK
 - `python`: Python client and worker SDK
 - `deploy/local`: supported development stack

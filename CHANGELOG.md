@@ -22,6 +22,8 @@ are tagged.
 
 ### Changed
 
+- Moved the canonical worker schema and reproducible Go/Python bindings into private, independently tagged protocol
+  repositories; the runtime now consumes `github.com/beremaran/straw-protos-go` at an exact version.
 - Refocused Straw as a single-deployment, self-hosted HTTP/HTTPS egress proxy.
 - Made NATS the only required backing service.
 - Replaced tenant/API-key provisioning with an optional deployment-wide bearer token.
