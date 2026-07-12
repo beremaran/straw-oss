@@ -26,6 +26,8 @@ are tagged.
   repositories; the runtime now consumes `github.com/beremaran/straw-protos-go` at an exact version.
 - Moved the public Go Control client and common Egress worker machinery to `github.com/beremaran/straw-sdk-go`; the
   canonical HTTP Egress implementation remains in this repository and consumes the exact tagged SDK.
+- Moved the `straw-sdk` Python distribution to `straw-sdk-python`; runtime integration now installs it and its
+  `straw-protos` dependency from exact private Git tags.
 - Refocused Straw as a single-deployment, self-hosted HTTP/HTTPS egress proxy.
 - Made NATS the only required backing service.
 - Replaced tenant/API-key provisioning with an optional deployment-wide bearer token.

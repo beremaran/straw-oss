@@ -4,7 +4,7 @@ test:
 	go test ./...
 
 test-python:
-	uv run --all-packages --frozen python -m unittest discover python/tests
+	uv run --frozen python -m unittest discover integration/python
 
 fmt-check:
 	@files="$$(gofmt -l $$(find . -name '*.go' -not -path './.git/*'))"; \

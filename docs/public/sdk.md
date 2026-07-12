@@ -44,10 +44,10 @@ and open it with `DownloadReceipt`.
 
 ## Python
 
-From this repository:
+During private pre-release, install the exact private tag:
 
 ```sh
-uv sync --all-packages --frozen
+uv add 'straw-sdk @ git+ssh://git@github.com/beremaran/straw-sdk-python.git@v0.1.0'
 ```
 
 ```python
