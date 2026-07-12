@@ -1,8 +1,8 @@
 # Repository split execution state
 
-The extraction freeze is lifted. The protocol, generated bindings, and SDKs now live in their permanent private
-repositories, and `straw-oss` consumes their immutable private tags. The final cutover is ready for owner review and
-activation by merging the repository-split pull request and changing the `straw-oss` default branch to `main`.
+The private repository split is complete and the extraction freeze is lifted. The protocol, generated bindings, and
+SDKs live in their permanent private repositories, and `straw-oss` consumes their immutable private tags. The owner
+reviewed and merged the cutover, `main` is the default branch, and the former remote `master` branch is retired.
 
 Pre-split baseline on 2026-07-13:
 
