@@ -29,6 +29,10 @@ docker compose --env-file deploy/production/.env \
 
 This enables file-backed JetStream. Adapt storage, replication, backup, and recovery before using the example.
 
+To enable receipt transport, adapt `control.object-storage.json` for your S3-compatible service, set the receipt and
+S3 secrets, and add `compose.object-storage.yml`. The example requests server-side encryption and proxies
+assignment-scoped downloads through Control so Egress never receives long-lived storage credentials.
+
 Scale workers independently:
 
 ```sh

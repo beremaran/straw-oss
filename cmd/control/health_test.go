@@ -11,7 +11,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/beremaran/straw-oss/v2/internal/control"
+	"github.com/beremaran/straw-oss/internal/control"
 )
 
 // TestHealthzAlwaysOK proves /healthz reports liveness regardless of readiness.
@@ -53,6 +53,26 @@ func TestReadyzReflectsReadiness(t *testing.T) {
 	mux.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/readyz", nil))
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("/readyz draining code = %d, want 503", rec.Code)
+	}
+}
+
+func TestReadyzReflectsSharedState(t *testing.T) {
+	t.Parallel()
+	ready := &atomic.Bool{}
+	ready.Store(true)
+	sharedReady := &atomic.Bool{}
+	sharedReady.Store(false)
+	mux := newMetricsMuxWithCheck(ready, prometheus.NewRegistry(), sharedReady.Load)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/readyz", nil))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("/readyz during shared-state outage = %d", rec.Code)
+	}
+	sharedReady.Store(true)
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/readyz", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("/readyz after shared-state recovery = %d", rec.Code)
 	}
 }
 

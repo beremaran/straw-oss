@@ -17,6 +17,10 @@ import (
 // to a draining Control. /metrics serves the P0 series
 // (docs/public/architecture.md) registered against reg.
 func newMetricsMux(ready *atomic.Bool, reg *prometheus.Registry) *http.ServeMux {
+	return newMetricsMuxWithCheck(ready, reg, nil)
+}
+
+func newMetricsMuxWithCheck(ready *atomic.Bool, reg *prometheus.Registry, extraReady func() bool) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -25,7 +29,7 @@ func newMetricsMux(ready *atomic.Bool, reg *prometheus.Registry) *http.ServeMux 
 	})
 
 	mux.HandleFunc("/readyz", func(w http.ResponseWriter, _ *http.Request) {
-		if !ready.Load() {
+		if !ready.Load() || extraReady != nil && !extraReady() {
 			http.Error(w, "draining", http.StatusServiceUnavailable)
 
 			return

@@ -1,9 +1,0 @@
-version: v2
-
-plugins:
-  - local: protoc-gen-go
-    out: api/proto
-    opt:
-      - paths=source_relative
-  - remote: buf.build/protocolbuffers/python:v33.5
-    out: python/straw/proto

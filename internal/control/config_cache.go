@@ -3,7 +3,7 @@ package control
 import (
 	"sync/atomic"
 
-	"github.com/beremaran/straw-oss/v2/internal/config"
+	"github.com/beremaran/straw-oss/internal/config"
 )
 
 // ConfigCache holds the immutable configuration for this Control process.

@@ -83,3 +83,22 @@ func TestValidateRequestAllowsDefaultFingerprintAlias(t *testing.T) {
 		t.Fatalf("validated fingerprint = %q, want %q", req.Fingerprint, defaultFingerprintProfileName)
 	}
 }
+
+func TestValidateRequestAcceptsReceiptBodyAndStoredResponseMode(t *testing.T) {
+	t.Parallel()
+	req, err := ValidateRequest([]byte(`{"method":"POST","url":"https://example.com/","body":{"mode":"receipt","receipt_id":"rcpt_1"},"response_body_mode":"receipt"}`), 4, 5000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.BodyReceiptID != "rcpt_1" || req.ResponseBodyMode != bodyModeReceipt || len(req.BodyData) != 0 {
+		t.Fatalf("request = %#v", req)
+	}
+}
+
+func TestValidateRequestRejectsMixedReceiptAndInlineData(t *testing.T) {
+	t.Parallel()
+	_, err := ValidateRequest([]byte(`{"method":"POST","url":"https://example.com/","body":{"mode":"receipt","receipt_id":"rcpt_1","data_base64":"eA=="}}`), 4, 5000)
+	if err == nil {
+		t.Fatal("mixed receipt and inline body accepted")
+	}
+}

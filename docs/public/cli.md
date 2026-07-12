@@ -20,6 +20,8 @@ Options:
 --url URL                  absolute upstream URL (required)
 --header 'Name: value'     repeatable upstream header
 --body-file PATH           send a file as the request body
+--receipt-id ID            send a verified request receipt (exclusive with --body-file)
+--response-body-mode MODE  inline_base64 or receipt
 --timeout-ms N             total request deadline
 --fingerprint-profile NAME outbound fingerprint profile
 ```

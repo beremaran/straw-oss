@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/beremaran/straw-oss/v2/internal/config"
+	"github.com/beremaran/straw-oss/internal/config"
 )
 
 const adminItemsKey = "items"
@@ -171,7 +171,7 @@ func (h *AdminHandler) requests(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeAdminJSON(w, http.StatusOK, map[string]any{adminItemsKey: h.service.Requests()})
+	writeAdminJSON(w, http.StatusOK, map[string]any{adminItemsKey: h.service.Requests(r.Context())})
 }
 
 func (h *AdminHandler) cancelRequest(w http.ResponseWriter, r *http.Request) {
@@ -179,7 +179,7 @@ func (h *AdminHandler) cancelRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !h.service.CancelRequest(r.PathValue("request_id")) {
+	if !h.service.CancelRequest(r.Context(), r.PathValue("request_id")) {
 		writeAdminError(w, http.StatusNotFound, "request_not_found")
 
 		return

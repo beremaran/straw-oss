@@ -1,13 +1,8 @@
 [project]
-name = "straw-workspace"
+name = "straw-runtime-integration"
 version = "0.0.0"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = ["straw-sdk @ git+https://github.com/beremaran/straw-sdk-python.git@v0.1.0"]
 
 [tool.uv]
 package = false
-
-[tool.uv.workspace]
-members = [
-    "python",
-]

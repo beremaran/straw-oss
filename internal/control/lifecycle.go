@@ -3,7 +3,7 @@ package control
 import (
 	"time"
 
-	strawpb "github.com/beremaran/straw-oss/v2/api/proto/straw/v1"
+	strawpb "github.com/beremaran/straw-protos-go/straw/v1"
 )
 
 // LifecycleState is the Control-side state of one assignment attempt

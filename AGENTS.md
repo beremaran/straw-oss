@@ -29,8 +29,8 @@ backing service; do not reintroduce tenants, RBAC, quotas, billing, administrati
 - Preserve user changes in a dirty worktree.
 - Never use `git commit --no-verify`, lint suppressions, or `.golangci.yml` changes to evade findings.
 
-Python work uses the root uv workspace. Run `uv sync --all-packages --frozen` from the repository root and do not
-create nested locks or virtual environments under `python/`.
+Python runtime integration uses the root exact-tag `uv.lock`; run `uv sync --frozen` from this repository. Python SDK
+development and its independent lock belong in `straw-sdk-python`.
 
 ## Verification
 

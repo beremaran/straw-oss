@@ -31,7 +31,7 @@ place workers in different networks or regions, provided they can reach the depl
 
 ## Custom workers
 
-`sdk/egress` and `python/straw/egress` expose the worker protocol for specialized executors. Start from
-`examples/egress-static`. Custom workers must keep protocol versions, heartbeats, assignment acknowledgements,
-capacity, deadlines, and stream framing correct. Treat this as an advanced integration surface and pin your Straw
-module/package version.
+[`straw-sdk-go/egress`](https://github.com/beremaran/straw-sdk-go) and the private Python SDK expose worker machinery
+for specialized executors. The canonical Egress implementation in this repository exercises the Go SDK base. Custom
+workers must keep protocol versions, heartbeats, assignment acknowledgements, capacity, deadlines, and stream framing
+correct. Treat this as an advanced integration surface and pin exact SDK and binding tags.

@@ -47,3 +47,13 @@ open http://localhost:8080/admin/
 
 The development-only admin token defaults to `local-admin`. Set `STRAW_ADMIN_TOKEN` to override it. This opt-in
 overlay enables durable JetStream storage; see `docs/public/runtime-administration.md` for API examples and recovery.
+
+## Receipt object-storage example
+
+```sh
+make dev-receipts
+```
+
+This development-only overlay uses a persistent local volume and enables the receipt APIs. Inline transport remains
+the default. To discard receipts and interrupted uploads, run Compose `down -v` with both the base and object-storage
+files.

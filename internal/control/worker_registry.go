@@ -5,14 +5,15 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
 	"time"
 
-	strawpb "github.com/beremaran/straw-oss/v2/api/proto/straw/v1"
-	"github.com/beremaran/straw-oss/v2/internal/config"
-	"github.com/beremaran/straw-oss/v2/internal/natsx"
+	"github.com/beremaran/straw-oss/internal/config"
+	"github.com/beremaran/straw-oss/internal/natsx"
+	strawpb "github.com/beremaran/straw-protos-go/straw/v1"
 )
 
 const (
@@ -76,7 +77,7 @@ type RegisterOutcome struct {
 
 // AllowedPool identifies one worker pool.
 type AllowedPool struct {
-	PoolID string
+	PoolID string `json:"pool_id"`
 }
 
 type workerSession struct {
@@ -111,11 +112,14 @@ func (s *workerSession) lastSeen() time.Time {
 
 // WorkerRegistry tracks live worker sessions in memory.
 type WorkerRegistry struct {
-	mu       sync.Mutex
-	now      func() time.Time
-	timings  WorkerTimings
-	workers  map[string]*workerSession
-	settings map[string]config.WorkerSetting
+	mu        sync.Mutex
+	now       func() time.Time
+	timings   WorkerTimings
+	workers   map[string]*workerSession
+	settings  map[string]config.WorkerSetting
+	shared    RuntimeState
+	sharedTTL time.Duration
+	ctx       context.Context
 }
 
 // NewDeploymentWorkerRegistry creates the in-process worker registry.
@@ -127,8 +131,18 @@ func NewDeploymentWorkerRegistry(timings WorkerTimings, now func() time.Time) *W
 	return &WorkerRegistry{now: now, timings: timings, workers: make(map[string]*workerSession), settings: make(map[string]config.WorkerSetting)}
 }
 
+// NewSharedWorkerRegistry creates a registry whose ephemeral worker sessions,
+// heartbeats, capacity and cooldowns are visible to every Control instance.
+func NewSharedWorkerRegistry(ctx context.Context, timings WorkerTimings, now func() time.Time, state RuntimeState, ttl time.Duration) *WorkerRegistry {
+	r := NewDeploymentWorkerRegistry(timings, now)
+	r.shared, r.sharedTTL = state, ttl
+	r.ctx = ctx
+
+	return r
+}
+
 // Register creates or replaces one worker session.
-func (r *WorkerRegistry) Register(_ context.Context, req *strawpb.RegisterRequest) (RegisterOutcome, error) {
+func (r *WorkerRegistry) Register(ctx context.Context, req *strawpb.RegisterRequest) (RegisterOutcome, error) {
 	if req == nil || !validWorkerID(req.GetWorkerId()) {
 		return RegisterOutcome{Reason: rejectInvalidWorkerID}, nil
 	}
@@ -167,6 +181,13 @@ func (r *WorkerRegistry) Register(_ context.Context, req *strawpb.RegisterReques
 	r.workers[req.GetWorkerId()] = session
 	r.mu.Unlock()
 
+	if r.shared != nil {
+		err = r.shared.putWorker(ctx, req.GetWorkerId(), sharedFromSession(session), r.sharedTTL)
+		if err != nil {
+			return RegisterOutcome{}, fmt.Errorf("store shared worker session: %w", err)
+		}
+	}
+
 	return RegisterOutcome{OK: true, SessionID: sessionID}, nil
 }
 
@@ -202,9 +223,31 @@ func deploymentPools(refs []*strawpb.RegisterRequest_PoolRef) []AllowedPool {
 }
 
 // Heartbeat refreshes one current worker session.
-func (r *WorkerRegistry) Heartbeat(hb *strawpb.HeartbeatRequest) (bool, error) {
+func (r *WorkerRegistry) Heartbeat(ctx context.Context, hb *strawpb.HeartbeatRequest) (bool, error) {
 	if hb == nil {
 		return false, nil
+	}
+
+	if r.shared != nil {
+		workers, err := r.shared.workers(ctx)
+		if err != nil {
+			return false, fmt.Errorf("read shared worker session: %w", err)
+		}
+
+		shared, ok := workers[hb.GetWorkerId()]
+		if !ok || shared.SessionID != hb.GetSessionId() {
+			return false, nil
+		}
+
+		session := shared.session()
+		applyHeartbeat(session, hb, r.now())
+
+		ok, err = r.shared.heartbeatWorker(ctx, hb.GetWorkerId(), hb.GetSessionId(), sharedFromSession(session), r.sharedTTL)
+		if err != nil {
+			return false, fmt.Errorf("update shared worker heartbeat: %w", err)
+		}
+
+		return ok, nil
 	}
 
 	r.mu.Lock()
@@ -215,9 +258,15 @@ func (r *WorkerRegistry) Heartbeat(hb *strawpb.HeartbeatRequest) (bool, error) {
 		return false, nil
 	}
 
+	applyHeartbeat(session, hb, r.now())
+
+	return true, nil
+}
+
+func applyHeartbeat(session *workerSession, hb *strawpb.HeartbeatRequest, now time.Time) {
 	session.hasHeartbeat = true
 
-	session.lastHeartbeat = r.now()
+	session.lastHeartbeat = now
 	if hb.Health.Valid() && hb.GetHealth() != strawpb.WorkerHealth_WORKER_HEALTH_UNSPECIFIED {
 		session.health = hb.GetHealth()
 	}
@@ -230,12 +279,23 @@ func (r *WorkerRegistry) Heartbeat(hb *strawpb.HeartbeatRequest) (bool, error) {
 	}
 
 	session.draining = hb.GetDraining()
-
-	return true, nil
 }
 
 // RecordFailure contributes to a worker's short cooldown circuit breaker.
 func (r *WorkerRegistry) RecordFailure(workerID string) {
+	if r.shared != nil {
+		workers, err := r.shared.workers(r.ctx)
+		if err != nil {
+			return
+		}
+
+		if worker, ok := workers[workerID]; ok {
+			_ = r.shared.recordWorkerFailure(r.ctx, workerID, worker.SessionID, r.timings)
+		}
+
+		return
+	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -283,6 +343,15 @@ type PoolCandidate struct {
 
 // CandidatesForPool returns live workers advertising the requested pool.
 func (r *WorkerRegistry) CandidatesForPool(_ string, poolID string) []PoolCandidate {
+	if r.shared != nil {
+		workers, err := r.shared.workers(r.ctx)
+		if err != nil {
+			return nil
+		}
+
+		return candidatesFromShared(r, workers, poolID)
+	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -314,6 +383,59 @@ func (r *WorkerRegistry) CandidatesForPool(_ string, poolID string) []PoolCandid
 	return candidates
 }
 
+func candidatesFromShared(r *WorkerRegistry, workers map[string]sharedWorker, poolID string) []PoolCandidate {
+	r.mu.Lock()
+
+	settings := make(map[string]config.WorkerSetting, len(r.settings))
+	maps.Copy(settings, r.settings)
+	r.mu.Unlock()
+	now := r.now()
+
+	out := make([]PoolCandidate, 0, len(workers))
+	for workerID, shared := range workers {
+		candidate, ok := sharedCandidate(r, settings, workerID, shared, poolID, now)
+		if ok {
+			out = append(out, candidate)
+		}
+	}
+
+	return out
+}
+
+func sharedCandidate(r *WorkerRegistry, settings map[string]config.WorkerSetting, workerID string, shared sharedWorker, poolID string, now time.Time) (PoolCandidate, bool) {
+	session := shared.session()
+
+	state := runtimeStateWithSettings(r.timings, settings, workerID, session, now)
+	if state != RuntimeReady && state != RuntimeDegraded {
+		return PoolCandidate{}, false
+	}
+
+	if !sessionInPool(session, poolID) {
+		return PoolCandidate{}, false
+	}
+
+	coolingDown, err := r.shared.workerCoolingDown(r.ctx, workerID, session.sessionID)
+	if err != nil || coolingDown {
+		return PoolCandidate{}, false
+	}
+
+	subject, err := natsx.AssignmentSubject(workerID, session.sessionID)
+	if err != nil {
+		return PoolCandidate{}, false
+	}
+
+	return candidateFromSession(workerID, subject, session, state == RuntimeDegraded), true
+}
+
+func candidateFromSession(workerID, subject string, session *workerSession, degraded bool) PoolCandidate {
+	return PoolCandidate{
+		WorkerID: workerID, SessionID: session.sessionID, AssignSubject: subject, ExecutorType: session.executorType,
+		Degraded: degraded, Tags: session.tags, Countries: session.countries, Regions: session.regions, IPTypes: session.ipTypes,
+		IngressModes: session.ingressModes, SupportedFingerprintProfiles: append([]string(nil), session.supportedFingerprintProfiles...),
+		ActiveRequests: session.activeRequests, MaxConcurrency: session.maxConcurrency, AvailableCap: session.availableCapacity,
+	}
+}
+
 // ApplySnapshot replaces durable worker lifecycle overrides atomically with routing reads.
 func (r *WorkerRegistry) ApplySnapshot(snapshot config.Snapshot) {
 	r.mu.Lock()
@@ -342,6 +464,15 @@ type WorkerInfo struct {
 
 // Workers returns a stable administrative snapshot of all registered workers.
 func (r *WorkerRegistry) Workers() []WorkerInfo {
+	if r.shared != nil {
+		workers, err := r.shared.workers(r.ctx)
+		if err != nil {
+			return nil
+		}
+
+		return workerInfoFromShared(r, workers)
+	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -362,6 +493,37 @@ func (r *WorkerRegistry) Workers() []WorkerInfo {
 		}
 
 		out = append(out, WorkerInfo{WorkerID: workerID, SessionID: session.sessionID, State: r.runtimeState(workerID, session, now), Enabled: enabled, Draining: draining, ExecutorType: session.executorType, ActiveRequests: session.activeRequests, AvailableCapacity: session.availableCapacity, MaxConcurrency: session.maxConcurrency, LastSeen: session.lastSeen(), Pools: pools})
+	}
+
+	slices.SortFunc(out, func(a, b WorkerInfo) int { return strings.Compare(a.WorkerID, b.WorkerID) })
+
+	return out
+}
+
+func workerInfoFromShared(r *WorkerRegistry, workers map[string]sharedWorker) []WorkerInfo {
+	r.mu.Lock()
+
+	settings := make(map[string]config.WorkerSetting, len(r.settings))
+	maps.Copy(settings, r.settings)
+	r.mu.Unlock()
+	now := r.now()
+
+	out := make([]WorkerInfo, 0, len(workers))
+	for workerID, shared := range workers {
+		s := shared.session()
+		setting, overridden := settings[workerID]
+
+		enabled, draining := true, s.draining
+		if overridden {
+			enabled, draining = setting.Enabled, setting.Draining || s.draining
+		}
+
+		pools := make([]string, 0, len(s.pools))
+		for _, p := range s.pools {
+			pools = append(pools, p.PoolID)
+		}
+
+		out = append(out, WorkerInfo{WorkerID: workerID, SessionID: s.sessionID, State: runtimeStateWithSettings(r.timings, settings, workerID, s, now), Enabled: enabled, Draining: draining, ExecutorType: s.executorType, ActiveRequests: s.activeRequests, AvailableCapacity: s.availableCapacity, MaxConcurrency: s.maxConcurrency, LastSeen: s.lastSeen(), Pools: pools})
 	}
 
 	slices.SortFunc(out, func(a, b WorkerInfo) int { return strings.Compare(a.WorkerID, b.WorkerID) })
@@ -431,6 +593,15 @@ type WorkerRegistryStats struct {
 
 // Stats returns current aggregate worker counts and capacity.
 func (r *WorkerRegistry) Stats() WorkerRegistryStats {
+	if r.shared != nil {
+		workers, err := r.shared.workers(r.ctx)
+		if err != nil {
+			return WorkerRegistryStats{}
+		}
+
+		return r.statsFromShared(workers)
+	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -455,8 +626,41 @@ func (r *WorkerRegistry) Stats() WorkerRegistryStats {
 	return stats
 }
 
+func (r *WorkerRegistry) statsFromShared(workers map[string]sharedWorker) WorkerRegistryStats {
+	r.mu.Lock()
+
+	settings := make(map[string]config.WorkerSetting, len(r.settings))
+	maps.Copy(settings, r.settings)
+	r.mu.Unlock()
+	now := r.now()
+
+	stats := WorkerRegistryStats{Sessions: len(workers)}
+	for id, w := range workers {
+		s := w.session()
+
+		state := runtimeStateWithSettings(r.timings, settings, id, s, now)
+		if state == RuntimeReady || state == RuntimeDegraded {
+			stats.Available++
+		}
+
+		if s.hasHeartbeat {
+			stats.MaxHeartbeatAgeSeconds = max(stats.MaxHeartbeatAgeSeconds, now.Sub(s.lastHeartbeat).Seconds())
+		}
+
+		stats.ActiveRequests += uint64(s.activeRequests)
+		stats.MaxConcurrency += uint64(s.maxConcurrency)
+		stats.AvailableCapacity += uint64(s.availableCapacity)
+	}
+
+	return stats
+}
+
 func (r *WorkerRegistry) runtimeState(workerID string, session *workerSession, now time.Time) WorkerRuntimeState {
-	if setting, ok := r.settings[workerID]; ok {
+	return runtimeStateWithSettings(r.timings, r.settings, workerID, session, now)
+}
+
+func runtimeStateWithSettings(timings WorkerTimings, settings map[string]config.WorkerSetting, workerID string, session *workerSession, now time.Time) WorkerRuntimeState {
+	if setting, ok := settings[workerID]; ok {
 		if !setting.Enabled {
 			return RuntimeDisabled
 		}
@@ -466,7 +670,7 @@ func (r *WorkerRegistry) runtimeState(workerID string, session *workerSession, n
 		}
 	}
 
-	return runtimeStateForSession(r.timings, session, now)
+	return runtimeStateForSession(timings, session, now)
 }
 
 func newWorkerSessionID() (string, error) {

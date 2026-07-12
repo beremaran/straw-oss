@@ -1,10 +1,10 @@
-.PHONY: check commit fmt-check test test-python lint production-deploy-check docs-website dev dev-admin dev-status dev-reset dev-down dev-logs infra-up infra-status infra-reset infra-down infra-clean infra-logs
+.PHONY: check commit dependency-check fmt-check test test-python lint production-deploy-check docs-website dev dev-admin dev-receipts dev-status dev-reset dev-down dev-logs infra-up infra-status infra-reset infra-down infra-clean infra-logs
 
 test:
 	go test ./...
 
 test-python:
-	uv run --all-packages --frozen python -m unittest discover python/tests
+	uv run --frozen python -m unittest discover integration/python
 
 fmt-check:
 	@files="$$(gofmt -l $$(find . -name '*.go' -not -path './.git/*'))"; \
@@ -19,13 +19,19 @@ production-deploy-check:
 docs-website:
 	cd website && npm run build
 
-check: fmt-check test test-python lint
+dependency-check:
+	./scripts/verify-dependency-direction.sh
+
+check: fmt-check test test-python lint dependency-check
 
 dev:
 	@./deploy/local/scripts/dev-up.sh
 
 dev-admin:
 	docker compose -f deploy/local/docker-compose.yml -f deploy/local/docker-compose.runtime-admin.yml up -d --build
+
+dev-receipts:
+	docker compose -f deploy/local/docker-compose.yml -f deploy/local/docker-compose.object-storage.yml up -d --build
 
 dev-status:
 	@./deploy/local/scripts/dev-status.sh

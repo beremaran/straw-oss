@@ -7,9 +7,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	strawpb "github.com/beremaran/straw-oss/v2/api/proto/straw/v1"
-	"github.com/beremaran/straw-oss/v2/internal/natsx"
-	sdkegress "github.com/beremaran/straw-oss/v2/sdk/egress"
+	"github.com/beremaran/straw-oss/internal/natsx"
+	strawpb "github.com/beremaran/straw-protos-go/straw/v1"
+	sdkegress "github.com/beremaran/straw-sdk-go/egress"
 )
 
 // ProtocolMajor is the worker protocol major version this worker speaks.

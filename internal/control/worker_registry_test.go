@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	strawpb "github.com/beremaran/straw-oss/v2/api/proto/straw/v1"
+	strawpb "github.com/beremaran/straw-protos-go/straw/v1"
 )
 
 const localWorkerID = "local-worker"
@@ -21,7 +21,7 @@ func TestDeploymentWorkerRegistryRoutesUnprovisionedWorker(t *testing.T) {
 		t.Fatalf("Register() = %+v, %v; want success", outcome, err)
 	}
 
-	ok, err := registry.Heartbeat(&strawpb.HeartbeatRequest{
+	ok, err := registry.Heartbeat(context.Background(), &strawpb.HeartbeatRequest{
 		WorkerId: localWorkerID, SessionId: outcome.SessionID,
 		Health: strawpb.WorkerHealth_WORKER_HEALTH_READY,
 	})

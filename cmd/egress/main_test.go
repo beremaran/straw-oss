@@ -6,17 +6,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/beremaran/straw-oss/v2/internal/config"
-	internalegress "github.com/beremaran/straw-oss/v2/internal/egress"
-	"github.com/beremaran/straw-oss/v2/internal/natsx"
-	sdkegress "github.com/beremaran/straw-oss/v2/sdk/egress"
+	"github.com/beremaran/straw-oss/internal/config"
+	internalegress "github.com/beremaran/straw-oss/internal/egress"
+	"github.com/beremaran/straw-oss/internal/natsx"
+	sdkegress "github.com/beremaran/straw-sdk-go/egress"
 )
 
 func TestBuildCapabilitiesUsesDeploymentPool(t *testing.T) {
 	t.Parallel()
 
 	caps := buildCapabilities(config.DefaultEgress())
-	if len(caps.AllowedPools) != 1 || caps.AllowedPools[0].GetTenantId() != config.DefaultDeploymentID || caps.AllowedPools[0].GetPoolId() != config.DefaultPoolID {
+	if len(caps.AllowedPools) != 1 || caps.AllowedPools[0].GetDeploymentId() != config.DefaultDeploymentID || caps.AllowedPools[0].GetPoolId() != config.DefaultPoolID {
 		t.Fatalf("AllowedPools = %+v, want deployment default", caps.AllowedPools)
 	}
 	if caps.MaxConcurrency != defaultConcurrency {

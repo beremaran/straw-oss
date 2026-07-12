@@ -6,15 +6,23 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"syscall"
 )
 
 // Version is the supported configuration format version.
 const (
-	Version                 = "v1"
-	defaultEgressHealthPort = 8090
-	defaultNATSServer       = "nats://127.0.0.1:4222"
+	Version                         = "v1"
+	defaultEgressHealthPort         = 8090
+	defaultNATSServer               = "nats://127.0.0.1:4222"
+	objectStorageBackendLocal       = "local"
+	objectStorageBackendS3          = "s3"
+	defaultMaxObjectBytes           = int64(1 << 30)
+	defaultMaxPartBytes             = int64(16 << 20)
+	defaultReceiptRetentionSeconds  = int64(86400)
+	defaultReceiptAssignmentSeconds = int64(300)
+	defaultReceiptCleanupSeconds    = int64(3600)
 )
 
 var (
@@ -27,6 +35,9 @@ var (
 	errInvalidHealthPort      = errors.New("health_port must be between 1 and 65535")
 	errInvalidHeartbeat       = errors.New("heartbeat_interval_ms must be positive")
 	errInvalidRuntimeHistory  = errors.New("runtime_admin.history_limit must be between 1 and 64")
+	errInvalidRuntimeState    = errors.New("runtime_state backend must be memory or redis")
+	errInvalidRuntimeStateTTL = errors.New("runtime_state TTLs must be positive and request_ttl_ms must exceed max_timeout_ms")
+	errInvalidObjectStorage   = errors.New("object_storage configuration is invalid")
 	errOpenConfig             = errors.New("open config file")
 )
 
@@ -39,11 +50,49 @@ type File struct {
 
 // ControlConfig configures the Control service.
 type ControlConfig struct {
-	Server       ControlServerConfig    `json:"server"`
-	Request      ControlRequestConfig   `json:"request"`
-	Transport    ControlTransportConfig `json:"transport"`
-	NATS         NATSConfig             `json:"nats"`
-	RuntimeAdmin RuntimeAdminConfig     `json:"runtime_admin"`
+	Server        ControlServerConfig    `json:"server"`
+	Request       ControlRequestConfig   `json:"request"`
+	Transport     ControlTransportConfig `json:"transport"`
+	NATS          NATSConfig             `json:"nats"`
+	RuntimeAdmin  RuntimeAdminConfig     `json:"runtime_admin"`
+	RuntimeState  RuntimeStateConfig     `json:"runtime_state"`
+	ObjectStorage ObjectStorageConfig    `json:"object_storage"`
+}
+
+// ObjectStorageConfig enables durable request and response receipts. Secrets
+// are named by environment variable and never stored in the JSON file.
+type ObjectStorageConfig struct {
+	Enabled                bool   `json:"enabled"`
+	Backend                string `json:"backend"`
+	LocalDirectory         string `json:"local_directory,omitempty"`
+	Endpoint               string `json:"endpoint,omitempty"`
+	Bucket                 string `json:"bucket,omitempty"`
+	Region                 string `json:"region,omitempty"`
+	AccessKeyEnv           string `json:"access_key_env,omitempty"`
+	SecretKeyEnv           string `json:"secret_key_env,omitempty"`
+	SessionTokenEnv        string `json:"session_token_env,omitempty"`
+	SigningKeyEnv          string `json:"signing_key_env,omitempty"`
+	DownloadBaseURL        string `json:"download_base_url,omitempty"`
+	MaxObjectBytes         int64  `json:"max_object_bytes,omitempty"`
+	MaxPartBytes           int64  `json:"max_part_bytes,omitempty"`
+	RetentionSeconds       int64  `json:"retention_seconds,omitempty"`
+	AssignmentTTLSeconds   int64  `json:"assignment_ttl_seconds,omitempty"`
+	CleanupIntervalSeconds int64  `json:"cleanup_interval_seconds,omitempty"`
+	ServerSideEncryption   string `json:"server_side_encryption,omitempty"`
+	KMSKeyID               string `json:"kms_key_id,omitempty"`
+}
+
+// RuntimeStateConfig selects the local development state store or opt-in
+// Redis coordination used by interchangeable Control instances.
+type RuntimeStateConfig struct {
+	Backend            string `json:"backend"`
+	RedisURLEnv        string `json:"redis_url_env"`
+	KeyPrefix          string `json:"key_prefix"`
+	InstanceIDEnv      string `json:"instance_id_env"`
+	WorkerTTLMS        int    `json:"worker_ttl_ms"`
+	RequestTTLMS       int    `json:"request_ttl_ms"`
+	InstanceTTLMS      int    `json:"instance_ttl_ms"`
+	OperationTimeoutMS int    `json:"operation_timeout_ms"`
 }
 
 // RuntimeAdminConfig enables the optional durable runtime-administration profile.
@@ -241,6 +290,8 @@ func (c *ControlConfig) applyDefaults() {
 	}
 
 	c.RuntimeAdmin.applyDefaults()
+	c.RuntimeState.applyDefaults()
+	c.ObjectStorage.applyDefaults()
 
 	if c.Request.MaxInlineRequestBodyBytes == 0 {
 		c.Request.MaxInlineRequestBodyBytes = 1_048_576
@@ -259,6 +310,104 @@ func (c *ControlConfig) applyDefaults() {
 	}
 
 	c.NATS.applyDefaults()
+}
+
+func (o *ObjectStorageConfig) applyDefaults() {
+	o.applyBackendDefaults()
+	o.applyEnvironmentDefaults()
+	o.applyLimitDefaults()
+}
+
+func (o *ObjectStorageConfig) applyBackendDefaults() {
+	if o.Backend == "" {
+		o.Backend = objectStorageBackendLocal
+	}
+
+	if o.LocalDirectory == "" {
+		o.LocalDirectory = ".straw/objects"
+	}
+
+	if o.Region == "" {
+		o.Region = "us-east-1"
+	}
+}
+
+func (o *ObjectStorageConfig) applyEnvironmentDefaults() {
+	if o.AccessKeyEnv == "" {
+		o.AccessKeyEnv = "STRAW_S3_ACCESS_KEY"
+	}
+
+	if o.SecretKeyEnv == "" {
+		o.SecretKeyEnv = "STRAW_S3_SECRET_KEY"
+	}
+
+	if o.SessionTokenEnv == "" {
+		o.SessionTokenEnv = "STRAW_S3_SESSION_TOKEN"
+	}
+
+	if o.SigningKeyEnv == "" {
+		o.SigningKeyEnv = "STRAW_RECEIPT_SIGNING_KEY"
+	}
+
+	if o.DownloadBaseURL == "" {
+		o.DownloadBaseURL = "http://control:8080"
+	}
+}
+
+func (o *ObjectStorageConfig) applyLimitDefaults() {
+	if o.MaxObjectBytes == 0 {
+		o.MaxObjectBytes = defaultMaxObjectBytes
+	}
+
+	if o.MaxPartBytes == 0 {
+		o.MaxPartBytes = defaultMaxPartBytes
+	}
+
+	if o.RetentionSeconds == 0 {
+		o.RetentionSeconds = defaultReceiptRetentionSeconds
+	}
+
+	if o.AssignmentTTLSeconds == 0 {
+		o.AssignmentTTLSeconds = defaultReceiptAssignmentSeconds
+	}
+
+	if o.CleanupIntervalSeconds == 0 {
+		o.CleanupIntervalSeconds = defaultReceiptCleanupSeconds
+	}
+}
+
+func (r *RuntimeStateConfig) applyDefaults() {
+	if r.Backend == "" {
+		r.Backend = "memory"
+	}
+
+	if r.RedisURLEnv == "" {
+		r.RedisURLEnv = "STRAW_REDIS_URL"
+	}
+
+	if r.KeyPrefix == "" {
+		r.KeyPrefix = "straw"
+	}
+
+	if r.InstanceIDEnv == "" {
+		r.InstanceIDEnv = "STRAW_CONTROL_INSTANCE_ID"
+	}
+
+	if r.WorkerTTLMS == 0 {
+		r.WorkerTTLMS = 30000
+	}
+
+	if r.RequestTTLMS == 0 {
+		r.RequestTTLMS = 130000
+	}
+
+	if r.InstanceTTLMS == 0 {
+		r.InstanceTTLMS = 15000
+	}
+
+	if r.OperationTimeoutMS == 0 {
+		r.OperationTimeoutMS = 1000
+	}
 }
 
 func (r *RuntimeAdminConfig) applyDefaults() {
@@ -286,6 +435,106 @@ func (c ControlConfig) validate() error {
 
 	if c.RuntimeAdmin.Enabled && (c.RuntimeAdmin.HistoryLimit < 1 || c.RuntimeAdmin.HistoryLimit > 64) {
 		return fmt.Errorf("%w: %d", errInvalidRuntimeHistory, c.RuntimeAdmin.HistoryLimit)
+	}
+
+	err := c.RuntimeState.validate(c.Request.MaxTimeoutMs)
+	if err != nil {
+		return err
+	}
+
+	return c.ObjectStorage.validate()
+}
+
+func (o ObjectStorageConfig) validate() error {
+	if !o.Enabled {
+		return nil
+	}
+
+	err := o.validateBackend()
+	if err != nil {
+		return err
+	}
+
+	err = o.validateURLs()
+	if err != nil {
+		return err
+	}
+
+	err = o.validateLimits()
+	if err != nil {
+		return err
+	}
+
+	return o.validateEncryption()
+}
+
+func (o ObjectStorageConfig) validateBackend() error {
+	if o.Backend != objectStorageBackendLocal && o.Backend != objectStorageBackendS3 {
+		return fmt.Errorf("%w: backend must be local or s3", errInvalidObjectStorage)
+	}
+
+	if o.Backend == objectStorageBackendLocal && o.LocalDirectory == "" {
+		return fmt.Errorf("%w: local_directory is required", errInvalidObjectStorage)
+	}
+
+	if o.Backend == objectStorageBackendS3 && (o.Endpoint == "" || o.Bucket == "") {
+		return fmt.Errorf("%w: S3 endpoint and bucket are required", errInvalidObjectStorage)
+	}
+
+	return nil
+}
+
+func (o ObjectStorageConfig) validateURLs() error {
+	parsed, err := url.Parse(o.DownloadBaseURL)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return fmt.Errorf("%w: download_base_url must be absolute", errInvalidObjectStorage)
+	}
+
+	if o.Backend == objectStorageBackendS3 {
+		parsed, err = url.Parse(o.Endpoint)
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+			return fmt.Errorf("%w: endpoint must be absolute", errInvalidObjectStorage)
+		}
+	}
+
+	return nil
+}
+
+func (o ObjectStorageConfig) validateLimits() error {
+	if o.MaxObjectBytes < 1 || o.MaxPartBytes < 1 || o.MaxPartBytes > o.MaxObjectBytes {
+		return errInvalidObjectStorage
+	}
+
+	if o.RetentionSeconds < 1 || o.AssignmentTTLSeconds < 1 || o.CleanupIntervalSeconds < 1 {
+		return errInvalidObjectStorage
+	}
+
+	return nil
+}
+
+func (o ObjectStorageConfig) validateEncryption() error {
+	if o.ServerSideEncryption != "" && o.ServerSideEncryption != "AES256" && o.ServerSideEncryption != "aws:kms" {
+		return fmt.Errorf("%w: server_side_encryption must be AES256 or aws:kms", errInvalidObjectStorage)
+	}
+
+	if o.ServerSideEncryption == "aws:kms" && o.KMSKeyID == "" {
+		return fmt.Errorf("%w: kms_key_id is required for aws:kms", errInvalidObjectStorage)
+	}
+
+	return nil
+}
+
+func (r RuntimeStateConfig) validate(maxTimeoutMS uint64) error {
+	if r.Backend != "memory" && r.Backend != "redis" {
+		return fmt.Errorf("%w: %q", errInvalidRuntimeState, r.Backend)
+	}
+
+	if r.WorkerTTLMS < 1 || r.RequestTTLMS < 1 || r.InstanceTTLMS < 1 || r.OperationTimeoutMS < 1 {
+		return errInvalidRuntimeStateTTL
+	}
+
+	if uint64(r.RequestTTLMS) <= maxTimeoutMS {
+		return errInvalidRuntimeStateTTL
 	}
 
 	return nil

@@ -15,12 +15,12 @@ import (
 	"syscall"
 	"time"
 
-	strawpb "github.com/beremaran/straw-oss/v2/api/proto/straw/v1"
-	"github.com/beremaran/straw-oss/v2/internal/config"
-	internalegress "github.com/beremaran/straw-oss/v2/internal/egress"
-	"github.com/beremaran/straw-oss/v2/internal/logging"
-	"github.com/beremaran/straw-oss/v2/internal/natsx"
-	sdkegress "github.com/beremaran/straw-oss/v2/sdk/egress"
+	"github.com/beremaran/straw-oss/internal/config"
+	internalegress "github.com/beremaran/straw-oss/internal/egress"
+	"github.com/beremaran/straw-oss/internal/logging"
+	"github.com/beremaran/straw-oss/internal/natsx"
+	strawpb "github.com/beremaran/straw-protos-go/straw/v1"
+	sdkegress "github.com/beremaran/straw-sdk-go/egress"
 )
 
 const (
@@ -175,8 +175,8 @@ func buildCapabilities(cfg config.EgressConfig) sdkegress.Capabilities {
 		SoftwareVersion: "dev",
 		MaxConcurrency:  maxConcurrency,
 		AllowedPools: []*strawpb.RegisterRequest_PoolRef{{
-			TenantId: config.DefaultDeploymentID,
-			PoolId:   config.DefaultPoolID,
+			DeploymentId: config.DefaultDeploymentID,
+			PoolId:       config.DefaultPoolID,
 		}},
 		Tags:                         cfg.Capabilities.Tags,
 		Countries:                    cfg.Capabilities.Countries,

@@ -40,6 +40,16 @@ the timeout is within configured limits, and no unknown fields are present.
 `body_too_large` error means the configured response limit was exceeded; increase it deliberately or fetch a smaller
 resource.
 
+## `body_ref_unavailable` or a receipt conflict
+
+Check `GET /api/v1/receipts/{id}`. Only a `verified` request receipt can be assigned. `uploading` needs remaining
+parts and completion; `rejected` means the final size or checksum did not match; `assigned` is already in use; and
+`cancelled` or `expired` cannot be revived. Confirm `download_base_url` is reachable from Egress and that every
+Control shares the same signing key and durable object store.
+
+For S3 errors, verify endpoint/bucket/region, path-style compatibility, credentials, clock synchronization, and the
+configured server-side-encryption permissions. Interrupted uploads remain resumable until retention cleanup.
+
 ## NATS payload errors
 
 Keep NATS `max_payload`, Control/Egress `max_payload_bytes`, and Control `max_frame_data_bytes` compatible. The

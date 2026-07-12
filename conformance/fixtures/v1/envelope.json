@@ -1,0 +1,11 @@
+{
+  "request_id": "req-fixture",
+  "deployment_id": "deployment-fixture",
+  "protocol_major": 1,
+  "protocol_minor": 1,
+  "attempt": 1,
+  "assign_ack": "ASSIGN_ACK_ACCEPTED",
+  "deterministic_wire_hex": "0a0b7265712d6669787475726512126465706c6f796d656e742d66697874757265280130013801ca01020801",
+  "unknown_field_wire_hex": "0a0b7265712d6669787475726512126465706c6f796d656e742d66697874757265280130013801ca01020801f00b01",
+  "unknown_enum_number": 99
+}

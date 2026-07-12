@@ -10,20 +10,21 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/beremaran/straw-oss/v2/internal/config"
-	"github.com/beremaran/straw-oss/v2/internal/logging"
-	"github.com/beremaran/straw-oss/v2/internal/natsx"
+	"github.com/beremaran/straw-oss/internal/config"
+	"github.com/beremaran/straw-oss/internal/logging"
+	"github.com/beremaran/straw-oss/internal/natsx"
 )
 
 const (
 	readHeaderTimeout       = 5 * time.Second
-	shutdownTimeout         = 5 * time.Second
+	shutdownGrace           = 5 * time.Second
 	healthcheckProbeTimeout = 2 * time.Second
 	serverCount             = 2
 )
@@ -129,7 +130,7 @@ func runHealthcheck(cfg config.ControlConfig) error {
 	return nil
 }
 
-func serveDeployment(ctx context.Context, cfg config.ControlConfig, api http.Handler, reg *prometheus.Registry) error {
+func serveDeployment(ctx context.Context, cfg config.ControlConfig, api http.Handler, reg *prometheus.Registry, extraReady func() bool) error {
 	ready := &atomic.Bool{}
 	ready.Store(true)
 
@@ -140,7 +141,7 @@ func serveDeployment(ctx context.Context, cfg config.ControlConfig, api http.Han
 	}
 	metricsServer := &http.Server{
 		Addr:              fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.MetricsPort),
-		Handler:           newMetricsMux(ready, reg),
+		Handler:           newMetricsMuxWithCheck(ready, reg, extraReady),
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
 
@@ -152,10 +153,15 @@ func serveDeployment(ctx context.Context, cfg config.ControlConfig, api http.Han
 	case <-ctx.Done():
 		ready.Store(false)
 
-		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
+		requestTimeout, err := time.ParseDuration(strconv.FormatUint(cfg.Request.MaxTimeoutMs, 10) + "ms")
+		if err != nil {
+			return fmt.Errorf("parse shutdown request timeout: %w", err)
+		}
+
+		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), requestTimeout+shutdownGrace)
 		defer cancel()
 
-		err := apiServer.Shutdown(shutdownCtx)
+		err = apiServer.Shutdown(shutdownCtx)
 		if err != nil {
 			return fmt.Errorf("shutdown api server: %w", err)
 		}

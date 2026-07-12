@@ -7,10 +7,11 @@ slug: /
 
 Straw is a self-hosted HTTP/HTTPS egress proxy. Applications send an HTTP request to Control, Control assigns it to
 an Egress worker over NATS, and that worker makes the outbound request. The response comes back as JSON with the body
-encoded as base64.
+encoded as base64, or as an expiring object receipt when that optional profile is enabled.
 
 Straw is designed for one trusted deployment boundary. It does not include tenants, accounts, billing, quotas, or an
-analytics database. NATS is the only required backing service. An optional JetStream profile stores runtime policy.
+analytics database. NATS is the only required backing service. Optional JetStream, Redis, and object-storage profiles
+add durable runtime policy, shared Control coordination, and large-body receipts.
 
 ## Start here
 
@@ -31,11 +32,12 @@ analytics database. NATS is the only required backing service. An optional JetSt
 - exposes Prometheus metrics, health endpoints, and structured JSON logs;
 - supports selectable outbound TLS fingerprint profiles;
 - optionally provides a durable Config/Admin API and API-parity dashboard.
+- optionally receipts verified request and response bodies into local or S3-compatible object storage.
 
 ## What Straw does not do
 
 Straw is not a forward-proxy socket, browser automation system, hosted proxy network, tenant management platform, or
-durable traffic archive. The request interface is `POST /api/v1/requests`; optional administration remains
+indefinite traffic archive. The request interface is `POST /api/v1/requests`; optional administration remains
 deployment-scoped and belongs to the operator.
 
 The source is available under the [MIT License](https://github.com/beremaran/straw-oss/blob/master/LICENSE).

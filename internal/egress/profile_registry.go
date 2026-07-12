@@ -3,7 +3,7 @@ package egress
 import (
 	"github.com/bogdanfinn/tls-client/profiles"
 
-	strawpb "github.com/beremaran/straw-oss/v2/api/proto/straw/v1"
+	strawpb "github.com/beremaran/straw-protos-go/straw/v1"
 )
 
 const baselineFingerprintProfile = "baseline"
