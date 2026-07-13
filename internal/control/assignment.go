@@ -146,6 +146,27 @@ func (d *DefaultRequestDispatcher) executeRawAttempt(ctx context.Context, in Dis
 	return result, assignmentMs, perr, wroteHeader
 }
 
+// executeRawAttemptOrFallback gives absolute-form proxy requests the same
+// assignment-time worker exclusion behavior as REST. A retry is possible only
+// before the first upstream response header is written to the client.
+func (d *DefaultRequestDispatcher) executeRawAttemptOrFallback(ctx context.Context, in DispatchInput, route RouteOutcome, snapshot config.Snapshot, policy *DestinationPolicyResult, deadline time.Time, w http.ResponseWriter) (dispatchResult, int64, *PipelineError, bool, RouteOutcome) {
+	result, assignmentMs, perr, wroteHeader := d.executeRawAttempt(ctx, in, route, policy, snapshot.ConfigVersion, deadline, w)
+	if perr == nil || wroteHeader || !canFallbackBeforeRequestStart(perr.Code) {
+		return result, assignmentMs, perr, wroteHeader, route
+	}
+
+	routeFailure(d.opts.Workers, route.WorkerID)
+
+	fallback := d.routeWithWorkers(in, snapshot, excludeWorkers{base: d.opts.Workers, workerID: route.WorkerID})
+	if !fallback.OK {
+		return result, assignmentMs, perr, wroteHeader, route
+	}
+
+	fallbackResult, fallbackAssignmentMs, fallbackErr, fallbackWroteHeader := d.executeRawAttempt(ctx, in, fallback, policy, snapshot.ConfigVersion, deadline, w)
+
+	return fallbackResult, assignmentMs + fallbackAssignmentMs, fallbackErr, fallbackWroteHeader, fallback
+}
+
 func (d *DefaultRequestDispatcher) executeRawAttemptUnmeasured(ctx context.Context, in DispatchInput, route RouteOutcome, policy *DestinationPolicyResult, configVersion uint64, deadline time.Time, w http.ResponseWriter) (dispatchResult, int64, *PipelineError, bool) {
 	assignmentStarted := d.opts.Now()
 

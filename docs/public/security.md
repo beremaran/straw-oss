@@ -26,6 +26,11 @@ through decoded HTTP requests. Proxy credentials are stripped before dispatch. C
 tunnel is established: destination and resolved-address policy still applies when Egress dials, but Straw cannot
 inspect application data inside the tunnel. Apply outbound network controls as defense in depth.
 
+Proxy routing hints use the reserved `X-Straw-*` namespace. Control authenticates first, validates and normalizes the
+bounded tags/country/region/IP-type/sticky-session contract, and strips every `X-Straw-*` header before decoded
+upstream forwarding. CONNECT strips the same control headers before tunnel establishment and never applies header
+injection or TLS fingerprinting to tunneled bytes. Unknown `X-Straw-*` headers are also stripped rather than forwarded.
+
 ## Profile hardening and verification checklist
 
 | Profile | Required review before production | Owned verification |

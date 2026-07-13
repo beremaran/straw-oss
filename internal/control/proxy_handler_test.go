@@ -25,6 +25,12 @@ func TestProxyHandlerDispatchesAbsoluteFormHTTP(t *testing.T) {
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "http://example.com/path?q=1", bytes.NewBufferString("payload"))
 	req.Header.Set("Proxy-Authorization", "Bearer secret")
 	req.Header.Set("Authorization", "Bearer destination-token")
+	req.Header.Set("X-Straw-Route-Tags", "datacenter, edge")
+	req.Header.Set("X-Straw-Route-Country", "au")
+	req.Header.Set("X-Straw-Route-Region", "ap-southeast-2")
+	req.Header.Set("X-Straw-Route-IP-Type", routingIPType)
+	req.Header.Set("X-Straw-Route-Sticky-Session", "checkout-42")
+	req.Header.Set("X-Straw-Future-Control", "must-not-forward")
 	req.Header.Set("Connection", "X-Hop")
 	req.Header.Set("X-Hop", "remove-me")
 	req.Header.Add("X-Keep", "one")
@@ -39,6 +45,9 @@ func TestProxyHandlerDispatchesAbsoluteFormHTTP(t *testing.T) {
 	if dispatcher.raw.Request.IngressType != IngressTypeHTTPProxy || dispatcher.raw.Request.URL.String() != "http://example.com/path?q=1" {
 		t.Fatalf("dispatch request = %#v", dispatcher.raw.Request)
 	}
+	if got := dispatcher.raw.Request.Routing; got.Country != "AU" || got.Region != "ap-southeast-2" || got.IPType != routingIPType || got.StickySessionID != "checkout-42" || len(got.Tags) != 2 || got.Tags[1] != "edge" {
+		t.Fatalf("routing hints = %+v", got)
+	}
 	if string(dispatcher.raw.Request.BodyData) != "payload" {
 		t.Fatalf("request body = %q, want payload", dispatcher.raw.Request.BodyData)
 	}
@@ -48,10 +57,44 @@ func TestProxyHandlerDispatchesAbsoluteFormHTTP(t *testing.T) {
 	if got := decodedHeaderValues(dispatcher.raw.Request.Headers, "X-Keep"); len(got) != 2 || got[0] != "one" || got[1] != "two" {
 		t.Fatalf("X-Keep = %v", got)
 	}
-	for _, name := range []string{"Proxy-Authorization", "Connection", "X-Hop", "Content-Length"} {
+	for _, name := range []string{"Proxy-Authorization", "Connection", "X-Hop", "Content-Length", "X-Straw-Route-Tags", "X-Straw-Route-Country", "X-Straw-Route-Region", "X-Straw-Route-IP-Type", "X-Straw-Route-Sticky-Session", "X-Straw-Future-Control"} {
 		if got := decodedHeaderValues(dispatcher.raw.Request.Headers, name); len(got) != 0 {
 			t.Fatalf("stripped header %s = %v", name, got)
 		}
+	}
+}
+
+func TestProxyHandlerRejectsMalformedAndOversizedRoutingHintsAfterAuthentication(t *testing.T) {
+	t.Parallel()
+
+	for name, value := range map[string]string{
+		"too-many-tags":    strings.Repeat("tag,", maxRoutingTags),
+		"too-long-region":  strings.Repeat("r", maxRoutingValueBytes+1),
+		"bad-country":      "AUS",
+		"duplicate-sticky": "first",
+	} {
+		t.Run(name, func(t *testing.T) {
+			dispatcher := &proxyDispatcherStub{}
+			handler := NewProxyHandler(1024, NewDeploymentAuthenticator("secret"), dispatcher, dispatcher)
+			req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "http://example.com/", nil)
+			req.Header.Set("Proxy-Authorization", "Bearer secret")
+			switch name {
+			case "too-many-tags":
+				req.Header.Set("X-Straw-Route-Tags", value)
+			case "duplicate-sticky":
+				req.Header.Add("X-Straw-Route-Sticky-Session", value)
+				req.Header.Add("X-Straw-Route-Sticky-Session", "second")
+			default:
+				req.Header.Set("X-Straw-Route-"+map[string]string{"too-long-region": "Region", "bad-country": "Country"}[name], value)
+			}
+			rec := httptest.NewRecorder()
+
+			handler.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusBadRequest || dispatcher.raw.Request != nil {
+				t.Fatalf("response = %d, dispatched=%#v; want 400 without dispatch", rec.Code, dispatcher.raw.Request)
+			}
+		})
 	}
 }
 
@@ -69,6 +112,23 @@ func TestProxyHandlerRequiresProxyAuthorization(t *testing.T) {
 	}
 	if dispatcher.raw.Request != nil {
 		t.Fatal("unauthorized request was dispatched")
+	}
+}
+
+func TestProxyHandlerAuthenticatesBeforeParsingRoutingHints(t *testing.T) {
+	t.Parallel()
+
+	dispatcher := &proxyDispatcherStub{}
+	handler := NewProxyHandler(1024, NewDeploymentAuthenticator("secret"), dispatcher, dispatcher)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "http://example.com/", nil)
+	req.Header.Set("X-Straw-Route-Country", "not-a-country")
+	req.Header.Set("Proxy-Authorization", "Bearer wrong")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusProxyAuthRequired || dispatcher.raw.Request != nil {
+		t.Fatalf("response = %d, dispatched=%#v; want auth failure before hint validation", rec.Code, dispatcher.raw.Request)
 	}
 }
 
@@ -116,9 +176,11 @@ func TestProxyHandlerEstablishesConnectTunnel(t *testing.T) {
 		return SuccessResponse{Status: http.StatusOK}, nil
 	}}
 	handler := NewProxyHandler(1024, NewDeploymentAuthenticator("secret"), dispatcher, dispatcher)
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodConnect, "http://example.com:443", nil)
-	req.Host = "example.com:443"
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodConnect, "http://"+proxyTestAuthority, nil)
+	req.Host = proxyTestAuthority
 	req.Header.Set("Proxy-Authorization", "Bearer secret")
+	req.Header.Set("X-Straw-Route-Country", "au")
+	req.Header.Set("X-Straw-Route-Tags", "datacenter")
 
 	_, verr := handler.validateConnectRequest(req)
 	if verr != nil {
@@ -152,6 +214,12 @@ func TestProxyHandlerEstablishesConnectTunnel(t *testing.T) {
 	}
 	if dispatcher.tunnel.Request.IngressType != IngressTypeConnect || dispatcher.tunnel.Request.URL.String() != "connect://example.com:443" {
 		t.Fatalf("tunnel request = %#v", dispatcher.tunnel.Request)
+	}
+	if len(dispatcher.tunnel.Request.Headers) != 0 || dispatcher.tunnel.Request.Fingerprint != "" {
+		t.Fatalf("CONNECT forwarded decoded controls: headers=%v fingerprint=%q", dispatcher.tunnel.Request.Headers, dispatcher.tunnel.Request.Fingerprint)
+	}
+	if dispatcher.tunnel.Request.Routing.Country != "AU" || len(dispatcher.tunnel.Request.Routing.Tags) != 1 {
+		t.Fatalf("tunnel routing hints = %+v", dispatcher.tunnel.Request.Routing)
 	}
 }
 

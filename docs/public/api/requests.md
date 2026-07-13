@@ -66,6 +66,11 @@ may select another eligible worker or returns `sticky_session_unavailable`. If e
 capacity, Straw returns `executor_capacity_exhausted`. With no routing hints, normal rule priority and worker capacity
 selection apply.
 
+The same `RoutingHints` contract is available to the forward-proxy ingress through the authenticated
+`X-Straw-Route-Tags`, `X-Straw-Route-Country`, `X-Straw-Route-Region`, `X-Straw-Route-IP-Type`, and
+`X-Straw-Route-Sticky-Session` headers. See [HTTP and HTTPS proxy ingress](../proxy-ingress.md#routing-hints) for
+the bounded syntax and header-stripping rules.
+
 ## Success
 
 Control returns HTTP `200` when Straw transported the request, even if the destination returned an error status.
