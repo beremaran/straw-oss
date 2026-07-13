@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"testing"
 
@@ -112,5 +113,77 @@ func TestAdminCancellationInvokesRegisteredCancel(t *testing.T) {
 	inflight.Register(context.Background(), "req-1", config.DefaultDeploymentID, func() { cancelled = true })
 	if !admin.CancelRequest(context.Background(), "req-1") || !cancelled {
 		t.Fatal("CancelRequest did not invoke request cancellation")
+	}
+}
+
+func TestAdminUpdateRejectsInvalidSnapshotWithoutPersistenceOrActivation(t *testing.T) {
+	t.Parallel()
+	fixture := newTestAdmin(t)
+	current, _ := fixture.admin.Current()
+	invalid := current.Snapshot.Clone()
+	invalid.InjectionPolicies = []config.InjectionPolicy{{ID: "bad", Enabled: true, Operations: []config.InjectionOperation{{Op: "replace", HeaderName: "X-Test"}}}}
+
+	_, err := fixture.admin.Update(current.Revision, invalid, "operator", "update")
+	if !errors.Is(err, config.ErrInvalidSnapshot) {
+		t.Fatalf("Update() error = %v, want invalid snapshot", err)
+	}
+	got, _ := fixture.admin.Current()
+	if got.Revision != current.Revision || got.Snapshot.ConfigVersion != current.Snapshot.ConfigVersion {
+		t.Fatalf("invalid update changed current record: before=%+v after=%+v", current, got)
+	}
+	history, _ := fixture.admin.History()
+	if len(history) != 1 {
+		t.Fatalf("invalid update changed history: %+v", history)
+	}
+	if fixture.admin.cache.Snapshot().ConfigVersion != current.Snapshot.ConfigVersion {
+		t.Fatal("invalid update changed active cache")
+	}
+}
+
+func TestAdminUpdatePersistsNormalizedRulesAndRollbackRemainsValid(t *testing.T) {
+	t.Parallel()
+	fixture := newTestAdmin(t)
+	current, _ := fixture.admin.Current()
+	next := current.Snapshot.Clone()
+	next.DenyRules = []config.DenyRule{{ID: "blocked", RuleType: "host", Action: "deny", Enabled: true, RawPattern: "Blocked.Example."}}
+	next.InjectionPolicies = []config.InjectionPolicy{{ID: "headers", Enabled: true, Operations: []config.InjectionOperation{{Op: "set", HeaderName: testTraceHeaderName, ValueBase64: base64.StdEncoding.EncodeToString([]byte("one"))}}}}
+
+	updated, err := fixture.admin.Update(current.Revision, next, "operator", "update")
+	if err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+	if got := updated.Snapshot.DenyRules[0].NormalizedHost; got != "blocked.example" {
+		t.Fatalf("persisted normalized host = %q", got)
+	}
+	if got := updated.Snapshot.DenyRules[0].NormalizedCIDR; got != "" {
+		t.Fatalf("stale normalized CIDR survived raw host change: %q", got)
+	}
+
+	rolled, err := fixture.admin.Rollback(updated.Revision, current.Snapshot.ConfigVersion, "operator")
+	if err != nil {
+		t.Fatalf("Rollback() error = %v", err)
+	}
+	if rolled.Snapshot.ConfigVersion != updated.Snapshot.ConfigVersion+1 || len(rolled.Snapshot.DenyRules) != 0 {
+		t.Fatalf("rollback = %+v, want valid prior snapshot as a new version", rolled)
+	}
+	err = config.ValidateSnapshot(rolled.Snapshot)
+	if err != nil {
+		t.Fatalf("rolled snapshot is not valid: %v", err)
+	}
+}
+
+func TestAdminAcceptsExecutableSnapshot(t *testing.T) {
+	t.Parallel()
+	fixture := newTestAdmin(t)
+	current, _ := fixture.admin.Current()
+	next := current.Snapshot.Clone()
+	next.FingerprintProfiles = []config.FingerprintProfile{{
+		Name: fingerprintProfileChrome120, ScopeType: "global", SupportedByWorker: true, Enabled: true,
+		ExecutorType: "egress", ProfileRef: fingerprintProfileChrome120, ContractRevision: "tls-client-v1.15.1-http1-http2",
+	}}
+
+	_, err := fixture.admin.Update(current.Revision, next, "operator", "update")
+	if err != nil {
+		t.Fatalf("Update() rejected executable snapshot: %v", err)
 	}
 }

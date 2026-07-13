@@ -40,6 +40,33 @@ and CONNECT ingress modes.
 `bucket: "STRAW_RUNTIME_CONFIG"`, and `history_limit: 64`. The named token environment variable must be non-empty,
 and NATS must have JetStream file storage enabled. See [Runtime administration](runtime-administration.md).
 
+### Runtime snapshot validation
+
+The Admin API accepts a complete snapshot, not a partial patch. Before compare-and-swap persistence or activation,
+Control validates route match fields, pool tags and capability lists, sticky settings, destination rules, injection
+policies, fingerprint records, and worker settings. A rejected snapshot returns `422` and leaves the durable record,
+active cache, history, and worker publication unchanged.
+
+Destination policy rules use the raw representation below. The normalized fields are server-derived response fields and
+must not be used as client input. `host` takes a hostname; `host_suffix` and `cname_suffix` take a hostname or a
+leading `*.`/`.` suffix; `cidr` takes a CIDR; `ip` takes one IP; `private_range` takes a private CIDR; and
+`metadata_ip` takes one of Straw's recognized metadata addresses. Control canonicalizes these values before returning
+the stored record and clears derived fields from a previous pattern:
+
+```json
+{
+  "destination_policy": [
+    {"id": "deny-api", "rule_type": "host_suffix", "action": "deny", "enabled": true, "raw_pattern": "*.Example.COM"},
+    {"id": "deny-net", "rule_type": "cidr", "action": "deny", "enabled": true, "raw_pattern": "192.168.1.42/24"}
+  ]
+}
+```
+
+The response contains `normalized_host: "example.com"` and `normalized_cidr: "192.168.1.0/24"`. Supplying malformed
+patterns, unsupported actions, invalid header operations or values, duplicate policy records, or fingerprint metadata
+that the official Egress worker cannot execute is rejected at PUT time. Existing snapshots that predate raw patterns
+remain readable when their normalized destination field is valid.
+
 Executor pools and routing rules are part of the runtime snapshot. A pool is deployment-scoped: its `enabled` flag,
 exact `executor_type`, required `tags`, degraded-worker policy, and allowed country/region/IP-type lists are enforced
 when Control selects a worker. For example, a deployment can route residential traffic to a dedicated pool:
@@ -199,10 +226,10 @@ unless it is part of a runtime snapshot activated through the Admin API.
 
 | Object | Fields and constraints |
 | --- | --- |
-| routing rule | `routing_rules`, `id`, `priority`, `enabled`, `match`, `target_pool_id`, `sticky_session_ttl_seconds`, `allow_sticky_fallback`; priorities define ordering and referenced pools must exist |
+| routing rule | `routing_rules`, `id`, `priority`, `enabled`, `match`, `target_pool_id`, `sticky_session_ttl_seconds`, `allow_sticky_fallback`; priorities define ordering, referenced pools must exist, and sticky fallback requires a positive TTL |
 | match | `tags`, `country`, `region`, `ip_type`, `ingress_type`, `target_host`; omitted members do not restrict the match |
 | executor pool | `executor_pools`, `id`, `enabled`, `executor_type`, `tags`, `allow_degraded_workers`, `allowed_ip_types`, `allowed_countries`, `allowed_regions`; pool IDs are unique; disabled pools receive no new assignments; executor type and tags are hard worker-eligibility constraints; non-empty allowed lists bound the worker's advertised capabilities |
-| destination rule | `destination_policy`, `rule_type`, `action`, `reason`, `raw_pattern`, `normalized_host`, `normalized_cidr`, `normalized_ip`, `normalized_name`; normalized fields are server output and precedence follows validated rule order |
+| destination rule | `destination_policy`, `rule_type`, `action`, `reason`, `raw_pattern`, `normalized_host`, `normalized_cidr`, `normalized_ip`, `normalized_name`; raw patterns are authoritative, normalized fields are server output, and malformed rules are rejected before activation |
 | injection policy | `injection_policies`, `operations`, `op`, `header_name`, `value_base64`; header operations preserve declared order and reject invalid names/values |
 | fingerprint profile | `fingerprint_profiles`, `name`, `scope_type`, `supported_by_worker`, `executor_type`, `profile_ref`, `contract_revision`; activation requires worker support |
 | worker setting | `worker_settings`, `worker_id`, `enabled`, `draining`; lifecycle changes are deployment-scoped |

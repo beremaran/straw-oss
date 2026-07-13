@@ -624,7 +624,7 @@ func (e EgressConfig) validate() error {
 
 func (c *EgressCapabilities) applyDefaults() {
 	if len(c.SupportedIngressModes) == 0 {
-		c.SupportedIngressModes = []string{"rest", "http_proxy", "connect"}
+		c.SupportedIngressModes = []string{snapshotIngressREST, snapshotIngressHTTPProxy, snapshotIngressConnect}
 	}
 
 	if len(c.AllowedPools) == 0 {

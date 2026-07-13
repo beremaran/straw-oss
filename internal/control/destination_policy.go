@@ -17,6 +17,7 @@ const (
 	denyRuleTypeHost              = "host"
 	denyRuleTypeHostSuffix        = "host_suffix"
 	denyRuleTypeCIDR              = "cidr"
+	denyRuleTypeIP                = "ip"
 	denyRuleTypeCNAMESuffix       = "cname_suffix"
 	denyRuleTypeMetadataIP        = "metadata_ip"
 	denyRuleTypePrivateRange      = "private_range"
@@ -31,7 +32,7 @@ const (
 )
 
 var (
-	denyRuleCIDRTypes            = map[string]bool{denyRuleTypeCIDR: true, denyRuleTypeMetadataIP: true, denyRuleTypePrivateRange: true}
+	denyRuleCIDRTypes            = map[string]bool{denyRuleTypeCIDR: true, denyRuleTypeIP: true, denyRuleTypeMetadataIP: true, denyRuleTypePrivateRange: true}
 	denyRuleHostTypes            = map[string]bool{denyRuleTypeHost: true, denyRuleTypeHostSuffix: true}
 	alwaysDeniedInjectionHeaders = map[string]bool{
 		denyRuleTypeHost:             true,
@@ -45,6 +46,10 @@ var (
 func denyRuleValue(rule config.DenyRule) string {
 	switch {
 	case denyRuleCIDRTypes[rule.RuleType]:
+		if rule.RuleType == denyRuleTypeIP {
+			return rule.NormalizedIP
+		}
+
 		return rule.NormalizedCIDR
 	case rule.RuleType == denyRuleTypeCNAMESuffix:
 		return rule.NormalizedName
@@ -305,6 +310,15 @@ func compileCIDRDenyRule(r config.DenyRule, deniedCidrs, allowedCidrs []string) 
 	value := denyRuleValue(r)
 	if value == "" {
 		return deniedCidrs, allowedCidrs
+	}
+
+	if r.RuleType == denyRuleTypeIP {
+		addr, err := netip.ParseAddr(value)
+		if err != nil {
+			return deniedCidrs, allowedCidrs
+		}
+
+		value = netip.PrefixFrom(addr, addr.BitLen()).String()
 	}
 
 	if r.Action == denyRuleActionAllowOverride {
