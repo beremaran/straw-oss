@@ -36,9 +36,9 @@ verify_image() {
   container=$(docker create "$image")
   trap 'docker rm -f "$container" >/dev/null 2>&1 || true' RETURN
   listing=$(docker export "$container" | tar -tf -)
-  printf '%s\n' "$listing" | grep -qx "$component"
+  grep -Fxq "$component" <<<"$listing"
   if [[ $component == egress ]]; then
-    printf '%s\n' "$listing" | grep -qx THIRD_PARTY_NOTICES.md
+    grep -Fxq THIRD_PARTY_NOTICES.md <<<"$listing"
   fi
   if printf '%s\n' "$listing" | grep -v '/$' | grep -E '(^|/)(\.git|go|src|workspace|[^/]*secret[^/]*|[^/]*token[^/]*)($|/)' >/dev/null; then
     echo "$image contains build source, toolchain, or secret-named paths" >&2
