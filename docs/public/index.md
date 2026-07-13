@@ -40,4 +40,4 @@ Straw is not a forward-proxy socket, browser automation system, hosted proxy net
 indefinite traffic archive. The request interface is `POST /api/v1/requests`; optional administration remains
 deployment-scoped and belongs to the operator.
 
-The source is available under the [MIT License](https://github.com/beremaran/straw-oss/blob/master/LICENSE).
+The source is available under the [MIT License](https://github.com/beremaran/straw-oss/blob/main/LICENSE).

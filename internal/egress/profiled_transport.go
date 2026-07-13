@@ -3,8 +3,8 @@ package egress
 import (
 	"bytes"
 	"context"
+	"crypto/x509"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -13,9 +13,7 @@ import (
 	"strconv"
 	"strings"
 
-	fhttp "github.com/bogdanfinn/fhttp"
-	tlsclient "github.com/bogdanfinn/tls-client"
-	"github.com/bogdanfinn/tls-client/profiles"
+	utls "github.com/bogdanfinn/utls"
 
 	strawpb "github.com/beremaran/straw-protos-go/straw/v1"
 )
@@ -27,10 +25,21 @@ type profiledResponse struct {
 	body       io.ReadCloser
 }
 
+type profiledRequest struct {
+	request     *http.Request
+	headerOrder []string
+}
+
+type profiledTLSConfig struct {
+	rootCAs            *x509.CertPool
+	insecureSkipVerify bool
+	sessionCache       utls.ClientSessionCache
+}
+
 var errProfiledDialTargetRejected = errors.New("profiled dial target rejected")
 
 // doProfiledRequest executes one named profile request. Resolution is done by
-// Straw before the tls-client dial hook is installed; the hook only accepts
+// Straw before the profile dial hook is installed; the hook only accepts
 // the original host/port and always dials the selected validated IP.
 func (e *Executor) doProfiledRequest(ctx context.Context, target target, start *strawpb.RequestStart, body []byte) (profiledResponse, func(), *executionError) {
 	profile, ok := executableFingerprintProfiles[start.GetFingerprintInstruction()]
@@ -49,65 +58,42 @@ func (e *Executor) doProfiledRequest(ctx context.Context, target target, start *
 
 	dial := e.profiledDialContext(ctx, target, ips[0])
 
-	client, err := e.newProfiledClient(profile, dial)
-	if err != nil {
-		return profiledResponse{}, func() {}, executorFailure(strawpb.ErrorCode_ERROR_CODE_EXECUTOR_INTERNAL_ERROR, executorInternalFact)
-	}
-
-	closeClient := func() { client.CloseIdleConnections() }
-
 	req, requestFailure := buildProfiledRequest(ctx, start, body)
 	if requestFailure != nil {
-		closeClient()
-
 		return profiledResponse{}, func() {}, requestFailure
 	}
 
-	resp, err := client.Do(req)
+	resp, conn, err := doProfiledRoundTrip(ctx, dial, target, profile, profiledTLSConfig{
+		rootCAs:            e.rootCAs,
+		insecureSkipVerify: e.insecureSkipVerify,
+		sessionCache:       e.profileSessionCaches[start.GetFingerprintInstruction()],
+	}, req)
 	if err != nil {
-		closeClient()
-
 		return profiledResponse{}, func() {}, mapHTTPError(ctx, err)
 	}
 
+	keepBodyOpen := false
+	defer func() {
+		if !keepBodyOpen {
+			_ = resp.Body.Close()
+			_ = conn.Close()
+		}
+	}()
+
 	closeResponse := func() {
 		_ = resp.Body.Close()
-
-		closeClient()
+		_ = conn.Close()
 	}
 
-	return profiledResponse{
+	result := profiledResponse{
 		statusCode: resp.StatusCode,
-		header:     http.Header(resp.Header),
-		trailer:    http.Header(resp.Trailer),
+		header:     resp.Header,
+		trailer:    resp.Trailer,
 		body:       resp.Body,
-	}, closeResponse, nil
-}
-
-func (e *Executor) newProfiledClient(profile profiles.ClientProfile, dial func(context.Context, string, string) (net.Conn, error)) (tlsclient.HttpClient, error) {
-	options := []tlsclient.HttpClientOption{
-		tlsclient.WithClientProfile(profile),
-		tlsclient.WithRandomTLSExtensionOrder(),
-		tlsclient.WithTimeoutSeconds(0),
-		tlsclient.WithNotFollowRedirects(),
-		tlsclient.WithDisableHttp3(),
-		tlsclient.WithDialContext(dial),
-		tlsclient.WithTransportOptions(&tlsclient.TransportOptions{
-			RootCAs:            e.rootCAs,
-			DisableKeepAlives:  true,
-			DisableCompression: true,
-		}),
 	}
-	if e.insecureSkipVerify {
-		options = append(options, tlsclient.WithInsecureSkipVerify())
-	}
+	keepBodyOpen = true
 
-	client, err := tlsclient.NewHttpClient(tlsclient.NewNoopLogger(), options...)
-	if err != nil {
-		return nil, fmt.Errorf("create profiled client: %w", err)
-	}
-
-	return client, nil
+	return result, closeResponse, nil
 }
 
 func (e *Executor) profiledDialContext(requestCtx context.Context, target target, validatedIP netip.Addr) func(context.Context, string, string) (net.Conn, error) {
@@ -142,25 +128,25 @@ func joinedDialContext(requestCtx, libraryCtx context.Context) (context.Context,
 	return ctx, cancel
 }
 
-func buildProfiledRequest(ctx context.Context, start *strawpb.RequestStart, body []byte) (*fhttp.Request, *executionError) {
+func buildProfiledRequest(ctx context.Context, start *strawpb.RequestStart, body []byte) (profiledRequest, *executionError) {
 	var reader io.Reader
 	if body != nil {
 		reader = bytes.NewReader(body)
 	}
 
-	req, err := fhttp.NewRequestWithContext(ctx, start.GetMethod(), start.GetUrl(), reader)
+	req, err := http.NewRequestWithContext(ctx, start.GetMethod(), start.GetUrl(), reader)
 	if err != nil {
-		return nil, executorFailure(strawpb.ErrorCode_ERROR_CODE_EXECUTOR_INTERNAL_ERROR, invalidRequestStartFact)
+		return profiledRequest{}, executorFailure(strawpb.ErrorCode_ERROR_CODE_EXECUTOR_INTERNAL_ERROR, invalidRequestStartFact)
 	}
 
 	req.Close = true
-	req.Header = make(fhttp.Header)
+	req.Header = make(http.Header)
 
 	order := make([]string, 0, len(start.GetHeaders())+len(start.GetInjectionOperations()))
 
 	for _, header := range start.GetHeaders() {
 		if !safeOutboundHeader(header.GetName(), header.GetValue()) {
-			return nil, executorFailure(strawpb.ErrorCode_ERROR_CODE_EXECUTOR_INTERNAL_ERROR, injectionFactFailed)
+			return profiledRequest{}, executorFailure(strawpb.ErrorCode_ERROR_CODE_EXECUTOR_INTERNAL_ERROR, injectionFactFailed)
 		}
 
 		req.Header.Add(header.GetName(), string(header.GetValue()))
@@ -169,15 +155,13 @@ func buildProfiledRequest(ctx context.Context, start *strawpb.RequestStart, body
 
 	failure := applyProfiledInjection(req.Header, &order, start.GetInjectionOperations())
 	if failure != nil {
-		return nil, failure
+		return profiledRequest{}, failure
 	}
 
-	req.Header[fhttp.HeaderOrderKey] = order
-
-	return req, nil
+	return profiledRequest{request: req, headerOrder: order}, nil
 }
 
-func applyProfiledInjection(headers fhttp.Header, order *[]string, ops []*strawpb.InjectionOperation) *executionError {
+func applyProfiledInjection(headers http.Header, order *[]string, ops []*strawpb.InjectionOperation) *executionError {
 	seenSet := make(map[string]struct{})
 
 	for _, op := range ops {

@@ -142,6 +142,8 @@ type s3ListResult struct {
 	} `xml:"Contents"`
 }
 
+const maxS3ListResponseBytes = 4 << 20
+
 func (s S3) listPage(ctx context.Context, prefix, continuation string) (s3ListResult, error) {
 	query := url.Values{"list-type": {"2"}, "prefix": {prefix}}
 	if continuation != "" {
@@ -163,11 +165,20 @@ func (s S3) listPage(ctx context.Context, prefix, continuation string) (s3ListRe
 		return s3ListResult{}, s.statusError("LIST", resp)
 	}
 
-	var page s3ListResult
-
-	err = xml.NewDecoder(resp.Body).Decode(&page)
+	page, err := decodeS3List(resp.Body)
 	if err != nil {
 		return s3ListResult{}, fmt.Errorf("decode S3 object list: %w", err)
+	}
+
+	return page, nil
+}
+
+func decodeS3List(reader io.Reader) (s3ListResult, error) {
+	var page s3ListResult
+
+	err := xml.NewDecoder(io.LimitReader(reader, maxS3ListResponseBytes)).Decode(&page)
+	if err != nil {
+		return s3ListResult{}, fmt.Errorf("decode bounded S3 list: %w", err)
 	}
 
 	return page, nil

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/beremaran/straw-oss/internal/config"
+	"github.com/beremaran/straw-oss/internal/fingerprint"
 	"github.com/beremaran/straw-oss/internal/natsx"
 	strawpb "github.com/beremaran/straw-protos-go/straw/v1"
 )
@@ -197,8 +198,21 @@ func rejectFingerprintProfileCapabilities(req *strawpb.RegisterRequest) string {
 		return ""
 	}
 
-	if req.GetProtocolMinor() < 1 || len(profiles) != 1 || profiles[0] != fingerprintProfileChrome120 {
+	if req.GetProtocolMinor() < 1 || len(profiles) > len(fingerprint.Names()) {
 		return rejectCapabilityScope
+	}
+
+	seen := make(map[string]struct{}, len(profiles))
+	for _, profile := range profiles {
+		if !fingerprint.Contains(profile) {
+			return rejectCapabilityScope
+		}
+
+		if _, duplicate := seen[profile]; duplicate {
+			return rejectCapabilityScope
+		}
+
+		seen[profile] = struct{}{}
 	}
 
 	return ""

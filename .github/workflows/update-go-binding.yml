@@ -25,7 +25,7 @@ jobs:
           app-id: ${{ vars.STRAW_RELEASE_APP_ID }}
           private-key: ${{ secrets.STRAW_RELEASE_APP_PRIVATE_KEY }}
           owner: beremaran
-          repositories: straw-protos-go,straw-protos-python,straw-sdk-go,straw-sdk-python,straw-oss
+          repositories: straw-oss
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           token: ${{ steps.app-token.outputs.token }}
@@ -37,7 +37,7 @@ jobs:
           python-version: "3.13"
       - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
         with:
-          version: "0.9.18"
+          version: "0.8.22"
       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9
         with:
           version: v2.12.2
@@ -49,7 +49,7 @@ jobs:
           INPUT_TAG: ${{ inputs.tag }}
         run: |
           tag="$DISPATCH_TAG"; if [ -z "$tag" ]; then tag="$INPUT_TAG"; fi
-          git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
+          case "$tag" in v[0-9]*.[0-9]*.[0-9]*) ;; *) echo 'tag must be an exact vMAJOR.MINOR.PATCH release' >&2; exit 2;; esac
           go get "github.com/beremaran/straw-protos-go@$tag"
           go mod tidy
           make check
@@ -61,4 +61,4 @@ jobs:
           git add go.mod go.sum
           git commit -m "Update straw-protos-go to $tag"
           git push -u origin "$branch"
-          gh pr create --title "Update straw-protos-go to $tag" --body "Pins the exact private binding tag and passes the complete runtime suite." --base main --head "$branch"
+          gh pr create --title "Update straw-protos-go to $tag" --body "Pins the exact public binding tag and passes the complete runtime suite." --base main --head "$branch"

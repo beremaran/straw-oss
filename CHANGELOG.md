@@ -7,6 +7,20 @@ are tagged.
 
 ### Added
 
+- Added public-only dependency, secret, conformance, race, and package-graph verification gates; normative Admin,
+  Receipt, and compatibility references; and explicit support and governance policies.
+- Added maintained curl, CLI, Go, and Python examples; source-surface, documentation ownership/freshness, terminology,
+  internal/external link checks; namespaced default/admin/receipt Compose smoke tests; a threat model, launch/release
+  gates, operations references, starter alerts, and pinned signed multi-architecture release automation.
+- Added live HA, recovery, example, release-image content, diagnostic redaction, exact-toolchain, and dependency-license
+  gates so operational and supply-chain claims have executable evidence.
+- Replaced the unlicensed `fhttp` runtime path with a request-scoped transport built from licensed uTLS and
+  `x/net/http2` primitives. Straw now exposes all 79 exact profile names from the attributed `tls-client` v1.15.1
+  catalogue for HTTP/1.1 and HTTP/2, including isolated session caches for PSK profiles; HTTP/3 is intentionally
+  excluded, and the entire catalogue plus representative TLS/HTTP/2 dimensions are local-wire tested.
+- Added a moderate-or-higher npm audit gate and pinned the documentation site's transitive `uuid` dependency to the
+  first patched 11.1.1 release; reviewed install scripts are now explicitly allowed or denied.
+
 - Added an opt-in deployment-scoped Config and Admin REST API plus an API-parity web dashboard.
 - Added validated atomic runtime snapshots, JetStream KV persistence, optimistic concurrency, bounded audit history,
   rollback, rollout status, and worker snapshot acknowledgement.
@@ -22,12 +36,21 @@ are tagged.
 
 ### Changed
 
-- Moved the canonical worker schema and reproducible Go/Python bindings into private, independently tagged protocol
+- Allowed pre-launch CI and release-image builds to resolve exact tagged dependencies through the existing
+  repository-scoped GitHub App while keeping anonymous clean-room, external-link, dependency-review, and CodeQL gates
+  reserved for public repositories.
+- Decomposed Control dispatch, Egress execution, and receipt handling into responsibility-focused files, made receipt
+  lifecycle transitions explicit, and separated receipt record/index persistence behind an internal interface.
+- Bounded static configuration, stored receipt record, and S3 list decoding to protect parser memory during malformed
+  or hostile input.
+- Aligned the supported module, CI, examples, and pinned container builder on Go 1.26.5.
+
+- Moved the canonical worker schema and reproducible Go/Python bindings into public, independently tagged protocol
   repositories; the runtime now consumes `github.com/beremaran/straw-protos-go` at an exact version.
 - Moved the public Go Control client and common Egress worker machinery to `github.com/beremaran/straw-sdk-go`; the
-  canonical HTTP Egress implementation remains in this repository and consumes the exact tagged SDK.
+  canonical HTTP Egress implementation remains in this repository and consumes the exact public tagged SDK.
 - Moved the `straw-sdk` Python distribution to `straw-sdk-python`; runtime integration now installs it and its
-  `straw-protos` dependency from exact private Git tags.
+  `straw-protos` dependency from exact public Git tags.
 - Refocused Straw as a single-deployment, self-hosted HTTP/HTTPS egress proxy.
 - Made NATS the only required backing service.
 - Replaced tenant/API-key provisioning with an optional deployment-wide bearer token.

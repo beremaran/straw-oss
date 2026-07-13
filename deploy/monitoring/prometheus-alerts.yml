@@ -1,0 +1,22 @@
+groups:
+  - name: straw-example
+    rules:
+      - alert: StrawNoAvailableWorkers
+        expr: straw_workers_available == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations: {summary: No Straw worker can accept assignments}
+      - alert: StrawNATSErrors
+        expr: rate(straw_nats_errors_total[5m]) > 0
+        for: 5m
+        labels: {severity: warning}
+        annotations: {summary: Straw is observing NATS transport errors}
+      - alert: StrawHAStateUnavailable
+        expr: straw_runtime_state_available == 0
+        for: 1m
+        labels: {severity: critical}
+        annotations: {summary: Straw HA coordination is unavailable}
+      - alert: StrawReceiptRejections
+        expr: increase(straw_receipts_rejected_total[15m]) > 0
+        labels: {severity: warning}
+        annotations: {summary: Receipt size or checksum verification failed}

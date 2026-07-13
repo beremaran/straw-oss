@@ -22,21 +22,23 @@ import (
 	"testing"
 	"time"
 
-	fhttphttp2 "github.com/bogdanfinn/fhttp/http2"
-	fhttphpack "github.com/bogdanfinn/fhttp/http2/hpack"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/hpack"
 
+	"github.com/beremaran/straw-oss/internal/fingerprint"
 	strawpb "github.com/beremaran/straw-protos-go/straw/v1"
 )
 
 const (
 	profileGoldenGREASE = "GREASE"
 	profileHTTP11       = "http/1.1"
+	profileObserverHost = "profile.observer.test"
 )
 
 // Keep the wire contract next to the observer so a registry edit cannot make
 // the conformance test pass without exercising the actual client.
 var (
-	//go:embed testdata/chrome_120_v1_15_1.json
+	//go:embed testdata/chrome_120_profile_catalog_v1_15_1.json
 	chrome120GoldenJSON []byte
 )
 
@@ -44,17 +46,17 @@ func TestProfileConformanceChrome120MatchesGoldenOnLocalWireAndDiffersFromBaseli
 	golden := loadChrome120Golden(t)
 
 	named := runProfileObservation(t, chrome120FingerprintProfile)
-	if named.protocol != fhttphttp2.NextProtoTLS {
+	if named.protocol != http2.NextProtoTLS {
 		t.Fatalf("named protocol = %q, want h2", named.protocol)
 	}
-	if named.serverName != "profile.observer.test" {
+	if named.serverName != profileObserverHost {
 		t.Fatalf("named SNI = %q, want profile.observer.test", named.serverName)
 	}
 	compareTLSObservation(t, named.hello, golden.TLS)
 	compareHTTP2Observation(t, named, golden.HTTP2)
 
 	baseline := runProfileObservation(t, "")
-	if baseline.protocol == fhttphttp2.NextProtoTLS {
+	if baseline.protocol == http2.NextProtoTLS {
 		t.Fatalf("baseline negotiated h2, want baseline HTTP/1.1")
 	}
 	if slices.Equal(named.hello.CipherSuites, baseline.hello.CipherSuites) {
@@ -76,6 +78,88 @@ func TestProfileConformanceChrome120MatchesGoldenOnLocalWireAndDiffersFromBaseli
 	}
 	if len(baseline.settings) != 0 || baseline.connectionWindow != 0 || len(baseline.pseudoHeaderOrder) != 0 || len(baseline.applicationHeaderOrder) != 0 {
 		t.Fatalf("baseline exposed profiled HTTP/2 dimensions: %+v", baseline)
+	}
+}
+
+func TestProfileCatalogueRepresentativeFamiliesMatchProfileDrivenHTTP2Wire(t *testing.T) {
+	t.Parallel()
+
+	representatives := []string{
+		"brave_146",
+		"chrome_120",
+		"firefox_120",
+		"okhttp4_android_13",
+		"opera_91",
+		"safari_ios_17_0",
+	}
+	seenTLS := make(map[string]string, len(representatives))
+	for _, name := range representatives {
+		t.Run(name, func(t *testing.T) {
+			observation := runProfileObservation(t, name)
+			profile := executableFingerprintProfiles[name]
+			config := newProfiledHTTP2Config(profile)
+
+			signature := fmt.Sprintf("%v|%v|%v|%v|%v", observation.hello.CipherSuites, observation.hello.Extensions, observation.hello.SupportedGroups, observation.hello.SignatureAlgorithms, observation.hello.ALPN)
+			if previous, duplicate := seenTLS[signature]; duplicate {
+				t.Fatalf("TLS wire signature duplicates representative %q", previous)
+			}
+			seenTLS[signature] = name
+
+			if observation.protocol != http2.NextProtoTLS {
+				return
+			}
+
+			wantSettings := make([]goldenSetting, 0, len(config.settings))
+			for _, setting := range config.settings {
+				wantSettings = append(wantSettings, goldenSetting{ID: setting.ID.String(), Value: setting.Val})
+			}
+			if !slices.Equal(observation.settings, wantSettings) {
+				t.Fatalf("settings = %v, want %v", observation.settings, wantSettings)
+			}
+			if observation.connectionWindow != config.connectionWindow {
+				t.Fatalf("connection window = %d, want %d", observation.connectionWindow, config.connectionWindow)
+			}
+			if !slices.Equal(observation.pseudoHeaderOrder, config.pseudoHeaderOrder) {
+				t.Fatalf("pseudo-header order = %v, want %v", observation.pseudoHeaderOrder, config.pseudoHeaderOrder)
+			}
+			if observation.prioritySeen != (len(config.priorities) > 0) {
+				t.Fatalf("priority frames seen = %t, configured = %d", observation.prioritySeen, len(config.priorities))
+			}
+		})
+	}
+}
+
+func TestEveryAdvertisedProfileCompletesALocalWireRequest(t *testing.T) {
+	for _, name := range fingerprint.Names() {
+		t.Run(name, func(t *testing.T) {
+			observation := runProfileObservation(t, name)
+			if observation.serverName != profileObserverHost {
+				t.Fatalf("SNI = %q, want profile.observer.test", observation.serverName)
+			}
+			if len(observation.hello.CipherSuites) == 0 {
+				t.Fatal("ClientHello advertised no cipher suites")
+			}
+		})
+	}
+}
+
+func TestPSKProfileResumesOnlyAfterReceivingASessionTicket(t *testing.T) {
+	const profile = "chrome_144_PSK"
+
+	observer := newConformanceObserverConnections(t, 2)
+	exec := NewExecutor(ExecutorOptions{
+		Resolver:           staticResolver{profileObserverHost: netip.MustParseAddr("127.0.0.1")},
+		InsecureSkipVerify: true,
+	})
+
+	first := executeProfileObservation(t, exec, observer, profile)
+	if slices.Contains(first.hello.Extensions, "pre_shared_key") {
+		t.Fatal("first ClientHello advertised an empty pre-shared key")
+	}
+
+	second := executeProfileObservation(t, exec, observer, profile)
+	if !slices.Contains(second.hello.Extensions, "pre_shared_key") {
+		t.Fatalf("second ClientHello extensions = %v, want pre_shared_key after session ticket", second.hello.Extensions)
 	}
 }
 
@@ -198,8 +282,19 @@ func runProfileObservation(t *testing.T, fingerprint string) observedConformance
 	t.Helper()
 
 	observer := newConformanceObserver(t)
+	exec := NewExecutor(ExecutorOptions{
+		Resolver:           staticResolver{profileObserverHost: netip.MustParseAddr("127.0.0.1")},
+		InsecureSkipVerify: true,
+	})
+
+	return executeProfileObservation(t, exec, observer, fingerprint)
+}
+
+func executeProfileObservation(t *testing.T, exec *Executor, observer *conformanceObserver, fingerprint string) observedConformance {
+	t.Helper()
+
 	start := requestStart(
-		fmt.Sprintf("https://profile.observer.test:%d/", observer.port()),
+		fmt.Sprintf("https://%s:%d/", profileObserverHost, observer.port()),
 		directPolicy(true),
 	)
 	start.Method = http.MethodGet
@@ -210,10 +305,6 @@ func runProfileObservation(t *testing.T, fingerprint string) observedConformance
 	start.InjectionOperations = nil
 	start.FingerprintInstruction = fingerprint
 
-	exec := NewExecutor(ExecutorOptions{
-		Resolver:           staticResolver{"profile.observer.test": netip.MustParseAddr("127.0.0.1")},
-		InsecureSkipVerify: true,
-	})
 	frames := exec.Execute(context.Background(), start, nil, 1, nil)
 	errFrame := terminalErrorOrNil(frames)
 	if errFrame != nil {
@@ -242,6 +333,10 @@ type conformanceResult struct {
 }
 
 func newConformanceObserver(t *testing.T) *conformanceObserver {
+	return newConformanceObserverConnections(t, 1)
+}
+
+func newConformanceObserverConnections(t *testing.T, connections int) *conformanceObserver {
 	t.Helper()
 
 	certificateSource := httptest.NewUnstartedServer(nil)
@@ -249,10 +344,10 @@ func newConformanceObserver(t *testing.T) *conformanceObserver {
 	certificateSource.StartTLS()
 	config := certificateSource.TLS.Clone()
 	certificateSource.Close()
-	config.NextProtos = []string{fhttphttp2.NextProtoTLS, profileHTTP11}
+	config.NextProtos = []string{http2.NextProtoTLS, profileHTTP11}
 
 	observer := &conformanceObserver{
-		result: make(chan conformanceResult, 1),
+		result: make(chan conformanceResult, connections),
 	}
 	config.GetConfigForClient = func(info *tls.ClientHelloInfo) (*tls.Config, error) {
 		observer.mu.Lock()
@@ -270,7 +365,7 @@ func newConformanceObserver(t *testing.T) *conformanceObserver {
 	}
 	observer.listener = listener
 	t.Cleanup(func() { _ = observer.listener.Close() })
-	go observer.serve()
+	go observer.serve(connections)
 
 	return observer
 }
@@ -306,7 +401,13 @@ func (o *conformanceObserver) wait(t *testing.T) observedConformance {
 	}
 }
 
-func (o *conformanceObserver) serve() {
+func (o *conformanceObserver) serve(connections int) {
+	for range connections {
+		o.serveConnection()
+	}
+}
+
+func (o *conformanceObserver) serveConnection() {
 	conn, err := o.listener.Accept()
 	if err != nil {
 		o.result <- conformanceResult{err: err}
@@ -346,7 +447,7 @@ func (o *conformanceObserver) serve() {
 		protocol:   tlsConn.ConnectionState().NegotiatedProtocol,
 	}
 
-	if observation.protocol == fhttphttp2.NextProtoTLS {
+	if observation.protocol == http2.NextProtoTLS {
 		err = o.observeHTTP2(tlsConn, &observation)
 	} else {
 		err = observeHTTP1(tlsConn)
@@ -356,17 +457,17 @@ func (o *conformanceObserver) serve() {
 
 func (o *conformanceObserver) observeHTTP2(conn net.Conn, observation *observedConformance) error {
 	reader := bufio.NewReader(conn)
-	preface := make([]byte, len(fhttphttp2.ClientPreface))
+	preface := make([]byte, len(http2.ClientPreface))
 	_, err := io.ReadFull(reader, preface)
 	if err != nil {
 		return fmt.Errorf("read client preface: %w", err)
 	}
-	if string(preface) != fhttphttp2.ClientPreface {
+	if string(preface) != http2.ClientPreface {
 		return fmt.Errorf("client preface = %q", preface)
 	}
 
-	framer := fhttphttp2.NewFramer(conn, reader)
-	framer.ReadMetaHeaders = fhttphpack.NewDecoder(64<<10, nil)
+	framer := http2.NewFramer(conn, reader)
+	framer.ReadMetaHeaders = hpack.NewDecoder(64<<10, nil)
 	err = framer.WriteSettings()
 	if err != nil {
 		return fmt.Errorf("write server settings: %w", err)
@@ -378,7 +479,7 @@ func (o *conformanceObserver) observeHTTP2(conn net.Conn, observation *observedC
 			return fmt.Errorf("read HTTP/2 frame: %w", err)
 		}
 		switch frame := frame.(type) {
-		case *fhttphttp2.SettingsFrame:
+		case *http2.SettingsFrame:
 			if !frame.IsAck() {
 				for index := 0; index < frame.NumSettings(); index++ {
 					setting := frame.Setting(index)
@@ -389,13 +490,13 @@ func (o *conformanceObserver) observeHTTP2(conn net.Conn, observation *observedC
 					return fmt.Errorf("write settings ACK: %w", err)
 				}
 			}
-		case *fhttphttp2.WindowUpdateFrame:
+		case *http2.WindowUpdateFrame:
 			if frame.StreamID == 0 {
 				observation.connectionWindow = frame.Increment
 			}
-		case *fhttphttp2.PriorityFrame:
+		case *http2.PriorityFrame:
 			observation.prioritySeen = true
-		case *fhttphttp2.MetaHeadersFrame:
+		case *http2.MetaHeadersFrame:
 			for _, field := range frame.Fields {
 				if strings.HasPrefix(field.Name, ":") {
 					observation.pseudoHeaderOrder = append(observation.pseudoHeaderOrder, field.Name)
@@ -409,19 +510,19 @@ func (o *conformanceObserver) observeHTTP2(conn net.Conn, observation *observedC
 	}
 }
 
-func writeHTTP2Response(framer *fhttphttp2.Framer, streamID uint32) error {
+func writeHTTP2Response(framer *http2.Framer, streamID uint32) error {
 	var block bytes.Buffer
-	encoder := fhttphpack.NewEncoder(&block)
-	for _, field := range []fhttphpack.HeaderField{
+	encoder := hpack.NewEncoder(&block)
+	for _, field := range []hpack.HeaderField{
 		{Name: ":status", Value: "200"},
-		{Name: "content-length", Value: "2"},
+		{Name: headerContentLength, Value: "2"},
 	} {
 		err := encoder.WriteField(field)
 		if err != nil {
 			return err
 		}
 	}
-	err := framer.WriteHeaders(fhttphttp2.HeadersFrameParam{
+	err := framer.WriteHeaders(http2.HeadersFrameParam{
 		StreamID:      streamID,
 		BlockFragment: block.Bytes(),
 		EndHeaders:    true,
@@ -775,6 +876,8 @@ func normalizeTLSExtension(id uint16) string {
 		return "compress_certificate"
 	case 35:
 		return "session_ticket"
+	case 41:
+		return "pre_shared_key"
 	case 43:
 		return "supported_versions"
 	case 45:

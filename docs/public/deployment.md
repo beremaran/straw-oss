@@ -4,6 +4,19 @@ sidebar_position: 8
 
 # Deployment
 
+## Choose a profile
+
+| Profile | Required services/state | Choose when |
+| --- | --- | --- |
+| default | NATS only; no durable application state | one Control is sufficient and bodies fit inline limits |
+| runtime administration | NATS + JetStream storage | runtime snapshots/history must survive Control restarts |
+| receipts | NATS + shared object/record storage | request or response bodies exceed inline transport limits |
+| HA Control | NATS + Redis coordination | multiple interchangeable Controls and failure fencing are required |
+
+Profiles are additive only where the supplied overlays explicitly compose. Back up JetStream before admin-profile
+changes and receipt records/objects before receipt-profile changes. Redis coordination is expiring state and is not a
+backup authority.
+
 ## Local development
 
 `make dev` is the supported starting point. It uses `deploy/local/docker-compose.yml` and starts exactly NATS,
@@ -53,6 +66,44 @@ Before real use:
 - restrict NATS, metrics, and worker health ports to trusted networks;
 - set resource, file-descriptor, and log-retention limits;
 - run separate Straw deployments for separate trust or policy boundaries.
+
+### Adaptable TLS reverse proxy
+
+`compose.tls.yml` adds HAProxy in front of Control on port `8443`. Place the managed certificate followed by its
+private key in `deploy/production/secrets/straw.pem` with owner-only permissions, then combine the base and TLS files.
+The secret path is deliberately untracked; never use the ephemeral QA certificate in production.
+
+```sh
+docker compose --env-file deploy/production/.env \
+  -f deploy/production/compose.yml -f deploy/production/compose.tls.yml config
+make tls-proxy-check
+```
+
+The example requires TLS 1.2+, forwards `X-Forwarded-Proto: https`, checks Control readiness, and leaves metrics/NATS
+off the public listener. Adapt hostname, managed certificate delivery, client/body/time limits, access logging, and
+network firewall before use.
+
+## Capacity and host requirements
+
+Start from measured peak concurrency and response sizes. Worker count is at least peak concurrent outbound requests
+divided by each worker's `max_concurrency`, plus failure headroom. Size Control for active request state and streaming
+buffers; size NATS bandwidth for request/response frames and keep its `max_payload` above Straw's frame envelope but
+below an intentionally reviewed bound. Size Redis for worker/request keys and operation latency rather than durable
+data. Size receipt storage for ingress plus response volume multiplied by retention and retry headroom.
+
+Containers run as non-root and support read-only root filesystems. Mount configuration read-only and grant writable
+access only to JetStream or local receipt volumes used by the selected profile. Set CPU/memory, process/file-descriptor
+limits, log retention, and graceful-stop time greater than the maximum request deadline plus the documented drain
+margin. Control uses API `8080` and metrics `9090`; Egress health uses `8090`; NATS uses `4222` and monitoring `8222`
+in examples. Restrict all but the TLS reverse-proxy listener. Outbound DNS, IPv4/IPv6, proxy, CA, and network policy
+must work from Egress—not merely from Control.
+
+## Upgrade order
+
+Pull and verify immutable digests, take profile backups, then upgrade Egress, Control, and clients/CLI in that order.
+Watch readiness, rollout acknowledgement, error ratio, and latency between stages. Roll back in reverse order using
+the prior digest; restore durable state only when release notes identify a format change. Default deployments have no
+application database to migrate.
 
 The default profile has no application database to migrate or back up. Back up the JetStream bucket and storage when
 the runtime-administration profile is enabled, and back up or lifecycle-manage the object bucket when receipts are

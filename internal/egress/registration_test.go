@@ -14,7 +14,7 @@ func TestFingerprintProfileRegistrationAdvertisesCapabilities(t *testing.T) {
 		t.Fatalf("GenerateKey: %v", err)
 	}
 
-	caps := Capabilities{SupportedFingerprintProfiles: []string{chrome120FingerprintProfile}}
+	caps := Capabilities{SupportedFingerprintProfiles: SupportedFingerprintProfiles()}
 	req, err := BuildRegisterRequest(Identity{
 		WorkerID:     "worker-1",
 		CredentialID: "wcred_1",
@@ -25,8 +25,9 @@ func TestFingerprintProfileRegistrationAdvertisesCapabilities(t *testing.T) {
 		t.Fatalf("BuildRegisterRequest: %v", err)
 	}
 
+	want := SupportedFingerprintProfiles()
 	caps.SupportedFingerprintProfiles[0] = "mutated_after_build"
-	if got := req.GetSupportedFingerprintProfiles(); !slices.Equal(got, []string{chrome120FingerprintProfile}) {
-		t.Fatalf("advertised fingerprint profiles = %v, want [chrome_120]", got)
+	if got := req.GetSupportedFingerprintProfiles(); !slices.Equal(got, want) {
+		t.Fatalf("advertised fingerprint profiles = %v, want complete catalogue", got)
 	}
 }

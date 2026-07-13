@@ -15,7 +15,7 @@ backing service; do not reintroduce tenants, RBAC, quotas, billing, administrati
 - `cmd/control`, `internal/control`: Control API and dispatch pipeline
 - `cmd/egress`, `internal/egress`: official worker and executor
 - `internal/config`, `internal/natsx`: configuration and NATS helpers
-- `sdk`, `python`: public Go/Python clients and worker SDKs
+- `cmd/straw`, `internal/cli`: public CLI; tagged Go/Python clients and worker SDKs live in the linked split repositories
 - `deploy/local`: supported local Compose stack
 - `deploy/production`: adaptable production example
 - `docs/public`, `website`: public manual and documentation site
@@ -31,6 +31,9 @@ backing service; do not reintroduce tenants, RBAC, quotas, billing, administrati
 
 Python runtime integration uses the root exact-tag `uv.lock`; run `uv sync --frozen` from this repository. Python SDK
 development and its independent lock belong in `straw-sdk-python`.
+
+`.agents/skills` is the canonical source for repository-specific agent skills. Do not copy those skills into
+tool-specific directories; add a generated projection and parity check only when a real consumer requires one.
 
 ## Verification
 

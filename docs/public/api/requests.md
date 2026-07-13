@@ -29,7 +29,7 @@ curl -sS http://localhost:8080/api/v1/requests \
 | `headers` | no | Ordered `{name,value_base64}` entries. Duplicate names are preserved. |
 | `body` | no | Inline `{mode:"inline_base64",data_base64:"..."}` or verified `{mode:"receipt",receipt_id:"..."}`. |
 | `response_body_mode` | no | `inline_base64` (default) or `receipt` when the object-storage profile is enabled. |
-| `fingerprint_profile` | no | Supported profile name; the built-in deployment enables `chrome_120`. |
+| `fingerprint_profile` | no | Exact, case-sensitive built-in profile name. Omit it for ordinary TLS. See the [fingerprint catalogue](../compatibility.md#fingerprint-profile-catalogue). |
 | `timeout_ms` | no | Total deadline, from 1000 ms through the configured maximum. |
 | `replayable` | no | Permits safe transport retry. Clients default GET, HEAD, and OPTIONS to true. |
 
@@ -37,6 +37,11 @@ Hop-by-hop headers, `Host`, `Content-Length`, and proxy authorization headers ar
 Request bodies default to a 1 MiB limit.
 That limit applies to inline bodies; receipt bodies use `object_storage.max_object_bytes` and must pass the receipt
 size/checksum flow before assignment. See [Object storage and receipts](../object-storage-receipts.md).
+
+Fingerprinting controls TLS ClientHello and, when negotiated, HTTP/2 settings, flow-control, pseudo-header ordering,
+and priority behavior. It does not synthesize browser application headers, cookies, JavaScript, or browser state.
+HTTP/3 is not supported. A named request fails with `unsupported_fingerprint` if the selected worker does not
+advertise the exact profile.
 
 ## Success
 
@@ -75,6 +80,26 @@ Straw failures use an outer 4xx or 5xx status and a stable envelope:
 Optional fields are `timeout_type`, `retry_after_ms`, and `details`. Use `code` for program logic and `message` for
 humans. Retry only when `retryable` is true and the original operation is safe to replay.
 
-Common codes include `auth_failure`, `invalid_request`, `destination_denied`, `route_unavailable`,
-`assignment_timeout`, `connect_timeout`, `response_header_timeout`, `upstream_reset`, `body_too_large`, and
-`body_ref_unavailable`, and `control_internal_error`.
+| Stable code | Category | HTTP / retryable | Meaning |
+| --- | --- | --- | --- |
+| `auth_failure` | client | 401 / no | invalid deployment token |
+| `invalid_request`, `header_injection_failed`, `unsupported_ingress_mode` | client | 400 / no | malformed input or unsupported request behavior |
+| `destination_denied` | client | 403 / no | destination policy denied the target |
+| `route_no_match` | routing | 404 / no | no routing rule matched |
+| `route_unavailable`, `executor_capacity_exhausted` | routing | 503 / yes | no eligible capacity currently exists |
+| `sticky_session_unavailable` | routing | 503 / no | required sticky worker is unavailable |
+| `assignment_timeout`, `transport_unavailable` | transport | 504 / yes | assignment/NATS did not complete |
+| `worker_disconnected` | transport | 502 / yes | worker disappeared mid-request |
+| `protocol_error`, `unsupported_fingerprint` | transport | 502 or 400 / no | invalid protocol sequence or unsupported requested profile |
+| `timeout_exceeded` | transport | 504 / no | total deadline expired; `timeout_type` identifies the stage |
+| `upstream_dns_failure`, `upstream_tls_failure`, `upstream_connection_refused`, `upstream_reset`, `upstream_proxy_failure` | egress | 502 / yes | upstream resolution, TLS, connection, reset, or proxy failure |
+| `upstream_connect_timeout` | egress | 504 / yes | upstream connection deadline expired |
+| `stream_upload_aborted`, `stream_download_aborted` | streaming | 502 / no | bounded stream was interrupted |
+| `body_ref_unavailable` | streaming | 409 / no | receipt is missing, expired, or ineligible |
+| `body_too_large` | streaming | 413 / no | configured inline/request/response limit exceeded |
+| `control_internal_error` | control | 500 / no | unexpected Control failure |
+| `executor_internal_error` | egress | 502 / no | unexpected Egress failure |
+| `cancelled` | client | 499 / no | caller or operator cancelled the request |
+
+The table is generated from the semantic registry contract: changing any code requires compatibility notes and the
+public-surface drift check verifies every registry string remains represented here.

@@ -3,21 +3,31 @@
 /** @type {import('@docusaurus/plugin-content-docs').SidebarsConfig} */
 const sidebars = {
   docsSidebar: [
-    'index',
-    'quickstart',
-    'architecture',
-    'configuration',
     {
       type: 'category',
-      label: 'Use Straw',
+      label: 'Learn',
+      items: ['index', 'quickstart', 'architecture'],
+    },
+    {
+      type: 'category',
+      label: 'Use',
       items: ['api/requests', 'sdk', 'cli', 'egress_worker'],
     },
     {
       type: 'category',
-      label: 'Run Straw',
+      label: 'Operate',
       items: ['deployment', 'runtime-administration', 'highly-available-control', 'object-storage-receipts', 'operations', 'security', 'troubleshooting'],
     },
-    'development',
+    {
+      type: 'category',
+      label: 'Reference',
+      items: ['configuration', 'api/admin', 'api/receipts', 'components', 'compatibility', 'threat-model'],
+    },
+    {
+      type: 'category',
+      label: 'Contribute',
+      items: ['development', 'test-strategy', 'launch-checklist', 'documentation-policy', 'releases'],
+    },
   ],
 };
 

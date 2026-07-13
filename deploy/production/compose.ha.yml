@@ -28,7 +28,7 @@ x-control: &control
 
 services:
   nats:
-    image: nats:2-alpine
+    image: nats:2-alpine@sha256:c11af972c99ae542de8925e6a7d9c533aa1eb039660420d2074beed6089b3bf0
     command: ["-c", "/etc/nats/nats-server.conf", "--user=${NATS_USER:?set NATS_USER}", "--pass=${NATS_PASSWORD:?set NATS_PASSWORD}"]
     volumes:
       - straw-runtime-data:/data
@@ -42,7 +42,7 @@ services:
     restart: unless-stopped
 
   redis:
-    image: redis:8-alpine
+    image: redis:8-alpine@sha256:9d317178eceac8454a2284a9e6df2466b93c745529947f0cd42a0fa9609d7005
     command: ["redis-server", "--appendonly", "no", "--requirepass", "${REDIS_PASSWORD:?set REDIS_PASSWORD}"]
     environment: {REDIS_PASSWORD: "${REDIS_PASSWORD:?set REDIS_PASSWORD}"}
     networks: [backend]
@@ -76,7 +76,7 @@ services:
     ports: ["127.0.0.1:9092:9090"]
 
   load-balancer:
-    image: haproxy:3.2-alpine
+    image: haproxy:3.2-alpine@sha256:66e25cc9a8332635f4e897f7f4b1e5622c25f09f0ee23cddc6ce9bdb3a24772a
     ports: ["127.0.0.1:${STRAW_CONTROL_API_PORT:-8080}:8080"]
     volumes: ["./haproxy.ha.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro"]
     networks: [edge, backend]

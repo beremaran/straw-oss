@@ -1,11 +1,24 @@
 # Build the Straw egress worker.
-FROM golang:1.26 AS build
+FROM golang:1.26.5@sha256:079e59808d2d252516e27e3f3a9c003740dee7f75e55aa71528766d52bcfc16a AS build
 WORKDIR /src
 COPY go.mod go.sum ./
-RUN go mod download
-COPY . .
-RUN CGO_ENABLED=0 go build -o /out/egress ./cmd/egress
+RUN --mount=type=secret,id=github_token,required=false \
+    if [ -s /run/secrets/github_token ]; then \
+      token="$(cat /run/secrets/github_token)"; \
+      git config --global url."https://x-access-token:${token}@github.com/".insteadOf "https://github.com/"; \
+    fi; \
+    GOPRIVATE=github.com/beremaran/* go mod download; \
+    rm -f /root/.gitconfig
+COPY cmd ./cmd
+COPY internal ./internal
+COPY THIRD_PARTY_NOTICES.md ./
+RUN CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags='-s -w' -o /out/egress ./cmd/egress
 
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:b7bb25d9f7c31d2bdd1982feb4dafcaf137703c7075dbe2febb41c24212b946f
+LABEL org.opencontainers.image.source="https://github.com/beremaran/straw-oss" \
+      org.opencontainers.image.licenses="MIT AND BSD-4-Clause" \
+      org.opencontainers.image.title="Straw Egress"
 COPY --from=build /out/egress /egress
+COPY --from=build /src/THIRD_PARTY_NOTICES.md /THIRD_PARTY_NOTICES.md
+HEALTHCHECK --interval=10s --timeout=3s --retries=3 CMD ["/egress", "-healthcheck"]
 ENTRYPOINT ["/egress", "-config", "/etc/straw/egress.json"]

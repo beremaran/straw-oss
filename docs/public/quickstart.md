@@ -16,12 +16,15 @@ Go, Python, Node.js, Postgres, Redis, and ClickHouse are not required to run the
 
 ```sh
 git clone https://github.com/beremaran/straw-oss.git
-cd straw
+cd straw-oss
 make dev
 ```
 
 The command builds and starts NATS, Control, and one Egress worker. It waits for Control to become ready. Local
 development does not require credentials or provisioning.
+
+Expected final line: `local stack: ready`. The complete start/call/readiness/stop journey is exercised by
+`make quickstart-smoke` on infrastructure owned by the local Docker daemon.
 
 ## Send a request
 
