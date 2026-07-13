@@ -1,0 +1,53 @@
+name: Bug report
+description: Report reproducible incorrect behavior in Straw.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Please remove secrets and private traffic before submitting.
+  - type: input
+    id: version
+    attributes:
+      label: Straw version
+      description: Release tag or commit SHA.
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options: [Control, Egress, receipts, runtime administration, HA, CLI, protocol/bindings, Go SDK, Python SDK, deployment, documentation]
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: What happened?
+      description: Include expected behavior and minimal reproduction steps.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, architecture, Docker/Go/Python versions, and relevant redacted configuration.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      render: shell
+  - type: checkboxes
+    id: impact
+    attributes:
+      label: Observed impact
+      description: Select every area affected or suspected; maintainers will verify classification.
+      options:
+        - label: Public API/config/CLI/metric or compatibility
+        - label: Protocol or conformance fixture
+        - label: Security boundary or credential handling
+        - label: Deployment, recovery, or operational behavior
+        - label: Documentation or maintained example
+        - label: Release artifact or upgrade/rollback

@@ -1,0 +1,168 @@
+package control
+
+import (
+	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/beremaran/straw-oss/internal/receipt"
+)
+
+const metricLabelErrorCode = "error_code"
+
+// Metrics contains Control's bounded-cardinality Prometheus metrics.
+type Metrics struct {
+	requestsTotal      *prometheus.CounterVec
+	requestDuration    prometheus.Histogram
+	activeRequests     prometheus.Gauge
+	routingDuration    prometheus.Histogram
+	assignmentDuration prometheus.Histogram
+	natsDuration       prometheus.Histogram
+	natsErrors         *prometheus.CounterVec
+}
+
+type receiptStatsSource interface{ Stats() receipt.Stats }
+
+// RegisterReceiptCollector exposes bounded receipt lifecycle counters.
+func RegisterReceiptCollector(registerer prometheus.Registerer, source receiptStatsSource) {
+	metrics := []struct {
+		name, help string
+		value      func(receipt.Stats) uint64
+	}{
+		{"straw_receipts_created_total", "Durable receipts created.", func(s receipt.Stats) uint64 { return s.Created }},
+		{"straw_receipt_parts_uploaded_total", "Receipt parts uploaded or replaced.", func(s receipt.Stats) uint64 { return s.Parts }},
+		{"straw_receipts_verified_total", "Receipts that passed size and checksum verification.", func(s receipt.Stats) uint64 { return s.Verified }},
+		{"straw_receipts_rejected_total", "Receipts rejected for size or checksum mismatch.", func(s receipt.Stats) uint64 { return s.Rejected }},
+		{"straw_receipt_assignments_total", "Assignment-scoped receipt references issued.", func(s receipt.Stats) uint64 { return s.Assigned }},
+		{"straw_receipts_consumed_total", "Request receipts consumed successfully.", func(s receipt.Stats) uint64 { return s.Consumed }},
+		{"straw_receipts_expired_total", "Expired receipts cleaned up.", func(s receipt.Stats) uint64 { return s.Expired }},
+	}
+	for _, metric := range metrics {
+		current := metric
+		registerer.MustRegister(prometheus.NewCounterFunc(prometheus.CounterOpts{Name: current.name, Help: current.help}, func() float64 { return float64(current.value(source.Stats())) }))
+	}
+}
+
+// NewMetrics registers and returns the Control metrics set.
+func NewMetrics(registerer prometheus.Registerer) *Metrics {
+	m := &Metrics{
+		requestsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "straw_requests_total", Help: "Completed Control requests by outcome.",
+		}, []string{metricLabelErrorCode}),
+		requestDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name: "straw_request_duration_seconds", Help: "End-to-end Control request duration.",
+		}),
+		activeRequests: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "straw_active_requests", Help: "Requests currently running in Control.",
+		}),
+		routingDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name: "straw_routing_duration_seconds", Help: "Worker routing duration.",
+		}),
+		assignmentDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name: "straw_assignment_duration_seconds", Help: "Worker assignment duration.",
+		}),
+		natsDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name: "straw_nats_request_duration_seconds", Help: "NATS request/reply duration.",
+		}),
+		natsErrors: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "straw_nats_errors_total", Help: "NATS transport errors by code.",
+		}, []string{metricLabelErrorCode}),
+	}
+	registerer.MustRegister(
+		m.requestsTotal, m.requestDuration, m.activeRequests, m.routingDuration,
+		m.assignmentDuration, m.natsDuration, m.natsErrors,
+	)
+
+	return m
+}
+
+// IncActiveRequests increments the number of requests currently being handled.
+func (m *Metrics) IncActiveRequests() {
+	if m != nil {
+		m.activeRequests.Inc()
+	}
+}
+
+// DecActiveRequests decrements the number of requests currently being handled.
+func (m *Metrics) DecActiveRequests() {
+	if m != nil {
+		m.activeRequests.Dec()
+	}
+}
+
+// ObserveRequest records a completed request and its end-to-end duration.
+func (m *Metrics) ObserveRequest(errorCode string, duration time.Duration) {
+	if m != nil {
+		m.requestsTotal.WithLabelValues(errorCode).Inc()
+		m.requestDuration.Observe(duration.Seconds())
+	}
+}
+
+// ObserveRouting records how long worker selection took.
+func (m *Metrics) ObserveRouting(duration time.Duration) {
+	if m != nil {
+		m.routingDuration.Observe(duration.Seconds())
+	}
+}
+
+// ObserveAssignment records how long worker assignment took.
+func (m *Metrics) ObserveAssignment(duration time.Duration) {
+	if m != nil {
+		m.assignmentDuration.Observe(duration.Seconds())
+	}
+}
+
+// ObserveNATSRequest records a NATS request/reply duration.
+func (m *Metrics) ObserveNATSRequest(duration time.Duration) {
+	if m != nil {
+		m.natsDuration.Observe(duration.Seconds())
+	}
+}
+
+// IncNATSError records a NATS transport error.
+func (m *Metrics) IncNATSError(errorCode string) {
+	if m != nil {
+		m.natsErrors.WithLabelValues(errorCode).Inc()
+	}
+}
+
+func errorCodeLabel(code ErrorCode) string {
+	if code == 0 {
+		return ""
+	}
+
+	return ErrorRegistry[code].Code
+}
+
+type workerStatsSource interface {
+	Stats() WorkerRegistryStats
+}
+
+// RegisterWorkerCollector exposes aggregate live-worker gauges.
+func RegisterWorkerCollector(registerer prometheus.Registerer, source workerStatsSource) {
+	registerer.MustRegister(prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "straw_worker_sessions", Help: "Registered worker sessions.",
+	}, func() float64 { return float64(source.Stats().Sessions) }))
+	registerer.MustRegister(prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "straw_workers_available", Help: "Workers available for assignments.",
+	}, func() float64 { return float64(source.Stats().Available) }))
+	registerer.MustRegister(prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "straw_worker_heartbeat_age_seconds", Help: "Age of the stalest worker heartbeat.",
+	}, func() float64 { return source.Stats().MaxHeartbeatAgeSeconds }))
+}
+
+type runtimeStateStatsSource interface{ Stats() RuntimeStateStats }
+
+// RegisterRuntimeStateCollector exposes Redis coordination availability and
+// cumulative operation/error counts without deployment-specific labels.
+func RegisterRuntimeStateCollector(registerer prometheus.Registerer, source runtimeStateStatsSource) {
+	registerer.MustRegister(prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: "straw_runtime_state_available", Help: "Whether shared runtime state is currently reachable."}, func() float64 {
+		if source.Stats().Available {
+			return 1
+		}
+
+		return 0
+	}))
+	registerer.MustRegister(prometheus.NewCounterFunc(prometheus.CounterOpts{Name: "straw_runtime_state_operations_total", Help: "Shared runtime-state operations."}, func() float64 { return float64(source.Stats().Operations) }))
+	registerer.MustRegister(prometheus.NewCounterFunc(prometheus.CounterOpts{Name: "straw_runtime_state_errors_total", Help: "Shared runtime-state operation errors."}, func() float64 { return float64(source.Stats().Errors) }))
+}

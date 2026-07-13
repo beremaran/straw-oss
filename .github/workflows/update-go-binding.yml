@@ -1,0 +1,64 @@
+name: Update Go protocol binding
+
+on:
+  repository_dispatch:
+    types: [go-binding-release]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Exact straw-protos-go tag
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    env:
+      GOPRIVATE: github.com/beremaran/*
+    steps:
+      - id: app-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        with:
+          app-id: ${{ vars.STRAW_RELEASE_APP_ID }}
+          private-key: ${{ secrets.STRAW_RELEASE_APP_PRIVATE_KEY }}
+          owner: beremaran
+          repositories: straw-oss
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          version: "0.8.22"
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9
+        with:
+          version: v2.12.2
+          install-only: true
+      - name: Update exact tag and open PR
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          DISPATCH_TAG: ${{ github.event.client_payload.tag }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          tag="$DISPATCH_TAG"; if [ -z "$tag" ]; then tag="$INPUT_TAG"; fi
+          case "$tag" in v[0-9]*.[0-9]*.[0-9]*) ;; *) echo 'tag must be an exact vMAJOR.MINOR.PATCH release' >&2; exit 2;; esac
+          go get "github.com/beremaran/straw-protos-go@$tag"
+          go mod tidy
+          make check
+          if git diff --quiet; then echo 'already current'; exit 0; fi
+          branch="automation/protos-go-${tag#v}"
+          git config user.name 'Straw Release Automation[bot]'
+          git config user.email 'straw-release-automation[bot]@users.noreply.github.com'
+          git switch -c "$branch"
+          git add go.mod go.sum
+          git commit -m "Update straw-protos-go to $tag"
+          git push -u origin "$branch"
+          gh pr create --title "Update straw-protos-go to $tag" --body "Pins the exact public binding tag and passes the complete runtime suite." --base main --head "$branch"

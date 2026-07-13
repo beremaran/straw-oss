@@ -1,0 +1,16 @@
+# Opt-in local runtime-administration profile. Combine with docker-compose.yml.
+services:
+  nats:
+    command: ["--config", "/etc/nats/nats-server.conf", "--jetstream", "--store_dir", "/data"]
+    volumes:
+      - ./nats-server.conf:/etc/nats/nats-server.conf:ro
+      - straw-runtime-data:/data
+
+  control:
+    environment:
+      STRAW_ADMIN_TOKEN: ${STRAW_ADMIN_TOKEN:-local-admin}
+    volumes:
+      - ./control.runtime-admin.json:/etc/straw/control.json:ro
+
+volumes:
+  straw-runtime-data: {}

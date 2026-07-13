@@ -1,0 +1,14 @@
+{
+  "config_version": "v1",
+  "control": {
+    "nats": {
+      "servers": ["nats://nats:4222"]
+    },
+    "runtime_admin": {
+      "enabled": true,
+      "token_env": "STRAW_ADMIN_TOKEN",
+      "bucket": "STRAW_RUNTIME_CONFIG",
+      "history_limit": 64
+    }
+  }
+}

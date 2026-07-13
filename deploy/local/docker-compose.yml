@@ -1,0 +1,52 @@
+services:
+  nats:
+    image: nats:2-alpine@sha256:c11af972c99ae542de8925e6a7d9c533aa1eb039660420d2074beed6089b3bf0
+    command: ["--config", "/etc/nats/nats-server.conf"]
+    ports:
+      - "${STRAW_NATS_PORT:-4222}:4222"
+      - "${STRAW_NATS_MONITOR_PORT:-8222}:8222"
+    volumes:
+      - ./nats-server.conf:/etc/nats/nats-server.conf:ro
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8222/healthz"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+    restart: unless-stopped
+
+  control:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.control
+    ports:
+      - "${STRAW_CONTROL_API_PORT:-8080}:8080"
+      - "${STRAW_CONTROL_METRICS_PORT:-9090}:9090"
+    volumes:
+      - ./control.json:/etc/straw/control.json:ro
+    depends_on:
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/control", "-config", "/etc/straw/control.json", "-healthcheck"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+    restart: unless-stopped
+
+  egress:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.egress
+    volumes:
+      - ./egress.json:/etc/straw/egress.json:ro
+    depends_on:
+      nats:
+        condition: service_healthy
+      control:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/egress", "-config", "/etc/straw/egress.json", "-healthcheck"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+    restart: unless-stopped

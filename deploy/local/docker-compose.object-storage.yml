@@ -1,0 +1,21 @@
+services:
+  object-storage-init:
+    image: alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce
+    command: ["sh", "-c", "chown -R 65532:65532 /var/lib/straw/objects && chmod 700 /var/lib/straw/objects"]
+    volumes:
+      - straw-object-data:/var/lib/straw/objects
+    restart: "no"
+
+  control:
+    environment:
+      # Development only. Override with at least 32 random bytes.
+      STRAW_RECEIPT_SIGNING_KEY: ${STRAW_RECEIPT_SIGNING_KEY:-local-receipt-signing-key-32-bytes}
+    volumes:
+      - ./control.object-storage.json:/etc/straw/control.json:ro
+      - straw-object-data:/var/lib/straw/objects
+    depends_on:
+      object-storage-init:
+        condition: service_completed_successfully
+
+volumes:
+  straw-object-data: {}

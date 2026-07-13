@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Straw</title>
+  <defs>
+    <linearGradient id="straw-gradient" x1="10" y1="54" x2="56" y2="8" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4f46e5"/>
+      <stop offset="1" stop-color="#06b6d4"/>
+    </linearGradient>
+  </defs>
+  <path d="M11 49h18c7 0 12-5 12-12V17h12" fill="none" stroke="url(#straw-gradient)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="11" cy="49" r="5" fill="#4f46e5"/>
+  <circle cx="41" cy="29" r="5" fill="#6366f1"/>
+  <circle cx="53" cy="17" r="5" fill="#06b6d4"/>
+</svg>

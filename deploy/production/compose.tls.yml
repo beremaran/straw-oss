@@ -1,0 +1,15 @@
+# Optional adaptable TLS reverse proxy. Generate deploy/production/secrets/straw.pem
+# from your managed certificate/key; never commit private keys.
+services:
+  tls-proxy:
+    image: haproxy:3.2-alpine@sha256:66e25cc9a8332635f4e897f7f4b1e5622c25f09f0ee23cddc6ce9bdb3a24772a
+    ports: ["${STRAW_TLS_BIND:-0.0.0.0}:${STRAW_TLS_PORT:-8443}:8443"]
+    volumes:
+      - ./haproxy.tls.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ./secrets/straw.pem:/run/secrets/straw.pem:ro
+    networks: [edge]
+    depends_on: {control: {condition: service_healthy}}
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped

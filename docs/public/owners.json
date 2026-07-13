@@ -1,0 +1,31 @@
+{
+  "review_cycle_days": 92,
+  "feedback_url": "https://github.com/beremaran/straw-oss/issues/new?template=documentation.yml",
+  "pages": {
+    "api/admin.md": {"owner": "control", "reviewed": "2026-07-13", "tested_commands": ["go test ./internal/control", "make public-surface-check"]},
+    "api/receipts.md": {"owner": "receipt", "reviewed": "2026-07-13", "tested_commands": ["go test ./internal/control ./internal/receipt", "make profile-smoke PROFILE=receipts"]},
+    "api/requests.md": {"owner": "control", "reviewed": "2026-07-13", "tested_commands": ["go test ./internal/control", "make public-surface-check"]},
+    "architecture.md": {"owner": "runtime", "reviewed": "2026-07-13", "tested_commands": ["make dependency-check", "make conformance"]},
+    "cli.md": {"owner": "cli", "reviewed": "2026-07-13", "tested_commands": ["go test ./internal/cli", "make examples-live"]},
+    "compatibility.md": {"owner": "release", "reviewed": "2026-07-13", "tested_commands": ["make conformance", "make clean-room-check"]},
+    "components.md": {"owner": "release", "reviewed": "2026-07-13", "tested_commands": ["make clean-room-check", "make dependency-check"]},
+    "configuration.md": {"owner": "runtime", "reviewed": "2026-07-13", "tested_commands": ["go test ./internal/config", "make public-surface-check"]},
+    "deployment.md": {"owner": "operations", "reviewed": "2026-07-13", "tested_commands": ["make production-deploy-check", "make profile-smoke PROFILE=default", "make ha-smoke"]},
+    "development.md": {"owner": "maintainer", "reviewed": "2026-07-13", "tested_commands": ["make check", "make race"]},
+    "documentation-policy.md": {"owner": "documentation", "reviewed": "2026-07-13", "tested_commands": ["make docs-check", "make doc-ownership-check"]},
+    "egress_worker.md": {"owner": "egress", "reviewed": "2026-07-13", "tested_commands": ["go test ./internal/egress", "make conformance"]},
+    "highly-available-control.md": {"owner": "control", "reviewed": "2026-07-13", "tested_commands": ["make production-deploy-check", "make ha-smoke"]},
+    "index.md": {"owner": "documentation", "reviewed": "2026-07-13", "tested_commands": ["make docs-check", "make docs-website"]},
+    "release-checklist.md": {"owner": "release", "reviewed": "2026-07-13", "tested_commands": ["make check", "make release-artifact-check"]},
+    "object-storage-receipts.md": {"owner": "receipt", "reviewed": "2026-07-13", "tested_commands": ["make profile-smoke PROFILE=receipts", "make state-backup-smoke PROFILE=receipts"]},
+    "operations.md": {"owner": "operations", "reviewed": "2026-07-13", "tested_commands": ["make state-backup-smoke PROFILE=admin", "make state-backup-smoke PROFILE=receipts", "make ha-smoke"]},
+    "quickstart.md": {"owner": "documentation", "reviewed": "2026-07-13", "tested_commands": ["make quickstart-smoke"]},
+    "releases.md": {"owner": "release", "reviewed": "2026-07-13", "tested_commands": ["make release-artifact-check", "actionlint"]},
+    "runtime-administration.md": {"owner": "control", "reviewed": "2026-07-13", "tested_commands": ["make profile-smoke PROFILE=admin", "make state-backup-smoke PROFILE=admin"]},
+    "sdk.md": {"owner": "sdk", "reviewed": "2026-07-13", "tested_commands": ["make test-python", "make examples-live"]},
+    "security.md": {"owner": "security", "reviewed": "2026-07-13", "tested_commands": ["make security-check", "make diagnostic-bundle-check", "make profile-smoke PROFILE=default", "make profile-smoke PROFILE=admin", "make profile-smoke PROFILE=receipts", "make ha-smoke", "go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./..."]},
+    "test-strategy.md": {"owner": "runtime", "reviewed": "2026-07-13", "tested_commands": ["make check", "make race", "make fuzz-smoke"]},
+    "threat-model.md": {"owner": "security", "reviewed": "2026-07-13", "tested_commands": ["go test ./internal/control ./internal/egress", "make security-check"]},
+    "troubleshooting.md": {"owner": "operations", "reviewed": "2026-07-13", "tested_commands": ["make diagnostic-bundle-check", "make profile-smoke PROFILE=default", "make profile-smoke PROFILE=admin", "make profile-smoke PROFILE=receipts", "make ha-smoke"]}
+  }
+}

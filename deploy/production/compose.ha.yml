@@ -1,0 +1,114 @@
+# Standalone, adaptable multi-Control example. It intentionally does not layer
+# over compose.yml because each Control needs a distinct instance identity.
+x-control: &control
+  build:
+    context: ../..
+    dockerfile: deploy/docker/Dockerfile.control
+  environment:
+    STRAW_AUTH_TOKEN: ${STRAW_AUTH_TOKEN:?set STRAW_AUTH_TOKEN}
+    STRAW_ADMIN_TOKEN: ${STRAW_ADMIN_TOKEN:?set STRAW_ADMIN_TOKEN}
+    STRAW_NATS_USER: ${NATS_USER:?set NATS_USER}
+    STRAW_NATS_PASSWORD: ${NATS_PASSWORD:?set NATS_PASSWORD}
+    STRAW_REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD}@redis:6379/0
+  volumes:
+    - ./control.ha.json:/etc/straw/control.json:ro
+  networks: [edge, backend]
+  depends_on:
+    nats: {condition: service_healthy}
+    redis: {condition: service_healthy}
+  healthcheck:
+    test: ["CMD", "/control", "-config", "/etc/straw/control.json", "-healthcheck"]
+    interval: 5s
+    timeout: 3s
+    retries: 10
+  read_only: true
+  tmpfs: [/tmp]
+  security_opt: [no-new-privileges:true]
+  restart: unless-stopped
+
+services:
+  nats:
+    image: nats:2-alpine@sha256:c11af972c99ae542de8925e6a7d9c533aa1eb039660420d2074beed6089b3bf0
+    command: ["-c", "/etc/nats/nats-server.conf", "--user=${NATS_USER:?set NATS_USER}", "--pass=${NATS_PASSWORD:?set NATS_PASSWORD}"]
+    volumes:
+      - straw-runtime-data:/data
+      - ./nats-server.ha.conf:/etc/nats/nats-server.conf:ro
+    networks: [backend]
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8222/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:8-alpine@sha256:9d317178eceac8454a2284a9e6df2466b93c745529947f0cd42a0fa9609d7005
+    command: ["redis-server", "--appendonly", "no", "--requirepass", "${REDIS_PASSWORD:?set REDIS_PASSWORD}"]
+    environment: {REDIS_PASSWORD: "${REDIS_PASSWORD:?set REDIS_PASSWORD}"}
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  control-1:
+    <<: *control
+    environment:
+      STRAW_AUTH_TOKEN: ${STRAW_AUTH_TOKEN:?set STRAW_AUTH_TOKEN}
+      STRAW_ADMIN_TOKEN: ${STRAW_ADMIN_TOKEN:?set STRAW_ADMIN_TOKEN}
+      STRAW_NATS_USER: ${NATS_USER:?set NATS_USER}
+      STRAW_NATS_PASSWORD: ${NATS_PASSWORD:?set NATS_PASSWORD}
+      STRAW_REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD}@redis:6379/0
+      STRAW_CONTROL_INSTANCE_ID: control-1
+    ports: ["127.0.0.1:9091:9090"]
+
+  control-2:
+    <<: *control
+    environment:
+      STRAW_AUTH_TOKEN: ${STRAW_AUTH_TOKEN:?set STRAW_AUTH_TOKEN}
+      STRAW_ADMIN_TOKEN: ${STRAW_ADMIN_TOKEN:?set STRAW_ADMIN_TOKEN}
+      STRAW_NATS_USER: ${NATS_USER:?set NATS_USER}
+      STRAW_NATS_PASSWORD: ${NATS_PASSWORD:?set NATS_PASSWORD}
+      STRAW_REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD}@redis:6379/0
+      STRAW_CONTROL_INSTANCE_ID: control-2
+    ports: ["127.0.0.1:9092:9090"]
+
+  load-balancer:
+    image: haproxy:3.2-alpine@sha256:66e25cc9a8332635f4e897f7f4b1e5622c25f09f0ee23cddc6ce9bdb3a24772a
+    ports: ["127.0.0.1:${STRAW_CONTROL_API_PORT:-8080}:8080"]
+    volumes: ["./haproxy.ha.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro"]
+    networks: [edge, backend]
+    depends_on:
+      control-1: {condition: service_healthy}
+      control-2: {condition: service_healthy}
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+
+  egress:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.egress
+    environment:
+      STRAW_NATS_USER: ${NATS_USER:?set NATS_USER}
+      STRAW_NATS_PASSWORD: ${NATS_PASSWORD:?set NATS_PASSWORD}
+    volumes: ["./egress.json:/etc/straw/egress.json:ro"]
+    networks: [edge, backend]
+    depends_on: {nats: {condition: service_healthy}}
+    healthcheck:
+      test: ["CMD", "/egress", "-config", "/etc/straw/egress.json", "-healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+
+volumes: {straw-runtime-data: {}}
+networks:
+  edge: {}
+  backend: {internal: true}

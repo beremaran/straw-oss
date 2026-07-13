@@ -1,0 +1,9 @@
+services:
+  control:
+    environment:
+      STRAW_RECEIPT_SIGNING_KEY: ${STRAW_RECEIPT_SIGNING_KEY:?set STRAW_RECEIPT_SIGNING_KEY}
+      STRAW_S3_ACCESS_KEY: ${STRAW_S3_ACCESS_KEY:?set STRAW_S3_ACCESS_KEY}
+      STRAW_S3_SECRET_KEY: ${STRAW_S3_SECRET_KEY:?set STRAW_S3_SECRET_KEY}
+      STRAW_S3_SESSION_TOKEN: ${STRAW_S3_SESSION_TOKEN:-}
+    volumes:
+      - ./control.object-storage.json:/etc/straw/control.json:ro

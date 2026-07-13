@@ -1,0 +1,12 @@
+{
+  "config_version": "v1",
+  "egress": {
+    "worker_id": "egress-1",
+    "nats": {
+      "servers": ["nats://nats:4222"],
+      "username_env": "STRAW_NATS_USER",
+      "password_env": "STRAW_NATS_PASSWORD",
+      "max_payload_bytes": 2000000
+    }
+  }
+}

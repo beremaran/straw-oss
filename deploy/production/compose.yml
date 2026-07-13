@@ -1,0 +1,77 @@
+# Example production pattern. Adapt secrets, TLS termination, image tags, and
+# availability to your environment before deploying.
+services:
+  nats:
+    image: nats:2-alpine@sha256:c11af972c99ae542de8925e6a7d9c533aa1eb039660420d2074beed6089b3bf0
+    command:
+      - --http_port=8222
+      - --max_payload=2MB
+      - --user=${NATS_USER:?set NATS_USER}
+      - --pass=${NATS_PASSWORD:?set NATS_PASSWORD}
+    environment:
+      NATS_USER: ${NATS_USER:?set NATS_USER}
+      NATS_PASSWORD: ${NATS_PASSWORD:?set NATS_PASSWORD}
+    networks: [backend]
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8222/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  control:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.control
+    environment:
+      STRAW_AUTH_TOKEN: ${STRAW_AUTH_TOKEN:?set STRAW_AUTH_TOKEN}
+      STRAW_NATS_USER: ${NATS_USER:?set NATS_USER}
+      STRAW_NATS_PASSWORD: ${NATS_PASSWORD:?set NATS_PASSWORD}
+    ports:
+      - "127.0.0.1:${STRAW_CONTROL_API_PORT:-8080}:8080"
+      - "127.0.0.1:${STRAW_CONTROL_METRICS_PORT:-9090}:9090"
+    volumes:
+      - ./control.json:/etc/straw/control.json:ro
+    networks: [edge, backend]
+    depends_on:
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/control", "-config", "/etc/straw/control.json", "-healthcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+
+  egress:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.egress
+    environment:
+      STRAW_NATS_USER: ${NATS_USER:?set NATS_USER}
+      STRAW_NATS_PASSWORD: ${NATS_PASSWORD:?set NATS_PASSWORD}
+    volumes:
+      - ./egress.json:/etc/straw/egress.json:ro
+    networks: [backend]
+    depends_on:
+      nats:
+        condition: service_healthy
+      control:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/egress", "-config", "/etc/straw/egress.json", "-healthcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+
+networks:
+  edge: {}
+  backend:
+    internal: true
