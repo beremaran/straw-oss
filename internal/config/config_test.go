@@ -30,9 +30,35 @@ func TestLoadMinimalEgress(t *testing.T) {
 	if cfg.WorkerID != "egress-1" || cfg.HealthPort != defaultEgressHealthPort || cfg.NATS.Servers[0] != defaultNATSServer {
 		t.Fatalf("defaults = %+v", cfg)
 	}
+	if len(cfg.Capabilities.AllowedPools) != 1 || cfg.Capabilities.AllowedPools[0] != (EgressPoolRef{DeploymentID: DefaultDeploymentID, PoolID: DefaultPoolID}) {
+		t.Fatalf("allowed pools = %+v, want default/default", cfg.Capabilities.AllowedPools)
+	}
 	wantIngress := []string{"rest", "http_proxy", "connect"}
 	if strings.Join(cfg.Capabilities.SupportedIngressModes, ",") != strings.Join(wantIngress, ",") {
 		t.Fatalf("supported ingress modes = %v, want %v", cfg.Capabilities.SupportedIngressModes, wantIngress)
+	}
+}
+
+func TestLoadEgressAllowedPools(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := LoadEgress(writeConfig(t, `{"config_version":"v1","egress":{"capabilities":{"allowed_pools":[{"pool_id":"residential"},{"pool_id":"datacenter"}]}}}`))
+	if err != nil {
+		t.Fatalf("LoadEgress() error = %v", err)
+	}
+	if got := cfg.Capabilities.AllowedPools; len(got) != 2 || got[0].DeploymentID != DefaultDeploymentID || got[1].PoolID != "datacenter" {
+		t.Fatalf("allowed pools = %+v", got)
+	}
+
+	for name, raw := range map[string]string{
+		"duplicate":        `{"config_version":"v1","egress":{"capabilities":{"allowed_pools":[{"pool_id":"default"},{"pool_id":"default"}]}}}`,
+		"wrong deployment": `{"config_version":"v1","egress":{"capabilities":{"allowed_pools":[{"deployment_id":"other","pool_id":"default"}]}}}`,
+		"missing pool":     `{"config_version":"v1","egress":{"capabilities":{"allowed_pools":[{"deployment_id":"default"}]}}}`,
+	} {
+		_, err = LoadEgress(writeConfig(t, raw))
+		if err == nil {
+			t.Errorf("%s config unexpectedly loaded", name)
+		}
 	}
 }
 

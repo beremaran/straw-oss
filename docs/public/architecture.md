@@ -57,7 +57,8 @@ sequenceDiagram
 
 1. A client posts a request to Control.
 2. Control validates the bearer token, JSON shape, URL, headers, body size, and timeout.
-3. Control selects an available worker from the default pool.
+3. Control selects an available worker from the rule's enabled pool, requiring claimed membership, exact executor
+   type, required tags, allowed capabilities, health/degraded policy, and available capacity.
 4. The worker acknowledges the assignment and performs the outbound request.
 5. Control returns the upstream status, headers, body, and phase timings in one JSON response.
 

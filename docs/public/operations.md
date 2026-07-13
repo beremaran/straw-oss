@@ -62,6 +62,18 @@ Scale Egress workers for outbound concurrency. A single Control is the simplest 
 least two Redis-backed Controls behind a readiness-aware load balancer. On SIGTERM, Control fails readiness and gives
 active HTTP requests up to the configured maximum request timeout plus five seconds to finish before draining NATS.
 
+## Operate executor pools
+
+Create or update pools in the runtime snapshot before adding workers that claim them. Verify that each worker's
+`pools`, executor type, tags, countries, regions, and IP types match the intended pool. A disabled pool is a safe
+cutover control: it stops new assignments without cancelling requests already running. Re-enable it only after the
+worker rollout and capability claims are verified. If a pool has no eligible worker, requests matching its rule return
+`route_unavailable`; a full eligible fleet returns `executor_capacity_exhausted`.
+
+Keep pool definitions and official-worker `allowed_pools` in the same deployment trust boundary. Pool membership is
+not tenant authorization, and Straw does not provide cross-deployment or per-user pool permissions; run a separate
+deployment when isolation is required.
+
 ## Upgrades
 
 Read `CHANGELOG.md`, test the new version against a staging deployment, update workers before or with Control, and

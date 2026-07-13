@@ -25,6 +25,36 @@ worker has connected and registered.
 Workers only need outbound access to NATS and destination hosts. They do not expose the public Control API. You can
 place workers in different networks or regions, provided they can reach the deployment's secured NATS service.
 
+## Claim executor pools
+
+The official worker claims `default/default` when `capabilities.allowed_pools` is omitted. To populate another
+configured pool, list it in the Egress JSON:
+
+```json
+{
+  "config_version": "v1",
+  "egress": {
+    "capabilities": {
+      "allowed_pools": [
+        {"pool_id": "default"},
+        {"pool_id": "residential-au"}
+      ],
+      "tags": ["residential"],
+      "countries": ["AU"],
+      "regions": ["ap-southeast-2"],
+      "ip_types": ["residential"]
+    }
+  }
+}
+```
+
+Each referenced pool must already exist in the deployment snapshot. Pool references are unique, default to the
+single `default` deployment when `deployment_id` is omitted, and cannot name another deployment. Control rejects
+invalid or duplicate claims at registration. Membership alone is not enough for assignment: the worker's executor
+type must exactly match the pool, it must advertise every required pool tag, and its claimed capability values must
+remain within the pool's allowed country, region, and IP-type lists. Disabled pools never receive new assignments;
+degraded workers are admitted only when the pool allows them.
+
 ## Custom workers
 
 [`straw-sdk-go/egress`](https://github.com/beremaran/straw-sdk-go) and the tagged Python SDK expose worker machinery
@@ -53,7 +83,7 @@ sequenceDiagram
   Note over W,C: on shutdown: stop heartbeats and admission,<br/>drain active assignments, close NATS cleanly
 ```
 
-A worker registers a stable ID, protocol range, executor type, tags/locations/IP modes, ingress modes, fingerprint
+A worker registers a stable ID, protocol range, executor type, claimed pool memberships, tags/locations/IP modes, ingress modes, fingerprint
 profiles, and maximum concurrency. It becomes assignable only after authenticated registration and heartbeats.
 Admission must reject unsupported request modes/profiles before request start. Stream request bodies only as Control
 grants bounded frames; return download credit as response bytes are consumed. Preserve ordered duplicate headers,

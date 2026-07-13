@@ -9,6 +9,9 @@ are tagged.
 
 - Restored the backward-compatible `routing` object on `POST /api/v1/requests`, including validated tags, country,
   region, IP type, sticky-session hints, hard worker capability constraints, and routing coverage tests.
+- Made executor pools enforceable across registration and routing: disabled pools receive no new assignments, pool
+  executor types/tags/capabilities and degraded-worker policy are applied, and invalid or duplicate worker pool claims
+  are rejected. Added `egress.capabilities.allowed_pools` to the official worker with default/default compatibility.
 - Added a standard HTTP/HTTPS forward-proxy ingress to Control, including absolute-form HTTP requests,
   policy-checked HTTP/1.1 CONNECT tunnels, proxy authentication, and bounded bidirectional NATS flow control.
 - Added the Control API, NATS request transport, official Egress worker, CLI, and maintained Go and Python clients.

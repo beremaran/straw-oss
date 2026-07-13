@@ -41,6 +41,9 @@ type RoutingRule struct {
 type PoolPolicy struct {
 	DeploymentID         string
 	PoolID               string
+	Enabled              bool
+	ExecutorType         string
+	Tags                 []string
 	AllowDegradedWorkers bool
 	AllowedCountries     []string
 	AllowedRegions       []string
@@ -358,6 +361,10 @@ func hostMatches(pattern, host string) bool {
 // request capability constraints (docs/public/architecture.md "capabilities satisfy
 // all request constraints").
 func (rt *Router) eligibleCandidates(req RouteRequest, rule RoutingRule, policy PoolPolicy) ([]PoolCandidate, bool) {
+	if policy.PoolID != "" && !policy.Enabled {
+		return nil, false
+	}
+
 	all := rt.candidates.CandidatesForPool(req.DeploymentID, rule.TargetPoolID)
 
 	out := make([]PoolCandidate, 0, len(all))
@@ -409,6 +416,16 @@ func capabilitySatisfies(c PoolCandidate, req RouteRequest) bool {
 // candidate claims for that dimension to be in the allowed list; an empty
 // restriction is unrestricted regardless of what the candidate claims.
 func poolAllows(c PoolCandidate, policy PoolPolicy) bool {
+	if policy.PoolID != "" {
+		if policy.ExecutorType != "" && c.ExecutorType != policy.ExecutorType {
+			return false
+		}
+
+		if !subset(policy.Tags, c.Tags) {
+			return false
+		}
+	}
+
 	checks := []bool{
 		len(policy.AllowedCountries) == 0 || subset(c.Countries, policy.AllowedCountries),
 		len(policy.AllowedRegions) == 0 || subset(c.Regions, policy.AllowedRegions),

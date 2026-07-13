@@ -31,6 +31,7 @@ const (
 	rejectInvalidWorkerID   = "invalid_worker_id"
 	rejectIncompatibleProto = "incompatible_protocol"
 	rejectCapabilityScope   = "capability_out_of_scope"
+	rejectInvalidPool       = "invalid_pool_membership"
 )
 
 // WorkerRuntimeState is the worker's current availability state.
@@ -118,6 +119,7 @@ type WorkerRegistry struct {
 	timings   WorkerTimings
 	workers   map[string]*workerSession
 	settings  map[string]config.WorkerSetting
+	pools     map[string]config.ExecutorPool
 	shared    RuntimeState
 	sharedTTL time.Duration
 	ctx       context.Context
@@ -129,7 +131,12 @@ func NewDeploymentWorkerRegistry(timings WorkerTimings, now func() time.Time) *W
 		now = time.Now
 	}
 
-	return &WorkerRegistry{now: now, timings: timings, workers: make(map[string]*workerSession), settings: make(map[string]config.WorkerSetting)}
+	return &WorkerRegistry{
+		now: now, timings: timings, workers: make(map[string]*workerSession), settings: make(map[string]config.WorkerSetting),
+		pools: map[string]config.ExecutorPool{
+			config.DefaultPoolID: {ID: config.DefaultPoolID, ExecutorType: errorCategoryEgress, Enabled: true},
+		},
+	}
 }
 
 // NewSharedWorkerRegistry creates a registry whose ephemeral worker sessions,
@@ -161,7 +168,15 @@ func (r *WorkerRegistry) Register(ctx context.Context, req *strawpb.RegisterRequ
 		return RegisterOutcome{}, err
 	}
 
-	pools := deploymentPools(req.GetAllowedPools())
+	r.mu.Lock()
+	pools, poolReason := deploymentPools(req.GetAllowedPools(), r.pools)
+
+	r.mu.Unlock()
+
+	if poolReason != "" {
+		return RegisterOutcome{Reason: poolReason}, nil
+	}
+
 	session := &workerSession{
 		sessionID:                    sessionID,
 		executorType:                 req.GetExecutorType(),
@@ -218,22 +233,46 @@ func rejectFingerprintProfileCapabilities(req *strawpb.RegisterRequest) string {
 	return ""
 }
 
-func deploymentPools(refs []*strawpb.RegisterRequest_PoolRef) []AllowedPool {
+func deploymentPools(refs []*strawpb.RegisterRequest_PoolRef, configured map[string]config.ExecutorPool) ([]AllowedPool, string) {
 	if len(refs) == 0 {
-		return []AllowedPool{{PoolID: config.DefaultPoolID}}
+		refs = []*strawpb.RegisterRequest_PoolRef{{DeploymentId: config.DefaultDeploymentID, PoolId: config.DefaultPoolID}}
 	}
 
 	pools := make([]AllowedPool, 0, len(refs))
+	seen := make(map[string]struct{}, len(refs))
+
 	for _, ref := range refs {
+		if ref == nil {
+			return nil, rejectInvalidPool
+		}
+
+		deploymentID := ref.GetDeploymentId()
+		if deploymentID == "" {
+			deploymentID = config.DefaultDeploymentID
+		}
+
+		if deploymentID != config.DefaultDeploymentID {
+			return nil, rejectInvalidPool
+		}
+
 		poolID := ref.GetPoolId()
 		if poolID == "" {
 			poolID = config.DefaultPoolID
 		}
 
+		if _, ok := configured[poolID]; !ok {
+			return nil, rejectInvalidPool
+		}
+
+		if _, duplicate := seen[poolID]; duplicate {
+			return nil, rejectInvalidPool
+		}
+
+		seen[poolID] = struct{}{}
 		pools = append(pools, AllowedPool{PoolID: poolID})
 	}
 
-	return pools
+	return pools, ""
 }
 
 // Heartbeat refreshes one current worker session.
@@ -458,6 +497,11 @@ func (r *WorkerRegistry) ApplySnapshot(snapshot config.Snapshot) {
 	r.settings = make(map[string]config.WorkerSetting, len(snapshot.WorkerSettings))
 	for _, setting := range snapshot.WorkerSettings {
 		r.settings[setting.WorkerID] = setting
+	}
+
+	r.pools = make(map[string]config.ExecutorPool, len(snapshot.ExecutorPools))
+	for _, pool := range snapshot.ExecutorPools {
+		r.pools[pool.ID] = pool
 	}
 }
 

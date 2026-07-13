@@ -171,13 +171,34 @@ func buildCapabilities(cfg config.EgressConfig) sdkegress.Capabilities {
 		maxConcurrency = cfg.Capabilities.MaxConcurrency
 	}
 
-	return sdkegress.Capabilities{
-		SoftwareVersion: "dev",
-		MaxConcurrency:  maxConcurrency,
-		AllowedPools: []*strawpb.RegisterRequest_PoolRef{{
+	allowedPools := make([]*strawpb.RegisterRequest_PoolRef, 0, len(cfg.Capabilities.AllowedPools))
+	for _, pool := range cfg.Capabilities.AllowedPools {
+		deploymentID := pool.DeploymentID
+
+		if deploymentID == "" {
+			deploymentID = config.DefaultDeploymentID
+		}
+
+		poolID := pool.PoolID
+
+		if poolID == "" {
+			poolID = config.DefaultPoolID
+		}
+
+		allowedPools = append(allowedPools, &strawpb.RegisterRequest_PoolRef{DeploymentId: deploymentID, PoolId: poolID})
+	}
+
+	if len(allowedPools) == 0 {
+		allowedPools = []*strawpb.RegisterRequest_PoolRef{{
 			DeploymentId: config.DefaultDeploymentID,
 			PoolId:       config.DefaultPoolID,
-		}},
+		}}
+	}
+
+	return sdkegress.Capabilities{
+		SoftwareVersion:              "dev",
+		MaxConcurrency:               maxConcurrency,
+		AllowedPools:                 allowedPools,
 		Tags:                         cfg.Capabilities.Tags,
 		Countries:                    cfg.Capabilities.Countries,
 		Regions:                      cfg.Capabilities.Regions,

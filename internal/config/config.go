@@ -41,6 +41,8 @@ var (
 	errInvalidRuntimeState    = errors.New("runtime_state backend must be memory or redis")
 	errInvalidRuntimeStateTTL = errors.New("runtime_state TTLs must be positive and request_ttl_ms must exceed max_timeout_ms")
 	errInvalidObjectStorage   = errors.New("object_storage configuration is invalid")
+	errInvalidEgressPoolRef   = errors.New("egress capabilities contain an invalid pool reference")
+	errDuplicateEgressPool    = errors.New("egress capabilities contain a duplicate pool membership")
 	errOpenConfig             = errors.New("open config file")
 )
 
@@ -151,12 +153,20 @@ type EgressConfig struct {
 
 // EgressCapabilities describes a worker's routing capabilities.
 type EgressCapabilities struct {
-	Tags                  []string `json:"tags,omitempty"`
-	Countries             []string `json:"countries,omitempty"`
-	Regions               []string `json:"regions,omitempty"`
-	IPTypes               []string `json:"ip_types,omitempty"`
-	SupportedIngressModes []string `json:"supported_ingress_modes,omitempty"`
-	MaxConcurrency        uint32   `json:"max_concurrency,omitempty"`
+	AllowedPools          []EgressPoolRef `json:"allowed_pools,omitempty"`
+	Tags                  []string        `json:"tags,omitempty"`
+	Countries             []string        `json:"countries,omitempty"`
+	Regions               []string        `json:"regions,omitempty"`
+	IPTypes               []string        `json:"ip_types,omitempty"`
+	SupportedIngressModes []string        `json:"supported_ingress_modes,omitempty"`
+	MaxConcurrency        uint32          `json:"max_concurrency,omitempty"`
+}
+
+// EgressPoolRef identifies a deployment pool the official worker claims.
+// DeploymentID defaults to the current deployment's internal identifier.
+type EgressPoolRef struct {
+	DeploymentID string `json:"deployment_id,omitempty"`
+	PoolID       string `json:"pool_id"`
 }
 
 // EgressUpstreamConnectionPoolConfig configures optional upstream reuse.
@@ -564,9 +574,7 @@ func (e *EgressConfig) applyDefaults() {
 		e.HealthPort = defaultEgressHealthPort
 	}
 
-	if len(e.Capabilities.SupportedIngressModes) == 0 {
-		e.Capabilities.SupportedIngressModes = []string{"rest", "http_proxy", "connect"}
-	}
+	e.Capabilities.applyDefaults()
 
 	if e.HTTP2.FallbackCacheTTLMS == 0 {
 		e.HTTP2.FallbackCacheTTLMS = 300_000
@@ -598,7 +606,36 @@ func (e EgressConfig) validate() error {
 		return errInvalidHeartbeat
 	}
 
+	seenPools := make(map[string]struct{}, len(e.Capabilities.AllowedPools))
+	for _, pool := range e.Capabilities.AllowedPools {
+		if pool.DeploymentID != DefaultDeploymentID || pool.PoolID == "" {
+			return errInvalidEgressPoolRef
+		}
+
+		if _, duplicate := seenPools[pool.PoolID]; duplicate {
+			return fmt.Errorf("%w: %q", errDuplicateEgressPool, pool.PoolID)
+		}
+
+		seenPools[pool.PoolID] = struct{}{}
+	}
+
 	return nil
+}
+
+func (c *EgressCapabilities) applyDefaults() {
+	if len(c.SupportedIngressModes) == 0 {
+		c.SupportedIngressModes = []string{"rest", "http_proxy", "connect"}
+	}
+
+	if len(c.AllowedPools) == 0 {
+		c.AllowedPools = []EgressPoolRef{{DeploymentID: DefaultDeploymentID, PoolID: DefaultPoolID}}
+	}
+
+	for i := range c.AllowedPools {
+		if c.AllowedPools[i].DeploymentID == "" {
+			c.AllowedPools[i].DeploymentID = DefaultDeploymentID
+		}
+	}
 }
 
 func (n *NATSConfig) applyDefaults() {

@@ -24,6 +24,17 @@ func TestBuildCapabilitiesUsesDeploymentPool(t *testing.T) {
 	}
 }
 
+func TestBuildCapabilitiesUsesConfiguredPools(t *testing.T) {
+	t.Parallel()
+
+	caps := buildCapabilities(config.EgressConfig{Capabilities: config.EgressCapabilities{
+		AllowedPools: []config.EgressPoolRef{{PoolID: "residential"}, {PoolID: "datacenter"}},
+	}})
+	if len(caps.AllowedPools) != 2 || caps.AllowedPools[0].GetDeploymentId() != config.DefaultDeploymentID || caps.AllowedPools[1].GetPoolId() != "datacenter" {
+		t.Fatalf("AllowedPools = %+v", caps.AllowedPools)
+	}
+}
+
 func TestRunWorkerUsesSDKRuntime(t *testing.T) {
 	original := runSDKWorker
 	t.Cleanup(func() { runSDKWorker = original })

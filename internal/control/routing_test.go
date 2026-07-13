@@ -1,8 +1,12 @@
 package control
 
 import (
+	"context"
 	"testing"
 	"time"
+
+	"github.com/beremaran/straw-oss/internal/config"
+	strawpb "github.com/beremaran/straw-protos-go/straw/v1"
 )
 
 const (
@@ -18,6 +22,8 @@ const (
 	routingPreferredID  = "preferred"
 	routingHostPoolID   = denyRuleTypeHost
 	routingCountryID    = "country"
+	routingRegionTag    = "region:au"
+	disabledPoolID      = "disabled-pool"
 )
 
 type testRoutingCandidates map[string][]PoolCandidate
@@ -41,7 +47,7 @@ func routingCandidate(id string) PoolCandidate {
 func testRouter(rules []RoutingRule, candidates testRoutingCandidates) *Router {
 	policies := make([]PoolPolicy, 0)
 	for _, rule := range rules {
-		policies = append(policies, PoolPolicy{DeploymentID: routingDeploymentID, PoolID: rule.TargetPoolID})
+		policies = append(policies, PoolPolicy{DeploymentID: routingDeploymentID, PoolID: rule.TargetPoolID, Enabled: true})
 	}
 
 	return NewRouter(
@@ -143,7 +149,7 @@ func TestRouterStickySelection(t *testing.T) {
 	rule := RoutingRule{ID: "sticky", DeploymentID: routingDeploymentID, Priority: 1, Enabled: true, TargetPoolID: routingPoolID, StickySessionTTLSeconds: 60}
 	router := NewRouter(
 		NewStaticRuleProvider([]RoutingRule{rule}),
-		NewStaticPoolPolicyProvider([]PoolPolicy{{DeploymentID: routingDeploymentID, PoolID: routingPoolID}}),
+		NewStaticPoolPolicyProvider([]PoolPolicy{{DeploymentID: routingDeploymentID, PoolID: routingPoolID, Enabled: true}}),
 		testRoutingCandidates{routingPoolID: {routingCandidate("worker-a"), routingCandidate("worker-b")}},
 		sticky,
 		nil,
@@ -161,7 +167,7 @@ func TestRouterStickyFallback(t *testing.T) {
 	rule := RoutingRule{ID: "fallback", DeploymentID: routingDeploymentID, Priority: 1, Enabled: true, TargetPoolID: routingPoolID, StickySessionTTLSeconds: 60, AllowStickyFallback: true}
 	router := NewRouter(
 		NewStaticRuleProvider([]RoutingRule{rule}),
-		NewStaticPoolPolicyProvider([]PoolPolicy{{DeploymentID: routingDeploymentID, PoolID: routingPoolID}}),
+		NewStaticPoolPolicyProvider([]PoolPolicy{{DeploymentID: routingDeploymentID, PoolID: routingPoolID, Enabled: true}}),
 		testRoutingCandidates{routingPoolID: {routingCandidate("available")}},
 		sticky,
 		nil,
@@ -189,5 +195,108 @@ func TestRouterOmittedHintsUseUnconstrainedRule(t *testing.T) {
 	outcome := router.Evaluate(RouteRequest{DeploymentID: routingDeploymentID, IngressType: IngressTypeREST})
 	if !outcome.OK || outcome.RuleID != routingDeploymentID || outcome.WorkerID != "default-worker" {
 		t.Fatalf("omitted hints outcome = %+v, want unconstrained default rule", outcome)
+	}
+}
+
+func TestRouterEnforcesPoolEnabledTypeTagsAndCapabilities(t *testing.T) {
+	t.Parallel()
+
+	wrongType := routingCandidate("wrong-type")
+	wrongType.Tags = []string{routingRegionTag, routingIPType}
+	wrongType.Countries = []string{"AU"}
+	wrongType.Regions = []string{routingRegion}
+	wrongType.IPTypes = []string{routingIPType}
+	wrongType.ExecutorType = "wrong"
+	missingTag := routingCandidate("missing-tag")
+	missingTag.Tags = []string{routingRegionTag}
+	missingTag.Countries = []string{"AU"}
+	missingTag.Regions = []string{routingRegion}
+	missingTag.IPTypes = []string{routingIPType}
+	wrongCapability := routingCandidate("wrong-capability")
+	wrongCapability.Tags = []string{routingRegionTag, routingIPType}
+	wrongCapability.Countries = []string{"US"}
+	wrongCapability.Regions = []string{"us-west-1"}
+	wrongCapability.IPTypes = []string{routingIPType}
+	matching := routingCandidate("matching")
+	matching.Tags = []string{routingRegionTag, routingIPType}
+	matching.Countries = []string{"AU"}
+	matching.Regions = []string{routingRegion}
+	matching.IPTypes = []string{routingIPType}
+
+	rule := RoutingRule{ID: "restricted", DeploymentID: routingDeploymentID, Enabled: true, TargetPoolID: routingPoolID}
+	policy := PoolPolicy{
+		DeploymentID: routingDeploymentID, PoolID: routingPoolID, Enabled: true, ExecutorType: routingExecutorType,
+		Tags: []string{routingIPType}, AllowedCountries: []string{"AU"}, AllowedRegions: []string{routingRegion}, AllowedIPTypes: []string{routingIPType},
+	}
+	router := NewRouter(NewStaticRuleProvider([]RoutingRule{rule}), NewStaticPoolPolicyProvider([]PoolPolicy{policy}), testRoutingCandidates{routingPoolID: {wrongType, missingTag, wrongCapability, matching}}, NewStickyStore(nil), nil)
+
+	outcome := router.Evaluate(RouteRequest{DeploymentID: routingDeploymentID, IngressType: IngressTypeREST, Country: "AU", Region: routingRegion, IPType: routingIPType})
+	if !outcome.OK || outcome.WorkerID != "matching" {
+		t.Fatalf("restricted outcome = %+v, want matching worker", outcome)
+	}
+
+	degraded := matching
+	degraded.WorkerID = "degraded"
+	degraded.Degraded = true
+	noDegraded := policy
+	noDegraded.AllowDegradedWorkers = false
+	noDegradedRouter := NewRouter(NewStaticRuleProvider([]RoutingRule{rule}), NewStaticPoolPolicyProvider([]PoolPolicy{noDegraded}), testRoutingCandidates{routingPoolID: {degraded}}, NewStickyStore(nil), nil)
+	if outcome := noDegradedRouter.Evaluate(RouteRequest{DeploymentID: routingDeploymentID, IngressType: IngressTypeREST}); outcome.ErrorCode != RouteErrUnavailable {
+		t.Fatalf("degraded-disabled outcome = %+v, want %s", outcome, RouteErrUnavailable)
+	}
+	allowDegraded := policy
+	allowDegraded.AllowDegradedWorkers = true
+	allowDegradedRouter := NewRouter(NewStaticRuleProvider([]RoutingRule{rule}), NewStaticPoolPolicyProvider([]PoolPolicy{allowDegraded}), testRoutingCandidates{routingPoolID: {degraded}}, NewStickyStore(nil), nil)
+	if outcome := allowDegradedRouter.Evaluate(RouteRequest{DeploymentID: routingDeploymentID, IngressType: IngressTypeREST}); !outcome.OK || outcome.WorkerID != "degraded" {
+		t.Fatalf("degraded-enabled outcome = %+v", outcome)
+	}
+
+	disabled := policy
+	disabled.Enabled = false
+	disabledRouter := NewRouter(NewStaticRuleProvider([]RoutingRule{rule}), NewStaticPoolPolicyProvider([]PoolPolicy{disabled}), testRoutingCandidates{routingPoolID: {matching}}, NewStickyStore(nil), nil)
+	if outcome := disabledRouter.Evaluate(RouteRequest{DeploymentID: routingDeploymentID, IngressType: IngressTypeREST}); outcome.ErrorCode != RouteErrUnavailable {
+		t.Fatalf("disabled outcome = %+v, want %s", outcome, RouteErrUnavailable)
+	}
+}
+
+func TestRouterUsesRegisteredMembershipAcrossMultiplePools(t *testing.T) {
+	t.Parallel()
+
+	registry := NewDeploymentWorkerRegistry(DefaultWorkerTimings(), nil)
+	snapshot := config.NewSnapshot(1)
+	snapshot.ExecutorPools = []config.ExecutorPool{
+		{ID: config.DefaultPoolID, ExecutorType: errorCategoryEgress, Enabled: true},
+		{ID: routingIPType, ExecutorType: errorCategoryEgress, Enabled: true, Tags: []string{routingIPType}},
+		{ID: disabledPoolID, ExecutorType: errorCategoryEgress, Enabled: false},
+	}
+	registry.ApplySnapshot(snapshot)
+
+	register := func(id string, refs ...*strawpb.RegisterRequest_PoolRef) string {
+		outcome, err := registry.Register(context.Background(), &strawpb.RegisterRequest{WorkerId: id, ExecutorType: errorCategoryEgress, ProtocolMajor: ProtocolMajor, AllowedPools: refs, Tags: []string{routingIPType}, SupportedIngressModes: []string{IngressTypeREST}})
+		if err != nil || !outcome.OK {
+			t.Fatalf("register %s = %+v, %v", id, outcome, err)
+		}
+		ok, err := registry.Heartbeat(context.Background(), &strawpb.HeartbeatRequest{WorkerId: id, SessionId: outcome.SessionID, Health: strawpb.WorkerHealth_WORKER_HEALTH_READY, AvailableCapacity: 1})
+		if err != nil || !ok {
+			t.Fatalf("heartbeat %s = %v, %v", id, ok, err)
+		}
+
+		return id
+	}
+	register("residential-worker", &strawpb.RegisterRequest_PoolRef{PoolId: routingIPType})
+	register("default-worker", &strawpb.RegisterRequest_PoolRef{PoolId: config.DefaultPoolID})
+
+	rules := NewStaticRuleProvider([]RoutingRule{
+		{ID: routingIPType, DeploymentID: config.DefaultDeploymentID, Enabled: true, TargetPoolID: routingIPType},
+		{ID: disabledPoolID, DeploymentID: config.DefaultDeploymentID, Enabled: true, TargetPoolID: disabledPoolID},
+	})
+	router := NewRouter(rules, NewStaticPoolPolicyProvider(poolPoliciesFromSnapshot(config.DefaultDeploymentID, snapshot.ExecutorPools)), registry, NewStickyStore(nil), nil)
+
+	if outcome := router.Evaluate(RouteRequest{DeploymentID: config.DefaultDeploymentID, IngressType: IngressTypeREST}); !outcome.OK || outcome.WorkerID != "residential-worker" {
+		t.Fatalf("residential route = %+v", outcome)
+	}
+	disabledRouter := NewRouter(NewStaticRuleProvider([]RoutingRule{{ID: disabledPoolID, DeploymentID: config.DefaultDeploymentID, Enabled: true, TargetPoolID: disabledPoolID}}), NewStaticPoolPolicyProvider(poolPoliciesFromSnapshot(config.DefaultDeploymentID, snapshot.ExecutorPools)), registry, NewStickyStore(nil), nil)
+	if outcome := disabledRouter.Evaluate(RouteRequest{DeploymentID: config.DefaultDeploymentID, IngressType: IngressTypeREST}); outcome.OK {
+		t.Fatalf("disabled route unexpectedly selected worker: %+v", outcome)
 	}
 }

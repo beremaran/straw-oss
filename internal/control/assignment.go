@@ -59,6 +59,9 @@ func poolPoliciesFromSnapshot(deploymentID string, pools []config.ExecutorPool) 
 		out = append(out, PoolPolicy{
 			DeploymentID:         deploymentID,
 			PoolID:               p.ID,
+			Enabled:              p.Enabled,
+			ExecutorType:         p.ExecutorType,
+			Tags:                 append([]string(nil), p.Tags...),
 			AllowDegradedWorkers: p.AllowDegradedWorkers,
 			AllowedCountries:     p.AllowedCountries,
 			AllowedRegions:       p.AllowedRegions,
