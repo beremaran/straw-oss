@@ -20,6 +20,12 @@ Options:
 --response-body-mode MODE  inline_base64 or receipt
 --timeout-ms N             total request deadline
 --fingerprint-profile NAME outbound fingerprint profile
+--route-tag TAG            required worker tag; repeatable
+--route-country CODE       required worker country
+--route-region NAME        required worker region
+--route-ip-type NAME       required worker IP type
+--sticky-session-id ID     sticky worker session identifier
+--replayable               permit transport retry when safe to replay
 ```
 
 The CLI writes the same JSON response returned by the API. For authenticated deployments:
@@ -32,7 +38,9 @@ straw request --url https://example.com
 
 `--base-url` and `--token` override `STRAW_BASE_URL` and `STRAW_AUTH_TOKEN`; explicit flags always win. The CLI does
 not read a configuration file. `--body-file` reads the file once and is exclusive with `--receipt-id`; size remains
-subject to Control limits. Repeated `--header` values preserve order and duplicates.
+subject to Control limits. Repeated `--header` and `--route-tag` values preserve their order. Routing flags are sent
+as the same `routing` object used by REST and the Go/Python SDKs. `--replayable` explicitly opts a non-default method
+into transport retry; GET, HEAD, and OPTIONS remain replayable by the tagged Go SDK default.
 
 Exit status `0` means the command completed and JSON was written to stdout. Status `1` covers usage, file, network,
 deadline, API, and output failures; diagnostics go to stderr and successful JSON never does. Fields in the JSON

@@ -5,7 +5,7 @@ The REST API has small Go and Python clients. Both accept a base URL and optiona
 ## Go
 
 ```sh
-go get github.com/beremaran/straw-sdk-go@v0.1.0
+go get github.com/beremaran/straw-sdk-go@v0.2.0
 ```
 
 ```go
@@ -30,6 +30,7 @@ func main() {
     response, err := client.Do(ctx, straw.Request{
         Method: "GET",
         URL:    "https://example.com",
+        Routing: &straw.RoutingHints{Country: "AU", Tags: []string{"residential"}, StickySessionID: "checkout-42"},
         Headers: []straw.Header{{Name: "X-Request-Source", ValueBase64: "YXBw"}},
     })
     if err != nil {
@@ -44,12 +45,13 @@ func main() {
 }
 ```
 
-The exact `v0.1.0` Go tag supports the fields shown above plus `Body`, `FingerprintProfile`, `TimeoutMs`,
+The exact `v0.2.0` Go tag supports the fields shown above plus `Body`, `FingerprintProfile`, `TimeoutMs`,
 `Replayable`, and `ResponseBodyMode`. Header values are base64-encoded bytes. Non-2xx Straw responses are returned as
 `*straw.APIError` with `HTTPStatus` and the parsed error envelope.
 
-The Go v0.1.0 tag does not expose a routing-hints field. Keep examples to its released type set; use the REST
-contract or a later exact SDK tag only when that tag is listed in [Compatibility and versioning](compatibility.md).
+`Request.Routing` carries optional tags, country, region, IP type, and sticky-session ID constraints. GET, HEAD, and
+OPTIONS requests become replayable by default; set `Replayable: true` only when the application operation is safe to
+retry for other methods.
 
 Create one client per base URL/token and reuse it; the client is safe for concurrent requests through Go's shared
 HTTP transport. Every call accepts a context, so set a deadline and cancel abandoned work. The SDK does not retry:
@@ -92,19 +94,20 @@ set `ResponseBodyMode: "receipt"`, read `response.Body.ReceiptID`, and close the
 Install the exact public tag:
 
 ```sh
-uv add 'straw-sdk @ git+https://github.com/beremaran/straw-sdk-python.git@v0.1.0'
+uv add 'straw-sdk @ git+https://github.com/beremaran/straw-sdk-python.git@v0.2.0'
 ```
 
 ```python
 import os
 
-from straw import APIError, Client, Header, Request
+from straw import APIError, Client, Header, Request, RoutingHints
 
 client = Client("http://localhost:8080", os.getenv("STRAW_AUTH_TOKEN", ""), timeout=30.0)
 try:
     response = client.do(Request(
         method="GET",
         url="https://example.com",
+        routing=RoutingHints(tags=["residential"], country="AU", sticky_session_id="checkout-42"),
         headers=[Header(name="X-Request-Source", value_base64="YXBw")],
     ))
     print(response.status, response.request_id)
@@ -112,7 +115,7 @@ except APIError as exc:
     print(exc.http_status, exc.response.code, exc.response.retryable, exc.response.request_id)
 ```
 
-Pass a token as the second `Client` argument. The exact `v0.1.0` package exposes `Client`, `Request`, `Header`,
+Pass a token as the second `Client` argument. The exact `v0.2.0` package exposes `Client`, `Request`, `Header`,
 `RequestBody`, `Response`, `Receipt`, and `APIError` as used above. Non-2xx Straw responses raise `straw.APIError`;
 inspect `exc.http_status` and the typed `exc.response` envelope.
 
@@ -124,6 +127,10 @@ codes only. Tests can point the client at an `httptest`/local fake implementing 
 The Python client provides matching `create_receipt`, `upload_receipt_part`, `complete_receipt`, `get_receipt`, and
 `download_receipt` methods. `RequestBody(mode="receipt", receipt_id=...)` and
 `Request(response_body_mode="receipt", ...)` select the receipt paths.
+
+Use `RoutingHints(tags=["residential"], country="AU", sticky_session_id="checkout-42")` on `Request.routing` for
+the same routing contract as REST, proxy, CONNECT, and the Go SDK. GET, HEAD, and OPTIONS default to replayable; set
+`replayable=True` for another method only when the operation is safe to retry.
 
 Example request-body upload:
 

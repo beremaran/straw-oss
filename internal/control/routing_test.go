@@ -10,21 +10,23 @@ import (
 )
 
 const (
-	routingDeploymentID = defaultFingerprintProfileName
-	routingExecutorType = errorCategoryEgress
-	routingPoolID       = "pool"
-	routingHost         = "api.example.com"
-	routingRegion       = "ap-southeast-2"
-	routingIPType       = "residential"
-	routingTag          = "datacenter"
-	routingSessionID    = "session-1"
-	routingFallbackID   = "fallback"
-	routingPreferredID  = "preferred"
-	routingHostPoolID   = denyRuleTypeHost
-	routingCountryID    = "country"
-	routingRegionTag    = "region:au"
-	routingWorkerB      = "worker-b"
-	disabledPoolID      = "disabled-pool"
+	routingDeploymentID  = defaultFingerprintProfileName
+	routingExecutorType  = errorCategoryEgress
+	routingPoolID        = "pool"
+	routingHost          = "api.example.com"
+	routingRegion        = "ap-southeast-2"
+	routingIPType        = "residential"
+	routingTag           = "datacenter"
+	routingSessionID     = "session-1"
+	routingFallbackID    = "fallback"
+	routingPreferredID   = "preferred"
+	routingHostPoolID    = denyRuleTypeHost
+	routingCountryID     = "country"
+	routingRegionTag     = "region:au"
+	routingWorkerB       = "worker-b"
+	routingSharedRouteID = "shared-route"
+	routingSharedPoolID  = "shared-pool"
+	disabledPoolID       = "disabled-pool"
 )
 
 type testRoutingCandidates map[string][]PoolCandidate
@@ -89,6 +91,34 @@ func TestRouterHostAndIngressMatching(t *testing.T) {
 	}
 	if got := router.Evaluate(RouteRequest{DeploymentID: routingDeploymentID, IngressType: IngressTypeREST, TargetHost: routingHost}); !got.OK || got.WorkerID != "host-worker" {
 		t.Fatalf("matching host/ingress outcome = %+v", got)
+	}
+}
+
+func TestRouterEquivalentAcrossRESTProxyAndConnectIngresses(t *testing.T) {
+	t.Parallel()
+	rule := RoutingRule{
+		ID: routingSharedRouteID, DeploymentID: routingDeploymentID, Priority: 1, Enabled: true, TargetPoolID: routingPoolID,
+		Match: MatchConditions{Country: "AU", Region: routingRegion, IPType: routingIPType},
+	}
+	candidate := routingCandidate("shared-worker")
+	candidate.Countries = []string{"AU"}
+	candidate.Regions = []string{routingRegion}
+	candidate.IPTypes = []string{routingIPType}
+	candidate.IngressModes = []string{IngressTypeREST, IngressTypeHTTPProxy, IngressTypeConnect}
+	router := testRouter([]RoutingRule{rule}, testRoutingCandidates{routingPoolID: {candidate}})
+
+	var first RouteOutcome
+	for i, ingress := range []string{IngressTypeREST, IngressTypeHTTPProxy, IngressTypeConnect} {
+		outcome := router.Evaluate(RouteRequest{
+			DeploymentID: routingDeploymentID, Country: "AU", Region: routingRegion, IPType: routingIPType,
+			IngressType: ingress, TargetHost: routingHost,
+		})
+		if i == 0 {
+			first = outcome
+		}
+		if !outcome.OK || outcome.RuleID != first.RuleID || outcome.PoolID != first.PoolID || outcome.WorkerID != first.WorkerID {
+			t.Fatalf("%s outcome = %+v, want same decision as REST %+v", ingress, outcome, first)
+		}
 	}
 }
 

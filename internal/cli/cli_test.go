@@ -10,6 +10,12 @@ import (
 	"testing"
 )
 
+const (
+	baseURLFlag = "--base-url"
+	urlFlag     = "--url"
+	targetURL   = "https://example.com"
+)
+
 func TestRunRequest(t *testing.T) {
 	t.Parallel()
 
@@ -23,7 +29,7 @@ func TestRunRequest(t *testing.T) {
 	defer server.Close()
 
 	var stdout, stderr bytes.Buffer
-	code := Run(context.Background(), []string{commandRequest, "--base-url", server.URL, "--token", "secret", "--url", "https://example.com"}, strings.NewReader(""), &stdout, &stderr)
+	code := Run(context.Background(), []string{commandRequest, baseURLFlag, server.URL, "--token", "secret", urlFlag, targetURL}, strings.NewReader(""), &stdout, &stderr)
 	if code != 0 || !strings.Contains(stdout.String(), `"status":200`) {
 		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
@@ -38,9 +44,36 @@ func TestRunRequestUsesReceipts(t *testing.T) {
 	}))
 	defer server.Close()
 	var stdout, stderr bytes.Buffer
-	code := Run(context.Background(), []string{commandRequest, "--base-url", server.URL, "--method", "POST", "--url", "https://example.com", "--receipt-id", "rcpt_request", "--response-body-mode", cliBodyModeReceipt}, strings.NewReader(""), &stdout, &stderr)
+	code := Run(context.Background(), []string{commandRequest, baseURLFlag, server.URL, "--method", "POST", urlFlag, targetURL, "--receipt-id", "rcpt_request", "--response-body-mode", cliBodyModeReceipt}, strings.NewReader(""), &stdout, &stderr)
 	requestBody, _ := body["body"].(map[string]any)
 	if code != 0 || requestBody["receipt_id"] != "rcpt_request" || body["response_body_mode"] != "receipt" {
+		t.Fatalf("code=%d body=%#v stderr=%s", code, body, stderr.String())
+	}
+}
+
+func TestRunRequestUsesRoutingAndReplayabilityFlags(t *testing.T) {
+	t.Parallel()
+	var body map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		err := json.NewDecoder(r.Body).Decode(&body)
+		if err != nil {
+			t.Errorf("decode request: %v", err)
+		}
+		_, _ = w.Write([]byte(`{"request_id":"req_1","status":200,"body":{"mode":"inline_base64","truncated":false},"timing":{}}`))
+	}))
+	defer server.Close()
+
+	var stdout, stderr bytes.Buffer
+	code := Run(context.Background(), []string{
+		commandRequest, baseURLFlag, server.URL, "--method", "POST", urlFlag, targetURL,
+		"--route-tag", "residential", "--route-tag", "au", "--route-country", "AU",
+		"--route-region", "ap-southeast-2", "--route-ip-type", "residential", "--sticky-session-id", "checkout-42",
+		"--replayable",
+	}, strings.NewReader(""), &stdout, &stderr)
+
+	routing, _ := body["routing"].(map[string]any)
+	tags, _ := routing["tags"].([]any)
+	if code != 0 || body["replayable"] != true || len(tags) != 2 || routing["country"] != "AU" || routing["sticky_session_id"] != "checkout-42" {
 		t.Fatalf("code=%d body=%#v stderr=%s", code, body, stderr.String())
 	}
 }

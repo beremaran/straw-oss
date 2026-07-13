@@ -7,6 +7,10 @@ are tagged.
 
 ### Added
 
+- Completed routing integration: the CLI and public Go/Python SDK tags expose typed routing hints and explicit
+  replayability, and REST, absolute-form proxy, and CONNECT ingress share acceptance coverage for routing, pool
+  eligibility, sticky behavior, destination policy, assignment fallback boundaries, and complete control-header
+  stripping. The final public dependency order is `straw-protos`/bindings `v0.3.0`, SDKs `v0.2.0`, then Straw.
 - Completed runtime-admin snapshot preparation: full pre-activation validation now covers routing conditions, sticky
   coherence, executor pools, destination rules, injections, fingerprint profiles, and worker settings; destination
   rules accept raw patterns and persist deterministic normalized fields without retaining stale derived values.

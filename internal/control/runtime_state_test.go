@@ -72,10 +72,11 @@ type fakeRuntimeState struct {
 	mu       sync.Mutex
 	sessions map[string]sharedWorker
 	owners   map[string]string
+	sticky   map[string]string
 }
 
 func newFakeRuntimeState() *fakeRuntimeState {
-	return &fakeRuntimeState{sessions: make(map[string]sharedWorker), owners: make(map[string]string)}
+	return &fakeRuntimeState{sessions: make(map[string]sharedWorker), owners: make(map[string]string), sticky: make(map[string]string)}
 }
 func (f *fakeRuntimeState) Ping(context.Context) error { return nil }
 func (f *fakeRuntimeState) putWorker(_ context.Context, id string, w sharedWorker, _ time.Duration) error {
@@ -115,12 +116,37 @@ func (f *fakeRuntimeState) workerCoolingDown(context.Context, string, string) (b
 	return false, nil
 }
 
-func (f *fakeRuntimeState) getSticky(context.Context, string, string) (string, bool, error) {
-	return "", false, nil
+func (f *fakeRuntimeState) getSticky(_ context.Context, deployment, session string) (string, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	worker, ok := f.sticky[deployment+"\x00"+session]
+
+	return worker, ok, nil
 }
 
-func (f *fakeRuntimeState) setSticky(context.Context, string, string, string, time.Duration) error {
+func (f *fakeRuntimeState) setSticky(_ context.Context, deployment, session, worker string, _ time.Duration) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.sticky[deployment+"\x00"+session] = worker
+
 	return nil
+}
+
+func TestSharedStickyBackendPinsAcrossControls(t *testing.T) {
+	t.Parallel()
+	state := newFakeRuntimeState()
+	backendA := NewRedisStickyBackend(context.Background(), state)
+	backendB := NewRedisStickyBackend(context.Background(), state)
+	rules := []RoutingRule{{ID: "sticky-route", DeploymentID: routingDeploymentID, Priority: 1, Enabled: true, TargetPoolID: routingPoolID, StickySessionTTLSeconds: 60}}
+	candidates := testRoutingCandidates{routingPoolID: {routingCandidate("worker-a"), routingCandidate("worker-b")}}
+	policies := NewStaticPoolPolicyProvider([]PoolPolicy{{DeploymentID: routingDeploymentID, PoolID: routingPoolID, Enabled: true}})
+	request := RouteRequest{DeploymentID: routingDeploymentID, IngressType: IngressTypeREST, StickySessionID: routingSessionID}
+
+	first := NewRouter(NewStaticRuleProvider(rules), policies, candidates, backendA, nil).Evaluate(request)
+	second := NewRouter(NewStaticRuleProvider(rules), policies, candidates, backendB, nil).Evaluate(request)
+	if !first.OK || !second.OK || !first.Sticky || !second.Sticky || first.WorkerID != second.WorkerID {
+		t.Fatalf("shared sticky outcomes = %+v and %+v", first, second)
+	}
 }
 
 func (f *fakeRuntimeState) claimRequest(_ context.Context, requestID, deploymentID, owner string, _ time.Duration) (bool, error) {

@@ -46,6 +46,12 @@ Or use Control as an HTTP/HTTPS forward proxy:
 curl --proxy http://localhost:8080 https://example.com
 ```
 
+The CLI and tagged SDKs expose the same per-request routing hints. For example:
+
+```sh
+straw request --url https://example.com --route-country AU --route-tag residential --sticky-session-id checkout-42
+```
+
 The local stack contains exactly NATS, Control, and one Egress worker. It needs no credentials or provisioning.
 
 ## Why Straw
@@ -54,6 +60,7 @@ The local stack contains exactly NATS, Control, and one Egress worker. It needs 
 - scale outbound workers independently;
 - preserve ordered and duplicate headers;
 - bound request bodies, response bodies, and deadlines;
+- apply the same routing rules, pool constraints, sticky-session behavior, and destination policy from REST, forward-proxy, and CONNECT ingress;
 - optionally move large request and response bodies through verified expiring receipts;
 - select any of 79 pinned `tls-client` v1.15.1 TLS/HTTP/2 fingerprint profiles without a runtime dependency on
   `tls-client` or `fhttp`;

@@ -242,10 +242,6 @@ type SuccessResponse struct {
 	Timing    RequestTiming `json:"timing"`
 
 	ResponseSizeBytes          uint64 `json:"-"`
-	RouteID                    string `json:"-"`
-	PoolID                     string `json:"-"`
-	SelectedExecutor           string `json:"-"`
-	ExecutorType               string `json:"-"`
 	SelectedFingerprintProfile string `json:"-"`
 	ExecutedFingerprintProfile string `json:"-"`
 }

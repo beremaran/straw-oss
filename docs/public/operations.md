@@ -104,6 +104,12 @@ cutover control: it stops new assignments without cancelling requests already ru
 worker rollout and capability claims are verified. If a pool has no eligible worker, requests matching its rule return
 `route_unavailable`; a full eligible fleet returns `executor_capacity_exhausted`.
 
+Verify a routing rollout through all enabled ingress modes: send one REST request, one absolute-form proxy request,
+and one CONNECT request with equivalent hints and confirm they select the intended pool/capabilities. For sticky
+sessions, repeat through the same Control and through each HA Control instance; the selected worker should remain
+pinned until the rule TTL expires or the configured sticky fallback is exercised. Destination-policy denials must
+remain consistent across all three modes.
+
 Keep pool definitions and official-worker `allowed_pools` in the same deployment trust boundary. Pool membership is
 not tenant authorization, and Straw does not provide cross-deployment or per-user pool permissions; run a separate
 deployment when isolation is required.
