@@ -40,6 +40,31 @@ Prometheus metrics use bounded labels. Counters are cumulative process-lifetime 
 
 Expose metrics only to your monitoring network. No telemetry database is required.
 
+### Scrape and alert examples
+
+Scrape the Control metrics port (`9090` by default) from the monitoring network. For HA, add one target per Control
+instance; the load balancer's API listener is not the metrics endpoint:
+
+```text
+scrape_configs:
+  - job_name: straw-control
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["control.example.internal:9090"]
+```
+
+The checked-in starter rules are deliberately small. Their PromQL and windows are:
+
+| Alert | Expression | For | Suggested response |
+| --- | --- | --- | --- |
+| `StrawNoAvailableWorkers` | `straw_workers_available == 0` | 2m | Check worker readiness, pool eligibility, and NATS before adding capacity. |
+| `StrawNATSErrors` | `rate(straw_nats_errors_total[5m]) > 0` | 5m | Inspect NATS health, credentials, reconnects, and payload limits. |
+| `StrawHAStateUnavailable` | `straw_runtime_state_available == 0` | 1m | Restore Redis coordination before admitting HA traffic. |
+| `StrawReceiptRejections` | `increase(straw_receipts_rejected_total[15m]) > 0` | none | Inspect declared size/checksum, part uploads, storage, and clock/credential errors. |
+
+Copy and adapt `deploy/monitoring/prometheus-alerts.yml`; choose notification routing and objective thresholds in
+your monitoring system. These rules do not replace a production alert policy.
+
 ## Logs
 
 Control and Egress write structured JSON to stdout. Collect container stdout with the logging system already used by
@@ -48,6 +73,15 @@ your environment. Request IDs connect client errors, Control logs, and worker ac
 and durations. The startup NATS `url` field is credential-redacted. Never emit bearer tokens, service credentials,
 upstream or signed receipt URLs, headers, or bodies. A safe escalation bundle contains versions, profile, redacted
 config shape, health/readiness, metric names/values, and request IDs only.
+
+A representative startup event is:
+
+```json
+{"timestamp":"2026-07-14T00:00:00Z","level":"INFO","msg":"listening","service":"control","addr":"0.0.0.0:8080"}
+```
+
+Treat event-specific fields and messages as diagnostic context rather than a stable machine API; use metric names and
+documented error codes for automation.
 
 ## Suggested service indicators and alerts
 

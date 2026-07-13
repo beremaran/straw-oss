@@ -62,6 +62,42 @@ for specialized executors. The canonical Egress implementation in this repositor
 workers must keep protocol versions, heartbeats, assignment acknowledgements, capacity, deadlines, and stream framing
 correct. Treat this as an advanced integration surface and pin exact SDK and binding tags.
 
+### Protocol and admission checklist
+
+Start with the exact compatibility set: worker protocol/binding `v0.3.0` and the public Go/Python SDK tag listed in
+[Compatibility and versioning](compatibility.md). Before a custom worker is admitted, verify all of the following:
+
+- use a unique worker ID and session ID made only from letters, digits, `-`, and `_`; these values become NATS subject
+  tokens;
+- publish a signed registration with protocol range, executor type, pool claims, tags/locations/IP modes, supported
+  ingress modes, fingerprint names, and maximum concurrency;
+- continue authenticated heartbeats with current health, active requests, available capacity, and drain state;
+- reject assignments while draining, at capacity, or unable to execute the request mode/profile, before request bytes
+  are accepted;
+- validate the full runtime snapshot before acknowledging its version; keep active requests on their starting snapshot;
+- enforce ordered stream sequence numbers, upload/download credit, deadlines, cancellation, and one terminal outcome;
+- re-verify receipt assignment scope, declared size, and SHA-256 before using a request body; and
+- run `make conformance` plus the tagged producer/consumer compatibility workflow before production admission.
+
+The current subject families are:
+
+| Direction | Subject family | Purpose |
+| --- | --- | --- |
+| worker → Control | `straw.v1.control.register` | Registration request/reply |
+| worker → Control | `straw.v1.control.heartbeat` | Heartbeat request/reply |
+| Control → worker | `straw.v1.executor.<worker_id>.<session_id>.assign` | Assignment request/reply |
+| Control → worker | `straw.v1.req.<request_id>.<worker_id>.<session_id>.c2e` | Request start/body/credit/cancel frames |
+| worker → Control | `straw.v1.req.<request_id>.<worker_id>.<session_id>.e2c` | Response/progress/terminal frames |
+| Control → worker | `straw.v1.config.snapshot` | Runtime snapshot publication when enabled |
+| worker → Control | `straw.v1.config.ack` | Runtime snapshot acknowledgement when enabled |
+
+The SDK exposes `_INBOX.ctl` for Control request/reply traffic and `_INBOX.wrk.<worker_id>` for worker-scoped
+request/reply traffic. Treat these as logical prefixes for an ACL design, and keep generated reply subjects scoped to
+the deployment and worker/session. A minimal NATS policy gives Control publish access to assignments, request `c2e`,
+and snapshots and subscribe access to registration, heartbeat, request `e2c`, and snapshot acknowledgements. A worker
+gets the inverse for its own worker/session plus its reply inbox. This table is an integration guide, not a copy-paste
+NATS account policy; verify the exact client reply subject and credentials in your deployment.
+
 The lifecycle every worker must implement:
 
 ```mermaid

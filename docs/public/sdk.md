@@ -13,26 +13,43 @@ package main
 
 import (
     "context"
+    "errors"
     "fmt"
     "log"
+    "os"
+    "time"
 
     straw "github.com/beremaran/straw-sdk-go"
 )
 
 func main() {
-    client := straw.NewClient("http://localhost:8080", "")
-    response, err := client.Do(context.Background(), straw.Request{
+    client := straw.NewClient("http://localhost:8080", os.Getenv("STRAW_AUTH_TOKEN"))
+    ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+    defer cancel()
+
+    response, err := client.Do(ctx, straw.Request{
         Method: "GET",
         URL:    "https://example.com",
+        Headers: []straw.Header{{Name: "X-Request-Source", ValueBase64: "YXBw"}},
     })
     if err != nil {
+        var apiErr *straw.APIError
+        if errors.As(err, &apiErr) {
+            log.Printf("Straw error code=%s retryable=%t request_id=%s", apiErr.Response.Code, apiErr.Response.Retryable, apiErr.Response.RequestID)
+            return
+        }
         log.Fatal(err)
     }
     fmt.Println(response.Status, response.RequestID)
 }
 ```
 
-Non-200 Straw responses are returned as `*straw.APIError` with `HTTPStatus` and the parsed error envelope.
+The exact `v0.1.0` Go tag supports the fields shown above plus `Body`, `FingerprintProfile`, `TimeoutMs`,
+`Replayable`, and `ResponseBodyMode`. Header values are base64-encoded bytes. Non-2xx Straw responses are returned as
+`*straw.APIError` with `HTTPStatus` and the parsed error envelope.
+
+The Go v0.1.0 tag does not expose a routing-hints field. Keep examples to its released type set; use the REST
+contract or a later exact SDK tag only when that tag is listed in [Compatibility and versioning](compatibility.md).
 
 Create one client per base URL/token and reuse it; the client is safe for concurrent requests through Go's shared
 HTTP transport. Every call accepts a context, so set a deadline and cancel abandoned work. The SDK does not retry:
@@ -44,6 +61,32 @@ For a large body, use `CreateReceipt`, one or more `UploadReceiptPart` calls, an
 `RequestBody{Mode: "receipt", ReceiptID: receipt.ReceiptID}`. Set `ResponseBodyMode: "receipt"` to store a response,
 and open it with `DownloadReceipt`.
 
+This is a one-part request receipt; larger uploads use the same calls with positive part numbers and completion still
+requires the complete `1..N` set:
+
+```go
+body := []byte("request body")
+sum := sha256.Sum256(body)
+receipt, err := client.CreateReceipt(ctx, straw.CreateReceiptInput{
+    Direction: "request", SizeBytes: int64(len(body)), SHA256Hex: hex.EncodeToString(sum[:]),
+})
+if err != nil { log.Fatal(err) }
+if _, err = client.UploadReceiptPart(ctx, receipt.ReceiptID, 1, bytes.NewReader(body), int64(len(body)), hex.EncodeToString(sum[:])); err != nil {
+    log.Fatal(err)
+}
+if _, err = client.CompleteReceipt(ctx, receipt.ReceiptID); err != nil { log.Fatal(err) }
+response, err := client.Do(ctx, straw.Request{
+    Method: "POST", URL: "https://example.com/upload", Replayable: false,
+    Body: &straw.RequestBody{Mode: "receipt", ReceiptID: receipt.ReceiptID},
+})
+if err != nil { log.Fatal(err) }
+fmt.Println(response.Status, response.RequestID)
+```
+
+Add `bytes`, `crypto/sha256`, and `encoding/hex` to the imports in this receipt example. For a response receipt,
+set `ResponseBodyMode: "receipt"`, read `response.Body.ReceiptID`, and close the `io.ReadCloser` returned by
+`DownloadReceipt` after copying it.
+
 ## Python
 
 Install the exact public tag:
@@ -53,14 +96,25 @@ uv add 'straw-sdk @ git+https://github.com/beremaran/straw-sdk-python.git@v0.1.0
 ```
 
 ```python
-from straw import Client, Request
+import os
 
-client = Client("http://localhost:8080")
-response = client.do(Request(method="GET", url="https://example.com"))
-print(response.status, response.request_id)
+from straw import APIError, Client, Header, Request
+
+client = Client("http://localhost:8080", os.getenv("STRAW_AUTH_TOKEN", ""), timeout=30.0)
+try:
+    response = client.do(Request(
+        method="GET",
+        url="https://example.com",
+        headers=[Header(name="X-Request-Source", value_base64="YXBw")],
+    ))
+    print(response.status, response.request_id)
+except APIError as exc:
+    print(exc.http_status, exc.response.code, exc.response.retryable, exc.response.request_id)
 ```
 
-Pass a token as the second `Client` argument. Non-200 Straw responses raise `straw.APIError`.
+Pass a token as the second `Client` argument. The exact `v0.1.0` package exposes `Client`, `Request`, `Header`,
+`RequestBody`, `Response`, `Receipt`, and `APIError` as used above. Non-2xx Straw responses raise `straw.APIError`;
+inspect `exc.http_status` and the typed `exc.response` envelope.
 
 Reuse a client rather than creating one per request. Supply explicit request timeouts and let cancellation/errors
 propagate; there is no automatic retry. A shared client may be used by concurrent application tasks according to the
@@ -71,8 +125,29 @@ The Python client provides matching `create_receipt`, `upload_receipt_part`, `co
 `download_receipt` methods. `RequestBody(mode="receipt", receipt_id=...)` and
 `Request(response_body_mode="receipt", ...)` select the receipt paths.
 
+Example request-body upload:
+
+```python
+import hashlib
+
+body = b"request body"
+digest = hashlib.sha256(body).hexdigest()
+receipt = client.create_receipt("request", len(body), digest, "upload-42")
+client.upload_receipt_part(receipt.receipt_id, 1, body, digest)
+client.complete_receipt(receipt.receipt_id)
+response = client.do(Request(
+    method="POST",
+    url="https://example.com/upload",
+    body=RequestBody(mode="receipt", receipt_id=receipt.receipt_id),
+))
+print(response.status, response.request_id)
+```
+
 The Python package also contains the lower-level worker SDK. See [custom workers](egress_worker.md).
 
 The REST clients are the most stable SDK surface. Worker SDKs follow the negotiated protocol compatibility matrix and
 may change between pre-1.0 minors. Generated package documentation and source are linked from the public tagged
 repositories; use only versions listed in [Compatibility and versioning](compatibility.md).
+
+Both public clients default `GET`, `HEAD`, and `OPTIONS` to replayable; other methods remain non-replayable unless the
+tagged client request type permits an explicit override. Neither client automatically retries a failed request.

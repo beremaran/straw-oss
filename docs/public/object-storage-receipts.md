@@ -37,28 +37,39 @@ sequenceDiagram
 
 Calculate the final byte length and SHA-256 digest before creating the receipt:
 
-```sh
+```bash
 body=large-request.bin
 size=$(wc -c < "$body" | tr -d ' ')
 sha256=$(shasum -a 256 "$body" | cut -d' ' -f1)
 
-curl -sS -X POST http://localhost:8080/api/v1/receipts \
+auth_args=()
+if [ -n "${STRAW_AUTH_TOKEN:-}" ]; then
+  auth_args=(-H "Authorization: Bearer $STRAW_AUTH_TOKEN")
+fi
+
+curl -sS -X POST "${auth_args[@]}" http://localhost:8080/api/v1/receipts \
   -H 'Content-Type: application/json' \
   -d "{\"direction\":\"request\",\"size_bytes\":$size,\"sha256_hex\":\"$sha256\",\"idempotency_key\":\"upload-42\"}"
 ```
 
-The response contains `receipt_id`, `status_url`, `part_upload_template`, and `complete_url`. Upload one-based,
-contiguous parts. A part can be safely replaced with the same number after an interruption:
+In local development, the token is usually unset and `auth_args` stays empty. In a protected deployment, set
+`STRAW_AUTH_TOKEN`; the same bearer header is required for every client receipt lifecycle request. The response
+contains `receipt_id`, `status_url`, `part_upload_template`, and `complete_url`. Use positive part numbers; uploads
+may arrive out of order and a part can be safely replaced with the same number after an interruption:
 
-```sh
-curl -sS -X PUT --data-binary @large-request.bin \
+```bash
+curl -sS -X PUT "${auth_args[@]}" \
+  -H "Content-Length: $size" \
+  --data-binary @large-request.bin \
   http://localhost:8080/api/v1/receipts/RECEIPT_ID/parts/1
-curl -sS -X POST http://localhost:8080/api/v1/receipts/RECEIPT_ID/complete
+curl -sS -X POST "${auth_args[@]}" \
+  http://localhost:8080/api/v1/receipts/RECEIPT_ID/complete
 ```
 
-`Content-Length` is required on each part. `X-Straw-Part-SHA256` may declare a part checksum. Completion requires
-parts `1..N`, streams them into the final object, and compares the final size and SHA-256 with the original
-declaration. Missing, oversized, or corrupted objects never become `verified`.
+`Content-Length` is required on each part, including a zero-byte part. `X-Straw-Part-SHA256` may declare a part
+checksum. Completion requires the uploaded set to be exactly parts `1..N`, streams them into the final object, and
+compares the final size and SHA-256 with the original declaration. Missing, oversized, or corrupted objects never
+become `verified`.
 
 Use the verified receipt in a normal request:
 
@@ -92,9 +103,10 @@ terminal frame, the success envelope contains a body like:
 
 Inspect or download it with the same deployment authorization used for requests:
 
-```sh
-curl -sS http://localhost:8080/api/v1/receipts/RECEIPT_ID
-curl -o response.bin http://localhost:8080/api/v1/receipts/RECEIPT_ID/content
+```bash
+curl -sS "${auth_args[@]}" http://localhost:8080/api/v1/receipts/RECEIPT_ID
+curl -sS "${auth_args[@]}" -o response.bin \
+  http://localhost:8080/api/v1/receipts/RECEIPT_ID/content
 ```
 
 The download includes `Content-Length` and `X-Straw-SHA256`.
@@ -122,8 +134,12 @@ stateDiagram-v2
   expired --> [*]
 ```
 
+The diagram shows the normal upload and assignment path. The current cancellation endpoint also accepts records in
+`rejected` or `expired` state, except for `assigned` and `consumed`, and records the result as `cancelled`.
+
 - `GET /api/v1/receipts/{id}` is the durable status/check API.
-- `DELETE /api/v1/receipts/{id}` cancels an unassigned receipt and removes its body and parts.
+- `DELETE /api/v1/receipts/{id}` marks any record other than `assigned` or `consumed` as cancelled and removes its
+  body and parts; repeating it for a cancelled record is safe.
 - `POST /api/v1/receipts/{id}/complete` is idempotent after verification. An interrupted verification can be retried;
   uploaded parts remain durable.
 - `idempotency_key` returns the original receipt only when direction, size, and checksum match.

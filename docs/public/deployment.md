@@ -52,6 +52,12 @@ Combine the base file with `compose.object-storage.yml` after adapting `control.
 receipt transport. This profile requires a shared S3-compatible store and receipt signing key. The local
 `make dev-receipts` profile uses a private persistent filesystem volume instead.
 
+### Compose overlay commands
+
+Run `config` before `up` so missing environment values and the final merged mounts are visible. Choose the runtime
+administration or receipt overlay when it replaces the base Control configuration; the checked-in examples are not a
+single arbitrary collection of mix-and-match overlays.
+
 ```sh
 cp deploy/production/.env.example deploy/production/.env
 $EDITOR deploy/production/.env
@@ -59,6 +65,38 @@ docker compose --env-file deploy/production/.env \
   -f deploy/production/compose.yml config
 docker compose --env-file deploy/production/.env \
   -f deploy/production/compose.yml up -d --build
+```
+
+Runtime administration:
+
+```sh
+docker compose --env-file deploy/production/.env \
+  -f deploy/production/compose.yml \
+  -f deploy/production/compose.runtime-admin.yml config
+docker compose --env-file deploy/production/.env \
+  -f deploy/production/compose.yml \
+  -f deploy/production/compose.runtime-admin.yml up -d --build
+```
+
+Receipts:
+
+```sh
+docker compose --env-file deploy/production/.env \
+  -f deploy/production/compose.yml \
+  -f deploy/production/compose.object-storage.yml config
+docker compose --env-file deploy/production/.env \
+  -f deploy/production/compose.yml \
+  -f deploy/production/compose.object-storage.yml up -d --build
+```
+
+The standalone HA example has its own NATS, Redis, two Controls, load balancer, and Egress service; run it as a
+separate Compose project rather than layering it over `compose.yml`:
+
+```sh
+docker compose --env-file deploy/production/.env \
+  -f deploy/production/compose.ha.yml config
+docker compose --env-file deploy/production/.env \
+  -f deploy/production/compose.ha.yml up -d --build
 ```
 
 Before real use:
@@ -73,19 +111,36 @@ Before real use:
 
 ### Adaptable TLS reverse proxy
 
-`compose.tls.yml` adds HAProxy in front of Control on port `8443`. Place the managed certificate followed by its
+`compose.tls.yml` adds HAProxy in front of Control. Its listener defaults to `0.0.0.0:8443`; set
+`STRAW_TLS_BIND` and `STRAW_TLS_PORT` to change the host bind and port. Place the managed certificate followed by its
 private key in `deploy/production/secrets/straw.pem` with owner-only permissions, then combine the base and TLS files.
 The secret path is deliberately untracked; never use the ephemeral QA certificate in production.
 
 ```sh
+install -m 600 /path/to/managed-certificate-and-key.pem deploy/production/secrets/straw.pem
 docker compose --env-file deploy/production/.env \
   -f deploy/production/compose.yml -f deploy/production/compose.tls.yml config
+docker compose --env-file deploy/production/.env \
+  -f deploy/production/compose.yml -f deploy/production/compose.tls.yml up -d --build
 make tls-proxy-check
 ```
 
-The example requires TLS 1.2+, forwards `X-Forwarded-Proto: https`, checks Control readiness, and leaves metrics/NATS
-off the public listener. Adapt hostname, managed certificate delivery, client/body/time limits, access logging, and
-network firewall before use.
+`make tls-proxy-check` validates the checked-in HAProxy configuration and an ephemeral owned QA request path; it does
+not install or validate a production certificate. The example requires TLS 1.2+, forwards `X-Forwarded-Proto: https`,
+checks Control readiness, and leaves metrics/NATS off the public listener. Adapt hostname, managed certificate
+delivery, client/body/time limits, access logging, and network firewall before use.
+
+After any profile starts, verify the merged configuration, service health, and request path from the same network as
+your client:
+
+```sh
+docker compose --env-file deploy/production/.env \
+  -f deploy/production/compose.yml ps
+curl -fsS http://127.0.0.1:8080/readyz
+```
+
+For the TLS overlay, use `https://127.0.0.1:${STRAW_TLS_PORT:-8443}/readyz` with the managed CA or certificate. Do not
+disable certificate verification merely to make a smoke request pass.
 
 ## Capacity and host requirements
 

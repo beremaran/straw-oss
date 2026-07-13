@@ -62,10 +62,89 @@ the stored record and clears derived fields from a previous pattern:
 }
 ```
 
+Use `action: "deny"` for a normal block or `action: "allow_override"` only for an explicitly reviewed exception;
+the latter is checked against resolved addresses and built-in safety ranges as described in the architecture guide.
+
 The response contains `normalized_host: "example.com"` and `normalized_cidr: "192.168.1.0/24"`. Supplying malformed
 patterns, unsupported actions, invalid header operations or values, duplicate policy records, or fingerprint metadata
 that the official Egress worker cannot execute is rejected at PUT time. Existing snapshots that predate raw patterns
 remain readable when their normalized destination field is valid.
+
+### Complete runtime snapshot example
+
+The Admin API replaces the complete runtime snapshot. A request that contains only one field is not a partial update;
+it is an invalid or incomplete policy unless the omitted collections are intentionally empty. This is the smallest
+useful snapshot for a deployment with one official Egress pool and a default route:
+
+```json
+{
+  "config_version": 1,
+  "default_timeout_ms": 60000,
+  "max_timeout_ms": 300000,
+  "routing_rules": [
+    {
+      "id": "default",
+      "priority": 100,
+      "enabled": true,
+      "target_pool_id": "default",
+      "match": {}
+    }
+  ],
+  "executor_pools": [
+    {"id": "default", "executor_type": "egress", "enabled": true}
+  ],
+  "destination_policy": [],
+  "injection_policies": [],
+  "fingerprint_profiles": [
+    {
+      "name": "default",
+      "enabled": true,
+      "supported_by_worker": true,
+      "executor_type": "egress",
+      "profile_ref": "default"
+    }
+  ],
+  "worker_settings": []
+}
+```
+
+`config_version` is numeric inside a runtime snapshot and is advanced by Control. The static file envelope uses the
+separate string literal `"config_version": "v1"`; do not copy the file envelope into the Admin API. Snapshot timeout
+values are milliseconds. An omitted request timeout uses `default_timeout_ms` and is capped at `max_timeout_ms`.
+
+### Runtime header injection
+
+Injection policies are enabled groups of ordered `set`, `append`, and `remove` operations. Enabled policies are
+applied in policy-ID order; operations within a policy keep their declared order. Values are standard base64 and are
+decoded before the upstream request is built. This example sets a trace source, appends a second value, and removes a
+debug header:
+
+```json
+{
+  "injection_policies": [
+    {
+      "id": "trace",
+      "enabled": true,
+      "operations": [
+        {"op": "set", "header_name": "X-Trace-Source", "value_base64": "c3RyYXc="},
+        {"op": "append", "header_name": "X-Trace-Source", "value_base64": "c2VydmljZQ=="}
+      ]
+    },
+    {
+      "id": "remove-debug",
+      "enabled": true,
+      "operations": [
+        {"op": "remove", "header_name": "X-Debug", "value_base64": ""}
+      ]
+    }
+  ]
+}
+```
+
+Header names must be valid HTTP field names and are limited to 256 bytes at snapshot validation. A duplicate enabled
+`set` for the same header is rejected. `Host`, `Content-Length`, `Transfer-Encoding`, `Connection`,
+`Proxy-Authorization`, and every `X-Straw-*` header are reserved and cannot be injected. The aggregate injected name
+and decoded-value bytes must fit `control.transport.max_frame_data_bytes`; CR/LF and non-standard base64 are rejected.
 
 Executor pools and routing rules are part of the runtime snapshot. A pool is deployment-scoped: its `enabled` flag,
 exact `executor_type`, required `tags`, degraded-worker policy, and allowed country/region/IP-type lists are enforced
@@ -230,7 +309,7 @@ unless it is part of a runtime snapshot activated through the Admin API.
 | match | `tags`, `country`, `region`, `ip_type`, `ingress_type`, `target_host`; omitted members do not restrict the match |
 | executor pool | `executor_pools`, `id`, `enabled`, `executor_type`, `tags`, `allow_degraded_workers`, `allowed_ip_types`, `allowed_countries`, `allowed_regions`; pool IDs are unique; disabled pools receive no new assignments; executor type and tags are hard worker-eligibility constraints; non-empty allowed lists bound the worker's advertised capabilities |
 | destination rule | `destination_policy`, `rule_type`, `action`, `reason`, `raw_pattern`, `normalized_host`, `normalized_cidr`, `normalized_ip`, `normalized_name`; raw patterns are authoritative, normalized fields are server output, and malformed rules are rejected before activation |
-| injection policy | `injection_policies`, `operations`, `op`, `header_name`, `value_base64`; header operations preserve declared order and reject invalid names/values |
+| injection policy | `injection_policies`, `id`, `enabled`, `operations`, `op`, `header_name`, `value_base64`; policies are applied by ID, operations preserve declared order, reserved headers and duplicate enabled `set` operations are rejected |
 | fingerprint profile | `fingerprint_profiles`, `name`, `scope_type`, `supported_by_worker`, `executor_type`, `profile_ref`, `contract_revision`; activation requires worker support |
 | worker setting | `worker_settings`, `worker_id`, `enabled`, `draining`; lifecycle changes are deployment-scoped |
 | snapshot | `config_version`, `default_timeout_ms`, `max_timeout_ms`; versions increase and timeout bounds must be positive and ordered |

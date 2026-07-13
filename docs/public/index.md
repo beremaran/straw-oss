@@ -25,10 +25,11 @@ add durable runtime policy, shared Control coordination, and large-body receipts
 ## Start here
 
 1. Follow the [quickstart](quickstart.md) to run Straw locally and send a request.
-2. Read the [architecture](architecture.md) to understand the three services.
-3. Use the [request API](api/requests.md), [proxy ingress](proxy-ingress.md), [CLI](cli.md), or [SDKs](sdk.md) from your
+2. Choose [a released build](installation.md) or build the local Compose stack.
+3. Read the [architecture](architecture.md) to understand the three services.
+4. Use the [request API](api/requests.md), [proxy ingress](proxy-ingress.md), [CLI](cli.md), or [SDKs](sdk.md) from your
    application.
-4. Review [configuration](configuration.md), [deployment](deployment.md), and [security](security.md) before exposing
+5. Review [configuration](configuration.md), [deployment](deployment.md), and [security](security.md) before exposing
    Control outside a development machine. Use [runtime administration](runtime-administration.md) when policy must
    change without restarts.
 

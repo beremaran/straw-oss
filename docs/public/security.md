@@ -48,7 +48,9 @@ its owned verification is skipped or when logs contain synthetic canary tokens, 
 
 Straw accepts only absolute HTTP/HTTPS URLs, rejects URL user information, validates headers, limits bodies and
 timeouts, and manages hop-by-hop headers. The deployment policy rejects destinations that violate built-in safety
-rules. TLS is verified by the worker's HTTP stack.
+rules, including post-DNS resolved-address checks and CNAME suffix checks. See [Destination policy and egress
+safety](architecture.md#destination-policy-and-egress-safety) for the built-in denied ranges, override precedence, and
+redirect behavior. TLS is verified by the worker's HTTP stack.
 
 Bearer tokens, NATS passwords, and the Redis URL are environment values in the production examples. URL-encode Redis
 credentials when necessary. Do not commit `.env` files or place secret values in JSON configuration.
