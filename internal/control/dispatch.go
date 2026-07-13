@@ -507,7 +507,7 @@ func (d *DefaultRequestDispatcher) routeWithWorkers(in DispatchInput, snapshot c
 		IPType:             in.Request.Routing.IPType,
 		IngressType:        in.Request.IngressType,
 		TargetHost:         strings.ToLower(in.Request.URL.Hostname()),
-		StickySessionID:    in.Request.StickySessionID,
+		StickySessionID:    in.Request.Routing.StickySessionID,
 		FingerprintProfile: in.Request.Fingerprint,
 	})
 }

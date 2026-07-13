@@ -11,6 +11,13 @@ curl -sS http://localhost:8080/api/v1/requests \
     "url": "https://httpbin.org/anything",
     "headers": [{"name":"Content-Type","value_base64":"YXBwbGljYXRpb24vanNvbg=="}],
     "body": {"mode":"inline_base64","data_base64":"eyJoZWxsbyI6IndvcmxkIn0="},
+    "routing": {
+      "tags": ["datacenter"],
+      "country": "AU",
+      "region": "ap-southeast-2",
+      "ip_type": "residential",
+      "sticky_session_id": "checkout-session-42"
+    },
     "timeout_ms": 30000,
     "replayable": false
   }'
@@ -24,6 +31,12 @@ curl -sS http://localhost:8080/api/v1/requests \
 | `url` | yes | Absolute `http` or `https` URL. URL user info is rejected. |
 | `headers` | no | Ordered `{name,value_base64}` entries. Duplicate names are preserved. |
 | `body` | no | Inline `{mode:"inline_base64",data_base64:"..."}` or verified `{mode:"receipt",receipt_id:"..."}`. |
+| `routing` | no | Worker-routing constraints. Omit it when the deployment's ordinary route should choose the worker. |
+| `routing.tags` | no | Non-empty unique string tags required of the worker. Up to 32 tags; each is at most 64 bytes. |
+| `routing.country` | no | Two-letter ISO country code constraint; Straw normalizes it to uppercase. |
+| `routing.region` | no | Non-empty region identifier constraint, up to 128 bytes. |
+| `routing.ip_type` | no | Non-empty worker IP-type constraint, up to 128 bytes. |
+| `routing.sticky_session_id` | no | Session identifier used to prefer the same eligible worker while its rule pin remains valid. |
 | `response_body_mode` | no | `inline_base64` (default) or `receipt` when the object-storage profile is enabled. |
 | `fingerprint_profile` | no | Exact, case-sensitive built-in profile name. Omit it for ordinary TLS. See the [fingerprint catalogue](../compatibility.md#fingerprint-profile-catalogue). |
 | `timeout_ms` | no | Total deadline, from 1000 ms through the configured maximum. |
@@ -38,6 +51,20 @@ Fingerprinting controls TLS ClientHello and, when negotiated, HTTP/2 settings, f
 and priority behavior. It does not synthesize browser application headers, cookies, JavaScript, or browser state.
 HTTP/3 is not supported. A named request fails with `unsupported_fingerprint` if the selected worker does not
 advertise the exact profile.
+
+## Routing behavior
+
+Routing rules are evaluated in ascending priority order. A configured rule constraint must be present in the request
+and match; an omitted routing value does not silently satisfy a configured `country`, `region`, `ip_type`, ingress,
+or host constraint. When a routing hint is supplied, the selected worker must advertise the corresponding capability;
+a worker with a missing capability claim is not treated as a wildcard. Tags require the worker to advertise every
+requested tag.
+
+`sticky_session_id` pins selection to the worker previously selected for that deployment and session while the rule's
+sticky TTL is valid. If that worker is unavailable, the rule's `allow_sticky_fallback` setting determines whether Straw
+may select another eligible worker or returns `sticky_session_unavailable`. If every otherwise eligible worker is at
+capacity, Straw returns `executor_capacity_exhausted`. With no routing hints, normal rule priority and worker capacity
+selection apply.
 
 ## Success
 
