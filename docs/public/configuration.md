@@ -34,6 +34,48 @@ otherwise trusted development network.
 `bucket: "STRAW_RUNTIME_CONFIG"`, and `history_limit: 64`. The named token environment variable must be non-empty,
 and NATS must have JetStream file storage enabled. See [Runtime administration](runtime-administration.md).
 
+Executor pools and routing rules are part of the runtime snapshot. A pool is deployment-scoped: its `enabled` flag,
+exact `executor_type`, required `tags`, degraded-worker policy, and allowed country/region/IP-type lists are enforced
+when Control selects a worker. For example, a deployment can route residential traffic to a dedicated pool:
+
+```json
+{
+  "config_version": 1,
+  "executor_pools": [
+    {
+      "id": "default",
+      "executor_type": "egress",
+      "enabled": true
+    },
+    {
+      "id": "residential-au",
+      "executor_type": "egress",
+      "tags": ["residential"],
+      "enabled": true,
+      "allow_degraded_workers": false,
+      "allowed_countries": ["AU"],
+      "allowed_regions": ["ap-southeast-2"],
+      "allowed_ip_types": ["residential"]
+    }
+  ],
+  "routing_rules": [
+    {
+      "id": "residential-au",
+      "priority": 10,
+      "enabled": true,
+      "target_pool_id": "residential-au",
+      "match": {"country": "AU", "ip_type": "residential"}
+    }
+  ]
+}
+```
+
+`enabled: false` stops new assignments to that pool while existing requests continue. A worker is eligible only when
+it claims membership in the target pool, has the pool's exact executor type, advertises every required pool tag, and
+keeps all claimed countries, regions, and IP types within the pool's allowed lists. A non-empty request constraint
+must also be advertised by the worker. `allow_degraded_workers` controls whether a live degraded worker may be used.
+Unknown pool references and duplicate pool memberships are rejected before registration or activation.
+
 ### Optional shared runtime state
 
 `runtime_state.backend` defaults to `memory`. Set it to `redis` only when multiple Control instances must be
@@ -79,7 +121,13 @@ encryption accepts `AES256` or `aws:kms`; the latter also requires `kms_key_id`.
     "worker_id": "egress-1",
     "heartbeat_interval_ms": 5000,
     "health_port": 8090,
-    "capabilities": {"max_concurrency": 4},
+    "capabilities": {
+      "max_concurrency": 4,
+      "allowed_pools": [
+        {"pool_id": "default"},
+        {"pool_id": "residential-au"}
+      ]
+    },
     "nats": {"servers": ["nats://127.0.0.1:4222"]},
     "upstream_connection_pool": {"enabled": false},
     "http2": {"enabled": false, "fallback_cache_ttl_ms": 300000}
@@ -87,7 +135,10 @@ encryption accepts `AES256` or `aws:kms`; the latter also requires `kms_key_id`.
 }
 ```
 
-Worker IDs must be unique within a deployment. `max_concurrency` defaults to `4`. The optional connection pool can
+Worker IDs must be unique within a deployment. `max_concurrency` defaults to `4`. When `allowed_pools` is omitted,
+the official worker claims `default/default`, preserving the original behavior. Each entry may omit `deployment_id`,
+which defaults to `default`; entries must be unique and refer to the deployment's configured pools. The official
+worker does not provide tenant or cross-deployment authorization. The optional connection pool can
 reuse upstream connections; when enabled its defaults are 8 idle connections per deployment/host, 30 seconds idle
 timeout, and 5 minutes maximum lifetime.
 
@@ -128,7 +179,7 @@ stores environment-variable **names**, never secret values.
 | object storage limits | `download_base_url`, `max_object_bytes`, `max_part_bytes`, `retention_seconds`, `assignment_ttl_seconds`, `cleanup_interval_seconds` | `http://control:8080`, 1 GiB, 16 MiB, 86400, 300, 3600; positive; part ≤ object |
 | object encryption | `server_side_encryption`, `kms_key_id` | empty; `AES256` or `aws:kms`; KMS mode requires key ID |
 | Egress identity | `worker_id`, `heartbeat_interval_ms`, `health_port` | `egress-1`, 5000, 8090; non-empty/positive valid port |
-| Egress capabilities | `tags`, `countries`, `regions`, `ip_types`, `supported_ingress_modes`, `max_concurrency` | empty lists except ingress `rest`, `http_proxy`, `connect`; official workers advertise the built-in fingerprint catalogue; concurrency defaults to 4 at worker composition |
+| Egress capabilities | `allowed_pools`, `tags`, `countries`, `regions`, `ip_types`, `supported_ingress_modes`, `max_concurrency` | `allowed_pools` defaults to `[{"deployment_id":"default","pool_id":"default"}]`; other lists are empty except ingress `rest`, `http_proxy`, `connect`; official workers advertise the built-in fingerprint catalogue; concurrency defaults to 4 at worker composition |
 | connection pool | `enabled`, `max_idle_conns_per_host`, `idle_timeout_ms`, `max_lifetime_ms` | false; when enabled 8, 30000, 300000 |
 | HTTP/2 | `enabled`, `fallback_cache_ttl_ms` | false, 300000 |
 | NATS | `servers`, `user_credentials_file`, `username_env`, `password_env` | `nats://127.0.0.1:4222`, empty; credential file or named user/password environment variables |
@@ -144,12 +195,12 @@ unless it is part of a runtime snapshot activated through the Admin API.
 | --- | --- |
 | routing rule | `routing_rules`, `id`, `priority`, `enabled`, `match`, `target_pool_id`, `sticky_session_ttl_seconds`, `allow_sticky_fallback`; priorities define ordering and referenced pools must exist |
 | match | `tags`, `country`, `region`, `ip_type`, `ingress_type`, `target_host`; omitted members do not restrict the match |
-| executor pool | `executor_pools`, `executor_type`, `tags`, `allow_degraded_workers`, `allowed_ip_types`, `allowed_countries`, `allowed_regions`; identifiers are unique |
+| executor pool | `executor_pools`, `id`, `enabled`, `executor_type`, `tags`, `allow_degraded_workers`, `allowed_ip_types`, `allowed_countries`, `allowed_regions`; pool IDs are unique; disabled pools receive no new assignments; executor type and tags are hard worker-eligibility constraints; non-empty allowed lists bound the worker's advertised capabilities |
 | destination rule | `destination_policy`, `rule_type`, `action`, `reason`, `raw_pattern`, `normalized_host`, `normalized_cidr`, `normalized_ip`, `normalized_name`; normalized fields are server output and precedence follows validated rule order |
 | injection policy | `injection_policies`, `operations`, `op`, `header_name`, `value_base64`; header operations preserve declared order and reject invalid names/values |
 | fingerprint profile | `fingerprint_profiles`, `name`, `scope_type`, `supported_by_worker`, `executor_type`, `profile_ref`, `contract_revision`; activation requires worker support |
 | worker setting | `worker_settings`, `worker_id`, `enabled`, `draining`; lifecycle changes are deployment-scoped |
 | snapshot | `config_version`, `default_timeout_ms`, `max_timeout_ms`; versions increase and timeout bounds must be positive and ordered |
-| Egress capabilities | `countries`, `regions`, `ip_types`, `supported_ingress_modes`; values describe admission capabilities rather than network authorization |
+| Egress capabilities | `allowed_pools`, `countries`, `regions`, `ip_types`, `supported_ingress_modes`; values describe pool membership and admission capabilities rather than network authorization; omitted pool membership is `default/default`; duplicate, unknown, or non-default deployment references are rejected |
 | upstream connection pool | `max_idle_conns_per_host`, `idle_timeout_ms`, `max_lifetime_ms`; zero/negative invalid values are rejected by config validation |
 | object storage | `local_directory`, `max_part_bytes`, `assignment_ttl_seconds`, `cleanup_interval_seconds`, `server_side_encryption`; local storage is development-only and production encryption/retention are operator responsibilities |

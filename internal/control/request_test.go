@@ -63,7 +63,7 @@ func TestValidateRequestAcceptsRoutingHints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ValidateRequest() error = %v", err)
 	}
-	if got := req.Routing; got.Country != "AU" || got.Region != "ap-southeast-2" || got.IPType != "residential" || got.StickySessionID != "session-1" || len(got.Tags) != 1 || got.Tags[0] != "datacenter" {
+	if got := req.Routing; got.Country != "AU" || got.Region != routingRegion || got.IPType != routingIPType || got.StickySessionID != "session-1" || len(got.Tags) != 1 || got.Tags[0] != "datacenter" {
 		t.Fatalf("routing hints = %+v", got)
 	}
 }

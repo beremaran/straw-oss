@@ -38,12 +38,13 @@ func runDeploymentControl(ctx context.Context, cfg config.ControlConfig, natsCon
 		registry = control.NewSharedWorkerRegistry(ctx, control.DefaultWorkerTimings(), nil, state, time.Duration(cfg.RuntimeState.WorkerTTLMS)*time.Millisecond)
 	}
 
+	configCache := newDeploymentConfigCache()
+	registry.ApplySnapshot(configCache.Snapshot())
+
 	err = control.SetupWorkerDiscoverySubscriptions(ctx, natsConn, registry)
 	if err != nil {
 		return fmt.Errorf("setup worker discovery: %w", err)
 	}
-
-	configCache := newDeploymentConfigCache()
 
 	receipts, err := setupReceiptTransport(ctx, cfg)
 	if err != nil {

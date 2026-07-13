@@ -2,8 +2,10 @@ package control
 
 import (
 	"context"
+	"strings"
 	"testing"
 
+	"github.com/beremaran/straw-oss/internal/config"
 	"github.com/beremaran/straw-oss/internal/fingerprint"
 	strawpb "github.com/beremaran/straw-protos-go/straw/v1"
 )
@@ -62,6 +64,43 @@ func TestWorkerRegistrationAcceptsOnlyExactCatalogueCapabilities(t *testing.T) {
 		outcome, err = registry.Register(context.Background(), request(test.name, test.profiles))
 		if err != nil || outcome.OK || outcome.Reason != rejectCapabilityScope {
 			t.Errorf("%s registration = %+v, %v; want capability rejection", test.name, outcome, err)
+		}
+	}
+}
+
+func TestWorkerRegistrationValidatesConfiguredPoolMembership(t *testing.T) {
+	t.Parallel()
+
+	registry := NewDeploymentWorkerRegistry(DefaultWorkerTimings(), nil)
+	snapshot := config.NewSnapshot(1)
+	snapshot.ExecutorPools = []config.ExecutorPool{
+		{ID: config.DefaultPoolID, ExecutorType: errorCategoryEgress, Enabled: true},
+		{ID: routingIPType, ExecutorType: errorCategoryEgress, Enabled: true},
+	}
+	registry.ApplySnapshot(snapshot)
+
+	request := func(refs ...*strawpb.RegisterRequest_PoolRef) *strawpb.RegisterRequest {
+		return &strawpb.RegisterRequest{WorkerId: "pool-worker", ExecutorType: errorCategoryEgress, ProtocolMajor: ProtocolMajor, AllowedPools: refs}
+	}
+
+	accepted, err := registry.Register(context.Background(), request(
+		&strawpb.RegisterRequest_PoolRef{PoolId: config.DefaultPoolID},
+		&strawpb.RegisterRequest_PoolRef{PoolId: routingIPType},
+	))
+	if err != nil || !accepted.OK {
+		t.Fatalf("multi-pool registration = %+v, %v", accepted, err)
+	}
+
+	for name, refs := range map[string][]*strawpb.RegisterRequest_PoolRef{
+		"unknown":          {{PoolId: "missing"}},
+		"duplicate":        {{PoolId: routingIPType}, {PoolId: routingIPType}},
+		"wrong deployment": {{DeploymentId: "other", PoolId: "residential"}},
+	} {
+		requestCopy := request(refs...)
+		requestCopy.WorkerId = "invalid-" + strings.ReplaceAll(name, " ", "-")
+		outcome, regErr := registry.Register(context.Background(), requestCopy)
+		if regErr != nil || outcome.OK || outcome.Reason != rejectInvalidPool {
+			t.Errorf("%s registration = %+v, %v; want %s", name, outcome, regErr, rejectInvalidPool)
 		}
 	}
 }

@@ -101,8 +101,8 @@ curl -sS -X PUT \
   http://localhost:8080/api/v1/admin/config
 ```
 
-Control validates the complete snapshot before the durable compare-and-swap. Invalid references, duplicate IDs, or
-invalid timeouts return `422` and nothing is activated. Accepted changes receive the next `config_version`, are
+Control validates the complete snapshot before the durable compare-and-swap. Invalid pool references, duplicate pool
+memberships, duplicate IDs, or invalid timeouts return `422` and nothing is activated. Accepted changes receive the next `config_version`, are
 atomically applied to new requests, and are repeatedly published to workers. Requests already running keep the
 immutable snapshot with which they started.
 
