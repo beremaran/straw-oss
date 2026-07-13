@@ -69,6 +69,17 @@ prevents two operators from silently overwriting one another.
 Set `X-Straw-Actor` to a stable operator or automation identity. It is recorded in history for attribution; bearer
 authentication remains the authorization decision.
 
+How an accepted change reaches the fleet:
+
+```mermaid
+flowchart LR
+  Op["Operator or dashboard"] -->|"PUT with If-Match ETag"| C["Control"]
+  C -->|validate full snapshot| C
+  C -->|durable compare-and-swap| KV[("JetStream KV<br/>current config + history")]
+  C -->|repeated publish| W["Workers"]
+  W -->|"acknowledge version<br/>(rollout leaves pending)"| C
+```
+
 ### Replace configuration
 
 Read the record and ETag, edit its `snapshot`, and send that snapshot as the PUT body:

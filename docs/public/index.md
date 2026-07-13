@@ -8,6 +8,16 @@ Straw is a self-hosted HTTP/HTTPS egress proxy. Applications send an HTTP reques
 an Egress worker over NATS, and that worker makes the outbound request. The response comes back as JSON with the body
 encoded as base64, or as an expiring object receipt when that optional profile is enabled.
 
+```mermaid
+flowchart LR
+  App["Application"] -->|HTTP request| Control
+  Control -->|assignment over NATS| Egress["Egress worker"]
+  Egress -->|outbound HTTP/HTTPS| Dest["Destination"]
+  Dest -->|response| Egress
+  Egress -->|response frames| Control
+  Control -->|JSON response or receipt| App
+```
+
 Straw is designed for one trusted deployment boundary. It does not include tenants, accounts, billing, quotas, or an
 analytics database. NATS is the only required backing service. Optional JetStream, Redis, and object-storage profiles
 add durable runtime policy, shared Control coordination, and large-body receipts.

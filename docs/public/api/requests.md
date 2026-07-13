@@ -53,6 +53,17 @@ Control returns HTTP `200` when Straw transported the request, even if the desti
 }
 ```
 
+The `timing` phases map onto the stages a request passes through:
+
+```mermaid
+flowchart LR
+  A["Validate and<br/>select worker"] --> B["Worker acknowledges<br/>assignment"] --> C["Outbound request<br/>and response"] --> D["Response<br/>returned"]
+  A -.- t1["routing_ms"]
+  B -.- t2["assignment_ms"]
+  C -.- t3["egress_ms"]
+  D -.- t4["total_ms"]
+```
+
 `body.truncated` is reserved for compatibility and is currently false. If the upstream body exceeds
 `max_inline_response_body_bytes`, Straw returns `body_too_large` instead of a partial success.
 

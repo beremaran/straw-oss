@@ -4,6 +4,22 @@ The optional HA profile lets a readiness-aware load balancer send any request to
 for expiring coordination state and enables JetStream for durable runtime configuration. The default `make dev` stack
 is unchanged and still requires only NATS.
 
+```mermaid
+flowchart TB
+  LB["Readiness-aware load balancer<br/>(HAProxy in the example)"]
+  LB --> C1["Control 1"]
+  LB --> C2["Control 2"]
+  C1 <--> R[("Redis<br/>expiring coordination state")]
+  C2 <--> R
+  C1 <--> N[("NATS + JetStream KV<br/>transport and durable config")]
+  C2 <--> N
+  N <--> W1["Egress worker"]
+  N <--> W2["Egress worker"]
+```
+
+Any Control can route against the shared worker fleet because worker sessions, capacity, and request ownership live
+in Redis with TTLs and fencing.
+
 ## Start the adaptable example
 
 Copy the production environment template, replace every secret, and start the standalone profile:

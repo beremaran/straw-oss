@@ -11,6 +11,28 @@ That overlay stores objects in a private persistent volume. Production deploymen
 example in `deploy/production/control.object-storage.json` and supply storage credentials through environment
 variables.
 
+The full round trip for a receipt-backed request body:
+
+```mermaid
+sequenceDiagram
+  participant App as Application
+  participant C as Control
+  participant S as Object storage
+  participant W as Egress worker
+
+  App->>C: create receipt (size, SHA-256)
+  App->>C: upload parts 1..N
+  C->>S: store durable parts
+  App->>C: complete
+  C->>S: compose and verify final object
+  C-->>App: receipt verified
+  App->>C: POST /api/v1/requests with receipt_id
+  C->>W: assignment with short-lived BodyRef URL
+  W->>C: download body via signed URL
+  W->>W: re-verify size and SHA-256
+  W->>W: open upstream request
+```
+
 ## Upload a request body
 
 Calculate the final byte length and SHA-256 digest before creating the receipt:
@@ -81,6 +103,24 @@ The download includes `Content-Length` and `X-Straw-SHA256`.
 
 Receipt states are `uploading`, `verifying`, `verified`, `assigned`, `consumed`, `rejected`, `cancelled`, and
 `expired`.
+
+```mermaid
+stateDiagram-v2
+  [*] --> uploading: POST /api/v1/receipts
+  uploading --> verifying: POST .../complete
+  verifying --> verified: size and SHA-256 match
+  verifying --> rejected: missing, oversized,<br/>or corrupted object
+  verified --> assigned: claimed by one request
+  assigned --> consumed: request succeeded
+  assigned --> verified: assignment failed or<br/>lease expired
+  uploading --> cancelled: DELETE unassigned receipt
+  verified --> cancelled: DELETE unassigned receipt
+  verified --> expired: retention_seconds elapsed
+  consumed --> [*]
+  rejected --> [*]
+  cancelled --> [*]
+  expired --> [*]
+```
 
 - `GET /api/v1/receipts/{id}` is the durable status/check API.
 - `DELETE /api/v1/receipts/{id}` cancels an unassigned receipt and removes its body and parts.

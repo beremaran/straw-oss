@@ -32,6 +32,27 @@ for specialized executors. The canonical Egress implementation in this repositor
 workers must keep protocol versions, heartbeats, assignment acknowledgements, capacity, deadlines, and stream framing
 correct. Treat this as an advanced integration surface and pin exact SDK and binding tags.
 
+The lifecycle every worker must implement:
+
+```mermaid
+sequenceDiagram
+  participant W as Worker
+  participant N as NATS
+  participant C as Control
+
+  W->>N: connect with worker credentials
+  W->>C: register ID, protocol range,<br/>capabilities, max concurrency
+  loop while running
+    W->>C: heartbeat with capacity
+  end
+  C->>W: assignment
+  W-->>C: acknowledge (final admission authority)
+  C->>W: bounded request body frames
+  W-->>C: response frames as credit is granted
+  W-->>C: terminal outcome frame
+  Note over W,C: on shutdown: stop heartbeats and admission,<br/>drain active assignments, close NATS cleanly
+```
+
 A worker registers a stable ID, protocol range, executor type, tags/locations/IP modes, ingress modes, fingerprint
 profiles, and maximum concurrency. It becomes assignable only after authenticated registration and heartbeats.
 Admission must reject unsupported request modes/profiles before request start. Stream request bodies only as Control

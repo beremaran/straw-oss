@@ -2,10 +2,17 @@
 
 Straw has three runtime components:
 
-```text
-Application --HTTP--> Control --NATS request/reply--> Egress worker --HTTP/HTTPS--> Destination
-                          |
-                          +-- health, readiness, Prometheus metrics
+```mermaid
+flowchart LR
+  App["Application"] -->|HTTP| Control
+  Control -->|NATS request/reply| NATS[("NATS")]
+  NATS --> Egress["Egress worker"]
+  Egress -->|HTTP/HTTPS| Dest["Destination"]
+  Control -.-> Obs["Health, readiness,<br/>Prometheus metrics"]
+  Control -. optional runtime config .-> JS[("JetStream KV")]
+  Control -. optional HA coordination .-> Redis[("Redis")]
+  Control -. optional receipts .-> OS[("Object storage")]
+  Egress -. assignment-scoped download .-> OS
 ```
 
 **Control** exposes the request API, validates authentication and input, applies the deployment policy, selects a
@@ -29,6 +36,23 @@ response bodies. Control streams verification and composition; NATS carries only
 receipt request. Egress downloads through the assignment URL and verifies size and SHA-256 before use.
 
 ## Request lifecycle
+
+```mermaid
+sequenceDiagram
+  participant App as Application
+  participant C as Control
+  participant W as Egress worker
+  participant U as Destination
+
+  App->>C: POST /api/v1/requests
+  C->>C: validate token, shape, URL,<br/>headers, body size, timeout
+  C->>W: assignment over NATS
+  W-->>C: acknowledge
+  W->>U: outbound HTTP/HTTPS request
+  U-->>W: upstream response
+  W-->>C: response frames over NATS
+  C-->>App: status, headers, body,<br/>phase timings as one JSON response
+```
 
 1. A client posts a request to Control.
 2. Control validates the bearer token, JSON shape, URL, headers, body size, and timeout.

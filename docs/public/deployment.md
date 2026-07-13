@@ -9,6 +9,14 @@
 | receipts | NATS + shared object/record storage | request or response bodies exceed inline transport limits |
 | HA Control | NATS + Redis coordination | multiple interchangeable Controls and failure fencing are required |
 
+```mermaid
+flowchart LR
+  D["default<br/>NATS only"]
+  D -->|+ JetStream storage| RA["runtime administration<br/>durable snapshots and history"]
+  D -->|+ object/record storage| RC["receipts<br/>large request/response bodies"]
+  D -->|+ Redis coordination| HA["HA Control<br/>interchangeable Controls"]
+```
+
 Profiles are additive only where the supplied overlays explicitly compose. Back up JetStream before admin-profile
 changes and receipt records/objects before receipt-profile changes. Redis coordination is expiring state and is not a
 backup authority.
