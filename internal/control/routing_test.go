@@ -23,6 +23,7 @@ const (
 	routingHostPoolID   = denyRuleTypeHost
 	routingCountryID    = "country"
 	routingRegionTag    = "region:au"
+	routingWorkerB      = "worker-b"
 	disabledPoolID      = "disabled-pool"
 )
 
@@ -145,19 +146,19 @@ func TestRouterCapacity(t *testing.T) {
 
 func TestRouterStickySelection(t *testing.T) {
 	sticky := NewStickyStore(nil)
-	sticky.Set(routingDeploymentID, routingSessionID, "worker-b", time.Minute)
+	sticky.Set(routingDeploymentID, routingSessionID, routingWorkerB, time.Minute)
 	rule := RoutingRule{ID: "sticky", DeploymentID: routingDeploymentID, Priority: 1, Enabled: true, TargetPoolID: routingPoolID, StickySessionTTLSeconds: 60}
 	router := NewRouter(
 		NewStaticRuleProvider([]RoutingRule{rule}),
 		NewStaticPoolPolicyProvider([]PoolPolicy{{DeploymentID: routingDeploymentID, PoolID: routingPoolID, Enabled: true}}),
-		testRoutingCandidates{routingPoolID: {routingCandidate("worker-a"), routingCandidate("worker-b")}},
+		testRoutingCandidates{routingPoolID: {routingCandidate("worker-a"), routingCandidate(routingWorkerB)}},
 		sticky,
 		nil,
 	)
 
 	outcome := router.Evaluate(RouteRequest{DeploymentID: routingDeploymentID, StickySessionID: routingSessionID, IngressType: IngressTypeREST})
-	if !outcome.OK || !outcome.Sticky || outcome.WorkerID != "worker-b" {
-		t.Fatalf("sticky outcome = %+v, want worker-b sticky selection", outcome)
+	if !outcome.OK || !outcome.Sticky || outcome.WorkerID != routingWorkerB {
+		t.Fatalf("sticky outcome = %+v, want %s sticky selection", outcome, routingWorkerB)
 	}
 }
 

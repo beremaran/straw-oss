@@ -94,7 +94,7 @@ func TestWorkerRegistrationValidatesConfiguredPoolMembership(t *testing.T) {
 	for name, refs := range map[string][]*strawpb.RegisterRequest_PoolRef{
 		"unknown":          {{PoolId: "missing"}},
 		"duplicate":        {{PoolId: routingIPType}, {PoolId: routingIPType}},
-		"wrong deployment": {{DeploymentId: "other", PoolId: "residential"}},
+		"wrong deployment": {{DeploymentId: "other", PoolId: routingIPType}},
 	} {
 		requestCopy := request(refs...)
 		requestCopy.WorkerId = "invalid-" + strings.ReplaceAll(name, " ", "-")

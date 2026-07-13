@@ -162,7 +162,7 @@ func (h *ProxyHandler) validateHTTPProxyRequest(r *http.Request) (*ValidatedRequ
 		return nil, asValidationError(err)
 	}
 
-	headers, err := proxyRequestHeaders(r.Header)
+	headers, routing, err := proxyRequestHeadersAndRouting(r.Header)
 	if err != nil {
 		return nil, asValidationError(err)
 	}
@@ -178,7 +178,7 @@ func (h *ProxyHandler) validateHTTPProxyRequest(r *http.Request) (*ValidatedRequ
 		Headers:         headers,
 		BodyData:        body,
 		BodySizeBytes:   int64(len(body)),
-		Routing:         RoutingHints{},
+		Routing:         routing,
 		IngressType:     IngressTypeHTTPProxy,
 		TimeoutMs:       0,
 		Replayable:      false,
@@ -187,7 +187,7 @@ func (h *ProxyHandler) validateHTTPProxyRequest(r *http.Request) (*ValidatedRequ
 }
 
 func (h *ProxyHandler) validateConnectRequest(r *http.Request) (*ValidatedRequest, *ValidationError) {
-	_, err := proxyRequestHeaders(r.Header)
+	_, routing, err := proxyRequestHeadersAndRouting(r.Header)
 	if err != nil {
 		return nil, asValidationError(err)
 	}
@@ -212,13 +212,13 @@ func (h *ProxyHandler) validateConnectRequest(r *http.Request) (*ValidatedReques
 		return nil, &ValidationError{Code: errorCodeInvalidRequest, Message: "CONNECT target port must be between 1 and 65535"}
 	}
 
-	target := &url.URL{Scheme: "connect", Host: net.JoinHostPort(host, strconv.FormatUint(port, 10))}
+	target := &url.URL{Scheme: IngressTypeConnect, Host: net.JoinHostPort(host, strconv.FormatUint(port, 10))}
 
 	return &ValidatedRequest{
 		Method:          http.MethodConnect,
 		URL:             target,
 		BodySizeBytes:   -1,
-		Routing:         RoutingHints{},
+		Routing:         routing,
 		IngressType:     IngressTypeConnect,
 		TimeoutMs:       0,
 		Replayable:      false,
@@ -226,10 +226,111 @@ func (h *ProxyHandler) validateConnectRequest(r *http.Request) (*ValidatedReques
 	}, nil
 }
 
+const (
+	proxyHeaderRouteTags          = "x-straw-route-tags"
+	proxyHeaderRouteCountry       = "x-straw-route-country"
+	proxyHeaderRouteRegion        = "x-straw-route-region"
+	proxyHeaderRouteIPType        = "x-straw-route-ip-type"
+	proxyHeaderRouteStickySession = "x-straw-route-sticky-session"
+)
+
+// proxyRequestHeadersAndRouting separates the authenticated proxy control
+// contract from destination headers. All X-Straw-* headers are control-plane
+// input and are removed from decoded upstream forwarding, including unknown
+// future control headers.
+func proxyRequestHeadersAndRouting(header http.Header) ([]HeaderPair, RoutingHints, error) {
+	routing, err := proxyRoutingHints(header)
+	if err != nil {
+		return nil, RoutingHints{}, err
+	}
+
+	forwarded, err := proxyRequestHeaders(header)
+	if err != nil {
+		return nil, RoutingHints{}, err
+	}
+
+	return forwarded, routing, nil
+}
+
+func proxyRoutingHints(header http.Header) (RoutingHints, error) {
+	routing := RoutingHints{}
+
+	for _, raw := range proxyHeaderValues(header, proxyHeaderRouteTags) {
+		for part := range strings.SplitSeq(raw, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				return RoutingHints{}, invalidRoutingError("routing.tags values must not be empty")
+			}
+
+			routing.Tags = append(routing.Tags, part)
+		}
+	}
+
+	var err *ValidationError
+
+	routing.Country, err = proxySingleRoutingValue(header, proxyHeaderRouteCountry, "routing.country")
+	if err != nil {
+		return RoutingHints{}, err
+	}
+
+	routing.Region, err = proxySingleRoutingValue(header, proxyHeaderRouteRegion, "routing.region")
+	if err != nil {
+		return RoutingHints{}, err
+	}
+
+	routing.IPType, err = proxySingleRoutingValue(header, proxyHeaderRouteIPType, "routing.ip_type")
+	if err != nil {
+		return RoutingHints{}, err
+	}
+
+	routing.StickySessionID, err = proxySingleRoutingValue(header, proxyHeaderRouteStickySession, "routing.sticky_session_id")
+	if err != nil {
+		return RoutingHints{}, err
+	}
+
+	validationErr := validateRoutingHints(&routing)
+	if validationErr != nil {
+		return RoutingHints{}, validationErr
+	}
+
+	return routing, nil
+}
+
+func proxySingleRoutingValue(header http.Header, name, field string) (string, *ValidationError) {
+	values := proxyHeaderValues(header, name)
+	if len(values) == 0 {
+		return "", nil
+	}
+
+	if len(values) != 1 {
+		return "", invalidRoutingError(field + " must be sent once")
+	}
+
+	return values[0], nil
+}
+
+func proxyHeaderValues(header http.Header, name string) []string {
+	keys := make([]string, 0, len(header))
+	for key := range header {
+		if strings.EqualFold(key, name) {
+			keys = append(keys, key)
+		}
+	}
+
+	sort.Strings(keys)
+
+	var values []string
+	for _, key := range keys {
+		values = append(values, header[key]...)
+	}
+
+	return values
+}
+
 func proxyRequestHeaders(header http.Header) ([]HeaderPair, error) {
 	connectionHeaders := map[string]struct{}{}
 
-	for _, value := range header.Values("Connection") {
+	for _, value := range proxyHeaderValues(header, "connection") {
 		for name := range strings.SplitSeq(value, ",") {
 			connectionHeaders[strings.ToLower(strings.TrimSpace(name))] = struct{}{}
 		}
@@ -245,16 +346,20 @@ func proxyRequestHeaders(header http.Header) ([]HeaderPair, error) {
 	out := make([]HeaderPair, 0, len(header))
 
 	for _, name := range keys {
-		if proxyHopByHopHeader(name, connectionHeaders) {
+		if proxyHopByHopHeader(name, connectionHeaders) || isStrawControlHeader(name) {
 			continue
 		}
 
-		for _, value := range header.Values(name) {
+		for _, value := range proxyHeaderValues(header, name) {
 			out = append(out, HeaderPair{Name: name, Value: base64.StdEncoding.EncodeToString([]byte(value))})
 		}
 	}
 
 	return validateHeaders(out)
+}
+
+func isStrawControlHeader(name string) bool {
+	return strings.HasPrefix(strings.ToLower(name), "x-straw-")
 }
 
 func proxyHopByHopHeader(name string, connectionHeaders map[string]struct{}) bool {

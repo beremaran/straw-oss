@@ -14,6 +14,10 @@ are tagged.
   are rejected. Added `egress.capabilities.allowed_pools` to the official worker with default/default compatibility.
 - Added a standard HTTP/HTTPS forward-proxy ingress to Control, including absolute-form HTTP requests,
   policy-checked HTTP/1.1 CONNECT tunnels, proxy authentication, and bounded bidirectional NATS flow control.
+- Added authenticated `X-Straw-Route-*` proxy headers for bounded tags, country, region, IP type, and sticky-session
+  routing hints. Control strips the entire `X-Straw-*` namespace before decoded forwarding or CONNECT establishment,
+  and proxy assignment failures can safely fall back before the first client-visible response without replay after the
+  raw response or `200 Connection Established` boundary.
 - Added the Control API, NATS request transport, official Egress worker, CLI, and maintained Go and Python clients.
 - Added deployment-wide authentication, destination policy, worker capacity and health tracking, cancellation,
   retries for replayable requests, phase timings, and Prometheus metrics.

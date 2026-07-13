@@ -8,32 +8,50 @@ import (
 
 	"github.com/nats-io/nats.go"
 
+	"github.com/beremaran/straw-oss/internal/config"
 	"github.com/beremaran/straw-oss/internal/natsx"
 	strawpb "github.com/beremaran/straw-protos-go/straw/v1"
 )
 
-func (d *DefaultRequestDispatcher) executeTunnelAttempt(ctx context.Context, in DispatchInput, route RouteOutcome, policy *DestinationPolicyResult, configVersion uint64, deadline time.Time, rw io.ReadWriter) (dispatchResult, int64, *PipelineError) {
-	result, assignmentMs, perr := d.executeTunnelAttemptUnmeasured(ctx, in, route, policy, configVersion, deadline, rw)
+// executeTunnelAttemptOrFallback retries only assignment-time failures. Once
+// Egress has opened the target and Control has written 200 Connection
+// Established, the tunnel is opaque and its route cannot change.
+func (d *DefaultRequestDispatcher) executeTunnelAttemptOrFallback(ctx context.Context, in DispatchInput, route RouteOutcome, snapshot config.Snapshot, policy *DestinationPolicyResult, deadline time.Time, rw io.ReadWriter) (dispatchResult, int64, *PipelineError, RouteOutcome) {
+	result, assignmentMs, perr, established := d.executeTunnelAttemptUnmeasured(ctx, in, route, policy, snapshot.ConfigVersion, deadline, rw)
 	d.opts.Metrics.ObserveAssignment(time.Duration(assignmentMs) * time.Millisecond)
 
-	return result, assignmentMs, perr
+	if perr == nil || established || !canFallbackBeforeRequestStart(perr.Code) {
+		return result, assignmentMs, perr, route
+	}
+
+	routeFailure(d.opts.Workers, route.WorkerID)
+
+	fallback := d.routeWithWorkers(in, snapshot, excludeWorkers{base: d.opts.Workers, workerID: route.WorkerID})
+	if !fallback.OK {
+		return result, assignmentMs, perr, route
+	}
+
+	fallbackResult, fallbackAssignmentMs, fallbackErr, _ := d.executeTunnelAttemptUnmeasured(ctx, in, fallback, policy, snapshot.ConfigVersion, deadline, rw)
+	d.opts.Metrics.ObserveAssignment(time.Duration(fallbackAssignmentMs) * time.Millisecond)
+
+	return fallbackResult, assignmentMs + fallbackAssignmentMs, fallbackErr, fallback
 }
 
-func (d *DefaultRequestDispatcher) executeTunnelAttemptUnmeasured(ctx context.Context, in DispatchInput, route RouteOutcome, policy *DestinationPolicyResult, configVersion uint64, deadline time.Time, rw io.ReadWriter) (dispatchResult, int64, *PipelineError) {
+func (d *DefaultRequestDispatcher) executeTunnelAttemptUnmeasured(ctx context.Context, in DispatchInput, route RouteOutcome, policy *DestinationPolicyResult, configVersion uint64, deadline time.Time, rw io.ReadWriter) (dispatchResult, int64, *PipelineError, bool) {
 	assignmentStarted := d.opts.Now()
 
 	if d.opts.NATS == nil {
-		return dispatchResult{}, 0, &PipelineError{Code: TransportUnavailable}
+		return dispatchResult{}, 0, &PipelineError{Code: TransportUnavailable}, false
 	}
 
 	c2eSubject, err := natsx.StreamSubject(in.RequestID, route.WorkerID, route.SessionID, natsx.DirectionControlToExecutor)
 	if err != nil {
-		return dispatchResult{}, 0, &PipelineError{Code: ControlInternalError}
+		return dispatchResult{}, 0, &PipelineError{Code: ControlInternalError}, false
 	}
 
 	e2cSubject, err := natsx.StreamSubject(in.RequestID, route.WorkerID, route.SessionID, natsx.DirectionExecutorToControl)
 	if err != nil {
-		return dispatchResult{}, 0, &PipelineError{Code: ControlInternalError}
+		return dispatchResult{}, 0, &PipelineError{Code: ControlInternalError}, false
 	}
 
 	frames := make(chan *strawpb.StreamFrame, defaultRequestFrameBuffer)
@@ -42,39 +60,39 @@ func (d *DefaultRequestDispatcher) executeTunnelAttemptUnmeasured(ctx context.Co
 		frames <- decodeDispatchFrame(msg.Data)
 	})
 	if err != nil {
-		return dispatchResult{}, 0, &PipelineError{Code: TransportUnavailable}
+		return dispatchResult{}, 0, &PipelineError{Code: TransportUnavailable}, false
 	}
 
 	defer func() { _ = sub.Unsubscribe() }()
 
 	err = d.opts.NATS.Flush()
 	if err != nil {
-		return dispatchResult{}, 0, &PipelineError{Code: TransportUnavailable}
+		return dispatchResult{}, 0, &PipelineError{Code: TransportUnavailable}, false
 	}
 
 	ack, perr := d.requestAssign(route.AssignSubject, in, d.assignRequest(in, route, configVersion, deadline), deadline)
 	if perr != nil {
-		return dispatchResult{}, millisSince(assignmentStarted, d.opts.Now()), perr
+		return dispatchResult{}, millisSince(assignmentStarted, d.opts.Now()), perr, false
 	}
 
 	if ack.GetCode() != strawpb.AssignAckCode_ASSIGN_ACK_ACCEPTED {
-		return dispatchResult{}, millisSince(assignmentStarted, d.opts.Now()), assignRejectError(ack.GetCode())
+		return dispatchResult{}, millisSince(assignmentStarted, d.opts.Now()), assignRejectError(ack.GetCode()), false
 	}
 
 	assignmentMs := millisSince(assignmentStarted, d.opts.Now())
 
 	nextSeq, err := d.sendRequestStart(ctx, c2eSubject, in, route, policy, configVersion, deadline)
 	if err != nil {
-		return dispatchResult{}, assignmentMs, requestStreamPipelineError(err)
+		return dispatchResult{}, assignmentMs, requestStreamPipelineError(err), false
 	}
 
 	upload := d.startStreamingRequestBody(ctx, c2eSubject, in, deadline, nextSeq)
-	result, perr := d.streamTunnel(ctx, frames, route, deadline, c2eSubject, in, nextSeq, upload, rw)
+	result, perr, established := d.streamTunnel(ctx, frames, route, deadline, c2eSubject, in, nextSeq, upload, rw)
 
-	return result, assignmentMs, perr
+	return result, assignmentMs, perr, established
 }
 
-func (d *DefaultRequestDispatcher) streamTunnel(ctx context.Context, frames <-chan *strawpb.StreamFrame, route RouteOutcome, deadline time.Time, c2eSubject string, in DispatchInput, c2eSeq uint64, upload *requestBodyUpload, rw io.Writer) (dispatchResult, *PipelineError) {
+func (d *DefaultRequestDispatcher) streamTunnel(ctx context.Context, frames <-chan *strawpb.StreamFrame, route RouteOutcome, deadline time.Time, c2eSubject string, in DispatchInput, c2eSeq uint64, upload *requestBodyUpload, rw io.Writer) (dispatchResult, *PipelineError, bool) {
 	state := tunnelStreamState{
 		dispatcher: d,
 		validator:  natsx.NewStreamValidator(defaultRequestAttempt, d.initialDownloadCredit(), d.opts.FrameIdleTimeout, d.opts.Now),
@@ -98,7 +116,7 @@ func (d *DefaultRequestDispatcher) streamTunnel(ctx context.Context, frames <-ch
 	for {
 		done, perr := state.next(ctx, ticker.C, frames)
 		if done || perr != nil {
-			return state.result, perr
+			return state.result, perr, state.established
 		}
 	}
 }

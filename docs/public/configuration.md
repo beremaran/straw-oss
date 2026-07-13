@@ -28,6 +28,12 @@ Set `STRAW_AUTH_TOKEN` to require `Authorization: Bearer <token>` on REST reques
 <token>` on forward-proxy requests. An unset token permits requests and is appropriate only for a loopback or
 otherwise trusted development network.
 
+Forward-proxy routing hints use the reserved `X-Straw-*` request-header namespace; they do not add configuration
+fields. The supported headers, limits, normalization, and stripping behavior are documented in [HTTP and HTTPS proxy
+ingress](proxy-ingress.md#routing-hints). The configured token is checked before those values are parsed. Routing rules,
+executor-pool capability filters, sticky TTLs, and `allow_sticky_fallback` apply equally to REST, absolute-form proxy,
+and CONNECT ingress modes.
+
 ### Optional runtime administration
 
 `runtime_admin.enabled` opts into durable runtime configuration. Its defaults are `token_env: "STRAW_ADMIN_TOKEN"`,

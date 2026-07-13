@@ -339,9 +339,9 @@ func (d *DefaultRequestDispatcher) dispatchRaw(ctx context.Context, in DispatchI
 
 	deadline := d.deadline(in.Request, snapshot)
 
-	result, assignmentMs, perr, wroteHeader := d.executeRawAttempt(ctx, in, route, policy, snapshot.ConfigVersion, deadline, w)
+	result, assignmentMs, perr, wroteHeader, usedRoute := d.executeRawAttemptOrFallback(ctx, in, route, snapshot, policy, deadline, w)
 
-	return d.finalizeRawDispatch(ctx, in, snapshot, route, result, perr, routingMs, assignmentMs, started, wroteHeader)
+	return d.finalizeRawDispatch(ctx, in, snapshot, usedRoute, result, perr, routingMs, assignmentMs, started, wroteHeader)
 }
 
 func (d *DefaultRequestDispatcher) dispatchTunnel(ctx context.Context, in DispatchInput, rw io.ReadWriter, started time.Time) (SuccessResponse, *PipelineError) {
@@ -387,20 +387,20 @@ func (d *DefaultRequestDispatcher) dispatchTunnel(ctx context.Context, in Dispat
 	deadline := d.deadline(in.Request, snapshot)
 	in.Request.BodyReader = io.NopCloser(rw)
 
-	result, assignmentMs, perr := d.executeTunnelAttempt(ctx, in, route, policy, snapshot.ConfigVersion, deadline, rw)
+	result, assignmentMs, perr, usedRoute := d.executeTunnelAttemptOrFallback(ctx, in, route, snapshot, policy, deadline, rw)
 	if perr != nil {
 		perr = d.withTiming(perr, routingMs, assignmentMs, started)
 		perr.EgressMs = result.egressMs
-		setRouteFields(perr, route)
+		setRouteFields(perr, usedRoute)
 
 		resp := rawSuccessFromDispatch(in.RequestID, result, routingMs, assignmentMs, millisSince(started, d.opts.Now()))
-		setRouteFieldsOnResponse(&resp, route)
+		setRouteFieldsOnResponse(&resp, usedRoute)
 
 		return resp, perr
 	}
 
 	resp := rawSuccessFromDispatch(in.RequestID, result, routingMs, assignmentMs, millisSince(started, d.opts.Now()))
-	setRouteFieldsOnResponse(&resp, route)
+	setRouteFieldsOnResponse(&resp, usedRoute)
 
 	return resp, nil
 }

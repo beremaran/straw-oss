@@ -80,7 +80,10 @@ Absolute-form HTTP proxy requests use the decoded request pipeline, but Control 
 directly instead of wrapping it in JSON. CONNECT assignments use the protocol's raw-tunnel mode. Egress applies the
 destination policy and opens the TCP socket before its success frame causes Control to return `200 Connection
 Established`; after that point NATS data and credit frames provide bounded bidirectional flow control. Tunnel bytes
-remain opaque to Straw.
+remain opaque to Straw. Authenticated proxy routing hints are normalized into the same `RoutingHints` input as REST,
+and the reserved `X-Straw-*` namespace is stripped before decoded forwarding or tunnel establishment. Assignment
+rejection can exclude a worker and retry before the first client-visible response bytes; the first raw response header
+or `200 Connection Established` is a no-replay and no-reroute boundary.
 
 ## Trust boundary
 
