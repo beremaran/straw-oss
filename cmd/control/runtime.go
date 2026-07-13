@@ -67,7 +67,7 @@ func runDeploymentControl(ctx context.Context, cfg config.ControlConfig, natsCon
 		sticky = control.NewRedisStickyBackend(ctx, state)
 	}
 
-	requestHandler := newControlRequestHandler(cfg, natsConn, configCache, registry, sticky, inflight, metrics, receipts)
+	requestHandler, proxyHandler := newControlHandlers(cfg, natsConn, configCache, registry, sticky, inflight, metrics, receipts)
 
 	mux := http.NewServeMux()
 	mux.Handle("POST /api/v1/requests", requestHandler)
@@ -83,7 +83,7 @@ func runDeploymentControl(ctx context.Context, cfg config.ControlConfig, natsCon
 		}
 	}
 
-	return serveDeployment(ctx, cfg, mux, metricsRegistry, runtimeReadiness(state))
+	return serveDeployment(ctx, cfg, proxyHandler.Wrap(mux), metricsRegistry, runtimeReadiness(state))
 }
 
 func newMetricsRegistry(registry *control.WorkerRegistry, state *control.RedisRuntimeState, receipts *receipt.Service) (*prometheus.Registry, *control.Metrics) {
@@ -110,7 +110,7 @@ func runtimeReadiness(state *control.RedisRuntimeState) func() bool {
 	return state.Available
 }
 
-func newControlRequestHandler(cfg config.ControlConfig, natsConn *natsx.Connection, configCache *control.ConfigCache, registry *control.WorkerRegistry, sticky control.StickyBackend, inflight *control.InFlightRegistry, metrics *control.Metrics, receipts *receipt.Service) http.Handler {
+func newControlHandlers(cfg config.ControlConfig, natsConn *natsx.Connection, configCache *control.ConfigCache, registry *control.WorkerRegistry, sticky control.StickyBackend, inflight *control.InFlightRegistry, metrics *control.Metrics, receipts *receipt.Service) (http.Handler, *control.ProxyHandler) {
 	authenticator := control.NewDeploymentAuthenticator(os.Getenv("STRAW_AUTH_TOKEN"))
 	dispatcher := control.NewDefaultRequestDispatcher(control.RequestDispatcherOptions{
 		ConfigCache: configCache, Workers: registry, Sticky: sticky, NATS: natsConn,
@@ -127,7 +127,9 @@ func newControlRequestHandler(cfg config.ControlConfig, natsConn *natsx.Connecti
 		requestHandler.SetReceiptPreparer(receipts)
 	}
 
-	return requestHandler
+	proxyHandler := control.NewProxyHandler(cfg.Request.MaxInlineRequestBodyBytes, authenticator, dispatcher, dispatcher)
+
+	return requestHandler, proxyHandler
 }
 
 func setupReceiptTransport(ctx context.Context, cfg config.ControlConfig) (*receipt.Service, error) {

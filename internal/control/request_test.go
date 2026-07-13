@@ -5,6 +5,8 @@ import (
 	"testing"
 )
 
+const routingCountryField = "country"
+
 func TestValidateRequestRejectsDuplicateFingerprintProfileMembers(t *testing.T) {
 	t.Parallel()
 
@@ -49,21 +51,51 @@ func TestValidateRequestRejectsMalformedUTF8FingerprintProfile(t *testing.T) {
 	}
 }
 
-func TestValidateRequestRejectsRemovedEnterpriseHints(t *testing.T) {
+func TestValidateRequestAcceptsRoutingHints(t *testing.T) {
 	t.Parallel()
 
-	for name, raw := range map[string]string{
-		"routing": `{"method":"GET","url":"https://example.com/","routing":{"country":"AU"}}`,
-		"capture": `{"method":"GET","url":"https://example.com/","capture_hint":"all"}`,
+	raw := `{
+		"method":"GET",
+		"url":"https://example.com/",
+		"routing":{"tags":["datacenter"],"` + routingCountryField + `":"au","region":"ap-southeast-2","ip_type":"residential","sticky_session_id":"session-1"}
+	}`
+	req, err := ValidateRequest([]byte(raw), 1<<20, 5000)
+	if err != nil {
+		t.Fatalf("ValidateRequest() error = %v", err)
+	}
+	if got := req.Routing; got.Country != "AU" || got.Region != "ap-southeast-2" || got.IPType != "residential" || got.StickySessionID != "session-1" || len(got.Tags) != 1 || got.Tags[0] != "datacenter" {
+		t.Fatalf("routing hints = %+v", got)
+	}
+}
+
+func TestValidateRequestRejectsInvalidRoutingHints(t *testing.T) {
+	t.Parallel()
+
+	for name, routing := range map[string]string{
+		routingCountryField: `{"` + routingCountryField + `":"AUS"}`,
+		"empty_tag":         `{"tags":[""]}`,
+		"duplicate_tag":     `{"tags":["edge","edge"]}`,
+		"sticky_whitespace": `{"sticky_session_id":" session "}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
+			raw := `{"method":"GET","url":"https://example.com/","routing":` + routing + `}`
 			_, err := ValidateRequest([]byte(raw), 1<<20, 5000)
-			if err == nil {
-				t.Fatal("ValidateRequest() error = nil, want unknown-field rejection")
+			var verr *ValidationError
+			if !errors.As(err, &verr) || verr.Code != errorCodeInvalidRequest {
+				t.Fatalf("ValidateRequest() error = %#v, want invalid_request", err)
 			}
 		})
+	}
+}
+
+func TestValidateRequestRejectsRemovedEnterpriseHints(t *testing.T) {
+	t.Parallel()
+
+	_, err := ValidateRequest([]byte(`{"method":"GET","url":"https://example.com/","capture_hint":"all"}`), 1<<20, 5000)
+	if err == nil {
+		t.Fatal("ValidateRequest() error = nil, want unknown-field rejection")
 	}
 }
 

@@ -118,6 +118,14 @@ type Router struct {
 	rrIdx map[string]int // round-robin cursor per deployment and pool
 }
 
+type ruleEvaluation struct {
+	outcome           RouteOutcome
+	selected          bool
+	terminal          bool
+	profileRejected   bool
+	capacityExhausted bool
+}
+
 // NewRouter builds a Router. sticky may be an in-process StickyStore; now may
 // be nil and defaults to time.Now.
 func NewRouter(rules RuleProvider, policies PoolPolicyProvider, candidates CandidateSource, sticky StickyBackend, now func() time.Time) *Router {
@@ -144,40 +152,67 @@ func (rt *Router) Evaluate(req RouteRequest) RouteOutcome {
 	}
 
 	profileRejected := false
+	capacityRejected := false
 
 	for _, rule := range rules {
-		policy := rt.policies.PoolPolicy(req.DeploymentID, rule.TargetPoolID)
-		ordinary := rt.eligibleCandidates(req, rule, policy)
-
-		candidates := filterFingerprintCandidates(ordinary, req.FingerprintProfile)
-		if len(ordinary) > 0 && len(candidates) == 0 && namedFingerprintRequested(req.FingerprintProfile) {
-			profileRejected = true
-
-			continue
+		evaluation := rt.evaluateRule(req, rule)
+		if evaluation.terminal || evaluation.selected {
+			return evaluation.outcome
 		}
 
-		if req.StickySessionID != "" {
-			if outcome, handled := rt.evaluateSticky(req, rule, candidates); handled {
-				return outcome
-			}
-
-			continue
-		}
-
-		if picked, ok := rt.selectExecutor(req.DeploymentID, rule.TargetPoolID, candidates); ok {
-			return RouteOutcome{
-				OK: true, RuleID: rule.ID, PoolID: rule.TargetPoolID,
-				WorkerID: picked.WorkerID, ExecutorType: picked.ExecutorType,
-				SessionID: picked.SessionID, AssignSubject: picked.AssignSubject,
-			}
-		}
+		profileRejected = profileRejected || evaluation.profileRejected
+		capacityRejected = capacityRejected || evaluation.capacityExhausted
 	}
 
 	if profileRejected {
 		return RouteOutcome{ErrorCode: RouteErrUnsupportedFingerprint}
 	}
 
+	if capacityRejected {
+		return RouteOutcome{ErrorCode: RouteErrCapacityExhausted}
+	}
+
 	return RouteOutcome{ErrorCode: RouteErrUnavailable}
+}
+
+func (rt *Router) evaluateRule(req RouteRequest, rule RoutingRule) ruleEvaluation {
+	policy := rt.policies.PoolPolicy(req.DeploymentID, rule.TargetPoolID)
+	ordinary, atCapacity := rt.eligibleCandidates(req, rule, policy)
+	candidates := filterFingerprintCandidates(ordinary, req.FingerprintProfile)
+
+	evaluation := ruleEvaluation{capacityExhausted: atCapacity}
+	if len(ordinary) > 0 && len(candidates) == 0 && namedFingerprintRequested(req.FingerprintProfile) {
+		evaluation.profileRejected = true
+
+		return evaluation
+	}
+
+	if req.StickySessionID != "" {
+		outcome, handled := rt.evaluateSticky(req, rule, candidates)
+		if handled {
+			evaluation.outcome = outcome
+			evaluation.terminal = true
+			evaluation.selected = outcome.OK
+
+			return evaluation
+		}
+
+		return evaluation
+	}
+
+	picked, ok := rt.selectExecutor(req.DeploymentID, rule.TargetPoolID, candidates)
+	if !ok {
+		return evaluation
+	}
+
+	evaluation.outcome = RouteOutcome{
+		OK: true, RuleID: rule.ID, PoolID: rule.TargetPoolID,
+		WorkerID: picked.WorkerID, ExecutorType: picked.ExecutorType,
+		SessionID: picked.SessionID, AssignSubject: picked.AssignSubject,
+	}
+	evaluation.selected = true
+
+	return evaluation
 }
 
 func namedFingerprintRequested(profile string) bool {
@@ -284,10 +319,11 @@ func matches(m MatchConditions, req RouteRequest) bool {
 	})
 }
 
-// matchesField reports whether an optional exact-match constraint is
-// satisfied: unset on either side means no preference.
+// matchesField reports whether an exact-match constraint is satisfied. A
+// configured constraint is not a wildcard: the request must supply the value
+// and the values must match.
 func matchesField(want, got string) bool {
-	return want == "" || got == "" || want == got
+	return want == "" || (got != "" && want == got)
 }
 
 func matchesTags(want, got []string) bool {
@@ -295,7 +331,7 @@ func matchesTags(want, got []string) bool {
 }
 
 func matchesHost(pattern, host string) bool {
-	return pattern == "" || host == "" || hostMatches(pattern, host)
+	return pattern == "" || (host != "" && hostMatches(pattern, host))
 }
 
 func allTrue(checks []bool) bool {
@@ -321,10 +357,12 @@ func hostMatches(pattern, host string) bool {
 // eligibleCandidates filters a pool's candidates by degraded policy and
 // request capability constraints (docs/public/architecture.md "capabilities satisfy
 // all request constraints").
-func (rt *Router) eligibleCandidates(req RouteRequest, rule RoutingRule, policy PoolPolicy) []PoolCandidate {
+func (rt *Router) eligibleCandidates(req RouteRequest, rule RoutingRule, policy PoolPolicy) ([]PoolCandidate, bool) {
 	all := rt.candidates.CandidatesForPool(req.DeploymentID, rule.TargetPoolID)
 
 	out := make([]PoolCandidate, 0, len(all))
+	capacityEligible := 0
+
 	for _, c := range all {
 		if c.Degraded && !policy.AllowDegradedWorkers {
 			continue
@@ -338,6 +376,8 @@ func (rt *Router) eligibleCandidates(req RouteRequest, rule RoutingRule, policy 
 			continue
 		}
 
+		capacityEligible++
+
 		// AvailableCap is the worker's authoritative admission signal. A
 		// zero value means the session cannot accept an assignment even when
 		// the reported active/max pair has not caught up yet.
@@ -348,16 +388,16 @@ func (rt *Router) eligibleCandidates(req RouteRequest, rule RoutingRule, policy 
 		out = append(out, c)
 	}
 
-	return out
+	return out, capacityEligible > 0 && len(out) == 0
 }
 
 func capabilitySatisfies(c PoolCandidate, req RouteRequest) bool {
 	checks := []bool{
 		len(req.Tags) == 0 || subset(req.Tags, c.Tags),
-		req.Country == "" || len(c.Countries) == 0 || containsString(c.Countries, req.Country),
-		req.Region == "" || len(c.Regions) == 0 || containsString(c.Regions, req.Region),
-		req.IPType == "" || len(c.IPTypes) == 0 || containsString(c.IPTypes, req.IPType),
-		req.IngressType == "" || len(c.IngressModes) == 0 || containsString(c.IngressModes, req.IngressType),
+		req.Country == "" || (len(c.Countries) > 0 && containsString(c.Countries, req.Country)),
+		req.Region == "" || (len(c.Regions) > 0 && containsString(c.Regions, req.Region)),
+		req.IPType == "" || (len(c.IPTypes) > 0 && containsString(c.IPTypes, req.IPType)),
+		req.IngressType == "" || (len(c.IngressModes) > 0 && containsString(c.IngressModes, req.IngressType)),
 	}
 
 	return allTrue(checks)

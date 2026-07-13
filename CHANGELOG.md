@@ -7,6 +7,10 @@ are tagged.
 
 ### Added
 
+- Restored the backward-compatible `routing` object on `POST /api/v1/requests`, including validated tags, country,
+  region, IP type, sticky-session hints, hard worker capability constraints, and routing coverage tests.
+- Added a standard HTTP/HTTPS forward-proxy ingress to Control, including absolute-form HTTP requests,
+  policy-checked HTTP/1.1 CONNECT tunnels, proxy authentication, and bounded bidirectional NATS flow control.
 - Added the Control API, NATS request transport, official Egress worker, CLI, and maintained Go and Python clients.
 - Added deployment-wide authentication, destination policy, worker capacity and health tracking, cancellation,
   retries for replayable requests, phase timings, and Prometheus metrics.

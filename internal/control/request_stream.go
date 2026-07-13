@@ -110,6 +110,16 @@ func (s *c2eStreamSender) credit(bytes uint64) {
 	})
 }
 
+func (s *c2eStreamSender) cancel(reason string) {
+	s.publish(func(seq uint64) *strawpb.StreamFrame {
+		return &strawpb.StreamFrame{
+			StreamSeq: seq,
+			Attempt:   defaultRequestAttempt,
+			Payload:   &strawpb.StreamFrame_Cancel{Cancel: &strawpb.CancelFrame{Reason: reason}},
+		}
+	})
+}
+
 func (s *c2eStreamSender) publish(build func(uint64) *strawpb.StreamFrame) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -42,6 +42,16 @@ curl -sS \
   | jq -r '.body.data_base64' | base64 --decode
 ```
 
+## Use the proxy ingress
+
+You can also use the same Control listener as a forward proxy. HTTPS uses an opaque CONNECT tunnel:
+
+```sh
+curl --proxy http://localhost:8080 https://example.com
+```
+
+See [HTTP and HTTPS proxy ingress](proxy-ingress.md) for authentication and tunnel behavior.
+
 ## Check the stack
 
 ```sh
@@ -54,4 +64,5 @@ curl -fsS http://localhost:9090/metrics | grep '^straw_'
 Use `make dev-logs`, `make dev-down`, or `make dev-reset` to inspect, stop, or rebuild the stack. If the default host
 ports are occupied, see [local port overrides](deployment.md#local-development).
 
-Next, read the [request API](api/requests.md) or try the [CLI and SDKs](sdk.md).
+Next, read the [request API](api/requests.md), [proxy ingress](proxy-ingress.md), or try the
+[CLI and SDKs](sdk.md).

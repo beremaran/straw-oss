@@ -9,12 +9,12 @@ it over NATS to an Egress worker, and the worker makes the outbound request.
 
 ```mermaid
 flowchart LR
-  App["Application"] -->|HTTP request| Control
+  App["Application"] -->|REST or forward-proxy request| Control
   Control -->|assignment over NATS| Egress["Egress worker"]
   Egress -->|outbound HTTP/HTTPS| Dest["Destination"]
   Dest -->|response| Egress
   Egress -->|response frames| Control
-  Control -->|JSON response or receipt| App
+  Control -->|HTTP response, JSON, receipt, or tunnel bytes| App
 ```
 
 One deployment is one trust boundary. Straw has no tenants, accounts, RBAC, billing, quotas, or analytics database.
@@ -40,6 +40,12 @@ curl -sS \
   http://localhost:8080/api/v1/requests
 ```
 
+Or use Control as an HTTP/HTTPS forward proxy:
+
+```sh
+curl --proxy http://localhost:8080 https://example.com
+```
+
 The local stack contains exactly NATS, Control, and one Egress worker. It needs no credentials or provisioning.
 
 ## Why Straw
@@ -60,6 +66,7 @@ The local stack contains exactly NATS, Control, and one Egress worker. It needs 
 - [Quickstart](docs/public/quickstart.md)
 - [Architecture](docs/public/architecture.md)
 - [Request API](docs/public/api/requests.md)
+- [HTTP and HTTPS proxy ingress](docs/public/proxy-ingress.md)
 - [Configuration](docs/public/configuration.md)
 - [Deployment patterns](docs/public/deployment.md)
 - [Runtime administration](docs/public/runtime-administration.md)
@@ -85,8 +92,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and contribution conventions. T
 
 ## Project status
 
-Straw is pre-1.0. The REST request API is the primary supported surface; custom-worker protocol packages are more
-likely to change between minor releases. See [ROADMAP.md](ROADMAP.md) and [CHANGELOG.md](CHANGELOG.md).
+Straw is pre-1.0. The REST request API and HTTP/HTTPS proxy ingress are the primary supported surfaces; custom-worker
+protocol packages are more likely to change between minor releases. See [ROADMAP.md](ROADMAP.md) and
+[CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

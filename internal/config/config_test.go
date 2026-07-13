@@ -30,6 +30,10 @@ func TestLoadMinimalEgress(t *testing.T) {
 	if cfg.WorkerID != "egress-1" || cfg.HealthPort != defaultEgressHealthPort || cfg.NATS.Servers[0] != defaultNATSServer {
 		t.Fatalf("defaults = %+v", cfg)
 	}
+	wantIngress := []string{"rest", "http_proxy", "connect"}
+	if strings.Join(cfg.Capabilities.SupportedIngressModes, ",") != strings.Join(wantIngress, ",") {
+		t.Fatalf("supported ingress modes = %v, want %v", cfg.Capabilities.SupportedIngressModes, wantIngress)
+	}
 }
 
 func TestLoadRejectsUnknownField(t *testing.T) {

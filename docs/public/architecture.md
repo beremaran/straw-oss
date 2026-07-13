@@ -15,9 +15,10 @@ flowchart LR
   Egress -. assignment-scoped download .-> OS
 ```
 
-**Control** exposes the request API, validates authentication and input, applies the deployment policy, selects a
-healthy worker, and relays request and response frames. The optional runtime profile also exposes the Admin/Config API
-and dashboard. Controls are interchangeable when the Redis runtime-state profile is enabled.
+**Control** exposes the REST request API and HTTP/HTTPS proxy ingress, validates authentication and input, applies the
+deployment policy, selects a healthy worker, and relays request, response, or tunnel frames. The optional runtime
+profile also exposes the Admin/Config API and dashboard. Controls are interchangeable when the Redis runtime-state
+profile is enabled.
 
 **Egress** registers with Control, advertises capacity, executes outbound requests, and streams responses back. Add
 workers when you need more concurrency or network locations.
@@ -72,6 +73,14 @@ administrative cancellation to it over NATS.
 GET, HEAD, and OPTIONS requests are replayable by default in the clients. Other methods are not retried unless the
 caller explicitly marks them replayable.
 
+## Forward-proxy lifecycle
+
+Absolute-form HTTP proxy requests use the decoded request pipeline, but Control streams the upstream response
+directly instead of wrapping it in JSON. CONNECT assignments use the protocol's raw-tunnel mode. Egress applies the
+destination policy and opens the TCP socket before its success frame causes Control to return `200 Connection
+Established`; after that point NATS data and credit frames provide bounded bidirectional flow control. Tunnel bytes
+remain opaque to Straw.
+
 ## Trust boundary
 
 One Straw deployment is one trust and configuration boundary. Run separate deployments when workloads need isolated
@@ -80,7 +89,7 @@ hosted multi-tenant platform.
 
 ## Source map
 
-- `cmd/control`, `internal/control`: public API and dispatch pipeline
+- `cmd/control`, `internal/control`: public API, proxy ingress, and dispatch pipeline
 - `cmd/egress`, `internal/egress`: official worker and HTTP executor
 - `internal/natsx`: NATS connection and subjects
 - [`straw-protos`](https://github.com/beremaran/straw-protos): canonical language-neutral worker protocol

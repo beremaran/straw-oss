@@ -62,6 +62,7 @@ const (
 	headerCanonicalConnection    = "Connection"
 	mediaTypeTextPlain           = "text/plain"
 	requestBodyExceedsLimit      = "request body exceeds limit"
+	errorDetailDirectionRequest  = "request"
 )
 
 var httpTokenAllowed = func() [256]bool {
@@ -96,14 +97,15 @@ const (
 
 // RequestEnvelope is the JSON shape for POST /api/v1/requests.
 type RequestEnvelope struct {
-	Method           string       `json:"method"`
-	URL              string       `json:"url"`
-	Headers          []HeaderPair `json:"headers,omitempty"`
-	Body             *RequestBody `json:"body,omitempty"`
-	FingerprintProto string       `json:"fingerprint_profile,omitempty"`
-	TimeoutMs        uint64       `json:"timeout_ms,omitempty"`
-	Replayable       bool         `json:"replayable"`
-	ResponseBodyMode string       `json:"response_body_mode,omitempty"`
+	Method           string        `json:"method"`
+	URL              string        `json:"url"`
+	Headers          []HeaderPair  `json:"headers,omitempty"`
+	Body             *RequestBody  `json:"body,omitempty"`
+	Routing          *RoutingHints `json:"routing,omitempty"`
+	FingerprintProto string        `json:"fingerprint_profile,omitempty"`
+	TimeoutMs        uint64        `json:"timeout_ms,omitempty"`
+	Replayable       bool          `json:"replayable"`
+	ResponseBodyMode string        `json:"response_body_mode,omitempty"`
 }
 
 // HeaderPair preserves header order and duplicates.
@@ -119,7 +121,8 @@ type RequestBody struct {
 	ReceiptID  string `json:"receipt_id,omitempty"`
 }
 
-// RoutingHints is the internal routing input used by the static deployment.
+// RoutingHints is the public per-request routing constraint object and the
+// internal routing input used by the static deployment.
 type RoutingHints struct {
 	Tags            []string `json:"tags,omitempty"`
 	Country         string   `json:"country,omitempty"`
@@ -143,7 +146,6 @@ type ValidatedRequest struct {
 	Fingerprint      string
 	TimeoutMs        uint64
 	Replayable       bool
-	StickySessionID  string
 	CaptureDecision  string
 	ResponseBodyMode string
 }
@@ -178,6 +180,15 @@ func ValidateRequest(raw []byte, maxRequestBodyBytes, maxTimeoutMs uint64) (*Val
 
 	routing := RoutingHints{}
 
+	if env.Routing != nil {
+		err := validateRoutingHints(env.Routing)
+		if err != nil {
+			return nil, err
+		}
+
+		routing = *env.Routing
+	}
+
 	return &ValidatedRequest{
 		Method:           env.Method,
 		URL:              parsedURL,
@@ -189,10 +200,115 @@ func ValidateRequest(raw []byte, maxRequestBodyBytes, maxTimeoutMs uint64) (*Val
 		Fingerprint:      env.FingerprintProto,
 		TimeoutMs:        timeoutMs,
 		Replayable:       env.Replayable,
-		StickySessionID:  routing.StickySessionID,
 		CaptureDecision:  "none",
 		ResponseBodyMode: env.ResponseBodyMode,
 	}, nil
+}
+
+const (
+	maxRoutingTags       = 32
+	maxRoutingTagBytes   = 64
+	maxRoutingValueBytes = 128
+)
+
+func validateRoutingHints(hints *RoutingHints) *ValidationError {
+	if hints == nil {
+		return nil
+	}
+
+	err := validateRoutingTags(hints.Tags)
+	if err != nil {
+		return err
+	}
+
+	err = validateRoutingCountry(&hints.Country)
+	if err != nil {
+		return err
+	}
+
+	err = validateRoutingValue("routing.region", hints.Region, maxRoutingValueBytes)
+	if err != nil {
+		return err
+	}
+
+	err = validateRoutingValue("routing.ip_type", hints.IPType, maxRoutingValueBytes)
+	if err != nil {
+		return err
+	}
+
+	err = validateRoutingValue("routing.sticky_session_id", hints.StickySessionID, maxRoutingValueBytes)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func validateRoutingTags(tags []string) *ValidationError {
+	if len(tags) > maxRoutingTags {
+		return invalidRoutingError("routing.tags cannot contain more than 32 values")
+	}
+
+	seen := make(map[string]struct{}, len(tags))
+
+	for _, tag := range tags {
+		if tag == "" {
+			return invalidRoutingError("routing.tags values must not be empty")
+		}
+
+		err := validateRoutingValue("routing.tags", tag, maxRoutingTagBytes)
+		if err != nil {
+			return err
+		}
+
+		if _, exists := seen[tag]; exists {
+			return invalidRoutingError("routing.tags must not contain duplicates")
+		}
+
+		seen[tag] = struct{}{}
+	}
+
+	return nil
+}
+
+func validateRoutingCountry(country *string) *ValidationError {
+	if *country == "" {
+		return nil
+	}
+
+	if len(*country) != 2 || !isASCIIAlpha((*country)[0]) || !isASCIIAlpha((*country)[1]) {
+		return invalidRoutingError("routing.country must be a two-letter ISO country code")
+	}
+
+	*country = strings.ToUpper(*country)
+
+	return nil
+}
+
+func validateRoutingValue(field, value string, maxBytes int) *ValidationError {
+	if value == "" {
+		return nil
+	}
+
+	if len(value) > maxBytes || strings.TrimSpace(value) != value {
+		return invalidRoutingError(fmt.Sprintf("%s must be between 1 and %d bytes without surrounding whitespace", field, maxBytes))
+	}
+
+	for _, r := range value {
+		if r < 0x21 || r == 0x7f {
+			return invalidRoutingError(field + " contains invalid characters")
+		}
+	}
+
+	return nil
+}
+
+func isASCIIAlpha(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z')
+}
+
+func invalidRoutingError(message string) *ValidationError {
+	return &ValidationError{Code: errorCodeInvalidRequest, Message: message}
 }
 
 // validateFingerprintProfileJSON applies the profile-specific JSON rules that
@@ -593,7 +709,7 @@ func validateInlineBody(body *RequestBody, maxBytes uint64) ([]byte, string, err
 
 	if uint64(len(decoded)) > maxBytes {
 		return nil, "", &ValidationError{Code: errorCodeBodyTooLarge, Message: requestBodyExceedsLimit, Details: map[string]string{
-			errorDetailDirectionKey:  "request",
+			errorDetailDirectionKey:  errorDetailDirectionRequest,
 			errorDetailLimitBytesKey: strconv.FormatUint(maxBytes, 10),
 		}}
 	}
