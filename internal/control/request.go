@@ -62,6 +62,7 @@ const (
 	headerCanonicalConnection    = "Connection"
 	mediaTypeTextPlain           = "text/plain"
 	requestBodyExceedsLimit      = "request body exceeds limit"
+	errorDetailDirectionRequest  = "request"
 )
 
 var httpTokenAllowed = func() [256]bool {
@@ -593,7 +594,7 @@ func validateInlineBody(body *RequestBody, maxBytes uint64) ([]byte, string, err
 
 	if uint64(len(decoded)) > maxBytes {
 		return nil, "", &ValidationError{Code: errorCodeBodyTooLarge, Message: requestBodyExceedsLimit, Details: map[string]string{
-			errorDetailDirectionKey:  "request",
+			errorDetailDirectionKey:  errorDetailDirectionRequest,
 			errorDetailLimitBytesKey: strconv.FormatUint(maxBytes, 10),
 		}}
 	}

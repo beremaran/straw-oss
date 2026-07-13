@@ -565,7 +565,7 @@ func (e *EgressConfig) applyDefaults() {
 	}
 
 	if len(e.Capabilities.SupportedIngressModes) == 0 {
-		e.Capabilities.SupportedIngressModes = []string{"rest"}
+		e.Capabilities.SupportedIngressModes = []string{"rest", "http_proxy", "connect"}
 	}
 
 	if e.HTTP2.FallbackCacheTTLMS == 0 {

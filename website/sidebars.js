@@ -11,7 +11,7 @@ const sidebars = {
     {
       type: 'category',
       label: 'Use',
-      items: ['api/requests', 'sdk', 'cli', 'egress_worker'],
+      items: ['api/requests', 'proxy-ingress', 'sdk', 'cli', 'egress_worker'],
     },
     {
       type: 'category',

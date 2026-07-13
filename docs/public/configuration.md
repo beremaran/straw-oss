@@ -24,8 +24,9 @@ defaults.
 }
 ```
 
-Set `STRAW_AUTH_TOKEN` to require `Authorization: Bearer <token>` on requests. An unset token permits requests and is
-appropriate only for a loopback or otherwise trusted development network.
+Set `STRAW_AUTH_TOKEN` to require `Authorization: Bearer <token>` on REST requests and `Proxy-Authorization: Bearer
+<token>` on forward-proxy requests. An unset token permits requests and is appropriate only for a loopback or
+otherwise trusted development network.
 
 ### Optional runtime administration
 
@@ -127,7 +128,7 @@ stores environment-variable **names**, never secret values.
 | object storage limits | `download_base_url`, `max_object_bytes`, `max_part_bytes`, `retention_seconds`, `assignment_ttl_seconds`, `cleanup_interval_seconds` | `http://control:8080`, 1 GiB, 16 MiB, 86400, 300, 3600; positive; part ≤ object |
 | object encryption | `server_side_encryption`, `kms_key_id` | empty; `AES256` or `aws:kms`; KMS mode requires key ID |
 | Egress identity | `worker_id`, `heartbeat_interval_ms`, `health_port` | `egress-1`, 5000, 8090; non-empty/positive valid port |
-| Egress capabilities | `tags`, `countries`, `regions`, `ip_types`, `supported_ingress_modes`, `max_concurrency` | empty lists except ingress `rest`; official workers advertise the built-in fingerprint catalogue; concurrency defaults to 4 at worker composition |
+| Egress capabilities | `tags`, `countries`, `regions`, `ip_types`, `supported_ingress_modes`, `max_concurrency` | empty lists except ingress `rest`, `http_proxy`, `connect`; official workers advertise the built-in fingerprint catalogue; concurrency defaults to 4 at worker composition |
 | connection pool | `enabled`, `max_idle_conns_per_host`, `idle_timeout_ms`, `max_lifetime_ms` | false; when enabled 8, 30000, 300000 |
 | HTTP/2 | `enabled`, `fallback_cache_ttl_ms` | false, 300000 |
 | NATS | `servers`, `user_credentials_file`, `username_env`, `password_env` | `nats://127.0.0.1:4222`, empty; credential file or named user/password environment variables |

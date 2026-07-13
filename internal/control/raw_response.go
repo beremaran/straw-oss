@@ -202,8 +202,9 @@ func writeRawResponseStart(w http.ResponseWriter, status uint32, headers []*stra
 		return
 	}
 
+	connectionHeaders := responseConnectionHeaders(headers)
 	for _, h := range headers {
-		if !rawResponseHeaderAllowed(h.GetName()) {
+		if !rawResponseHeaderAllowed(h.GetName(), connectionHeaders) {
 			continue
 		}
 
@@ -224,7 +225,7 @@ func writeRawTrailers(w http.ResponseWriter, trailers []*strawpb.Header) {
 	}
 
 	for _, h := range trailers {
-		if !rawResponseHeaderAllowed(h.GetName()) {
+		if !rawResponseHeaderAllowed(h.GetName(), nil) {
 			continue
 		}
 
@@ -234,13 +235,35 @@ func writeRawTrailers(w http.ResponseWriter, trailers []*strawpb.Header) {
 	flushRawResponse(w)
 }
 
-func rawResponseHeaderAllowed(name string) bool {
+func responseConnectionHeaders(headers []*strawpb.Header) map[string]struct{} {
+	out := map[string]struct{}{}
+
+	for _, header := range headers {
+		if !strings.EqualFold(header.GetName(), headerNameConnection) {
+			continue
+		}
+
+		for name := range strings.SplitSeq(string(header.GetValue()), ",") {
+			out[strings.ToLower(strings.TrimSpace(name))] = struct{}{}
+		}
+	}
+
+	return out
+}
+
+func rawResponseHeaderAllowed(name string, connectionHeaders map[string]struct{}) bool {
 	if !isValidHTTPToken(name) || strings.HasPrefix(strings.ToLower(name), "x-straw-") {
 		return false
 	}
 
-	switch strings.ToLower(name) {
-	case headerNameTransferEncoding, headerNameContentLength, headerNameConnection, headerNameProxyAuthorization:
+	lower := strings.ToLower(name)
+	if _, ok := connectionHeaders[lower]; ok {
+		return false
+	}
+
+	switch lower {
+	case headerNameTransferEncoding, headerNameContentLength, headerNameConnection, headerNameProxyAuthorization,
+		"keep-alive", "proxy-authenticate", "proxy-connection", "te", "trailer", "upgrade":
 		return false
 	default:
 		return true

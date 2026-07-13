@@ -193,6 +193,27 @@ func (d *DefaultRequestDispatcher) DispatchRaw(ctx context.Context, in DispatchI
 	return resp, perr, wroteHeader
 }
 
+// DispatchTunnel runs the Control pipeline for one raw CONNECT byte stream.
+// The CONNECT success response is written only after Egress has opened the
+// validated upstream socket.
+func (d *DefaultRequestDispatcher) DispatchTunnel(ctx context.Context, in DispatchInput, rw io.ReadWriter) (SuccessResponse, *PipelineError) {
+	started := d.opts.Now()
+
+	d.opts.Metrics.IncActiveRequests()
+	defer d.opts.Metrics.DecActiveRequests()
+
+	resp, perr := d.dispatchTunnel(ctx, in, rw, started)
+
+	var code ErrorCode
+	if perr != nil {
+		code = perr.Code
+	}
+
+	d.opts.Metrics.ObserveRequest(errorCodeLabel(code), d.opts.Now().Sub(started))
+
+	return resp, perr
+}
+
 func (d *DefaultRequestDispatcher) dispatch(ctx context.Context, in DispatchInput, started time.Time) (SuccessResponse, *PipelineError) {
 	if in.Request == nil || d.opts.ConfigCache == nil || d.opts.Workers == nil {
 		return SuccessResponse{}, d.withTiming(&PipelineError{Code: ControlInternalError}, 0, 0, started)
@@ -321,6 +342,67 @@ func (d *DefaultRequestDispatcher) dispatchRaw(ctx context.Context, in DispatchI
 	result, assignmentMs, perr, wroteHeader := d.executeRawAttempt(ctx, in, route, policy, snapshot.ConfigVersion, deadline, w)
 
 	return d.finalizeRawDispatch(ctx, in, snapshot, route, result, perr, routingMs, assignmentMs, started, wroteHeader)
+}
+
+func (d *DefaultRequestDispatcher) dispatchTunnel(ctx context.Context, in DispatchInput, rw io.ReadWriter, started time.Time) (SuccessResponse, *PipelineError) {
+	if in.Request == nil || rw == nil || d.opts.ConfigCache == nil || d.opts.Workers == nil {
+		return SuccessResponse{}, d.withTiming(&PipelineError{Code: ControlInternalError}, 0, 0, started)
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	d.opts.InFlight.Register(ctx, in.RequestID, in.Identity.DeploymentID, cancel)
+	defer d.opts.InFlight.Deregister(ctx, in.RequestID)
+
+	snapshot := d.opts.ConfigCache.Snapshot()
+
+	routeStart := d.opts.Now()
+	route := d.route(in, snapshot)
+	routeEnd := d.opts.Now()
+	routingMs := millisSince(routeStart, routeEnd)
+	d.opts.Metrics.ObserveRouting(routeEnd.Sub(routeStart))
+
+	if !route.OK {
+		return SuccessResponse{}, d.withTiming(routeError(route.ErrorCode), routingMs, 0, started)
+	}
+
+	policy, verr := ResolveDestinationPolicy(DestinationPolicyRequest{
+		Snapshot:                    snapshot,
+		TargetURL:                   in.Request.URL,
+		RequestedFingerprintProfile: "",
+		MaxInjectedHeaderBytes:      d.opts.MaxFrameDataBytes,
+		UpstreamProxyEnabled:        false,
+		UpstreamProxyTrusted:        false,
+	})
+	if verr != nil {
+		return SuccessResponse{}, d.withTiming(validationPipelineError(verr), routingMs, 0, started)
+	}
+
+	// Header injection and HTTP fingerprinting do not apply to an opaque
+	// CONNECT byte stream.
+	policy.InjectionOperations = nil
+	policy.FingerprintProfile = ""
+
+	deadline := d.deadline(in.Request, snapshot)
+	in.Request.BodyReader = io.NopCloser(rw)
+
+	result, assignmentMs, perr := d.executeTunnelAttempt(ctx, in, route, policy, snapshot.ConfigVersion, deadline, rw)
+	if perr != nil {
+		perr = d.withTiming(perr, routingMs, assignmentMs, started)
+		perr.EgressMs = result.egressMs
+		setRouteFields(perr, route)
+
+		resp := rawSuccessFromDispatch(in.RequestID, result, routingMs, assignmentMs, millisSince(started, d.opts.Now()))
+		setRouteFieldsOnResponse(&resp, route)
+
+		return resp, perr
+	}
+
+	resp := rawSuccessFromDispatch(in.RequestID, result, routingMs, assignmentMs, millisSince(started, d.opts.Now()))
+	setRouteFieldsOnResponse(&resp, route)
+
+	return resp, nil
 }
 
 // finalizeRawDispatch mirrors finalizeDispatch for the raw-response path and

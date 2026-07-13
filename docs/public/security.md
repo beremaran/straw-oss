@@ -21,6 +21,11 @@ controls you would apply to an internal egress gateway.
 An empty Control token is intentionally supported for the default local stack. Do not use that setting on an
 untrusted network.
 
+The forward proxy uses `Proxy-Authorization: Bearer <token>` so an end-destination `Authorization` header can pass
+through decoded HTTP requests. Proxy credentials are stripped before dispatch. CONNECT traffic is opaque after the
+tunnel is established: destination and resolved-address policy still applies when Egress dials, but Straw cannot
+inspect application data inside the tunnel. Apply outbound network controls as defense in depth.
+
 ## Profile hardening and verification checklist
 
 | Profile | Required review before production | Owned verification |

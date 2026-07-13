@@ -19,6 +19,7 @@
     "release-checklist.md": {"owner": "release", "reviewed": "2026-07-13", "tested_commands": ["make check", "make release-artifact-check"]},
     "object-storage-receipts.md": {"owner": "receipt", "reviewed": "2026-07-13", "tested_commands": ["make profile-smoke PROFILE=receipts", "make state-backup-smoke PROFILE=receipts"]},
     "operations.md": {"owner": "operations", "reviewed": "2026-07-13", "tested_commands": ["make state-backup-smoke PROFILE=admin", "make state-backup-smoke PROFILE=receipts", "make ha-smoke"]},
+    "proxy-ingress.md": {"owner": "control", "reviewed": "2026-07-13", "tested_commands": ["go test ./internal/control", "make quickstart-smoke"]},
     "quickstart.md": {"owner": "documentation", "reviewed": "2026-07-13", "tested_commands": ["make quickstart-smoke"]},
     "releases.md": {"owner": "release", "reviewed": "2026-07-13", "tested_commands": ["make release-artifact-check", "actionlint"]},
     "runtime-administration.md": {"owner": "control", "reviewed": "2026-07-13", "tested_commands": ["make profile-smoke PROFILE=admin", "make state-backup-smoke PROFILE=admin"]},
