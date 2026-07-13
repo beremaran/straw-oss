@@ -13,6 +13,7 @@ import (
 
 const (
 	testInjectionHeaderName        = "X-Foo"
+	testTraceHeaderName            = "X-Trace"
 	testDisabledFingerprintProfile = "disabled_profile"
 )
 
@@ -392,7 +393,7 @@ func TestResolveDestinationPolicy_InjectionOrderedAndSafe(t *testing.T) {
 		FingerprintProfiles: fingerprintSnapshot(),
 		InjectionPolicies: []config.InjectionPolicy{
 			{ID: "b_second", Enabled: true, Operations: []config.InjectionOperation{
-				{Op: injectionOpAppend, HeaderName: "X-Trace", ValueBase64: b64("v2")},
+				{Op: injectionOpAppend, HeaderName: testTraceHeaderName, ValueBase64: b64("v2")},
 			}},
 			{ID: "a_first", Enabled: true, Operations: []config.InjectionOperation{
 				{Op: injectionOpSet, HeaderName: "User-Agent", ValueBase64: b64("straw/1.0")},

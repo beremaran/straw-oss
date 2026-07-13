@@ -33,7 +33,7 @@ func TestLoadMinimalEgress(t *testing.T) {
 	if len(cfg.Capabilities.AllowedPools) != 1 || cfg.Capabilities.AllowedPools[0] != (EgressPoolRef{DeploymentID: DefaultDeploymentID, PoolID: DefaultPoolID}) {
 		t.Fatalf("allowed pools = %+v, want default/default", cfg.Capabilities.AllowedPools)
 	}
-	wantIngress := []string{"rest", "http_proxy", "connect"}
+	wantIngress := []string{snapshotIngressREST, snapshotIngressHTTPProxy, snapshotIngressConnect}
 	if strings.Join(cfg.Capabilities.SupportedIngressModes, ",") != strings.Join(wantIngress, ",") {
 		t.Fatalf("supported ingress modes = %v, want %v", cfg.Capabilities.SupportedIngressModes, wantIngress)
 	}

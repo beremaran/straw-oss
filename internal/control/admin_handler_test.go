@@ -56,3 +56,33 @@ func TestDashboardContainsAllAdministrativeActions(t *testing.T) {
 		}
 	}
 }
+
+func TestAdminPutInvalidSnapshotReturns422AndDoesNotActivate(t *testing.T) {
+	t.Parallel()
+	fixture := newTestAdmin(t)
+	auth, err := NewAdminAuthenticator("admin-secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	NewAdminHandler(fixture.admin, auth).Register(mux)
+	current, _ := fixture.admin.Current()
+	invalid := current.Snapshot.Clone()
+	invalid.RoutingRules[0].AllowStickyFallback = true
+	raw, err := json.Marshal(invalid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPut, "/api/v1/admin/config", bytes.NewReader(raw))
+	req.Header.Set("Authorization", "Bearer admin-secret")
+	req.Header.Set("If-Match", "1")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("PUT code = %d, body = %s; want 422", rec.Code, rec.Body.String())
+	}
+	got, _ := fixture.admin.Current()
+	if got.Revision != current.Revision || fixture.admin.cache.Snapshot().ConfigVersion != current.Snapshot.ConfigVersion {
+		t.Fatal("invalid PUT changed durable or active configuration")
+	}
+}

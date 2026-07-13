@@ -59,7 +59,7 @@ func TestWorkerRegistrationAcceptsOnlyExactCatalogueCapabilities(t *testing.T) {
 		profiles []string
 	}{
 		{name: "unknown", profiles: []string{"firefox_999"}},
-		{name: "duplicate", profiles: []string{"chrome_120", "chrome_120"}},
+		{name: "duplicate", profiles: []string{fingerprintProfileChrome120, fingerprintProfileChrome120}},
 	} {
 		outcome, err = registry.Register(context.Background(), request(test.name, test.profiles))
 		if err != nil || outcome.OK || outcome.Reason != rejectCapabilityScope {

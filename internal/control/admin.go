@@ -83,12 +83,12 @@ func NewAdminService(store RuntimeConfigStore, cache *ConfigCache, workers *Work
 		return nil, fmt.Errorf("load runtime configuration: %w", err)
 	}
 
-	err = config.ValidateSnapshot(record.Snapshot)
+	prepared, err := prepareRuntimeSnapshot(record.Snapshot)
 	if err != nil {
 		return nil, fmt.Errorf("validate stored runtime configuration: %w", err)
 	}
 
-	service.activate(record.Snapshot)
+	service.activate(prepared)
 
 	return service, nil
 }
@@ -129,7 +129,7 @@ func (s *AdminService) Update(expectedRevision uint64, snapshot config.Snapshot,
 
 	snapshot.ConfigVersion = current.Snapshot.ConfigVersion + 1
 
-	err = config.ValidateSnapshot(snapshot)
+	prepared, err := prepareRuntimeSnapshot(snapshot)
 	if err != nil {
 		return ConfigRecord{}, fmt.Errorf("validate runtime configuration update: %w", err)
 	}
@@ -142,7 +142,7 @@ func (s *AdminService) Update(expectedRevision uint64, snapshot config.Snapshot,
 		action = "update"
 	}
 
-	record, err := s.store.Save(expectedRevision, ConfigRecord{Snapshot: snapshot, Actor: actor, Action: action})
+	record, err := s.store.Save(expectedRevision, ConfigRecord{Snapshot: prepared, Actor: actor, Action: action})
 	if err != nil {
 		return ConfigRecord{}, fmt.Errorf("save runtime configuration update: %w", err)
 	}
@@ -270,15 +270,20 @@ func (s *AdminService) SetupRolloutAcks(conn rolloutSubscriber) error {
 func (s *AdminService) SetupConfigInvalidation(conn rolloutSubscriber) error {
 	_, err := conn.Subscribe(RuntimeSnapshotSubject, func(msg *nats.Msg) {
 		var snapshot config.Snapshot
-		if json.Unmarshal(msg.Data, &snapshot) != nil || config.ValidateSnapshot(snapshot) != nil {
+		if json.Unmarshal(msg.Data, &snapshot) != nil {
 			return
 		}
 
-		if snapshot.ConfigVersion <= s.cache.Snapshot().ConfigVersion {
+		prepared, prepareErr := prepareRuntimeSnapshot(snapshot)
+		if prepareErr != nil {
 			return
 		}
 
-		s.activate(snapshot)
+		if prepared.ConfigVersion <= s.cache.Snapshot().ConfigVersion {
+			return
+		}
+
+		s.activate(prepared)
 	})
 	if err != nil {
 		return fmt.Errorf("subscribe runtime configuration invalidation: %w", err)
@@ -316,11 +321,17 @@ func (s *AdminService) RunRepublisher(ctx context.Context) {
 			return
 		case <-ticker.C:
 			record, err := s.store.Current()
-			if err == nil && record.Snapshot.ConfigVersion > s.cache.Snapshot().ConfigVersion {
-				s.activate(record.Snapshot)
-			} else {
-				s.publishCurrent()
+			if err == nil {
+				prepared, prepareErr := prepareRuntimeSnapshot(record.Snapshot)
+				if prepareErr == nil && prepared.ConfigVersion > s.cache.Snapshot().ConfigVersion {
+					s.activate(prepared)
+
+					continue
+				}
 			}
+			// The active cache is already current, or the durable record was
+			// rejected. Publication never activates an unvalidated snapshot.
+			s.publishCurrent()
 		}
 	}
 }

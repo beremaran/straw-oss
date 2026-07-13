@@ -101,10 +101,21 @@ curl -sS -X PUT \
   http://localhost:8080/api/v1/admin/config
 ```
 
-Control validates the complete snapshot before the durable compare-and-swap. Invalid pool references, duplicate pool
-memberships, duplicate IDs, or invalid timeouts return `422` and nothing is activated. Accepted changes receive the next `config_version`, are
+Control validates and prepares the complete snapshot before the durable compare-and-swap. Validation covers routing
+conditions and sticky TTL/fallback coherence, executor-pool eligibility semantics, destination-policy rules, header
+injection operations, fingerprint-profile metadata, and worker settings—not just IDs and references. Invalid input
+returns `422`; nothing is persisted, activated, or published. Accepted changes receive the next `config_version`, are
 atomically applied to new requests, and are repeatedly published to workers. Requests already running keep the
 immutable snapshot with which they started.
+
+Destination rules accept `raw_pattern` as their authoritative input. Control deterministically writes the corresponding
+`normalized_host`, `normalized_cidr`, `normalized_ip`, or `normalized_name` and clears the other derived fields. Host
+and CNAME patterns are lowercased and IDNA-normalized; CIDRs are masked to their canonical network; IPs are canonicalized.
+The rule type must match the representation: `host`, `host_suffix` (optionally `*.example.com`), `cidr`, `ip`,
+`cname_suffix`, `private_range`, or a recognized `metadata_ip`. Malformed hosts, suffixes, CIDRs, IPs, private ranges,
+metadata addresses, actions, injection operations, or non-executable fingerprint records are rejected before persistence.
+An empty `raw_pattern` is accepted only for legacy snapshots that already contain exactly one valid normalized field;
+when a raw pattern is supplied, stale normalized values are never retained.
 
 ### Roll back
 
@@ -118,6 +129,9 @@ curl -sS -X POST \
   -d '{"config_version":1}' \
   http://localhost:8080/api/v1/admin/config/rollback
 ```
+
+Rollback goes through the same complete preparation and validation boundary. It creates a new version only when the
+retained snapshot is still executable, while preserving compare-and-swap and the original history record.
 
 ## Understand lifecycle behavior
 

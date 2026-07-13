@@ -7,6 +7,9 @@ are tagged.
 
 ### Added
 
+- Completed runtime-admin snapshot preparation: full pre-activation validation now covers routing conditions, sticky
+  coherence, executor pools, destination rules, injections, fingerprint profiles, and worker settings; destination
+  rules accept raw patterns and persist deterministic normalized fields without retaining stale derived values.
 - Restored the backward-compatible `routing` object on `POST /api/v1/requests`, including validated tags, country,
   region, IP type, sticky-session hints, hard worker capability constraints, and routing coverage tests.
 - Made executor pools enforceable across registration and routing: disabled pools receive no new assignments, pool
