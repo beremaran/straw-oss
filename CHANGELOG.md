@@ -36,6 +36,9 @@ are tagged.
 
 ### Changed
 
+- Allowed pre-launch CI and release-image builds to resolve exact tagged dependencies through the existing
+  repository-scoped GitHub App while keeping anonymous clean-room, external-link, dependency-review, and CodeQL gates
+  reserved for public repositories.
 - Decomposed Control dispatch, Egress execution, and receipt handling into responsibility-focused files, made receipt
   lifecycle transitions explicit, and separated receipt record/index persistence behind an internal interface.
 - Bounded static configuration, stored receipt record, and S3 list decoding to protect parser memory during malformed
