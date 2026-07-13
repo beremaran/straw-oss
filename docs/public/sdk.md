@@ -5,7 +5,7 @@ The REST API has small Go and Python clients. Both accept a base URL and optiona
 ## Go
 
 ```sh
-go get github.com/beremaran/straw-sdk-go@v0.1.0
+go get github.com/beremaran/straw-sdk-go@v0.2.0
 ```
 
 ```go
@@ -24,6 +24,7 @@ func main() {
     response, err := client.Do(context.Background(), straw.Request{
         Method: "GET",
         URL:    "https://example.com",
+        Routing: &straw.RoutingHints{Country: "AU", Tags: []string{"residential"}, StickySessionID: "checkout-42"},
     })
     if err != nil {
         log.Fatal(err)
@@ -44,12 +45,16 @@ For a large body, use `CreateReceipt`, one or more `UploadReceiptPart` calls, an
 `RequestBody{Mode: "receipt", ReceiptID: receipt.ReceiptID}`. Set `ResponseBodyMode: "receipt"` to store a response,
 and open it with `DownloadReceipt`.
 
+`Request.Routing` carries optional tags, country, region, IP type, and sticky-session ID constraints. GET, HEAD, and
+OPTIONS requests become replayable by default; set `Replayable: true` only when the application operation is safe to
+retry for other methods.
+
 ## Python
 
 Install the exact public tag:
 
 ```sh
-uv add 'straw-sdk @ git+https://github.com/beremaran/straw-sdk-python.git@v0.1.0'
+uv add 'straw-sdk @ git+https://github.com/beremaran/straw-sdk-python.git@v0.2.0'
 ```
 
 ```python
@@ -70,6 +75,10 @@ codes only. Tests can point the client at an `httptest`/local fake implementing 
 The Python client provides matching `create_receipt`, `upload_receipt_part`, `complete_receipt`, `get_receipt`, and
 `download_receipt` methods. `RequestBody(mode="receipt", receipt_id=...)` and
 `Request(response_body_mode="receipt", ...)` select the receipt paths.
+
+Use `RoutingHints(tags=["residential"], country="AU", sticky_session_id="checkout-42")` on `Request.routing` for
+the same routing contract as REST, proxy, CONNECT, and the Go SDK. GET, HEAD, and OPTIONS default to replayable; set
+`replayable=True` for another method only when the operation is safe to retry.
 
 The Python package also contains the lower-level worker SDK. See [custom workers](egress_worker.md).
 

@@ -62,19 +62,10 @@ type PipelineError struct {
 	TimeoutType  string
 	// RoutingMs/AssignmentMs/EgressMs/TotalMs carry whatever partial phase
 	// timing the dispatcher measured before the failure, so a failed
-	// request_events row (docs/public/architecture.md) still reports the real elapsed
-	// time instead of zeros.
-	RoutingMs    int64
-	AssignmentMs int64
-	EgressMs     int64
-	TotalMs      int64
-	// RouteID/PoolID/SelectedExecutor/ExecutorType carry the routing decision
-	// for request_events telemetry (empty when the failure occurred before a
-	// route was selected).
-	RouteID                    string
-	PoolID                     string
-	SelectedExecutor           string
-	ExecutorType               string
+	RoutingMs                  int64
+	AssignmentMs               int64
+	EgressMs                   int64
+	TotalMs                    int64
 	SelectedFingerprintProfile string
 	ExecutedFingerprintProfile string
 }
@@ -256,7 +247,6 @@ func (d *DefaultRequestDispatcher) dispatch(ctx context.Context, in DispatchInpu
 	if perr != nil {
 		perr = d.withTiming(perr, routingMs, assignmentMs, started)
 		perr.EgressMs = result.egressMs
-		setRouteFields(perr, usedRoute)
 		setProfileFields(perr, result)
 
 		return SuccessResponse{}, perr
@@ -266,30 +256,11 @@ func (d *DefaultRequestDispatcher) dispatch(ctx context.Context, in DispatchInpu
 }
 
 // finalizeDispatch builds the buffered response envelope.
-func (d *DefaultRequestDispatcher) finalizeDispatch(_ context.Context, in DispatchInput, _ config.Snapshot, result dispatchResult, route RouteOutcome, routingMs, assignmentMs int64, started time.Time) (SuccessResponse, *PipelineError) {
+func (d *DefaultRequestDispatcher) finalizeDispatch(_ context.Context, in DispatchInput, _ config.Snapshot, result dispatchResult, _ RouteOutcome, routingMs, assignmentMs int64, started time.Time) (SuccessResponse, *PipelineError) {
 	resp := successFromDispatch(in.RequestID, result, routingMs, assignmentMs, millisSince(started, d.opts.Now()))
-	setRouteFieldsOnResponse(&resp, route)
 	setProfileFieldsOnResponse(&resp, result)
 
 	return resp, nil
-}
-
-// setRouteFields copies the selected route's identity onto a PipelineError
-// for request_events telemetry (docs/public/architecture.md follow-up: route_id/pool_id/
-// selected_executor/executor_type were computed at dispatch but dropped
-// before reaching the telemetry row).
-func setRouteFields(perr *PipelineError, route RouteOutcome) {
-	perr.RouteID = route.RuleID
-	perr.PoolID = route.PoolID
-	perr.SelectedExecutor = route.WorkerID
-	perr.ExecutorType = route.ExecutorType
-}
-
-func setRouteFieldsOnResponse(resp *SuccessResponse, route RouteOutcome) {
-	resp.RouteID = route.RuleID
-	resp.PoolID = route.PoolID
-	resp.SelectedExecutor = route.WorkerID
-	resp.ExecutorType = route.ExecutorType
 }
 
 func setProfileFields(perr *PipelineError, result dispatchResult) {
@@ -387,50 +358,41 @@ func (d *DefaultRequestDispatcher) dispatchTunnel(ctx context.Context, in Dispat
 	deadline := d.deadline(in.Request, snapshot)
 	in.Request.BodyReader = io.NopCloser(rw)
 
-	result, assignmentMs, perr, usedRoute := d.executeTunnelAttemptOrFallback(ctx, in, route, snapshot, policy, deadline, rw)
+	result, assignmentMs, perr, _ := d.executeTunnelAttemptOrFallback(ctx, in, route, snapshot, policy, deadline, rw)
 	if perr != nil {
 		perr = d.withTiming(perr, routingMs, assignmentMs, started)
 		perr.EgressMs = result.egressMs
-		setRouteFields(perr, usedRoute)
-
 		resp := rawSuccessFromDispatch(in.RequestID, result, routingMs, assignmentMs, millisSince(started, d.opts.Now()))
-		setRouteFieldsOnResponse(&resp, usedRoute)
 
 		return resp, perr
 	}
 
 	resp := rawSuccessFromDispatch(in.RequestID, result, routingMs, assignmentMs, millisSince(started, d.opts.Now()))
-	setRouteFieldsOnResponse(&resp, usedRoute)
 
 	return resp, nil
 }
 
 // finalizeRawDispatch mirrors finalizeDispatch for the raw-response path and
 // attaches routing and timing details to the result.
-func (d *DefaultRequestDispatcher) finalizeRawDispatch(_ context.Context, in DispatchInput, _ config.Snapshot, route RouteOutcome, result dispatchResult, perr *PipelineError, routingMs, assignmentMs int64, started time.Time, wroteHeader bool) (SuccessResponse, *PipelineError, bool) {
+func (d *DefaultRequestDispatcher) finalizeRawDispatch(_ context.Context, in DispatchInput, _ config.Snapshot, _ RouteOutcome, result dispatchResult, perr *PipelineError, routingMs, assignmentMs int64, started time.Time, wroteHeader bool) (SuccessResponse, *PipelineError, bool) {
 	if perr != nil {
 		perr = d.withTiming(perr, routingMs, assignmentMs, started)
 		perr.EgressMs = result.egressMs
-		setRouteFields(perr, route)
 		setProfileFields(perr, result)
 
 		resp := rawSuccessFromDispatch(in.RequestID, result, routingMs, assignmentMs, millisSince(started, d.opts.Now()))
-		setRouteFieldsOnResponse(&resp, route)
 		setProfileFieldsOnResponse(&resp, result)
 
 		return resp, perr, wroteHeader
 	}
 
 	resp := rawSuccessFromDispatch(in.RequestID, result, routingMs, assignmentMs, millisSince(started, d.opts.Now()))
-	setRouteFieldsOnResponse(&resp, route)
 	setProfileFieldsOnResponse(&resp, result)
 
 	return resp, nil, wroteHeader
 }
 
-// withTiming annotates perr with whatever partial phase timing the
-// dispatcher measured before the failure (docs/public/architecture.md), so a failed
-// request_events row reports real elapsed time instead of zeros.
+// withTiming annotates perr with whatever partial phase timing the dispatcher measured before the failure.
 func (d *DefaultRequestDispatcher) withTiming(perr *PipelineError, routingMs, assignmentMs int64, started time.Time) *PipelineError {
 	perr.RoutingMs = routingMs
 	perr.AssignmentMs = assignmentMs

@@ -25,7 +25,7 @@ const (
 	usage              = `Straw CLI
 
 Usage:
-  straw request --url URL [--method METHOD] [--header "Name: value"] [--body-file PATH | --receipt-id ID]
+  straw request --url URL [--method METHOD] [routing flags] [--header "Name: value"] [--body-file PATH | --receipt-id ID]
 
 Environment:
   STRAW_BASE_URL    Control base URL (default http://localhost:8080)
@@ -82,6 +82,14 @@ func runRequest(ctx context.Context, args []string, stdout io.Writer) error {
 	responseBodyMode := flags.String("response-body-mode", "", "inline_base64 or receipt")
 	timeoutMS := flags.Uint64("timeout-ms", 0, "request timeout in milliseconds")
 	fingerprint := flags.String("fingerprint-profile", "", "outbound TLS fingerprint profile")
+	replayable := flags.Bool("replayable", false, "permit transport retry when the operation is safe to replay")
+	routeCountry := flags.String("route-country", "", "required worker country")
+	routeRegion := flags.String("route-region", "", "required worker region")
+	routeIPType := flags.String("route-ip-type", "", "required worker IP type")
+	stickySessionID := flags.String("sticky-session-id", "", "sticky worker session identifier")
+
+	var routeTags stringListFlag
+	flags.Var(&routeTags, "route-tag", "required worker tag; repeatable")
 
 	var headers headerFlags
 	flags.Var(&headers, "header", "upstream header as Name: value")
@@ -97,8 +105,9 @@ func runRequest(ctx context.Context, args []string, stdout io.Writer) error {
 
 	request := sdk.Request{
 		Method: *method, URL: *targetURL, TimeoutMs: *timeoutMS,
-		FingerprintProfile: *fingerprint, ResponseBodyMode: *responseBodyMode,
+		FingerprintProfile: *fingerprint, ResponseBodyMode: *responseBodyMode, Replayable: *replayable,
 	}
+	request.Routing = routingHints(routeTags, *routeCountry, *routeRegion, *routeIPType, *stickySessionID)
 
 	request.Headers, err = encodeHeaders(headers)
 	if err != nil {
@@ -121,6 +130,14 @@ func runRequest(ctx context.Context, args []string, stdout io.Writer) error {
 	}
 
 	return nil
+}
+
+func routingHints(tags []string, country, region, ipType, stickySessionID string) *sdk.RoutingHints {
+	if len(tags) == 0 && country == "" && region == "" && ipType == "" && stickySessionID == "" {
+		return nil
+	}
+
+	return &sdk.RoutingHints{Tags: tags, Country: country, Region: region, IPType: ipType, StickySessionID: stickySessionID}
 }
 
 func setRequestBody(request *sdk.Request, bodyFile, receiptID string) error {
@@ -176,6 +193,16 @@ func (h *headerFlags) String() string { return strings.Join(*h, ", ") }
 
 func (h *headerFlags) Set(value string) error {
 	*h = append(*h, value)
+
+	return nil
+}
+
+type stringListFlag []string
+
+func (s *stringListFlag) String() string { return strings.Join(*s, ", ") }
+
+func (s *stringListFlag) Set(value string) error {
+	*s = append(*s, value)
 
 	return nil
 }

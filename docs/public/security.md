@@ -31,6 +31,9 @@ bounded tags/country/region/IP-type/sticky-session contract, and strips every `X
 upstream forwarding. CONNECT strips the same control headers before tunnel establishment and never applies header
 injection or TLS fingerprinting to tunneled bytes. Unknown `X-Straw-*` headers are also stripped rather than forwarded.
 
+Treat routing hints as authenticated control input, not destination metadata. Validate them at the proxy boundary and
+test complete namespace stripping, including unknown future `X-Straw-*` names, before exposing the listener.
+
 ## Profile hardening and verification checklist
 
 | Profile | Required review before production | Owned verification |

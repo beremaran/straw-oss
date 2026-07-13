@@ -40,7 +40,7 @@ func TestRunWorkerUsesSDKRuntime(t *testing.T) {
 	t.Cleanup(func() { runSDKWorker = original })
 
 	called := false
-	runSDKWorker = func(_ context.Context, _ *natsx.Connection, id sdkegress.Identity, _ sdkegress.Capabilities, executor *internalegress.Executor, heartbeat time.Duration, _ *atomic.Bool) error {
+	runSDKWorker = func(_ context.Context, _ *natsx.Connection, id sdkegress.Identity, caps sdkegress.Capabilities, executor *internalegress.Executor, heartbeat time.Duration, _ *atomic.Bool) error {
 		called = true
 		if id.WorkerID != "worker-sdk" || id.ExecutorType != "egress" || len(id.PrivateKey) == 0 {
 			t.Fatalf("identity = %+v", id)
@@ -48,11 +48,17 @@ func TestRunWorkerUsesSDKRuntime(t *testing.T) {
 		if executor == nil || heartbeat != 250*time.Millisecond {
 			t.Fatalf("executor/heartbeat = %v/%s", executor, heartbeat)
 		}
+		if len(caps.AllowedPools) != 1 || caps.AllowedPools[0].GetPoolId() != "residential-au" {
+			t.Fatalf("allowed pools = %+v", caps.AllowedPools)
+		}
 
 		return nil
 	}
 
-	err := runWorker(context.Background(), nil, config.EgressConfig{WorkerID: "worker-sdk", HeartbeatIntervalMs: 250, HealthPort: 8090})
+	err := runWorker(context.Background(), nil, config.EgressConfig{
+		WorkerID: "worker-sdk", HeartbeatIntervalMs: 250, HealthPort: 8090,
+		Capabilities: config.EgressCapabilities{AllowedPools: []config.EgressPoolRef{{PoolID: "residential-au"}}},
+	})
 	if err != nil || !called {
 		t.Fatalf("runWorker() = %v, called=%v", err, called)
 	}

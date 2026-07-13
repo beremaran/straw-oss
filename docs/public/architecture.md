@@ -71,8 +71,9 @@ instance updates Redis with a session fence and TTL, so every Control routes aga
 owned by the Control holding its client connection; the shared owner record lets another instance forward an
 administrative cancellation to it over NATS.
 
-GET, HEAD, and OPTIONS requests are replayable by default in the clients. Other methods are not retried unless the
-caller explicitly marks them replayable.
+GET, HEAD, and OPTIONS requests are replayable by default in the tagged clients. Other methods are not retried unless
+the caller explicitly marks them replayable. REST, absolute-form proxy, and CONNECT share the same route evaluation;
+the ingress mode is an additional match/capability constraint when configured.
 
 ## Forward-proxy lifecycle
 

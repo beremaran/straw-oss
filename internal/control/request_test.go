@@ -90,7 +90,7 @@ func TestValidateRequestRejectsInvalidRoutingHints(t *testing.T) {
 	}
 }
 
-func TestValidateRequestRejectsRemovedEnterpriseHints(t *testing.T) {
+func TestValidateRequestRejectsUnsupportedLegacyHints(t *testing.T) {
 	t.Parallel()
 
 	_, err := ValidateRequest([]byte(`{"method":"GET","url":"https://example.com/","capture_hint":"all"}`), 1<<20, 5000)

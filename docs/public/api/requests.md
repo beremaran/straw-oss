@@ -71,6 +71,11 @@ The same `RoutingHints` contract is available to the forward-proxy ingress throu
 `X-Straw-Route-Sticky-Session` headers. See [HTTP and HTTPS proxy ingress](../proxy-ingress.md#routing-hints) for
 the bounded syntax and header-stripping rules.
 
+REST, absolute-form proxy, and CONNECT requests evaluate the same deployment routing rules and pool/capability
+constraints. Only an explicit ingress rule or worker ingress capability differentiates those modes. `replayable` is
+an explicit transport-retry permission: clients default GET, HEAD, and OPTIONS to true, while other methods remain
+false unless the caller opts in and the operation is safe to repeat.
+
 ## Success
 
 Control returns HTTP `200` when Straw transported the request, even if the destination returned an error status.

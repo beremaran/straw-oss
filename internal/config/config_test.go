@@ -65,7 +65,7 @@ func TestLoadEgressAllowedPools(t *testing.T) {
 func TestLoadRejectsUnknownField(t *testing.T) {
 	t.Parallel()
 
-	_, err := LoadControl(writeConfig(t, `{"config_version":"v1","control":{"enterprise_mode":true}}`))
+	_, err := LoadControl(writeConfig(t, `{"config_version":"v1","control":{"unsupported_legacy_mode":true}}`))
 	if err == nil || !strings.Contains(err.Error(), "unknown field") {
 		t.Fatalf("LoadControl() error = %v, want unknown field", err)
 	}
