@@ -40,7 +40,32 @@ curl -sS http://localhost:8080/api/v1/requests \
 | `response_body_mode` | no | `inline_base64` (default) or `receipt` when the object-storage profile is enabled. |
 | `fingerprint_profile` | no | Exact, case-sensitive built-in profile name. Omit it for ordinary TLS. See the [fingerprint catalogue](../compatibility.md#fingerprint-profile-catalogue). |
 | `timeout_ms` | no | Total deadline, from 1000 ms through the configured maximum. |
-| `replayable` | no | Permits safe transport retry. Clients default GET, HEAD, and OPTIONS to true. |
+| `replayable` | no | Wire default is `false` and Control never silently changes it. Tagged Go and Python clients default GET, HEAD, and OPTIONS to `true`. |
+
+## Validation, defaults, and limits
+
+The request endpoint accepts one strict JSON object. Unknown fields, trailing JSON values, invalid UTF-8, and an
+envelope larger than 4 MiB are rejected before dispatch. The following validation applies before routing:
+
+- `method` must be uppercase and one of `GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`, or `TRACE`.
+  `CONNECT` belongs to the authenticated forward-proxy ingress and is rejected by this REST endpoint.
+- `url` must be an absolute `http` or `https` URL. User information, fragments, IPv6 zone identifiers, empty hosts,
+  malformed hostnames, and unsupported schemes are rejected.
+- `headers` may contain at most 64 ordered entries. Each name is at most 64 bytes; the aggregate of name bytes and
+  decoded value bytes is at most 16,384 bytes. Values use standard base64 and may not contain CR or LF before or after
+  decoding. `Host`, hop-by-hop headers, and proxy credentials are managed or rejected.
+- Omit `body` for no body. An inline body uses standard base64 and is limited by
+  `control.request.max_inline_request_body_bytes` (1 MiB by default). A receipt body requires `receipt_id` and no
+  inline data; it is limited by the receipt profile instead.
+- Omit `timeout_ms` to use the active runtime snapshot's `default_timeout_ms` (60 seconds by default). Static
+  `control.request.max_timeout_ms` caps that value and explicit timeouts; its default cap is 120 seconds. An explicit
+  timeout must be at least 1000 ms.
+- `response_body_mode:"receipt"` requires object storage to be enabled. Otherwise, the default inline response is
+  bounded by `control.request.max_inline_response_body_bytes` (1 MiB by default) and an oversized response fails with
+  `body_too_large` rather than returning a partial body.
+
+The REST wire field `replayable` defaults to `false`. Go and Python SDKs apply the safe-method default before sending;
+they do not retry automatically. Set it explicitly only when replaying the operation is safe for the destination.
 
 Hop-by-hop headers, `Host`, `Content-Length`, and proxy authorization headers are managed or rejected by Straw.
 Request bodies default to a 1 MiB limit.
@@ -123,6 +148,19 @@ Straw failures use an outer 4xx or 5xx status and a stable envelope:
 
 Optional fields are `timeout_type`, `retry_after_ms`, and `details`. Use `code` for program logic and `message` for
 humans. Retry only when `retryable` is true and the original operation is safe to replay.
+
+`details` is a bounded string map intended for diagnostics, not program-wide branching. The currently documented
+detail values are:
+
+| Error | Detail | Values or meaning |
+| --- | --- | --- |
+| `body_too_large` during request validation | `direction` | `request` |
+| `body_too_large` during request validation | `limit_bytes` | active inline request-body limit |
+| timeout errors | `timeout_type` | `assignment_timeout`, `connect_timeout`, `response_header_timeout`, `idle_timeout`, `upload_timeout`, `download_timeout`, or `total_deadline_timeout` |
+
+Response-body size failures may omit `details`; use the stable error code and configured response limit. An upstream
+HTTP error status is still a successful Straw transport: it appears in the response envelope's `status` field while
+the outer HTTP status remains `200`.
 
 | Stable code | Category | HTTP / retryable | Meaning |
 | --- | --- | --- | --- |

@@ -75,6 +75,65 @@ GET, HEAD, and OPTIONS requests are replayable by default in the tagged clients.
 the caller explicitly marks them replayable. REST, absolute-form proxy, and CONNECT share the same route evaluation;
 the ingress mode is an additional match/capability constraint when configured.
 
+## Destination policy and egress safety
+
+Control captures the deployment policy at request start and sends the resolved policy bundle with the assignment.
+Control performs a fail-fast check for literal IPs and host rules. Egress remains authoritative: immediately before a
+connection it resolves every address, validates every resolved IP, checks the configured CNAME suffix policy, and only
+then dials the first validated address. A policy failure returns `destination_denied`; it never silently falls back to
+an unvalidated address.
+
+### Rule types and precedence
+
+Runtime snapshots use these destination rule types:
+
+| Rule type | Pattern | Enforcement |
+| --- | --- | --- |
+| `host` | normalized hostname | exact target-host match |
+| `host_suffix` | hostname, optionally entered as `*.example.com` or `.example.com` | exact host or a dot-boundary subdomain match |
+| `cname_suffix` | hostname suffix | any returned CNAME hop, not just the final address |
+| `cidr` | CIDR | matching resolved address |
+| `ip` | one IP address | that exact address, compiled as a host CIDR |
+| `private_range` | private CIDR | matching private address; the type is an operator-facing label |
+| `metadata_ip` | one recognized metadata address | exact metadata address |
+
+`deny` is the normal action. `allow_override` is explicit and deployment-scoped:
+
+- for `cidr`, `ip`, `private_range`, and `metadata_ip`, the matching allowed CIDR is checked before configured denies
+  and built-in denies, so it is a true resolved-address override;
+- for `host`, `host_suffix`, and `cname_suffix`, pair the override with the same normalized value as the deny. Control
+  and Egress then compile that matching deny out of their respective host or CNAME lists;
+- IPv4-mapped IPv6 addresses are always rejected and cannot be overridden.
+
+Rules are normalized from `raw_pattern`: hostnames are lowercased and IDNA-normalized, CIDRs are masked to their
+canonical network, and IPs are canonicalized. A hostname target is not treated as safe merely because its name looks
+public; the resolved addresses are checked at dial time as defense against DNS changes and rebinding.
+
+### Built-in denied destinations
+
+Unless an explicit allowed CIDR overrides them, Egress denies loopback, RFC1918/ULA private ranges, link-local
+unicast, multicast, and these additional special-use ranges:
+
+```text
+0.0.0.0/8          100.64.0.0/10       192.0.0.0/24
+192.0.2.0/24       192.88.99.0/24      198.18.0.0/15
+198.51.100.0/24    203.0.113.0/24     240.0.0.0/4
+255.255.255.255/32
+::/128             64:ff9b::/96       100::/64
+::ffff:0:0/96
+```
+
+The recognized metadata addresses are `169.254.169.254`, `169.254.169.253`, `169.254.170.2`, `100.100.100.200`,
+and `100.100.100.201`. Keep network-level egress controls in place as a second boundary; an operator should not rely
+on application policy as the only protection for cloud metadata or private networks.
+
+### Resolution, TLS, and redirects
+
+The shipped Control/Egress deployment uses direct local DNS resolution. Egress validates every returned address before
+opening a socket, enforces strict SNI/target-host matching for TLS, and does not follow HTTP redirects. A 3xx response
+is returned to the caller; a redirected target is never fetched by Egress. CONNECT uses the same destination and
+resolved-address checks before establishing the opaque tunnel.
+
 ## Forward-proxy lifecycle
 
 Absolute-form HTTP proxy requests use the decoded request pipeline, but Control streams the upstream response

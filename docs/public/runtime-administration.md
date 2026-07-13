@@ -144,9 +144,43 @@ retained snapshot is still executable, while preserving compare-and-swap and the
 
 ## Back up and recover
 
-Back up the JetStream storage used for the configured bucket according to your NATS topology. The checked-in Compose
-overlays use the `straw-runtime-data` volume. Do not copy live storage files directly; use a NATS-supported snapshot or
-stop the server cleanly first.
+The default runtime-admin bucket is `STRAW_RUNTIME_CONFIG`; it stores the current record at the `deployment` key and
+the bounded history in the same file-backed JetStream KV bucket. The checked-in Compose overlays use the
+`straw-runtime-data` volume. Back up the NATS account or JetStream topology that owns this bucket—not just the
+application container filesystem.
+
+For an owned local verification, use the disposable backup drill:
+
+```sh
+make state-backup-smoke PROFILE=admin
+```
+
+For an operator-managed NATS account, the NATS CLI account backup includes all streams in that account. Use a
+dedicated account or an operator-approved backup scope, keep the output encrypted and access-controlled, and adapt
+the credentials to your deployment:
+
+```sh
+export NATS_URL=nats://nats.example.internal:4222
+export NATS_USER=straw-backup
+export NATS_PASSWORD=replace-me
+backup_dir="/secure/backups/straw-runtime-$(date -u +%Y%m%dT%H%M%SZ)"
+mkdir -p "$backup_dir"
+
+nats --server "$NATS_URL" --user "$NATS_USER" --password "$NATS_PASSWORD" \
+  account backup "$backup_dir"
+```
+
+Restore into a replacement or clean JetStream topology according to the [NATS JetStream disaster recovery
+procedure](https://docs.nats.io/running-a-nats-service/nats_admin/jetstream_admin/disaster_recovery); do not overwrite a
+live data directory while NATS is running:
+
+```sh
+nats --server "$NATS_URL" --user "$NATS_USER" --password "$NATS_PASSWORD" \
+  account restore "$backup_dir"
+```
+
+The exact NATS account, operator policy, storage class, and restore target are deployment decisions. Do not copy live
+storage files directly; use the NATS-supported account/stream procedure or stop the server cleanly first.
 
 If the bucket is unavailable or its current record is invalid, Control fails startup instead of silently falling back
 to file defaults. Restore the NATS data or start the static profile with a reviewed JSON configuration. If the bucket

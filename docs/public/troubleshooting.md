@@ -20,6 +20,66 @@ The deployment has `STRAW_AUTH_TOKEN` set and the request omitted or supplied th
 Authorization: Bearer <STRAW_AUTH_TOKEN>
 ```
 
+## `407 Proxy Authentication Required`
+
+Forward-proxy ingress authenticates with `Proxy-Authorization`; do not put the proxy credential in the destination's
+ordinary `Authorization` header:
+
+```sh
+curl --proxy http://localhost:8080 \
+  --proxy-header "Proxy-Authorization: Bearer $STRAW_AUTH_TOKEN" \
+  https://example.com
+```
+
+The proxy credential is stripped before a decoded request reaches the destination. A destination `Authorization`
+header is end-to-end application data and is a separate secret.
+
+## `if_match_required` or `revision_conflict`
+
+Admin mutations use compare-and-swap. Read the current config, copy its `ETag`, send that value as `If-Match`, and
+refresh it after every successful mutation. A `428 if_match_required` means the header is absent; `409
+revision_conflict` means another operator already changed the record.
+
+```sh
+curl -fsS -D headers.txt -o record.json \
+  -H "Authorization: Bearer $STRAW_ADMIN_TOKEN" \
+  http://localhost:8080/api/v1/admin/config
+revision=$(awk 'tolower($1)=="etag:" {gsub("\r", "", $2); print $2}' headers.txt)
+curl -fsS -X PUT \
+  -H "Authorization: Bearer $STRAW_ADMIN_TOKEN" \
+  -H "If-Match: $revision" \
+  -H 'Content-Type: application/json' \
+  --data-binary @snapshot.json \
+  http://localhost:8080/api/v1/admin/config
+```
+
+## `body_too_large` or `header_injection_failed`
+
+`body_too_large` identifies the request or response direction and may include `limit_bytes`. Reduce the inline body,
+raise the reviewed static limit, or use a request/response receipt where the selected profile supports it. A response
+receipt requires object storage; it does not make an inline request body unlimited.
+
+`header_injection_failed` means a runtime injection operation produced a reserved, malformed, CR/LF-containing, or
+oversized header. Check the complete snapshot's base64 values and the reserved-header list in
+[Configuration](configuration.md#runtime-header-injection); do not bypass the rejection by allowing hop-by-hop or
+`X-Straw-*` headers.
+
+## TLS proxy failures
+
+For the production HAProxy overlay, check the merged Compose configuration, certificate/key file permissions and
+order, and the Control readiness path:
+
+```sh
+docker compose --env-file deploy/production/.env \
+  -f deploy/production/compose.yml -f deploy/production/compose.tls.yml config
+make tls-proxy-check
+curl --fail-with-body --cacert /path/to/managed-ca.pem \
+  "https://127.0.0.1:${STRAW_TLS_PORT:-8443}/readyz"
+```
+
+The checked-in TLS check uses an ephemeral QA certificate and is not a production certificate installation step. Keep
+certificate verification enabled when reproducing a client failure.
+
 ## `route_unavailable` or assignment errors
 
 No worker is currently ready or it has no capacity. Check Egress logs/readiness and NATS connectivity. Start or scale

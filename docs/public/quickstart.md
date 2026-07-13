@@ -5,8 +5,11 @@
 - Git
 - Docker with Compose v2
 - `make`
+- Bash
+- `curl`
 
-No language toolchain or database is required to run the local stack.
+`jq` and `base64` are also required for the optional response-decoding command below. No language toolchain or
+database is required to run the local stack.
 
 ## Start Straw
 
@@ -61,8 +64,9 @@ curl -fsS http://localhost:9090/readyz
 curl -fsS http://localhost:9090/metrics | grep '^straw_'
 ```
 
-Use `make dev-logs`, `make dev-down`, or `make dev-reset` to inspect, stop, or rebuild the stack. If the default host
-ports are occupied, see [local port overrides](deployment.md#local-development).
+Use `make dev-logs`, `make dev-down`, or `make dev-reset` to inspect, stop, or remove the stack. `dev-reset` removes
+containers and volumes; the next `make dev` rebuilds and starts it. If the default host ports are occupied, see
+[local port overrides](deployment.md#local-development).
 
 Next, read the [request API](api/requests.md), [proxy ingress](proxy-ingress.md), or try the
 [CLI and SDKs](sdk.md).

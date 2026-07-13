@@ -1,5 +1,8 @@
 # Release procedure
 
+Operators installing a published build should start with [Install a release](installation.md). This page is the
+maintainer procedure for producing and promoting a release.
+
 Releases are performed by a maintainer with access to the protected `release` environment. The workflow is automated;
 environment approval, package settings, and post-publish observation are owner actions.
 

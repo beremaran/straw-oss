@@ -29,5 +29,79 @@ return 409 `revision_conflict`; invalid snapshots return 422; missing cancellati
 a body. Store/backend failures are non-2xx and do not activate partial configuration.
 The dashboard at `/admin/` is an API client, not an additional security boundary.
 
+## Examples
+
+Read the current record and preserve its quoted revision before making a mutation:
+
+```sh
+export ADMIN_URL=http://127.0.0.1:8080
+export ADMIN_TOKEN=replace-me
+curl -fsS -D /tmp/straw-admin-headers -o /tmp/straw-config.json \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  "$ADMIN_URL/api/v1/admin/config"
+etag=$(awk 'tolower($1)=="etag:" {gsub("\r", "", $2); print $2}' /tmp/straw-admin-headers)
+cat /tmp/straw-config.json
+```
+
+The saved response has the shape `{"snapshot":{...},"revision":N,"actor":"...","action":"...","created_at":"..."}`.
+Send the complete `snapshot` object—not the outer record—when updating it:
+
+```sh
+curl -fsS -X PUT \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "X-Straw-Actor: operator@example.com" \
+  -H "If-Match: $etag" \
+  -H 'Content-Type: application/json' \
+  --data-binary @snapshot.json \
+  "$ADMIN_URL/api/v1/admin/config"
+```
+
+Inspect audit history, rollout acknowledgements, worker state, and active requests with the same admin bearer token:
+
+```sh
+curl -fsS -H "Authorization: Bearer $ADMIN_TOKEN" "$ADMIN_URL/api/v1/admin/config/history"
+curl -fsS -H "Authorization: Bearer $ADMIN_TOKEN" "$ADMIN_URL/api/v1/admin/rollouts"
+curl -fsS -H "Authorization: Bearer $ADMIN_TOKEN" "$ADMIN_URL/api/v1/admin/workers"
+curl -fsS -H "Authorization: Bearer $ADMIN_TOKEN" "$ADMIN_URL/api/v1/admin/requests"
+```
+
+Rollback and worker lifecycle actions are also compare-and-swap mutations. Refresh `ETag` after every successful
+mutation and use a new request if another operator changed the revision:
+
+```sh
+curl -fsS -X POST \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "X-Straw-Actor: operator@example.com" \
+  -H "If-Match: $etag" \
+  -H 'Content-Type: application/json' \
+  -d '{"config_version":3}' \
+  "$ADMIN_URL/api/v1/admin/config/rollback"
+
+curl -fsS -X POST \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "X-Straw-Actor: operator@example.com" \
+  -H "If-Match: $etag" \
+  "$ADMIN_URL/api/v1/admin/workers/egress-1/drain"
+```
+
+## Status and error mapping
+
+| HTTP status | Error or result | Meaning and next action |
+| --- | --- | --- |
+| `200` | record/list/rollout | The read or mutation succeeded; mutation responses include a new quoted `ETag`. |
+| `204` | cancellation | The active request was cancelled; there is no response body. |
+| `401` | `admin_auth_required` | The admin token is missing or invalid. |
+| `400` | `invalid_if_match`, JSON decode error, unknown action, or store diagnostic | Fix the request or inspect the server diagnostic; no snapshot is activated. |
+| `404` | `request_not_found` | The cancellation target is not active in the owned runtime state. |
+| `409` | `revision_conflict` | Re-read the current config, merge deliberately, and retry with its `ETag`. |
+| `422` | invalid runtime snapshot | Fix the complete snapshot against [Configuration](../configuration.md); durable and published state is unchanged. |
+| `428` | `if_match_required` | Add the current `ETag` value as `If-Match`. |
+| `500` | backend/configuration diagnostic | Repair the enabled JetStream/runtime-state dependency and retry only after checking whether the request committed. |
+
+`If-Match` accepts either the quoted `ETag` value or its numeric contents. A successful worker action can create a
+durable setting for a worker ID that is not currently registered; it still does not make that worker eligible until it
+registers and passes admission checks. `GET /api/v1/admin/requests` lists only request ID and deployment ID, so use
+the request client or logs for detailed request context.
+
 See [Configuration](../configuration.md) for the complete snapshot schema and
 [Runtime administration](../runtime-administration.md) for tested workflows.

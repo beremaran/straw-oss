@@ -33,6 +33,28 @@ To enable receipt transport, adapt `control.object-storage.json` for your S3-com
 S3 secrets, and add `compose.object-storage.yml`. The example requests server-side encryption and proxies
 assignment-scoped downloads through Control so Egress never receives long-lived storage credentials.
 
+```sh
+docker compose --env-file deploy/production/.env \
+  -f deploy/production/compose.yml \
+  -f deploy/production/compose.object-storage.yml config
+docker compose --env-file deploy/production/.env \
+  -f deploy/production/compose.yml \
+  -f deploy/production/compose.object-storage.yml up -d --build
+```
+
+For the optional TLS proxy, install a managed certificate followed by its private key at
+`deploy/production/secrets/straw.pem`, then set `STRAW_TLS_BIND` and `STRAW_TLS_PORT` if the defaults
+(`0.0.0.0:8443`) do not suit the host:
+
+```sh
+install -m 600 /path/to/managed-certificate-and-key.pem deploy/production/secrets/straw.pem
+docker compose --env-file deploy/production/.env \
+  -f deploy/production/compose.yml -f deploy/production/compose.tls.yml config
+docker compose --env-file deploy/production/.env \
+  -f deploy/production/compose.yml -f deploy/production/compose.tls.yml up -d --build
+make tls-proxy-check
+```
+
 Scale workers independently:
 
 ```sh

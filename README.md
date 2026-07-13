@@ -23,7 +23,7 @@ runtime configuration, multi-Control coordination, and large-body receipts respe
 
 ## Quickstart
 
-Requirements: Docker with Compose v2 and `make`.
+Requirements: Git, Docker with Compose v2, `make`, Bash, and `curl`.
 
 ```sh
 git clone https://github.com/beremaran/straw-oss.git
@@ -71,6 +71,7 @@ The local stack contains exactly NATS, Control, and one Egress worker. It needs 
 
 - [Full documentation](https://beremaran.github.io/straw-oss/docs)
 - [Quickstart](docs/public/quickstart.md)
+- [Install a release](docs/public/installation.md)
 - [Architecture](docs/public/architecture.md)
 - [Request API](docs/public/api/requests.md)
 - [HTTP and HTTPS proxy ingress](docs/public/proxy-ingress.md)

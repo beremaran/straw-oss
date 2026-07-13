@@ -6,7 +6,7 @@ const sidebars = {
     {
       type: 'category',
       label: 'Learn',
-      items: ['index', 'quickstart', 'architecture'],
+      items: ['index', 'quickstart', 'installation', 'architecture'],
     },
     {
       type: 'category',

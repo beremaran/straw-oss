@@ -10,7 +10,9 @@ the cycle recorded in the manifest, or a feedback route that is not the reposito
 
 API, configuration, and security pages require runtime or security-owner review; deployment and operations pages
 require an operator review. Runnable examples state prerequisites, expected output, and cleanup, and public-surface
-changes update the changelog and compatibility policy. Run `make docs-check`, `make doc-ownership-check`, and
+changes update the changelog and compatibility policy. `public-surface-check` verifies both source-declared names and
+selected semantic anchors for high-risk API, security, deployment, operations, and integration contracts. Run
+`make docs-check`, `make doc-ownership-check`, and
 `make docs-website`, plus the applicable examples. A quarterly sweep re-verifies owners, dates, links, commands,
 defaults, limits, failure behavior, and security boundaries.
 
