@@ -61,9 +61,27 @@ structural gaps. The remaining findings were copy-level and were fixed in this a
 | Footer labels drifted from page titles; no support/contributing/security/governance/changelog routes | `website/docusaurus.config.js` | aligned labels with page titles; added a Project column |
 | Contributor entry page was a thin link hub | `docs/public/development.md` | expanded with setup, repository map, verification loop, and public-contract checklist |
 
+## Follow-up sweep (2026-07-13)
+
+A second pass re-evaluated the same scope against the seven criteria and found four defects the first sweep missed.
+All are fixed:
+
+| Finding | Criterion | Location | Fix |
+| --- | --- | --- | --- |
+| A table cell contained unescaped `\|` characters (`PROFILE=default\|admin\|receipts`), so the row parsed as six cells against a four-column header and the code span was torn apart | 4 | `docs/public/test-strategy.md` | escaped the pipes as `\|`; the row now renders as four cells with an intact code span |
+| Ownership and review-date metadata was duplicated into reader-facing prose on 8 of 25 pages, unenforced and already drifted — `compatibility.md` claimed "Owner: runtime maintainer" while the gated manifest records `release` | 1, 4, 5 | `docs/public/{compatibility,documentation-policy,releases,test-strategy,threat-model,launch-checklist}.md`, `docs/public/api/{admin,receipts}.md` | removed the prose metadata; `owners.json` is the single record, enforced by `make doc-ownership-check` |
+| The policy page mandated per-page owner/review lines, competing with the manifest that the gate actually enforces | 1, 5 | `docs/public/documentation-policy.md` | policy now states the manifest is the single record and describes what the gate rejects |
+| Compatibility page opened with a feedback-routing instruction instead of its compatibility promise, duplicating policy documented elsewhere | 2, 5 | `docs/public/compatibility.md` | leads with the pre-1.0 promise; feedback routing stays in the documentation policy |
+| `sidebar_position` frontmatter was inert (the site uses an explicit `website/sidebars.js`), present on only 16 of 25 pages, and self-contradictory — three pairs of pages claimed the same position | 4, 5 | `docs/public/**` | removed the dead frontmatter, preserving `slug: /` on `index.md`; the rendered sidebar is unchanged |
+
+Evidence: `make docs-check`, `make doc-ownership-check`, and `make docs-website` pass; the corrected table row and the
+unchanged sidebar were verified against the built site.
+
 ## Keeping the bar
 
 - Review new or changed public pages against the seven criteria above; the pull-request documentation checklist in
   `CONTRIBUTING.md` and the gates (`make docs-check`, `make doc-ownership-check`, `make docs-website`) remain
   mandatory.
+- `make docs-check` now also verifies that every Markdown table row has the same cell count as its header, so an
+  unescaped pipe cannot silently render phantom columns again.
 - Re-run a copy-level sweep in the quarterly freshness pass defined in `docs/public/documentation-policy.md`.

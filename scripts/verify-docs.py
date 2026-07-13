@@ -29,6 +29,7 @@ for path in FILES:
     fence_language = ""
     fence_start = 0
     fence_lines = []
+    table_rows = []
     for line_number, line in enumerate(text.splitlines(), 1):
         if line.rstrip() != line:
             failures.append(f"{relative}:{line_number}: trailing whitespace")
@@ -72,8 +73,25 @@ for path in FILES:
             if previous_heading and level > previous_heading + 1:
                 failures.append(f"{relative}:{line_number}: heading level jumps from {previous_heading} to {level}")
             previous_heading = level
+        table_rows.append((line_number, line) if line.lstrip().startswith("|") else None)
     if in_fence:
         failures.append(f"{relative}:{fence_start}: unclosed fenced code block")
+    # A GFM table row splits on every unescaped pipe, including pipes inside code spans. A row whose cell count
+    # disagrees with its header renders phantom columns, so require an explicit \| for any literal pipe.
+    columns = None
+    for entry in table_rows + [None]:
+        if entry is None:
+            columns = None
+            continue
+        line_number, line = entry
+        cells = len(re.findall(r"(?<!\\)\|", line.strip())) - 1
+        if columns is None:
+            columns = cells
+            continue
+        if set(line.strip()) <= set("|-: "):
+            continue
+        if cells != columns:
+            failures.append(f"{relative}:{line_number}: table row has {cells} cells but the header declares {columns}; escape any literal pipe as \\|")
     words = {word.lower() for word in re.findall(r"[A-Za-z]+", text)}
     for misspelling in sorted(words & common_misspellings):
         failures.append(f"{relative}: common misspelling {misspelling!r}")

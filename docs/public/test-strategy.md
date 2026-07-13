@@ -1,7 +1,6 @@
 # Verification strategy
 
-Last reviewed: 2026-07-13. Owner: runtime maintainer. Coverage is diagnostic; release confidence comes from matching
-each risk to the layer capable of proving it.
+Coverage is diagnostic; release confidence comes from matching each risk to the layer capable of proving it.
 
 | Claim/risk | Evidence | Local command | Remote gate |
 | --- | --- | --- | --- |
@@ -12,7 +11,7 @@ each risk to the layer capable of proving it.
 | Public dependency graph | Empty private-module settings and exact tags | `make clean-room-check` | CI |
 | Package direction | `go list` direct-import allowlist and pin assertions | `make dependency-check` | CI |
 | Secret residue | Tracked-tree credential pattern scan | `make security-check` | CI |
-| Default/admin/receipt deployment | namespaced isolated Compose startup, request, profile operation, and teardown | `make profile-smoke PROFILE=default|admin|receipts` | scheduled/release |
+| Default/admin/receipt deployment | namespaced isolated Compose startup, request, profile operation, and teardown | `make profile-smoke PROFILE=default\|admin\|receipts` | scheduled/release |
 | HA deployment | two-worker scale check, Control loss, Redis degradation/recovery, and graceful worker loss in a namespaced stack | `make ha-smoke` | scheduled/release |
 | Maintained examples | live curl, CLI, Go, and Python calls against a namespaced stack | `make examples-live` | scheduled/release |
 | Documentation contracts | Docusaurus build, links, and source-surface coverage | `make docs-website` | CI |

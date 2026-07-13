@@ -1,7 +1,3 @@
----
-sidebar_position: 5
----
-
 # Client SDKs
 
 The REST API has small Go and Python clients. Both accept a base URL and optional deployment token.

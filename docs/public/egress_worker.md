@@ -1,7 +1,3 @@
----
-sidebar_position: 7
----
-
 # Egress workers
 
 The official Go worker is the normal choice. It registers with Control over NATS, advertises its concurrency, and

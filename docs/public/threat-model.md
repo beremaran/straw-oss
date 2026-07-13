@@ -1,8 +1,7 @@
 # Threat model and hardening invariants
 
-Last reviewed: 2026-07-13. Owner: security maintainer. Straw assumes every caller, Control, Egress worker, NATS
-account, Redis instance, JetStream bucket, and receipt store inside one deployment belongs to one trust boundary.
-It does not isolate mutually hostile tenants.
+Straw assumes every caller, Control, Egress worker, NATS account, Redis instance, JetStream bucket, and receipt store
+inside one deployment belongs to one trust boundary. It does not isolate mutually hostile tenants.
 
 ```mermaid
 flowchart LR

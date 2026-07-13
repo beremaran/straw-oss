@@ -1,7 +1,3 @@
----
-sidebar_position: 12
----
-
 # Development and releases
 
 This page is the website entry point for contributors. The authoritative contributor handbook is

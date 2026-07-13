@@ -1,8 +1,7 @@
 # Release procedure
 
-Last reviewed: 2026-07-13. Owner: release maintainer. Releases are performed by a maintainer with access to the
-protected `release` environment. The workflow is automated; repository visibility, environment approval, package
-settings, and post-publish observation are owner actions.
+Releases are performed by a maintainer with access to the protected `release` environment. The workflow is automated;
+repository visibility, environment approval, package settings, and post-publish observation are owner actions.
 
 1. Confirm `make check production-deploy-check docs-website clean-room-check race` on `main` and a green security
    workflow. Confirm the launch checklist and compatibility matrix.

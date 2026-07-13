@@ -1,7 +1,3 @@
----
-sidebar_position: 8
----
-
 # Object storage and receipts
 
 Receipt transport is an optional profile for request or response bodies that exceed the inline base64 limit. The

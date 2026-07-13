@@ -1,7 +1,3 @@
----
-sidebar_position: 4
----
-
 # Configuration
 
 Control and Egress accept `-config PATH` with a strict, versioned JSON file. Unknown fields are rejected so typos do

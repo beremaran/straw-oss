@@ -1,8 +1,7 @@
 # Receipt API reference
 
-Last reviewed: 2026-07-13. Owner: receipt maintainer. Receipt endpoints exist only with object storage enabled and use
-the deployment request bearer token. IDs are deployment-scoped. Signed assignment URLs are short-lived bearer
-credentials and must not be logged.
+Receipt endpoints exist only with object storage enabled and use the deployment request bearer token. IDs are
+deployment-scoped. Signed assignment URLs are short-lived bearer credentials and must not be logged.
 
 | Method and path | Contract |
 | --- | --- |

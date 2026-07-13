@@ -20,6 +20,8 @@ are tagged.
   excluded, and the entire catalogue plus representative TLS/HTTP/2 dimensions are local-wire tested.
 - Added a moderate-or-higher npm audit gate and pinned the documentation site's transitive `uuid` dependency to the
   first patched 11.1.1 release; reviewed install scripts are now explicitly allowed or denied.
+- Added a Markdown table-consistency check to `make docs-check` so a literal pipe left unescaped in a table cell fails
+  the gate instead of silently rendering phantom columns.
 
 - Added an opt-in deployment-scoped Config and Admin REST API plus an API-parity web dashboard.
 - Added validated atomic runtime snapshots, JetStream KV persistence, optimistic concurrency, bounded audit history,

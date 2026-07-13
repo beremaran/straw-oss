@@ -1,7 +1,6 @@
 # Open-source launch checklist
 
-Last reviewed: 2026-07-13. Owner: release maintainer. A release may be promoted only when each advertised claim has
-both a normative reference and executable evidence.
+A release may be promoted only when each advertised claim has both a normative reference and executable evidence.
 
 - Public checkout: `make clean-room-check`, anonymous repository/tag checks, licenses, and compatibility matrix.
 - Core request path: quickstart request and `make check`; expected status/body verified.

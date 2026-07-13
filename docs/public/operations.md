@@ -1,7 +1,3 @@
----
-sidebar_position: 9
----
-
 # Operations
 
 ## Health and readiness

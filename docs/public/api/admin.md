@@ -1,8 +1,8 @@
 # Admin API reference
 
-Last reviewed: 2026-07-13. Owner: Control maintainer. The Admin API exists only when runtime administration is enabled.
-Every request requires `Authorization: Bearer <admin-token>`; use `X-Straw-Actor` on mutations for audit attribution.
-Keep this surface on a separate protected network. Errors use `{"error":"stable_or_diagnostic_value"}`.
+The Admin API exists only when runtime administration is enabled. Every request requires
+`Authorization: Bearer <admin-token>`; use `X-Straw-Actor` on mutations for audit attribution. Keep this surface on a
+separate protected network. Errors use `{"error":"stable_or_diagnostic_value"}`.
 
 | Method and path | Purpose | Concurrency and result |
 | --- | --- | --- |

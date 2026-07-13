@@ -1,8 +1,5 @@
 # Compatibility and versioning
 
-Last reviewed: 2026-07-13. Owner: runtime maintainer. Report a problem through the page's **Edit this page** link or
-the documentation issue template.
-
 Straw is pre-1.0. Patch releases preserve documented behavior. Minor releases may make incompatible protocol or
 configuration changes only when release notes identify the change, migration, and rollback path.
 

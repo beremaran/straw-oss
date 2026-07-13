@@ -1,7 +1,3 @@
----
-sidebar_position: 6
----
-
 # CLI
 
 Build the CLI from the repository root:

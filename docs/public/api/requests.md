@@ -1,7 +1,3 @@
----
-sidebar_position: 1
----
-
 # Request API
 
 `POST /api/v1/requests` performs one upstream HTTP or HTTPS request.

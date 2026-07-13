@@ -1,7 +1,3 @@
----
-sidebar_position: 11
----
-
 # Troubleshooting
 
 ## `make dev` does not become ready

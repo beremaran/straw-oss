@@ -1,7 +1,3 @@
----
-sidebar_position: 10
----
-
 # Security
 
 Straw can make network requests on behalf of clients. Treat Control access as sensitive and place it behind the same

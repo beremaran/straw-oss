@@ -1,7 +1,3 @@
----
-sidebar_position: 3
----
-
 # Architecture
 
 Straw has three runtime components:

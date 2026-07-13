@@ -1,7 +1,3 @@
----
-sidebar_position: 10
----
-
 # Highly available Control
 
 The optional HA profile lets a readiness-aware load balancer send any request to any Control instance. It adds Redis

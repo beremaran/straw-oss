@@ -1,7 +1,3 @@
----
-sidebar_position: 9
----
-
 # Runtime administration
 
 The optional runtime-administration profile lets an operator inspect and change deployment policy without editing a
