@@ -42,7 +42,7 @@ Prometheus metrics use bounded labels. Counters are cumulative process-lifetime 
 | `straw_receipts_consumed_total` | counter | none | receipts | receipts | request receipts consumed successfully |
 | `straw_receipts_expired_total` | counter | none | receipts | receipts | expired receipts removed by cleanup |
 
-Expose metrics only to your monitoring network. No ClickHouse or telemetry database is required.
+Expose metrics only to your monitoring network. No telemetry database is required.
 
 ## Logs
 

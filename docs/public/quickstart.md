@@ -10,7 +10,7 @@ sidebar_position: 2
 - Docker with Compose v2
 - `make`
 
-Go, Python, Node.js, Postgres, Redis, and ClickHouse are not required to run the local stack.
+No language toolchain or database is required to run the local stack.
 
 ## Start Straw
 
@@ -23,8 +23,8 @@ make dev
 The command builds and starts NATS, Control, and one Egress worker. It waits for Control to become ready. Local
 development does not require credentials or provisioning.
 
-Expected final line: `local stack: ready`. The complete start/call/readiness/stop journey is exercised by
-`make quickstart-smoke` on infrastructure owned by the local Docker daemon.
+Expected final line: `local stack: ready`. Every command on this page is exercised by the maintained
+`make quickstart-smoke` check.
 
 ## Send a request
 

@@ -31,8 +31,9 @@ add durable runtime policy, shared Control coordination, and large-body receipts
 - supports an optional deployment-wide bearer token;
 - exposes Prometheus metrics, health endpoints, and structured JSON logs;
 - supports selectable outbound TLS fingerprint profiles;
-- optionally provides a durable Config/Admin API and API-parity dashboard.
-- optionally receipts verified request and response bodies into local or S3-compatible object storage.
+- optionally provides a durable Config/Admin API and API-parity dashboard;
+- optionally stores verified request and response bodies as expiring receipts in local or S3-compatible object
+  storage.
 
 ## What Straw does not do
 

@@ -71,6 +71,13 @@ export default function Home() {
                 One deployment is one trust boundary. No tenants, RBAC, billing, quotas, configuration database,
                 or analytics database. Local development is the primary path; production files are examples you adapt.
               </p>
+              <p className={styles.featureCardDesc}>
+                Straw is pre-1.0 and MIT licensed. The REST request API is the primary supported surface;{' '}
+                <Link to="/docs/compatibility">compatibility and versioning</Link> states the exact promises.
+                Questions and bug reports belong in{' '}
+                <a href="https://github.com/beremaran/straw-oss/issues">GitHub issues</a> under the{' '}
+                <a href="https://github.com/beremaran/straw-oss/blob/main/SUPPORT.md">support policy</a>.
+              </p>
             </div>
           </div>
         </section>

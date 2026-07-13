@@ -83,26 +83,32 @@ const config = {
           {
             title: 'Get started',
             items: [
-              {label: 'Quickstart Guide', to: '/docs/quickstart'},
+              {label: 'Quickstart', to: '/docs/quickstart'},
               {label: 'Architecture', to: '/docs/architecture'},
               {label: 'Client SDKs', to: '/docs/sdk'},
-              {label: 'CLI Reference', to: '/docs/cli'},
-              {label: 'Egress Worker Setup', to: '/docs/egress_worker'},
+              {label: 'CLI', to: '/docs/cli'},
+              {label: 'Egress workers', to: '/docs/egress_worker'},
             ],
           },
           {
             title: 'Run Straw',
             items: [
-              {label: 'REST Request forwarding', to: '/docs/api/requests'},
+              {label: 'Request API', to: '/docs/api/requests'},
               {label: 'Deployment', to: '/docs/deployment'},
-              {label: 'System Operations', to: '/docs/operations'},
+              {label: 'Operations', to: '/docs/operations'},
               {label: 'Security', to: '/docs/security'},
+              {label: 'Troubleshooting', to: '/docs/troubleshooting'},
             ],
           },
           {
-            title: 'More',
+            title: 'Project',
             items: [
               {label: 'GitHub', href: 'https://github.com/beremaran/straw-oss'},
+              {label: 'Support policy', href: 'https://github.com/beremaran/straw-oss/blob/main/SUPPORT.md'},
+              {label: 'Contributing', href: 'https://github.com/beremaran/straw-oss/blob/main/CONTRIBUTING.md'},
+              {label: 'Security policy', href: 'https://github.com/beremaran/straw-oss/blob/main/SECURITY.md'},
+              {label: 'Governance', href: 'https://github.com/beremaran/straw-oss/blob/main/GOVERNANCE.md'},
+              {label: 'Changelog', href: 'https://github.com/beremaran/straw-oss/blob/main/CHANGELOG.md'},
             ],
           },
         ],

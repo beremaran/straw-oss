@@ -102,8 +102,7 @@ must work from Egress—not merely from Control.
 
 Pull and verify immutable digests, take profile backups, then upgrade Egress, Control, and clients/CLI in that order.
 Watch readiness, rollout acknowledgement, error ratio, and latency between stages. Roll back in reverse order using
-the prior digest; restore durable state only when release notes identify a format change. Default deployments have no
-application database to migrate.
+the prior digest; restore durable state only when release notes identify a format change.
 
 The default profile has no application database to migrate or back up. Back up the JetStream bucket and storage when
 the runtime-administration profile is enabled, and back up or lifecycle-manage the object bucket when receipts are

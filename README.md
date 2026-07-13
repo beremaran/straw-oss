@@ -1,5 +1,9 @@
 # Straw
 
+[![CI](https://github.com/beremaran/straw-oss/actions/workflows/ci.yml/badge.svg)](https://github.com/beremaran/straw-oss/actions/workflows/ci.yml)
+[![Security](https://github.com/beremaran/straw-oss/actions/workflows/security.yml/badge.svg)](https://github.com/beremaran/straw-oss/actions/workflows/security.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 Straw is a small, self-hosted HTTP/HTTPS egress proxy. Your application sends a request to Control, Control assigns
 it over NATS to an Egress worker, and the worker makes the outbound request.
 

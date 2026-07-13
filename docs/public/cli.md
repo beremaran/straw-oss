@@ -46,6 +46,7 @@ ordering. `help`, `-h`, and `--help` print usage to stdout. Unknown commands and
 The process propagates its context deadline and operating-system interruption to the HTTP request. It does not retry
 automatically. Use `--receipt-id` only after completing a request receipt; use `--response-body-mode receipt` and the
 Receipt API to download stored responses. Shell completion is not shipped.
+
 ## Process healthcheck flags
 
 The `control` and `egress` binaries accept `-config <path>` and `-healthcheck`. Healthcheck mode probes the local
