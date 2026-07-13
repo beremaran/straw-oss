@@ -10,7 +10,7 @@ from straw_protos.straw.v1 import straw_pb2 as pb
 
 
 class TaggedPythonSDKIntegrationTests(unittest.TestCase):
-    def test_exact_private_distributions_are_installed(self):
+    def test_exact_tagged_distributions_are_installed(self):
         self.assertEqual(version("straw-sdk"), "0.1.0")
         self.assertEqual(version("straw-protos"), "0.3.0")
         self.assertTrue(hasattr(straw, "Client"))

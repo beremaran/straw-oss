@@ -19,6 +19,7 @@ docker compose --env-file "$tmp_env" -f deploy/production/compose.yml config -q
 docker compose --env-file "$tmp_env" -f deploy/production/compose.yml -f deploy/production/compose.runtime-admin.yml config -q
 docker compose --env-file "$tmp_env" -f deploy/production/compose.ha.yml config -q
 docker compose --env-file "$tmp_env" -f deploy/production/compose.yml -f deploy/production/compose.object-storage.yml config -q
+docker compose --env-file "$tmp_env" -f deploy/production/compose.yml -f deploy/production/compose.tls.yml config -q
 
 rendered="$(docker compose --env-file "$tmp_env" -f deploy/production/compose.yml config)"
 printf '%s\n' "$rendered" | grep -q 'target: 8080'
@@ -37,5 +38,9 @@ printf '%s\n' "$ha_rendered" | grep -q 'redis://:'
 object_rendered="$(docker compose --env-file "$tmp_env" -f deploy/production/compose.yml -f deploy/production/compose.object-storage.yml config)"
 printf '%s\n' "$object_rendered" | grep -q 'STRAW_RECEIPT_SIGNING_KEY'
 printf '%s\n' "$object_rendered" | grep -q 'control.object-storage.json'
+
+tls_rendered="$(docker compose --env-file "$tmp_env" -f deploy/production/compose.yml -f deploy/production/compose.tls.yml config)"
+printf '%s\n' "$tls_rendered" | grep -q 'target: 8443'
+printf '%s\n' "$tls_rendered" | grep -q 'haproxy.tls.cfg'
 
 go test ./internal/config ./internal/natsx

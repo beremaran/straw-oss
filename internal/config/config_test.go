@@ -50,6 +50,16 @@ func TestLoadRejectsTrailingJSON(t *testing.T) {
 	}
 }
 
+func TestDecodeFileBoundsInput(t *testing.T) {
+	t.Parallel()
+
+	raw := []byte(`{"config_version":"v1","control":{},"padding":"` + strings.Repeat("x", maxConfigFileBytes) + `"}`)
+	_, err := decodeFile(raw)
+	if !errors.Is(err, errConfigTooLarge) {
+		t.Fatalf("decodeFile() error = %v, want size bound", err)
+	}
+}
+
 func TestLoadRedisRuntimeState(t *testing.T) {
 	t.Parallel()
 	cfg, err := LoadControl(writeConfig(t, `{"config_version":"v1","control":{"runtime_state":{"backend":"redis","redis_url_env":"REDIS_URL","key_prefix":"test"}}}`))

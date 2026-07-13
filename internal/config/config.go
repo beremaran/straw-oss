@@ -25,10 +25,13 @@ const (
 	defaultReceiptCleanupSeconds    = int64(3600)
 )
 
+const maxConfigFileBytes = 4 << 20
+
 var (
 	errMissingControlSection  = errors.New("missing control section")
 	errMissingEgressSection   = errors.New("missing egress section")
 	errUnexpectedTrailingJSON = errors.New("unexpected trailing JSON data")
+	errConfigTooLarge         = errors.New("configuration exceeds 4 MiB")
 	errInvalidConfigVersion   = errors.New("invalid config_version")
 	errInvalidAPIPort         = errors.New("server.api_port must be between 1 and 65535")
 	errInvalidMetricsPort     = errors.New("server.metrics_port must be between 1 and 65535")
@@ -248,12 +251,20 @@ func loadFile(path string) (File, error) {
 		return File{}, fmt.Errorf("read config file: %w", err)
 	}
 
-	decoder := json.NewDecoder(bytes.NewReader(raw))
+	return decodeFile(raw)
+}
+
+func decodeFile(raw []byte) (File, error) {
+	if len(raw) > maxConfigFileBytes {
+		return File{}, errConfigTooLarge
+	}
+
+	decoder := json.NewDecoder(io.LimitReader(bytes.NewReader(raw), maxConfigFileBytes))
 	decoder.DisallowUnknownFields()
 
 	var file File
 
-	err = decoder.Decode(&file)
+	err := decoder.Decode(&file)
 	if err != nil {
 		return File{}, fmt.Errorf("decode config: %w", err)
 	}

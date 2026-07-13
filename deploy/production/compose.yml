@@ -2,7 +2,7 @@
 # availability to your environment before deploying.
 services:
   nats:
-    image: nats:2-alpine
+    image: nats:2-alpine@sha256:c11af972c99ae542de8925e6a7d9c533aa1eb039660420d2074beed6089b3bf0
     command:
       - --http_port=8222
       - --max_payload=2MB

@@ -1,132 +1,54 @@
-name: Current-version compatibility matrix
+name: Tagged compatibility matrix
 
 on:
-  pull_request:
-  push:
-    branches: [main]
+  push: {branches: [main]}
+  schedule: [{cron: '41 2 * * 2'}]
   workflow_dispatch:
 
-permissions:
-  contents: read
+permissions: {contents: read}
+concurrency: {group: 'compatibility-${{ github.ref }}', cancel-in-progress: true}
 
 jobs:
   runtime:
+    timeout-minutes: 20
     runs-on: ubuntu-latest
-    env:
-      GOPRIVATE: github.com/beremaran/*
     steps:
-      - id: app-token
-        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
-        with:
-          app-id: ${{ vars.STRAW_RELEASE_APP_ID }}
-          private-key: ${{ secrets.STRAW_RELEASE_APP_PRIVATE_KEY }}
-          owner: beremaran
-          repositories: straw-protos-go,straw-sdk-go,straw-protos-python,straw-sdk-python,straw-oss
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - name: Configure private dependency access
-        env:
-          APP_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: git config --global url."https://x-access-token:${APP_TOKEN}@github.com/".insteadOf "https://github.com/"
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
-        with:
-          go-version-file: go.mod
+        with: {go-version-file: go.mod}
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
-        with:
-          python-version-file: .python-version
+        with: {python-version-file: .python-version}
       - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
-        with:
-          version: 0.8.22
-      - run: uv sync --frozen
+        with: {version: 0.8.22}
+      - run: make clean-room-check conformance
       - run: go test ./internal/control ./internal/egress ./cmd/control ./cmd/egress
       - run: uv run --frozen python -m unittest discover integration/python
-      - run: ./scripts/verify-dependency-direction.sh
 
-  protocol-source:
-    runs-on: ubuntu-latest
-    steps:
-      - id: app-token
-        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
-        with:
-          app-id: ${{ vars.STRAW_RELEASE_APP_ID }}
-          private-key: ${{ secrets.STRAW_RELEASE_APP_PRIVATE_KEY }}
-          owner: beremaran
-          repositories: straw-protos
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          repository: beremaran/straw-protos
-          ref: v0.3.0
-          token: ${{ steps.app-token.outputs.token }}
-      - uses: bufbuild/buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99 # v1.50.0
-        with:
-          version: 1.50.0
-      - run: make check
-
-  go-components:
+  public-components:
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
         include:
-          - repository: straw-protos-go
-            tag: v0.3.0
-          - repository: straw-sdk-go
-            tag: v0.1.0
+          - {repository: straw-protos, tag: v0.3.0, kind: proto}
+          - {repository: straw-protos-go, tag: v0.3.0, kind: go}
+          - {repository: straw-sdk-go, tag: v0.1.0, kind: go}
+          - {repository: straw-protos-python, tag: v0.3.0, kind: python}
+          - {repository: straw-sdk-python, tag: v0.1.0, kind: python}
     runs-on: ubuntu-latest
-    env:
-      GOPRIVATE: github.com/beremaran/*
     steps:
-      - id: app-token
-        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
-        with:
-          app-id: ${{ vars.STRAW_RELEASE_APP_ID }}
-          private-key: ${{ secrets.STRAW_RELEASE_APP_PRIVATE_KEY }}
-          owner: beremaran
-          repositories: straw-protos-go,straw-sdk-go
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          repository: beremaran/${{ matrix.repository }}
-          ref: ${{ matrix.tag }}
-          token: ${{ steps.app-token.outputs.token }}
-      - name: Configure private dependency access
-        env:
-          APP_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: git config --global url."https://x-access-token:${APP_TOKEN}@github.com/".insteadOf "https://github.com/"
+        with: {repository: 'beremaran/${{ matrix.repository }}', ref: '${{ matrix.tag }}'}
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
-        with:
-          go-version-file: go.mod
-      - run: make check
-
-  python-components:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - repository: straw-protos-python
-            tag: v0.3.0
-          - repository: straw-sdk-python
-            tag: v0.1.0
-    runs-on: ubuntu-latest
-    steps:
-      - id: app-token
-        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
-        with:
-          app-id: ${{ vars.STRAW_RELEASE_APP_ID }}
-          private-key: ${{ secrets.STRAW_RELEASE_APP_PRIVATE_KEY }}
-          owner: beremaran
-          repositories: straw-protos-python,straw-sdk-python
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          repository: beremaran/${{ matrix.repository }}
-          ref: ${{ matrix.tag }}
-          token: ${{ steps.app-token.outputs.token }}
-      - name: Configure private dependency access
-        env:
-          APP_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: git config --global url."https://x-access-token:${APP_TOKEN}@github.com/".insteadOf "https://github.com/"
+        if: matrix.kind == 'go'
+        with: {go-version-file: go.mod}
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
-        with:
-          python-version: '3.13'
+        if: matrix.kind == 'python'
+        with: {python-version: '3.13'}
       - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
-        with:
-          version: 0.8.22
-      - run: uv sync --frozen
+        if: matrix.kind == 'python'
+        with: {version: 0.8.22}
+      - uses: bufbuild/buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99 # v1.50.0
+        if: matrix.kind == 'proto'
+        with: {version: 1.50.0}
       - run: make check

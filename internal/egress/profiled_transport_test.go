@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/x509"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -14,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	fhttphttp2 "github.com/bogdanfinn/fhttp/http2"
+	"golang.org/x/net/http2"
 
 	strawpb "github.com/beremaran/straw-protos-go/straw/v1"
 )
@@ -90,7 +91,7 @@ func TestProfileConformanceStreamsBodyAndLateTrailers(t *testing.T) {
 			flusher.Flush()
 		}
 		<-release
-		w.Header().Set("X-Late", "done")
+		w.Header().Set("X-Late", profiledLateTrailerValue)
 	}))
 	server.StartTLS()
 	t.Cleanup(server.Close)
@@ -143,7 +144,7 @@ func TestProfileConformanceStreamsBodyAndLateTrailers(t *testing.T) {
 			dataFrames++
 		}
 		if trailer := frame.GetTrailers(); trailer != nil {
-			trailerSeen = trailer.GetHeaders()[0].GetName() == "X-Late" && string(trailer.GetHeaders()[0].GetValue()) == "done"
+			trailerSeen = trailer.GetHeaders()[0].GetName() == "X-Late" && string(trailer.GetHeaders()[0].GetValue()) == profiledLateTrailerValue
 		}
 		if errFrame := frame.GetError(); errFrame != nil {
 			t.Fatalf("profiled streaming error = %#v", errFrame)
@@ -154,6 +155,46 @@ func TestProfileConformanceStreamsBodyAndLateTrailers(t *testing.T) {
 	}
 	if !trailerSeen {
 		t.Fatal("late response trailer was not emitted")
+	}
+}
+
+func TestProfileConformanceUploadsMaximumInlineBodyWithFlowControl(t *testing.T) {
+	t.Parallel()
+
+	body := bytes.Repeat([]byte("p"), 1<<20)
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+
+			return
+		}
+		if !bytes.Equal(got, body) {
+			http.Error(w, "body mismatch", http.StatusBadRequest)
+
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	server.EnableHTTP2 = true
+	server.StartTLS()
+	t.Cleanup(server.Close)
+
+	target := rewriteHost(t, server.URL, "upload.profile.test")
+	exec := NewExecutor(ExecutorOptions{
+		Resolver:           staticResolver{"upload.profile.test": loopbackIP(t, server.URL)},
+		InsecureSkipVerify: true,
+	})
+	start := requestStart(target, directPolicy(true))
+	start.Method = http.MethodPost
+	start.FingerprintInstruction = chrome120FingerprintProfile
+
+	frames := exec.Execute(context.Background(), start, body, 1, nil)
+	if errFrame := terminalErrorOrNil(frames); errFrame != nil {
+		t.Fatalf("profiled upload error = %#v", errFrame)
+	}
+	if got := frames[1].GetResponseStart().GetStatus(); got != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", got, http.StatusNoContent)
 	}
 }
 
@@ -269,12 +310,12 @@ func TestProfileDeadlineDuringPinnedDial(t *testing.T) {
 	}
 }
 
-func TestProfileErrorMappingUsesFHTTPStreamError(t *testing.T) {
+func TestProfileErrorMappingUsesHTTP2StreamError(t *testing.T) {
 	t.Parallel()
 
-	failure, ok := mapHTTP2Error(&fhttphttp2.StreamError{Code: fhttphttp2.ErrCodeRefusedStream})
+	failure, ok := mapHTTP2Error(http2.StreamError{Code: http2.ErrCodeRefusedStream})
 	if !ok {
-		t.Fatal("mapHTTP2Error() did not recognize fhttp/http2.StreamError")
+		t.Fatal("mapHTTP2Error() did not recognize http2.StreamError")
 	}
 	if failure.code != strawpb.ErrorCode_ERROR_CODE_UPSTREAM_RESET {
 		t.Fatalf("mapped code = %v, want upstream_reset", failure.code)

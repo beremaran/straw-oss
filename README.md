@@ -13,7 +13,7 @@ Requirements: Docker with Compose v2 and `make`.
 
 ```sh
 git clone https://github.com/beremaran/straw-oss.git
-cd straw
+cd straw-oss
 make dev
 ```
 
@@ -35,7 +35,8 @@ The local stack contains exactly NATS, Control, and one Egress worker. It needs 
 - preserve ordered and duplicate headers;
 - bound request bodies, response bodies, and deadlines;
 - optionally move large request and response bodies through verified expiring receipts;
-- select supported outbound TLS fingerprint profiles;
+- select any of 79 pinned `tls-client` v1.15.1 TLS/HTTP/2 fingerprint profiles without a runtime dependency on
+  `tls-client` or `fhttp`;
 - operate with Prometheus metrics, health endpoints, and JSON logs;
 - deploy without an application database.
 
@@ -51,6 +52,10 @@ The local stack contains exactly NATS, Control, and one Egress worker. It needs 
 - [Highly available Control](docs/public/highly-available-control.md)
 - [Object storage and receipts](docs/public/object-storage-receipts.md)
 - [Security](docs/public/security.md)
+- [Compatibility and supported versions](docs/public/compatibility.md)
+- [Public components and provenance](docs/public/components.md)
+- [Support](SUPPORT.md)
+- [Governance](GOVERNANCE.md)
 - [Contributing](CONTRIBUTING.md)
 
 ## Development
@@ -71,4 +76,5 @@ likely to change between minor releases. See [ROADMAP.md](ROADMAP.md) and [CHANG
 
 ## License
 
-[MIT](LICENSE) © 2026 Berke Arslan.
+[MIT](LICENSE) © 2026 Berke Arslan. Adapted third-party profile data is covered by
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

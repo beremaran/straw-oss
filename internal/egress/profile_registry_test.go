@@ -8,21 +8,25 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/bogdanfinn/tls-client/profiles"
+	utls "github.com/bogdanfinn/utls"
+
+	"github.com/beremaran/straw-oss/internal/egress/profilecatalog"
+	"github.com/beremaran/straw-oss/internal/fingerprint"
 )
 
 func TestProfileRegistryExecutableFingerprintIsExact(t *testing.T) {
 	t.Parallel()
 
-	if len(executableFingerprintProfiles) != 1 {
-		t.Fatalf("executable fingerprint profiles = %d, want exactly chrome_120", len(executableFingerprintProfiles))
+	if len(executableFingerprintProfiles) != 79 {
+		t.Fatalf("executable fingerprint profiles = %d, want 79", len(executableFingerprintProfiles))
 	}
 
 	got, ok := executableFingerprintProfiles[chrome120FingerprintProfile]
 	if !ok {
 		t.Fatal("executable fingerprint profiles missing chrome_120")
 	}
-	assertClientProfileEqual(t, got, profiles.Chrome_120)
+	assertClientProfileEqual(t, got, profilecatalog.Chrome_120)
+	assertClientHelloEqual(t, got.GetClientHelloId(), utls.HelloChrome_120)
 
 	names := make([]string, 0, len(executableFingerprintProfiles))
 	for name := range executableFingerprintProfiles {
@@ -33,25 +37,75 @@ func TestProfileRegistryExecutableFingerprintIsExact(t *testing.T) {
 		t.Fatalf("advertised fingerprint profiles = %v, executable registry = %v", advertised, names)
 	}
 
-	for _, name := range []string{
-		"baseline",
-		"default",
-		"firefox_120",
-		"firefox_121",
-		"firefox_123",
-		"safari_17",
-		"safari_ios_17_0",
-	} {
+	if !slices.Equal(names, fingerprint.Names()) {
+		t.Fatalf("executable names = %v, contract names = %v", names, fingerprint.Names())
+	}
+
+	for _, name := range []string{"baseline", "default", "firefox_121", "safari_17"} {
 		if _, exists := executableFingerprintProfiles[name]; exists {
-			t.Errorf("unplanned profile %q is executable", name)
+			t.Errorf("non-catalogue profile %q is executable", name)
 		}
+	}
+
+	for name, profile := range executableFingerprintProfiles {
+		id := profile.GetClientHelloId()
+		_, err := id.ToSpec()
+		if err != nil {
+			_, fallbackErr := utls.UTLSIdToSpec(id)
+			if fallbackErr != nil {
+				t.Errorf("profile %q ClientHello spec: %v (fallback: %v)", name, err, fallbackErr)
+			}
+		}
+	}
+}
+
+func TestProfileSessionCachesMatchPSKProfilesAndAreIsolated(t *testing.T) {
+	t.Parallel()
+
+	caches := newProfileSessionCaches()
+	for name, profile := range executableFingerprintProfiles {
+		_, cached := caches[name]
+		if cached != supportsProfileSessionResumption(profile) {
+			t.Errorf("profile %q cache present = %t, PSK capable = %t", name, cached, supportsProfileSessionResumption(profile))
+		}
+	}
+
+	first := caches["chrome_144_PSK"]
+	second := caches["firefox_147_PSK"]
+	if first == nil || second == nil {
+		t.Fatal("representative PSK profiles are missing session caches")
+	}
+	if first == second {
+		t.Fatal("PSK profiles unexpectedly share a session cache")
+	}
+}
+
+func assertClientProfileEqual(t *testing.T, got, want profilecatalog.ClientProfile) {
+	t.Helper()
+
+	gotID := got.GetClientHelloId()
+	wantID := want.GetClientHelloId()
+	gotContract := []any{
+		gotID.Str(), gotID.Client, gotID.Version, gotID.RandomExtensionOrder,
+		got.GetSettings(), got.GetSettingsOrder(),
+		got.GetConnectionFlow(), got.GetPseudoHeaderOrder(), got.GetHeaderPriority(),
+		got.GetPriorities(), got.GetStreamID(), got.GetAllowHTTP(),
+	}
+	wantContract := []any{
+		wantID.Str(), wantID.Client, wantID.Version, wantID.RandomExtensionOrder,
+		want.GetSettings(), want.GetSettingsOrder(),
+		want.GetConnectionFlow(), want.GetPseudoHeaderOrder(), want.GetHeaderPriority(),
+		want.GetPriorities(), want.GetStreamID(), want.GetAllowHTTP(),
+	}
+	if !reflect.DeepEqual(gotContract, wantContract) {
+		t.Fatal("registry entry does not preserve the pinned profile contract")
 	}
 }
 
 func TestChrome120GoldenFixtureIsImmutable(t *testing.T) {
 	t.Parallel()
 
-	raw, err := os.ReadFile("testdata/chrome_120_v1_15_1.json")
+	raw, err := os.ReadFile("testdata/chrome_120_profile_catalog_v1_15_1.json")
 	if err != nil {
 		t.Fatalf("read chrome_120 fixture: %v", err)
 	}
@@ -71,72 +125,34 @@ func TestChrome120GoldenFixtureIsImmutable(t *testing.T) {
 	}
 }
 
-func assertClientProfileEqual(t *testing.T, got, want profiles.ClientProfile) {
+func assertClientHelloEqual(t *testing.T, got, want utls.ClientHelloID) {
 	t.Helper()
 
-	gotSpec, err := got.GetClientHelloSpec()
-	if err != nil {
-		t.Fatalf("get registry ClientHello spec: %v", err)
-	}
-	wantSpec, err := want.GetClientHelloSpec()
-	if err != nil {
-		t.Fatalf("get profiles.Chrome_120 ClientHello spec: %v", err)
-	}
-	gotHelloID := got.GetClientHelloId()
-	wantHelloID := want.GetClientHelloId()
-
 	gotContract := []any{
-		got.GetClientHelloStr(),
-		gotHelloID.Client,
-		gotHelloID.RandomExtensionOrder,
-		gotHelloID.Version,
-		gotHelloID.Seed,
-		gotSpec,
-		got.GetSettings(),
-		got.GetSettingsOrder(),
-		got.GetConnectionFlow(),
-		got.GetPseudoHeaderOrder(),
-		got.GetHeaderPriority(),
-		got.GetPriorities(),
-		got.GetStreamID(),
-		got.GetAllowHTTP(),
-		got.GetHttp3Settings(),
-		got.GetHttp3SettingsOrder(),
-		got.GetHttp3PriorityParam(),
-		got.GetHttp3PseudoHeaderOrder(),
-		got.GetHttp3SendGreaseFrames(),
+		got.Str(),
+		got.Client,
+		got.RandomExtensionOrder,
+		got.Version,
+		got.Seed,
 	}
 	wantContract := []any{
-		want.GetClientHelloStr(),
-		wantHelloID.Client,
-		wantHelloID.RandomExtensionOrder,
-		wantHelloID.Version,
-		wantHelloID.Seed,
-		wantSpec,
-		want.GetSettings(),
-		want.GetSettingsOrder(),
-		want.GetConnectionFlow(),
-		want.GetPseudoHeaderOrder(),
-		want.GetHeaderPriority(),
-		want.GetPriorities(),
-		want.GetStreamID(),
-		want.GetAllowHTTP(),
-		want.GetHttp3Settings(),
-		want.GetHttp3SettingsOrder(),
-		want.GetHttp3PriorityParam(),
-		want.GetHttp3PseudoHeaderOrder(),
-		want.GetHttp3SendGreaseFrames(),
+		want.Str(),
+		want.Client,
+		want.RandomExtensionOrder,
+		want.Version,
+		want.Seed,
 	}
 	if !reflect.DeepEqual(gotContract, wantContract) {
-		t.Fatal("chrome_120 registry entry does not equal profiles.Chrome_120")
+		t.Fatal("chrome_120 registry entry does not equal utls.HelloChrome_120")
 	}
 }
 
 const chrome120GoldenContract = `{
   "profile": "chrome_120",
-  "contract_revision": "chrome_120_v1_15_1",
-  "tls_client_version": "v1.15.1",
-  "preset": "profiles.Chrome_120",
+  "contract_revision": "tls-client-v1.15.1-http1-http2",
+  "catalogue_source": "github.com/bogdanfinn/tls-client@v1.15.1/profiles",
+  "utls_version": "v1.7.7-barnius",
+  "preset": "profilecatalog.Chrome_120",
   "transport": {
     "protocols": ["h2", "http/1.1"],
     "http3": "disabled",

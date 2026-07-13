@@ -31,7 +31,27 @@ place workers in different networks or regions, provided they can reach the depl
 
 ## Custom workers
 
-[`straw-sdk-go/egress`](https://github.com/beremaran/straw-sdk-go) and the private Python SDK expose worker machinery
+[`straw-sdk-go/egress`](https://github.com/beremaran/straw-sdk-go) and the tagged Python SDK expose worker machinery
 for specialized executors. The canonical Egress implementation in this repository exercises the Go SDK base. Custom
 workers must keep protocol versions, heartbeats, assignment acknowledgements, capacity, deadlines, and stream framing
 correct. Treat this as an advanced integration surface and pin exact SDK and binding tags.
+
+A worker registers a stable ID, protocol range, executor type, tags/locations/IP modes, ingress modes, fingerprint
+profiles, and maximum concurrency. It becomes assignable only after authenticated registration and heartbeats.
+Admission must reject unsupported request modes/profiles before request start. Stream request bodies only as Control
+grants bounded frames; return download credit as response bytes are consumed. Preserve ordered duplicate headers,
+deadlines, attempt numbers, sequence validation, cancellation, and terminal error mapping.
+
+Runtime-admin workers validate snapshots before acknowledging the version and continue active requests on their
+original immutable snapshot. Receipt-capable workers treat assignment URLs as short-lived credentials, re-check size
+and SHA-256, and never expose storage credentials. On shutdown, stop heartbeats/admission, drain active assignments
+within their deadlines, publish terminal outcomes where possible, and close NATS cleanly.
+
+Run `make conformance` and the tagged producer/consumer compatibility workflow before admission. Custom workers own
+destination resolution/enforcement, TLS/proxy behavior, credential redaction, resource bounds, and upstream security
+equivalent to the official Egress implementation. Protocol framing and runtime-snapshot acknowledgement remain the
+least stable pre-1.0 surfaces; do not infer compatibility beyond the published matrix.
+
+The official worker advertises all names in the [built-in fingerprint catalogue](compatibility.md#fingerprint-profile-catalogue).
+Custom workers may advertise a subset, but protocol minor 1 registration rejects unknown or duplicate names. An
+advertised name promises the pinned TLS/HTTP/2 behavior for that exact profile; HTTP/3 is outside the contract.

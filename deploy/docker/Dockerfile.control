@@ -1,11 +1,16 @@
 # Build the Straw control service.
-FROM golang:1.26 AS build
+FROM golang:1.26.5@sha256:079e59808d2d252516e27e3f3a9c003740dee7f75e55aa71528766d52bcfc16a AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
-COPY . .
-RUN CGO_ENABLED=0 go build -o /out/control ./cmd/control
+COPY cmd ./cmd
+COPY internal ./internal
+RUN CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags='-s -w' -o /out/control ./cmd/control
 
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:b7bb25d9f7c31d2bdd1982feb4dafcaf137703c7075dbe2febb41c24212b946f
+LABEL org.opencontainers.image.source="https://github.com/beremaran/straw-oss" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.title="Straw Control"
 COPY --from=build /out/control /control
+HEALTHCHECK --interval=10s --timeout=3s --retries=3 CMD ["/control", "-healthcheck"]
 ENTRYPOINT ["/control", "-config", "/etc/straw/control.json"]

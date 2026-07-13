@@ -25,6 +25,19 @@ controls you would apply to an internal egress gateway.
 An empty Control token is intentionally supported for the default local stack. Do not use that setting on an
 untrusted network.
 
+## Profile hardening and verification checklist
+
+| Profile | Required review before production | Owned verification |
+| --- | --- | --- |
+| Default | random request token; TLS at the ingress; NATS account limited to the documented subjects; Control/metrics/NATS listeners firewalled; structured logs exported without request data | `make profile-smoke PROFILE=default`, destination-policy tests, and a synthetic-secret log review |
+| Runtime administration | all default controls; distinct admin token; `/admin/` and `/api/v1/admin/*` on a tighter network; JetStream account limited to the configured bucket; reviewed history/backup retention | `make profile-smoke PROFILE=admin` and `make state-backup-smoke PROFILE=admin` |
+| HA Control | all default/admin controls in use; authenticated Redis ACL scoped to the Straw key prefix; `rediss://` or an equivalent private encrypted network; Redis/NATS reachable only by intended components; fencing and degraded readiness monitored | `make ha-smoke`, including Redis outage/recovery and Control loss |
+| Receipts | all default controls; distinct 32-byte-or-longer signing key; least-privilege S3 bucket/prefix or UID-restricted local volume; TLS to S3; server-side encryption permissions; explicit object/part retention and cleanup alerts | `make profile-smoke PROFILE=receipts` and `make state-backup-smoke PROFILE=receipts`, including checksum rejection |
+| Custom workers | distinct NATS credentials and least-privilege subjects; compatible protocol/SDK tags; outbound network policy; no long-lived object-store credential; bounded/redacted worker logs | `make conformance` plus the worker implementation's admission test |
+
+Record the image digest, configuration revision, verification timestamp, and reviewer. Do not promote a profile when
+its owned verification is skipped or when logs contain synthetic canary tokens, URLs, headers, or bodies.
+
 ## Request behavior
 
 Straw accepts only absolute HTTP/HTTPS URLs, rejects URL user information, validates headers, limits bodies and

@@ -1,0 +1,107 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+
+jobs:
+  verify-and-binaries:
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    environment: release
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with: {fetch-depth: 0}
+      - name: Validate protected release tag
+        env: {TAG: '${{ github.ref_name }}'}
+        run: |
+          [[ "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]]
+          test "$(git rev-list -n 1 "$TAG")" = "$GITHUB_SHA"
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with: {go-version-file: go.mod}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: {python-version-file: .python-version}
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with: {version: 0.8.22}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: {node-version: 20, cache: npm, cache-dependency-path: website/package-lock.json}
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9
+        with: {version: v2.12.2, install-only: true}
+      - run: npm ci
+        working-directory: website
+      - run: make npm-audit
+      - run: make check production-deploy-check docs-website race
+      - run: make clean-room-check CLEAN_ROOM_REF=${{ github.ref_name }}
+      - run: make release-artifact-check
+      - name: Generate distributable license inventory
+        run: make license-check LICENSE_INVENTORY=dist/dependency-licenses.json
+      - name: Build reproducible binaries and checksums
+        env: {CGO_ENABLED: 0}
+        run: |
+          mkdir -p dist
+          for os in linux darwin; do
+            for arch in amd64 arm64; do
+              for command in control egress straw; do
+                GOOS=$os GOARCH=$arch go build -trimpath -buildvcs=true -ldflags='-s -w' -o "dist/straw-${command}_${os}_${arch}" "./cmd/${command}"
+              done
+            done
+          done
+          go list -m -json all > dist/go-modules.json
+          go run github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@v1.9.0 mod -json -output dist/straw.cdx.json
+          cp THIRD_PARTY_NOTICES.md dist/THIRD_PARTY_NOTICES.md
+          (cd dist && find . -maxdepth 1 -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/straw-SHA256SUMS)
+          mv /tmp/straw-SHA256SUMS dist/SHA256SUMS
+      - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with: {subject-path: 'dist/straw-*'}
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          draft: true
+          generate_release_notes: true
+          files: dist/*
+
+  images:
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    environment: release
+    timeout-minutes: 45
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: {component: [control, egress]}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Validate protected release tag
+        env: {TAG: '${{ github.ref_name }}'}
+        run: '[[ "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]]'
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with: {registry: ghcr.io, username: '${{ github.actor }}', password: '${{ secrets.GITHUB_TOKEN }}'}
+      - uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
+        id: meta
+        with: {images: 'ghcr.io/${{ github.repository }}-${{ matrix.component }}', tags: 'type=semver,pattern={{version}}'}
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        id: build
+        with:
+          context: .
+          file: deploy/docker/Dockerfile.${{ matrix.component }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: mode=max
+          sbom: true
+      - uses: sigstore/cosign-installer@f713795cb21599bc4e5c4b58cbad1da852d7eeb9 # v3
+      - name: Keyless-sign immutable image
+        env: {DIGEST: '${{ steps.build.outputs.digest }}'}
+        run: cosign sign --yes "ghcr.io/${GITHUB_REPOSITORY}-${{ matrix.component }}@${DIGEST}"

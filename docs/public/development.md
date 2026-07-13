@@ -4,6 +4,13 @@ sidebar_position: 12
 
 # Development and releases
 
+Use `make help` for maintained commands. See the [verification strategy](test-strategy.md),
+[compatibility policy](compatibility.md), [release procedure](releases.md), and
+[documentation policy](documentation-policy.md). Governance and support are defined in the repository root.
+
+Fast public CI is unprivileged. Trusted cross-repository compatibility and protected publishing run separately, so
+pull-request code never receives maintainer credentials.
+
 Read `CONTRIBUTING.md` before sending a change. The normal loop is:
 
 ```sh
@@ -23,16 +30,10 @@ uv run --frozen python -m unittest discover integration/python
 
 Python SDK development and its independent lock live in `straw-sdk-python`.
 
-## Release checklist
+The contributor handbook defines the enforced package graph, generated/external source ownership, risk-based test
+selection, fixture workflow, and the complete public-contract checklist. Public contract changes must update tests,
+the normative reference, compatibility classification, `CHANGELOG.md`, and representative executable evidence in
+the same change.
 
-Maintainers release from a clean main branch:
-
-1. update `CHANGELOG.md` and public docs;
-2. run `make check`, `make production-deploy-check`, and `make docs-website`;
-3. run the quickstart against the local Compose stack;
-4. tag a semantic version such as `v0.2.0`;
-5. publish release notes describing changes, compatibility, and upgrade steps;
-6. publish container and SDK artifacts from the tag when release automation is configured.
-
-Until the project reaches `v1.0.0`, minor releases may change advanced worker protocol surfaces. The REST request API
-and documented configuration should still be changed deliberately and called out in the changelog.
+The exact release graph and rollback procedure live in [Release procedure](releases.md); do not release from this
+summary alone.

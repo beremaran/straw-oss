@@ -17,7 +17,7 @@ body:
     id: component
     attributes:
       label: Component
-      options: [Control, Egress, CLI, Go SDK, Python SDK, deployment, documentation]
+      options: [Control, Egress, receipts, runtime administration, HA, CLI, protocol/bindings, Go SDK, Python SDK, deployment, documentation]
     validations:
       required: true
   - type: textarea
@@ -39,3 +39,15 @@ body:
     attributes:
       label: Relevant logs
       render: shell
+  - type: checkboxes
+    id: impact
+    attributes:
+      label: Observed impact
+      description: Select every area affected or suspected; maintainers will verify classification.
+      options:
+        - label: Public API/config/CLI/metric or compatibility
+        - label: Protocol or conformance fixture
+        - label: Security boundary or credential handling
+        - label: Deployment, recovery, or operational behavior
+        - label: Documentation or maintained example
+        - label: Release artifact or upgrade/rollback

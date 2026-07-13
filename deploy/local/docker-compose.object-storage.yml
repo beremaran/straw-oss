@@ -1,6 +1,6 @@
 services:
   object-storage-init:
-    image: alpine:3.22
+    image: alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce
     command: ["sh", "-c", "chown -R 65532:65532 /var/lib/straw/objects && chmod 700 /var/lib/straw/objects"]
     volumes:
       - straw-object-data:/var/lib/straw/objects

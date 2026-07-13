@@ -22,6 +22,18 @@ body:
     attributes:
       label: Alternatives considered
   - type: checkboxes
+    id: impact
+    attributes:
+      label: Expected impact
+      description: Select every area the proposal may change.
+      options:
+        - label: Public API/config/CLI/metric or compatibility
+        - label: Protocol, binding, SDK, or conformance fixture
+        - label: Security boundary or credential handling
+        - label: Deployment, recovery, or operational behavior
+        - label: Documentation or maintained example
+        - label: Release artifact or upgrade/rollback
+  - type: checkboxes
     id: boundary
     attributes:
       label: Project boundary

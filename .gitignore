@@ -26,6 +26,7 @@ go.work
 
 # Generated standalone local-stack credentials and CA material.
 deploy/local/.dev/
+deploy/production/secrets/
 
 ### JetBrains+all ###
 # Covers JetBrains IDEs: IntelliJ, RubyMine, PhpStorm, AppCode, PyCharm, CLion, Android Studio, WebStorm and Rider

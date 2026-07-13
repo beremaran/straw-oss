@@ -5,7 +5,7 @@ import {themes as prismThemes} from 'prism-react-renderer';
 const config = {
   title: 'Straw',
   tagline: 'A small, self-hosted HTTP/HTTPS egress proxy',
-  favicon: 'img/favicon.ico',
+  favicon: 'img/logo.svg',
 
   future: {
     v4: true,
@@ -33,7 +33,7 @@ const config = {
           path: '../docs/public',
           routeBasePath: 'docs',
           sidebarPath: './sidebars.js',
-          editUrl: 'https://github.com/beremaran/straw-oss/tree/master/docs/public/',
+          editUrl: ({docPath}) => `https://github.com/beremaran/straw-oss/edit/main/docs/public/${docPath}`,
         },
         blog: false,
         theme: {
@@ -54,16 +54,21 @@ const config = {
       navbar: {
         title: 'Straw',
         logo: {
-          alt: 'Straw Logo',
+          alt: 'Straw logo',
           src: 'img/logo.svg',
         },
         items: [
+          {label: 'Learn', to: '/docs/quickstart', position: 'left'},
+          {label: 'Use', to: '/docs/api/requests', position: 'left'},
+          {label: 'Operate', to: '/docs/deployment', position: 'left'},
+          {label: 'Reference', to: '/docs/configuration', position: 'left'},
+          {label: 'Contribute', to: '/docs/development', position: 'left'},
           {
             type: 'docSidebar',
             sidebarId: 'docsSidebar',
             docsPluginId: 'default',
             position: 'left',
-            label: 'Documentation',
+            label: 'All docs',
           },
           {
             href: 'https://github.com/beremaran/straw-oss',

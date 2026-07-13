@@ -1,0 +1,32 @@
+name: Documentation problem
+description: Report unclear, incorrect, missing, or untested Straw documentation
+title: "docs: "
+labels: [documentation]
+body:
+  - type: input
+    id: page
+    attributes:
+      label: Page
+      description: Link or repository path
+    validations:
+      required: true
+  - type: textarea
+    id: task
+    attributes:
+      label: What were you trying to do?
+      description: Include prerequisites and the exact point where progress stopped.
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: What happened?
+      description: Include sanitized output and version/profile; never include credentials, URLs, headers, or bodies.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What should the page say or show?
+    validations:
+      required: true

@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/beremaran/straw-oss/internal/fingerprint"
 	"github.com/beremaran/straw-oss/internal/natsx"
 	strawpb "github.com/beremaran/straw-protos-go/straw/v1"
 	sdkegress "github.com/beremaran/straw-sdk-go/egress"
@@ -29,7 +30,7 @@ const chrome120FingerprintProfile = "chrome_120"
 // SupportedFingerprintProfiles returns the exact named profiles executable by
 // the official Egress worker.
 func SupportedFingerprintProfiles() []string {
-	return []string{chrome120FingerprintProfile}
+	return fingerprint.Names()
 }
 
 // BuildRegisterRequest assembles and signs a RegisterRequest for the worker.
