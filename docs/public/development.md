@@ -66,7 +66,7 @@ The [compatibility policy](compatibility.md) defines what each release type may 
 
 ## CI and releases
 
-Fast public CI is unprivileged. Trusted cross-repository compatibility and protected publishing run separately, so
+Fast public CI is unprivileged. Trusted cross-repository compatibility and release publishing run separately, so
 pull-request code never receives maintainer credentials.
 
 The exact release graph, artifact verification, upgrade order, and rollback procedure live in the

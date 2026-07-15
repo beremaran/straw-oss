@@ -16,7 +16,7 @@ Coverage is diagnostic; release confidence comes from matching each risk to the 
 | Maintained examples | live curl, CLI, Go, and Python calls against a namespaced stack | `make examples-live` | scheduled/release |
 | Documentation contracts | Docusaurus build, links, and source-surface coverage | `make docs-website` | CI |
 | Supply chain | Go/npm license inventory, npm audit, govulncheck, CodeQL, dependency review, intended image-content assertions, and OCI scan | `make license-check npm-audit image-content-check` plus security workflow | Security |
-| Published artifacts | checksum/attestation/signature plus pull-by-digest request smoke | release procedure | protected release |
+| Published artifacts | checksum/attestation/signature plus pull-by-digest request smoke | release procedure | release workflow |
 
 Preserve logs, Compose state summaries, and sanitized failure artifacts. Never preserve request URLs, headers, bodies,
 tokens, or signed receipt URLs. Fuzz targets must be bounded and seeded by conformance fixtures or prior failures;

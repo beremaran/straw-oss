@@ -98,7 +98,7 @@ metrics, protobuf/NATS messages, SDK behavior, container behavior, and compatibi
 4. Run `make public-surface-check`. If protocol fixtures change, update the versioned conformance manifest and run
    `make conformance`; orphaned fixtures are rejected.
 5. Update exact external tags and the root `uv.lock` only through the owning repository's release order described in
-   `docs/public/releases.md`. Run `uv sync --frozen`; do not replace public tags with private URL rewrites.
+   `docs/public/releases.md`. Run `uv sync --frozen`; do not replace public tags with local URL rewrites.
 6. Exercise the representative request, profile, or maintained example against the shipped implementation.
 
 Markdown pages require one H1, valid local links, a page entry in `docs/public/owners.json`, and tested-command

@@ -1,12 +1,11 @@
 # Install a release
 
-The checked-in Compose files build Control and Egress from source. Use this page when installing a protected release
-from its GitHub release assets or container images. During stealth development, the release and package URLs may not be
-public yet.
+The checked-in Compose files build Control and Egress from source. Use this page when installing a published release
+from its GitHub release assets or container images.
 
 ## Choose an artifact
 
-The protected release workflow publishes:
+The release workflow publishes:
 
 | Artifact | Platforms or contents |
 | --- | --- |
@@ -23,7 +22,7 @@ rollbacks should use a verified image digest or an exact binary checksum, not a 
 
 ## Download and verify a binary
 
-Set the release version and target before downloading. The release asset URL uses the protected repository's tag:
+Set the release version and target before downloading. The release asset URL uses the repository's tag:
 
 ```sh
 version=0.1.0

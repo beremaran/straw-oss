@@ -8,7 +8,7 @@ A release may be promoted only when each advertised claim has both a normative r
 - Contracts: Request, Admin, Receipt, CLI, configuration, metrics, errors, and compatibility references pass drift checks.
 - Security: threat-model invariant tests and green Go/npm license, dependency, CodeQL, govulncheck, secret, and OCI scans;
   GitHub secret scanning and push protection enabled.
-- Artifacts: protected release workflow produces checksums, module inventory, SBOM, provenance, attestations,
+- Artifacts: release workflow produces checksums, module inventory, SBOM, provenance, attestations,
   signatures, multi-architecture images, notes, and a draft release.
 - Operations: upgrade and rollback, backup and restore, hardening, diagnostics, and support routes reviewed.
 - Post-publish: download binaries, verify checksums, attestations, and signatures, pull images by digest, run request

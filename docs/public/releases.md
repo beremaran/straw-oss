@@ -3,16 +3,17 @@
 Operators installing a published build should start with [Install a release](installation.md). This page is the
 maintainer procedure for producing and promoting a release.
 
-Releases are performed by a maintainer with access to the protected `release` environment. The workflow is automated;
+Releases are performed by a maintainer with access to the `release` environment. The workflow is automated;
 environment approval, package settings, and post-publish observation are owner actions.
 
 1. Confirm `make check production-deploy-check docs-website clean-room-check race` on `main` and a green security
    workflow. Confirm the release checklist and compatibility matrix.
-2. Release protocol source, Go/Python bindings, then Go/Python SDKs when their versions change. Update exact tags and
-   locks here; run `make conformance` and trusted compatibility CI.
+2. Release protocol source, Go/Python bindings, then Go/Python SDKs when their versions change. Update exact public tags
+   and locks here; run `make conformance` and trusted compatibility CI. Cross-repository release dispatch uses the
+   maintainer-managed `STRAW_AUTOMATION_TOKEN`; normal CI and contributor pull requests require no repository secret.
 3. Move `Unreleased` notes to the chosen semantic version, document migrations and profile-specific upgrade order,
    then create signed tag `vX.Y.Z` from reviewed `main`.
-4. The protected release workflow rebuilds checks, produces Linux/macOS amd64/arm64 binaries, checksums, module and
+4. The release workflow rebuilds checks, produces Linux/macOS amd64/arm64 binaries, checksums, module and
    Go and npm license inventories, attestations, multi-architecture OCI images, SBOM/provenance, keyless signatures, and a draft
    release. A dependency without a distributed license/notice file fails the release.
 5. Verify checksums and attestations, pull images by digest, run the default request smoke test and enabled profile

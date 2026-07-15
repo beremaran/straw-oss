@@ -108,7 +108,15 @@ for path in FILES:
         resolved = (path.parent / local).resolve()
         if not resolved.exists():
             failures.append(f"{relative}: broken local link {target}")
-    for stale in ("github.com/beremaran/straw-oss/blob/master", "github.com/beremaran/straw-oss/tree/master", "exact private Git tag", "private Python SDK"):
+    for stale in (
+        "github.com/beremaran/straw-oss/blob/master",
+        "github.com/beremaran/straw-oss/tree/master",
+        "exact private Git tag",
+        "private Python SDK",
+        "private pre-release",
+        "private distribution",
+        "stealth development",
+    ):
         if stale in text:
             failures.append(f"{relative}: stale terminology {stale!r}")
 
