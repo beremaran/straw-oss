@@ -2,7 +2,13 @@
 set -euo pipefail
 
 workspace=$(mktemp -d)
-trap 'rm -rf "$workspace"' EXIT
+cleanup() {
+  # Go and uv may create read-only cache entries under the isolated HOME.
+  # Make the temporary workspace writable before removing it on exit.
+  chmod -R u+w "$workspace" 2>/dev/null || true
+  rm -rf "$workspace"
+}
+trap cleanup EXIT
 export HOME="$workspace/home"
 mkdir -p "$HOME"
 export GIT_CONFIG_GLOBAL=/dev/null
