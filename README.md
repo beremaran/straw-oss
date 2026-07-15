@@ -69,7 +69,7 @@ The local stack contains exactly NATS, Control, and one Egress worker. It needs 
 
 ## Documentation
 
-- [Full documentation](https://beremaran.github.io/straw-oss/docs)
+- [Full documentation](https://beremaran.github.io/straw-oss/docs/)
 - [Quickstart](docs/public/quickstart.md)
 - [Install a release](docs/public/installation.md)
 - [Architecture](docs/public/architecture.md)
