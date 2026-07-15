@@ -90,7 +90,7 @@ license-check: ## Inventory Go/npm dependency licenses and reject missing notice
 npm-audit: ## Reject moderate-or-higher documentation-site dependency vulnerabilities.
 	npm --prefix website audit --audit-level=moderate
 
-clean-room-check: ## Prove dependencies resolve without private Git configuration.
+clean-room-check: ## Prove dependencies resolve without credentials or custom Git configuration.
 	./scripts/verify-clean-room.sh
 
 quickstart-smoke: ## Start, call, inspect, and stop the isolated default Compose stack.

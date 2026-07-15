@@ -14,26 +14,10 @@ concurrency:
 
 jobs:
   verify:
-    env:
-      GOPRIVATE: github.com/beremaran/*
     timeout-minutes: 20
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - id: private-dependencies
-        if: github.event.repository.private
-        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
-        with:
-          app-id: ${{ vars.STRAW_RELEASE_APP_ID }}
-          private-key: ${{ secrets.STRAW_RELEASE_APP_PRIVATE_KEY }}
-          owner: beremaran
-          repositories: >-
-            straw-oss,straw-protos,straw-protos-go,straw-sdk-go,straw-protos-python,straw-sdk-python
-      - name: Authenticate private tagged dependencies
-        if: github.event.repository.private
-        env:
-          GH_TOKEN: ${{ steps.private-dependencies.outputs.token }}
-        run: git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version-file: go.mod
@@ -52,7 +36,6 @@ jobs:
       - name: Check Go and tagged Python integration
         run: make check
       - name: Prove public-only dependency access
-        if: ${{ !github.event.repository.private }}
         run: make clean-room-check
       - name: Validate production example
         run: make production-deploy-check
@@ -68,5 +51,4 @@ jobs:
           npm audit --omit=dev --audit-level=high
           npm run build
       - name: Validate documentation links and terminology
-        if: ${{ !github.event.repository.private }}
         run: make docs-check-external

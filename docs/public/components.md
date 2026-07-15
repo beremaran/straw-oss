@@ -15,4 +15,4 @@ clean-room gate checks anonymous access to every repository before resolving Go 
 Each tagged repository contains its own MIT `LICENSE`. `go.mod`, `pyproject.toml`, and `uv.lock` pin these exact tags;
 the conformance manifest names producers and consumers. A release changing protocol source publishes source, generated
 bindings, SDKs, then Straw in that order. Checksums, SBOMs, attestations, provenance, and signatures for Straw binaries
-and images are attached by the protected release workflow.
+and images are attached by the release workflow.

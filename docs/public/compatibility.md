@@ -61,6 +61,6 @@ Rollback restores the previous binaries/images and, for stateful profiles, the b
 
 The documented dependency release order is protocol source, generated bindings (`straw-protos-go`/`straw-protos-python`
 `v0.3.0`), Go and Python SDKs (`v0.2.0`), then Straw. The current repository records those public tags directly;
-private URL rewrites, replace directives, and unpublished commits are not supported. Upgrade official workers before
+local URL rewrites, replace directives, and unpublished commits are not supported. Upgrade official workers before
 Control, then the CLI and application SDKs. The `v0.1.0` SDK clients remain wire-compatible for requests without
 routing hints, but use `v0.2.0` when routing fields or the tagged release contract are required.
