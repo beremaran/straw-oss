@@ -5,6 +5,12 @@ are tagged.
 
 ## Unreleased
 
+## 0.1.0 - 2026-07-26
+
+First tagged release. Install Egress before Control, then the CLI and application SDKs, per
+[Compatibility and versioning](docs/public/compatibility.md). No migration applies: there is no earlier release to
+upgrade from.
+
 ### Added
 
 - Completed routing integration: the CLI and public Go/Python SDK tags expose typed routing hints and explicit
@@ -48,3 +54,7 @@ are tagged.
   malformed or hostile input.
 - Pinned toolchains, dependencies, container builders, and GitHub Actions; release artifacts include checksums,
   inventories, attestations, signatures, and software bills of materials.
+- Gated container publication on the release verification job: a tag that fails the checks, the clean-room build, the
+  race suite, or the license inventory publishes no Control or Egress image.
+- Pinned the documentation site's transitive `minimatch` to a release carrying a patched `brace-expansion`, keeping the
+  release-blocking dependency audit clean.

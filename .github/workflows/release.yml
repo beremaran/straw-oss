@@ -70,6 +70,10 @@ jobs:
           files: dist/*
 
   images:
+    # Gated on the verification job: a signed, immutable image must never reach
+    # ghcr for a tag that failed checks, the clean-room build, or the license
+    # inventory. Deleting a published tag is not a rollback.
+    needs: verify-and-binaries
     permissions:
       contents: read
       packages: write
