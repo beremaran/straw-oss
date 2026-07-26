@@ -63,11 +63,14 @@ jobs:
           mv /tmp/straw-SHA256SUMS dist/SHA256SUMS
       - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
         with: {subject-path: 'dist/straw-*'}
-      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
-        with:
-          draft: true
-          generate_release_notes: true
-          files: dist/*
+      # The GitHub CLI, not a third-party action: the repository restricts
+      # workflows to GitHub-owned and verified-creator actions, and the CLI
+      # ships on the runner, so the release step adds no supply-chain surface.
+      - name: Publish the draft release with its artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$TAG" --draft --generate-notes --title "$TAG" dist/*
 
   images:
     # Gated on the verification job: a signed, immutable image must never reach

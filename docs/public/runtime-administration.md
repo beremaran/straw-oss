@@ -23,7 +23,7 @@ in another:
 
 ```sh
 curl -sS -H 'Content-Type: application/json' \
-  -d '{"method":"GET","url":"https://httpbin.org/delay/5"}' \
+  -d '{"method":"GET","url":"https://httpbingo.org/delay/5"}' \
   http://localhost:8080/api/v1/requests &
 
 revision="$(curl -sS -D - -o /dev/null \

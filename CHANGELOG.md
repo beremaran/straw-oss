@@ -56,5 +56,5 @@ upgrade from.
   inventories, attestations, signatures, and software bills of materials.
 - Gated container publication on the release verification job: a tag that fails the checks, the clean-room build, the
   race suite, or the license inventory publishes no Control or Egress image.
-- Pinned the documentation site's transitive `minimatch` to a release carrying a patched `brace-expansion`, keeping the
-  release-blocking dependency audit clean.
+- Pinned `golang.org/x/text` to v0.39.0 and the documentation site's transitive `minimatch` to a release carrying a
+  patched `brace-expansion`, so the release-blocking vulnerability and dependency-audit gates start clean.

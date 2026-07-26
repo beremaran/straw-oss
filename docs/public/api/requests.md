@@ -8,7 +8,7 @@ curl -sS http://localhost:8080/api/v1/requests \
   -H 'Authorization: Bearer your-deployment-token' \
   -d '{
     "method": "POST",
-    "url": "https://httpbin.org/anything",
+    "url": "https://httpbingo.org/anything",
     "headers": [{"name":"Content-Type","value_base64":"YXBwbGljYXRpb24vanNvbg=="}],
     "body": {"mode":"inline_base64","data_base64":"eyJoZWxsbyI6IndvcmxkIn0="},
     "routing": {
