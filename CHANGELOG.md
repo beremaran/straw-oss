@@ -5,6 +5,20 @@ are tagged.
 
 ## Unreleased
 
+## 0.2.1 - 2026-07-27
+
+### Fixed
+
+- Large responses no longer stall and time out. `straw-sdk-go` v0.3.0 fixes the
+  egress worker's download credit gate: granting credit could block the
+  goroutine that carries the executor's terminal frames, so every response byte
+  reached Control but the `End` frame never did and the request died on the 15s
+  frame idle timeout. Whether it hit depended on the number of data frames, and
+  so on socket segmentation rather than a byte threshold -- responses around
+  475 KB failed intermittently and 800 KB ones almost always. Decoded HTTP
+  requests failed outright; raw tunnels shared the gate but stream to the client
+  as bytes arrive, so they logged the cancellation without failing the fetch.
+
 ## 0.2.0 - 2026-07-27
 
 ### Added

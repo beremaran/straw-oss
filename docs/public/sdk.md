@@ -5,7 +5,7 @@ The REST API has small Go and Python clients. Both accept a base URL and optiona
 ## Go
 
 ```sh
-go get github.com/beremaran/straw-sdk-go@v0.2.0
+go get github.com/beremaran/straw-sdk-go@v0.3.0
 ```
 
 ```go
@@ -45,7 +45,7 @@ func main() {
 }
 ```
 
-The exact `v0.2.0` Go tag supports the fields shown above plus `Body`, `FingerprintProfile`, `TimeoutMs`,
+The exact `v0.3.0` Go tag supports the fields shown above plus `Body`, `FingerprintProfile`, `TimeoutMs`,
 `Replayable`, and `ResponseBodyMode`. Header values are base64-encoded bytes. Non-2xx Straw responses are returned as
 `*straw.APIError` with `HTTPStatus` and the parsed error envelope.
 

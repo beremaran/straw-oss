@@ -11,7 +11,7 @@ test ! -e examples/egress-static
 test -z "$(git ls-files 'go.work' '**/go.work')"
 ! grep -Eq '^[[:space:]]*replace[[:space:](]' go.mod
 grep -Eq 'github.com/beremaran/straw-protos-go v0\.3\.0$' go.mod
-grep -Eq 'github.com/beremaran/straw-sdk-go v0\.2\.0$' go.mod
+grep -Eq 'github.com/beremaran/straw-sdk-go v0\.3\.0$' go.mod
 grep -Eq 'github.com/bogdanfinn/utls v1\.7\.7-barnius$' go.mod
 grep -Eq 'golang.org/x/net v0\.56\.0$' go.mod
 ! grep -Eq 'github.com/bogdanfinn/(fhttp|tls-client)' go.mod

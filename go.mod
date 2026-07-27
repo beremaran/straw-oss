@@ -4,7 +4,7 @@ go 1.26.5
 
 require (
 	github.com/beremaran/straw-protos-go v0.3.0
-	github.com/beremaran/straw-sdk-go v0.2.0
+	github.com/beremaran/straw-sdk-go v0.3.0
 	github.com/bogdanfinn/utls v1.7.7-barnius
 	github.com/nats-io/nats.go v1.52.0
 	github.com/prometheus/client_golang v1.23.2

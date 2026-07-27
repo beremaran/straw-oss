@@ -37,7 +37,7 @@ jobs:
         include:
           - {repository: straw-protos, tag: v0.3.0, kind: proto}
           - {repository: straw-protos-go, tag: v0.3.0, kind: go}
-          - {repository: straw-sdk-go, tag: v0.2.0, kind: go}
+          - {repository: straw-sdk-go, tag: v0.3.0, kind: go}
           - {repository: straw-protos-python, tag: v0.3.0, kind: python}
           - {repository: straw-sdk-python, tag: v0.2.0, kind: python}
     runs-on: ubuntu-latest

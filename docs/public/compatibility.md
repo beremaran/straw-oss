@@ -9,7 +9,7 @@ configuration changes only when release notes identify the change, migration, an
 | --- | --- | --- |
 | Straw Control/Egress/CLI | same release | Upgrade Egress, then Control, then CLI; mixed minors are unsupported unless release notes say otherwise |
 | worker protocol and Go binding | `v0.3.0` | Exact tag in `go.mod`; negotiation rejects unsupported revisions |
-| Go SDK | `v0.2.0` | Exact public tag in `go.mod`; includes typed routing hints |
+| Go SDK | `v0.3.0` | Exact public tag in `go.mod`; includes typed routing hints |
 | Python SDK and binding | `v0.2.0` / `v0.3.0` | Exact immutable public Git tags in `uv.lock` |
 | container images | release tag or digest | Never depend on a moving tag for production rollback |
 | Go / Python / Node | 1.26.5 / 3.13 / 20+ | Development and CI toolchains |
@@ -60,7 +60,7 @@ Before 1.0, deprecation normally lasts one minor release. Security fixes may rem
 Rollback restores the previous binaries/images and, for stateful profiles, the backup taken before upgrade.
 
 The documented dependency release order is protocol source, generated bindings (`straw-protos-go`/`straw-protos-python`
-`v0.3.0`), Go and Python SDKs (`v0.2.0`), then Straw. The current repository records those public tags directly;
+`v0.3.0`), the Go SDK (`v0.3.0`) and Python SDK (`v0.2.0`), then Straw. The current repository records those public tags directly;
 local URL rewrites, replace directives, and unpublished commits are not supported. Upgrade official workers before
 Control, then the CLI and application SDKs. The `v0.1.0` SDK clients remain wire-compatible for requests without
-routing hints, but use `v0.2.0` when routing fields or the tagged release contract are required.
+routing hints, but use the current tags when routing fields or the tagged release contract are required.
