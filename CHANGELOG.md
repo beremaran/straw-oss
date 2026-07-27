@@ -5,6 +5,8 @@ are tagged.
 
 ## Unreleased
 
+## 0.2.0 - 2026-07-27
+
 ### Added
 
 - Egress workers now serve Prometheus metrics on their existing health port (default `8090`), alongside `/healthz`
