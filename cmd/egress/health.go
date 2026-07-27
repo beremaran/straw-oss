@@ -3,6 +3,9 @@ package main
 import (
 	"net/http"
 	"sync/atomic"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // newHealthMux serves liveness/readiness probes on the egress health port
@@ -12,7 +15,12 @@ import (
 // after successful worker registration and flips to 503 once draining
 // begins (docs/public/architecture.md "Worker Graceful Shutdown" step 1), mirroring
 // cmd/control/health.go.
-func newHealthMux(ready *atomic.Bool) *http.ServeMux {
+//
+// /metrics serves the egress series (docs/public/operations.md) registered
+// against reg. Unlike Control, a worker has a single listener: the scrape
+// endpoint shares the health port instead of adding a second port to configure,
+// expose and firewall.
+func newHealthMux(ready *atomic.Bool, reg *prometheus.Registry) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -30,6 +38,8 @@ func newHealthMux(ready *atomic.Bool) *http.ServeMux {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ready"))
 	})
+
+	mux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
 
 	return mux
 }

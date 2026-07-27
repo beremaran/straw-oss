@@ -40,8 +40,11 @@ func TestRunWorkerUsesSDKRuntime(t *testing.T) {
 	t.Cleanup(func() { runSDKWorker = original })
 
 	called := false
-	runSDKWorker = func(_ context.Context, _ *natsx.Connection, id sdkegress.Identity, caps sdkegress.Capabilities, executor *internalegress.Executor, heartbeat time.Duration, _ *atomic.Bool) error {
+	runSDKWorker = func(_ context.Context, _ *natsx.Connection, id sdkegress.Identity, caps sdkegress.Capabilities, executor *internalegress.Executor, heartbeat time.Duration, _ *atomic.Bool, sessions *internalegress.SessionTracker) error {
 		called = true
+		if sessions == nil {
+			t.Fatal("session tracker = nil, want the collector source")
+		}
 		if id.WorkerID != "worker-sdk" || id.ExecutorType != "egress" || len(id.PrivateKey) == 0 {
 			t.Fatalf("identity = %+v", id)
 		}

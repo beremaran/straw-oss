@@ -15,6 +15,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/beremaran/straw-oss/internal/config"
 	internalegress "github.com/beremaran/straw-oss/internal/egress"
 	"github.com/beremaran/straw-oss/internal/logging"
@@ -135,12 +137,12 @@ func runHealthcheck(cfg config.EgressConfig) error {
 	return nil
 }
 
-// serveHealthHTTP starts the /healthz and /readyz server on the health port
-// (docs/public/architecture.md, docs/public/architecture.md) and returns a stop function that
-// shuts it down.
-func serveHealthHTTP(ctx context.Context, cfg config.EgressConfig, ready *atomic.Bool) func() {
+// serveHealthHTTP starts the /healthz, /readyz and /metrics server on the
+// health port (docs/public/architecture.md, docs/public/operations.md) and
+// returns a stop function that shuts it down.
+func serveHealthHTTP(ctx context.Context, cfg config.EgressConfig, ready *atomic.Bool, reg *prometheus.Registry) func() {
 	addr := fmt.Sprintf(":%d", cfg.HealthPort)
-	server := &http.Server{Addr: addr, Handler: newHealthMux(ready), ReadHeaderTimeout: readHeaderTimeout}
+	server := &http.Server{Addr: addr, Handler: newHealthMux(ready, reg), ReadHeaderTimeout: readHeaderTimeout}
 
 	go func() {
 		serveErr := server.ListenAndServe()
@@ -208,6 +210,19 @@ func buildCapabilities(cfg config.EgressConfig) sdkegress.Capabilities {
 	}
 }
 
+// newMetricsRegistry builds the worker's private scrape registry, mirroring
+// cmd/control/runtime.go. It is private rather than prometheus.DefaultRegisterer
+// so a worker exposes only the documented straw_egress_* series.
+func newMetricsRegistry(ready *atomic.Bool, sessions *internalegress.SessionTracker) (*prometheus.Registry, *internalegress.Metrics) {
+	metricsRegistry := prometheus.NewRegistry()
+	metrics := internalegress.NewMetrics(metricsRegistry)
+
+	internalegress.RegisterReadinessCollector(metricsRegistry, ready)
+	internalegress.RegisterSessionCollector(metricsRegistry, sessions)
+
+	return metricsRegistry, metrics
+}
+
 func runWorker(ctx context.Context, natsConn *natsx.Connection, cfg config.EgressConfig) error {
 	_, priv, err := ed25519.GenerateKey(nil)
 	if err != nil {
@@ -224,6 +239,12 @@ func runWorker(ctx context.Context, natsConn *natsx.Connection, cfg config.Egres
 
 	heartbeatInterval := time.Duration(cfg.HeartbeatIntervalMs) * time.Millisecond
 
+	ready := &atomic.Bool{}
+	sessions := internalegress.NewSessionTracker(ready)
+	metricsRegistry, metrics := newMetricsRegistry(ready, sessions)
+
+	internalegress.RegisterNATSErrorHandlers(natsConn, metrics)
+
 	pool := cfg.UpstreamConnectionPool
 	executor := internalegress.NewExecutor(internalegress.ExecutorOptions{
 		HTTP2Enabled:     cfg.HTTP2.Enabled,
@@ -234,16 +255,15 @@ func runWorker(ctx context.Context, natsConn *natsx.Connection, cfg config.Egres
 			IdleTimeout:         time.Duration(pool.IdleTimeoutMS) * time.Millisecond,
 			MaxLifetime:         time.Duration(pool.MaxLifetimeMS) * time.Millisecond,
 		},
+		Metrics: metrics,
 	})
 
-	ready := &atomic.Bool{}
-
-	stopHealth := serveHealthHTTP(ctx, cfg, ready)
+	stopHealth := serveHealthHTTP(ctx, cfg, ready, metricsRegistry)
 	defer stopHealth()
 
 	slog.Info("starting run loop", "worker_id", cfg.WorkerID, "heartbeat_interval", heartbeatInterval.String())
 
-	err = runSDKWorker(ctx, natsConn, id, caps, executor, heartbeatInterval, ready)
+	err = runSDKWorker(ctx, natsConn, id, caps, executor, heartbeatInterval, ready, sessions)
 	if err != nil {
 		return fmt.Errorf("egress run loop: %w", err)
 	}
@@ -251,8 +271,17 @@ func runWorker(ctx context.Context, natsConn *natsx.Connection, cfg config.Egres
 	return nil
 }
 
-var runSDKWorker = func(ctx context.Context, natsConn *natsx.Connection, id sdkegress.Identity, caps sdkegress.Capabilities, executor *internalegress.Executor, heartbeatInterval time.Duration, ready *atomic.Bool) error {
+var runSDKWorker = func(ctx context.Context, natsConn *natsx.Connection, id sdkegress.Identity, caps sdkegress.Capabilities, executor *internalegress.Executor, heartbeatInterval time.Duration, ready *atomic.Bool, sessions *internalegress.SessionTracker) error {
 	return sdkegress.Run(ctx, natsConn, id, caps, heartbeatInterval, ready, func(sessionID string, maxConcurrency uint32) (sdkegress.AssignmentServer, error) {
-		return internalegress.NewWorker(natsConn, internalegress.Identity(id), executor, sessionID, maxConcurrency)
+		worker, err := internalegress.NewWorker(natsConn, internalegress.Identity(id), executor, sessionID, maxConcurrency)
+		if err != nil {
+			return nil, fmt.Errorf("new session worker: %w", err)
+		}
+
+		// The factory is the only per-session hook the SDK exposes, so the
+		// live worker is handed to the collectors here.
+		sessions.Track(worker, maxConcurrency)
+
+		return worker, nil
 	})
 }

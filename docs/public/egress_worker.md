@@ -17,8 +17,8 @@ In Compose, scale the service instead:
 docker compose -f deploy/production/compose.yml up -d --scale egress=3
 ```
 
-Each worker exposes `/healthz` and `/readyz` on its configured health port. Readiness becomes successful after the
-worker has connected and registered.
+Each worker exposes `/healthz`, `/readyz` and `/metrics` on its configured health port. Readiness becomes successful
+after the worker has connected and registered.
 
 ## Place workers near destinations
 

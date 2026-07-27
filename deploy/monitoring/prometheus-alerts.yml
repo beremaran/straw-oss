@@ -20,3 +20,20 @@ groups:
         expr: increase(straw_receipts_rejected_total[15m]) > 0
         labels: {severity: warning}
         annotations: {summary: Receipt size or checksum verification failed}
+  - name: straw-egress-example
+    rules:
+      - alert: StrawEgressSaturated
+        expr: straw_egress_active_requests / straw_egress_concurrency_limit > 0.9 and straw_egress_concurrency_limit > 0
+        for: 5m
+        labels: {severity: warning}
+        annotations: {summary: An Egress worker is running at its concurrency ceiling}
+      - alert: StrawEgressUpstreamErrors
+        expr: sum without (code) (rate(straw_egress_upstream_errors_total[5m])) / sum without (outcome) (rate(straw_egress_assignments_total[5m])) > 0.25
+        for: 10m
+        labels: {severity: warning}
+        annotations: {summary: A quarter of Egress assignments are failing upstream}
+      - alert: StrawEgressNotReady
+        expr: straw_egress_ready == 0
+        for: 5m
+        labels: {severity: critical}
+        annotations: {summary: An Egress worker holds no registered session}

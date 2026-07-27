@@ -8,7 +8,8 @@ Control exposes these endpoints on its metrics port (default `9090`):
 - `/readyz`: service readiness, including Redis reachability in HA mode;
 - `/metrics`: Prometheus text format.
 
-Egress exposes `/healthz` and `/readyz` on its health port (default `8090`).
+Egress exposes `/healthz`, `/readyz` and `/metrics` on its health port (default `8090`). A worker has one listener;
+there is no separate egress metrics port.
 
 ## Metrics
 
@@ -38,6 +39,25 @@ Prometheus metrics use bounded labels. Counters are cumulative process-lifetime 
 | `straw_receipts_consumed_total` | counter | none | receipts | receipts | request receipts consumed successfully |
 | `straw_receipts_expired_total` | counter | none | receipts | receipts | expired receipts removed by cleanup |
 
+Egress workers publish their own series. They are prefixed `straw_egress_` because both services are usually scraped
+into one Prometheus, and a worker measures a different thing from Control even where the name would be the same.
+
+| Metric | Type | Labels | Unit | Profile | Interpretation |
+| --- | --- | --- | --- | --- | --- |
+| `straw_egress_ready` | gauge | none | boolean (`0`/`1`) | all | the same readiness `/readyz` reports for this worker |
+| `straw_egress_sessions_active` | gauge | none | sessions | all | `1` while a registered session is being served; a worker serves one at a time |
+| `straw_egress_active_requests` | gauge | none | requests | all | assignments currently executing on this worker |
+| `straw_egress_concurrency_limit` | gauge | none | requests | all | admission ceiling for the live session; compare active requests against it for saturation |
+| `straw_egress_assignments_total` | counter | `outcome` | assignments | all | assignments this worker finished, `success` or `error` |
+| `straw_egress_request_duration_seconds` | histogram | none | seconds | all | worker-side duration of decoded outbound requests |
+| `straw_egress_bytes_total` | counter | `direction` | bytes | all | decoded body bytes `out` to the upstream and `in` from it; raw tunnel traffic is not included |
+| `straw_egress_upstream_errors_total` | counter | `code` | errors | all | failed assignments by the same canonical error code Control reports |
+| `straw_egress_nats_errors_total` | counter | `code` | errors | all | asynchronous NATS failures seen by the worker's client |
+
+A worker cannot see what it never receives: assignments rejected for capacity or draining are counted by Control as
+`straw_requests_total{error_code="executor_capacity_exhausted"}`, and raw CONNECT tunnel volume is streamed by the
+worker SDK and is absent from `straw_egress_bytes_total`.
+
 Expose metrics only to your monitoring network. No telemetry database is required.
 
 ### Scrape and alert examples
@@ -51,6 +71,10 @@ scrape_configs:
     metrics_path: /metrics
     static_configs:
       - targets: ["control.example.internal:9090"]
+  - job_name: straw-egress
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["egress.example.internal:8090"]
 ```
 
 The checked-in starter rules are deliberately small. Their PromQL and windows are:
@@ -61,6 +85,9 @@ The checked-in starter rules are deliberately small. Their PromQL and windows ar
 | `StrawNATSErrors` | `rate(straw_nats_errors_total[5m]) > 0` | 5m | Inspect NATS health, credentials, reconnects, and payload limits. |
 | `StrawHAStateUnavailable` | `straw_runtime_state_available == 0` | 1m | Restore Redis coordination before admitting HA traffic. |
 | `StrawReceiptRejections` | `increase(straw_receipts_rejected_total[15m]) > 0` | none | Inspect declared size/checksum, part uploads, storage, and clock/credential errors. |
+| `StrawEgressSaturated` | `straw_egress_active_requests / straw_egress_concurrency_limit > 0.9 and straw_egress_concurrency_limit > 0` | 5m | Add workers or raise `egress.capabilities.max_concurrency` once upstream latency is ruled out. |
+| `StrawEgressUpstreamErrors` | ratio of `straw_egress_upstream_errors_total` to `straw_egress_assignments_total` over 5m `> 0.25` | 10m | Split by `code` to separate DNS, TLS, reset, and policy denials from upstream outages. |
+| `StrawEgressNotReady` | `straw_egress_ready == 0` | 5m | Check the worker's NATS reachability, credentials, and registration rejections. |
 
 Copy and adapt `deploy/monitoring/prometheus-alerts.yml`; choose notification routing and objective thresholds in
 your monitoring system. These rules do not replace a production alert policy.

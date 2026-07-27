@@ -70,6 +70,7 @@ type ExecutorOptions struct {
 	InsecureSkipVerify bool
 	BodyRefHTTPClient  *http.Client
 	Now                func() time.Time
+	Metrics            *Metrics
 }
 
 // Executor performs P0 decoded HTTP/HTTPS outbound execution.
@@ -85,6 +86,7 @@ type Executor struct {
 	bodyRefHTTPClient    *http.Client
 	profileSessionCaches map[string]utls.ClientSessionCache
 	now                  func() time.Time
+	metrics              *Metrics
 }
 
 // UpstreamConnectionPoolOptions configures optional direct-local HTTP
@@ -118,6 +120,7 @@ func NewExecutor(opts ExecutorOptions) *Executor {
 		bodyRefHTTPClient:    opts.BodyRefHTTPClient,
 		profileSessionCaches: newProfileSessionCaches(),
 		now:                  opts.Now,
+		metrics:              opts.Metrics,
 	}
 
 	if exec.now == nil {
@@ -179,7 +182,23 @@ func (e *Executor) Execute(ctx context.Context, start *strawpb.RequestStart, bod
 
 // ExecuteWithDeployment performs one outbound request with the deployment
 // scope included in the optional upstream connection-pool key.
+//
+// Instrumentation lives in this wrapper rather than inside the execution body
+// because the body has eight failure returns; classifying the terminal frame
+// once here keeps every one of them counted without a metrics call per return.
+// Request bytes are the body handed to the executor, so they are counted for
+// an attempt that failed before reaching the wire too.
 func (e *Executor) ExecuteWithDeployment(ctx context.Context, deploymentID string, start *strawpb.RequestStart, body []byte, attempt uint32, send func(*strawpb.StreamFrame)) []*strawpb.StreamFrame {
+	started := e.now()
+	frames := e.executeWithDeployment(ctx, deploymentID, start, body, attempt, send)
+
+	e.metrics.AddRequestBytes(uint64FromInt(len(body)))
+	e.metrics.ObserveRequest(terminalErrorCode(frames), e.now().Sub(started))
+
+	return frames
+}
+
+func (e *Executor) executeWithDeployment(ctx context.Context, deploymentID string, start *strawpb.RequestStart, body []byte, attempt uint32, send func(*strawpb.StreamFrame)) []*strawpb.StreamFrame {
 	frames := newFrameBuilder(attempt)
 
 	target, failure := parseTarget(start)
@@ -230,7 +249,7 @@ func (e *Executor) ExecuteWithDeployment(ctx context.Context, deploymentID strin
 
 	emit = emitOrAppend(emit, frames.responseStart(status, responseHeaders(resp.Header)), send)
 
-	emit, failure = streamResponseBody(reqCtx, resp.Body, func() []*strawpb.Header {
+	emit, failure = e.streamResponseBody(reqCtx, resp.Body, func() []*strawpb.Header {
 		return responseHeaders(resp.Trailer)
 	}, frames, emit, send)
 	if failure != nil {
@@ -254,7 +273,7 @@ func (e *Executor) executeProfiled(ctx context.Context, target target, start *st
 
 	emit = emitOrAppend(emit, frames.responseStart(status, responseHeaders(resp.header)), send)
 
-	emit, failure = streamResponseBody(ctx, resp.body, func() []*strawpb.Header {
+	emit, failure = e.streamResponseBody(ctx, resp.body, func() []*strawpb.Header {
 		return responseHeaders(resp.trailer)
 	}, frames, emit, send)
 	if failure != nil {
@@ -373,7 +392,7 @@ func (e *Executor) openTunnel(ctx context.Context, start *strawpb.RequestStart) 
 	return conn, target, nil
 }
 
-func streamResponseBody(ctx context.Context, body io.Reader, trailers func() []*strawpb.Header, frames *frameBuilder, emit []*strawpb.StreamFrame, send func(*strawpb.StreamFrame)) ([]*strawpb.StreamFrame, *executionError) {
+func (e *Executor) streamResponseBody(ctx context.Context, body io.Reader, trailers func() []*strawpb.Header, frames *frameBuilder, emit []*strawpb.StreamFrame, send func(*strawpb.StreamFrame)) ([]*strawpb.StreamFrame, *executionError) {
 	buf := make([]byte, responseFrameDataBytes)
 	offset := uint64(0)
 
@@ -383,6 +402,10 @@ func streamResponseBody(ctx context.Context, body io.Reader, trailers func() []*
 			chunk := append([]byte(nil), buf[:n]...)
 			emit = emitOrAppend(emit, frames.data(offset, chunk), send)
 			offset += uint64FromInt(n)
+
+			// Counted per chunk so an aborted download still reports what it
+			// managed to pull down before the failure.
+			e.metrics.AddResponseBytes(uint64FromInt(n))
 		}
 
 		if errors.Is(err, io.EOF) {

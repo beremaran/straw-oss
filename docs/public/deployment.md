@@ -153,7 +153,7 @@ data. Size receipt storage for ingress plus response volume multiplied by retent
 Containers run as non-root and support read-only root filesystems. Mount configuration read-only and grant writable
 access only to JetStream or local receipt volumes used by the selected profile. Set CPU/memory, process/file-descriptor
 limits, log retention, and graceful-stop time greater than the maximum request deadline plus the documented drain
-margin. Control uses API `8080` and metrics `9090`; Egress health uses `8090`; NATS uses `4222` and monitoring `8222`
+margin. Control uses API `8080` and metrics `9090`; Egress health and metrics both use `8090`; NATS uses `4222` and monitoring `8222`
 in examples. Restrict all but the TLS reverse-proxy listener. Outbound DNS, IPv4/IPv6, proxy, CA, and network policy
 must work from Egress—not merely from Control.
 

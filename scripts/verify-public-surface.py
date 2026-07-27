@@ -17,7 +17,11 @@ flag_source = (ROOT / "internal/cli/cli.go").read_text() + (ROOT / "cmd/control/
 sources = [
     ("JSON field", config_source, r'json:"([^",]+)'),
     ("route", route_source, r'(?:GET|POST|PUT|DELETE) (/[^\s"`]+)'),
-    ("metric", (ROOT / "internal/control/metrics.go").read_text(), r'(?:Name:\s*|name:\s*)"([a-z][a-z0-9_]+)"'),
+    (
+        "metric",
+        (ROOT / "internal/control/metrics.go").read_text() + (ROOT / "internal/egress/metrics.go").read_text(),
+        r'(?:Name:\s*|name:\s*)"([a-z][a-z0-9_]+)"',
+    ),
     ("flag", flag_source, r'\.(?:String|Bool|Int|Int64|Uint|Uint64|Duration|Float64)\("([a-z0-9-]+)"'),
     ("flag", flag_source, r'\.Var\([^,]+,\s*"([a-z0-9-]+)"'),
     ("error code", (ROOT / "internal/control/errors.go").read_text(), r'errorCode[A-Za-z0-9]+\s*=\s*"([a-z0-9_]+)"'),

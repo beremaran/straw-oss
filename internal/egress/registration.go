@@ -121,8 +121,12 @@ func (a tunnelAdapter) OpenTunnel(ctx context.Context, start *strawpb.RequestSta
 	out := sdkegress.TunnelTarget{Host: target.host, Port: target.port}
 
 	if failure == nil {
+		a.executor.metrics.ObserveTunnel("")
+
 		return conn, out, nil
 	}
+
+	a.executor.metrics.ObserveTunnel(errorCodeLabel(failure.code))
 
 	details := map[string]string{errorFactDetailKey: failure.fact}
 	if failure.timeoutType != strawpb.TimeoutType_TIMEOUT_TYPE_UNSPECIFIED {

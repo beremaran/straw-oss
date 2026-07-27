@@ -5,6 +5,14 @@ are tagged.
 
 ## Unreleased
 
+### Added
+
+- Egress workers now serve Prometheus metrics on their existing health port (default `8090`), alongside `/healthz`
+  and `/readyz`. The new `straw_egress_*` series cover readiness, session saturation against the negotiated
+  concurrency limit, assignment outcomes, request duration, body bytes by direction, upstream failures by canonical
+  error code, and asynchronous NATS failures. Starter saturation, upstream-error and readiness alerts were added to
+  `deploy/monitoring/prometheus-alerts.yml`.
+
 ## 0.1.0 - 2026-07-26
 
 First tagged release. Install Egress before Control, then the CLI and application SDKs, per
