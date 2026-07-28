@@ -26,6 +26,7 @@ jobs:
         with: {version: v2.12.2, install-only: true}
       - run: make clean-room-check
       - run: make conformance
+      - run: make protocol-compatibility
       - run: go test ./internal/control ./internal/egress ./cmd/control ./cmd/egress
       - run: uv run --frozen python -m unittest discover integration/python
 
@@ -35,11 +36,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {repository: straw-protos, tag: v0.3.0, kind: proto}
-          - {repository: straw-protos-go, tag: v0.3.0, kind: go}
-          - {repository: straw-sdk-go, tag: v0.3.0, kind: go}
-          - {repository: straw-protos-python, tag: v0.3.0, kind: python}
-          - {repository: straw-sdk-python, tag: v0.2.0, kind: python}
+          - {repository: straw-protos, tag: v0.4.0, kind: proto}
+          - {repository: straw-protos-go, tag: v0.4.0, kind: go}
+          - {repository: straw-sdk-go, tag: v0.4.0, kind: go}
+          - {repository: straw-protos-python, tag: v0.4.0, kind: python}
+          - {repository: straw-sdk-python, tag: v0.2.1, kind: python}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4

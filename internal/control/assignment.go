@@ -15,8 +15,55 @@ import (
 	strawpb "github.com/beremaran/straw-protos-go/straw/v1"
 )
 
-func (d *DefaultRequestDispatcher) executeAttemptOrFallback(ctx context.Context, in DispatchInput, route RouteOutcome, snapshot config.Snapshot, policy *DestinationPolicyResult, deadline time.Time) (dispatchResult, int64, *PipelineError, RouteOutcome) {
-	result, assignmentMs, perr := d.executeAttempt(ctx, in, route, policy, snapshot.ConfigVersion, deadline)
+type routeExecution struct {
+	policy        *DestinationPolicyResult
+	upstreamProxy *strawpb.UpstreamProxyInstruction
+}
+
+func (d *DefaultRequestDispatcher) resolveRouteExecution(in DispatchInput, snapshot config.Snapshot, route RouteOutcome, rawTunnel bool) (routeExecution, *PipelineError) {
+	requestedFingerprint := in.Request.Fingerprint
+	if rawTunnel {
+		requestedFingerprint = ""
+	}
+
+	policy, verr := ResolveDestinationPolicy(DestinationPolicyRequest{
+		Snapshot:                    snapshot,
+		TargetURL:                   in.Request.URL,
+		RequestedFingerprintProfile: requestedFingerprint,
+		MaxInjectedHeaderBytes:      d.opts.MaxFrameDataBytes,
+		UpstreamProxyEnabled:        route.UpstreamProxyID != "",
+		UpstreamProxyTrusted:        route.TrustedRemoteResolution,
+	})
+	if verr != nil {
+		return routeExecution{}, validationPipelineError(verr)
+	}
+
+	execution := routeExecution{policy: policy}
+	if rawTunnel {
+		policy.InjectionOperations = nil
+		policy.FingerprintProfile = ""
+	}
+
+	if route.UpstreamProxyID != "" {
+		execution.upstreamProxy = &strawpb.UpstreamProxyInstruction{
+			UpstreamProxyId:   route.UpstreamProxyID,
+			ProviderSessionId: deriveProviderSessionID(in.Identity.DeploymentID, route, in.Request.Routing.Country, in.Request.Routing.Region, in.Request.Routing.IPType, in.Request.Routing.StickySessionID),
+			Country:           in.Request.Routing.Country,
+			Region:            in.Request.Routing.Region,
+			IpType:            in.Request.Routing.IPType,
+		}
+	}
+
+	return execution, nil
+}
+
+func (d *DefaultRequestDispatcher) executeAttemptOrFallback(ctx context.Context, in DispatchInput, route RouteOutcome, snapshot config.Snapshot, deadline time.Time) (dispatchResult, int64, *PipelineError, RouteOutcome) {
+	execution, perr := d.resolveRouteExecution(in, snapshot, route, false)
+	if perr != nil {
+		return dispatchResult{}, 0, perr, route
+	}
+
+	result, assignmentMs, perr := d.executeAttempt(ctx, in, route, execution, snapshot.ConfigVersion, deadline)
 	if perr == nil || !canFallbackBeforeRequestStart(perr.Code) {
 		return result, assignmentMs, perr, route
 	}
@@ -28,7 +75,12 @@ func (d *DefaultRequestDispatcher) executeAttemptOrFallback(ctx context.Context,
 		return result, assignmentMs, perr, route
 	}
 
-	fallbackResult, fallbackAssignmentMs, fallbackErr := d.executeAttempt(ctx, in, fallback, policy, snapshot.ConfigVersion, deadline)
+	fallbackExecution, fallbackPlanErr := d.resolveRouteExecution(in, snapshot, fallback, false)
+	if fallbackPlanErr != nil {
+		return result, assignmentMs, fallbackPlanErr, fallback
+	}
+
+	fallbackResult, fallbackAssignmentMs, fallbackErr := d.executeAttempt(ctx, in, fallback, fallbackExecution, snapshot.ConfigVersion, deadline)
 
 	return fallbackResult, assignmentMs + fallbackAssignmentMs, fallbackErr, fallback
 }
@@ -56,7 +108,7 @@ func (e excludeWorkers) CandidatesForPool(deploymentID, poolID string) []PoolCan
 func poolPoliciesFromSnapshot(deploymentID string, pools []config.ExecutorPool) []PoolPolicy {
 	out := make([]PoolPolicy, 0, len(pools))
 	for _, p := range pools {
-		out = append(out, PoolPolicy{
+		policy := PoolPolicy{
 			DeploymentID:         deploymentID,
 			PoolID:               p.ID,
 			Enabled:              p.Enabled,
@@ -66,7 +118,13 @@ func poolPoliciesFromSnapshot(deploymentID string, pools []config.ExecutorPool) 
 			AllowedCountries:     p.AllowedCountries,
 			AllowedRegions:       p.AllowedRegions,
 			AllowedIPTypes:       p.AllowedIPTypes,
-		})
+		}
+		if p.UpstreamProxy != nil {
+			policy.UpstreamProxyID = p.UpstreamProxy.ID
+			policy.TrustedRemoteResolution = p.UpstreamProxy.TrustedRemoteResolution
+		}
+
+		out = append(out, policy)
 	}
 
 	return out
@@ -75,15 +133,16 @@ func poolPoliciesFromSnapshot(deploymentID string, pools []config.ExecutorPool) 
 // executeAttempt runs one assignment-and-stream attempt, recording the
 // straw_assignment_duration_seconds histogram (docs/public/architecture.md) over the
 // full attempt regardless of outcome.
-func (d *DefaultRequestDispatcher) executeAttempt(ctx context.Context, in DispatchInput, route RouteOutcome, policy *DestinationPolicyResult, configVersion uint64, deadline time.Time) (dispatchResult, int64, *PipelineError) {
-	result, assignmentMs, perr := d.executeAttemptUnmeasured(ctx, in, route, policy, configVersion, deadline)
+func (d *DefaultRequestDispatcher) executeAttempt(ctx context.Context, in DispatchInput, route RouteOutcome, execution routeExecution, configVersion uint64, deadline time.Time) (dispatchResult, int64, *PipelineError) {
+	result, assignmentMs, perr := d.executeAttemptUnmeasured(ctx, in, route, execution, configVersion, deadline)
 	d.opts.Metrics.ObserveAssignment(time.Duration(assignmentMs) * time.Millisecond)
 
 	return result, assignmentMs, perr
 }
 
-func (d *DefaultRequestDispatcher) executeAttemptUnmeasured(ctx context.Context, in DispatchInput, route RouteOutcome, policy *DestinationPolicyResult, configVersion uint64, deadline time.Time) (dispatchResult, int64, *PipelineError) {
+func (d *DefaultRequestDispatcher) executeAttemptUnmeasured(ctx context.Context, in DispatchInput, route RouteOutcome, execution routeExecution, configVersion uint64, deadline time.Time) (dispatchResult, int64, *PipelineError) {
 	assignmentStarted := d.opts.Now()
+	in.ProtocolMinor = route.ProtocolMinor
 
 	if d.opts.NATS == nil {
 		return dispatchResult{}, 0, &PipelineError{Code: TransportUnavailable}
@@ -102,7 +161,7 @@ func (d *DefaultRequestDispatcher) executeAttemptUnmeasured(ctx context.Context,
 	frames := make(chan *strawpb.StreamFrame, defaultRequestFrameBuffer)
 
 	sub, err := d.opts.NATS.Subscribe(e2cSubject, func(msg *nats.Msg) {
-		frames <- decodeDispatchFrame(msg.Data)
+		frames <- decodeDispatchFrame(msg.Data, route.ProtocolMinor)
 	})
 	if err != nil {
 		return dispatchResult{}, 0, &PipelineError{Code: TransportUnavailable}
@@ -117,7 +176,7 @@ func (d *DefaultRequestDispatcher) executeAttemptUnmeasured(ctx context.Context,
 
 	assign := d.assignRequest(in, route, configVersion, deadline)
 
-	ack, perr := d.requestAssign(route.AssignSubject, in, assign, deadline)
+	ack, perr := d.requestAssign(route.AssignSubject, in, assign, route.ProtocolMinor, deadline)
 	if perr != nil {
 		return dispatchResult{}, millisSince(assignmentStarted, d.opts.Now()), perr
 	}
@@ -128,7 +187,7 @@ func (d *DefaultRequestDispatcher) executeAttemptUnmeasured(ctx context.Context,
 
 	assignmentMs := millisSince(assignmentStarted, d.opts.Now())
 
-	nextSeq, err := d.sendRequestStart(ctx, c2eSubject, in, route, policy, configVersion, deadline)
+	nextSeq, err := d.sendRequestStart(ctx, c2eSubject, in, route, execution, configVersion, deadline)
 	if err != nil {
 		return dispatchResult{}, assignmentMs, requestStreamPipelineError(err)
 	}
@@ -139,8 +198,8 @@ func (d *DefaultRequestDispatcher) executeAttemptUnmeasured(ctx context.Context,
 	return result, assignmentMs, perr
 }
 
-func (d *DefaultRequestDispatcher) executeRawAttempt(ctx context.Context, in DispatchInput, route RouteOutcome, policy *DestinationPolicyResult, configVersion uint64, deadline time.Time, w http.ResponseWriter) (dispatchResult, int64, *PipelineError, bool) {
-	result, assignmentMs, perr, wroteHeader := d.executeRawAttemptUnmeasured(ctx, in, route, policy, configVersion, deadline, w)
+func (d *DefaultRequestDispatcher) executeRawAttempt(ctx context.Context, in DispatchInput, route RouteOutcome, execution routeExecution, configVersion uint64, deadline time.Time, w http.ResponseWriter) (dispatchResult, int64, *PipelineError, bool) {
+	result, assignmentMs, perr, wroteHeader := d.executeRawAttemptUnmeasured(ctx, in, route, execution, configVersion, deadline, w)
 	d.opts.Metrics.ObserveAssignment(time.Duration(assignmentMs) * time.Millisecond)
 
 	return result, assignmentMs, perr, wroteHeader
@@ -149,8 +208,13 @@ func (d *DefaultRequestDispatcher) executeRawAttempt(ctx context.Context, in Dis
 // executeRawAttemptOrFallback gives absolute-form proxy requests the same
 // assignment-time worker exclusion behavior as REST. A retry is possible only
 // before the first upstream response header is written to the client.
-func (d *DefaultRequestDispatcher) executeRawAttemptOrFallback(ctx context.Context, in DispatchInput, route RouteOutcome, snapshot config.Snapshot, policy *DestinationPolicyResult, deadline time.Time, w http.ResponseWriter) (dispatchResult, int64, *PipelineError, bool, RouteOutcome) {
-	result, assignmentMs, perr, wroteHeader := d.executeRawAttempt(ctx, in, route, policy, snapshot.ConfigVersion, deadline, w)
+func (d *DefaultRequestDispatcher) executeRawAttemptOrFallback(ctx context.Context, in DispatchInput, route RouteOutcome, snapshot config.Snapshot, deadline time.Time, w http.ResponseWriter) (dispatchResult, int64, *PipelineError, bool, RouteOutcome) {
+	execution, perr := d.resolveRouteExecution(in, snapshot, route, false)
+	if perr != nil {
+		return dispatchResult{}, 0, perr, false, route
+	}
+
+	result, assignmentMs, perr, wroteHeader := d.executeRawAttempt(ctx, in, route, execution, snapshot.ConfigVersion, deadline, w)
 	if perr == nil || wroteHeader || !canFallbackBeforeRequestStart(perr.Code) {
 		return result, assignmentMs, perr, wroteHeader, route
 	}
@@ -162,13 +226,19 @@ func (d *DefaultRequestDispatcher) executeRawAttemptOrFallback(ctx context.Conte
 		return result, assignmentMs, perr, wroteHeader, route
 	}
 
-	fallbackResult, fallbackAssignmentMs, fallbackErr, fallbackWroteHeader := d.executeRawAttempt(ctx, in, fallback, policy, snapshot.ConfigVersion, deadline, w)
+	fallbackExecution, fallbackPlanErr := d.resolveRouteExecution(in, snapshot, fallback, false)
+	if fallbackPlanErr != nil {
+		return result, assignmentMs, fallbackPlanErr, wroteHeader, fallback
+	}
+
+	fallbackResult, fallbackAssignmentMs, fallbackErr, fallbackWroteHeader := d.executeRawAttempt(ctx, in, fallback, fallbackExecution, snapshot.ConfigVersion, deadline, w)
 
 	return fallbackResult, assignmentMs + fallbackAssignmentMs, fallbackErr, fallbackWroteHeader, fallback
 }
 
-func (d *DefaultRequestDispatcher) executeRawAttemptUnmeasured(ctx context.Context, in DispatchInput, route RouteOutcome, policy *DestinationPolicyResult, configVersion uint64, deadline time.Time, w http.ResponseWriter) (dispatchResult, int64, *PipelineError, bool) {
+func (d *DefaultRequestDispatcher) executeRawAttemptUnmeasured(ctx context.Context, in DispatchInput, route RouteOutcome, execution routeExecution, configVersion uint64, deadline time.Time, w http.ResponseWriter) (dispatchResult, int64, *PipelineError, bool) {
 	assignmentStarted := d.opts.Now()
+	in.ProtocolMinor = route.ProtocolMinor
 
 	if d.opts.NATS == nil {
 		return dispatchResult{}, 0, &PipelineError{Code: TransportUnavailable}, false
@@ -187,7 +257,7 @@ func (d *DefaultRequestDispatcher) executeRawAttemptUnmeasured(ctx context.Conte
 	frames := make(chan *strawpb.StreamFrame, defaultRequestFrameBuffer)
 
 	sub, err := d.opts.NATS.Subscribe(e2cSubject, func(msg *nats.Msg) {
-		frames <- decodeDispatchFrame(msg.Data)
+		frames <- decodeDispatchFrame(msg.Data, route.ProtocolMinor)
 	})
 	if err != nil {
 		return dispatchResult{}, 0, &PipelineError{Code: TransportUnavailable}, false
@@ -202,7 +272,7 @@ func (d *DefaultRequestDispatcher) executeRawAttemptUnmeasured(ctx context.Conte
 
 	assign := d.assignRequest(in, route, configVersion, deadline)
 
-	ack, perr := d.requestAssign(route.AssignSubject, in, assign, deadline)
+	ack, perr := d.requestAssign(route.AssignSubject, in, assign, route.ProtocolMinor, deadline)
 	if perr != nil {
 		return dispatchResult{}, millisSince(assignmentStarted, d.opts.Now()), perr, false
 	}
@@ -213,7 +283,7 @@ func (d *DefaultRequestDispatcher) executeRawAttemptUnmeasured(ctx context.Conte
 
 	assignmentMs := millisSince(assignmentStarted, d.opts.Now())
 
-	nextSeq, err := d.sendRequestStart(ctx, c2eSubject, in, route, policy, configVersion, deadline)
+	nextSeq, err := d.sendRequestStart(ctx, c2eSubject, in, route, execution, configVersion, deadline)
 	if err != nil {
 		return dispatchResult{}, assignmentMs, requestStreamPipelineError(err), false
 	}
@@ -224,12 +294,13 @@ func (d *DefaultRequestDispatcher) executeRawAttemptUnmeasured(ctx context.Conte
 	return result, assignmentMs, perr, wroteHeader
 }
 
-func (d *DefaultRequestDispatcher) requestAssign(subject string, in DispatchInput, assign *strawpb.AssignRequest, deadline time.Time) (*strawpb.AssignAck, *PipelineError) {
+func (d *DefaultRequestDispatcher) requestAssign(subject string, in DispatchInput, assign *strawpb.AssignRequest, protocolMinor uint32, deadline time.Time) (*strawpb.AssignAck, *PipelineError) {
 	env := &strawpb.Envelope{
 		RequestId:      in.RequestID,
 		DeploymentId:   in.Identity.DeploymentID,
 		DeadlineUnixMs: deadline.UnixMilli(),
 		ProtocolMajor:  ProtocolMajor,
+		ProtocolMinor:  protocolMinor,
 		Attempt:        defaultRequestAttempt,
 		Payload:        &strawpb.Envelope_AssignRequest{AssignRequest: assign},
 	}
@@ -266,7 +337,7 @@ func (d *DefaultRequestDispatcher) requestAssign(subject string, in DispatchInpu
 	}
 
 	reply, err := natsx.UnmarshalEnvelope(msg.Data)
-	if err != nil || reply.GetAssignAck() == nil {
+	if err != nil || reply.GetAssignAck() == nil || reply.GetProtocolMajor() != ProtocolMajor || !dispatchEnvelopeMinorCompatible(reply.GetProtocolMinor(), protocolMinor) {
 		d.opts.Metrics.IncNATSError(errorCodeLabel(ProtocolError))
 
 		return nil, &PipelineError{Code: ProtocolError}
@@ -279,7 +350,7 @@ func (d *DefaultRequestDispatcher) requestAssign(subject string, in DispatchInpu
 // inline body DataFrames on the c2e
 // subject and returns the next c2e stream_seq (i.e. the seq a subsequent
 // CancelFrame should use).
-func (d *DefaultRequestDispatcher) sendRequestStart(_ context.Context, subject string, in DispatchInput, route RouteOutcome, policy *DestinationPolicyResult, configVersion uint64, deadline time.Time) (uint64, error) {
+func (d *DefaultRequestDispatcher) sendRequestStart(_ context.Context, subject string, in DispatchInput, route RouteOutcome, execution routeExecution, configVersion uint64, deadline time.Time) (uint64, error) {
 	start := &strawpb.RequestStart{
 		Mode:                   requestMode(in.Request),
 		Method:                 in.Request.Method,
@@ -290,11 +361,12 @@ func (d *DefaultRequestDispatcher) sendRequestStart(_ context.Context, subject s
 		DeadlineUnixMs:         deadline.UnixMilli(),
 		Replayable:             in.Request.Replayable,
 		PayloadCaptureDecision: in.Request.CaptureDecision,
-		FingerprintInstruction: wireFingerprint(policy.FingerprintProfile),
-		InjectionOperations:    policy.InjectionOperations,
+		FingerprintInstruction: wireFingerprint(execution.policy.FingerprintProfile),
+		InjectionOperations:    execution.policy.InjectionOperations,
 		RedirectPolicy:         strawpb.RedirectPolicy_REDIRECT_POLICY_NO_FOLLOW,
-		DestinationPolicy:      policy.Policy,
+		DestinationPolicy:      execution.policy.Policy,
 		PolicyVersion:          strconv.FormatUint(configVersion, 10),
+		UpstreamProxy:          execution.upstreamProxy,
 	}
 
 	seq := uint64(1)

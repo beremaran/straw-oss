@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"syscall"
+	"unicode/utf8"
 )
 
 // Version is the supported configuration format version.
@@ -32,6 +33,7 @@ var (
 	errMissingEgressSection   = errors.New("missing egress section")
 	errUnexpectedTrailingJSON = errors.New("unexpected trailing JSON data")
 	errConfigTooLarge         = errors.New("configuration exceeds 4 MiB")
+	errInvalidConfigUTF8      = errors.New("decode config: invalid UTF-8")
 	errInvalidConfigVersion   = errors.New("invalid config_version")
 	errInvalidAPIPort         = errors.New("server.api_port must be between 1 and 65535")
 	errInvalidMetricsPort     = errors.New("server.metrics_port must be between 1 and 65535")
@@ -43,6 +45,7 @@ var (
 	errInvalidObjectStorage   = errors.New("object_storage configuration is invalid")
 	errInvalidEgressPoolRef   = errors.New("egress capabilities contain an invalid pool reference")
 	errDuplicateEgressPool    = errors.New("egress capabilities contain a duplicate pool membership")
+	errInvalidUpstreamProxy   = errors.New("invalid egress upstream proxy configuration")
 	errOpenConfig             = errors.New("open config file")
 )
 
@@ -147,6 +150,7 @@ type EgressConfig struct {
 	HealthPort             int                                `json:"health_port"`
 	NATS                   NATSConfig                         `json:"nats"`
 	Capabilities           EgressCapabilities                 `json:"capabilities,omitzero"`
+	UpstreamProxies        []EgressUpstreamProxyConfig        `json:"upstream_proxies,omitempty"`
 	UpstreamConnectionPool EgressUpstreamConnectionPoolConfig `json:"upstream_connection_pool"`
 	HTTP2                  EgressHTTP2Config                  `json:"http2"`
 }
@@ -165,8 +169,32 @@ type EgressCapabilities struct {
 // EgressPoolRef identifies a deployment pool the official worker claims.
 // DeploymentID defaults to the current deployment's internal identifier.
 type EgressPoolRef struct {
-	DeploymentID string `json:"deployment_id,omitempty"`
-	PoolID       string `json:"pool_id"`
+	DeploymentID    string `json:"deployment_id,omitempty"`
+	PoolID          string `json:"pool_id"`
+	UpstreamProxyID string `json:"upstream_proxy_id,omitempty"`
+}
+
+// EgressUpstreamProxyConfig configures one trusted HTTP CONNECT gateway.
+type EgressUpstreamProxyConfig struct {
+	ID       string                        `json:"id"`
+	Endpoint string                        `json:"endpoint"`
+	Auth     EgressUpstreamProxyAuthConfig `json:"auth"`
+	Defaults EgressUpstreamProxyDefaults   `json:"defaults,omitzero"`
+}
+
+// EgressUpstreamProxyAuthConfig names environment-backed proxy credentials.
+type EgressUpstreamProxyAuthConfig struct {
+	Type             string `json:"type"`
+	UsernameEnv      string `json:"username_env,omitempty"`
+	PasswordEnv      string `json:"password_env,omitempty"`
+	UsernameTemplate string `json:"username_template,omitempty"`
+}
+
+// EgressUpstreamProxyDefaults supplies provider routing values when omitted.
+type EgressUpstreamProxyDefaults struct {
+	Country string `json:"country,omitempty"`
+	Region  string `json:"region,omitempty"`
+	IPType  string `json:"ip_type,omitempty"`
 }
 
 // EgressUpstreamConnectionPoolConfig configures optional upstream reuse.
@@ -267,6 +295,10 @@ func loadFile(path string) (File, error) {
 func decodeFile(raw []byte) (File, error) {
 	if len(raw) > maxConfigFileBytes {
 		return File{}, errConfigTooLarge
+	}
+
+	if !utf8.Valid(raw) {
+		return File{}, errInvalidConfigUTF8
 	}
 
 	decoder := json.NewDecoder(io.LimitReader(bytes.NewReader(raw), maxConfigFileBytes))
@@ -575,26 +607,40 @@ func (e *EgressConfig) applyDefaults() {
 	}
 
 	e.Capabilities.applyDefaults()
+	e.applyUpstreamProxyDefaults()
+	e.UpstreamConnectionPool.applyDefaults()
 
 	if e.HTTP2.FallbackCacheTTLMS == 0 {
 		e.HTTP2.FallbackCacheTTLMS = 300_000
 	}
 
-	if e.UpstreamConnectionPool.Enabled {
-		if e.UpstreamConnectionPool.MaxIdleConnsPerHost == 0 {
-			e.UpstreamConnectionPool.MaxIdleConnsPerHost = 8
-		}
+	e.NATS.applyDefaults()
+}
 
-		if e.UpstreamConnectionPool.IdleTimeoutMS == 0 {
-			e.UpstreamConnectionPool.IdleTimeoutMS = 30_000
-		}
-
-		if e.UpstreamConnectionPool.MaxLifetimeMS == 0 {
-			e.UpstreamConnectionPool.MaxLifetimeMS = 300_000
+func (e *EgressConfig) applyUpstreamProxyDefaults() {
+	for i := range e.UpstreamProxies {
+		if e.UpstreamProxies[i].Auth.Type == upstreamProxyAuthBasic && e.UpstreamProxies[i].Auth.UsernameTemplate == "" {
+			e.UpstreamProxies[i].Auth.UsernameTemplate = "{{.Username}}"
 		}
 	}
+}
 
-	e.NATS.applyDefaults()
+func (p *EgressUpstreamConnectionPoolConfig) applyDefaults() {
+	if !p.Enabled {
+		return
+	}
+
+	if p.MaxIdleConnsPerHost == 0 {
+		p.MaxIdleConnsPerHost = 8
+	}
+
+	if p.IdleTimeoutMS == 0 {
+		p.IdleTimeoutMS = 30_000
+	}
+
+	if p.MaxLifetimeMS == 0 {
+		p.MaxLifetimeMS = 300_000
+	}
 }
 
 func (e EgressConfig) validate() error {
@@ -606,17 +652,52 @@ func (e EgressConfig) validate() error {
 		return errInvalidHeartbeat
 	}
 
+	profiles, err := e.validateUpstreamProxies()
+	if err != nil {
+		return err
+	}
+
+	usedProfiles, err := e.validateAllowedPools(profiles)
+	if err != nil {
+		return err
+	}
+
+	return e.validateUsedUpstreamProxies(usedProfiles)
+}
+
+func (e EgressConfig) validateAllowedPools(profiles map[string]EgressUpstreamProxyConfig) (map[string]struct{}, error) {
 	seenPools := make(map[string]struct{}, len(e.Capabilities.AllowedPools))
+	usedProfiles := make(map[string]struct{}, len(profiles))
+
 	for _, pool := range e.Capabilities.AllowedPools {
 		if pool.DeploymentID != DefaultDeploymentID || pool.PoolID == "" {
-			return errInvalidEgressPoolRef
+			return nil, errInvalidEgressPoolRef
 		}
 
 		if _, duplicate := seenPools[pool.PoolID]; duplicate {
-			return fmt.Errorf("%w: %q", errDuplicateEgressPool, pool.PoolID)
+			return nil, fmt.Errorf("%w: %q", errDuplicateEgressPool, pool.PoolID)
 		}
 
 		seenPools[pool.PoolID] = struct{}{}
+		if pool.UpstreamProxyID == "" {
+			continue
+		}
+
+		if _, exists := profiles[pool.UpstreamProxyID]; !exists {
+			return nil, fmt.Errorf("%w: pool %q references unknown profile %q", errInvalidUpstreamProxy, pool.PoolID, pool.UpstreamProxyID)
+		}
+
+		usedProfiles[pool.UpstreamProxyID] = struct{}{}
+	}
+
+	return usedProfiles, nil
+}
+
+func (e EgressConfig) validateUsedUpstreamProxies(usedProfiles map[string]struct{}) error {
+	for _, profile := range e.UpstreamProxies {
+		if _, used := usedProfiles[profile.ID]; !used {
+			return fmt.Errorf("%w: profile %q is not referenced by an allowed pool", errInvalidUpstreamProxy, profile.ID)
+		}
 	}
 
 	return nil

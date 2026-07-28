@@ -51,15 +51,18 @@ type DispatchInput struct {
 	RequestID string
 	Identity  Identity
 	Request   *ValidatedRequest
+	// ProtocolMinor is set per selected route before assignment/streaming.
+	ProtocolMinor uint32
 }
 
 // PipelineError is a canonical dispatch failure.
 type PipelineError struct {
-	Code         ErrorCode
-	Message      string
-	Details      map[string]string
-	RetryAfterMs int64
-	TimeoutType  string
+	Code           ErrorCode
+	Message        string
+	Details        map[string]string
+	RetryAfterMs   int64
+	TimeoutType    string
+	UpstreamStatus *uint32
 	// RoutingMs/AssignmentMs/EgressMs/TotalMs carry whatever partial phase
 	// timing the dispatcher measured before the failure, so a failed
 	RoutingMs                  int64
@@ -228,21 +231,9 @@ func (d *DefaultRequestDispatcher) dispatch(ctx context.Context, in DispatchInpu
 		return SuccessResponse{}, d.withTiming(routeError(route.ErrorCode), routingMs, 0, started)
 	}
 
-	policy, verr := ResolveDestinationPolicy(DestinationPolicyRequest{
-		Snapshot:                    snapshot,
-		TargetURL:                   in.Request.URL,
-		RequestedFingerprintProfile: in.Request.Fingerprint,
-		MaxInjectedHeaderBytes:      d.opts.MaxFrameDataBytes,
-		UpstreamProxyEnabled:        false,
-		UpstreamProxyTrusted:        false,
-	})
-	if verr != nil {
-		return SuccessResponse{}, d.withTiming(validationPipelineError(verr), routingMs, 0, started)
-	}
-
 	deadline := d.deadline(in.Request, snapshot)
 
-	result, assignmentMs, perr, usedRoute := d.executeAttemptOrFallback(ctx, in, route, snapshot, policy, deadline)
+	result, assignmentMs, perr, usedRoute := d.executeAttemptOrFallback(ctx, in, route, snapshot, deadline)
 
 	if perr != nil {
 		perr = d.withTiming(perr, routingMs, assignmentMs, started)
@@ -296,21 +287,9 @@ func (d *DefaultRequestDispatcher) dispatchRaw(ctx context.Context, in DispatchI
 		return SuccessResponse{}, d.withTiming(routeError(route.ErrorCode), routingMs, 0, started), false
 	}
 
-	policy, verr := ResolveDestinationPolicy(DestinationPolicyRequest{
-		Snapshot:                    snapshot,
-		TargetURL:                   in.Request.URL,
-		RequestedFingerprintProfile: in.Request.Fingerprint,
-		MaxInjectedHeaderBytes:      d.opts.MaxFrameDataBytes,
-		UpstreamProxyEnabled:        false,
-		UpstreamProxyTrusted:        false,
-	})
-	if verr != nil {
-		return SuccessResponse{}, d.withTiming(validationPipelineError(verr), routingMs, 0, started), false
-	}
-
 	deadline := d.deadline(in.Request, snapshot)
 
-	result, assignmentMs, perr, wroteHeader, usedRoute := d.executeRawAttemptOrFallback(ctx, in, route, snapshot, policy, deadline, w)
+	result, assignmentMs, perr, wroteHeader, usedRoute := d.executeRawAttemptOrFallback(ctx, in, route, snapshot, deadline, w)
 
 	return d.finalizeRawDispatch(ctx, in, snapshot, usedRoute, result, perr, routingMs, assignmentMs, started, wroteHeader)
 }
@@ -338,27 +317,10 @@ func (d *DefaultRequestDispatcher) dispatchTunnel(ctx context.Context, in Dispat
 		return SuccessResponse{}, d.withTiming(routeError(route.ErrorCode), routingMs, 0, started)
 	}
 
-	policy, verr := ResolveDestinationPolicy(DestinationPolicyRequest{
-		Snapshot:                    snapshot,
-		TargetURL:                   in.Request.URL,
-		RequestedFingerprintProfile: "",
-		MaxInjectedHeaderBytes:      d.opts.MaxFrameDataBytes,
-		UpstreamProxyEnabled:        false,
-		UpstreamProxyTrusted:        false,
-	})
-	if verr != nil {
-		return SuccessResponse{}, d.withTiming(validationPipelineError(verr), routingMs, 0, started)
-	}
-
-	// Header injection and HTTP fingerprinting do not apply to an opaque
-	// CONNECT byte stream.
-	policy.InjectionOperations = nil
-	policy.FingerprintProfile = ""
-
 	deadline := d.deadline(in.Request, snapshot)
 	in.Request.BodyReader = io.NopCloser(rw)
 
-	result, assignmentMs, perr, _ := d.executeTunnelAttemptOrFallback(ctx, in, route, snapshot, policy, deadline, rw)
+	result, assignmentMs, perr, _ := d.executeTunnelAttemptOrFallback(ctx, in, route, snapshot, deadline, rw)
 	if perr != nil {
 		perr = d.withTiming(perr, routingMs, assignmentMs, started)
 		perr.EgressMs = result.egressMs

@@ -166,7 +166,7 @@ func TestExecutorOpenTunnelUsesDestinationPolicyDial(t *testing.T) {
 		},
 	})
 
-	conn, target, failure := exec.openTunnel(context.Background(), tunnelStart("connect://tunnel.test:443", &strawpb.DestinationPolicy{
+	conn, target, _, failure := exec.openTunnel(context.Background(), tunnelStart("connect://tunnel.test:443", &strawpb.DestinationPolicy{
 		AllowedCidrs:   []string{"203.0.113.10/32"},
 		RedirectPolicy: strawpb.RedirectPolicy_REDIRECT_POLICY_NO_FOLLOW,
 		ResolutionMode: strawpb.DestinationResolutionMode_DESTINATION_RESOLUTION_DIRECT_LOCAL,
@@ -186,7 +186,12 @@ func TestExecutorOpenTunnelAppliesDeniedIPPolicy(t *testing.T) {
 
 	exec := NewExecutor(ExecutorOptions{Resolver: staticResolver{"blocked.test": netip.MustParseAddr("127.0.0.1")}})
 
-	_, _, failure := exec.openTunnel(context.Background(), tunnelStart("connect://blocked.test:443", directPolicy(false)))
+	conn, _, _, failure := exec.openTunnel(context.Background(), tunnelStart("connect://blocked.test:443", directPolicy(false)))
+	if conn != nil {
+		_ = conn.Close()
+		t.Fatal("openTunnel() connection is non-nil for denied destination")
+	}
+
 	if failure == nil || failure.code != strawpb.ErrorCode_ERROR_CODE_DESTINATION_DENIED {
 		t.Fatalf("openTunnel() failure = %v, want destination denied", failure)
 	}
@@ -1277,7 +1282,7 @@ func TestExecutorHTTP2Negotiation(t *testing.T) {
 			proto = string(h.GetValue())
 		}
 	}
-	if proto != "HTTP/2.0" {
+	if proto != httpProtocol20 {
 		t.Fatalf("expected HTTP/2.0, got %q", proto)
 	}
 }
@@ -1318,7 +1323,7 @@ func TestExecutorHTTP2FallbackToHTTP11(t *testing.T) {
 			proto = string(h.GetValue())
 		}
 	}
-	if proto != "HTTP/1.1" {
+	if proto != httpProtocol11 {
 		t.Fatalf("expected HTTP/1.1, got %q", proto)
 	}
 
@@ -1380,7 +1385,7 @@ func TestExecutorHTTP2HTTP11RequiredRetry(t *testing.T) {
 			proto = string(h.GetValue())
 		}
 	}
-	if proto != "HTTP/1.1" {
+	if proto != httpProtocol11 {
 		t.Fatalf("expected HTTP/1.1 on second attempt, got %q", proto)
 	}
 

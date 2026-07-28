@@ -45,6 +45,8 @@ type RuntimeState interface {
 type sharedWorker struct {
 	SessionID                    string               `json:"session_id"`
 	ExecutorType                 string               `json:"executor_type"`
+	SupportedProtocolMinor       uint32               `json:"supported_protocol_minor,omitempty"`
+	ProtocolMinor                uint32               `json:"protocol_minor,omitempty"`
 	Pools                        []AllowedPool        `json:"pools"`
 	Tags                         []string             `json:"tags,omitempty"`
 	Countries                    []string             `json:"countries,omitempty"`
@@ -64,7 +66,8 @@ type sharedWorker struct {
 
 func sharedFromSession(s *workerSession) sharedWorker {
 	return sharedWorker{
-		SessionID: s.sessionID, ExecutorType: s.executorType, Pools: s.pools, Tags: s.tags,
+		SessionID: s.sessionID, ExecutorType: s.executorType, SupportedProtocolMinor: s.supportedProtocolMinor,
+		ProtocolMinor: s.protocolMinor, Pools: s.pools, Tags: s.tags,
 		Countries: s.countries, Regions: s.regions, IPTypes: s.ipTypes, IngressModes: s.ingressModes,
 		SupportedFingerprintProfiles: s.supportedFingerprintProfiles, MaxConcurrency: s.maxConcurrency,
 		ActiveRequests: s.activeRequests, AvailableCapacity: s.availableCapacity, Health: s.health,
@@ -74,7 +77,8 @@ func sharedFromSession(s *workerSession) sharedWorker {
 
 func (w sharedWorker) session() *workerSession {
 	return &workerSession{
-		sessionID: w.SessionID, executorType: w.ExecutorType, pools: w.Pools, tags: w.Tags,
+		sessionID: w.SessionID, executorType: w.ExecutorType, supportedProtocolMinor: w.SupportedProtocolMinor,
+		protocolMinor: w.ProtocolMinor, pools: w.Pools, tags: w.Tags,
 		countries: w.Countries, regions: w.Regions, ipTypes: w.IPTypes, ingressModes: w.IngressModes,
 		supportedFingerprintProfiles: w.SupportedFingerprintProfiles, maxConcurrency: w.MaxConcurrency,
 		activeRequests: w.ActiveRequests, availableCapacity: w.AvailableCapacity, health: w.Health,

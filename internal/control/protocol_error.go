@@ -55,6 +55,11 @@ func errorFramePipelineError(code strawpb.ErrorCode, frame *strawpb.ErrorFrame) 
 		perr.TimeoutType = timeoutTypeName(frame.GetTimeoutType())
 	}
 
+	if frame.UpstreamStatus != nil {
+		status := frame.GetUpstreamStatus()
+		perr.UpstreamStatus = &status
+	}
+
 	return perr
 }
 

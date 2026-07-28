@@ -20,7 +20,7 @@ The deployment has `STRAW_AUTH_TOKEN` set and the request omitted or supplied th
 Authorization: Bearer <STRAW_AUTH_TOKEN>
 ```
 
-## `407 Proxy Authentication Required`
+## Ingress `407 Proxy Authentication Required`
 
 Forward-proxy ingress authenticates with `Proxy-Authorization`; do not put the proxy credential in the destination's
 ordinary `Authorization` header:
@@ -33,6 +33,37 @@ curl --proxy http://localhost:8080 \
 
 The proxy credential is stripped before a decoded request reaches the destination. A destination `Authorization`
 header is end-to-end application data and is a separate secret.
+
+## Upstream proxy failures
+
+An ingress `407` happens before routing and means the client did not authenticate to Control. By contrast, a public
+`upstream_proxy_failure` with `upstream_status: 407` means Egress reached the configured provider gateway and the
+provider rejected its worker-local Basic authentication. Use the fixed `details.fact` and optional status without
+collecting credentials:
+
+| Safe fact | `upstream_status` | Check |
+| --- | --- | --- |
+| `upstream_proxy_connect_failed` | absent | Gateway DNS, route, firewall, explicit host/port, and provider reachability from Egress. |
+| `upstream_proxy_tls_failed` | absent | Outer HTTPS-proxy certificate, SNI, trust roots, and clock. This is distinct from `upstream_tls_failure` after CONNECT to the target. |
+| `upstream_proxy_protocol_error` | absent | Malformed, oversized, folded, or body-bearing CONNECT response; confirm gateway protocol/mode rather than relaxing parsing. |
+| `upstream_proxy_authentication_failed` | `407` | Named credential variables exist, the account/zone is enabled, and the bounded `username_template` matches current provider syntax. |
+| `upstream_proxy_connect_rejected` | returned non-2xx status | Provider destination ACL, account policy, quota, target port, and approved status-specific provider guidance. |
+
+For `authentication_failed`/407 and `connect_rejected`/status incidents, record only the profile ID, fixed fact, numeric
+status, phase duration, and request ID. Never print or attach the environment value, rendered username, password,
+`Proxy-Authorization`, provider session ID, raw sticky ID, full destination URL/query, or proxy response headers.
+
+Pool/profile inconsistencies fail closed rather than dialing direct. Check both sides exactly:
+
+- Control pool `upstream_proxy.id` equals worker `capabilities.allowed_pools[].upstream_proxy_id`;
+- that worker ID references one configured `upstream_proxies[].id`;
+- `trusted_remote_resolution` is true, the pool uses a fresh ID, and the worker negotiated protocol minor 2;
+- all old Controls have stopped and shared worker rows were expired before workers re-registered.
+
+A stale or missing registration claim normally makes the route `route_unavailable`. Invalid/unused profiles fail worker
+startup. A selected-pool/instruction mismatch returns `executor_internal_error` with safe fact
+`upstream_proxy_instruction_invalid`; an executed frame identity mismatch returns `protocol_error`. Do not repair either
+case by changing the proxy pool to direct under the same ID.
 
 ## `if_match_required` or `revision_conflict`
 
@@ -121,14 +152,14 @@ apply the narrow fix, then collect only sanitized escalation data.
 | health is up but readiness is down | `curl -fsS localhost:9090/readyz`; inspect component JSON logs | NATS/Redis unavailable, startup snapshot missing, draining shutdown; confirm backend health and `straw_runtime_state_available` | restore the dependency or configuration; never bypass readiness in the load balancer |
 | worker absent/saturated | inspect `straw_worker_sessions`, `straw_workers_available`, heartbeat age and `/api/v1/admin/workers` | NATS credentials, protocol/tag mismatch, capacity exhausted, disabled/draining worker | correct compatible tag/credentials or add capacity; undrain only after work is safe |
 | high latency/timeouts | compare request, routing, assignment, and NATS histograms | no capacity, slow DNS/TLS/upstream, deadline too small, NATS delay | isolate the stage, scale or repair it, then adjust a documented limit deliberately |
-| DNS/TLS/redirect failure | reproduce with the same destination policy from Egress network | denied resolved IP/CNAME, missing CA, SNI/certificate, redirect to denied target, proxy mismatch | fix DNS/cert/policy or proxy; do not disable post-resolution enforcement |
+| DNS/TLS/redirect failure | reproduce with the same destination mode and policy from Egress network | direct denied IP/CNAME, remote provider DNS/ACL, missing CA, SNI/certificate, redirect, proxy mismatch | fix DNS/cert/policy or provider ACL; do not pretend local DNS preflight enforces a provider-owned result |
 | HTTP/2/fingerprint failure | inspect error code and executed profile evidence | unsupported worker profile, peer HTTP/2 incompatibility, fallback cache | use a supported compatible profile or ordinary TLS; preserve fallback evidence |
 | Redis HA degradation | check Redis and `straw_runtime_state_*` | TLS/auth/network failure, expired ownership, slow operation | restore Redis before admitting traffic; allow fencing/TTLs to converge |
 | JetStream rollout stalls | inspect `/api/v1/admin/rollouts` and NATS JetStream health | worker offline/incompatible, bucket unavailable, invalid snapshot acknowledgement | restore bucket/worker and roll back through the Admin API if required |
 | receipt/S3 failure | inspect receipt state and receipt counters | credentials/permissions, clock skew, retention, missing part, checksum/size mismatch | repair storage/time/config; retry resumable parts or create a new rejected receipt |
 | disk pressure | inspect JetStream and receipt volume usage | retention/history too large, cleanup stopped, log growth | preserve required backup, restore cleanup, then resize or shorten reviewed retention |
 | shutdown hangs | inspect readiness and active request count after SIGTERM | upstream ignores deadline, unavailable NATS, tunnel still active | wait for documented grace period; terminate only after accepting request loss |
-| partial upgrade/protocol mismatch | compare Control/Egress/protocol/SDK versions with compatibility matrix | wrong upgrade order or unsupported mixed minor | finish Egress-first upgrade or roll back by immutable digest |
+| partial upgrade/protocol mismatch | compare Control/Egress/protocol/SDK versions with compatibility matrix | old Control still writing shared rows, stale registrations, or a proxy claim below minor 2 | keep pools direct, finish the Control-first upgrade, expire shared worker rows, then register minor-2 workers |
 | CLI/SDK error | run equivalent documented curl request | base URL/token, serialization, timeout, incompatible SDK tag | correct environment/tag and handle typed API errors; do not blindly retry writes |
 | Docker platform startup failure | `docker compose config`; inspect image architecture and volume ownership | unsupported architecture, occupied port, read-only path, Docker DNS | use supported image/platform, port overrides, and documented UID/volume permissions |
 

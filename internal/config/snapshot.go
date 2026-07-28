@@ -44,14 +44,21 @@ type RoutingRule struct {
 
 // ExecutorPool describes an eligible worker group.
 type ExecutorPool struct {
-	ID                   string   `json:"id"`
-	ExecutorType         string   `json:"executor_type"`
-	Tags                 []string `json:"tags,omitempty"`
-	Enabled              bool     `json:"enabled"`
-	AllowDegradedWorkers bool     `json:"allow_degraded_workers,omitempty"`
-	AllowedIPTypes       []string `json:"allowed_ip_types,omitempty"`
-	AllowedCountries     []string `json:"allowed_countries,omitempty"`
-	AllowedRegions       []string `json:"allowed_regions,omitempty"`
+	ID                   string                     `json:"id"`
+	ExecutorType         string                     `json:"executor_type"`
+	Tags                 []string                   `json:"tags,omitempty"`
+	Enabled              bool                       `json:"enabled"`
+	AllowDegradedWorkers bool                       `json:"allow_degraded_workers,omitempty"`
+	AllowedIPTypes       []string                   `json:"allowed_ip_types,omitempty"`
+	AllowedCountries     []string                   `json:"allowed_countries,omitempty"`
+	AllowedRegions       []string                   `json:"allowed_regions,omitempty"`
+	UpstreamProxy        *ExecutorPoolUpstreamProxy `json:"upstream_proxy,omitempty"`
+}
+
+// ExecutorPoolUpstreamProxy selects trusted remote resolution for a pool.
+type ExecutorPoolUpstreamProxy struct {
+	ID                      string `json:"id"`
+	TrustedRemoteResolution bool   `json:"trusted_remote_resolution"`
 }
 
 // DenyRule blocks or explicitly allows a destination pattern.
@@ -135,7 +142,13 @@ func cloneExecutorPools(in []ExecutorPool) []ExecutorPool {
 		pool.Tags = append([]string(nil), pool.Tags...)
 		pool.AllowedIPTypes = append([]string(nil), pool.AllowedIPTypes...)
 		pool.AllowedCountries = append([]string(nil), pool.AllowedCountries...)
+
 		pool.AllowedRegions = append([]string(nil), pool.AllowedRegions...)
+		if pool.UpstreamProxy != nil {
+			upstreamProxy := *pool.UpstreamProxy
+			pool.UpstreamProxy = &upstreamProxy
+		}
+
 		out[i] = pool
 	}
 

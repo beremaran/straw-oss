@@ -68,7 +68,7 @@ func TestIngressAdaptersUseEquivalentRoutingDecisions(t *testing.T) {
 		Match: config.MatchConditions{Country: "AU", Region: routingRegion, IPType: routingIPType},
 	}}
 	candidate := routingCandidate("shared-worker")
-	candidate.Tags = []string{"residential"}
+	candidate.Tags = []string{routingIPType}
 	candidate.Countries = []string{"AU"}
 	candidate.Regions = []string{routingRegion}
 	candidate.IPTypes = []string{routingIPType}
@@ -91,11 +91,11 @@ func TestIngressAdaptersUseEquivalentRoutingDecisions(t *testing.T) {
 	proxy := NewProxyHandler(1<<20, auth, dispatcher, dispatcher)
 	proxyRequest := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "http://example.com/", nil)
 	proxyRequest.Header.Set("Proxy-Authorization", "Bearer secret")
-	proxyRequest.Header.Set("X-Straw-Route-Tags", "residential")
+	proxyRequest.Header.Set("X-Straw-Route-Tags", routingIPType)
 	proxyRequest.Header.Set("X-Straw-Route-Country", "au")
 	proxyRequest.Header.Set("X-Straw-Route-Region", routingRegion)
 	proxyRequest.Header.Set("X-Straw-Route-IP-Type", routingIPType)
-	proxyRequest.Header.Set("X-Straw-Route-Sticky-Session", "checkout-42")
+	proxyRequest.Header.Set("X-Straw-Route-Sticky-Session", testStickySessionID)
 	proxyResponse := httptest.NewRecorder()
 	proxy.ServeHTTP(proxyResponse, proxyRequest)
 	if proxyResponse.Code != http.StatusOK || proxyResponse.Body.String() != "ok" {
@@ -107,11 +107,11 @@ func TestIngressAdaptersUseEquivalentRoutingDecisions(t *testing.T) {
 	connectRequest := httptest.NewRequestWithContext(context.Background(), http.MethodConnect, "http://example.com:443", nil)
 	connectRequest.Host = "example.com:443"
 	connectRequest.Header.Set("Proxy-Authorization", "Bearer secret")
-	connectRequest.Header.Set("X-Straw-Route-Tags", "residential")
+	connectRequest.Header.Set("X-Straw-Route-Tags", routingIPType)
 	connectRequest.Header.Set("X-Straw-Route-Country", "au")
 	connectRequest.Header.Set("X-Straw-Route-Region", routingRegion)
 	connectRequest.Header.Set("X-Straw-Route-IP-Type", routingIPType)
-	connectRequest.Header.Set("X-Straw-Route-Sticky-Session", "checkout-42")
+	connectRequest.Header.Set("X-Straw-Route-Sticky-Session", testStickySessionID)
 	connectWriter := &hijackResponseWriter{conn: server, header: make(http.Header)}
 	done := make(chan struct{})
 	go func() {

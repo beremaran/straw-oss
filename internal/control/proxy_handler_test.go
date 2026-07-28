@@ -29,7 +29,7 @@ func TestProxyHandlerDispatchesAbsoluteFormHTTP(t *testing.T) {
 	req.Header.Set("X-Straw-Route-Country", "au")
 	req.Header.Set("X-Straw-Route-Region", "ap-southeast-2")
 	req.Header.Set("X-Straw-Route-IP-Type", routingIPType)
-	req.Header.Set("X-Straw-Route-Sticky-Session", "checkout-42")
+	req.Header.Set("X-Straw-Route-Sticky-Session", testStickySessionID)
 	req.Header.Set("X-Straw-Future-Control", "must-not-forward")
 	req.Header.Set("Connection", "X-Hop")
 	req.Header.Set("X-Hop", "remove-me")
@@ -45,7 +45,7 @@ func TestProxyHandlerDispatchesAbsoluteFormHTTP(t *testing.T) {
 	if dispatcher.raw.Request.IngressType != IngressTypeHTTPProxy || dispatcher.raw.Request.URL.String() != "http://example.com/path?q=1" {
 		t.Fatalf("dispatch request = %#v", dispatcher.raw.Request)
 	}
-	if got := dispatcher.raw.Request.Routing; got.Country != "AU" || got.Region != "ap-southeast-2" || got.IPType != routingIPType || got.StickySessionID != "checkout-42" || len(got.Tags) != 2 || got.Tags[1] != "edge" {
+	if got := dispatcher.raw.Request.Routing; got.Country != "AU" || got.Region != "ap-southeast-2" || got.IPType != routingIPType || got.StickySessionID != testStickySessionID || len(got.Tags) != 2 || got.Tags[1] != "edge" {
 		t.Fatalf("routing hints = %+v", got)
 	}
 	if string(dispatcher.raw.Request.BodyData) != "payload" {

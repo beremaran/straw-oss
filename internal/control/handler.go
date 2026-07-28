@@ -216,6 +216,11 @@ func pipelineErrorResponse(requestID string, err *PipelineError) ErrorResponse {
 		response.TimeoutType = err.TimeoutType
 	}
 
+	if err.UpstreamStatus != nil {
+		status := *err.UpstreamStatus
+		response.UpstreamStatus = &status
+	}
+
 	return response
 }
 

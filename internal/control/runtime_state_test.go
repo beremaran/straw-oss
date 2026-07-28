@@ -1,13 +1,16 @@
 package control
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"maps"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/beremaran/straw-oss/internal/config"
 	strawpb "github.com/beremaran/straw-protos-go/straw/v1"
 )
 
@@ -47,6 +50,105 @@ func TestSharedRegistryFencesReplacedWorkerSession(t *testing.T) {
 	ok, err := a.Heartbeat(context.Background(), &strawpb.HeartbeatRequest{WorkerId: sharedTestWorkerID, SessionId: first.SessionID})
 	if err != nil || ok {
 		t.Fatalf("stale Heartbeat() = %v, %v", ok, err)
+	}
+}
+
+func TestSharedHeartbeatRetainsProtocolAndProxyClaim(t *testing.T) {
+	t.Parallel()
+
+	const (
+		poolID  = "proxy-pool"
+		proxyID = "proxy-profile"
+	)
+
+	state := newFakeRuntimeState()
+	registry := NewSharedWorkerRegistry(context.Background(), DefaultWorkerTimings(), nil, state, 30*time.Second)
+	snapshot := config.NewSnapshot(1)
+	snapshot.ExecutorPools = []config.ExecutorPool{{
+		ID: poolID, ExecutorType: errorCategoryEgress, Enabled: true,
+		UpstreamProxy: &config.ExecutorPoolUpstreamProxy{ID: proxyID, TrustedRemoteResolution: true},
+	}}
+	registry.ApplySnapshot(snapshot)
+
+	outcome, err := registry.Register(context.Background(), &strawpb.RegisterRequest{
+		WorkerId: sharedTestWorkerID, ExecutorType: errorCategoryEgress,
+		ProtocolMajor: ProtocolMajor, ProtocolMinor: 2, MaxConcurrency: 2,
+		AllowedPools: []*strawpb.RegisterRequest_PoolRef{{PoolId: poolID, UpstreamProxyId: proxyID}},
+	})
+	if err != nil || !outcome.OK {
+		t.Fatalf("Register() = %+v, %v", outcome, err)
+	}
+
+	ok, err := registry.Heartbeat(context.Background(), &strawpb.HeartbeatRequest{
+		WorkerId: sharedTestWorkerID, SessionId: outcome.SessionID,
+		Health: strawpb.WorkerHealth_WORKER_HEALTH_READY, MaxConcurrency: 2, AvailableCapacity: 2,
+	})
+	if err != nil || !ok {
+		t.Fatalf("Heartbeat() = %v, %v", ok, err)
+	}
+
+	stored := state.sessions[sharedTestWorkerID]
+	if stored.SupportedProtocolMinor != 2 || stored.ProtocolMinor != 2 || len(stored.Pools) != 1 || stored.Pools[0].UpstreamProxyID != proxyID {
+		t.Fatalf("shared heartbeat row = %+v", stored)
+	}
+	candidates := registry.CandidatesForPool(config.DefaultDeploymentID, poolID)
+	if len(candidates) != 1 || candidates[0].SupportedProtocolMinor != 2 || candidates[0].ProtocolMinor != 2 || candidates[0].UpstreamProxyID != proxyID {
+		t.Fatalf("shared candidates = %+v", candidates)
+	}
+}
+
+func TestOldSharedWorkerRowIsDirectEligibleAndProxyIneligible(t *testing.T) {
+	t.Parallel()
+
+	const (
+		directPoolID = "direct-pool"
+		proxyPoolID  = "proxy-pool"
+		proxyID      = "proxy-profile"
+	)
+
+	now := time.Now()
+	legacy := sharedWorker{
+		SessionID: "legacy-session", ExecutorType: errorCategoryEgress,
+		Pools:        []AllowedPool{{PoolID: directPoolID}, {PoolID: proxyPoolID}},
+		IngressModes: []string{IngressTypeREST}, MaxConcurrency: 1, AvailableCapacity: 1,
+		Health: strawpb.WorkerHealth_WORKER_HEALTH_READY, RegisteredAt: now, LastHeartbeat: now, HasHeartbeat: true,
+	}
+	raw, err := json.Marshal(legacy)
+	if err != nil {
+		t.Fatalf("marshal legacy row: %v", err)
+	}
+	if bytes.Contains(raw, []byte("protocol_minor")) || bytes.Contains(raw, []byte("upstream_proxy_id")) {
+		t.Fatalf("zero-value compatibility fields were serialized: %s", raw)
+	}
+
+	var decoded sharedWorker
+	err = json.Unmarshal(raw, &decoded)
+	if err != nil {
+		t.Fatalf("unmarshal legacy row: %v", err)
+	}
+	state := newFakeRuntimeState()
+	state.sessions[sharedTestWorkerID] = decoded
+	registry := NewSharedWorkerRegistry(context.Background(), DefaultWorkerTimings(), func() time.Time { return now }, state, 30*time.Second)
+	rule := func(poolID string) *StaticRuleProvider {
+		return NewStaticRuleProvider([]RoutingRule{{ID: poolID, DeploymentID: config.DefaultDeploymentID, Enabled: true, TargetPoolID: poolID}})
+	}
+
+	direct := NewRouter(
+		rule(directPoolID),
+		NewStaticPoolPolicyProvider([]PoolPolicy{{DeploymentID: config.DefaultDeploymentID, PoolID: directPoolID, Enabled: true}}),
+		registry, NewStickyStore(nil), nil,
+	).Evaluate(RouteRequest{DeploymentID: config.DefaultDeploymentID, IngressType: IngressTypeREST})
+	if !direct.OK || direct.WorkerID != sharedTestWorkerID || direct.ProtocolMinor != 0 {
+		t.Fatalf("legacy direct route = %+v", direct)
+	}
+
+	proxy := NewRouter(
+		rule(proxyPoolID),
+		NewStaticPoolPolicyProvider([]PoolPolicy{{DeploymentID: config.DefaultDeploymentID, PoolID: proxyPoolID, Enabled: true, UpstreamProxyID: proxyID, TrustedRemoteResolution: true}}),
+		registry, NewStickyStore(nil), nil,
+	).Evaluate(RouteRequest{DeploymentID: config.DefaultDeploymentID, IngressType: IngressTypeREST})
+	if proxy.ErrorCode != RouteErrUnavailable {
+		t.Fatalf("legacy proxy route = %+v, want %s", proxy, RouteErrUnavailable)
 	}
 }
 

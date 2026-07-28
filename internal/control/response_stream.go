@@ -87,17 +87,19 @@ func (d *DefaultRequestDispatcher) commitResponseReceipt(ctx context.Context, re
 }
 
 type decodedResponseStreamState struct {
-	dispatcher    *DefaultRequestDispatcher
-	validator     *natsx.StreamValidator
-	route         RouteOutcome
-	deadline      time.Time
-	c2eSubject    string
-	in            DispatchInput
-	c2eSeq        uint64
-	upload        *requestBodyUpload
-	uploadErr     <-chan error
-	result        dispatchResult
-	egressStarted time.Time
+	dispatcher      *DefaultRequestDispatcher
+	validator       *natsx.StreamValidator
+	route           RouteOutcome
+	deadline        time.Time
+	c2eSubject      string
+	in              DispatchInput
+	c2eSeq          uint64
+	upload          *requestBodyUpload
+	uploadErr       <-chan error
+	result          dispatchResult
+	egressStarted   time.Time
+	outboundStarted bool
+	responseStarted bool
 }
 
 func (s *decodedResponseStreamState) next(ctx context.Context, ticks <-chan time.Time, frames <-chan *strawpb.StreamFrame) (bool, *PipelineError) {
@@ -137,7 +139,7 @@ func (s *decodedResponseStreamState) frameEvent(frame *strawpb.StreamFrame, ok b
 		return true, s.dispatcher.streamLost(s.route, WorkerDisconnected)
 	}
 
-	return s.dispatcher.acceptResponseFrame(s.validator, frame, s.route, &s.result, &s.egressStarted, s.c2eSubject, s.in, s.deadline, &s.c2eSeq, s.upload)
+	return s.dispatcher.acceptResponseFrame(s.validator, frame, s.route, &s.result, &s.egressStarted, &s.outboundStarted, &s.responseStarted, s.c2eSubject, s.in, s.deadline, &s.c2eSeq, s.upload)
 }
 
 func (d *DefaultRequestDispatcher) sendCancel(c2eSubject string, in DispatchInput, deadline time.Time, seq uint64, reason string) {
@@ -171,10 +173,14 @@ func (d *DefaultRequestDispatcher) initialDownloadCredit() uint64 {
 	return min(d.opts.InitialDownloadCreditBytes, d.opts.MaxInflightDownloadBytes)
 }
 
-func (d *DefaultRequestDispatcher) acceptResponseFrame(validator *natsx.StreamValidator, frame *strawpb.StreamFrame, route RouteOutcome, result *dispatchResult, egressStarted *time.Time, c2eSubject string, in DispatchInput, deadline time.Time, c2eSeq *uint64, upload *requestBodyUpload) (bool, *PipelineError) {
+func (d *DefaultRequestDispatcher) acceptResponseFrame(validator *natsx.StreamValidator, frame *strawpb.StreamFrame, route RouteOutcome, result *dispatchResult, egressStarted *time.Time, outboundStarted, responseStarted *bool, c2eSubject string, in DispatchInput, deadline time.Time, c2eSeq *uint64, upload *requestBodyUpload) (bool, *PipelineError) {
 	ok, done, perr := acceptedResponseFrame(validator.Accept(frame))
 	if !ok || done {
 		return done, perr
+	}
+
+	if perr := d.validateRouteResponseFrame(route, frame, outboundStarted, responseStarted); perr != nil {
+		return true, perr
 	}
 
 	if handled, perr := d.acceptResponseProgress(frame, result, egressStarted, validator, c2eSubject, in, deadline, c2eSeq, upload); handled {
@@ -239,6 +245,71 @@ func (s *rawResponseStreamState) acceptOutboundStart(frame *strawpb.OutboundStar
 	}
 
 	return false, nil
+}
+
+func (d *DefaultRequestDispatcher) validateRouteResponseFrame(route RouteOutcome, frame *strawpb.StreamFrame, outboundStarted, responseStarted *bool) *PipelineError {
+	switch payload := frame.GetPayload().(type) {
+	case *strawpb.StreamFrame_OutboundStart:
+		return d.validateOutboundStartFrame(route, payload.OutboundStart, outboundStarted)
+	case *strawpb.StreamFrame_ResponseStart:
+		return d.validateResponseStartFrame(route, outboundStarted, responseStarted)
+	case *strawpb.StreamFrame_Data:
+		return d.validateResponseDataFrame(route, responseStarted)
+	case *strawpb.StreamFrame_End:
+		return d.validateResponseEndFrame(route, payload.End, outboundStarted, responseStarted)
+	default:
+		return nil
+	}
+}
+
+func (d *DefaultRequestDispatcher) validateOutboundStartFrame(route RouteOutcome, frame *strawpb.OutboundStartFrame, outboundStarted *bool) *PipelineError {
+	if route.ProtocolMinor >= upstreamProxyProtocolMinor && *outboundStarted {
+		return d.routeProtocolFailure(route, "duplicate outbound start frame")
+	}
+
+	if frame.GetUpstreamProxyId() != route.UpstreamProxyID {
+		return d.routeProtocolFailure(route, "executed upstream proxy did not match selected route")
+	}
+
+	*outboundStarted = true
+
+	return nil
+}
+
+func (d *DefaultRequestDispatcher) validateResponseStartFrame(route RouteOutcome, outboundStarted, responseStarted *bool) *PipelineError {
+	if route.ProtocolMinor >= upstreamProxyProtocolMinor && !*outboundStarted {
+		return d.routeProtocolFailure(route, "response started before outbound start")
+	}
+
+	if route.ProtocolMinor >= upstreamProxyProtocolMinor && *responseStarted {
+		return d.routeProtocolFailure(route, "duplicate response start frame")
+	}
+
+	*responseStarted = true
+
+	return nil
+}
+
+func (d *DefaultRequestDispatcher) validateResponseDataFrame(route RouteOutcome, responseStarted *bool) *PipelineError {
+	if route.ProtocolMinor >= upstreamProxyProtocolMinor && !*responseStarted {
+		return d.routeProtocolFailure(route, "response data arrived before response start")
+	}
+
+	return nil
+}
+
+func (d *DefaultRequestDispatcher) validateResponseEndFrame(route RouteOutcome, frame *strawpb.EndFrame, outboundStarted, responseStarted *bool) *PipelineError {
+	if route.ProtocolMinor >= upstreamProxyProtocolMinor && frame.GetSuccess() && (!*outboundStarted || !*responseStarted) {
+		return d.routeProtocolFailure(route, "successful end arrived before response start")
+	}
+
+	return nil
+}
+
+func (d *DefaultRequestDispatcher) routeProtocolFailure(route RouteOutcome, message string) *PipelineError {
+	routeFailure(d.opts.Workers, route.WorkerID)
+
+	return &PipelineError{Code: ProtocolError, Message: message}
 }
 
 func acceptedResponseFrame(outcome natsx.FrameOutcome) (bool, bool, *PipelineError) {

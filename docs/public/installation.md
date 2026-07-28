@@ -89,7 +89,9 @@ send it as `Authorization: Bearer <token>`, and keep the Control API behind a tr
 Use [Configuration](configuration.md) for static JSON and [Deployment](deployment.md) for the optional
 runtime-administration, receipt, TLS, and HA profiles.
 
-For an upgrade, verify the new artifacts, back up JetStream or receipt state for enabled profiles, upgrade Egress before
-Control, then upgrade the CLI and clients. Inspect readiness, worker availability, rollout state, and error rates before
+For an upgrade, verify the new artifacts and back up JetStream or receipt state for enabled profiles. The protocol 1.2
+upstream-proxy release requires Control first while pools remain direct, removal of all old Controls and shared worker
+rows, and then minor-2 Egress workers; only then enable fresh proxy pool IDs. Upgrade the CLI and clients after the
+runtime. Inspect readiness, worker availability, rollout state, and error rates before
 retiring the previous digest. Roll back in reverse order using the previously verified artifacts; see
 [Releases](releases.md) for the maintainer release procedure and [Operations](operations.md) for stateful backup drills.

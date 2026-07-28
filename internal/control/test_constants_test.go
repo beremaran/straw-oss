@@ -7,4 +7,7 @@ const (
 	testPrivateRange        = "172.16.0.0/12"
 	handlerTestInlineBase64 = "inline_base64"
 	proxyTestAuthority      = "example.com:443"
+	testDeploymentID        = "deployment-1"
+	testProxyRegion         = "nsw"
+	testStickySessionID     = "checkout-42"
 )

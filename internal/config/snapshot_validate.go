@@ -158,41 +158,73 @@ func validateSnapshot(s Snapshot) error {
 func validatePools(pools []ExecutorPool) (map[string]struct{}, error) {
 	ids := make(map[string]struct{}, len(pools))
 
-	var err error
-
 	for _, pool := range pools {
-		if pool.ID == "" || pool.ExecutorType == "" {
-			return nil, fmt.Errorf("%w: pool id and executor_type are required", ErrInvalidSnapshot)
-		}
-
-		if _, exists := ids[pool.ID]; exists {
-			return nil, fmt.Errorf("%w: duplicate pool %q", ErrInvalidSnapshot, pool.ID)
-		}
-
-		if !validSnapshotID(pool.ID) || !validSnapshotString(pool.ExecutorType, maxSnapshotStringBytes) {
-			return nil, fmt.Errorf("%w: pool %q has an invalid id or executor_type", ErrInvalidSnapshot, pool.ID)
-		}
-
-		err = validateStringList("pool tags", pool.Tags, maxSnapshotTagBytes)
+		err := validatePool(pool, ids)
 		if err != nil {
 			return nil, err
-		}
-
-		for name, values := range map[string][]string{
-			"allowed_ip_types":  pool.AllowedIPTypes,
-			"allowed_countries": pool.AllowedCountries,
-			"allowed_regions":   pool.AllowedRegions,
-		} {
-			err = validateStringList("pool "+name, values, maxSnapshotListBytes)
-			if err != nil {
-				return nil, err
-			}
 		}
 
 		ids[pool.ID] = struct{}{}
 	}
 
 	return ids, nil
+}
+
+func validatePool(pool ExecutorPool, ids map[string]struct{}) error {
+	if pool.ID == "" || pool.ExecutorType == "" {
+		return fmt.Errorf("%w: pool id and executor_type are required", ErrInvalidSnapshot)
+	}
+
+	if _, exists := ids[pool.ID]; exists {
+		return fmt.Errorf("%w: duplicate pool %q", ErrInvalidSnapshot, pool.ID)
+	}
+
+	if !validSnapshotID(pool.ID) || !validSnapshotString(pool.ExecutorType, maxSnapshotStringBytes) {
+		return fmt.Errorf("%w: pool %q has an invalid id or executor_type", ErrInvalidSnapshot, pool.ID)
+	}
+
+	err := validatePoolUpstreamProxy(pool)
+	if err != nil {
+		return err
+	}
+
+	err = validateStringList("pool tags", pool.Tags, maxSnapshotTagBytes)
+	if err != nil {
+		return err
+	}
+
+	return validatePoolRestrictions(pool)
+}
+
+func validatePoolUpstreamProxy(pool ExecutorPool) error {
+	if pool.UpstreamProxy == nil {
+		return nil
+	}
+
+	if !validSnapshotID(pool.UpstreamProxy.ID) {
+		return fmt.Errorf("%w: pool %q has an invalid upstream proxy id", ErrInvalidSnapshot, pool.ID)
+	}
+
+	if !pool.UpstreamProxy.TrustedRemoteResolution {
+		return fmt.Errorf("%w: pool %q upstream proxy must enable trusted_remote_resolution", ErrInvalidSnapshot, pool.ID)
+	}
+
+	return nil
+}
+
+func validatePoolRestrictions(pool ExecutorPool) error {
+	for name, values := range map[string][]string{
+		"allowed_ip_types":  pool.AllowedIPTypes,
+		"allowed_countries": pool.AllowedCountries,
+		"allowed_regions":   pool.AllowedRegions,
+	} {
+		err := validateStringList("pool "+name, values, maxSnapshotListBytes)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func validateRoutes(routes []RoutingRule, pools map[string]struct{}) error {
@@ -745,7 +777,7 @@ func validSnapshotString(value string, maxBytes int) bool {
 }
 
 func validSnapshotID(value string) bool {
-	if value == "" || len(value) > 128 {
+	if value == "" || len(value) > MaxUpstreamProxyIDBytes {
 		return false
 	}
 

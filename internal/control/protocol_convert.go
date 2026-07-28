@@ -116,13 +116,20 @@ func headersFromProto(headers []*strawpb.Header) []HeaderPair {
 	return out
 }
 
-func decodeDispatchFrame(raw []byte) *strawpb.StreamFrame {
+func decodeDispatchFrame(raw []byte, protocolMinor uint32) *strawpb.StreamFrame {
 	env, err := natsx.UnmarshalEnvelope(raw)
-	if err != nil {
+	if err != nil || env.GetProtocolMajor() != ProtocolMajor || !dispatchEnvelopeMinorCompatible(env.GetProtocolMinor(), protocolMinor) {
 		return nil
 	}
 
 	return env.GetStreamFrame()
+}
+
+func dispatchEnvelopeMinorCompatible(actual, negotiated uint32) bool {
+	// Published minor-1 workers omitted protocol_minor from assignment replies
+	// and response envelopes. Keep that direct-only compatibility exception;
+	// minor 2 and future negotiated versions remain exact.
+	return actual == negotiated || actual == 0 && negotiated == 1
 }
 
 func routeFailure(candidates CandidateSource, workerID string) {

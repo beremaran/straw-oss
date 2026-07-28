@@ -47,16 +47,21 @@ func (e *Executor) doProfiledRequest(ctx context.Context, target target, start *
 		return profiledResponse{}, func() {}, executorFailure(strawpb.ErrorCode_ERROR_CODE_UNSUPPORTED_FINGERPRINT, unsupportedFingerprint)
 	}
 
-	ips, failure := e.validatedIPs(ctx, target.host, start.GetDestinationPolicy())
-	if failure != nil {
-		return profiledResponse{}, func() {}, failure
-	}
+	var dial func(context.Context, string, string) (net.Conn, error)
+	if start.GetDestinationPolicy().GetResolutionMode() == strawpb.DestinationResolutionMode_DESTINATION_RESOLUTION_UPSTREAM_PROXY_REMOTE {
+		dial = e.profiledProxyDialContext(ctx, target, start.GetUpstreamProxy())
+	} else {
+		ips, failure := e.validatedIPs(ctx, target.host, start.GetDestinationPolicy())
+		if failure != nil {
+			return profiledResponse{}, func() {}, failure
+		}
 
-	if len(ips) == 0 {
-		return profiledResponse{}, func() {}, executorFailure(strawpb.ErrorCode_ERROR_CODE_UPSTREAM_DNS_FAILURE, dnsNoRecordsFact)
-	}
+		if len(ips) == 0 {
+			return profiledResponse{}, func() {}, executorFailure(strawpb.ErrorCode_ERROR_CODE_UPSTREAM_DNS_FAILURE, dnsNoRecordsFact)
+		}
 
-	dial := e.profiledDialContext(ctx, target, ips[0])
+		dial = e.profiledDialContext(ctx, target, ips[0])
+	}
 
 	req, requestFailure := buildProfiledRequest(ctx, start, body)
 	if requestFailure != nil {
@@ -94,6 +99,24 @@ func (e *Executor) doProfiledRequest(ctx context.Context, target target, start *
 	keepBodyOpen = true
 
 	return result, closeResponse, nil
+}
+
+func (e *Executor) profiledProxyDialContext(requestCtx context.Context, target target, instruction *strawpb.UpstreamProxyInstruction) func(context.Context, string, string) (net.Conn, error) {
+	return func(libraryCtx context.Context, _, address string) (net.Conn, error) {
+		if !proxyDialTargetMatches(address, target) {
+			return nil, upstreamProxyInstructionFailure()
+		}
+
+		ctx, cancel := joinedDialContext(requestCtx, libraryCtx)
+		defer cancel()
+
+		conn, failure := e.upstreamProxy.Open(ctx, instruction, target.host, target.port)
+		if failure != nil {
+			return nil, failure
+		}
+
+		return conn, nil
+	}
 }
 
 func (e *Executor) profiledDialContext(requestCtx context.Context, target target, validatedIP netip.Addr) func(context.Context, string, string) (net.Conn, error) {

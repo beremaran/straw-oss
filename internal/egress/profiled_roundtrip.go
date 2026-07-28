@@ -22,7 +22,6 @@ import (
 
 const (
 	profiledDefaultHTTP2StreamID    = 1
-	profiledHTTP11                  = "http/1.1"
 	profiledHTTP2Major              = 2
 	profiledHTTP2MaxFrameSize       = 16 << 10
 	profiledDefaultFlowWindow       = 65535
@@ -642,7 +641,7 @@ func buildProfiledHTTP2Response(request *http.Request, framer *http2.Framer, con
 	return &http.Response{
 		StatusCode: status,
 		Status:     strconv.Itoa(status) + " " + http.StatusText(status),
-		Proto:      "HTTP/2.0",
+		Proto:      httpProtocol20,
 		ProtoMajor: profiledHTTP2Major,
 		Header:     headers,
 		Trailer:    trailers,

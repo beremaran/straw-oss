@@ -20,6 +20,8 @@ import (
 const (
 	// ProtocolMajor is the Control-to-worker protocol major version.
 	ProtocolMajor uint32 = 1
+	// ControlSupportedMinor is the highest worker protocol minor Control supports.
+	ControlSupportedMinor uint32 = 2
 
 	workerAvailabilityTimeout  = 15 * time.Second
 	workerDeadTimeout          = 30 * time.Second
@@ -27,6 +29,7 @@ const (
 	workerCooldownWindow       = 60 * time.Second
 	workerCooldownDuration     = 30 * time.Second
 	randomSessionIDBytes       = 16
+	upstreamProxyProtocolMinor = 2
 
 	rejectInvalidWorkerID   = "invalid_worker_id"
 	rejectIncompatibleProto = "incompatible_protocol"
@@ -79,12 +82,15 @@ type RegisterOutcome struct {
 
 // AllowedPool identifies one worker pool.
 type AllowedPool struct {
-	PoolID string `json:"pool_id"`
+	PoolID          string `json:"pool_id"`
+	UpstreamProxyID string `json:"upstream_proxy_id,omitempty"`
 }
 
 type workerSession struct {
 	sessionID                    string
 	executorType                 string
+	supportedProtocolMinor       uint32
+	protocolMinor                uint32
 	pools                        []AllowedPool
 	tags                         []string
 	countries                    []string
@@ -155,7 +161,7 @@ func (r *WorkerRegistry) Register(ctx context.Context, req *strawpb.RegisterRequ
 		return RegisterOutcome{Reason: rejectInvalidWorkerID}, nil
 	}
 
-	if req.GetProtocolMajor() != ProtocolMajor {
+	if req.GetProtocolMajor() != ProtocolMajor || req.GetProtocolMinor() > ControlSupportedMinor {
 		return RegisterOutcome{Reason: rejectIncompatibleProto}, nil
 	}
 
@@ -169,7 +175,7 @@ func (r *WorkerRegistry) Register(ctx context.Context, req *strawpb.RegisterRequ
 	}
 
 	r.mu.Lock()
-	pools, poolReason := deploymentPools(req.GetAllowedPools(), r.pools)
+	pools, poolReason := deploymentPools(req.GetAllowedPools(), r.pools, req.GetProtocolMinor())
 
 	r.mu.Unlock()
 
@@ -180,6 +186,8 @@ func (r *WorkerRegistry) Register(ctx context.Context, req *strawpb.RegisterRequ
 	session := &workerSession{
 		sessionID:                    sessionID,
 		executorType:                 req.GetExecutorType(),
+		supportedProtocolMinor:       req.GetProtocolMinor(),
+		protocolMinor:                min(ControlSupportedMinor, req.GetProtocolMinor()),
 		pools:                        pools,
 		tags:                         append([]string(nil), req.GetTags()...),
 		countries:                    append([]string(nil), req.GetCountries()...),
@@ -233,7 +241,7 @@ func rejectFingerprintProfileCapabilities(req *strawpb.RegisterRequest) string {
 	return ""
 }
 
-func deploymentPools(refs []*strawpb.RegisterRequest_PoolRef, configured map[string]config.ExecutorPool) ([]AllowedPool, string) {
+func deploymentPools(refs []*strawpb.RegisterRequest_PoolRef, configured map[string]config.ExecutorPool, protocolMinor uint32) ([]AllowedPool, string) {
 	if len(refs) == 0 {
 		refs = []*strawpb.RegisterRequest_PoolRef{{DeploymentId: config.DefaultDeploymentID, PoolId: config.DefaultPoolID}}
 	}
@@ -242,25 +250,8 @@ func deploymentPools(refs []*strawpb.RegisterRequest_PoolRef, configured map[str
 	seen := make(map[string]struct{}, len(refs))
 
 	for _, ref := range refs {
-		if ref == nil {
-			return nil, rejectInvalidPool
-		}
-
-		deploymentID := ref.GetDeploymentId()
-		if deploymentID == "" {
-			deploymentID = config.DefaultDeploymentID
-		}
-
-		if deploymentID != config.DefaultDeploymentID {
-			return nil, rejectInvalidPool
-		}
-
-		poolID := ref.GetPoolId()
-		if poolID == "" {
-			poolID = config.DefaultPoolID
-		}
-
-		if _, ok := configured[poolID]; !ok {
+		_, poolID, ok := deploymentPoolIDs(ref)
+		if !ok {
 			return nil, rejectInvalidPool
 		}
 
@@ -268,11 +259,61 @@ func deploymentPools(refs []*strawpb.RegisterRequest_PoolRef, configured map[str
 			return nil, rejectInvalidPool
 		}
 
+		allowed, reason := allowedDeploymentPool(ref, poolID, configured, protocolMinor)
+		if reason != "" {
+			return nil, reason
+		}
+
 		seen[poolID] = struct{}{}
-		pools = append(pools, AllowedPool{PoolID: poolID})
+
+		pools = append(pools, allowed)
 	}
 
 	return pools, ""
+}
+
+func deploymentPoolIDs(ref *strawpb.RegisterRequest_PoolRef) (string, string, bool) {
+	if ref == nil {
+		return "", "", false
+	}
+
+	deploymentID := ref.GetDeploymentId()
+	if deploymentID == "" {
+		deploymentID = config.DefaultDeploymentID
+	}
+
+	poolID := ref.GetPoolId()
+	if poolID == "" {
+		poolID = config.DefaultPoolID
+	}
+
+	return deploymentID, poolID, deploymentID == config.DefaultDeploymentID
+}
+
+func allowedDeploymentPool(ref *strawpb.RegisterRequest_PoolRef, poolID string, configured map[string]config.ExecutorPool, protocolMinor uint32) (AllowedPool, string) {
+	pool, ok := configured[poolID]
+	if !ok {
+		return AllowedPool{}, rejectInvalidPool
+	}
+
+	upstreamProxyID := ref.GetUpstreamProxyId()
+	if upstreamProxyID != "" && protocolMinor < upstreamProxyProtocolMinor {
+		return AllowedPool{}, rejectIncompatibleProto
+	}
+
+	if upstreamProxyID != configuredUpstreamProxyID(pool) {
+		return AllowedPool{}, rejectInvalidPool
+	}
+
+	return AllowedPool{PoolID: poolID, UpstreamProxyID: upstreamProxyID}, ""
+}
+
+func configuredUpstreamProxyID(pool config.ExecutorPool) string {
+	if pool.UpstreamProxy == nil {
+		return ""
+	}
+
+	return pool.UpstreamProxy.ID
 }
 
 // Heartbeat refreshes one current worker session.
@@ -382,6 +423,9 @@ type PoolCandidate struct {
 	SessionID                    string
 	AssignSubject                string
 	ExecutorType                 string
+	SupportedProtocolMinor       uint32
+	ProtocolMinor                uint32
+	UpstreamProxyID              string
 	Degraded                     bool
 	Tags                         []string
 	Countries                    []string
@@ -413,7 +457,9 @@ func (r *WorkerRegistry) CandidatesForPool(_ string, poolID string) []PoolCandid
 	candidates := make([]PoolCandidate, 0, len(r.workers))
 	for workerID, session := range r.workers {
 		state := r.runtimeState(workerID, session, now)
-		if state != RuntimeReady && state != RuntimeDegraded || !sessionInPool(session, poolID) {
+
+		pool, inPool := sessionPool(session, poolID)
+		if state != RuntimeReady && state != RuntimeDegraded || !inPool {
 			continue
 		}
 
@@ -422,15 +468,7 @@ func (r *WorkerRegistry) CandidatesForPool(_ string, poolID string) []PoolCandid
 			continue
 		}
 
-		candidates = append(candidates, PoolCandidate{
-			WorkerID: workerID, SessionID: session.sessionID, AssignSubject: subject,
-			ExecutorType: session.executorType, Degraded: state == RuntimeDegraded,
-			Tags: session.tags, Countries: session.countries, Regions: session.regions,
-			IPTypes: session.ipTypes, IngressModes: session.ingressModes,
-			SupportedFingerprintProfiles: append([]string(nil), session.supportedFingerprintProfiles...),
-			ActiveRequests:               session.activeRequests, MaxConcurrency: session.maxConcurrency,
-			AvailableCap: session.availableCapacity,
-		})
+		candidates = append(candidates, candidateFromSession(workerID, subject, session, pool, state == RuntimeDegraded))
 	}
 
 	return candidates
@@ -463,7 +501,8 @@ func sharedCandidate(r *WorkerRegistry, settings map[string]config.WorkerSetting
 		return PoolCandidate{}, false
 	}
 
-	if !sessionInPool(session, poolID) {
+	pool, ok := sessionPool(session, poolID)
+	if !ok {
 		return PoolCandidate{}, false
 	}
 
@@ -477,12 +516,13 @@ func sharedCandidate(r *WorkerRegistry, settings map[string]config.WorkerSetting
 		return PoolCandidate{}, false
 	}
 
-	return candidateFromSession(workerID, subject, session, state == RuntimeDegraded), true
+	return candidateFromSession(workerID, subject, session, pool, state == RuntimeDegraded), true
 }
 
-func candidateFromSession(workerID, subject string, session *workerSession, degraded bool) PoolCandidate {
+func candidateFromSession(workerID, subject string, session *workerSession, pool AllowedPool, degraded bool) PoolCandidate {
 	return PoolCandidate{
 		WorkerID: workerID, SessionID: session.sessionID, AssignSubject: subject, ExecutorType: session.executorType,
+		SupportedProtocolMinor: session.supportedProtocolMinor, ProtocolMinor: session.protocolMinor, UpstreamProxyID: pool.UpstreamProxyID,
 		Degraded: degraded, Tags: session.tags, Countries: session.countries, Regions: session.regions, IPTypes: session.ipTypes,
 		IngressModes: session.ingressModes, SupportedFingerprintProfiles: append([]string(nil), session.supportedFingerprintProfiles...),
 		ActiveRequests: session.activeRequests, MaxConcurrency: session.maxConcurrency, AvailableCap: session.availableCapacity,
@@ -589,14 +629,14 @@ func workerInfoFromShared(r *WorkerRegistry, workers map[string]sharedWorker) []
 	return out
 }
 
-func sessionInPool(session *workerSession, poolID string) bool {
+func sessionPool(session *workerSession, poolID string) (AllowedPool, bool) {
 	for _, pool := range session.pools {
 		if pool.PoolID == poolID {
-			return true
+			return pool, true
 		}
 	}
 
-	return false
+	return AllowedPool{}, false
 }
 
 func runtimeStateForSession(timings WorkerTimings, session *workerSession, now time.Time) WorkerRuntimeState {

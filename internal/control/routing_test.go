@@ -331,3 +331,123 @@ func TestRouterUsesRegisteredMembershipAcrossMultiplePools(t *testing.T) {
 		t.Fatalf("disabled route unexpectedly selected worker: %+v", outcome)
 	}
 }
+
+func TestRouterFiltersProxyClaimsBeforeStickyAndCapacitySelection(t *testing.T) {
+	t.Parallel()
+
+	const proxyID = "proxy-profile"
+	rule := RoutingRule{
+		ID: "proxy-route", DeploymentID: routingDeploymentID, Enabled: true, TargetPoolID: routingPoolID,
+		StickySessionTTLSeconds: 90, AllowStickyFallback: true,
+	}
+	policy := PoolPolicy{
+		DeploymentID: routingDeploymentID, PoolID: routingPoolID, Enabled: true,
+		UpstreamProxyID: proxyID, TrustedRemoteResolution: true,
+	}
+	stale := routingCandidate("stale-worker")
+	stale.UpstreamProxyID = "stale-profile"
+	stale.ProtocolMinor = 2
+	old := routingCandidate("old-worker")
+	old.UpstreamProxyID = proxyID
+	old.ProtocolMinor = 1
+	matching := routingCandidate("matching-worker")
+	matching.UpstreamProxyID = proxyID
+	matching.SupportedProtocolMinor = 2
+	matching.ProtocolMinor = 2
+	matching.ActiveRequests = 3
+
+	for _, sticky := range []bool{false, true} {
+		store := NewStickyStore(nil)
+		request := RouteRequest{DeploymentID: routingDeploymentID, IngressType: IngressTypeREST}
+		if sticky {
+			request.StickySessionID = routingSessionID
+			store.Set(routingDeploymentID, routingSessionID, stale.WorkerID, time.Minute)
+		}
+		router := NewRouter(
+			NewStaticRuleProvider([]RoutingRule{rule}), NewStaticPoolPolicyProvider([]PoolPolicy{policy}),
+			testRoutingCandidates{routingPoolID: {stale, old, matching}}, store, nil,
+		)
+		outcome := router.Evaluate(request)
+		if !outcome.OK || outcome.WorkerID != matching.WorkerID || outcome.Sticky != sticky {
+			t.Fatalf("sticky=%v outcome = %+v", sticky, outcome)
+		}
+		if outcome.UpstreamProxyID != proxyID || !outcome.TrustedRemoteResolution || outcome.StickySessionTTLSeconds != 90 || outcome.ProtocolMinor != 2 {
+			t.Fatalf("sticky=%v route metadata = %+v", sticky, outcome)
+		}
+	}
+
+	stale.AvailableCap = 0
+	old.AvailableCap = 0
+	withoutMatching := NewRouter(
+		NewStaticRuleProvider([]RoutingRule{rule}), NewStaticPoolPolicyProvider([]PoolPolicy{policy}),
+		testRoutingCandidates{routingPoolID: {stale, old}}, NewStickyStore(nil), nil,
+	).Evaluate(RouteRequest{DeploymentID: routingDeploymentID, IngressType: IngressTypeREST})
+	if withoutMatching.ErrorCode != RouteErrUnavailable {
+		t.Fatalf("ineligible full candidates outcome = %+v, want %s", withoutMatching, RouteErrUnavailable)
+	}
+}
+
+func TestPoolPoliciesFromSnapshotIncludesUpstreamProxy(t *testing.T) {
+	t.Parallel()
+
+	const proxyID = "proxy-profile"
+	policies := poolPoliciesFromSnapshot(routingDeploymentID, []config.ExecutorPool{
+		{ID: "direct", Enabled: true},
+		{ID: "proxy", Enabled: true, UpstreamProxy: &config.ExecutorPoolUpstreamProxy{ID: proxyID, TrustedRemoteResolution: true}},
+	})
+	if len(policies) != 2 {
+		t.Fatalf("policies = %+v", policies)
+	}
+	if policies[0].UpstreamProxyID != "" || policies[0].TrustedRemoteResolution {
+		t.Fatalf("direct policy = %+v", policies[0])
+	}
+	if policies[1].UpstreamProxyID != proxyID || !policies[1].TrustedRemoteResolution {
+		t.Fatalf("proxy policy = %+v", policies[1])
+	}
+}
+
+func TestDeriveProviderSessionID(t *testing.T) {
+	t.Parallel()
+
+	route := RouteOutcome{PoolID: "pool-au", UpstreamProxyID: "brightdata-resi", StickySessionTTLSeconds: 900}
+	const want = "ab280a385a3bef76e06d414de3d71b46"
+	got := deriveProviderSessionID(testDeploymentID, route, "AU", testProxyRegion, routingIPType, testStickySessionID)
+	if got != want {
+		t.Fatalf("provider session ID = %q, want %q", got, want)
+	}
+
+	changedRoutes := []RouteOutcome{
+		{PoolID: "pool-nz", UpstreamProxyID: route.UpstreamProxyID, StickySessionTTLSeconds: route.StickySessionTTLSeconds},
+		{PoolID: route.PoolID, UpstreamProxyID: "other-proxy", StickySessionTTLSeconds: route.StickySessionTTLSeconds},
+	}
+	for _, changed := range changedRoutes {
+		if changedID := deriveProviderSessionID(testDeploymentID, changed, "AU", testProxyRegion, routingIPType, testStickySessionID); changedID == got {
+			t.Errorf("changed route produced unchanged provider session ID: %+v", changed)
+		}
+	}
+	for _, inputs := range [][5]string{
+		{"deployment-2", "AU", testProxyRegion, routingIPType, testStickySessionID},
+		{testDeploymentID, "NZ", testProxyRegion, routingIPType, testStickySessionID},
+		{testDeploymentID, "AU", "vic", routingIPType, testStickySessionID},
+		{testDeploymentID, "AU", testProxyRegion, "datacenter", testStickySessionID},
+		{testDeploymentID, "AU", testProxyRegion, routingIPType, "checkout-43"},
+	} {
+		if changedID := deriveProviderSessionID(inputs[0], route, inputs[1], inputs[2], inputs[3], inputs[4]); changedID == got {
+			t.Errorf("changed inputs %q produced unchanged provider session ID", inputs)
+		}
+	}
+
+	withoutProxy := route
+	withoutProxy.UpstreamProxyID = ""
+	withoutTTL := route
+	withoutTTL.StickySessionTTLSeconds = 0
+	for name, value := range map[string]string{
+		"empty sticky ID": deriveProviderSessionID(testDeploymentID, route, "AU", testProxyRegion, routingIPType, ""),
+		"zero TTL":        deriveProviderSessionID(testDeploymentID, withoutTTL, "AU", testProxyRegion, routingIPType, testStickySessionID),
+		"empty proxy ID":  deriveProviderSessionID(testDeploymentID, withoutProxy, "AU", testProxyRegion, routingIPType, testStickySessionID),
+	} {
+		if value != "" {
+			t.Errorf("%s provider session ID = %q, want empty", name, value)
+		}
+	}
+}

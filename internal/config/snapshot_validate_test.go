@@ -1,9 +1,13 @@
 package config
 
 import (
+	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 )
+
+const validUpstreamProxySnapshotCase = "valid"
 
 func validRuntimeSnapshot() Snapshot {
 	s := NewSnapshot(1)
@@ -28,6 +32,69 @@ func TestValidateSnapshotAcceptsDeploymentPolicy(t *testing.T) {
 	err := ValidateSnapshot(validRuntimeSnapshot())
 	if err != nil {
 		t.Fatalf("ValidateSnapshot() error = %v", err)
+	}
+}
+
+func TestValidateSnapshotUpstreamProxy(t *testing.T) {
+	t.Parallel()
+
+	for name, upstreamProxy := range map[string]*ExecutorPoolUpstreamProxy{
+		validUpstreamProxySnapshotCase: {ID: "brightdata-resi", TrustedRemoteResolution: true},
+		"untrusted":                    {ID: "brightdata-resi"},
+		"empty id":                     {TrustedRemoteResolution: true},
+		"invalid id":                   {ID: "bad proxy", TrustedRemoteResolution: true},
+		"oversized id":                 {ID: strings.Repeat("x", MaxUpstreamProxyIDBytes+1), TrustedRemoteResolution: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := validRuntimeSnapshot()
+			s.ExecutorPools[0].UpstreamProxy = upstreamProxy
+
+			err := ValidateSnapshot(s)
+			if name == validUpstreamProxySnapshotCase && err != nil {
+				t.Fatalf("ValidateSnapshot() error = %v", err)
+			}
+			if name != validUpstreamProxySnapshotCase && !errors.Is(err, ErrInvalidSnapshot) {
+				t.Fatalf("ValidateSnapshot() error = %v, want ErrInvalidSnapshot", err)
+			}
+		})
+	}
+
+	s := validRuntimeSnapshot()
+	s.ExecutorPools[0].UpstreamProxy = &ExecutorPoolUpstreamProxy{ID: "shared", TrustedRemoteResolution: true}
+	s.ExecutorPools = append(s.ExecutorPools, ExecutorPool{ID: "secondary", ExecutorType: "egress", Enabled: true, UpstreamProxy: &ExecutorPoolUpstreamProxy{ID: "shared", TrustedRemoteResolution: true}})
+	err := ValidateSnapshot(s)
+	if err != nil {
+		t.Fatalf("ValidateSnapshot() with shared profile error = %v", err)
+	}
+}
+
+func TestExecutorPoolUpstreamProxyStrictJSON(t *testing.T) {
+	t.Parallel()
+
+	decoder := json.NewDecoder(strings.NewReader(`{"id":"proxy-pool","executor_type":"egress","upstream_proxy":{"id":"profile","trusted_remote_resolution":true,"endpoint":"http://not-allowed:8080"}}`))
+	decoder.DisallowUnknownFields()
+
+	var pool ExecutorPool
+	err := decoder.Decode(&pool)
+	if err == nil || !strings.Contains(err.Error(), "unknown field") {
+		t.Fatalf("Decode() error = %v, want unknown field", err)
+	}
+}
+
+func TestSnapshotCloneIsolatesExecutorPoolUpstreamProxy(t *testing.T) {
+	t.Parallel()
+
+	s := validRuntimeSnapshot()
+	s.ExecutorPools[0].UpstreamProxy = &ExecutorPoolUpstreamProxy{ID: "profile", TrustedRemoteResolution: true}
+	cloned := s.Clone()
+	cloned.ExecutorPools[0].UpstreamProxy.ID = "changed"
+	cloned.ExecutorPools[0].UpstreamProxy.TrustedRemoteResolution = false
+
+	if s.ExecutorPools[0].UpstreamProxy.ID != "profile" || !s.ExecutorPools[0].UpstreamProxy.TrustedRemoteResolution {
+		t.Fatalf("Clone() mutated source upstream proxy: %+v", s.ExecutorPools[0].UpstreamProxy)
+	}
+	if cloned.ExecutorPools[0].UpstreamProxy == s.ExecutorPools[0].UpstreamProxy {
+		t.Fatal("Clone() retained upstream proxy pointer")
 	}
 }
 

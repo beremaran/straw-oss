@@ -28,10 +28,13 @@ func TestBuildCapabilitiesUsesConfiguredPools(t *testing.T) {
 	t.Parallel()
 
 	caps := buildCapabilities(config.EgressConfig{Capabilities: config.EgressCapabilities{
-		AllowedPools: []config.EgressPoolRef{{PoolID: "residential"}, {PoolID: "datacenter"}},
+		AllowedPools: []config.EgressPoolRef{{PoolID: "residential", UpstreamProxyID: "provider-resi"}, {PoolID: "datacenter"}},
 	}})
 	if len(caps.AllowedPools) != 2 || caps.AllowedPools[0].GetDeploymentId() != config.DefaultDeploymentID || caps.AllowedPools[1].GetPoolId() != "datacenter" {
 		t.Fatalf("AllowedPools = %+v", caps.AllowedPools)
+	}
+	if got := caps.AllowedPools[0].GetUpstreamProxyId(); got != "provider-resi" {
+		t.Fatalf("upstream proxy id = %q, want provider-resi", got)
 	}
 }
 

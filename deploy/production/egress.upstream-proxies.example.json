@@ -1,0 +1,63 @@
+{
+  "config_version": "v1",
+  "egress": {
+    "worker_id": "egress-upstream-proxy-example",
+    "capabilities": {
+      "allowed_pools": [
+        {"pool_id": "brightdata-au-v1", "upstream_proxy_id": "brightdata-resi-v1"},
+        {"pool_id": "oxylabs-au-v1", "upstream_proxy_id": "oxylabs-resi-v1"},
+        {"pool_id": "apify-au-v1", "upstream_proxy_id": "apify-proxy-v1"},
+        {"pool_id": "scrapedo-au-v1", "upstream_proxy_id": "scrapedo-proxy-v1"}
+      ],
+      "countries": ["AU"],
+      "ip_types": ["residential"],
+      "max_concurrency": 4
+    },
+    "upstream_proxies": [
+      {
+        "id": "brightdata-resi-v1",
+        "endpoint": "http://brd.superproxy.io:22225",
+        "auth": {
+          "type": "basic",
+          "username_env": "BRIGHTDATA_USERNAME",
+          "password_env": "BRIGHTDATA_PASSWORD",
+          "username_template": "{{.Username}}{{if .Country}}-country-{{lower .Country}}{{end}}{{if .Session}}-session-{{.Session}}{{end}}"
+        },
+        "defaults": {"country": "AU", "ip_type": "residential"}
+      },
+      {
+        "id": "oxylabs-resi-v1",
+        "endpoint": "http://pr.oxylabs.io:7777",
+        "auth": {
+          "type": "basic",
+          "username_env": "OXYLABS_USERNAME",
+          "password_env": "OXYLABS_PASSWORD",
+          "username_template": "{{.Username}}{{if .Country}}-cc-{{upper .Country}}{{end}}{{if .Session}}-sessid-{{.Session}}{{end}}"
+        },
+        "defaults": {"country": "AU", "ip_type": "residential"}
+      },
+      {
+        "id": "apify-proxy-v1",
+        "endpoint": "http://proxy.apify.com:8000",
+        "auth": {
+          "type": "basic",
+          "username_env": "APIFY_PROXY_USERNAME",
+          "password_env": "APIFY_PROXY_PASSWORD",
+          "username_template": "{{.Username}}{{if .Session}},session-{{.Session}}{{end}}{{if .Country}},country-{{upper .Country}}{{end}}"
+        },
+        "defaults": {"country": "AU", "ip_type": "residential"}
+      },
+      {
+        "id": "scrapedo-proxy-v1",
+        "endpoint": "http://proxy.scrape.do:8080",
+        "auth": {
+          "type": "basic",
+          "username_env": "SCRAPEDO_PROXY_USERNAME",
+          "password_env": "SCRAPEDO_PROXY_PASSWORD",
+          "username_template": "{{.Username}}"
+        },
+        "defaults": {"country": "AU", "ip_type": "residential"}
+      }
+    ]
+  }
+}

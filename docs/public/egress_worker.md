@@ -22,8 +22,9 @@ after the worker has connected and registered.
 
 ## Place workers near destinations
 
-Workers only need outbound access to NATS and destination hosts. They do not expose the public Control API. You can
-place workers in different networks or regions, provided they can reach the deployment's secured NATS service.
+Workers need outbound access to NATS. Direct-local pools also require destination DNS/network access; proxy-backed
+pools require access to their configured gateways. Workers do not expose the public Control API. You can place them in
+different networks or regions, provided they can reach the deployment's secured NATS service and required outbound hop.
 
 ## Claim executor pools
 
@@ -55,6 +56,65 @@ type must exactly match the pool, it must advertise every required pool tag, and
 remain within the pool's allowed country, region, and IP-type lists. Disabled pools never receive new assignments;
 degraded workers are admitted only when the pool allows them.
 
+## Use a trusted upstream proxy
+
+A proxy-backed Control pool contains `upstream_proxy: {"id":"profile-id","trusted_remote_resolution":true}`. The
+worker must claim that fresh pool ID with the exact same profile identity and configure the profile locally:
+
+```json
+{
+  "config_version": "v1",
+  "egress": {
+    "worker_id": "egress-proxy-1",
+    "capabilities": {
+      "allowed_pools": [
+        {
+          "pool_id": "brightdata-au-v1",
+          "upstream_proxy_id": "brightdata-resi-v1"
+        }
+      ],
+      "countries": ["AU"],
+      "ip_types": ["residential"]
+    },
+    "upstream_proxies": [
+      {
+        "id": "brightdata-resi-v1",
+        "endpoint": "http://brd.superproxy.io:22225",
+        "auth": {
+          "type": "basic",
+          "username_env": "BRIGHTDATA_USERNAME",
+          "password_env": "BRIGHTDATA_PASSWORD",
+          "username_template": "{{.Username}}{{if .Country}}-country-{{lower .Country}}{{end}}{{if .Session}}-session-{{.Session}}{{end}}"
+        },
+        "defaults": {"country": "AU", "ip_type": "residential"}
+      }
+    ]
+  }
+}
+```
+
+Control never receives profile endpoints, credentials, or rendered usernames. At registration it compares the
+worker's `capabilities.allowed_pools[].upstream_proxy_id` with the immutable pool definition; a missing, stale, or
+different value is ineligible. Proxy claims require protocol minor 2. Use fresh proxy pool and profile IDs when
+materially changing provider account, zone, endpoint, or default semantics, and never repurpose an old direct pool ID.
+
+Endpoints must use `http` or `https` with an explicit hostname and port. Authentication is `none` or `basic`; Basic
+credentials come from the environment variables named by `username_env` and optional `password_env`. A missing
+`username_template` is `{{.Username}}`. Templates expose only `Username`, `Session`, `Country`, `Region`, and `IPType`,
+with only `lower` and `upper` functions. Per-request country, region, and IP type override profile defaults. A template
+must include `.Session` for provider-managed sticky sessions unless the account has an equivalent static-exit contract.
+
+The official worker ignores process `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY`. It uses one HTTP CONNECT connector for
+decoded HTTP, decoded HTTPS, named fingerprints, HTTP/2 targets, and raw tunnels. Every proxied request gets a new
+CONNECT tunnel; proxy-mode application connection pooling remains disabled even when direct-local pooling is enabled.
+Instruction/profile/pool mismatches fail closed and never fall back to direct networking.
+
+The [redacted provider example](../../deploy/production/egress.upstream-proxies.example.json) includes illustrative
+Bright Data, Oxylabs, Apify Proxy, and Scrape.do proxy-mode profiles. Set real credential values only in a secret manager
+or worker environment, confirm current provider endpoint and username syntax, and do not make live provider checks part
+of ordinary readiness or CI. The Scrape.do example uses a static username and therefore does not claim session-based
+exit affinity; replace it only with syntax supported by the account.
+
 ## Custom workers
 
 [`straw-sdk-go/egress`](https://github.com/beremaran/straw-sdk-go) and the tagged Python SDK expose worker machinery
@@ -64,13 +124,17 @@ correct. Treat this as an advanced integration surface and pin exact SDK and bin
 
 ### Protocol and admission checklist
 
-Start with the exact compatibility set: worker protocol/binding `v0.3.0` and the public Go/Python SDK tag listed in
-[Compatibility and versioning](compatibility.md). Before a custom worker is admitted, verify all of the following:
+Start with the exact compatibility set: protocol bindings `v0.4.0`, Go SDK `v0.4.0`, or Python SDK `v0.2.1` as listed
+in [Compatibility and versioning](compatibility.md). The Python worker runtime remains direct-only at protocol minor 1;
+use the minor-2 Go worker contract for upstream-proxy pool claims. Before a custom worker is admitted, verify all of the
+following:
 
 - use a unique worker ID and session ID made only from letters, digits, `-`, and `_`; these values become NATS subject
   tokens;
 - publish a signed registration with protocol range, executor type, pool claims, tags/locations/IP modes, supported
   ingress modes, fingerprint names, and maximum concurrency;
+- for a proxy pool, advertise protocol minor 2 and its exact `upstream_proxy_id`; direct pool claims keep that field
+  empty;
 - continue authenticated heartbeats with current health, active requests, available capacity, and drain state;
 - reject assignments while draining, at capacity, or unable to execute the request mode/profile, before request bytes
   are accepted;
@@ -136,5 +200,5 @@ equivalent to the official Egress implementation. Protocol framing and runtime-s
 least stable pre-1.0 surfaces; do not infer compatibility beyond the published matrix.
 
 The official worker advertises all names in the [built-in fingerprint catalogue](compatibility.md#fingerprint-profile-catalogue).
-Custom workers may advertise a subset, but protocol minor 1 registration rejects unknown or duplicate names. An
+Custom workers may advertise a subset, but registration rejects unknown or duplicate names. An
 advertised name promises the pinned TLS/HTTP/2 behavior for that exact profile; HTTP/3 is outside the contract.

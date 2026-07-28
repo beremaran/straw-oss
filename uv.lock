@@ -19,8 +19,8 @@ wheels = [
 
 [[package]]
 name = "straw-protos"
-version = "0.3.0"
-source = { git = "https://github.com/beremaran/straw-protos-python.git?rev=v0.3.0#8b5bd437ad9c6f5eb29ea84dbccb8c54bdb74007" }
+version = "0.4.0"
+source = { git = "https://github.com/beremaran/straw-protos-python.git?rev=v0.4.0#167495e66b349ffa4f951fa65c8108afbe031911" }
 dependencies = [
     { name = "protobuf" },
 ]
@@ -34,12 +34,12 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "straw-sdk", git = "https://github.com/beremaran/straw-sdk-python.git?rev=v0.2.0" }]
+requires-dist = [{ name = "straw-sdk", git = "https://github.com/beremaran/straw-sdk-python.git?rev=v0.2.1" }]
 
 [[package]]
 name = "straw-sdk"
-version = "0.2.0"
-source = { git = "https://github.com/beremaran/straw-sdk-python.git?rev=v0.2.0#8b9627d06ef6207e133f78c374a3f514ba2b78e0" }
+version = "0.2.1"
+source = { git = "https://github.com/beremaran/straw-sdk-python.git?rev=v0.2.1#c59f4d1a049d87682994b6784b9eda82637ee0d3" }
 dependencies = [
     { name = "straw-protos" },
 ]

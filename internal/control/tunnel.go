@@ -16,8 +16,13 @@ import (
 // executeTunnelAttemptOrFallback retries only assignment-time failures. Once
 // Egress has opened the target and Control has written 200 Connection
 // Established, the tunnel is opaque and its route cannot change.
-func (d *DefaultRequestDispatcher) executeTunnelAttemptOrFallback(ctx context.Context, in DispatchInput, route RouteOutcome, snapshot config.Snapshot, policy *DestinationPolicyResult, deadline time.Time, rw io.ReadWriter) (dispatchResult, int64, *PipelineError, RouteOutcome) {
-	result, assignmentMs, perr, established := d.executeTunnelAttemptUnmeasured(ctx, in, route, policy, snapshot.ConfigVersion, deadline, rw)
+func (d *DefaultRequestDispatcher) executeTunnelAttemptOrFallback(ctx context.Context, in DispatchInput, route RouteOutcome, snapshot config.Snapshot, deadline time.Time, rw io.ReadWriter) (dispatchResult, int64, *PipelineError, RouteOutcome) {
+	execution, perr := d.resolveRouteExecution(in, snapshot, route, true)
+	if perr != nil {
+		return dispatchResult{}, 0, perr, route
+	}
+
+	result, assignmentMs, perr, established := d.executeTunnelAttemptUnmeasured(ctx, in, route, execution, snapshot.ConfigVersion, deadline, rw)
 	d.opts.Metrics.ObserveAssignment(time.Duration(assignmentMs) * time.Millisecond)
 
 	if perr == nil || established || !canFallbackBeforeRequestStart(perr.Code) {
@@ -31,14 +36,20 @@ func (d *DefaultRequestDispatcher) executeTunnelAttemptOrFallback(ctx context.Co
 		return result, assignmentMs, perr, route
 	}
 
-	fallbackResult, fallbackAssignmentMs, fallbackErr, _ := d.executeTunnelAttemptUnmeasured(ctx, in, fallback, policy, snapshot.ConfigVersion, deadline, rw)
+	fallbackExecution, fallbackPlanErr := d.resolveRouteExecution(in, snapshot, fallback, true)
+	if fallbackPlanErr != nil {
+		return result, assignmentMs, fallbackPlanErr, fallback
+	}
+
+	fallbackResult, fallbackAssignmentMs, fallbackErr, _ := d.executeTunnelAttemptUnmeasured(ctx, in, fallback, fallbackExecution, snapshot.ConfigVersion, deadline, rw)
 	d.opts.Metrics.ObserveAssignment(time.Duration(fallbackAssignmentMs) * time.Millisecond)
 
 	return fallbackResult, assignmentMs + fallbackAssignmentMs, fallbackErr, fallback
 }
 
-func (d *DefaultRequestDispatcher) executeTunnelAttemptUnmeasured(ctx context.Context, in DispatchInput, route RouteOutcome, policy *DestinationPolicyResult, configVersion uint64, deadline time.Time, rw io.ReadWriter) (dispatchResult, int64, *PipelineError, bool) {
+func (d *DefaultRequestDispatcher) executeTunnelAttemptUnmeasured(ctx context.Context, in DispatchInput, route RouteOutcome, execution routeExecution, configVersion uint64, deadline time.Time, rw io.ReadWriter) (dispatchResult, int64, *PipelineError, bool) {
 	assignmentStarted := d.opts.Now()
+	in.ProtocolMinor = route.ProtocolMinor
 
 	if d.opts.NATS == nil {
 		return dispatchResult{}, 0, &PipelineError{Code: TransportUnavailable}, false
@@ -57,7 +68,7 @@ func (d *DefaultRequestDispatcher) executeTunnelAttemptUnmeasured(ctx context.Co
 	frames := make(chan *strawpb.StreamFrame, defaultRequestFrameBuffer)
 
 	sub, err := d.opts.NATS.Subscribe(e2cSubject, func(msg *nats.Msg) {
-		frames <- decodeDispatchFrame(msg.Data)
+		frames <- decodeDispatchFrame(msg.Data, route.ProtocolMinor)
 	})
 	if err != nil {
 		return dispatchResult{}, 0, &PipelineError{Code: TransportUnavailable}, false
@@ -70,7 +81,7 @@ func (d *DefaultRequestDispatcher) executeTunnelAttemptUnmeasured(ctx context.Co
 		return dispatchResult{}, 0, &PipelineError{Code: TransportUnavailable}, false
 	}
 
-	ack, perr := d.requestAssign(route.AssignSubject, in, d.assignRequest(in, route, configVersion, deadline), deadline)
+	ack, perr := d.requestAssign(route.AssignSubject, in, d.assignRequest(in, route, configVersion, deadline), route.ProtocolMinor, deadline)
 	if perr != nil {
 		return dispatchResult{}, millisSince(assignmentStarted, d.opts.Now()), perr, false
 	}
@@ -81,7 +92,7 @@ func (d *DefaultRequestDispatcher) executeTunnelAttemptUnmeasured(ctx context.Co
 
 	assignmentMs := millisSince(assignmentStarted, d.opts.Now())
 
-	nextSeq, err := d.sendRequestStart(ctx, c2eSubject, in, route, policy, configVersion, deadline)
+	nextSeq, err := d.sendRequestStart(ctx, c2eSubject, in, route, execution, configVersion, deadline)
 	if err != nil {
 		return dispatchResult{}, assignmentMs, requestStreamPipelineError(err), false
 	}
@@ -122,19 +133,21 @@ func (d *DefaultRequestDispatcher) streamTunnel(ctx context.Context, frames <-ch
 }
 
 type tunnelStreamState struct {
-	dispatcher  *DefaultRequestDispatcher
-	validator   *natsx.StreamValidator
-	route       RouteOutcome
-	deadline    time.Time
-	c2eSubject  string
-	in          DispatchInput
-	c2eSeq      uint64
-	upload      *requestBodyUpload
-	uploadErr   <-chan error
-	rw          io.Writer
-	result      dispatchResult
-	egressStart time.Time
-	established bool
+	dispatcher      *DefaultRequestDispatcher
+	validator       *natsx.StreamValidator
+	route           RouteOutcome
+	deadline        time.Time
+	c2eSubject      string
+	in              DispatchInput
+	c2eSeq          uint64
+	upload          *requestBodyUpload
+	uploadErr       <-chan error
+	rw              io.Writer
+	result          dispatchResult
+	egressStart     time.Time
+	established     bool
+	outboundStarted bool
+	responseStarted bool
 }
 
 func (s *tunnelStreamState) next(ctx context.Context, ticks <-chan time.Time, frames <-chan *strawpb.StreamFrame) (bool, *PipelineError) {
@@ -181,6 +194,10 @@ func (s *tunnelStreamState) accept(frame *strawpb.StreamFrame) (bool, *PipelineE
 	ok, done, perr := acceptedResponseFrame(s.validator.Accept(frame))
 	if !ok || done {
 		return done, perr
+	}
+
+	if perr := s.dispatcher.validateRouteResponseFrame(s.route, frame, &s.outboundStarted, &s.responseStarted); perr != nil {
+		return true, perr
 	}
 
 	if credit := frame.GetCredit(); credit != nil {

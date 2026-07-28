@@ -187,7 +187,11 @@ func buildCapabilities(cfg config.EgressConfig) sdkegress.Capabilities {
 			poolID = config.DefaultPoolID
 		}
 
-		allowedPools = append(allowedPools, &strawpb.RegisterRequest_PoolRef{DeploymentId: deploymentID, PoolId: poolID})
+		allowedPools = append(allowedPools, &strawpb.RegisterRequest_PoolRef{
+			DeploymentId:    deploymentID,
+			PoolId:          poolID,
+			UpstreamProxyId: pool.UpstreamProxyID,
+		})
 	}
 
 	if len(allowedPools) == 0 {
@@ -223,7 +227,44 @@ func newMetricsRegistry(ready *atomic.Bool, sessions *internalegress.SessionTrac
 	return metricsRegistry, metrics
 }
 
+func upstreamProxyConfigs(configs []config.EgressUpstreamProxyConfig) []internalegress.UpstreamProxyConfig {
+	out := make([]internalegress.UpstreamProxyConfig, 0, len(configs))
+
+	for _, profile := range configs {
+		out = append(out, internalegress.UpstreamProxyConfig{
+			ID:       profile.ID,
+			Endpoint: profile.Endpoint,
+			Auth: internalegress.UpstreamProxyAuthConfig{
+				Type:             profile.Auth.Type,
+				UsernameEnv:      profile.Auth.UsernameEnv,
+				PasswordEnv:      profile.Auth.PasswordEnv,
+				UsernameTemplate: profile.Auth.UsernameTemplate,
+			},
+			Defaults: internalegress.UpstreamProxyDefaults{
+				Country: profile.Defaults.Country,
+				Region:  profile.Defaults.Region,
+				IPType:  profile.Defaults.IPType,
+			},
+		})
+	}
+
+	return out
+}
+
 func runWorker(ctx context.Context, natsConn *natsx.Connection, cfg config.EgressConfig) error {
+	upstreamProfiles, err := internalegress.ResolveUpstreamProxyProfiles(upstreamProxyConfigs(cfg.UpstreamProxies))
+	if err != nil {
+		return fmt.Errorf("resolve upstream proxy profiles: %w", err)
+	}
+
+	upstreamPools := make(map[string]string)
+
+	for _, pool := range cfg.Capabilities.AllowedPools {
+		if pool.UpstreamProxyID != "" {
+			upstreamPools[pool.PoolID] = pool.UpstreamProxyID
+		}
+	}
+
 	_, priv, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		return fmt.Errorf("generate worker identity: %w", err)
@@ -255,7 +296,9 @@ func runWorker(ctx context.Context, natsConn *natsx.Connection, cfg config.Egres
 			IdleTimeout:         time.Duration(pool.IdleTimeoutMS) * time.Millisecond,
 			MaxLifetime:         time.Duration(pool.MaxLifetimeMS) * time.Millisecond,
 		},
-		Metrics: metrics,
+		Metrics:               metrics,
+		UpstreamProxyProfiles: upstreamProfiles,
+		UpstreamProxyPools:    upstreamPools,
 	})
 
 	stopHealth := serveHealthHTTP(ctx, cfg, ready, metricsRegistry)

@@ -14,6 +14,39 @@
     {"name": "frame-after-terminal", "expected": "frameAfterTerminal"}
   ],
   "error": {"code": "ERROR_CODE_UPSTREAM_RESET", "category": "ERROR_CATEGORY_EGRESS", "retryable": true},
+  "request_start": {
+    "direct": {
+      "mode": "REQUEST_MODE_DECODED_HTTP",
+      "method": "GET",
+      "url": "https://www.example.com/api/products",
+      "selected_route_id": "route-direct",
+      "selected_pool_id": "pool-direct",
+      "deadline_unix_ms": 1700000060000,
+      "replayable": true,
+      "resolution_mode": "DESTINATION_RESOLUTION_DIRECT_LOCAL",
+      "policy_version": "v1",
+      "wire_hex": "080112034745541a2468747470733a2f2f7777772e6578616d706c652e636f6d2f6170692f70726f6475637473320c726f7574652d6469726563743a0b706f6f6c2d64697265637440e0a499ffbc31480172066202763168017a027631"
+    },
+    "upstream_proxy": {
+      "mode": "REQUEST_MODE_DECODED_HTTP",
+      "method": "GET",
+      "url": "https://www.coles.com.au/api/products",
+      "selected_route_id": "route-proxy",
+      "selected_pool_id": "pool-proxy",
+      "deadline_unix_ms": 1700000060000,
+      "replayable": true,
+      "resolution_mode": "DESTINATION_RESOLUTION_UPSTREAM_PROXY_REMOTE",
+      "policy_version": "v1",
+      "upstream_proxy_instruction": {
+        "upstream_proxy_id": "brightdata-resi",
+        "provider_session_id": "0123456789abcdef0123456789abcdef",
+        "country": "AU",
+        "region": "nsw",
+        "ip_type": "residential"
+      },
+      "wire_hex": "080112034745541a2568747470733a2f2f7777772e636f6c65732e636f6d2e61752f6170692f70726f6475637473320b726f7574652d70726f78793a0a706f6f6c2d70726f787940e0a499ffbc31480172066202763168027a0276318201490a0f627269676874646174612d72657369122030313233343536373839616263646566303132333435363738396162636465661a02415522036e73772a0b7265736964656e7469616c"
+    }
+  },
   "body_reference": {
     "object_key": "deployment/deployment-fixture/request/req-fixture/request/body",
     "expected_size_bytes": 5,

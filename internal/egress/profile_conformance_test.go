@@ -30,9 +30,9 @@ import (
 )
 
 const (
-	profileGoldenGREASE = "GREASE"
-	profileHTTP11       = "http/1.1"
-	profileObserverHost = "profile.observer.test"
+	profileGoldenGREASE  = "GREASE"
+	profileObserverHost  = "profile.observer.test"
+	priorityBehaviorNone = "none"
 )
 
 // Keep the wire contract next to the observer so a registry edit cannot make
@@ -270,7 +270,7 @@ func compareHTTP2Observation(t *testing.T, got observedConformance, want goldenH
 	if !slices.Equal(got.pseudoHeaderOrder, want.PseudoHeaderOrder) {
 		t.Fatalf("pseudo-header order = %v, want %v", got.pseudoHeaderOrder, want.PseudoHeaderOrder)
 	}
-	if want.PriorityBehavior == "none" && got.prioritySeen {
+	if want.PriorityBehavior == priorityBehaviorNone && got.prioritySeen {
 		t.Fatal("profile sent an unexpected HTTP/2 priority frame")
 	}
 	if !slices.Equal(got.applicationHeaderOrder, want.ApplicationHeaderOrder) {

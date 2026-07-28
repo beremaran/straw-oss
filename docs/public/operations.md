@@ -58,6 +58,13 @@ A worker cannot see what it never receives: assignments rejected for capacity or
 `straw_requests_total{error_code="executor_capacity_exhausted"}`, and raw CONNECT tunnel volume is streamed by the
 worker SDK and is absent from `straw_egress_bytes_total`.
 
+Upstream CONNECT failures use the existing implemented worker series
+`straw_egress_upstream_errors_total{code="upstream_proxy_failure"}`; the corresponding Control series is
+`straw_requests_total{error_code="upstream_proxy_failure"}`. Do not query
+`straw_egress_requests_total{error_code="upstream_proxy_failure"}`: that metric name is not exported by this runtime.
+Neither upstream proxy profile IDs nor provider session IDs are metric labels, and they must not be added as labels in
+deployment recording rules.
+
 Expose metrics only to your monitoring network. No telemetry database is required.
 
 ### Scrape and alert examples
@@ -101,6 +108,12 @@ and durations. The startup NATS `url` field is credential-redacted. Never emit b
 upstream or signed receipt URLs, headers, or bodies. A safe escalation bundle contains versions, profile, redacted
 config shape, health/readiness, metric names/values, and request IDs only.
 
+For upstream proxies, safe event fields are the bounded profile ID, fixed failure fact, numeric CONNECT status, phase,
+and bounded duration. Startup validation may include endpoint host and port. Never log a rendered provider username,
+password, `Proxy-Authorization`, provider session ID, raw sticky ID, full destination URL/query, or proxy response header
+value. Do not enable credential/session debug logging while troubleshooting; use the fixed facts and status described in
+[Troubleshooting](troubleshooting.md#upstream-proxy-failures).
+
 A representative startup event is:
 
 ```json
@@ -141,10 +154,36 @@ Keep pool definitions and official-worker `allowed_pools` in the same deployment
 not tenant authorization, and Straw does not provide cross-deployment or per-user pool permissions; run a separate
 deployment when isolation is required.
 
+## Roll out upstream proxy pools
+
+Protocol minor 2 requires a Control-first rollout because an old Control rejects minor-2 workers, silently drops the
+new pool object while decoding snapshots, and can strip proxy capability from shared worker rows. Keep all active pools
+direct throughout the version transition:
+
+1. Release the canonical protocol and `v0.4.0` Go/Python bindings, then the protocol-coupled SDKs.
+2. Deploy the new Control binary first while existing minor-0/minor-1 direct workers continue serving direct pools.
+3. Remove every old Control instance. After the last old shared-state writer stops, expire/delete shared worker rows and
+   force workers to register again.
+4. Deploy protocol-minor-2 official workers against direct pools and verify fresh registration with the upgraded
+   Controls.
+5. Add fresh disabled proxy pools, roll the intended workers with worker-local `upstream_proxies` and exact claims,
+   verify registry eligibility/profile parity, then add and enable one canary route.
+
+Canary REST, absolute-form HTTP proxy, and raw CONNECT paths. Validate exit country/type, same-pool worker fallback,
+provider session retention, proxy error rate, and direct-pool regressions without logging session or credential values.
+Do not claim exact-IP persistence; effective affinity remains bounded by both the active Straw route pin and provider
+retention.
+
+Rollback by disabling proxy routes or pools and selecting an existing/fresh direct pool. Never mutate a proxy pool into
+a direct pool under the same ID, because that obscures resolution and affinity semantics and can make stale claims
+unsafe. Worker-local profiles may remain during a coordinated rollback window, but ordinary startup validation rejects
+unused profiles.
+
 ## Upgrades
 
-Read `CHANGELOG.md`, test the new version against a staging deployment, update workers before or with Control, and
-keep protocol-coupled custom workers pinned until verified.
+Read `CHANGELOG.md`, test the new version against a staging deployment, and keep protocol-coupled custom workers pinned
+until verified. For protocol minor 2, follow the Control-first sequence above; do not apply the older generic
+Egress-first sequence.
 
 When the runtime-administration profile is enabled, include the NATS JetStream configuration bucket in backup and
 recovery drills. Inspect rollout status after upgrades; an official worker reports `applied` after receiving the

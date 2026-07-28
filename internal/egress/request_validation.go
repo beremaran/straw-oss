@@ -27,7 +27,8 @@ func validateStart(start *strawpb.RequestStart) *executionError {
 		return executorFailure(strawpb.ErrorCode_ERROR_CODE_EXECUTOR_INTERNAL_ERROR, invalidRequestStartFact)
 	}
 
-	if start.GetDestinationPolicy().GetResolutionMode() != strawpb.DestinationResolutionMode_DESTINATION_RESOLUTION_DIRECT_LOCAL {
+	mode := start.GetDestinationPolicy().GetResolutionMode()
+	if mode != strawpb.DestinationResolutionMode_DESTINATION_RESOLUTION_DIRECT_LOCAL && mode != strawpb.DestinationResolutionMode_DESTINATION_RESOLUTION_UPSTREAM_PROXY_REMOTE {
 		return executorFailure(strawpb.ErrorCode_ERROR_CODE_DESTINATION_DENIED, unsupportedModeFact)
 	}
 
@@ -56,7 +57,8 @@ func validateTunnelStart(start *strawpb.RequestStart) *executionError {
 		return executorFailure(strawpb.ErrorCode_ERROR_CODE_EXECUTOR_INTERNAL_ERROR, invalidRequestStartFact)
 	}
 
-	if start.GetDestinationPolicy().GetResolutionMode() != strawpb.DestinationResolutionMode_DESTINATION_RESOLUTION_DIRECT_LOCAL {
+	mode := start.GetDestinationPolicy().GetResolutionMode()
+	if mode != strawpb.DestinationResolutionMode_DESTINATION_RESOLUTION_DIRECT_LOCAL && mode != strawpb.DestinationResolutionMode_DESTINATION_RESOLUTION_UPSTREAM_PROXY_REMOTE {
 		return executorFailure(strawpb.ErrorCode_ERROR_CODE_DESTINATION_DENIED, unsupportedModeFact)
 	}
 

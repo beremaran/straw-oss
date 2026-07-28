@@ -283,6 +283,7 @@ func (d *DefaultRequestDispatcher) publishFrame(subject string, in DispatchInput
 		DeploymentId:   in.Identity.DeploymentID,
 		DeadlineUnixMs: deadline.UnixMilli(),
 		ProtocolMajor:  ProtocolMajor,
+		ProtocolMinor:  in.ProtocolMinor,
 		Attempt:        defaultRequestAttempt,
 		Payload:        &strawpb.Envelope_StreamFrame{StreamFrame: frame},
 	}

@@ -1,6 +1,9 @@
 package control
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"strings"
 	"sync"
 	"time"
 )
@@ -39,15 +42,17 @@ type RoutingRule struct {
 // candidate's claimed capability values to be in the list; empty means
 // unrestricted.
 type PoolPolicy struct {
-	DeploymentID         string
-	PoolID               string
-	Enabled              bool
-	ExecutorType         string
-	Tags                 []string
-	AllowDegradedWorkers bool
-	AllowedCountries     []string
-	AllowedRegions       []string
-	AllowedIPTypes       []string
+	DeploymentID            string
+	PoolID                  string
+	Enabled                 bool
+	ExecutorType            string
+	Tags                    []string
+	AllowDegradedWorkers    bool
+	AllowedCountries        []string
+	AllowedRegions          []string
+	AllowedIPTypes          []string
+	UpstreamProxyID         string
+	TrustedRemoteResolution bool
 }
 
 // RouteRequest is the evaluated request context: client hints plus
@@ -80,15 +85,19 @@ const (
 
 // RouteOutcome is the result of evaluating one RouteRequest.
 type RouteOutcome struct {
-	OK            bool
-	ErrorCode     string
-	RuleID        string
-	PoolID        string
-	WorkerID      string
-	ExecutorType  string
-	SessionID     string
-	AssignSubject string
-	Sticky        bool
+	OK                      bool
+	ErrorCode               string
+	RuleID                  string
+	PoolID                  string
+	WorkerID                string
+	ExecutorType            string
+	SessionID               string
+	AssignSubject           string
+	Sticky                  bool
+	UpstreamProxyID         string
+	TrustedRemoteResolution bool
+	StickySessionTTLSeconds uint32
+	ProtocolMinor           uint32
 }
 
 // RuleProvider returns the immutable routing-rule snapshot for a deployment,
@@ -191,7 +200,7 @@ func (rt *Router) evaluateRule(req RouteRequest, rule RoutingRule) ruleEvaluatio
 	}
 
 	if req.StickySessionID != "" {
-		outcome, handled := rt.evaluateSticky(req, rule, candidates)
+		outcome, handled := rt.evaluateSticky(req, rule, policy, candidates)
 		if handled {
 			evaluation.outcome = outcome
 			evaluation.terminal = true
@@ -208,11 +217,7 @@ func (rt *Router) evaluateRule(req RouteRequest, rule RoutingRule) ruleEvaluatio
 		return evaluation
 	}
 
-	evaluation.outcome = RouteOutcome{
-		OK: true, RuleID: rule.ID, PoolID: rule.TargetPoolID,
-		WorkerID: picked.WorkerID, ExecutorType: picked.ExecutorType,
-		SessionID: picked.SessionID, AssignSubject: picked.AssignSubject,
-	}
+	evaluation.outcome = successfulRouteOutcome(rule, policy, picked, false)
 	evaluation.selected = true
 
 	return evaluation
@@ -241,18 +246,14 @@ func filterFingerprintCandidates(candidates []PoolCandidate, requested string) [
 // means "no usable pin under this rule, fall through to the next rule" — it
 // does not fall through once a rule has attempted a pin and exhausted
 // fallback; that returns a final outcome.
-func (rt *Router) evaluateSticky(req RouteRequest, rule RoutingRule, candidates []PoolCandidate) (RouteOutcome, bool) {
+func (rt *Router) evaluateSticky(req RouteRequest, rule RoutingRule, policy PoolPolicy, candidates []PoolCandidate) (RouteOutcome, bool) {
 	pinned, ok := rt.sticky.Get(req.DeploymentID, req.StickySessionID)
 	if ok {
 		for _, c := range candidates {
 			if c.WorkerID == pinned {
 				rt.sticky.Refresh(req.DeploymentID, req.StickySessionID, pinned, stickyTTL(rule))
 
-				return RouteOutcome{
-					OK: true, RuleID: rule.ID, PoolID: rule.TargetPoolID,
-					WorkerID: c.WorkerID, ExecutorType: c.ExecutorType,
-					SessionID: c.SessionID, AssignSubject: c.AssignSubject, Sticky: true,
-				}, true
+				return successfulRouteOutcome(rule, policy, c, true), true
 			}
 		}
 		// Pinned target not in this rule's eligible pool: unavailable.
@@ -269,15 +270,35 @@ func (rt *Router) evaluateSticky(req RouteRequest, rule RoutingRule, candidates 
 
 	rt.sticky.Set(req.DeploymentID, req.StickySessionID, picked.WorkerID, stickyTTL(rule))
 
+	return successfulRouteOutcome(rule, policy, picked, true), true
+}
+
+func successfulRouteOutcome(rule RoutingRule, policy PoolPolicy, candidate PoolCandidate, sticky bool) RouteOutcome {
 	return RouteOutcome{
 		OK: true, RuleID: rule.ID, PoolID: rule.TargetPoolID,
-		WorkerID: picked.WorkerID, ExecutorType: picked.ExecutorType,
-		SessionID: picked.SessionID, AssignSubject: picked.AssignSubject, Sticky: true,
-	}, true
+		WorkerID: candidate.WorkerID, ExecutorType: candidate.ExecutorType,
+		SessionID: candidate.SessionID, AssignSubject: candidate.AssignSubject, Sticky: sticky,
+		UpstreamProxyID: policy.UpstreamProxyID, TrustedRemoteResolution: policy.TrustedRemoteResolution,
+		StickySessionTTLSeconds: rule.StickySessionTTLSeconds, ProtocolMinor: candidate.ProtocolMinor,
+	}
 }
 
 func stickyTTL(rule RoutingRule) time.Duration {
 	return time.Duration(rule.StickySessionTTLSeconds) * time.Second
+}
+
+func deriveProviderSessionID(deploymentID string, route RouteOutcome, country, region, ipType, stickyID string) string {
+	if stickyID == "" || route.StickySessionTTLSeconds == 0 || route.UpstreamProxyID == "" {
+		return ""
+	}
+
+	input := strings.Join([]string{
+		"straw-provider-session-v1", deploymentID, route.PoolID, route.UpstreamProxyID,
+		country, region, ipType, stickyID,
+	}, "\x00")
+	sum := sha256.Sum256([]byte(input))
+
+	return hex.EncodeToString(sum[:16])
 }
 
 // matchingRules returns enabled rules for the deployment whose match conditions
@@ -416,14 +437,8 @@ func capabilitySatisfies(c PoolCandidate, req RouteRequest) bool {
 // candidate claims for that dimension to be in the allowed list; an empty
 // restriction is unrestricted regardless of what the candidate claims.
 func poolAllows(c PoolCandidate, policy PoolPolicy) bool {
-	if policy.PoolID != "" {
-		if policy.ExecutorType != "" && c.ExecutorType != policy.ExecutorType {
-			return false
-		}
-
-		if !subset(policy.Tags, c.Tags) {
-			return false
-		}
+	if policy.PoolID != "" && !poolClaimsAllowed(c, policy) {
+		return false
 	}
 
 	checks := []bool{
@@ -433,6 +448,22 @@ func poolAllows(c PoolCandidate, policy PoolPolicy) bool {
 	}
 
 	return allTrue(checks)
+}
+
+func poolClaimsAllowed(c PoolCandidate, policy PoolPolicy) bool {
+	if policy.ExecutorType != "" && c.ExecutorType != policy.ExecutorType {
+		return false
+	}
+
+	if c.UpstreamProxyID != policy.UpstreamProxyID {
+		return false
+	}
+
+	if policy.UpstreamProxyID != "" && c.ProtocolMinor < upstreamProxyProtocolMinor {
+		return false
+	}
+
+	return subset(policy.Tags, c.Tags)
 }
 
 // selectExecutor picks the least-loaded eligible candidate, with a

@@ -104,3 +104,78 @@ func TestWorkerRegistrationValidatesConfiguredPoolMembership(t *testing.T) {
 		}
 	}
 }
+
+func TestWorkerRegistrationNegotiatesMinorAndValidatesProxyClaims(t *testing.T) {
+	t.Parallel()
+
+	const (
+		directPoolID = "direct-pool"
+		proxyPoolID  = "proxy-pool"
+		proxyID      = "proxy-profile"
+	)
+
+	registry := NewDeploymentWorkerRegistry(DefaultWorkerTimings(), nil)
+	snapshot := config.NewSnapshot(1)
+	snapshot.ExecutorPools = []config.ExecutorPool{
+		{ID: directPoolID, ExecutorType: errorCategoryEgress, Enabled: true},
+		{ID: proxyPoolID, ExecutorType: errorCategoryEgress, Enabled: true, UpstreamProxy: &config.ExecutorPoolUpstreamProxy{ID: proxyID, TrustedRemoteResolution: true}},
+	}
+	registry.ApplySnapshot(snapshot)
+
+	tests := []struct {
+		name            string
+		minor           uint32
+		poolID          string
+		upstreamProxyID string
+		wantOK          bool
+		wantReason      string
+	}{
+		{name: "minor-0-direct", minor: 0, poolID: directPoolID, wantOK: true},
+		{name: "minor-1-direct", minor: 1, poolID: directPoolID, wantOK: true},
+		{name: "minor-1-proxy", minor: 1, poolID: proxyPoolID, upstreamProxyID: proxyID, wantReason: rejectIncompatibleProto},
+		{name: "minor-2-proxy", minor: 2, poolID: proxyPoolID, upstreamProxyID: proxyID, wantOK: true},
+		{name: "future-minor", minor: ControlSupportedMinor + 1, poolID: directPoolID, wantReason: rejectIncompatibleProto},
+		{name: "direct-with-proxy-claim", minor: 2, poolID: directPoolID, upstreamProxyID: proxyID, wantReason: rejectInvalidPool},
+		{name: "proxy-with-empty-claim", minor: 2, poolID: proxyPoolID, wantReason: rejectInvalidPool},
+		{name: "proxy-with-wrong-claim", minor: 2, poolID: proxyPoolID, upstreamProxyID: "stale-profile", wantReason: rejectInvalidPool},
+	}
+
+	for i, test := range tests {
+		request := &strawpb.RegisterRequest{
+			WorkerId: "protocol-worker-" + string(rune('a'+i)), ExecutorType: errorCategoryEgress,
+			ProtocolMajor: ProtocolMajor, ProtocolMinor: test.minor, MaxConcurrency: 1,
+			AllowedPools: []*strawpb.RegisterRequest_PoolRef{{PoolId: test.poolID, UpstreamProxyId: test.upstreamProxyID}},
+		}
+		outcome, err := registry.Register(context.Background(), request)
+		if err != nil || outcome.OK != test.wantOK || outcome.Reason != test.wantReason {
+			t.Errorf("%s registration = %+v, %v; want ok=%v reason=%q", test.name, outcome, err, test.wantOK, test.wantReason)
+		}
+		if !test.wantOK {
+			continue
+		}
+
+		session := registry.workers[request.WorkerId]
+		if session.supportedProtocolMinor != test.minor || session.protocolMinor != min(ControlSupportedMinor, test.minor) {
+			t.Errorf("%s session minors = supported %d negotiated %d", test.name, session.supportedProtocolMinor, session.protocolMinor)
+		}
+
+		ok, heartbeatErr := registry.Heartbeat(context.Background(), &strawpb.HeartbeatRequest{
+			WorkerId: request.WorkerId, SessionId: outcome.SessionID,
+			Health: strawpb.WorkerHealth_WORKER_HEALTH_READY, AvailableCapacity: 1,
+		})
+		if heartbeatErr != nil || !ok {
+			t.Fatalf("%s heartbeat = %v, %v", test.name, ok, heartbeatErr)
+		}
+		var candidate *PoolCandidate
+		for _, current := range registry.CandidatesForPool(config.DefaultDeploymentID, test.poolID) {
+			if current.WorkerID == request.WorkerId {
+				candidate = &current
+
+				break
+			}
+		}
+		if candidate == nil || candidate.UpstreamProxyID != test.upstreamProxyID || candidate.SupportedProtocolMinor != test.minor || candidate.ProtocolMinor != min(ControlSupportedMinor, test.minor) {
+			t.Fatalf("%s candidate = %+v", test.name, candidate)
+		}
+	}
+}

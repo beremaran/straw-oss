@@ -5,7 +5,7 @@ The REST API has small Go and Python clients. Both accept a base URL and optiona
 ## Go
 
 ```sh
-go get github.com/beremaran/straw-sdk-go@v0.3.0
+go get github.com/beremaran/straw-sdk-go@v0.4.0
 ```
 
 ```go
@@ -45,7 +45,7 @@ func main() {
 }
 ```
 
-The exact `v0.3.0` Go tag supports the fields shown above plus `Body`, `FingerprintProfile`, `TimeoutMs`,
+The exact `v0.4.0` Go tag supports the fields shown above plus `Body`, `FingerprintProfile`, `TimeoutMs`,
 `Replayable`, and `ResponseBodyMode`. Header values are base64-encoded bytes. Non-2xx Straw responses are returned as
 `*straw.APIError` with `HTTPStatus` and the parsed error envelope.
 
@@ -56,7 +56,8 @@ retry for other methods.
 Create one client per base URL/token and reuse it; the client is safe for concurrent requests through Go's shared
 HTTP transport. Every call accepts a context, so set a deadline and cancel abandoned work. The SDK does not retry:
 inspect `APIError.Response.Retryable`, `RetryAfterMs`, and application idempotency before replay. Response bodies are
-fully represented by the bounded API envelope or receipt and require no caller-owned HTTP body close. Use structured
+fully represented by the bounded API envelope or receipt and require no caller-owned HTTP body close. Proxy failures
+preserve an optional `APIError.Response.UpstreamStatus` pointer, including `407`, without exposing credentials. Use structured
 request IDs/error codes in logs and never log tokens, headers, URLs, bodies, or signed receipt references.
 
 For a large body, use `CreateReceipt`, one or more `UploadReceiptPart` calls, and `CompleteReceipt`; then set
@@ -94,7 +95,7 @@ set `ResponseBodyMode: "receipt"`, read `response.Body.ReceiptID`, and close the
 Install the exact public tag:
 
 ```sh
-uv add 'straw-sdk @ git+https://github.com/beremaran/straw-sdk-python.git@v0.2.0'
+uv add 'straw-sdk @ git+https://github.com/beremaran/straw-sdk-python.git@v0.2.1'
 ```
 
 ```python
@@ -115,9 +116,10 @@ except APIError as exc:
     print(exc.http_status, exc.response.code, exc.response.retryable, exc.response.request_id)
 ```
 
-Pass a token as the second `Client` argument. The exact `v0.2.0` package exposes `Client`, `Request`, `Header`,
+Pass a token as the second `Client` argument. The exact `v0.2.1` package exposes `Client`, `Request`, `Header`,
 `RequestBody`, `Response`, `Receipt`, and `APIError` as used above. Non-2xx Straw responses raise `straw.APIError`;
-inspect `exc.http_status` and the typed `exc.response` envelope.
+inspect `exc.http_status` and the typed `exc.response` envelope. `exc.response.upstream_status` is `None` when absent
+and an integer when Control reports a CONNECT response status.
 
 Reuse a client rather than creating one per request. Supply explicit request timeouts and let cancellation/errors
 propagate; there is no automatic retry. A shared client may be used by concurrent application tasks according to the

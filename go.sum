@@ -2,10 +2,10 @@ github.com/andybalholm/brotli v1.2.0 h1:ukwgCxwYrmACq68yiUqwIWnGY0cTPox/M94sVwTo
 github.com/andybalholm/brotli v1.2.0/go.mod h1:rzTDkvFWvIrjDXZHkuS16NPggd91W3kUSvPlQ1pLaKY=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
 github.com/beorn7/perks v1.0.1/go.mod h1:G2ZrVWU2WbWT9wwq4/hrbKbnv/1ERSJQ0ibhJ6rlkpw=
-github.com/beremaran/straw-protos-go v0.3.0 h1:Wkdb5TIFxaxYQavGUsaUZ6xCBhcfvniqADFGChjA/0k=
-github.com/beremaran/straw-protos-go v0.3.0/go.mod h1:Z2dm7B31jyY4gSv9JVvtaVd+Jbth3JKJOirUb5Kzrv0=
-github.com/beremaran/straw-sdk-go v0.3.0 h1:VZumIiBhEEXzwnIVWxtk1/AoWRlcwpyJ/1UTCmKR9vc=
-github.com/beremaran/straw-sdk-go v0.3.0/go.mod h1:U1EahKlEyBEDLpR9ytaXcer4MO1McGIkAUmMEzRt9H8=
+github.com/beremaran/straw-protos-go v0.4.0 h1:G0vUdJ/1jYtw+dJQQBgS8jh2qFOXF1LWXEMTsNMTlDw=
+github.com/beremaran/straw-protos-go v0.4.0/go.mod h1:Z2dm7B31jyY4gSv9JVvtaVd+Jbth3JKJOirUb5Kzrv0=
+github.com/beremaran/straw-sdk-go v0.4.0 h1:ZDq+jmV1+2nmQhLYmFgSnADXGzHO0DzybKgvstVjYCk=
+github.com/beremaran/straw-sdk-go v0.4.0/go.mod h1:6C9v1UN/jcqjU2dOrs+m57Qw5EYQgzSdhITbHo2VN4Y=
 github.com/bogdanfinn/utls v1.7.7-barnius h1:OuJ497cc7F3yKNVHRsYPQdGggmk5x6+V5ZlrCR7fOLU=
 github.com/bogdanfinn/utls v1.7.7-barnius/go.mod h1:aAK1VZQlpKZClF1WEQeq6kyclbkPq4hz6xTbB5xSlmg=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=

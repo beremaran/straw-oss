@@ -63,6 +63,27 @@ Authentication is checked before any hint is trusted. A configured deployment to
 advertise the requested tags, country, region, IP type, and ingress capability. Sticky selection follows the REST
 `allow_sticky_fallback` policy.
 
+## Chained raw CONNECT
+
+When a `CONNECT` route selects a trusted upstream-proxy pool, Straw chains two tunnels rather than dialing the
+destination directly:
+
+```text
+client CONNECT -> Control -> Egress -> provider CONNECT target-host:target-port -> destination
+```
+
+Egress first opens and authenticates the configured provider tunnel. Only after a 2xx provider CONNECT response and a
+matching minor-2 `OutboundStartFrame.upstream_proxy_id` does Control expose `200 Connection Established` to the client.
+The SDK-generated outbound-start frame carries the executed profile ID on both successful and failed raw open attempts;
+Control requires it to match the selected pool exactly. Direct routes carry an empty ID. Missing, duplicate, late, or
+mismatched frame identity is `protocol_error` and never authorizes a direct fallback.
+
+After establishment, client bytes remain opaque and retain their original frame identity and ordering through the
+existing bounded NATS data/credit stream. Egress does not add a target TLS handshake, fingerprint, destination header,
+or proxy authentication header to those bytes. Provider credentials are consumed only by the outer CONNECT request.
+Assignment fallback is possible only before the client-visible `200`; same-pool fallback preserves the provider session
+and different-pool fallback resets it.
+
 ## Behavior and limits
 
 - Absolute-form requests may use `http://` or `https://` URLs and the REST API's supported methods except `CONNECT`.
@@ -70,11 +91,15 @@ advertise the requested tags, country, region, IP type, and ingress capability. 
   `max_inline_response_body_bytes` or eligible for response receipts.
 - The deployment default timeout applies to proxy requests and tunnels, bounded by `request.max_timeout_ms`. A
   CONNECT tunnel closes when that deadline, cancellation, a stream idle timeout, or either endpoint ends it.
-- Destination hostname, resolved-address, and network policy checks are the same checks used by the REST ingress.
+- Destination mode follows the selected pool for every ingress. Direct-local mode performs local DNS, CNAME, and
+  resolved-address checks. Trusted upstream-proxy mode validates literal IPs but delegates hostname DNS to the provider,
+  so it does not have equivalent CIDR/CNAME/private-hostname enforcement.
 - Routing sees `ingress_type: "http_proxy"` for decoded proxy requests and `ingress_type: "connect"` for tunnels.
   An explicitly configured worker `supported_ingress_modes` list must include the needed value.
 - CONNECT is an opaque TCP tunnel. Straw does not intercept TLS, inspect tunneled HTTP, inject headers, or apply an
   outbound TLS fingerprint profile to the client's TLS session.
+- Proxy-backed absolute-form HTTP and HTTPS requests also use CONNECT at the provider; Straw does not use absolute-form
+  forwarding or process proxy environment variables for the provider hop.
 - CONNECT requires an explicit `host:port` authority and HTTP/1.1 connection hijacking. Extended CONNECT over HTTP/2,
   UDP tunneling, and SOCKS are not supported.
 

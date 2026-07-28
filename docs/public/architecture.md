@@ -58,8 +58,10 @@ sequenceDiagram
 1. A client posts a request to Control.
 2. Control validates the bearer token, JSON shape, URL, headers, body size, and timeout.
 3. Control selects an available worker from the rule's enabled pool, requiring claimed membership, exact executor
-   type, required tags, allowed capabilities, health/degraded policy, and available capacity.
-4. The worker acknowledges the assignment and performs the outbound request.
+   type, required tags, allowed capabilities, health/degraded policy, available capacity, and an exact upstream-proxy
+   profile claim when the pool uses one.
+4. The worker acknowledges the assignment and performs the outbound request either directly or through the pool's
+   configured HTTP CONNECT gateway.
 5. Control returns the upstream status, headers, body, and phase timings in one JSON response.
 
 With receipt transport, an application first uploads and verifies a request receipt. Control claims it for one
@@ -78,14 +80,29 @@ the ingress mode is an additional match/capability constraint when configured.
 ## Destination policy and egress safety
 
 Control captures the deployment policy at request start and sends the resolved policy bundle with the assignment.
-Control performs a fail-fast check for literal IPs and host rules. Egress remains authoritative: immediately before a
-connection it resolves every address, validates every resolved IP, checks the configured CNAME suffix policy, and only
-then dials the first validated address. A policy failure returns `destination_denied`; it never silently falls back to
-an unvalidated address.
+The selected executor pool determines one of two explicit resolution modes. An executor pool without an
+`upstream_proxy` object uses direct-local resolution. A pool with an `upstream_proxy` object uses trusted upstream-proxy
+remote resolution and must set `trusted_remote_resolution: true`; it never silently falls back to direct networking.
+
+In direct-local mode, Control performs a fail-fast check for literal IPs and host rules. Egress remains authoritative:
+immediately before a connection it resolves every address, validates every resolved IP, checks the configured CNAME
+suffix policy, and only then dials the first validated address. A policy failure returns `destination_denied`; it never
+falls back to an unvalidated address.
+
+In trusted upstream-proxy remote mode, Control and Egress still validate the URL, hostname and suffix rules, port, and
+every literal target IP. Hostname targets are sent to the statically configured proxy endpoint without local target DNS,
+because the provider owns destination resolution. Consequently, Straw cannot provide direct-local-equivalent CIDR,
+CNAME-chain, or private-hostname/private-address enforcement for hostname targets in this mode. Local DNS preflight is
+not an equivalent safeguard: it can disagree with provider geo DNS and cannot prevent remote rebinding. The trust flag
+is an explicit operator acknowledgement of this loss. Configure provider destination ACLs to deny private, metadata,
+loopback, and special-use addresses whenever the provider supports them.
 
 ### Rule types and precedence
 
 Runtime snapshots use these destination rule types:
+
+Resolved-address and CNAME enforcement in this table applies to direct-local hostname resolution. In trusted remote
+mode, literal IP rules still apply, but provider-resolved hostname addresses and CNAME hops are not visible to Straw.
 
 | Rule type | Pattern | Enforcement |
 | --- | --- | --- |
@@ -111,8 +128,8 @@ public; the resolved addresses are checked at dial time as defense against DNS c
 
 ### Built-in denied destinations
 
-Unless an explicit allowed CIDR overrides them, Egress denies loopback, RFC1918/ULA private ranges, link-local
-unicast, multicast, and these additional special-use ranges:
+Unless an explicit allowed CIDR overrides them, Egress denies literal targets and direct-local resolved addresses in
+loopback, RFC1918/ULA private ranges, link-local unicast, multicast, and these additional special-use ranges:
 
 ```text
 0.0.0.0/8          100.64.0.0/10       192.0.0.0/24
@@ -129,10 +146,11 @@ on application policy as the only protection for cloud metadata or private netwo
 
 ### Resolution, TLS, and redirects
 
-The shipped Control/Egress deployment uses direct local DNS resolution. Egress validates every returned address before
-opening a socket, enforces strict SNI/target-host matching for TLS, and does not follow HTTP redirects. A 3xx response
-is returned to the caller; a redirected target is never fetched by Egress. CONNECT uses the same destination and
-resolved-address checks before establishing the opaque tunnel.
+Direct-local pools resolve with the worker's local DNS and validate every returned address before opening a socket.
+Trusted upstream-proxy pools delegate hostname resolution as described above; literal IP validation is unchanged.
+Target TLS always uses the original normalized destination hostname for SNI and certificate verification, independently
+of any TLS connection to an HTTPS proxy endpoint. Straw does not follow HTTP redirects. A 3xx response is returned to
+the caller and the redirected target is never fetched.
 
 ## Forward-proxy lifecycle
 

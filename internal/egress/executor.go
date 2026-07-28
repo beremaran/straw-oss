@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"net/netip"
@@ -48,6 +49,9 @@ const (
 	responseFrameDataBytes  = 32 << 10
 	defaultPoolIdleTimeout  = 30 * time.Second
 	defaultPoolMaxLifetime  = 5 * time.Minute
+	profileHTTP11           = "http/1.1"
+	httpProtocol11          = "HTTP/1.1"
+	httpProtocol20          = "HTTP/2.0"
 )
 
 // Resolver is the DNS boundary Egress uses before validating resolved IPs.
@@ -61,32 +65,37 @@ type Resolver interface {
 
 // ExecutorOptions configures the P0 outbound executor.
 type ExecutorOptions struct {
-	Resolver           Resolver
-	DialContext        func(context.Context, string, string) (net.Conn, error)
-	Pool               UpstreamConnectionPoolOptions
-	HTTP2Enabled       bool
-	FallbackCacheTTL   time.Duration
-	RootCAs            *x509.CertPool
-	InsecureSkipVerify bool
-	BodyRefHTTPClient  *http.Client
-	Now                func() time.Time
-	Metrics            *Metrics
+	Resolver              Resolver
+	DialContext           func(context.Context, string, string) (net.Conn, error)
+	Pool                  UpstreamConnectionPoolOptions
+	HTTP2Enabled          bool
+	FallbackCacheTTL      time.Duration
+	RootCAs               *x509.CertPool
+	InsecureSkipVerify    bool
+	BodyRefHTTPClient     *http.Client
+	Now                   func() time.Time
+	Metrics               *Metrics
+	UpstreamProxyProfiles map[string]UpstreamProxyProfile
+	UpstreamProxyPools    map[string]string
 }
 
 // Executor performs P0 decoded HTTP/HTTPS outbound execution.
 type Executor struct {
-	resolver             Resolver
-	dialContext          func(context.Context, string, string) (net.Conn, error)
-	pool                 *upstreamConnectionPool
-	http2Enabled         bool
-	fallbackCacheTTL     time.Duration
-	http11Cache          sync.Map
-	rootCAs              *x509.CertPool
-	insecureSkipVerify   bool
-	bodyRefHTTPClient    *http.Client
-	profileSessionCaches map[string]utls.ClientSessionCache
-	now                  func() time.Time
-	metrics              *Metrics
+	resolver              Resolver
+	dialContext           func(context.Context, string, string) (net.Conn, error)
+	pool                  *upstreamConnectionPool
+	http2Enabled          bool
+	fallbackCacheTTL      time.Duration
+	http11Cache           sync.Map
+	rootCAs               *x509.CertPool
+	insecureSkipVerify    bool
+	bodyRefHTTPClient     *http.Client
+	profileSessionCaches  map[string]utls.ClientSessionCache
+	upstreamProxyProfiles map[string]UpstreamProxyProfile
+	upstreamProxyPools    map[string]string
+	upstreamProxy         *upstreamProxyConnector
+	now                   func() time.Time
+	metrics               *Metrics
 }
 
 // UpstreamConnectionPoolOptions configures optional direct-local HTTP
@@ -110,17 +119,25 @@ func NewExecutor(opts ExecutorOptions) *Executor {
 		dialContext = (&net.Dialer{}).DialContext
 	}
 
+	profiles := make(map[string]UpstreamProxyProfile, len(opts.UpstreamProxyProfiles))
+	maps.Copy(profiles, opts.UpstreamProxyProfiles)
+
+	pools := make(map[string]string, len(opts.UpstreamProxyPools))
+	maps.Copy(pools, opts.UpstreamProxyPools)
+
 	exec := &Executor{
-		resolver:             resolver,
-		dialContext:          dialContext,
-		http2Enabled:         opts.HTTP2Enabled,
-		fallbackCacheTTL:     opts.FallbackCacheTTL,
-		rootCAs:              opts.RootCAs,
-		insecureSkipVerify:   opts.InsecureSkipVerify,
-		bodyRefHTTPClient:    opts.BodyRefHTTPClient,
-		profileSessionCaches: newProfileSessionCaches(),
-		now:                  opts.Now,
-		metrics:              opts.Metrics,
+		resolver:              resolver,
+		dialContext:           dialContext,
+		http2Enabled:          opts.HTTP2Enabled,
+		fallbackCacheTTL:      opts.FallbackCacheTTL,
+		rootCAs:               opts.RootCAs,
+		insecureSkipVerify:    opts.InsecureSkipVerify,
+		bodyRefHTTPClient:     opts.BodyRefHTTPClient,
+		profileSessionCaches:  newProfileSessionCaches(),
+		upstreamProxyProfiles: profiles,
+		upstreamProxyPools:    pools,
+		now:                   opts.Now,
+		metrics:               opts.Metrics,
 	}
 
 	if exec.now == nil {
@@ -128,6 +145,7 @@ func NewExecutor(opts ExecutorOptions) *Executor {
 	}
 
 	exec.pool = newUpstreamConnectionPool(opts.Pool, dialContext, exec)
+	exec.upstreamProxy = newUpstreamProxyConnector(profiles, dialContext, opts.RootCAs)
 
 	return exec
 }
@@ -201,22 +219,7 @@ func (e *Executor) ExecuteWithDeployment(ctx context.Context, deploymentID strin
 func (e *Executor) executeWithDeployment(ctx context.Context, deploymentID string, start *strawpb.RequestStart, body []byte, attempt uint32, send func(*strawpb.StreamFrame)) []*strawpb.StreamFrame {
 	frames := newFrameBuilder(attempt)
 
-	target, failure := parseTarget(start)
-	if failure != nil {
-		return []*strawpb.StreamFrame{frames.error(failure)}
-	}
-
-	failure = validateStart(start)
-	if failure != nil {
-		return []*strawpb.StreamFrame{frames.error(failure)}
-	}
-
-	executedProfile, failure := resolveFingerprintInstruction(start.GetFingerprintInstruction())
-	if failure != nil {
-		return []*strawpb.StreamFrame{frames.error(failure)}
-	}
-
-	failure = validateHostSuffixPolicy(target.host, start.GetDestinationPolicy())
+	target, upstreamProxyID, executedProfile, failure := e.validateExecutionStart(start)
 	if failure != nil {
 		return []*strawpb.StreamFrame{frames.error(failure)}
 	}
@@ -226,10 +229,10 @@ func (e *Executor) executeWithDeployment(ctx context.Context, deploymentID strin
 
 	err := reqCtx.Err()
 	if err != nil {
-		return []*strawpb.StreamFrame{frames.error(timeoutFailure())}
+		return []*strawpb.StreamFrame{frames.error(mapHTTPError(reqCtx, err))}
 	}
 
-	emit := emitOrBatch(frames.outboundStart(target.host, target.port, executedProfile), send)
+	emit := emitOrBatch(frames.outboundStart(target.host, target.port, executedProfile, upstreamProxyID), send)
 
 	if start.GetFingerprintInstruction() != "" {
 		return e.executeProfiled(reqCtx, target, start, body, frames, emit, send)
@@ -257,6 +260,37 @@ func (e *Executor) executeWithDeployment(ctx context.Context, deploymentID strin
 	}
 
 	return append(emit, frames.end())
+}
+
+func (e *Executor) validateExecutionStart(start *strawpb.RequestStart) (target, string, string, *executionError) {
+	target, failure := parseTarget(start)
+	if failure != nil {
+		return target, "", "", failure
+	}
+
+	upstreamProxyID, failure := validateUpstreamProxyBinding(start, e.upstreamProxyProfiles, e.upstreamProxyPools)
+	if failure != nil {
+		return target, upstreamProxyID, "", failure
+	}
+
+	failure = validateStart(start)
+	if failure != nil {
+		return target, upstreamProxyID, "", failure
+	}
+
+	executedProfile, failure := resolveFingerprintInstruction(start.GetFingerprintInstruction())
+	if failure != nil {
+		return target, upstreamProxyID, "", failure
+	}
+
+	failure = validateHostSuffixPolicy(target.host, start.GetDestinationPolicy())
+	if failure != nil {
+		return target, upstreamProxyID, executedProfile, failure
+	}
+
+	failure = validateRemoteLiteralTarget(start, target)
+
+	return target, upstreamProxyID, executedProfile, failure
 }
 
 func (e *Executor) executeProfiled(ctx context.Context, target target, start *strawpb.RequestStart, body []byte, frames *frameBuilder, emit []*strawpb.StreamFrame, send func(*strawpb.StreamFrame)) []*strawpb.StreamFrame {
@@ -365,31 +399,50 @@ func (e *Executor) handleDoError(ctx context.Context, err error, host string, at
 
 // openTunnel validates and opens one raw CONNECT upstream connection using
 // the same destination-policy resolver/dialer path as decoded HTTP.
-func (e *Executor) openTunnel(ctx context.Context, start *strawpb.RequestStart) (net.Conn, target, *executionError) {
+func (e *Executor) openTunnel(ctx context.Context, start *strawpb.RequestStart) (net.Conn, target, string, *executionError) {
 	target, failure := parseTarget(start)
 	if failure != nil {
-		return nil, target, failure
+		return nil, target, "", failure
+	}
+
+	upstreamProxyID, failure := validateUpstreamProxyBinding(start, e.upstreamProxyProfiles, e.upstreamProxyPools)
+	if failure != nil {
+		return nil, target, upstreamProxyID, failure
 	}
 
 	failure = validateTunnelStart(start)
 	if failure != nil {
-		return nil, target, failure
+		return nil, target, "", failure
 	}
 
 	failure = validateHostSuffixPolicy(target.host, start.GetDestinationPolicy())
 	if failure != nil {
-		return nil, target, failure
+		return nil, target, "", failure
+	}
+
+	failure = validateRemoteLiteralTarget(start, target)
+	if failure != nil {
+		return nil, target, "", failure
 	}
 
 	reqCtx, cancel := e.deadlineContext(ctx, start.GetDeadlineUnixMs())
 	defer cancel()
 
-	conn, err := e.dialValidated(reqCtx, "tcp", net.JoinHostPort(target.host, strconv.FormatUint(uint64(target.port), 10)), start.GetDestinationPolicy())
-	if err != nil {
-		return nil, target, mapHTTPError(reqCtx, err)
+	if upstreamProxyID != "" {
+		conn, proxyFailure := e.upstreamProxy.Open(reqCtx, start.GetUpstreamProxy(), target.host, target.port)
+		if proxyFailure != nil {
+			return nil, target, upstreamProxyID, proxyFailure
+		}
+
+		return conn, target, upstreamProxyID, nil
 	}
 
-	return conn, target, nil
+	conn, err := e.dialValidated(reqCtx, "tcp", net.JoinHostPort(target.host, strconv.FormatUint(uint64(target.port), 10)), start.GetDestinationPolicy())
+	if err != nil {
+		return nil, target, "", mapHTTPError(reqCtx, err)
+	}
+
+	return conn, target, "", nil
 }
 
 func (e *Executor) streamResponseBody(ctx context.Context, body io.Reader, trailers func() []*strawpb.Header, frames *frameBuilder, emit []*strawpb.StreamFrame, send func(*strawpb.StreamFrame)) ([]*strawpb.StreamFrame, *executionError) {
@@ -428,7 +481,8 @@ func (e *Executor) streamResponseBody(ctx context.Context, body io.Reader, trail
 }
 
 func (e *Executor) httpClient(ctx context.Context, deploymentID string, target target, start *strawpb.RequestStart) (*http.Transport, *http.Client, bool, upstreamPoolKey, bool) {
-	if e.pool != nil && e.pool.enabled {
+	remote := start.GetDestinationPolicy().GetResolutionMode() == strawpb.DestinationResolutionMode_DESTINATION_RESOLUTION_UPSTREAM_PROXY_REMOTE
+	if !remote && e.pool != nil && e.pool.enabled {
 		key, failure := e.poolKey(ctx, deploymentID, target, start)
 		if failure == nil {
 			tr := e.pool.transport(key)
@@ -442,15 +496,27 @@ func (e *Executor) httpClient(ctx context.Context, deploymentID string, target t
 		}
 	}
 
-	tr := NewP0Transport(func(ctx context.Context, network, address string) (net.Conn, error) {
+	dial := func(ctx context.Context, network, address string) (net.Conn, error) {
+		if remote {
+			if !proxyDialTargetMatches(address, target) {
+				return nil, upstreamProxyInstructionFailure()
+			}
+
+			conn, failure := e.upstreamProxy.Open(ctx, start.GetUpstreamProxy(), target.host, target.port)
+			if failure != nil {
+				return nil, failure
+			}
+
+			return conn, nil
+		}
+
 		return e.dialValidated(ctx, network, address, start.GetDestinationPolicy())
-	})
+	}
+	tr := NewP0Transport(dial)
 
 	useHTTP2 := e.http2Enabled && schemeFromURL(start.GetUrl()) == schemeHTTPS && !e.isHTTP11Only(target.host)
 
-	e.configureHTTP2(tr, useHTTP2, target.host, nil, func(ctx context.Context, network, address string) (net.Conn, error) {
-		return e.dialValidated(ctx, network, address, start.GetDestinationPolicy())
-	})
+	e.configureHTTP2(tr, useHTTP2, target.host, nil, dial)
 
 	return tr, &http.Client{
 		Transport: tr,
@@ -525,7 +591,7 @@ func (e *Executor) makeDialTLSContext(host string, onFallback func(), dialContex
 
 		tlsConfig := &tls.Config{
 			ServerName: host,
-			NextProtos: []string{"h2", "http/1.1"},
+			NextProtos: []string{"h2", profileHTTP11},
 			RootCAs:    e.rootCAs,
 		}
 
@@ -544,7 +610,7 @@ func (e *Executor) makeDialTLSContext(host string, onFallback func(), dialContex
 
 		negotiated := tlsConn.ConnectionState().NegotiatedProtocol
 
-		if negotiated == "http/1.1" || negotiated == "" {
+		if negotiated == profileHTTP11 || negotiated == "" {
 			e.cacheHTTP11Only(host)
 
 			if onFallback != nil {

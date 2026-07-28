@@ -7,10 +7,10 @@ configuration changes only when release notes identify the change, migration, an
 
 | Component | Supported version | Compatibility rule |
 | --- | --- | --- |
-| Straw Control/Egress/CLI | same release | Upgrade Egress, then Control, then CLI; mixed minors are unsupported unless release notes say otherwise |
-| worker protocol and Go binding | `v0.3.0` | Exact tag in `go.mod`; negotiation rejects unsupported revisions |
-| Go SDK | `v0.3.0` | Exact public tag in `go.mod`; includes typed routing hints |
-| Python SDK and binding | `v0.2.0` / `v0.3.0` | Exact immutable public Git tags in `uv.lock` |
+| Straw Control/Egress/CLI | same release | Protocol-minor-2 rollout is Control first, then Egress and CLI; follow release-specific ordering |
+| worker protocol and Go binding | `v0.4.0` | Exact tag in `go.mod`; protocol 1.2 adds upstream-proxy claims/instructions while accepting older direct workers |
+| Go SDK | `v0.4.0` | Exact public tag in `go.mod`; official workers advertise protocol minor 2 |
+| Python SDK and binding | `v0.2.1` / `v0.4.0` | Exact immutable public Git tags in `uv.lock`; Python worker runtime remains direct-only at protocol minor 1 |
 | container images | release tag or digest | Never depend on a moving tag for production rollback |
 | Go / Python / Node | 1.26.5 / 3.13 / 20+ | Development and CI toolchains |
 
@@ -59,8 +59,14 @@ binding tags.
 Before 1.0, deprecation normally lasts one minor release. Security fixes may remove unsafe behavior immediately.
 Rollback restores the previous binaries/images and, for stateful profiles, the backup taken before upgrade.
 
-The documented dependency release order is protocol source, generated bindings (`straw-protos-go`/`straw-protos-python`
-`v0.3.0`), the Go SDK (`v0.3.0`) and Python SDK (`v0.2.0`), then Straw. The current repository records those public tags directly;
-local URL rewrites, replace directives, and unpublished commits are not supported. Upgrade official workers before
-Control, then the CLI and application SDKs. The `v0.1.0` SDK clients remain wire-compatible for requests without
-routing hints, but use the current tags when routing fields or the tagged release contract are required.
+The documented dependency release order is protocol source, generated bindings (`straw-protos-go` and
+`straw-protos-python` `v0.4.0`), the Go SDK (`v0.4.0`) and Python SDK (`v0.2.1`), then Straw. The current repository
+records those public tags directly; local URL rewrites, replace directives, and unpublished commits are not supported.
+
+New Control accepts minor-0/minor-1 workers for direct pools, including published minor-1 runtimes that omitted
+`protocol_minor` from assignment replies and response envelopes. Minor 2 requires an exact envelope minor and exact
+`upstream_proxy_id` claim for proxy pools. Old Control rejects minor-2 workers and can strip new shared-state fields, so
+this feature's runtime order is new Control first while all pools remain direct, removal of every old Control and
+expiration of shared worker rows, then minor-2 workers and fresh proxy pools. Upgrade the CLI and application SDKs
+afterward. Existing worker JSON without `upstream_proxies`, pool JSON without `upstream_proxy`, and direct requests
+retain direct-local behavior.

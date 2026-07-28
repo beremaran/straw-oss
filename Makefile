@@ -1,4 +1,4 @@
-.PHONY: help check clean-room-check conformance diagnostic-bundle diagnostic-bundle-check doc-ownership-check docs-check docs-check-external examples-check examples-live fuzz-smoke ha-smoke image-content-check license-check npm-audit profile-smoke public-surface-check quickstart-smoke race release-artifact-check scripts-check security-check state-backup-smoke tls-proxy-check toolchain-check commit dependency-check fmt-check test test-python lint production-deploy-check docs-website dev dev-admin dev-receipts dev-status dev-reset dev-down dev-logs
+.PHONY: help check clean-room-check conformance protocol-compatibility diagnostic-bundle diagnostic-bundle-check doc-ownership-check docs-check docs-check-external examples-check examples-live fuzz-smoke ha-smoke image-content-check license-check npm-audit profile-smoke public-surface-check quickstart-smoke race release-artifact-check scripts-check security-check state-backup-smoke tls-proxy-check toolchain-check commit dependency-check fmt-check test test-python lint production-deploy-check docs-website dev dev-admin dev-receipts dev-status dev-reset dev-down dev-logs
 
 help: ## List maintained developer commands.
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_.-]+:.*## / {printf "%-24s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -33,6 +33,9 @@ toolchain-check: ## Enforce one exact Go patch across modules, builders, CI, doc
 
 conformance: ## Validate the versioned conformance fixture contract.
 	./scripts/verify-conformance.py
+
+protocol-compatibility: ## Execute previous-tag and current-tag decoder compatibility checks.
+	./scripts/verify-protocol-compatibility.sh
 
 public-surface-check: ## Ensure source-declared public surfaces appear in normative docs.
 	./scripts/verify-public-surface.py

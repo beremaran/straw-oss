@@ -16,7 +16,7 @@ func newFrameBuilder(attempt uint32) *frameBuilder {
 	return &frameBuilder{attempt: attempt}
 }
 
-func (b *frameBuilder) outboundStart(host string, port uint32, executedProfile string) *strawpb.StreamFrame {
+func (b *frameBuilder) outboundStart(host string, port uint32, executedProfile, upstreamProxyID string) *strawpb.StreamFrame {
 	b.seq++
 
 	return &strawpb.StreamFrame{
@@ -27,6 +27,7 @@ func (b *frameBuilder) outboundStart(host string, port uint32, executedProfile s
 			TargetPort:                 port,
 			Attempt:                    b.attempt,
 			ExecutedFingerprintProfile: executedProfile,
+			UpstreamProxyId:            upstreamProxyID,
 			WorkerTimestampMs:          time.Now().UnixMilli(),
 		}},
 	}
@@ -112,6 +113,11 @@ func (b *frameBuilder) error(failure *executionError) *strawpb.StreamFrame {
 	}
 	if failure.timeoutType != strawpb.TimeoutType_TIMEOUT_TYPE_UNSPECIFIED {
 		errFrame.TimeoutType = &failure.timeoutType
+	}
+
+	if failure.upstreamStatus != nil {
+		status := *failure.upstreamStatus
+		errFrame.UpstreamStatus = &status
 	}
 
 	b.seq++

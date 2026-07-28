@@ -23,8 +23,9 @@ untrusted network.
 
 The forward proxy uses `Proxy-Authorization: Bearer <token>` so an end-destination `Authorization` header can pass
 through decoded HTTP requests. Proxy credentials are stripped before dispatch. CONNECT traffic is opaque after the
-tunnel is established: destination and resolved-address policy still applies when Egress dials, but Straw cannot
-inspect application data inside the tunnel. Apply outbound network controls as defense in depth.
+tunnel is established. The selected pool's destination mode applies before establishment: direct-local checks resolved
+addresses/CNAMEs, while trusted remote mode checks literal IPs but delegates hostname DNS. Straw cannot inspect
+application data inside the tunnel. Apply outbound network controls as defense in depth.
 
 Proxy routing hints use the reserved `X-Straw-*` namespace. Control authenticates first, validates and normalizes the
 bounded tags/country/region/IP-type/sticky-session contract, and strips every `X-Straw-*` header before decoded
@@ -33,6 +34,37 @@ injection or TLS fingerprinting to tunneled bytes. Unknown `X-Straw-*` headers a
 
 Treat routing hints as authenticated control input, not destination metadata. Validate them at the proxy boundary and
 test complete namespace stripping, including unknown future `X-Straw-*` names, before exposing the listener.
+
+## Trusted remote resolution
+
+Direct-local pools retain the full destination-policy boundary: Egress resolves hostnames locally, validates every
+returned address, checks the CNAME chain, and dials only a validated IP. A proxy-backed pool has a deliberately different
+trust contract. URL shape, host/suffix policy, port, and literal IP policy still apply, but hostname targets are sent to
+the trusted proxy for provider-owned DNS resolution.
+
+Provider-owned DNS means Straw cannot authoritatively enforce the direct-local CIDR, CNAME-chain, or
+private-hostname/private-address policy against a hostname's remote result. `trusted_remote_resolution: true` explicitly
+acknowledges this loss. Do not perform local DNS as a purported security preflight: it can differ from provider geo DNS
+and cannot stop remote rebinding. Restrict the worker to the configured gateway, and configure provider destination ACLs
+to deny private, metadata, loopback, and special-use addresses whenever available. A worker firewall that sees only the
+gateway is useful containment but is not equivalent to destination ACLs.
+
+Literal IPs are always validated against the complete existing policy before Egress sends CONNECT. The proxy endpoint
+is static worker configuration, not caller input. Callers select only deployment routes through authenticated existing
+hints; they cannot supply an endpoint, profile, username, password, or `Proxy-Authorization` value for the provider hop.
+
+## Upstream proxy secrets and diagnostics
+
+Control snapshots contain only the profile ID and trust flag. Endpoints, credential environment-variable names,
+username templates, defaults, and secret values remain on Egress; credentials are read once at worker startup. Never
+embed endpoint user information or secret values in JSON. Keep process proxy variables unset or separately controlled:
+the official worker ignores `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` for execution.
+
+Logs and errors may contain a bounded upstream proxy ID, fixed phase fact, CONNECT status, and duration. They must not
+contain a rendered username, password, `Proxy-Authorization`, provider session ID, raw sticky ID, full destination URL or
+query, or provider response header values. Startup errors may name a profile and missing environment-variable name but
+must not print its value. Upstream proxy profile IDs and provider session IDs must never be Prometheus labels; provider
+session IDs must not be logged at all.
 
 ## Profile hardening and verification checklist
 
@@ -50,8 +82,8 @@ its owned verification is skipped or when logs contain synthetic canary tokens, 
 ## Request behavior
 
 Straw accepts only absolute HTTP/HTTPS URLs, rejects URL user information, validates headers, limits bodies and
-timeouts, and manages hop-by-hop headers. The deployment policy rejects destinations that violate built-in safety
-rules, including post-DNS resolved-address checks and CNAME suffix checks. See [Destination policy and egress
+timeouts, and manages hop-by-hop headers. Direct-local destination policy includes post-DNS resolved-address and CNAME
+suffix checks; trusted remote mode has the explicit limitations above. See [Destination policy and egress
 safety](architecture.md#destination-policy-and-egress-safety) for the built-in denied ranges, override precedence, and
 redirect behavior. TLS is verified by the worker's HTTP stack.
 

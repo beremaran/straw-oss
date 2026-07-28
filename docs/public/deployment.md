@@ -159,8 +159,10 @@ must work from Egress—not merely from Control.
 
 ## Upgrade order
 
-Pull and verify immutable digests, take profile backups, then upgrade Egress, Control, and clients/CLI in that order.
-Watch readiness, rollout acknowledgement, error ratio, and latency between stages. Roll back in reverse order using
+Pull and verify immutable digests and take profile backups. Protocol-minor-2 upstream-proxy deployments are a
+Control-first exception to the ordinary component rollout: upgrade every Control while pools remain direct, remove old
+Control instances and shared worker rows, then deploy minor-2 Egress workers before enabling fresh proxy pool IDs.
+Watch readiness, rollout acknowledgement, error ratio, and latency between stages. Roll back using
 the prior digest; restore durable state only when release notes identify a format change.
 
 The default profile has no application database to migrate or back up. Back up the JetStream bucket and storage when

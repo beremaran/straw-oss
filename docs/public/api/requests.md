@@ -101,6 +101,38 @@ constraints. Only an explicit ingress rule or worker ingress capability differen
 an explicit transport-retry permission: clients default GET, HEAD, and OPTIONS to true, while other methods remain
 false unless the caller opts in and the operation is safe to repeat.
 
+### Sticky upstream-proxy affinity
+
+Proxy-backed routes have two independent stickiness layers:
+
+| Layer | Owner | Behavior |
+| --- | --- | --- |
+| Straw worker pin | Control | `(deployment_id, sticky_session_id)` prefers the same eligible worker for the selected rule's sliding sticky TTL. |
+| Provider session | Upstream provider | A pool/profile/geo-scoped session token asks the provider to retain an exit according to its own contract. |
+
+Control derives a provider session only when `sticky_session_id` is non-empty, the selected rule has a positive
+`sticky_session_ttl_seconds`, and the selected pool uses an upstream proxy. It is the first 128 bits of a deterministic
+SHA-256 derivation over the deployment, selected pool, upstream proxy ID, normalized country/region/IP type, and caller
+sticky ID, encoded as exactly 32 lowercase hexadecimal characters. This makes it stable across Control replicas and
+eligible workers without disclosing the raw caller value. It is pseudonymous, not encrypted; use opaque sticky IDs and
+never put personal data in them.
+
+An ordinary request and an Egress internal retry preserve the profile and provider session. If the pinned worker is
+unavailable, disabled sticky fallback returns `sticky_session_unavailable`. Enabled fallback within the same pool sends
+the same provider session to another exactly matching worker. Fallback to a different pool derives a new provider
+session and resets provider affinity. Workers in one pool must therefore use operationally equivalent provider
+accounts, zones, templates, and session namespaces; Control can verify only the profile ID claim, not worker-local
+secrets or endpoints.
+
+```text
+effective affinity <= min(active Straw route pin, provider session retention)
+```
+
+The routing TTL does not force provider rotation. Reusing the same caller sticky ID later derives the same pseudonymous
+value, but the provider may have expired or remapped it. Straw does not promise exact-IP persistence beyond the
+provider's documented retention behavior. Callers continue to select routes through existing hints and cannot submit a
+proxy profile ID or provider credentials.
+
 ## Success
 
 Control returns HTTP `200` when Straw transported the request, even if the destination returned an error status.
@@ -146,8 +178,10 @@ Straw failures use an outer 4xx or 5xx status and a stable envelope:
 }
 ```
 
-Optional fields are `timeout_type`, `retry_after_ms`, and `details`. Use `code` for program logic and `message` for
-humans. Retry only when `retryable` is true and the original operation is safe to replay.
+Optional fields are `timeout_type`, `retry_after_ms`, `upstream_status`, and `details`. `upstream_status` is present only
+when an upstream CONNECT gateway returned a status, such as `407`; it is not the destination response status. Use
+`code` for program logic and `message` for humans. Retry only when `retryable` is true and the original operation is safe
+to replay.
 
 `details` is a bounded string map intended for diagnostics, not program-wide branching. The currently documented
 detail values are:
@@ -157,6 +191,7 @@ detail values are:
 | `body_too_large` during request validation | `direction` | `request` |
 | `body_too_large` during request validation | `limit_bytes` | active inline request-body limit |
 | timeout errors | `timeout_type` | `assignment_timeout`, `connect_timeout`, `response_header_timeout`, `idle_timeout`, `upload_timeout`, `download_timeout`, or `total_deadline_timeout` |
+| `upstream_proxy_failure` | `fact` | fixed safe CONNECT phase fact; see [Troubleshooting](../troubleshooting.md#upstream-proxy-failures) |
 
 Response-body size failures may omit `details`; use the stable error code and configured response limit. An upstream
 HTTP error status is still a successful Straw transport: it appears in the response envelope's `status` field while

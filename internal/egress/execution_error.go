@@ -17,9 +17,10 @@ import (
 )
 
 type executionError struct {
-	code        strawpb.ErrorCode
-	fact        string
-	timeoutType strawpb.TimeoutType
+	code           strawpb.ErrorCode
+	fact           string
+	timeoutType    strawpb.TimeoutType
+	upstreamStatus *uint32
 }
 
 func (e *executionError) Error() string {

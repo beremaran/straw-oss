@@ -10,14 +10,14 @@ test ! -e python
 test ! -e examples/egress-static
 test -z "$(git ls-files 'go.work' '**/go.work')"
 ! grep -Eq '^[[:space:]]*replace[[:space:](]' go.mod
-grep -Eq 'github.com/beremaran/straw-protos-go v0\.3\.0$' go.mod
-grep -Eq 'github.com/beremaran/straw-sdk-go v0\.3\.0$' go.mod
+grep -Eq 'github.com/beremaran/straw-protos-go v0\.4\.0$' go.mod
+grep -Eq 'github.com/beremaran/straw-sdk-go v0\.4\.0$' go.mod
 grep -Eq 'github.com/bogdanfinn/utls v1\.7\.7-barnius$' go.mod
 grep -Eq 'golang.org/x/net v0\.56\.0$' go.mod
 ! grep -Eq 'github.com/bogdanfinn/(fhttp|tls-client)' go.mod
-grep -Fq 'straw-sdk-python.git@v0.2.0' pyproject.toml
-grep -Fq 'straw-sdk-python.git?rev=v0.2.0#' uv.lock
-grep -Fq 'straw-protos-python.git?rev=v0.3.0#' uv.lock
+grep -Fq 'straw-sdk-python.git@v0.2.1' pyproject.toml
+grep -Fq 'straw-sdk-python.git?rev=v0.2.1#' uv.lock
+grep -Fq 'straw-protos-python.git?rev=v0.4.0#' uv.lock
 ! grep -Eq 'source = \{ (editable|directory|path) =' uv.lock
 
 if rg -n 'github.com/beremaran/straw-oss/(sdk|api/proto)' --glob '*.go' .; then
@@ -45,10 +45,11 @@ check_internal_imports ./cmd/control "$module/internal/config $module/internal/c
 check_internal_imports ./cmd/egress "$module/internal/config $module/internal/egress $module/internal/logging $module/internal/natsx"
 check_internal_imports ./cmd/straw "$module/internal/cli"
 check_internal_imports ./internal/control "$module/internal/config $module/internal/fingerprint $module/internal/natsx $module/internal/receipt"
-check_internal_imports ./internal/egress "$module/internal/egress/profilecatalog $module/internal/fingerprint $module/internal/natsx"
+check_internal_imports ./internal/egress "$module/internal/egress/profilecatalog $module/internal/fingerprint $module/internal/natsx $module/internal/proxytemplate"
 check_internal_imports ./internal/egress/profilecatalog ""
 check_internal_imports ./internal/fingerprint ""
-check_internal_imports ./internal/config ""
+check_internal_imports ./internal/config "$module/internal/proxytemplate"
 check_internal_imports ./internal/natsx ""
+check_internal_imports ./internal/proxytemplate ""
 check_internal_imports ./internal/receipt "$module/internal/objectstore"
 check_internal_imports ./internal/objectstore ""

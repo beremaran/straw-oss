@@ -11,8 +11,8 @@ from straw_protos.straw.v1 import straw_pb2 as pb
 
 class TaggedPythonSDKIntegrationTests(unittest.TestCase):
     def test_exact_tagged_distributions_are_installed(self):
-        self.assertEqual(version("straw-sdk"), "0.2.0")
-        self.assertEqual(version("straw-protos"), "0.3.0")
+        self.assertEqual(version("straw-sdk"), "0.2.1")
+        self.assertEqual(version("straw-protos"), "0.4.0")
         self.assertTrue(hasattr(straw, "Client"))
 
     def test_sdk_and_binding_share_current_wire_contract(self):
@@ -22,6 +22,7 @@ class TaggedPythonSDKIntegrationTests(unittest.TestCase):
         self.assertEqual(envelope.request_id, fixture["request_id"])
         self.assertEqual(envelope.deployment_id, fixture["deployment_id"])
         self.assertEqual(protocol.PROTOCOL_MAJOR, fixture["protocol_major"])
+        self.assertEqual(protocol.PROTOCOL_MINOR, 1)
         self.assertEqual(envelope.SerializeToString(deterministic=True), bytes.fromhex(fixture["unknown_field_wire_hex"]))
 
     def test_sdk_uses_binding_signing_helper(self):

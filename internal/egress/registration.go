@@ -117,8 +117,8 @@ type tunnelAdapter struct {
 }
 
 func (a tunnelAdapter) OpenTunnel(ctx context.Context, start *strawpb.RequestStart) (net.Conn, sdkegress.TunnelTarget, *strawpb.ErrorFrame) {
-	conn, target, failure := a.executor.openTunnel(ctx, start)
-	out := sdkegress.TunnelTarget{Host: target.host, Port: target.port}
+	conn, target, upstreamProxyID, failure := a.executor.openTunnel(ctx, start)
+	out := sdkegress.TunnelTarget{Host: target.host, Port: target.port, UpstreamProxyID: upstreamProxyID}
 
 	if failure == nil {
 		a.executor.metrics.ObserveTunnel("")
@@ -133,5 +133,11 @@ func (a tunnelAdapter) OpenTunnel(ctx context.Context, start *strawpb.RequestSta
 		details["timeout_type"] = failure.timeoutType.String()
 	}
 
-	return nil, out, &strawpb.ErrorFrame{Code: failure.code, Details: details}
+	errFrame := &strawpb.ErrorFrame{Code: failure.code, Details: details}
+	if failure.upstreamStatus != nil {
+		status := *failure.upstreamStatus
+		errFrame.UpstreamStatus = &status
+	}
+
+	return nil, out, errFrame
 }

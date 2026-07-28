@@ -188,6 +188,52 @@ keeps all claimed countries, regions, and IP types within the pool's allowed lis
 must also be advertised by the worker. `allow_degraded_workers` controls whether a live degraded worker may be used.
 Unknown pool references and duplicate pool memberships are rejected before registration or activation.
 
+An optional `upstream_proxy` object changes a pool from direct-local execution to trusted upstream-proxy remote
+resolution. It contains only the profile identity and the explicit trust acknowledgement:
+
+```json
+{
+  "executor_pools": [
+    {
+      "id": "brightdata-residential-au-v1",
+      "executor_type": "egress",
+      "enabled": true,
+      "tags": ["residential"],
+      "allowed_countries": ["AU"],
+      "allowed_ip_types": ["residential"],
+      "upstream_proxy": {
+        "id": "brightdata-resi-v1",
+        "trusted_remote_resolution": true
+      }
+    }
+  ],
+  "routing_rules": [
+    {
+      "id": "retailer-products-v1",
+      "priority": 10,
+      "enabled": true,
+      "match": {
+        "target_host": "*.retailer.example",
+        "country": "AU",
+        "ip_type": "residential"
+      },
+      "target_pool_id": "brightdata-residential-au-v1",
+      "sticky_session_ttl_seconds": 900,
+      "allow_sticky_fallback": true
+    }
+  ]
+}
+```
+
+An absent `upstream_proxy` keeps direct-local behavior. When present, `id` is required and
+`trusted_remote_resolution` must be exactly `true`; false is a snapshot validation error, not a request-time direct
+fallback. Use a fresh pool ID that was never claimed by a protocol-minor-0 or minor-1 worker. Control admits a worker to
+the pool only when `capabilities.allowed_pools[].upstream_proxy_id` exactly matches this ID and the negotiated protocol
+minor is at least 2. Multiple pools may intentionally share a profile ID, but one pool maps to at most one profile.
+
+Existing exact and `*.suffix` `target_host` matching selects the proxy pool; callers cannot name arbitrary profiles.
+Control stores no proxy endpoint, username, password, or authentication template. Those values remain worker-local.
+
 ### Optional shared runtime state
 
 `runtime_state.backend` defaults to `memory`. Set it to `redis` only when multiple Control instances must be
@@ -251,8 +297,75 @@ Worker IDs must be unique within a deployment. `max_concurrency` defaults to `4`
 the official worker claims `default/default`, preserving the original behavior. Each entry may omit `deployment_id`,
 which defaults to `default`; entries must be unique and refer to the deployment's configured pools. The official
 worker does not provide tenant or cross-deployment authorization. The optional connection pool can
-reuse upstream connections; when enabled its defaults are 8 idle connections per deployment/host, 30 seconds idle
+reuse direct-local upstream connections; when enabled its defaults are 8 idle connections per deployment/host, 30 seconds idle
 timeout, and 5 minutes maximum lifetime.
+
+### Upstream proxy profiles
+
+Proxy-backed workers bind each claimed pool to an exact worker-local profile and keep provider credentials in named
+environment variables:
+
+```json
+{
+  "config_version": "v1",
+  "egress": {
+    "worker_id": "egress-proxy-1",
+    "capabilities": {
+      "allowed_pools": [
+        {
+          "pool_id": "brightdata-residential-au-v1",
+          "upstream_proxy_id": "brightdata-resi-v1"
+        }
+      ],
+      "countries": ["AU"],
+      "ip_types": ["residential"],
+      "max_concurrency": 64
+    },
+    "upstream_proxies": [
+      {
+        "id": "brightdata-resi-v1",
+        "endpoint": "http://brd.superproxy.io:22225",
+        "auth": {
+          "type": "basic",
+          "username_env": "BRIGHTDATA_USERNAME",
+          "password_env": "BRIGHTDATA_PASSWORD",
+          "username_template": "{{.Username}}{{if .Country}}-country-{{lower .Country}}{{end}}{{if .Session}}-session-{{.Session}}{{end}}"
+        },
+        "defaults": {
+          "country": "AU",
+          "ip_type": "residential"
+        }
+      }
+    ]
+  }
+}
+```
+
+Profile constraints are:
+
+- `id` uses the bounded snapshot-ID syntax and must be unique; every profile must be referenced by at least one allowed
+  pool, and every non-empty pool `upstream_proxy_id` must reference a configured profile;
+- `endpoint` must be an `http` or `https` URL with an explicit hostname and port. User information, non-root paths,
+  query strings, and fragments are rejected;
+- `auth.type` is `none` or `basic`. `none` permits no credential fields. `basic` requires a named, non-empty
+  `username_env`; `password_env` is optional, but when named it must exist and may resolve to an empty password;
+- secret values are read once from the environment at startup. JSON contains environment-variable names, never values;
+- a Basic `username_template` defaults to `{{.Username}}`. Only `lower` and `upper` functions and the fields
+  `Username`, `Session`, `Country`, `Region`, and `IPType` are available;
+- effective `Country`, `Region`, and `IPType` values use the per-request Control instruction first, then the profile's
+  `defaults`. `Username` comes from `username_env`, and `Session` is Control's pseudonymous provider session value;
+- defaults must be normalized and cannot contradict the worker's advertised capabilities. Use conditionals to avoid
+  provider delimiters when optional values are empty.
+
+Straw never consults process `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, or equivalent variables. It always opens an HTTP
+CONNECT tunnel for decoded HTTP, decoded HTTPS, named TLS fingerprints, HTTP/2 targets, and raw CONNECT ingress. A TLS
+proxy endpoint adds a separate verified outer TLS connection. Application-level proxy connection pooling is disabled:
+every proxied request opens a new CONNECT tunnel even when `upstream_connection_pool.enabled` is true; direct-local
+pooling is unchanged.
+
+The [redacted multi-provider example](../../deploy/production/egress.upstream-proxies.example.json) illustrates Bright
+Data, Oxylabs, Apify Proxy, and Scrape.do proxy mode. Gateway and username contracts can change; verify them against the
+provider account before rollout. The file has no credentials and is not selected by the production Compose stack.
 
 The official Egress worker advertises the complete built-in fingerprint catalogue. The default Control snapshot
 enables those exact profiles with contract revision `tls-client-v1.15.1-http1-http2`; use their names in
@@ -270,7 +383,8 @@ The production example uses `STRAW_NATS_USER` and `STRAW_NATS_PASSWORD`. Never p
 files. Connection tuning fields are `reconnect_attempts`, `reconnect_wait_ms`, `ping_interval_ms`,
 `max_ping_failures`, and `max_payload_bytes`.
 
-`deploy/local/*.json` and `deploy/production/*.json` are the canonical working examples.
+The selected `deploy/local` and `deploy/production` service JSON files are canonical working examples. Files ending in
+`.example.json` are redacted configuration templates and are not selected by Compose.
 
 ## Static field reference
 
@@ -292,6 +406,8 @@ stores environment-variable **names**, never secret values.
 | object encryption | `server_side_encryption`, `kms_key_id` | empty; `AES256` or `aws:kms`; KMS mode requires key ID |
 | Egress identity | `worker_id`, `heartbeat_interval_ms`, `health_port` | `egress-1`, 5000, 8090; non-empty/positive valid port |
 | Egress capabilities | `allowed_pools`, `tags`, `countries`, `regions`, `ip_types`, `supported_ingress_modes`, `max_concurrency` | `allowed_pools` defaults to `[{"deployment_id":"default","pool_id":"default"}]`; other lists are empty except ingress `rest`, `http_proxy`, `connect`; official workers advertise the built-in fingerprint catalogue; concurrency defaults to 4 at worker composition |
+| Egress upstream proxies | `upstream_proxies`, `id`, `endpoint`, `auth`, `defaults` | empty; each profile is worker-local, uniquely identified, referenced by an allowed pool, and uses an explicit HTTP/HTTPS host and port |
+| Egress proxy auth | `type`, `username_env`, `password_env`, `username_template` | `none` or `basic`; Basic username is required from the environment, password is optional, template defaults to `{{.Username}}` |
 | connection pool | `enabled`, `max_idle_conns_per_host`, `idle_timeout_ms`, `max_lifetime_ms` | false; when enabled 8, 30000, 300000 |
 | HTTP/2 | `enabled`, `fallback_cache_ttl_ms` | false, 300000 |
 | NATS | `servers`, `user_credentials_file`, `username_env`, `password_env` | `nats://127.0.0.1:4222`, empty; credential file or named user/password environment variables |
@@ -307,12 +423,13 @@ unless it is part of a runtime snapshot activated through the Admin API.
 | --- | --- |
 | routing rule | `routing_rules`, `id`, `priority`, `enabled`, `match`, `target_pool_id`, `sticky_session_ttl_seconds`, `allow_sticky_fallback`; priorities define ordering, referenced pools must exist, and sticky fallback requires a positive TTL |
 | match | `tags`, `country`, `region`, `ip_type`, `ingress_type`, `target_host`; omitted members do not restrict the match |
-| executor pool | `executor_pools`, `id`, `enabled`, `executor_type`, `tags`, `allow_degraded_workers`, `allowed_ip_types`, `allowed_countries`, `allowed_regions`; pool IDs are unique; disabled pools receive no new assignments; executor type and tags are hard worker-eligibility constraints; non-empty allowed lists bound the worker's advertised capabilities |
+| executor pool | `executor_pools`, `id`, `enabled`, `executor_type`, `tags`, `allow_degraded_workers`, `allowed_ip_types`, `allowed_countries`, `allowed_regions`, `upstream_proxy`, `trusted_remote_resolution`; pool IDs are unique; disabled pools receive no new assignments; executor type, exact proxy identity, and tags are hard worker-eligibility constraints; non-empty allowed lists bound the worker's advertised capabilities |
 | destination rule | `destination_policy`, `rule_type`, `action`, `reason`, `raw_pattern`, `normalized_host`, `normalized_cidr`, `normalized_ip`, `normalized_name`; raw patterns are authoritative, normalized fields are server output, and malformed rules are rejected before activation |
 | injection policy | `injection_policies`, `id`, `enabled`, `operations`, `op`, `header_name`, `value_base64`; policies are applied by ID, operations preserve declared order, reserved headers and duplicate enabled `set` operations are rejected |
 | fingerprint profile | `fingerprint_profiles`, `name`, `scope_type`, `supported_by_worker`, `executor_type`, `profile_ref`, `contract_revision`; activation requires worker support |
 | worker setting | `worker_settings`, `worker_id`, `enabled`, `draining`; lifecycle changes are deployment-scoped |
 | snapshot | `config_version`, `default_timeout_ms`, `max_timeout_ms`; versions increase and timeout bounds must be positive and ordered |
-| Egress capabilities | `allowed_pools`, `countries`, `regions`, `ip_types`, `supported_ingress_modes`; values describe pool membership and admission capabilities rather than network authorization; omitted pool membership is `default/default`; duplicate, unknown, or non-default deployment references are rejected |
+| Egress capabilities | `allowed_pools`, `upstream_proxy_id`, `countries`, `regions`, `ip_types`, `supported_ingress_modes`; values describe pool membership and admission capabilities rather than network authorization; omitted pool membership is `default/default`; duplicate, unknown, mismatched, or non-default deployment references are rejected |
+| Egress upstream profile | `upstream_proxies`, `id`, `endpoint`, `auth`, `type`, `username_env`, `password_env`, `username_template`, `defaults`, `country`, `region`, `ip_type`; profiles are immutable startup configuration, credentials come from named environment variables, and unused profiles are rejected |
 | upstream connection pool | `max_idle_conns_per_host`, `idle_timeout_ms`, `max_lifetime_ms`; zero/negative invalid values are rejected by config validation |
 | object storage | `local_directory`, `max_part_bytes`, `assignment_ttl_seconds`, `cleanup_interval_seconds`, `server_side_encryption`; local storage is development-only and production encryption/retention are operator responsibilities |

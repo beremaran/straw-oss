@@ -7,14 +7,15 @@ import (
 
 // ErrorResponse is the public error envelope per the canonical error registry.
 type ErrorResponse struct {
-	Category     string            `json:"category"`
-	Code         string            `json:"code"`
-	Message      string            `json:"message"`
-	Retryable    bool              `json:"retryable"`
-	RequestID    string            `json:"request_id"`
-	TimeoutType  string            `json:"timeout_type,omitempty"`
-	RetryAfterMs int64             `json:"retry_after_ms,omitempty"`
-	Details      map[string]string `json:"details,omitempty"`
+	Category       string            `json:"category"`
+	Code           string            `json:"code"`
+	Message        string            `json:"message"`
+	Retryable      bool              `json:"retryable"`
+	RequestID      string            `json:"request_id"`
+	TimeoutType    string            `json:"timeout_type,omitempty"`
+	RetryAfterMs   int64             `json:"retry_after_ms,omitempty"`
+	UpstreamStatus *uint32           `json:"upstream_status,omitempty"`
+	Details        map[string]string `json:"details,omitempty"`
 }
 
 // ErrorCode represents a canonical error code from the error registry.

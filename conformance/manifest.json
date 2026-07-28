@@ -2,8 +2,8 @@
   "schema_version": 1,
   "protocol_version": "v1",
   "compatibility": {
-    "producer": "straw-protos@v0.3.0",
-    "consumers": ["straw-oss", "straw-sdk-go@v0.2.0", "straw-sdk-python@v0.2.0"]
+    "producer": "straw-protos@v0.4.0",
+    "consumers": ["straw-oss", "straw-sdk-go@v0.4.0", "straw-sdk-python@v0.2.1"]
   },
   "fixtures": [
     {"path": "fixtures/v1/envelope.json", "outcome": "accept"},

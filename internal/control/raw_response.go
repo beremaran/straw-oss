@@ -42,19 +42,21 @@ func (d *DefaultRequestDispatcher) streamRawResponse(ctx context.Context, frames
 }
 
 type rawResponseStreamState struct {
-	dispatcher  *DefaultRequestDispatcher
-	validator   *natsx.StreamValidator
-	route       RouteOutcome
-	deadline    time.Time
-	c2eSubject  string
-	in          DispatchInput
-	c2eSeq      uint64
-	upload      *requestBodyUpload
-	uploadErr   <-chan error
-	w           http.ResponseWriter
-	result      dispatchResult
-	egressStart time.Time
-	wroteHeader bool
+	dispatcher      *DefaultRequestDispatcher
+	validator       *natsx.StreamValidator
+	route           RouteOutcome
+	deadline        time.Time
+	c2eSubject      string
+	in              DispatchInput
+	c2eSeq          uint64
+	upload          *requestBodyUpload
+	uploadErr       <-chan error
+	w               http.ResponseWriter
+	result          dispatchResult
+	egressStart     time.Time
+	wroteHeader     bool
+	outboundStarted bool
+	responseStarted bool
 }
 
 func (s *rawResponseStreamState) next(ctx context.Context, ticks <-chan time.Time, frames <-chan *strawpb.StreamFrame) (bool, *PipelineError) {
@@ -100,6 +102,10 @@ func (s *rawResponseStreamState) frameEvent(frame *strawpb.StreamFrame, ok bool)
 func (s *rawResponseStreamState) acceptValidated(frame *strawpb.StreamFrame, validator *natsx.StreamValidator) (bool, *PipelineError) {
 	ok, done, perr := acceptedResponseFrame(validator.Accept(frame))
 	if !ok || done {
+		return done, perr
+	}
+
+	if perr := s.dispatcher.validateRouteResponseFrame(s.route, frame, &s.outboundStarted, &s.responseStarted); perr != nil {
 		return true, perr
 	}
 

@@ -5,6 +5,25 @@ are tagged.
 
 ## Unreleased
 
+### Added
+
+- Added protocol minor 2 upstream-proxy Egress: Control executor pools can select trusted remote resolution and route
+  by existing hints/`target_host`, workers claim the pool's exact profile ID, and worker-local `upstream_proxies`
+  provide environment-backed HTTP/HTTPS gateway and Basic-auth configuration.
+- Added one shared always-CONNECT path for decoded HTTP/HTTPS, named fingerprints, HTTP/2 targets, and raw CONNECT
+  chaining. Proxy requests bypass application connection pooling; decoded and raw outbound-start frames report the
+  executed profile identity for Control validation.
+- Added two-layer worker/provider stickiness with deterministic pseudonymous provider sessions, same-pool fallback
+  preservation, different-pool reset, and no exact-exit-IP guarantee beyond provider retention.
+- Added safe upstream-proxy failure facts and optional CONNECT `upstream_status`, including distinct connect, outer TLS,
+  protocol, 407 authentication, and non-2xx rejection diagnostics without credential or session disclosure.
+
+### Compatibility
+
+- Direct-local configuration and DNS/CIDR/CNAME enforcement remain the default. New Control accepts older direct
+  minor-0/minor-1 workers, including published minor-1 runtimes that omitted the reply-envelope minor; proxy pools
+  require fresh IDs, exact minor-2 claims, and a Control-first rollout before minor-2 workers and canary routes.
+
 ## 0.2.1 - 2026-07-27
 
 ### Fixed

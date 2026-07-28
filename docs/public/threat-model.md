@@ -17,8 +17,8 @@ flowchart LR
 
 | Threat | Enforced invariant | Operator verification |
 | --- | --- | --- |
-| SSRF, metadata ranges, DNS rebinding/CNAME changes | Control projects destination policy before assignment; Egress resolves and validates every dial address after resolution and redirect | Run destination-policy and Egress profile tests; also enforce network-layer egress rules |
-| Redirect/proxy bypass | Every redirected target and upstream proxy path is revalidated; CONNECT has a distinct bounded tunnel path | Deny private/metadata networks outside Straw as defense in depth |
+| SSRF, metadata ranges, DNS rebinding/CNAME changes | Direct-local Egress resolves and validates every dial address. Trusted upstream-proxy pools validate literal targets but delegate hostname DNS to the provider, so local CIDR/CNAME enforcement is unavailable for hostnames. | Run destination-policy and Egress tests; configure provider destination ACLs against private, metadata, loopback, and special-use ranges. |
+| Redirect/proxy bypass | Redirects remain disabled; proxy pools bind a Control pool claim to one worker profile and always use bounded CONNECT without direct fallback. | Use fresh proxy pool IDs, keep `trusted_remote_resolution` explicit, and deny private/metadata networks at the provider. |
 | Header/request smuggling | Names, values, ordered duplicates, lengths, hop-by-hop behavior, frames, and total bodies are validated | Keep reverse proxy parsing strict and do not rewrite signed protocol frames |
 | Credential/log disclosure | Separate request/admin bearer tokens; signed receipt URLs are short-lived; structured logs must omit tokens, headers, URLs, bodies, and object credentials | Search logs and diagnostic bundles with synthetic canary secrets |
 | NATS subject impersonation | Subjects are bounded and protocol messages signed/validated | Give components only required publish/subscribe permissions and TLS credentials |
